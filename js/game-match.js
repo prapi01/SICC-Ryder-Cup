@@ -1,176 +1,158 @@
-// js/game-match.js
+// FILE: js/game-match.js - VERSION 1.05
 // Game 1: Match Play (16 points)
-// Version 1.04 - Safety checks and console logging
+// Updated: Uses net scores (gross - strokes received based on SI)
 
 var GameMatch = (function() {
     
-    function getPlayerIndex(players, playerName) {
-        if (!players || !playerName) return -1;
-        for (var i = 0; i < players.length; i++) {
-            if (players[i].name === playerName) return i;
-        }
-        return -1;
+    // Calculate strokes a player receives on a specific hole
+    // Player gets 1 stroke on holes where SI <= player.handicap
+    function getStrokesForHole(holeNumber, playerHandicap, courseSi) {
+        if (!courseSi || playerHandicap <= 0) return 0;
+        var holeSi = courseSi[holeNumber - 1];
+        return (holeSi <= playerHandicap) ? 1 : 0;
     }
     
-    function isHoleSaved(savedHoles, flight, hole) {
-        if (!savedHoles) return false;
-        if (!savedHoles[flight]) return false;
-        return savedHoles[flight].indexOf(hole) !== -1;
+    // Calculate net score for a player on a specific hole
+    function getNetScore(player, grossScore, holeNumber, courseSi) {
+        var strokes = getStrokesForHole(holeNumber, player.handicap, courseSi);
+        return grossScore - strokes;
     }
     
-    function getMatchResult(playerA, playerB, scores, savedHoles, players, upToHole) {
-        if (!playerA || !playerB || !scores || !savedHoles || !players) {
-            console.warn("getMatchResult: Missing data");
-            return "⏳";
-        }
+    // Get match result between two players up to a certain hole
+    // Returns: "+X" (winning by X holes), "-X" (losing by X holes), "AS" (tie), "⏳" (not started)
+    function getMatchResult(playerA, playerB, scores, savedHoles, allPlayers, upToHole, courseSi) {
+        var holesCompleted = 0;
+        var playerAWon = 0;
+        var playerBWon = 0;
         
-        var aWins = 0, bWins = 0;
-        var aIdx = getPlayerIndex(players, playerA.name);
-        var bIdx = getPlayerIndex(players, playerB.name);
-        
-        if (aIdx === -1 || bIdx === -1) {
-            console.warn("getMatchResult: Player not found", playerA.name, playerB.name);
-            return "⏳";
-        }
-        
-        console.log("=== getMatchResult ===");
-        console.log("Player A:", playerA.name, "Flight:", playerA.flight);
-        console.log("Player B:", playerB.name, "Flight:", playerB.flight);
-        console.log("Up to hole:", upToHole);
-        
+        // Determine which holes are completed for both players
         for (var hole = 1; hole <= upToHole; hole++) {
-            if (isHoleSaved(savedHoles, playerA.flight, hole) && isHoleSaved(savedHoles, playerB.flight, hole)) {
-                var aScore = scores[playerA.flight + "_" + hole + "_" + aIdx];
-                var bScore = scores[playerB.flight + "_" + hole + "_" + bIdx];
+            // Check if both players have saved scores for this hole
+            var playerAHasScore = false;
+            var playerBHasScore = false;
+            
+            for (var flight = 1; flight <= 2; flight++) {
+                var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
                 
-                console.log("Hole " + hole + ": A=" + aScore + ", B=" + bScore);
-                
-                if (aScore !== undefined && bScore !== undefined) {
-                    if (aScore < bScore) {
-                        aWins++;
-                        console.log("  -> A wins hole " + hole);
-                    } else if (bScore < aScore) {
-                        bWins++;
-                        console.log("  -> B wins hole " + hole);
-                    } else {
-                        console.log("  -> Tie hole " + hole);
+                for (var i = 0; i < flightPlayers.length; i++) {
+                    var p = flightPlayers[i];
+                    if (p.name === playerA.name) {
+                        var key = flight + "_" + hole + "_" + i;
+                        if (scores[key] !== undefined && scores[key] !== null) {
+                            playerAHasScore = true;
+                        }
                     }
-                }
-            } else {
-                console.log("Hole " + hole + ": Not saved yet");
-            }
-        }
-        
-        var diff = aWins - bWins;
-        console.log("Final: A wins=" + aWins + ", B wins=" + bWins + ", Diff=" + diff);
-        
-        if (diff > 0) return "+" + diff;
-        if (diff < 0) return "" + diff;
-        if (aWins === 0 && bWins === 0) return "⏳";
-        return "AS";
-    }
-    
-    function getPoints(players, scores, savedHoles, upToHole) {
-        if (!players || !scores || !savedHoles) {
-            console.error("getPoints: Missing required data");
-            return { teamAPoints: 8, teamBPoints: 8 };
-        }
-        
-        console.log("========================================");
-        console.log("=== GameMatch.getPoints() CALLED ===");
-        console.log("Up to hole:", upToHole);
-        console.log("Saved Holes Flight 1:", savedHoles[1] ? JSON.stringify(savedHoles[1]) : "none");
-        console.log("Saved Holes Flight 2:", savedHoles[2] ? JSON.stringify(savedHoles[2]) : "none");
-        console.log("========================================");
-        
-        var teamA = players.filter(function(p) { return p.team === "A"; });
-        var teamB = players.filter(function(p) { return p.team === "B"; });
-        var teamAPoints = 0;
-        var teamBPoints = 0;
-        var totalCompletedMatches = 0;
-        
-        console.log("Team A players:", teamA.map(function(p) { return p.name; }));
-        console.log("Team B players:", teamB.map(function(p) { return p.name; }));
-        
-        for (var a = 0; a < teamA.length; a++) {
-            for (var b = 0; b < teamB.length; b++) {
-                var aWins = 0, bWins = 0;
-                var aIdx = getPlayerIndex(players, teamA[a].name);
-                var bIdx = getPlayerIndex(players, teamB[b].name);
-                var matchesCompleted = false;
-                
-                if (aIdx === -1 || bIdx === -1) {
-                    console.warn("Skipping match - player not found:", teamA[a].name, teamB[b].name);
-                    continue;
-                }
-                
-                console.log("--- Match: " + teamA[a].name + " (F" + teamA[a].flight + ") vs " + teamB[b].name + " (F" + teamB[b].flight + ") ---");
-                
-                for (var hole = 1; hole <= upToHole; hole++) {
-                    if (isHoleSaved(savedHoles, teamA[a].flight, hole) && isHoleSaved(savedHoles, teamB[b].flight, hole)) {
-                        matchesCompleted = true;
-                        var aScore = scores[teamA[a].flight + "_" + hole + "_" + aIdx];
-                        var bScore = scores[teamB[b].flight + "_" + hole + "_" + bIdx];
-                        
-                        console.log("  Hole " + hole + ": " + teamA[a].name + "=" + aScore + ", " + teamB[b].name + "=" + bScore);
-                        
-                        if (aScore !== undefined && bScore !== undefined) {
-                            if (aScore < bScore) {
-                                aWins++;
-                                console.log("    -> " + teamA[a].name + " wins this hole");
-                            } else if (bScore < aScore) {
-                                bWins++;
-                                console.log("    -> " + teamB[b].name + " wins this hole");
-                            } else {
-                                console.log("    -> Tie on this hole");
-                            }
+                    if (p.name === playerB.name) {
+                        var key2 = flight + "_" + hole + "_" + i;
+                        if (scores[key2] !== undefined && scores[key2] !== null) {
+                            playerBHasScore = true;
                         }
                     }
                 }
+            }
+            
+            if (!playerAHasScore || !playerBHasScore) continue;
+            
+            holesCompleted++;
+            
+            // Get gross scores
+            var scoreA = null;
+            var scoreB = null;
+            
+            for (var flight = 1; flight <= 2; flight++) {
+                var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
                 
-                if (matchesCompleted) {
-                    totalCompletedMatches++;
-                    console.log("  Match COMPLETED. Final: " + teamA[a].name + " " + aWins + " - " + bWins + " " + teamB[b].name);
-                    if (aWins > bWins) {
-                        teamAPoints += 1;
-                        console.log("  RESULT: +1 point for Team A");
-                    } else if (bWins > aWins) {
-                        teamBPoints += 1;
-                        console.log("  RESULT: +1 point for Team B");
-                    } else {
-                        teamAPoints += 0.5;
-                        teamBPoints += 0.5;
-                        console.log("  RESULT: +0.5 point for each team");
+                for (var i = 0; i < flightPlayers.length; i++) {
+                    var p = flightPlayers[i];
+                    if (p.name === playerA.name) {
+                        var key = flight + "_" + hole + "_" + i;
+                        scoreA = scores[key];
                     }
-                } else {
-                    console.log("  Match NOT completed yet");
+                    if (p.name === playerB.name) {
+                        var key2 = flight + "_" + hole + "_" + i;
+                        scoreB = scores[key2];
+                    }
+                }
+            }
+            
+            if (scoreA === null || scoreB === null) continue;
+            
+            // Calculate net scores with handicaps
+            var netA = getNetScore(playerA, scoreA, hole, courseSi);
+            var netB = getNetScore(playerB, scoreB, hole, courseSi);
+            
+            if (netA < netB) {
+                playerAWon++;
+            } else if (netB < netA) {
+                playerBWon++;
+            }
+            // Tie: no change
+        }
+        
+        if (holesCompleted === 0) {
+            return "⏳";
+        }
+        
+        var diff = playerAWon - playerBWon;
+        if (diff > 0) {
+            return "+" + diff;
+        } else if (diff < 0) {
+            return "" + diff;
+        } else {
+            return "AS";
+        }
+    }
+    
+    // Calculate total points for all matches
+    function getPoints(allPlayers, allScores, savedHolesPerFlight, upToHole, courseSi) {
+        var teamAPoints = 0;
+        var teamBPoints = 0;
+        var totalMatches = 0;
+        
+        // Get all Team A players and Team B players
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
+        
+        // For each Team A vs Team B match
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                totalMatches++;
+                var playerA = teamAPlayers[a];
+                var playerB = teamBPlayers[b];
+                
+                var result = getMatchResult(playerA, playerB, allScores, savedHolesPerFlight, allPlayers, upToHole, courseSi);
+                
+                // Points based on match result
+                if (result === "⏳") {
+                    // Not started yet - 0.5 points each
+                    teamAPoints += 0.5;
+                    teamBPoints += 0.5;
+                } else if (result.indexOf("+") === 0) {
+                    // Player A is winning (or won) - 1 point to Team A
+                    teamAPoints += 1;
+                } else if (result.indexOf("-") === 0) {
+                    // Player B is winning (or won) - 1 point to Team B
+                    teamBPoints += 1;
+                } else if (result === "AS") {
+                    // All square - 0.5 points each
+                    teamAPoints += 0.5;
+                    teamBPoints += 0.5;
                 }
             }
         }
         
-        console.log("--- SUMMARY ---");
-        console.log("Total completed matches:", totalCompletedMatches, "out of 16");
-        console.log("Points from completed matches - Team A:", teamAPoints, "Team B:", teamBPoints);
+        console.log("Match Play Results - Team A:", teamAPoints, "Team B:", teamBPoints);
         
-        if (totalCompletedMatches === 0) {
-            console.log("No matches completed - returning 8-8");
-            console.log("========================================");
-            return { teamAPoints: 8, teamBPoints: 8 };
-        }
-        
-        var incompleteMatches = 16 - totalCompletedMatches;
-        teamAPoints += incompleteMatches * 0.5;
-        teamBPoints += incompleteMatches * 0.5;
-        
-        console.log("Add 0.5 for each incomplete match (" + incompleteMatches + " matches)");
-        console.log("FINAL RESULT - Team A:", teamAPoints, "Team B:", teamBPoints);
-        console.log("========================================");
-        
-        return { teamAPoints: teamAPoints, teamBPoints: teamBPoints };
+        return {
+            teamAPoints: teamAPoints,
+            teamBPoints: teamBPoints
+        };
     }
     
     return {
+        getPoints: getPoints,
         getMatchResult: getMatchResult,
-        getPoints: getPoints
+        getNetScore: getNetScore,
+        getStrokesForHole: getStrokesForHole
     };
 })();
