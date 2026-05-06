@@ -1,4 +1,4 @@
-<!-- FILE: index.html - VERSION 2.19 -->
+<!-- FILE: index.html - VERSION 2.20 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -77,7 +77,6 @@
         .title-active { color: #4caf50; }
         .title-past { color: #888; }
         
-        /* Both buttons now use same style */
         .menu-btn {
             background: rgba(17,17,17,0.8);
             border: 1px solid rgba(76,175,80,0.4);
@@ -180,14 +179,13 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.19</div>
+<div class="version-tag">v2.20</div>
 
 <script>
-// FILE: index.html - VERSION 2.19
-// REMOVED TEST NEW UI button
-// PRACTICE MODE button now same style as VIEW PREVIOUS GAMES
+// FILE: index.html - VERSION 2.20
+// FIX: TODAY GAME goes through pre-game.html (not directly to game.html)
 
-var APP_VERSION = "2.19";
+var APP_VERSION = "2.20";
 var CACHE_KEY = "index_version";
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -399,8 +397,9 @@ function loadAndRender() {
             
             var titleClass = (status === "past") ? "title-past" : "title-active";
             
+            // FIXED: Goes to pre-game.html, not directly to game.html
             ngbHtml = `
-                <div class="ngb" onclick="handleNGB('game.html')">
+                <div class="ngb" onclick="handleNGB('pre-game.html')">
                     <div class="icon">⛳</div>
                     <div class="title ${titleClass}">${displayTitle}</div>
                     ${displaySubText}
