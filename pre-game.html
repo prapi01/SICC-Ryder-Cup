@@ -1,4 +1,5 @@
-<!-- FILE: pre-game.html - VERSION 2.24 -->
+<!-- FILE: pre-game.html - VERSION 2.25 -->
+<!-- Role selection and verification before game -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -263,7 +264,6 @@
         .footer { text-align: center; margin-top: 20px; font-size: 0.6rem; color: #444; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Modal Styles */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -333,13 +333,13 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.24</div>
+<div class="version-tag">v2.25</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.24
-// MODIFIED: Redirect to game.html (was game2.html)
+// FILE: pre-game.html - VERSION 2.25
+// FIX: For REAL mode, first device resets ALL data, flags, and locks
 
-var VERSION = "2.24";
+var VERSION = "2.25";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -363,7 +363,9 @@ var firestoreReady = false;
 var unsubcribeRoles = null;
 
 try {
-    firebase.initializeApp(FIREBASE_CONFIG);
+    if (!firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+    }
     db = firebase.firestore();
     firestoreReady = true;
     console.log("Firebase ready - v" + VERSION);
@@ -395,30 +397,25 @@ function formatDisplayDate(dateStr) {
 
 // Generate default data string (all F, all scores = par)
 function generateDefaultData(parArray) {
+    if (!parArray || parArray.length !== 18) {
+        var defaultPar = "04";
+        var result = "";
+        for (var i = 0; i < 18; i++) {
+            result += "F" + defaultPar + defaultPar + defaultPar + defaultPar;
+        }
+        return result;
+    }
+    
     var result = "";
-    for (var hole = 1; hole <= 18; hole++) {
-        var par = parArray[hole - 1];
+    for (var h = 0; h < 18; h++) {
+        var par = parArray[h];
         var parStr = par.toString().padStart(2, '0');
         result += "F" + parStr + parStr + parStr + parStr;
     }
     return result;
 }
 
-// Check if game has existing data (non-default strings)
-function hasExistingData() {
-    if (!gameData) return false;
-    
-    var defaultData = generateDefaultData(gameData.course.par);
-    
-    var flight1HasData = gameData.flight1 && gameData.flight1.data && gameData.flight1.data !== defaultData;
-    var flight2HasData = gameData.flight2 && gameData.flight2.data && gameData.flight2.data !== defaultData;
-    var flight1HasEvent = gameData.flight1 && (gameData.flight1.saveEvent === true || gameData.flight1.crossEvent === true);
-    var flight2HasEvent = gameData.flight2 && (gameData.flight2.saveEvent === true || gameData.flight2.crossEvent === true);
-    
-    return flight1HasData || flight2HasData || flight1HasEvent || flight2HasEvent;
-}
-
-// Reset game data to default
+// Reset ALL game data (scores and flags) to default
 function resetGameData(callback) {
     if (!db || !gameId) {
         if (callback) callback(false);
@@ -437,7 +434,8 @@ function resetGameData(callback) {
             data: defaultData,
             saveEvent: false,
             crossEvent: false
-        }
+        },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
     db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
@@ -446,10 +444,29 @@ function resetGameData(callback) {
             console.warn("Error deleting role locks:", e);
         });
         
+        console.log("Game data reset to default");
         if (callback) callback(true);
     }).catch(function(e) {
         console.error("Reset error:", e);
         if (callback) callback(false);
+    });
+}
+
+// Check if any role locks exist for this game
+function checkRoleLocksExist() {
+    return new Promise(function(resolve) {
+        db.collection("gameRoles").doc(gameId).get().then(function(doc) {
+            if (doc.exists) {
+                var data = doc.data();
+                var hasFlight1Lock = data.flight1 && data.flight1Expiry && data.flight1Expiry > Date.now();
+                var hasFlight2Lock = data.flight2 && data.flight2Expiry && data.flight2Expiry > Date.now();
+                resolve(hasFlight1Lock || hasFlight2Lock);
+            } else {
+                resolve(false);
+            }
+        }).catch(function() {
+            resolve(false);
+        });
     });
 }
 
@@ -577,8 +594,13 @@ function loadGame() {
                 gameData.id = doc.id;
                 startRoleListener();
                 
-                // For PRACTICE mode, check if data exists and show modal
-                if (hasExistingData()) {
+                // Check if data exists (non-default)
+                var defaultData = generateDefaultData(gameData.course.par);
+                var flight1HasData = gameData.flight1 && gameData.flight1.data && gameData.flight1.data !== defaultData;
+                var flight2HasData = gameData.flight2 && gameData.flight2.data && gameData.flight2.data !== defaultData;
+                var hasData = flight1HasData || flight2HasData;
+                
+                if (hasData) {
                     showSessionModal();
                 } else {
                     render();
@@ -593,45 +615,30 @@ function loadGame() {
         });
     } else if (realGameId) {
         gameId = realGameId;
+        gameMode = "real";
+        
+        // Load game data first
         db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
             if (doc.exists) {
                 gameData = doc.data();
                 gameData.id = doc.id;
                 
-                var today = new Date();
-                today.setHours(0, 0, 0, 0);
-                var gameDate = new Date(gameData.date);
-                gameDate.setHours(0, 0, 0, 0);
-                
-                if (gameDate < today) {
-                    gameMode = "history";
-                } else if (gameDate > today) {
-                    gameMode = "preview";
-                    // For PREVIEW mode, check if data exists and show modal
-                    if (hasExistingData()) {
-                        showSessionModal();
-                    } else {
-                        startRoleListener();
-                        render();
-                    }
-                    return;
-                } else {
-                    gameMode = "real";
-                    // REAL mode: force reset, no modal
-                    if (hasExistingData()) {
-                        resetGameData(function() {
+                // For REAL mode: check if this is the first device (no role locks exist)
+                checkRoleLocksExist().then(function(locksExist) {
+                    if (!locksExist) {
+                        // FIRST DEVICE - RESET everything
+                        console.log("REAL mode - First device detected. Resetting all data and locks.");
+                        resetGameData(function(success) {
                             startRoleListener();
                             render();
                         });
                     } else {
+                        // Subsequent device - data already reset, just proceed
+                        console.log("REAL mode - Subsequent device. Data already reset.");
                         startRoleListener();
                         render();
                     }
-                    return;
-                }
-                
-                startRoleListener();
-                render();
+                });
             } else {
                 alert("Game not found");
                 window.location.href = "index.html";
@@ -664,7 +671,6 @@ function startGame() {
                     collection: (gameMode === "practice") ? "practiceGames" : "scheduledGames"
                 }
             });
-            // MODIFIED: game2.html -> game.html
             SessionManager.addNavigationHistory("game.html", "tee_off_view", { gameId: gameId });
         }
         proceedToGame();
@@ -705,7 +711,6 @@ function startGame() {
                     collection: (gameMode === "practice") ? "practiceGames" : "scheduledGames"
                 }
             });
-            // MODIFIED: game2.html -> game.html
             SessionManager.addNavigationHistory("game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
         }
         
@@ -716,7 +721,6 @@ function startGame() {
 }
 
 function proceedToGame() {
-    // MODIFIED: Redirect to game.html (was game2.html)
     if (gameMode === "practice") {
         sessionStorage.setItem("currentPracticeGame", JSON.stringify({
             id: gameData.id,
