@@ -1,4 +1,4 @@
-<!-- FILE: pre-game.html - VERSION 2.26 -->
+<!-- FILE: pre-game.html - VERSION 2.27 -->
 <!-- Role selection and verification before game -->
 <!DOCTYPE html>
 <html lang="en">
@@ -333,13 +333,13 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.26</div>
+<div class="version-tag">v2.27</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.26
-// FIX: Reset properly clears role locks and forces match bubble reset
+// FILE: pre-game.html - VERSION 2.27
+// UPDATED: Locks stored in main document (locks.f1, locks.f2)
 
-var VERSION = "2.26";
+var VERSION = "2.27";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -360,7 +360,7 @@ var FIREBASE_CONFIG = {
 
 var db = null;
 var firestoreReady = false;
-var unsubcribeRoles = null;
+var unsubcribeGame = null;
 
 try {
     if (!firebase.apps.length) {
@@ -377,9 +377,12 @@ var gameData = null;
 var gameId = null;
 var gameMode = null;
 var tempSelectedRole = null;
-var roleLock = { flight1: null, flight2: null, flight1Expiry: null, flight2Expiry: null };
+var currentDeviceId = null;
+var currentSessionId = null;
 var deviceSession = null;
-var pendingResetCallback = null;
+
+// Locks stored in main document, not separate collection
+var locks = { f1: null, f2: null };
 
 function displayDeviceId() {
     var deviceDisplay = SessionManager.getDeviceIdDisplay();
@@ -415,7 +418,7 @@ function generateDefaultData(parArray) {
     return result;
 }
 
-// Reset ALL game data (scores and flags) to default and clear role locks
+// Reset ALL game data (scores, flags, locks) to default
 function resetGameData(callback) {
     if (!db || !gameId) {
         if (callback) callback(false);
@@ -425,32 +428,23 @@ function resetGameData(callback) {
     var defaultData = generateDefaultData(gameData.course.par);
     
     var resetData = {
-        flight1: {
-            data: defaultData,
-            saveEvent: false,
-            crossEvent: false
-        },
-        flight2: {
-            data: defaultData,
-            saveEvent: false,
-            crossEvent: false
-        },
+        "f1.d": defaultData,
+        "f1.se": false,
+        "f1.x": false,
+        "f2.d": defaultData,
+        "f2.se": false,
+        "f2.x": false,
+        "locks.f1": null,
+        "locks.f2": null,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    // First, delete role locks
-    db.collection("gameRoles").doc(gameId).delete().then(function() {
-        console.log("Role locks deleted");
-        // Then reset game data
-        return db.collection("scheduledGames").doc(gameId).update(resetData);
-    }).then(function() {
-        console.log("Game data reset to default");
+    db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
+        console.log("Game data reset to default - locks cleared");
         
-        // Clear local role locks
-        roleLock.flight1 = null;
-        roleLock.flight2 = null;
-        roleLock.flight1Expiry = null;
-        roleLock.flight2Expiry = null;
+        // Clear local locks
+        locks.f1 = null;
+        locks.f2 = null;
         
         // Clear any selected role
         tempSelectedRole = null;
@@ -462,102 +456,40 @@ function resetGameData(callback) {
     });
 }
 
-// Check if any role locks exist for this game
+// Check if any role locks exist in the main document
 function checkRoleLocksExist() {
-    return new Promise(function(resolve) {
-        db.collection("gameRoles").doc(gameId).get().then(function(doc) {
-            if (doc.exists) {
-                var data = doc.data();
-                var hasFlight1Lock = data.flight1 && data.flight1Expiry && data.flight1Expiry > Date.now();
-                var hasFlight2Lock = data.flight2 && data.flight2Expiry && data.flight2Expiry > Date.now();
-                resolve(hasFlight1Lock || hasFlight2Lock);
-            } else {
-                resolve(false);
-            }
-        }).catch(function() {
-            resolve(false);
-        });
-    });
+    var now = Date.now();
+    var hasF1Lock = locks.f1 && locks.f1.ex && locks.f1.ex > now;
+    var hasF2Lock = locks.f2 && locks.f2.ex && locks.f2.ex > now;
+    return hasF1Lock || hasF2Lock;
 }
 
-// Show modal for PREVIEW/PRACTICE session
-function showSessionModal() {
-    var modalHtml = `
-        <div class="modal-overlay" id="sessionModal">
-            <div class="modal">
-                <div class="modal-title">${gameMode === "preview" ? "PREVIEW" : "PRACTICE"} Session</div>
-                <div class="modal-message">Initialise the game data or continue previous session?</div>
-                <div class="modal-buttons">
-                    <button class="modal-btn modal-btn-reset" id="resetBtn">RESET</button>
-                    <button class="modal-btn modal-btn-continue" id="continueBtn">CONTINUE</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    document.getElementById("resetBtn").addEventListener("click", function() {
-        document.getElementById("sessionModal").remove();
-        resetGameData(function(success) {
-            if (success) {
-                console.log("Game data reset, proceeding...");
-                // Reload the page to reset all state
-                window.location.reload();
-            } else {
-                proceedToGame();
-            }
-        });
-    });
-    
-    document.getElementById("continueBtn").addEventListener("click", function() {
-        document.getElementById("sessionModal").remove();
-        proceedToGame();
-    });
-}
-
-function resetRoleLocks() {
-    if (confirm("⚠️ Reset all role locks? This will allow new devices to take update roles.")) {
-        db.collection("gameRoles").doc(gameId).delete().then(function() {
-            roleLock.flight1 = null;
-            roleLock.flight2 = null;
-            roleLock.flight1Expiry = null;
-            roleLock.flight2Expiry = null;
-            if (tempSelectedRole === "update1" || tempSelectedRole === "update2") {
-                tempSelectedRole = null;
-            }
-            render();
-        }).catch(function(e) {
-            alert("Error resetting locks: " + e.message);
-        });
-    }
-}
-
-function startRoleListener() {
+function startGameListener() {
     if (!firestoreReady || !gameId) return;
-    if (unsubcribeRoles) unsubcribeRoles();
+    if (unsubcribeGame) unsubcribeGame();
     
-    unsubcribeRoles = db.collection("gameRoles").doc(gameId)
+    var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
+    
+    unsubcribeGame = db.collection(collection).doc(gameId)
         .onSnapshot(function(doc) {
             if (doc.exists) {
                 var data = doc.data();
-                var now = Date.now();
-                var flight1Locked = data.flight1 && data.flight1Expiry && data.flight1Expiry > now;
-                var flight2Locked = data.flight2 && data.flight2Expiry && data.flight2Expiry > now;
                 
-                roleLock.flight1 = flight1Locked ? data.flight1 : null;
-                roleLock.flight2 = flight2Locked ? data.flight2 : null;
-                roleLock.flight1Expiry = data.flight1Expiry || null;
-                roleLock.flight2Expiry = data.flight2Expiry || null;
-            } else {
-                roleLock.flight1 = null;
-                roleLock.flight2 = null;
-                roleLock.flight1Expiry = null;
-                roleLock.flight2Expiry = null;
+                // Read locks from main document
+                if (data.locks) {
+                    locks.f1 = data.locks.f1 || null;
+                    locks.f2 = data.locks.f2 || null;
+                }
+                
+                console.log("Game listener - locks updated:", {
+                    f1: locks.f1 ? "locked" : "free",
+                    f2: locks.f2 ? "locked" : "free"
+                });
+                
+                render();
             }
-            render();
         }, function(error) {
-            console.warn("Role listener error:", error);
+            console.warn("Game listener error:", error);
         });
 }
 
@@ -568,11 +500,15 @@ function toggleRole(role) {
         return;
     }
     
-    if (role === "update1" && roleLock.flight1) {
+    var now = Date.now();
+    var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
+    var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
+    
+    if (role === "update1" && isF1Locked) {
         alert("Flight 1 update role is already locked by another device");
         return;
     }
-    if (role === "update2" && roleLock.flight2) {
+    if (role === "update2" && isF2Locked) {
         alert("Flight 2 update role is already locked by another device");
         return;
     }
@@ -605,13 +541,20 @@ function loadGame() {
             if (doc.exists) {
                 gameData = doc.data();
                 gameData.id = doc.id;
-                startRoleListener();
+                
+                // Read locks from main document
+                if (gameData.locks) {
+                    locks.f1 = gameData.locks.f1 || null;
+                    locks.f2 = gameData.locks.f2 || null;
+                }
+                
+                startGameListener();
                 
                 // Check if data exists (non-default)
                 var defaultData = generateDefaultData(gameData.course.par);
-                var flight1HasData = gameData.flight1 && gameData.flight1.data && gameData.flight1.data !== defaultData;
-                var flight2HasData = gameData.flight2 && gameData.flight2.data && gameData.flight2.data !== defaultData;
-                var hasData = flight1HasData || flight2HasData;
+                var f1HasData = gameData.f1 && gameData.f1.d && gameData.f1.d !== defaultData;
+                var f2HasData = gameData.f2 && gameData.f2.d && gameData.f2.d !== defaultData;
+                var hasData = f1HasData || f2HasData;
                 
                 if (hasData) {
                     showSessionModal();
@@ -630,28 +573,32 @@ function loadGame() {
         gameId = realGameId;
         gameMode = "real";
         
-        // Load game data first
         db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
             if (doc.exists) {
                 gameData = doc.data();
                 gameData.id = doc.id;
                 
-                // For REAL mode: check if this is the first device (no role locks exist)
-                checkRoleLocksExist().then(function(locksExist) {
-                    if (!locksExist) {
-                        // FIRST DEVICE - RESET everything
-                        console.log("REAL mode - First device detected. Resetting all data and locks.");
-                        resetGameData(function(success) {
-                            // Force page reload to clear all cached state
-                            window.location.reload();
-                        });
-                    } else {
-                        // Subsequent device - data already reset, just proceed
-                        console.log("REAL mode - Subsequent device. Data already reset.");
-                        startRoleListener();
+                // Read locks from main document
+                if (gameData.locks) {
+                    locks.f1 = gameData.locks.f1 || null;
+                    locks.f2 = gameData.locks.f2 || null;
+                }
+                
+                var locksExist = checkRoleLocksExist();
+                
+                if (!locksExist) {
+                    // FIRST DEVICE - RESET everything
+                    console.log("REAL mode - First device detected. Resetting all data and locks.");
+                    resetGameData(function(success) {
+                        startGameListener();
                         render();
-                    }
-                });
+                    });
+                } else {
+                    // Subsequent device - data already reset, just proceed
+                    console.log("REAL mode - Subsequent device. Data already reset.");
+                    startGameListener();
+                    render();
+                }
             } else {
                 alert("Game not found");
                 window.location.href = "index.html";
@@ -672,6 +619,11 @@ function startGame() {
         return;
     }
     
+    var now = Date.now();
+    var expiryTime = now + LOCK_DURATION_MS;
+    var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
+    var updatePayload = {};
+    
     if (tempSelectedRole === "view") {
         localStorage.setItem("userRole", "view");
         if (deviceSession) {
@@ -681,7 +633,7 @@ function startGame() {
                     gameType: (gameMode === "practice") ? "practice" : "real",
                     gameMode: gameMode,
                     role: "view",
-                    collection: (gameMode === "practice") ? "practiceGames" : "scheduledGames"
+                    collection: collection
                 }
             });
             SessionManager.addNavigationHistory("game.html", "tee_off_view", { gameId: gameId });
@@ -690,28 +642,46 @@ function startGame() {
         return;
     }
     
-    var deviceId = "device_" + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
-    var expiryTime = Date.now() + LOCK_DURATION_MS;
-    var updateData = {};
+    // Check if locks still available
+    var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
+    var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
     
-    if (tempSelectedRole === "update1") {
-        updateData.flight1 = deviceId;
-        updateData.flight1Expiry = expiryTime;
+    if (tempSelectedRole === "update1" && isF1Locked) {
+        alert("Flight 1 was locked by another device. Please refresh and try again.");
+        tempSelectedRole = null;
+        render();
+        return;
     }
-    if (tempSelectedRole === "update2") {
-        updateData.flight2 = deviceId;
-        updateData.flight2Expiry = expiryTime;
-    }
-    
-    if ((tempSelectedRole === "update1" && roleLock.flight1) ||
-        (tempSelectedRole === "update2" && roleLock.flight2)) {
-        alert("This role was locked by another device. Please select again.");
+    if (tempSelectedRole === "update2" && isF2Locked) {
+        alert("Flight 2 was locked by another device. Please refresh and try again.");
         tempSelectedRole = null;
         render();
         return;
     }
     
-    db.collection("gameRoles").doc(gameId).set(updateData, { merge: true }).then(function() {
+    // Acquire lock
+    var deviceId = SessionManager.getDeviceIdDisplay();
+    var sessionId = deviceSession ? deviceSession.sessionId : "unknown";
+    
+    if (tempSelectedRole === "update1") {
+        updatePayload["locks.f1"] = {
+            did: deviceId,
+            sid: sessionId,
+            at: now,
+            ex: expiryTime
+        };
+    } else if (tempSelectedRole === "update2") {
+        updatePayload["locks.f2"] = {
+            did: deviceId,
+            sid: sessionId,
+            at: now,
+            ex: expiryTime
+        };
+    }
+    
+    updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    
+    db.collection(collection).doc(gameId).update(updatePayload).then(function() {
         localStorage.setItem("userRole", tempSelectedRole);
         
         if (deviceSession) {
@@ -721,7 +691,7 @@ function startGame() {
                     gameType: (gameMode === "practice") ? "practice" : "real",
                     gameMode: gameMode,
                     role: tempSelectedRole,
-                    collection: (gameMode === "practice") ? "practiceGames" : "scheduledGames"
+                    collection: collection
                 }
             });
             SessionManager.addNavigationHistory("game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
@@ -730,6 +700,62 @@ function startGame() {
         proceedToGame();
     }).catch(function(e) {
         alert("Error locking role: " + e.message);
+    });
+}
+
+function resetRoleLocks() {
+    if (confirm("⚠️ Reset all role locks? This will allow new devices to take update roles.")) {
+        var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
+        var resetPayload = {
+            "locks.f1": null,
+            "locks.f2": null,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        db.collection(collection).doc(gameId).update(resetPayload).then(function() {
+            locks.f1 = null;
+            locks.f2 = null;
+            if (tempSelectedRole === "update1" || tempSelectedRole === "update2") {
+                tempSelectedRole = null;
+            }
+            render();
+        }).catch(function(e) {
+            alert("Error resetting locks: " + e.message);
+        });
+    }
+}
+
+function showSessionModal() {
+    var modalHtml = `
+        <div class="modal-overlay" id="sessionModal">
+            <div class="modal">
+                <div class="modal-title">${gameMode === "preview" ? "PREVIEW" : "PRACTICE"} Session</div>
+                <div class="modal-message">Initialise the game data or continue previous session?</div>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-reset" id="resetBtn">RESET</button>
+                    <button class="modal-btn modal-btn-continue" id="continueBtn">CONTINUE</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("resetBtn").addEventListener("click", function() {
+        document.getElementById("sessionModal").remove();
+        resetGameData(function(success) {
+            if (success) {
+                console.log("Game data reset, proceeding...");
+                window.location.reload();
+            } else {
+                proceedToGame();
+            }
+        });
+    });
+    
+    document.getElementById("continueBtn").addEventListener("click", function() {
+        document.getElementById("sessionModal").remove();
+        proceedToGame();
     });
 }
 
@@ -799,8 +825,12 @@ function render() {
         return html;
     }
     
-    var isUpdate1Taken = !!roleLock.flight1;
-    var isUpdate2Taken = !!roleLock.flight2;
+    var now = Date.now();
+    var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
+    var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
+    var isF1LockedBySelf = isF1Locked && locks.f1.did === SessionManager.getDeviceIdDisplay();
+    var isF2LockedBySelf = isF2Locked && locks.f2.did === SessionManager.getDeviceIdDisplay();
+    
     var update1Selected = (tempSelectedRole === "update1");
     var update2Selected = (tempSelectedRole === "update2");
     var viewSelected = (tempSelectedRole === "view");
@@ -813,8 +843,11 @@ function render() {
     if (update2Selected) update2Class += " role-btn-selected";
     if (viewSelected) viewClass += " role-btn-selected";
     
-    if (isUpdate1Taken && !update1Selected) update1Class += " role-btn-unavailable";
-    if (isUpdate2Taken && !update2Selected) update2Class += " role-btn-unavailable";
+    var isUpdate1Disabled = isF1Locked && !isF1LockedBySelf;
+    var isUpdate2Disabled = isF2Locked && !isF2LockedBySelf;
+    
+    if (isUpdate1Disabled) update1Class += " role-btn-unavailable";
+    if (isUpdate2Disabled) update2Class += " role-btn-unavailable";
     
     var isTeeOffDisabled = !tempSelectedRole;
     
@@ -867,8 +900,8 @@ function render() {
             <div class="reset-icon" onclick="resetRoleLocks()">⟲</div>
             <div class="role-title">🎮 SELECT YOUR ROLE</div>
             <div class="role-buttons">
-                <button class="${update1Class}" onclick="toggleRole('update1')" ${isUpdate1Taken && !update1Selected ? 'disabled' : ''}>✏️ UPDATE FLIGHT 1</button>
-                <button class="${update2Class}" onclick="toggleRole('update2')" ${isUpdate2Taken && !update2Selected ? 'disabled' : ''}>✏️ UPDATE FLIGHT 2</button>
+                <button class="${update1Class}" onclick="toggleRole('update1')" ${isUpdate1Disabled ? 'disabled' : ''}>✏️ UPDATE FLIGHT 1</button>
+                <button class="${update2Class}" onclick="toggleRole('update2')" ${isUpdate2Disabled ? 'disabled' : ''}>✏️ UPDATE FLIGHT 2</button>
                 <button class="${viewClass}" onclick="toggleRole('view')">👁️ VIEW ONLY</button>
             </div>
             <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
@@ -898,6 +931,7 @@ function escapeHtml(str) {
 SessionManager.initSession("pre-game.html", "index.html", function(session) {
     console.log("Session initialized:", session);
     deviceSession = session;
+    currentDeviceId = session.deviceId;
     displayDeviceId();
     loadGame();
 });
