@@ -1,8 +1,4 @@
-<!-- FILE: game.html - VERSION 1.04 -->
-<!--
-PURE UI RENDERER - NO BUSINESS LOGIC
-For SICC Ryder Cup App
--->
+<!-- FILE: game.html - VERSION 1.05 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,11 +6,9 @@ For SICC Ryder Cup App
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <title>Match Play - SICC Ryder Cup</title>
     
-    <!-- FIREBASE -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
-    <!-- FIREBASE INITIALIZATION -->
     <script>
         var FIREBASE_CONFIG = {
             apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
@@ -31,16 +25,15 @@ For SICC Ryder Cup App
         }
     </script>
     
-    <!-- DEPENDENCIES - ORDER MATTERS -->
-    <script src="js/session.js"></script>
-    <script src="js/game-match.js"></script>
-    <script src="js/game-data.js"></script>
-    <script src="js/game-controller.js"></script>
+    <script src="session.js"></script>
+    <script src="game-match.js"></script>
+    <script src="game-data.js"></script>
+    <script src="game-controller.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 12px; }
-        .container { max-width: 500px; margin: 0 auto; }
+        .container { max-width: 500px; margin: 0 auto; padding-bottom: 80px; }
         
         .version-tag { position: fixed; top: 8px; right: 8px; font-size: 0.65rem; color: #4caf50; background: rgba(0,0,0,0.6); padding: 2px 10px; border-radius: 16px; z-index: 1000; }
         .device-tag { position: fixed; top: 8px; left: 8px; font-size: 0.55rem; color: #4caf50; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 12px; z-index: 1000; opacity: 0.4; }
@@ -98,23 +91,25 @@ For SICC Ryder Cup App
         .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
         .btn-back:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
         
-        .menu-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; margin-bottom: 20px; }
-        .btn-menu, .btn-reset { padding: 14px; border-radius: 40px; font-weight: 600; font-size: 1rem; text-align: center; cursor: pointer; width: 100%; border: none; }
-        .btn-menu { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
-        .btn-reset { background: #2a2a2a; color: #ffaa44; border: 1px solid #ffaa44; }
+        .menu-button-container {
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+        .btn-menu {
+            width: 100%;
+            padding: 14px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 1rem;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+        }
         
         .loading { text-align: center; padding: 40px; color: #888; }
-        
-        .role-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
-        .role-title { font-size: 1.8rem; font-weight: 800; color: #4caf50; margin-bottom: 20px; }
-        .role-subtitle { font-size: 0.9rem; color: #888; margin-bottom: 40px; }
-        .role-buttons { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px; }
-        .role-btn { background: linear-gradient(145deg, #1a3a1a, #0d2a0d); border: 2px solid #4caf50; border-radius: 24px; padding: 30px 25px; text-align: center; cursor: pointer; min-width: 140px; }
-        .role-btn .icon { font-size: 2.5rem; display: block; margin-bottom: 12px; }
-        .role-btn .label { font-size: 1.2rem; font-weight: 700; color: #4caf50; }
-        .viewer-btn { background: #111; border-color: #ffaa44; }
-        .viewer-btn .label { color: #ffaa44; }
-        .role-note { font-size: 0.7rem; color: #555; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -122,12 +117,12 @@ For SICC Ryder Cup App
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.04</div>
+<div class="version-tag">v1.05</div>
 
 <script>
-// FILE: game.html - VERSION 1.04
+// FILE: game.html - VERSION 1.05
 
-var UI_VERSION = "1.04";
+var UI_VERSION = "1.05";
 var CACHE_KEY = "game_ui_version";
 
 if (localStorage.getItem(CACHE_KEY) !== UI_VERSION) {
@@ -186,7 +181,6 @@ window.updateGameUI = function(data) {
     var teamAGreen = teamAPts >= teamBPts;
     var teamBGreen = teamBPts >= teamAPts;
     
-    // Get players for current flight, sorted by team (A first, then B)
     var flightPlayers = data.players.filter(function(p) { return p.flight === activeFlight; });
     flightPlayers.sort(function(a, b) { 
         if (a.team === "A" && b.team === "B") return -1;
@@ -194,12 +188,10 @@ window.updateGameUI = function(data) {
         return 0;
     });
     
-    // Build player cards
     var playerCards = "";
     for (var i = 0; i < flightPlayers.length; i++) {
         var p = flightPlayers[i];
         
-        // Find player index in the global players array
         var playerIdx = -1;
         for (var k = 0; k < data.players.length; k++) {
             if (data.players[k].name === p.name) {
@@ -208,11 +200,9 @@ window.updateGameUI = function(data) {
             }
         }
         
-        // Get current score
         var scoreKey = activeFlight + "_" + currentHole + "_" + playerIdx;
         var currentScore = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[currentHole - 1];
         
-        // Build match bubbles for this player
         var opponents = data.players.filter(function(op) { return op.team !== p.team; });
         var bubblesHtml = '<div class="bubbles">';
         for (var j = 0; j < opponents.length; j++) {
@@ -245,7 +235,7 @@ window.updateGameUI = function(data) {
                 '</div>' +
                 '<div class="score-control">' +
                     '<button class="score-btn dec-btn" data-player-idx="' + playerIdx + '" data-flight="' + activeFlight + '" data-hole="' + currentHole + '" ' + btnDisabled + ' ' + btnStyle + '>-</button>' +
-                    '<span class="score-value" id="score_' + playerIdx + '_' + currentHole + '">' + currentScore + '</span>' +
+                    '<span class="score-value">' + currentScore + '</span>' +
                     '<button class="score-btn inc-btn" data-player-idx="' + playerIdx + '" data-flight="' + activeFlight + '" data-hole="' + currentHole + '" ' + btnDisabled + ' ' + btnStyle + '>+</button>' +
                 '</div>' +
             '</div>' +
@@ -260,14 +250,11 @@ window.updateGameUI = function(data) {
     var teamBDisplay = teamBPts % 1 === 0 ? teamBPts : teamBPts.toFixed(1);
     var trHtml = '<span class="' + (teamAGreen ? "team-score-green" : "team-score-red") + '">Team A ' + teamADisplay + '</span> - <span class="' + (teamBGreen ? "team-score-green" : "team-score-red") + '">' + teamBDisplay + ' Team B</span>';
     
-    // ============================================================
     // SCORECARD TABLE
-    // ============================================================
     var players = data.players;
     var flight1Players = players.filter(function(p) { return p.flight === 1; });
     var flight2Players = players.filter(function(p) { return p.flight === 2; });
     
-    // Sort players within each flight: Team A first, then Team B
     flight1Players.sort(function(a, b) {
         if (a.team === "A" && b.team === "B") return -1;
         if (a.team === "B" && b.team === "A") return 1;
@@ -326,7 +313,7 @@ window.updateGameUI = function(data) {
         tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
     }
     
-    // T-1 row (Flight 1 cumulative)
+    // T-1 row
     tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1</td>';
     var t1RowData = data.t1Row || [];
     for (var h = 1; h <= 18; h++) {
@@ -359,7 +346,7 @@ window.updateGameUI = function(data) {
         tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
     }
     
-    // T-2 row (Flight 2 cumulative)
+    // T-2 row
     tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2</td>';
     var t2RowData = data.t2Row || [];
     for (var h = 1; h <= 18; h++) {
@@ -377,9 +364,8 @@ window.updateGameUI = function(data) {
         tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
     }
     tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '</td></tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
     
-    tableHtml += '</tbody>赶';
+    tableHtml += '</tbody></table>';
     
     var nextBtnClass = isSaved ? "action-btn btn-next-active" : "action-btn btn-next-inactive";
     var nextBtnDisabled = !isSaved ? "disabled" : "";
@@ -409,9 +395,8 @@ window.updateGameUI = function(data) {
             '</div>' +
             '<div class="scorecard-wrapper">' + tableHtml + '</div>' +
         '</div>' +
-        '<div class="menu-buttons">' +
+        '<div class="menu-button-container">' +
             '<button class="btn-menu" id="menuBtn">Main Menu</button>' +
-            '<button class="btn-reset" id="resetRoleBtn">Switch Role</button>' +
         '</div>';
     
     document.getElementById("app").innerHTML = html;
@@ -419,16 +404,11 @@ window.updateGameUI = function(data) {
 };
 
 function attachEvents() {
-    // Decrement buttons
     document.querySelectorAll(".dec-btn").forEach(function(btn) {
         btn.removeEventListener("click", btn._listener);
         btn._listener = function() {
             if (!btn.disabled) {
-                console.log("game: Decrement clicked", {
-                    playerIdx: parseInt(this.dataset.playerIdx),
-                    flight: parseInt(this.dataset.flight),
-                    hole: parseInt(this.dataset.hole)
-                });
+                console.log("game: Decrement clicked");
                 window.dispatchEvent(new CustomEvent('scoreChange', {
                     detail: {
                         playerIdx: parseInt(this.dataset.playerIdx),
@@ -442,16 +422,11 @@ function attachEvents() {
         btn.addEventListener("click", btn._listener);
     });
     
-    // Increment buttons
     document.querySelectorAll(".inc-btn").forEach(function(btn) {
         btn.removeEventListener("click", btn._listener);
         btn._listener = function() {
             if (!btn.disabled) {
-                console.log("game: Increment clicked", {
-                    playerIdx: parseInt(this.dataset.playerIdx),
-                    flight: parseInt(this.dataset.flight),
-                    hole: parseInt(this.dataset.hole)
-                });
+                console.log("game: Increment clicked");
                 window.dispatchEvent(new CustomEvent('scoreChange', {
                     detail: {
                         playerIdx: parseInt(this.dataset.playerIdx),
@@ -518,20 +493,10 @@ function attachEvents() {
         };
         menuBtn.addEventListener("click", menuBtn._listener);
     }
-    
-    var resetBtn = document.getElementById("resetRoleBtn");
-    if (resetBtn) {
-        resetBtn.removeEventListener("click", resetBtn._listener);
-        resetBtn._listener = function() {
-            console.log("game: Switch role clicked");
-            window.dispatchEvent(new CustomEvent('switchRole'));
-        };
-        resetBtn.addEventListener("click", resetBtn._listener);
-    }
 }
 
 document.getElementById("app").innerHTML = '<div class="loading">Initializing...</div>';
-console.log("game v1.04: Loaded - waiting for data");
+console.log("game v1.05: Loaded - waiting for data");
 </script>
 </body>
 </html>
