@@ -1,6 +1,6 @@
-// FILE: js/game-data.js - VERSION 1.02
+// FILE: js/game-data.js - VERSION 1.03
 // String-based data manager for SICC Ryder Cup
-// FIX: crossEvent always set for other flight on ANY save
+// UPDATED: Consolidated structure (f1.d, f1.se, f1.x, locks)
 
 var GameData = (function() {
     
@@ -20,6 +20,12 @@ var GameData = (function() {
         data: "",
         saveEvent: false,
         crossEvent: false
+    };
+    
+    // Locks stored in main document, not separate collection
+    var locks = {
+        f1: null,
+        f2: null
     };
     
     var dataCallbacks = [];
@@ -113,16 +119,16 @@ var GameData = (function() {
         return flight === 1 ? flight1Data : flight2Data;
     }
     
-    function setFlightData(flight, data, saveEvent, crossEvent) {
-        if (flight === 1) {
-            flight1Data.data = data;
-            flight1Data.saveEvent = saveEvent || false;
-            flight1Data.crossEvent = crossEvent || false;
-        } else {
-            flight2Data.data = data;
-            flight2Data.saveEvent = saveEvent || false;
-            flight2Data.crossEvent = crossEvent || false;
-        }
+    function getLocks() {
+        return locks;
+    }
+    
+    function isFlightLocked(flight, deviceId) {
+        var lock = flight === 1 ? locks.f1 : locks.f2;
+        if (!lock) return false;
+        if (lock.expiresAt && lock.expiresAt < Date.now()) return false;
+        if (deviceId && lock.deviceId === deviceId) return false; // Self lock doesn't block
+        return true;
     }
     
     function getModeDisplay() {
@@ -188,7 +194,7 @@ var GameData = (function() {
         flight2Data.saveEvent = false;
     }
     
-    // FIXED: Save ANY hole number, ALWAYS set crossEvent for other flight
+    // Save ANY hole number, ALWAYS set crossEvent for other flight
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
         var flight = (editableFlight === 1) ? 1 : 2;
         
@@ -201,15 +207,14 @@ var GameData = (function() {
         // Prepare update for Firebase
         var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
         var updatePayload = {};
-        var flightField = (flight === 1) ? "flight1" : "flight2";
-        var otherFlightField = (flight === 1) ? "flight2" : "flight1";
+        var flightField = (flight === 1) ? "f1" : "f2";
+        var otherFlightField = (flight === 1) ? "f2" : "f1";
         
-        updatePayload[flightField + ".data"] = newData;
-        updatePayload[flightField + ".saveEvent"] = true;
+        updatePayload[flightField + ".d"] = newData;
+        updatePayload[flightField + ".se"] = true;
         
-        // CRITICAL FIX: ALWAYS set crossEvent for the OTHER flight
-        // This ensures the other device knows to recalculate
-        updatePayload[otherFlightField + ".crossEvent"] = true;
+        // CRITICAL: ALWAYS set crossEvent for the OTHER flight
+        updatePayload[otherFlightField + ".x"] = true;
         
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
@@ -244,16 +249,25 @@ var GameData = (function() {
             .then(function(doc) {
                 if (doc.exists) {
                     var data = doc.data();
-                    if (data.flight1) {
-                        flight1Data.data = data.flight1.data || flight1Data.data;
-                        flight1Data.saveEvent = data.flight1.saveEvent || false;
-                        flight1Data.crossEvent = data.flight1.crossEvent || false;
+                    
+                    // Read consolidated structure
+                    if (data.f1) {
+                        flight1Data.data = data.f1.d || flight1Data.data;
+                        flight1Data.saveEvent = data.f1.se || false;
+                        flight1Data.crossEvent = data.f1.x || false;
                     }
-                    if (data.flight2) {
-                        flight2Data.data = data.flight2.data || flight2Data.data;
-                        flight2Data.saveEvent = data.flight2.saveEvent || false;
-                        flight2Data.crossEvent = data.flight2.crossEvent || false;
+                    if (data.f2) {
+                        flight2Data.data = data.f2.d || flight2Data.data;
+                        flight2Data.saveEvent = data.f2.se || false;
+                        flight2Data.crossEvent = data.f2.x || false;
                     }
+                    
+                    // Read locks from main document
+                    if (data.locks) {
+                        locks.f1 = data.locks.f1 || null;
+                        locks.f2 = data.locks.f2 || null;
+                    }
+                    
                     console.log("Refresh completed - crossEvent flags:", {
                         flight1: flight1Data.crossEvent,
                         flight2: flight2Data.crossEvent
@@ -301,20 +315,42 @@ var GameData = (function() {
                 if (doc.exists) {
                     var data = doc.data();
                     
-                    if (data.flight1) {
-                        flight1Data.data = data.flight1.data || generateDefaultData(currentCourse ? currentCourse.par : null);
-                        flight1Data.saveEvent = data.flight1.saveEvent || false;
-                        flight1Data.crossEvent = data.flight1.crossEvent || false;
-                    }
-                    if (data.flight2) {
-                        flight2Data.data = data.flight2.data || generateDefaultData(currentCourse ? currentCourse.par : null);
-                        flight2Data.saveEvent = data.flight2.saveEvent || false;
-                        flight2Data.crossEvent = data.flight2.crossEvent || false;
+                    // Read consolidated structure
+                    if (data.f1) {
+                        flight1Data.data = data.f1.d || generateDefaultData(currentCourse ? currentCourse.par : null);
+                        flight1Data.saveEvent = data.f1.se || false;
+                        flight1Data.crossEvent = data.f1.x || false;
+                    } else {
+                        // Fallback for old structure (temporary migration support)
+                        if (data.flight1) {
+                            flight1Data.data = data.flight1.data || generateDefaultData(currentCourse ? currentCourse.par : null);
+                            flight1Data.saveEvent = data.flight1.saveEvent || false;
+                            flight1Data.crossEvent = data.flight1.crossEvent || false;
+                        }
                     }
                     
-                    console.log("Game loaded - crossEvent flags:", {
-                        flight1: flight1Data.crossEvent,
-                        flight2: flight2Data.crossEvent
+                    if (data.f2) {
+                        flight2Data.data = data.f2.d || generateDefaultData(currentCourse ? currentCourse.par : null);
+                        flight2Data.saveEvent = data.f2.se || false;
+                        flight2Data.crossEvent = data.f2.x || false;
+                    } else {
+                        if (data.flight2) {
+                            flight2Data.data = data.flight2.data || generateDefaultData(currentCourse ? currentCourse.par : null);
+                            flight2Data.saveEvent = data.flight2.saveEvent || false;
+                            flight2Data.crossEvent = data.flight2.crossEvent || false;
+                        }
+                    }
+                    
+                    // Read locks from main document
+                    if (data.locks) {
+                        locks.f1 = data.locks.f1 || null;
+                        locks.f2 = data.locks.f2 || null;
+                    }
+                    
+                    console.log("Game loaded - structure:", {
+                        hasF1: !!data.f1,
+                        hasF2: !!data.f2,
+                        locks: locks
                     });
                     
                     notifyDataChanged();
@@ -335,7 +371,8 @@ var GameData = (function() {
         setCourse: setCourse,
         setPlayers: setPlayers,
         getFlightData: getFlightData,
-        setFlightData: setFlightData,
+        getLocks: getLocks,
+        isFlightLocked: isFlightLocked,
         parseHoleData: parseHoleData,
         getModeDisplay: getModeDisplay,
         getModeClass: getModeClass,
