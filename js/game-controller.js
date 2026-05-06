@@ -1,4 +1,4 @@
-// FILE: js/game-controller.js - VERSION 1.06
+// FILE: js/game-controller.js - VERSION 1.07
 
 var GameController = (function() {
     
@@ -155,7 +155,6 @@ var GameController = (function() {
             }
         }
         
-        // Pass courseSi to getPoints
         var courseSi = currentCourse ? currentCourse.si : null;
         return GameMatch.getPoints(players, scores, savedHoles, maxCompletedHole, courseSi);
     }
@@ -191,18 +190,18 @@ var GameController = (function() {
     }
     
     // ============================================================
-    // CDR (Compute, Report, Display)
+    // CRD (Compute, Report, Display)
     // ============================================================
     
-    function cdr() {
+    function crd() {
         if (!gameDataLoaded || isRefreshing) return;
         if (!currentPlayers.length || !currentCourse) {
-            console.log("GameController: CDR skipped - waiting for data");
+            console.log("GameController: CRD skipped - waiting for data");
             return;
         }
         
         isRefreshing = true;
-        console.log("GameController: CDR started");
+        console.log("GameController: CRD started");
         
         try {
             var flight1Data = GameData.getFlightData(1).data;
@@ -306,7 +305,7 @@ var GameController = (function() {
                 console.log("GameController: UI updated");
             }
         } catch (err) {
-            console.error("GameController: CDR error", err);
+            console.error("GameController: CRD error", err);
         }
         
         isRefreshing = false;
@@ -319,7 +318,7 @@ var GameController = (function() {
                 if (GameData.hasPendingCrossEvent() || GameData.hasPendingSaveEvent()) {
                     console.log("GameController: Auto-refresh triggered");
                     localScores = {};
-                    cdr();
+                    crd();
                     GameData.clearCrossEvent();
                     GameData.clearSaveEvent();
                 }
@@ -360,7 +359,7 @@ var GameController = (function() {
         
         console.log("GameController: Updated localScores[" + key + "] = " + newScore);
         
-        cdr();
+        crd();
     }
     
     function handleSaveHole() {
@@ -413,7 +412,7 @@ var GameController = (function() {
                 for (var k = 0; k < keysToDelete.length; k++) {
                     delete localScores[keysToDelete[k]];
                 }
-                cdr();
+                crd();
             } else {
                 console.error("GameController: Save failed");
             }
@@ -441,7 +440,7 @@ var GameController = (function() {
         
         if (currentHole < 18) {
             currentHole++;
-            cdr();
+            crd();
         }
     }
     
@@ -449,7 +448,7 @@ var GameController = (function() {
         console.log("GameController: Prev hole");
         if (currentHole > 1) {
             currentHole--;
-            cdr();
+            crd();
         }
     }
     
@@ -457,7 +456,7 @@ var GameController = (function() {
         console.log("GameController: Manual refresh");
         localScores = {};
         GameData.forceRefresh();
-        cdr();
+        crd();
     }
     
     function handleMainMenu() {
@@ -483,7 +482,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.06...");
+        console.log("GameController: Initializing v1.07...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
@@ -499,7 +498,7 @@ var GameController = (function() {
             console.log("GameData: Data changed");
             if (currentPlayers.length && currentCourse) {
                 gameDataLoaded = true;
-                cdr();
+                crd();
             }
         }, function(msg) {
             console.error("GameData error:", msg);
@@ -543,7 +542,7 @@ var GameController = (function() {
                     
                     gameDataLoaded = true;
                     startAutoRefresh();
-                    cdr();
+                    crd();
                 } else {
                     console.error("GameController: Failed to load game data");
                 }
@@ -554,7 +553,7 @@ var GameController = (function() {
     }
     
     function refresh() {
-        cdr();
+        crd();
     }
     
     return {
