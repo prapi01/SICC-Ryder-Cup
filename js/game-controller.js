@@ -1,4 +1,4 @@
-// FILE: js/game-controller.js - VERSION 1.05
+// FILE: js/game-controller.js - VERSION 1.06
 
 var GameController = (function() {
     
@@ -83,6 +83,7 @@ var GameController = (function() {
     function calculateMatchBubblesForFlight(players, scores, savedHoles, flight, currentHoleForFlight) {
         var bubbles = {};
         var flightPlayers = players.filter(function(p) { return p.flight === flight; });
+        var courseSi = currentCourse ? currentCourse.si : null;
         
         for (var i = 0; i < flightPlayers.length; i++) {
             var playerA = flightPlayers[i];
@@ -95,15 +96,14 @@ var GameController = (function() {
                     if (playerA.flight === playerB.flight) {
                         upToHole = currentHoleForFlight;
                     } else {
-                        var otherFlight = (playerA.flight === 1) ? 2 : 1;
-                        var otherFlightHole = currentHoleForFlight;
-                        upToHole = Math.min(currentHoleForFlight, otherFlightHole);
+                        upToHole = currentHoleForFlight;
                     }
                     
                     var result = GameMatch.getMatchResult(
-                        playerA, playerB, scores, savedHoles, players, upToHole
+                        playerA, playerB, scores, savedHoles, players, upToHole, courseSi
                     );
                     
+                    // Replace hourglass with "AS" per VDN requirement
                     if (result === "⏳") {
                         result = "AS";
                     }
@@ -155,10 +155,13 @@ var GameController = (function() {
             }
         }
         
-        return GameMatch.getPoints(players, scores, savedHoles, maxCompletedHole);
+        // Pass courseSi to getPoints
+        var courseSi = currentCourse ? currentCourse.si : null;
+        return GameMatch.getPoints(players, scores, savedHoles, maxCompletedHole, courseSi);
     }
     
     function calculateGame2Points(players, flight1Data, flight2Data, maxCompletedHole, course) {
+        // Placeholder - returns zeros for now
         return {
             teamAPoints: 1,
             teamBPoints: 1,
@@ -170,6 +173,7 @@ var GameController = (function() {
     }
     
     function calculateGame3Points(players, flight1Data, flight2Data, maxCompletedHole, course) {
+        // Placeholder - returns dashes for now
         var strkRow = new Array(18).fill("-");
         return {
             teamAPoints: 0.5,
@@ -187,7 +191,7 @@ var GameController = (function() {
     }
     
     // ============================================================
-    // CDR
+    // CDR (Compute, Report, Display)
     // ============================================================
     
     function cdr() {
@@ -204,6 +208,7 @@ var GameController = (function() {
             var flight1Data = GameData.getFlightData(1).data;
             var flight2Data = GameData.getFlightData(2).data;
             
+            // Find max completed hole (both flights have saved)
             var maxCompletedHole = 0;
             for (var h = 1; h <= 18; h++) {
                 var f1Hole = GameData.parseHoleData(flight1Data, h);
@@ -222,6 +227,7 @@ var GameController = (function() {
             
             var currentHoleByFlight = { 1: currentHole, 2: currentHole };
             
+            // Build display scores with local changes
             var displayScores = {};
             for (var flight = 1; flight <= 2; flight++) {
                 var flightPlayers = currentPlayers.filter(function(p) { return p.flight === flight; });
@@ -238,10 +244,12 @@ var GameController = (function() {
                 }
             }
             
+            // Check if current hole is saved
             var activeFlightData = (activeFlight === 1) ? flight1Data : flight2Data;
             var currentHoleData = GameData.parseHoleData(activeFlightData, currentHole);
             var isSaved = currentHoleData ? currentHoleData.saved : false;
             
+            // If we have local changes for current hole, mark as unsaved
             for (var key in localScores) {
                 if (key.indexOf(activeFlight + "_" + currentHole + "_") === 0) {
                     isSaved = false;
@@ -253,6 +261,7 @@ var GameController = (function() {
             var modeDisplay = GameData.getModeDisplay();
             var modeClass = GameData.getModeClass();
             
+            // Build saved holes arrays
             var displaySavedHoles = { 1: [], 2: [] };
             for (var hole = 1; hole <= 18; hole++) {
                 var f1Data = GameData.parseHoleData(flight1Data, hole);
@@ -261,6 +270,7 @@ var GameController = (function() {
                 if (f2Data && f2Data.saved) displaySavedHoles[2].push(hole);
             }
             
+            // Calculate match bubbles
             var matchBubbles = calculateMatchBubbles(currentPlayers, displayScores, displaySavedHoles, currentHoleByFlight);
             
             var newUIData = {
@@ -473,7 +483,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.05...");
+        console.log("GameController: Initializing v1.06...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
