@@ -1,4 +1,4 @@
-<!-- FILE: pre-game.html - VERSION 2.25 -->
+<!-- FILE: pre-game.html - VERSION 2.26 -->
 <!-- Role selection and verification before game -->
 <!DOCTYPE html>
 <html lang="en">
@@ -333,13 +333,13 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.25</div>
+<div class="version-tag">v2.26</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.25
-// FIX: For REAL mode, first device resets ALL data, flags, and locks
+// FILE: pre-game.html - VERSION 2.26
+// FIX: Reset properly clears role locks and forces match bubble reset
 
-var VERSION = "2.25";
+var VERSION = "2.26";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -415,7 +415,7 @@ function generateDefaultData(parArray) {
     return result;
 }
 
-// Reset ALL game data (scores and flags) to default
+// Reset ALL game data (scores and flags) to default and clear role locks
 function resetGameData(callback) {
     if (!db || !gameId) {
         if (callback) callback(false);
@@ -438,13 +438,23 @@ function resetGameData(callback) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
-        // Also delete role locks
-        db.collection("gameRoles").doc(gameId).delete().catch(function(e) {
-            console.warn("Error deleting role locks:", e);
-        });
-        
+    // First, delete role locks
+    db.collection("gameRoles").doc(gameId).delete().then(function() {
+        console.log("Role locks deleted");
+        // Then reset game data
+        return db.collection("scheduledGames").doc(gameId).update(resetData);
+    }).then(function() {
         console.log("Game data reset to default");
+        
+        // Clear local role locks
+        roleLock.flight1 = null;
+        roleLock.flight2 = null;
+        roleLock.flight1Expiry = null;
+        roleLock.flight2Expiry = null;
+        
+        // Clear any selected role
+        tempSelectedRole = null;
+        
         if (callback) callback(true);
     }).catch(function(e) {
         console.error("Reset error:", e);
@@ -492,8 +502,11 @@ function showSessionModal() {
         resetGameData(function(success) {
             if (success) {
                 console.log("Game data reset, proceeding...");
+                // Reload the page to reset all state
+                window.location.reload();
+            } else {
+                proceedToGame();
             }
-            proceedToGame();
         });
     });
     
@@ -629,8 +642,8 @@ function loadGame() {
                         // FIRST DEVICE - RESET everything
                         console.log("REAL mode - First device detected. Resetting all data and locks.");
                         resetGameData(function(success) {
-                            startRoleListener();
-                            render();
+                            // Force page reload to clear all cached state
+                            window.location.reload();
                         });
                     } else {
                         // Subsequent device - data already reset, just proceed
