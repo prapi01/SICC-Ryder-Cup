@@ -1,23 +1,31 @@
+<!-- FILE: practice-setup.html - VERSION 1.06 -->
+<!-- Start a new practice game -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-    <title>Setup Practice Game - SICC Ryder Cup</title>
+    <title>Practice Setup - SICC Ryder Cup</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: 16px; }
-        .container { max-width: 500px; margin: 0 auto; }
+        body { 
+            background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
+            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif; 
+            color: #ffffff; 
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
         
         .version-tag { 
             position: fixed; 
             top: 8px; 
             right: 8px; 
             font-size: 0.65rem; 
-            color: #ffaa44; 
+            color: #4caf50; 
             background: rgba(0,0,0,0.6); 
             padding: 2px 10px; 
             border-radius: 16px;
@@ -31,7 +39,7 @@
             top: 8px;
             left: 8px;
             font-size: 0.55rem;
-            color: #ffaa44;
+            color: #4caf50;
             background: rgba(0,0,0,0.4);
             padding: 2px 8px;
             border-radius: 12px;
@@ -41,38 +49,132 @@
             letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 24px; }
-        .title { font-size: 1.5rem; font-weight: 700; color: #ffaa44; }
-        .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .title { font-size: 1.8rem; font-weight: 800; color: #ffaa44; }
+        .subtitle { font-size: 0.8rem; color: #888; margin-top: 4px; }
         
-        .card { background: #111; border-radius: 20px; padding: 20px; margin-bottom: 16px; border: 1px solid #333; }
-        .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #ffaa44; border-left: 2px solid #ffaa44; padding-left: 10px; }
+        .form-group { margin-bottom: 24px; }
+        .form-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: #ffaa44; }
+        .form-input, .form-select {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+        }
+        .form-input:focus, .form-select:focus { outline: none; border-color: #ffaa44; }
         
-        .game-name-input { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 1rem; font-family: monospace; font-weight: bold; }
-        .auto-name-hint { font-size: 0.7rem; color: #888; margin-top: 6px; }
+        .players-grid {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .team-section { margin-bottom: 16px; }
+        .team-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #333; }
+        .team-title.team-a { color: #4caf50; }
+        .team-title.team-b { color: #ff6b6b; }
         
-        .course-select { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 1rem; }
+        .player-input-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        .player-name-input { flex: 2; }
+        .player-handicap-input { flex: 1; }
+        .player-label-input { flex: 1; }
         
-        .player-row { background: #0a0a0a; border-radius: 12px; padding: 10px; margin-bottom: 8px; }
-        .player-line1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
-        .player-name-group { display: flex; align-items: center; gap: 6px; flex: 2; }
-        .player-name-input { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 8px 10px; color: #fff; font-size: 0.85rem; width: 110px; }
-        .player-label-display { background: #1a3a1a; color: #ffaa44; padding: 4px 8px; border-radius: 14px; font-size: 0.7rem; font-weight: 600; }
-        .player-hcp-group { display: flex; align-items: center; gap: 4px; background: #1a1a1a; padding: 4px 10px; border-radius: 20px; }
-        .hcp-label { font-size: 0.65rem; color: #888; }
-        .player-hcp-input { width: 45px; background: transparent; border: none; color: #fff; font-size: 0.85rem; text-align: center; }
-        .player-line2 { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
-        .team-select, .flight-select { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 6px 12px; color: #fff; font-size: 0.8rem; cursor: pointer; }
+        .action-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+        .btn {
+            padding: 14px 30px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+        .btn-primary {
+            background: linear-gradient(145deg, #2a2a1a 0%, #1a1a0a 100%);
+            border: 1px solid #ffaa44;
+            color: #ffaa44;
+        }
+        .btn-secondary {
+            background: rgba(26,26,26,0.9);
+            border: 1px solid #333;
+            color: #ccc;
+        }
         
-        .btn { padding: 14px 20px; border-radius: 40px; font-weight: 600; font-size: 1rem; text-align: center; cursor: pointer; border: none; margin: 5px; }
-        .btn-primary { background: #2a2a1a; color: #ffaa44; border: 1px solid #ffaa44; }
-        .btn-secondary { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .alert {
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+        }
+        .alert-success { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .alert-error { background: #3a1a1a; border: 1px solid #ff6b6b; color: #ff6b6b; }
+        .alert-info { background: #1a1a3a; border: 1px solid #ffaa44; color: #ffaa44; }
         
-        .button-group { display: flex; gap: 12px; margin-top: 16px; }
-        .back-link { text-align: center; margin-top: 20px; padding: 16px; color: #888; cursor: pointer; border-top: 1px solid #333; }
         .loading { text-align: center; padding: 40px; color: #888; }
-        .success-msg { color: #ffaa44; font-size: 0.8rem; text-align: center; margin-top: 10px; }
-        .error-msg { color: #ff6b6b; font-size: 0.75rem; margin-top: 8px; text-align: center; }
+        .footer { text-align: center; margin-top: 30px; font-size: 0.6rem; color: #444; }
+        
+        .course-selector {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .course-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .course-btn {
+            flex: 1;
+            padding: 12px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .course-btn.selected {
+            background: #2a2a1a;
+            border-color: #ffaa44;
+            color: #ffaa44;
+        }
+        
+        .role-buttons {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+        }
+        .role-btn {
+            flex: 1;
+            padding: 14px;
+            background: #1a1a1a;
+            border: 1px solid #ffaa44;
+            border-radius: 40px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: 600;
+            color: #ffaa44;
+        }
+        .role-btn.selected {
+            background: #2a2a1a;
+            border: 2px solid #ffaa44;
+        }
     </style>
 </head>
 <body>
@@ -80,426 +182,284 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.05</div>
+<div class="version-tag">v1.06</div>
 
 <script>
-    var VERSION = "1.05";
-    var CACHE_KEY = "practice_setup_version";
-    
-    var storedVersion = localStorage.getItem(CACHE_KEY);
-    if (storedVersion !== VERSION) {
-        localStorage.setItem(CACHE_KEY, VERSION);
-        window.location.href = window.location.pathname + "?v=" + VERSION;
-    }
-    
-    var FIREBASE_CONFIG = {
-        apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-        authDomain: "sicc-ryder-cup.firebaseapp.com",
-        projectId: "sicc-ryder-cup",
-        storageBucket: "sicc-ryder-cup.firebasestorage.app",
-        messagingSenderId: "137641493845",
-        appId: "1:137641493845:web:32399940bce639b01ddbdc"
-    };
-    
-    var db = null;
-    var firestoreReady = false;
-    var deviceSession = null;
-    
-    try {
+// FILE: practice-setup.html - VERSION 1.06
+// Creates PRACTICE game documents with CONSOLIDATED structure
+// All state (scores, flags, locks) in ONE document
+
+var VERSION = "1.06";
+var CACHE_KEY = "practice_setup_version";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== VERSION) {
+    localStorage.setItem(CACHE_KEY, VERSION);
+    window.location.href = window.location.pathname + "?v=" + VERSION;
+}
+
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+var db = null;
+var firestoreReady = false;
+var courses = [];
+
+try {
+    if (!firebase.apps.length) {
         firebase.initializeApp(FIREBASE_CONFIG);
-        db = firebase.firestore();
-        firestoreReady = true;
-        console.log("Firebase ready - v" + VERSION);
-    } catch(e) { 
-        console.warn(e);
+    }
+    db = firebase.firestore();
+    firestoreReady = true;
+    console.log("Firebase ready - v" + VERSION);
+} catch(e) { 
+    console.warn(e);
+}
+
+// Default players (SICC Ryder Cup teams)
+var DEFAULT_PLAYERS = [
+    { name: "Ang CH", team: "A", flight: 1, handicap: 1, label: "ACH" },
+    { name: "Kenneth Foo", team: "A", flight: 1, handicap: 3, label: "KF" },
+    { name: "Jeff Goh", team: "B", flight: 1, handicap: 0, label: "JG" },
+    { name: "Ong C B", team: "B", flight: 1, handicap: 1, label: "OCB" },
+    { name: "C K", team: "A", flight: 2, handicap: 8, label: "CK" },
+    { name: "Yip H M", team: "A", flight: 2, handicap: 12, label: "YHM" },
+    { name: "Piti", team: "B", flight: 2, handicap: 8, label: "P" },
+    { name: "James Ong", team: "B", flight: 2, handicap: 11, label: "JO" }
+];
+
+// Generate default data string (all F, all scores = par)
+function generateDefaultData(parArray) {
+    if (!parArray || parArray.length !== 18) {
+        var defaultPar = "04";
+        var result = "";
+        for (var i = 0; i < 18; i++) {
+            result += "F" + defaultPar + defaultPar + defaultPar + defaultPar;
+        }
+        return result;
     }
     
-    var DEFAULT_PLAYERS = [
-        { name: "Ang C H", handicap: 1, team: "A", flight: 1 },
-        { name: "Kenneth Foo", handicap: 3, team: "A", flight: 1 },
-        { name: "Jeff Goh", handicap: 0, team: "B", flight: 1 },
-        { name: "Ong C B", handicap: 1, team: "B", flight: 1 },
-        { name: "C K", handicap: 8, team: "A", flight: 2 },
-        { name: "Yip H M", handicap: 12, team: "A", flight: 2 },
-        { name: "Piti", handicap: 8, team: "B", flight: 2 },
-        { name: "James Ong", handicap: 11, team: "B", flight: 2 }
-    ];
-    
-    function generateLabel(name) {
-        if (!name) return "???";
-        var parts = name.trim().split(/\s+/);
-        if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-        if (parts.length === 2) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
-        var label = "";
-        for (var i = 0; i < Math.min(3, parts.length); i++) label += parts[i].charAt(0);
-        return label.toUpperCase();
+    var result = "";
+    for (var h = 0; h < 18; h++) {
+        var par = parArray[h];
+        var parStr = par.toString().padStart(2, '0');
+        result += "F" + parStr + parStr + parStr + parStr;
     }
-    
-    function displayDeviceId() {
-        var deviceDisplay = SessionManager.getDeviceIdDisplay();
-        document.getElementById("deviceTag").innerHTML = deviceDisplay;
-    }
-    
-    async function getNextGameNumber() {
-        var snapshot = await db.collection("practiceGames").get();
-        var maxNum = 0;
+    return result;
+}
+
+function displayDeviceId() {
+    var deviceDisplay = SessionManager.getDeviceIdDisplay();
+    var deviceTag = document.getElementById("deviceTag");
+    if (deviceTag) deviceTag.innerHTML = deviceDisplay;
+}
+
+function loadCourses() {
+    return db.collection("courses").get().then(function(snapshot) {
+        courses = [];
         snapshot.forEach(function(doc) {
-            var data = doc.data();
-            var displayId = data.displayId;
-            if (displayId && displayId.startsWith("PGAME-")) {
-                var num = parseInt(displayId.split("-")[1]);
-                if (!isNaN(num) && num > maxNum) maxNum = num;
-            }
+            courses.push({ id: doc.id, name: doc.data().name, par: doc.data().par, si: doc.data().si });
         });
-        return maxNum + 1;
-    }
-    
-    function generateDisplayId(number) {
-        var numStr = String(number).padStart(3, '0');
-        return "PGAME-" + numStr;
-    }
-    
-    var state = {
-        courses: [],
-        selectedCourseId: null,
-        selectedCourseData: null,
-        players: [],
-        gameName: "",
-        displayId: "",
-        isJoining: false,
-        joinGameId: null,
-        joinGameData: null
-    };
-    
-    async function loadJoinMode() {
-        var urlParams = new URLSearchParams(window.location.search);
-        var mode = urlParams.get('mode');
-        
-        if (mode === 'join') {
-            state.isJoining = true;
-            state.joinGameId = sessionStorage.getItem("practiceGameId");
-            if (state.joinGameId) {
-                db.collection("practiceGames").doc(state.joinGameId).get().then(function(doc) {
-                    if (doc.exists) {
-                        state.joinGameData = doc.data();
-                        state.displayId = state.joinGameData.displayId || state.joinGameData.gameId;
-                        state.gameName = state.displayId;
-                        if (state.joinGameData.course) {
-                            state.selectedCourseId = state.joinGameData.course.id;
-                            state.selectedCourseData = state.joinGameData.course;
-                        }
-                        if (state.joinGameData.players) {
-                            state.players = state.joinGameData.players;
-                        } else {
-                            initPlayers();
-                        }
-                        loadCoursesAndRender();
-                    } else {
-                        alert("Practice game not found");
-                        window.location.href = "practice-mode.html";
-                    }
-                }).catch(function(e) {
-                    alert("Error loading game: " + e.message);
-                    window.location.href = "practice-mode.html";
-                });
-            } else {
-                alert("No game selected");
-                window.location.href = "practice-mode.html";
-            }
-        } else {
-            state.isJoining = false;
-            var nextNum = await getNextGameNumber();
-            state.displayId = generateDisplayId(nextNum);
-            state.gameName = state.displayId;
-            initPlayers();
-            loadCoursesAndRender();
-        }
-    }
-    
-    function loadCoursesAndRender() {
-        if (!firestoreReady) {
-            document.getElementById("app").innerHTML = '<div class="loading">Firebase connection failed. Please check internet.</div>';
-            return;
-        }
-        
-        db.collection("courses").get().then(function(snapshot) {
-            var courses = [];
-            snapshot.forEach(function(doc) {
-                courses.push({ id: doc.id, name: doc.data().name, par: doc.data().par, si: doc.data().si });
-            });
-            courses.sort(function(a, b) {
-                var nameA = a.name.toLowerCase();
-                var nameB = b.name.toLowerCase();
-                if (nameA < nameB) return -1;
-                if (nameA > nameB) return 1;
-                return 0;
-            });
-            state.courses = courses;
-            
-            if (!state.selectedCourseId && courses.length > 0) {
-                state.selectedCourseId = courses[0].id;
-                state.selectedCourseData = courses[0];
-            }
-            
-            render();
-        }).catch(function(e) { 
-            console.warn(e);
-            document.getElementById("app").innerHTML = '<div class="loading">Error loading courses: ' + e.message + '</div>';
-        });
-    }
-    
-    function initPlayers() {
-        state.players = DEFAULT_PLAYERS.map(function(p) {
-            return {
-                name: p.name,
-                handicap: p.handicap,
-                team: p.team,
-                flight: p.flight,
-                label: generateLabel(p.name)
-            };
-        });
-    }
-    
-    function updatePlayerName(idx, value) {
-        state.players[idx].name = value;
-        state.players[idx].label = generateLabel(value);
-        render();
-    }
-    
-    function updatePlayerHandicap(idx, value) {
-        state.players[idx].handicap = parseInt(value) || 0;
-        render();
-    }
-    
-    function updatePlayerTeam(idx, value) {
-        state.players[idx].team = value;
-        render();
-    }
-    
-    function updatePlayerFlight(idx, value) {
-        state.players[idx].flight = parseInt(value);
-        render();
-    }
-    
-    function validateTeamFlight() {
-        var flight1A = state.players.filter(function(p) { return p.flight === 1 && p.team === "A"; }).length;
-        var flight1B = state.players.filter(function(p) { return p.flight === 1 && p.team === "B"; }).length;
-        var flight2A = state.players.filter(function(p) { return p.flight === 2 && p.team === "A"; }).length;
-        var flight2B = state.players.filter(function(p) { return p.flight === 2 && p.team === "B"; }).length;
-        return flight1A === 2 && flight1B === 2 && flight2A === 2 && flight2B === 2;
-    }
-    
-    function createPracticeGame() {
-        if (!validateTeamFlight()) {
-            alert("Each flight needs exactly 2 Team A and 2 Team B players");
-            return;
-        }
-        
-        if (!state.selectedCourseData) {
-            alert("Please select a course");
-            return;
-        }
-        
-        var gameData = {
-            displayId: state.displayId,
-            gameId: state.displayId,
-            course: state.selectedCourseData,
-            players: state.players,
-            status: "active",
-            createdAt: Date.now(),
-            lastActive: Date.now(),
-            mode: "practice"
-        };
-        
-        if (state.isJoining && state.joinGameId) {
-            gameData.updatedAt = Date.now();
-            db.collection("practiceGames").doc(state.joinGameId).update(gameData).then(function() {
-                // Update session with active game
-                SessionManager.updateSession({
-                    activeGame: {
-                        gameId: state.joinGameId,
-                        gameType: "practice",
-                        gameMode: "practice",
-                        role: null,
-                        collection: "practiceGames"
-                    },
-                    returnDestination: "practice-mode.html"
-                });
-                SessionManager.addNavigationHistory("pre-game.html", "practice_game_updated", { gameId: state.joinGameId, displayId: state.displayId });
-                
-                document.getElementById("successMsg").style.display = "block";
-                setTimeout(function() {
-                    window.location.href = "practice-mode.html";
-                }, 1500);
-            }).catch(function(e) {
-                alert("Error updating game: " + e.message);
-            });
-        } else {
-            db.collection("practiceGames").add(gameData).then(function(docRef) {
-                // Update session with active game
-                SessionManager.updateSession({
-                    activeGame: {
-                        gameId: docRef.id,
-                        gameType: "practice",
-                        gameMode: "practice",
-                        role: null,
-                        collection: "practiceGames"
-                    },
-                    returnDestination: "practice-mode.html"
-                });
-                SessionManager.addNavigationHistory("pre-game.html", "practice_game_created", { gameId: docRef.id, displayId: state.displayId });
-                
-                document.getElementById("successMsg").style.display = "block";
-                setTimeout(function() {
-                    window.location.href = "practice-mode.html";
-                }, 1500);
-            }).catch(function(e) {
-                alert("Error creating game: " + e.message);
-            });
-        }
-    }
-    
-    function render() {
-        var courseOptions = '';
-        for (var i = 0; i < state.courses.length; i++) {
-            var c = state.courses[i];
-            var selected = (state.selectedCourseId === c.id) ? 'selected' : '';
-            courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
-        }
-        
-        var playersHtml = '';
-        for (var idx = 0; idx < state.players.length; idx++) {
-            var p = state.players[idx];
-            playersHtml += `
-                <div class="player-row">
-                    <div class="player-line1">
-                        <div class="player-name-group">
-                            <input type="text" class="player-name-input" value="${escapeHtml(p.name)}" data-idx="${idx}" placeholder="Name">
-                            <span class="player-label-display">${escapeHtml(p.label)}</span>
-                        </div>
-                        <div class="player-hcp-group">
-                            <span class="hcp-label">Hcp</span>
-                            <input type="number" class="player-hcp-input" value="${p.handicap}" data-idx="${idx}" step="1" min="0" max="54">
-                        </div>
-                    </div>
-                    <div class="player-line2">
-                        <select class="team-select" data-idx="${idx}">
-                            <option value="A" ${p.team === "A" ? "selected" : ""}>Team A</option>
-                            <option value="B" ${p.team === "B" ? "selected" : ""}>Team B</option>
-                        </select>
-                        <select class="flight-select" data-idx="${idx}">
-                            <option value="1" ${p.flight === 1 ? "selected" : ""}>Flight 1</option>
-                            <option value="2" ${p.flight === 2 ? "selected" : ""}>Flight 2</option>
-                        </select>
-                    </div>
-                </div>
-            `;
-        }
-        
-        var isValid = validateTeamFlight();
-        var modeTitle = state.isJoining ? 'JOIN PRACTICE GAME' : 'NEW PRACTICE GAME';
-        
-        var html = `
-            <div class="header">
-                <div class="title">🧪 ${modeTitle}</div>
-                <div class="version">Version ${VERSION}</div>
-            </div>
-            
-            <div class="card">
-                <div class="card-title">🏷️ GAME ID</div>
-                <input type="text" id="gameNameInput" class="game-name-input" value="${escapeHtml(state.displayId)}" placeholder="Game ID" readonly>
-                <div class="auto-name-hint">${state.isJoining ? 'Joining existing game' : 'Auto-generated sequential ID (e.g., PGAME-001)'}</div>
-            </div>
-            
-            <div class="card">
-                <div class="card-title">⛳ COURSE SELECTION</div>
-                <select id="courseSelect" class="course-select" onchange="changeCourse(this.value)">
-                    ${courseOptions}
-                </select>
-            </div>
-            
-            <div class="card">
-                <div class="card-title">👥 PLAYER SETUP (8 Players)</div>
-                ${playersHtml}
-                ${!isValid ? '<div class="error-msg">⚠️ Each flight needs exactly 2 Team A and 2 Team B players</div>' : ''}
-            </div>
-            
-            <div class="button-group">
-                <button class="btn btn-secondary" onclick="goBack()">← Cancel</button>
-                <button class="btn btn-primary" onclick="createPracticeGame()">✓ ${state.isJoining ? 'UPDATE & JOIN' : 'CREATE & START'}</button>
-            </div>
-            
-            <div id="successMsg" style="display:none;" class="success-msg">✓ Practice game ${state.isJoining ? 'updated' : 'created'}! Redirecting...</div>
-            
-            <div class="back-link" onclick="goBack()">← Back to Practice Mode</div>
-        `;
-        
-        document.getElementById("app").innerHTML = html;
-        
-        document.querySelectorAll(".player-name-input").forEach(function(el) {
-            el.addEventListener("change", function() {
-                var idx = parseInt(this.dataset.idx);
-                updatePlayerName(idx, this.value);
-            });
-        });
-        
-        document.querySelectorAll(".player-hcp-input").forEach(function(el) {
-            el.addEventListener("change", function() {
-                var idx = parseInt(this.dataset.idx);
-                updatePlayerHandicap(idx, this.value);
-            });
-        });
-        
-        document.querySelectorAll(".team-select").forEach(function(el) {
-            el.addEventListener("change", function() {
-                var idx = parseInt(this.dataset.idx);
-                updatePlayerTeam(idx, this.value);
-            });
-        });
-        
-        document.querySelectorAll(".flight-select").forEach(function(el) {
-            el.addEventListener("change", function() {
-                var idx = parseInt(this.dataset.idx);
-                updatePlayerFlight(idx, this.value);
-            });
-        });
-    }
-    
-    window.changeCourse = function(courseId) {
-        for (var i = 0; i < state.courses.length; i++) {
-            if (state.courses[i].id === courseId) {
-                state.selectedCourseId = courseId;
-                state.selectedCourseData = state.courses[i];
-                break;
-            }
-        }
-        render();
-    };
-    
-    window.goBack = function() {
-        SessionManager.addNavigationHistory("practice-mode.html", "cancel_practice_setup");
-        window.location.href = "practice-mode.html";
-    };
-    
-    window.createPracticeGame = createPracticeGame;
-    
-    function escapeHtml(str) {
-        if (!str) return "";
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === "&") return "&amp;";
-            if (m === "<") return "&lt;";
-            if (m === ">") return "&gt;";
-            return m;
-        });
-    }
-    
-    // Initialize session first, then load setup
-    SessionManager.initSession("practice-setup.html", "practice-mode.html", function(session) {
-        console.log("Session initialized:", session);
-        deviceSession = session;
-        displayDeviceId();
-        loadJoinMode();
+        return courses;
     });
+}
+
+function savePracticeGame(courseId, selectedRole) {
+    var selectedCourse = courses.find(function(c) { return c.id === courseId; });
+    if (!selectedCourse) {
+        alert("Please select a course");
+        return;
+    }
+    
+    var defaultData = generateDefaultData(selectedCourse.par);
+    
+    // CONSOLIDATED STRUCTURE - everything in ONE document
+    var gameData = {
+        course: {
+            name: selectedCourse.name,
+            par: selectedCourse.par,
+            si: selectedCourse.si
+        },
+        players: DEFAULT_PLAYERS,
+        status: "practice",
+        gameType: "practice",
+        
+        // Flight 1 data (scores, saveEvent, crossEvent)
+        f1: {
+            d: defaultData,
+            se: false,
+            x: false
+        },
+        
+        // Flight 2 data (scores, saveEvent, crossEvent)
+        f2: {
+            d: defaultData,
+            se: false,
+            x: false
+        },
+        
+        // Role locks (stored here)
+        locks: {
+            f1: null,
+            f2: null
+        },
+        
+        // Current hole per flight
+        currentHoleF1: 1,
+        currentHoleF2: 1,
+        
+        // Practice session info
+        practiceRole: selectedRole,
+        
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000) // 7 days auto-delete
+    };
+    
+    db.collection("practiceGames").add(gameData).then(function(docRef) {
+        console.log("Practice game created with ID:", docRef.id);
+        
+        // Store in sessionStorage and redirect
+        sessionStorage.setItem("practiceGameId", docRef.id);
+        sessionStorage.setItem("practiceRole", selectedRole);
+        
+        showAlert("success", "Practice game created successfully!");
+        setTimeout(function() {
+            window.location.href = "pre-game.html";
+        }, 1500);
+    }).catch(function(error) {
+        console.error("Error creating practice game:", error);
+        showAlert("error", "Error creating practice game: " + error.message);
+    });
+}
+
+function showAlert(type, message) {
+    var alertDiv = document.createElement("div");
+    alertDiv.className = "alert alert-" + type;
+    alertDiv.innerHTML = message;
+    var container = document.querySelector(".container");
+    var form = document.getElementById("gameForm");
+    container.insertBefore(alertDiv, form);
+    setTimeout(function() {
+        alertDiv.remove();
+    }, 3000);
+}
+
+function render() {
+    var html = `
+        <div class="header">
+            <div class="title">🧪 START PRACTICE GAME</div>
+            <div class="subtitle">Create a practice session (auto-deletes after 7 days)</div>
+        </div>
+        
+        <div id="alertContainer"></div>
+        
+        <form id="gameForm">
+            <div class="form-group">
+                <label class="form-label">🏟️ SELECT COURSE</label>
+                <div id="courseButtons" class="course-buttons">Loading courses...</div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">🎮 SELECT YOUR ROLE</label>
+                <div class="role-buttons">
+                    <div class="role-btn" data-role="update1">✏️ UPDATE FLIGHT 1</div>
+                    <div class="role-btn" data-role="update2">✏️ UPDATE FLIGHT 2</div>
+                    <div class="role-btn" data-role="view">👁️ VIEW ONLY</div>
+                </div>
+            </div>
+            
+            <div class="players-grid">
+                <div class="team-section">
+                    <div class="team-title team-a">🇸🇬 TEAM A</div>
+                    <div>${DEFAULT_PLAYERS.filter(p => p.team === "A").map(p => '<div class="player-input-row"><span>' + p.name + ' (HCP ' + p.handicap + ')</span></div>').join('')}</div>
+                </div>
+                <div class="team-section">
+                    <div class="team-title team-b">🌍 TEAM B</div>
+                    <div>${DEFAULT_PLAYERS.filter(p => p.team === "B").map(p => '<div class="player-input-row"><span>' + p.name + ' (HCP ' + p.handicap + ')</span></div>').join('')}</div>
+                </div>
+            </div>
+            
+            <div class="action-buttons">
+                <button type="button" class="btn btn-secondary" id="cancelBtn">← CANCEL</button>
+                <button type="submit" class="btn btn-primary" id="saveBtn">✅ START PRACTICE</button>
+            </div>
+        </form>
+        
+        <div class="footer">SICC Ryder Cup v${VERSION}</div>
+    `;
+    
+    document.getElementById("app").innerHTML = html;
+    
+    // Load courses and render buttons
+    loadCourses().then(function() {
+        var courseContainer = document.getElementById("courseButtons");
+        if (courseContainer && courses.length > 0) {
+            var buttonsHtml = '';
+            for (var i = 0; i < courses.length; i++) {
+                var selected = (i === 0) ? 'selected' : '';
+                buttonsHtml += `<div class="course-btn ${selected}" data-course-id="${courses[i].id}">${courses[i].name}</div>`;
+            }
+            courseContainer.innerHTML = buttonsHtml;
+            
+            document.querySelectorAll('.course-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.course-btn').forEach(function(b) { b.classList.remove('selected'); });
+                    this.classList.add('selected');
+                });
+            });
+        } else {
+            courseContainer.innerHTML = '<div class="alert alert-info">No courses found. Please add courses in Course Management first.</div>';
+        }
+    }).catch(function(err) {
+        console.error("Error loading courses:", err);
+        document.getElementById("courseButtons").innerHTML = '<div class="alert alert-error">Error loading courses. Please refresh.</div>';
+    });
+    
+    // Role selection
+    var selectedRole = null;
+    document.querySelectorAll('.role-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.role-btn').forEach(function(b) { b.classList.remove('selected'); });
+            this.classList.add('selected');
+            selectedRole = this.dataset.role;
+        });
+    });
+    
+    document.getElementById("gameForm").addEventListener("submit", function(e) {
+        e.preventDefault();
+        
+        var selectedCourseBtn = document.querySelector('.course-btn.selected');
+        if (!selectedCourseBtn) {
+            showAlert("error", "Please select a course");
+            return;
+        }
+        
+        if (!selectedRole) {
+            showAlert("error", "Please select a role");
+            return;
+        }
+        
+        var courseId = selectedCourseBtn.dataset.courseId;
+        savePracticeGame(courseId, selectedRole);
+    });
+    
+    document.getElementById("cancelBtn").addEventListener("click", function() {
+        window.location.href = "practice-mode.html";
+    });
+}
+
+SessionManager.initSession("practice-setup.html", "practice-mode.html", function(session) {
+    console.log("Session initialized:", session);
+    displayDeviceId();
+    render();
+});
 </script>
 </body>
 </html>
