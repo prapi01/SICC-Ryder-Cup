@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Manage Games - SICC Ryder Cup</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/session.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: 16px; }
+        .container { max-width: 550px; margin: 0 auto; }
+        
+        .version-tag { 
+            position: fixed; 
+            top: 8px; 
+            right: 8px; 
+            font-size: 0.65rem; 
+            color: #4caf50; 
+            background: rgba(0,0,0,0.6); 
+            padding: 2px 10px; 
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.8;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            letter-spacing: 0.5px;
+        }
+        
+        .header { text-align: center; margin-bottom: 24px; }
+        .title { font-size: 1.5rem; font-weight: 700; color: #4caf50; }
+        .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        
+        .card { background: #111; border-radius: 20px; padding: 20px; margin-bottom: 16px; border: 1px solid #333; }
+        .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
+        
+        .game-list { margin-top: 16px; }
+        .game-item { background: #0a0a0a; border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid #333; }
+        .game-info { margin-bottom: 12px; }
+        .game-date { font-size: 1rem; font-weight: 700; color: #4caf50; }
+        .game-course { font-size: 0.85rem; color: #888; margin-top: 4px; }
+        .game-players { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        
+        .game-actions { display: flex; gap: 12px; }
+        .btn-edit { background: #1a3a1a; border: 1px solid #4caf50; border-radius: 30px; padding: 8px 20px; color: #4caf50; font-weight: 600; cursor: pointer; }
+        .btn-delete { background: #3a1a1a; border: 1px solid #ff6b6b; border-radius: 30px; padding: 8px 20px; color: #ff6b6b; font-weight: 600; cursor: pointer; }
+        .btn-edit:active, .btn-delete:active { transform: scale(0.97); }
+        
+        .empty-msg { text-align: center; padding: 40px; color: #888; }
+        
+        .back-btn { background: #1a1a1a; border: 1px solid #333; border-radius: 40px; padding: 14px; text-align: center; cursor: pointer; margin-top: 20px; transition: all 0.2s ease; }
+        .back-btn:active { transform: scale(0.98); background: #2a2a2a; }
+        .back-btn .label { font-size: 0.9rem; font-weight: 600; color: #ccc; }
+        
+        .loading { text-align: center; padding: 40px; color: #888; }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <div class="loading">Loading scheduled games...</div>
+</div>
+<div class="device-tag" id="deviceTag">🖥️ ---</div>
+<div class="version-tag">v1.04</div>
+
+<script>
+    var VERSION = "1.04";
+    var CACHE_KEY = "manage_games_version";
+    
+    var storedVersion = localStorage.getItem(CACHE_KEY);
+    if (storedVersion !== VERSION) {
+        localStorage.setItem(CACHE_KEY, VERSION);
+        window.location.href = window.location.pathname + "?v=" + VERSION;
+    }
+    
+    var FIREBASE_CONFIG = {
+        apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+        authDomain: "sicc-ryder-cup.firebaseapp.com",
+        projectId: "sicc-ryder-cup",
+        storageBucket: "sicc-ryder-cup.firebasestorage.app",
+        messagingSenderId: "137641493845",
+        appId: "1:137641493845:web:32399940bce639b01ddbdc"
+    };
+    
+    var db = null;
+    var firestoreReady = false;
+    var deviceSession = null;
+    
+    try {
+        firebase.initializeApp(FIREBASE_CONFIG);
+        db = firebase.firestore();
+        firestoreReady = true;
+        console.log("Firebase ready - v" + VERSION);
+    } catch(e) { 
+        console.warn(e);
+    }
+    
+    function displayDeviceId() {
+        var deviceDisplay = SessionManager.getDeviceIdDisplay();
+        document.getElementById("deviceTag").innerHTML = deviceDisplay;
+    }
+    
+    function formatDate(dateString) {
+        var parts = dateString.split('-');
+        if (parts.length === 3) {
+            var day = parts[2];
+            var month = parts[1];
+            var year = parts[0];
+            return day + '/' + month + '/' + year;
+        }
+        return dateString;
+    }
+    
+    function deleteGame(gameId, gameDate) {
+        if (confirm("Delete scheduled game on " + gameDate + "? This action cannot be undone.")) {
+            SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
+            db.collection("scheduledGames").doc(gameId).delete().then(function() {
+                loadAndRender();
+            }).catch(function(e) {
+                alert("Error deleting game: " + e.message);
+            });
+        }
+    }
+    
+    function editGame(gameId) {
+        SessionManager.addNavigationHistory("setup-game.html", "game_edit", { gameId: gameId });
+        db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+            if (doc.exists) {
+                var gameData = doc.data();
+                gameData.id = doc.id;
+                sessionStorage.setItem("editGameData", JSON.stringify(gameData));
+                window.location.href = "setup-game.html?mode=edit";
+            } else {
+                alert("Game not found");
+            }
+        }).catch(function(e) {
+            alert("Error loading game: " + e.message);
+        });
+    }
+    
+    function goBackToSettings() {
+        var returnDest = SessionManager.getReturnDestination();
+        window.location.href = returnDest;
+    }
+    
+    function loadAndRender() {
+        if (!firestoreReady) {
+            document.getElementById("app").innerHTML = '<div class="loading">Connecting to server...</div>';
+            return;
+        }
+        
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var todayStr = today.toISOString().split('T')[0];
+        
+        db.collection("scheduledGames").get().then(function(snapshot) {
+            var games = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                if (data.date >= todayStr) {
+                    games.push({ id: doc.id, date: data.date, course: data.course, players: data.players });
+                }
+            });
+            
+            games.sort(function(a, b) {
+                if (a.date < b.date) return -1;
+                if (a.date > b.date) return 1;
+                return 0;
+            });
+            
+            if (games.length === 0) {
+                document.getElementById("app").innerHTML = `
+                    <div class="header">
+                        <div class="title">📋 MANAGE SCHEDULED GAMES</div>
+                        <div class="version">Version ${VERSION}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Upcoming Games</div>
+                        <div class="empty-msg">No scheduled games found.</div>
+                    </div>
+                    <div class="back-btn" onclick="goBackToSettings()">
+                        <div class="label">← Back to Game Settings</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            var gamesHtml = '';
+            for (var i = 0; i < games.length; i++) {
+                var game = games[i];
+                var formattedDate = formatDate(game.date);
+                var courseName = game.course ? game.course.name : 'Unknown Course';
+                var playerCount = game.players ? game.players.length : 0;
+                
+                gamesHtml += `
+                    <div class="game-item">
+                        <div class="game-info">
+                            <div class="game-date">📅 ${formattedDate}</div>
+                            <div class="game-course">⛳ ${escapeHtml(courseName)}</div>
+                            <div class="game-players">👥 ${playerCount} players</div>
+                        </div>
+                        <div class="game-actions">
+                            <button class="btn-edit" onclick="editGame('${game.id}')">✏️ EDIT</button>
+                            <button class="btn-delete" onclick="deleteGame('${game.id}', '${formattedDate}')">🗑️ DELETE</button>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            var html = `
+                <div class="header">
+                    <div class="title">📋 MANAGE SCHEDULED GAMES</div>
+                    <div class="version">Version ${VERSION}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Upcoming Games</div>
+                    <div class="game-list">
+                        ${gamesHtml}
+                    </div>
+                </div>
+                <div class="back-btn" onclick="goBackToSettings()">
+                    <div class="label">← Back to Game Settings</div>
+                </div>
+            `;
+            
+            document.getElementById("app").innerHTML = html;
+        }).catch(function(e) {
+            console.warn(e);
+            document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
+        });
+    }
+    
+    window.deleteGame = deleteGame;
+    window.editGame = editGame;
+    window.goBackToSettings = goBackToSettings;
+    
+    function escapeHtml(str) {
+        if (!str) return "";
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === "&") return "&amp;";
+            if (m === "<") return "&lt;";
+            if (m === ">") return "&gt;";
+            return m;
+        });
+    }
+    
+    // Initialize session first, then load games
+    SessionManager.initSession("manage-games.html", "admin.html", function(session) {
+        console.log("Session initialized:", session);
+        deviceSession = session;
+        displayDeviceId();
+        loadAndRender();
+    });
+</script>
+</body>
+</html>

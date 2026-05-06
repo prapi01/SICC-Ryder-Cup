@@ -1,0 +1,537 @@
+<!-- FILE: game.html - VERSION 1.04 -->
+<!--
+PURE UI RENDERER - NO BUSINESS LOGIC
+For SICC Ryder Cup App
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Match Play - SICC Ryder Cup</title>
+    
+    <!-- FIREBASE -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <!-- FIREBASE INITIALIZATION -->
+    <script>
+        var FIREBASE_CONFIG = {
+            apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+            authDomain: "sicc-ryder-cup.firebaseapp.com",
+            projectId: "sicc-ryder-cup",
+            storageBucket: "sicc-ryder-cup.firebasestorage.app",
+            messagingSenderId: "137641493845",
+            appId: "1:137641493845:web:32399940bce639b01ddbdc"
+        };
+        
+        if (!firebase.apps.length) {
+            firebase.initializeApp(FIREBASE_CONFIG);
+            console.log("game: Firebase initialized");
+        }
+    </script>
+    
+    <!-- DEPENDENCIES - ORDER MATTERS -->
+    <script src="js/session.js"></script>
+    <script src="js/game-match.js"></script>
+    <script src="js/game-data.js"></script>
+    <script src="js/game-controller.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 12px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        
+        .version-tag { position: fixed; top: 8px; right: 8px; font-size: 0.65rem; color: #4caf50; background: rgba(0,0,0,0.6); padding: 2px 10px; border-radius: 16px; z-index: 1000; }
+        .device-tag { position: fixed; top: 8px; left: 8px; font-size: 0.55rem; color: #4caf50; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 12px; z-index: 1000; opacity: 0.4; }
+        .status-bubble { position: fixed; top: 32px; left: 8px; font-size: 0.65rem; padding: 4px 10px; border-radius: 20px; font-weight: 600; background: rgba(0,0,0,0.7); z-index: 1000; }
+        .status-real { background: rgba(76,175,80,0.3); border: 1px solid #4caf50; color: #4caf50; }
+        .status-preview { background: rgba(255,170,68,0.3); border: 1px solid #ffaa44; color: #ffaa44; }
+        .status-practice { background: rgba(255,170,68,0.3); border: 1px solid #ffaa44; color: #ffaa44; }
+        
+        .game-header { text-align: center; margin-bottom: 20px; margin-top: 8px; }
+        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
+        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        
+        .flight-tab { display: block; width: 100%; max-width: 350px; margin: 0 auto 20px auto; padding: 12px; text-align: center; background: #1a3a1a; border-radius: 40px; border: 1px solid #4caf50; font-weight: 600; font-size: 1rem; }
+        
+        .team-score-card { background: #111; border-radius: 16px; padding: 12px; text-align: center; margin-bottom: 20px; border: 1px solid #333; }
+        .team-score { font-size: 1.3rem; font-weight: 700; }
+        .team-score-green { color: #4caf50; }
+        .team-score-red { color: #ff6b6b; }
+        
+        .player-card { background: #111; border-radius: 16px; padding: 12px; margin-bottom: 10px; border: 1px solid #333; }
+        .player-row { display: flex; justify-content: space-between; align-items: center; }
+        .player-name { font-size: 1rem; font-weight: 600; }
+        .player-label-bubble { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; color: #fff; }
+        .score-control { display: flex; align-items: center; gap: 12px; }
+        .score-btn { background: #1a3a1a; border: none; width: 42px; height: 42px; border-radius: 30px; font-size: 1.3rem; font-weight: bold; color: #fff; cursor: pointer; }
+        .score-btn:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
+        .score-value { font-size: 1.3rem; font-weight: 700; min-width: 50px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
+        
+        .bubbles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+        .bubble { flex: 1; text-align: center; padding: 6px 4px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; background: #1a1a1a; }
+        .bubble-win { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-loss { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        .bubble-tie { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-pending { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        
+        .scorecard-section { margin: 20px 0; }
+        .scorecard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .refresh-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #4caf50; padding: 0 10px; }
+        .scorecard-wrapper { overflow-x: auto; background: #0a0a0a; border-radius: 12px; padding: 8px; }
+        .scorecard-table { width: 100%; min-width: 800px; font-size: 0.7rem; border-collapse: collapse; }
+        .scorecard-table th, .scorecard-table td { padding: 8px 5px; text-align: center; border: 1px solid #222; }
+        .scorecard-table th { color: #4caf50; background: #111; }
+        .scorecard-table .completed { background: #1a3a1a20; font-weight: 700; color: #fff; }
+        .scorecard-table .placeholder { color: #000000; background: #0a0a0a; }
+        .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+        
+        .game-info { text-align: center; margin-bottom: 16px; font-size: 0.8rem; color: #888; }
+        
+        .action-buttons { display: flex; gap: 16px; justify-content: center; margin: 20px 0; }
+        .action-btn { width: 100px; padding: 12px 0; border-radius: 40px; font-weight: 600; font-size: 1rem; cursor: pointer; border: none; }
+        .btn-save { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-next-active { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; cursor: pointer; }
+        .btn-next-inactive { background: #2a2a2a; color: #555; border: 1px solid #444; cursor: not-allowed; }
+        .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .btn-back:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
+        
+        .menu-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; margin-bottom: 20px; }
+        .btn-menu, .btn-reset { padding: 14px; border-radius: 40px; font-weight: 600; font-size: 1rem; text-align: center; cursor: pointer; width: 100%; border: none; }
+        .btn-menu { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .btn-reset { background: #2a2a2a; color: #ffaa44; border: 1px solid #ffaa44; }
+        
+        .loading { text-align: center; padding: 40px; color: #888; }
+        
+        .role-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
+        .role-title { font-size: 1.8rem; font-weight: 800; color: #4caf50; margin-bottom: 20px; }
+        .role-subtitle { font-size: 0.9rem; color: #888; margin-bottom: 40px; }
+        .role-buttons { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px; }
+        .role-btn { background: linear-gradient(145deg, #1a3a1a, #0d2a0d); border: 2px solid #4caf50; border-radius: 24px; padding: 30px 25px; text-align: center; cursor: pointer; min-width: 140px; }
+        .role-btn .icon { font-size: 2.5rem; display: block; margin-bottom: 12px; }
+        .role-btn .label { font-size: 1.2rem; font-weight: 700; color: #4caf50; }
+        .viewer-btn { background: #111; border-color: #ffaa44; }
+        .viewer-btn .label { color: #ffaa44; }
+        .role-note { font-size: 0.7rem; color: #555; margin-top: 20px; }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <div class="loading">Loading game data...</div>
+</div>
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.04</div>
+
+<script>
+// FILE: game.html - VERSION 1.04
+
+var UI_VERSION = "1.04";
+var CACHE_KEY = "game_ui_version";
+
+if (localStorage.getItem(CACHE_KEY) !== UI_VERSION) {
+    localStorage.setItem(CACHE_KEY, UI_VERSION);
+    window.location.href = window.location.pathname + "?v=" + UI_VERSION;
+}
+
+var uiData = null;
+
+window.setDeviceId = function(deviceId) {
+    var deviceTag = document.getElementById("deviceTag");
+    if (deviceTag) deviceTag.innerHTML = deviceId;
+};
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
+    });
+}
+
+window.updateGameUI = function(data) {
+    console.log("game: updateGameUI called", data);
+    
+    uiData = data;
+    
+    if (!data || !data.players || !data.course) {
+        document.getElementById("app").innerHTML = '<div class="loading">Waiting for game data...</div>';
+        return;
+    }
+    
+    var course = data.course;
+    var isSaved = data.isSaved || false;
+    var canModify = data.canModify || false;
+    var currentHole = data.currentHole || 1;
+    var activeFlight = data.activeFlight || 1;
+    
+    var teamAPts = 0;
+    var teamBPts = 0;
+    
+    if (data.trPoints) {
+        teamAPts = data.trPoints.teamA;
+        teamBPts = data.trPoints.teamB;
+    } else {
+        teamAPts = (data.matchPoints ? data.matchPoints.teamA : 8) + 
+                   (data.teamPoints ? data.teamPoints.teamA : 1) + 
+                   (data.strokePoints ? data.strokePoints.teamA : 0.5);
+        teamBPts = (data.matchPoints ? data.matchPoints.teamB : 8) + 
+                   (data.teamPoints ? data.teamPoints.teamB : 1) + 
+                   (data.strokePoints ? data.strokePoints.teamB : 0.5);
+    }
+    
+    var teamAGreen = teamAPts >= teamBPts;
+    var teamBGreen = teamBPts >= teamAPts;
+    
+    // Get players for current flight, sorted by team (A first, then B)
+    var flightPlayers = data.players.filter(function(p) { return p.flight === activeFlight; });
+    flightPlayers.sort(function(a, b) { 
+        if (a.team === "A" && b.team === "B") return -1;
+        if (a.team === "B" && b.team === "A") return 1;
+        return 0;
+    });
+    
+    // Build player cards
+    var playerCards = "";
+    for (var i = 0; i < flightPlayers.length; i++) {
+        var p = flightPlayers[i];
+        
+        // Find player index in the global players array
+        var playerIdx = -1;
+        for (var k = 0; k < data.players.length; k++) {
+            if (data.players[k].name === p.name) {
+                playerIdx = k;
+                break;
+            }
+        }
+        
+        // Get current score
+        var scoreKey = activeFlight + "_" + currentHole + "_" + playerIdx;
+        var currentScore = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[currentHole - 1];
+        
+        // Build match bubbles for this player
+        var opponents = data.players.filter(function(op) { return op.team !== p.team; });
+        var bubblesHtml = '<div class="bubbles">';
+        for (var j = 0; j < opponents.length; j++) {
+            var bubbleKey = p.name + "_vs_" + opponents[j].name;
+            var result = (data.matchBubbles && data.matchBubbles[bubbleKey]) || "AS";
+            var bubbleClass = "bubble";
+            
+            if (result === "AS") {
+                bubbleClass += " bubble-pending";
+            } else if (result.indexOf("+") === 0) {
+                bubbleClass += " bubble-win";
+            } else if (result.indexOf("-") === 0) {
+                bubbleClass += " bubble-loss";
+            } else {
+                bubbleClass += " bubble-pending";
+            }
+            
+            bubblesHtml += '<div class="' + bubbleClass + '">vs ' + opponents[j].label + ' ' + result + '</div>';
+        }
+        bubblesHtml += '</div>';
+        
+        var btnDisabled = canModify ? "" : "disabled";
+        var btnStyle = canModify ? "" : 'style="opacity:0.5;"';
+        
+        playerCards += '<div class="player-card">' +
+            '<div class="player-row">' +
+                '<div>' +
+                    '<span class="player-name">' + escapeHtml(p.name) + '</span>' +
+                    '<span class="player-label-bubble">' + p.label + ' ' + p.handicap + '</span>' +
+                '</div>' +
+                '<div class="score-control">' +
+                    '<button class="score-btn dec-btn" data-player-idx="' + playerIdx + '" data-flight="' + activeFlight + '" data-hole="' + currentHole + '" ' + btnDisabled + ' ' + btnStyle + '>-</button>' +
+                    '<span class="score-value" id="score_' + playerIdx + '_' + currentHole + '">' + currentScore + '</span>' +
+                    '<button class="score-btn inc-btn" data-player-idx="' + playerIdx + '" data-flight="' + activeFlight + '" data-hole="' + currentHole + '" ' + btnDisabled + ' ' + btnStyle + '>+</button>' +
+                '</div>' +
+            '</div>' +
+            bubblesHtml +
+        '</div>';
+    }
+    
+    var pencilIcon = (data.userRole === "update1" || data.userRole === "update2") ? ' ✏️' : '';
+    var flightTabHtml = '<div class="flight-tab">Flight ' + (data.editableFlight || activeFlight) + pencilIcon + '</div>';
+    
+    var teamADisplay = teamAPts % 1 === 0 ? teamAPts : teamAPts.toFixed(1);
+    var teamBDisplay = teamBPts % 1 === 0 ? teamBPts : teamBPts.toFixed(1);
+    var trHtml = '<span class="' + (teamAGreen ? "team-score-green" : "team-score-red") + '">Team A ' + teamADisplay + '</span> - <span class="' + (teamBGreen ? "team-score-green" : "team-score-red") + '">' + teamBDisplay + ' Team B</span>';
+    
+    // ============================================================
+    // SCORECARD TABLE
+    // ============================================================
+    var players = data.players;
+    var flight1Players = players.filter(function(p) { return p.flight === 1; });
+    var flight2Players = players.filter(function(p) { return p.flight === 2; });
+    
+    // Sort players within each flight: Team A first, then Team B
+    flight1Players.sort(function(a, b) {
+        if (a.team === "A" && b.team === "B") return -1;
+        if (a.team === "B" && b.team === "A") return 1;
+        return 0;
+    });
+    
+    flight2Players.sort(function(a, b) {
+        if (a.team === "A" && b.team === "B") return -1;
+        if (a.team === "B" && b.team === "A") return 1;
+        return 0;
+    });
+    
+    var tableHtml = '<table class="scorecard-table">';
+    tableHtml += '<thead><tr><th>Hole</th>';
+    for (var h = 1; h <= 18; h++) tableHtml += '<th>' + h + '</th>';
+    tableHtml += '<th>Tot</th></tr></thead>';
+    tableHtml += '<tbody>';
+    
+    // Par row
+    tableHtml += '<tr><td style="font-weight:700;">Par</td>';
+    var totalPar = 0;
+    for (var ph = 1; ph <= 18; ph++) {
+        totalPar += course.par[ph-1];
+        tableHtml += '<td>' + course.par[ph-1] + '</td>';
+    }
+    tableHtml += '<td>' + totalPar + '</td></tr>';
+    
+    // SI row
+    tableHtml += '<tr><td style="font-weight:700;">SI</td>';
+    for (var sh = 0; sh < 18; sh++) {
+        tableHtml += '<td>' + course.si[sh] + '</td>';
+    }
+    tableHtml += '<td>-</td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Flight 1 players
+    for (var pi = 0; pi < flight1Players.length; pi++) {
+        var p = flight1Players[pi];
+        var pIdx = -1;
+        for (var ix = 0; ix < players.length; ix++) {
+            if (players[ix].name === p.name) pIdx = ix;
+        }
+        var total = 0;
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        for (var hole = 1; hole <= 18; hole++) {
+            var scoreKey = p.flight + "_" + hole + "_" + pIdx;
+            var score = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[hole-1];
+            total += score;
+            var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(hole) !== -1;
+            if (completed) {
+                tableHtml += '<td class="completed"><strong>' + score + '</strong></td>';
+            } else {
+                tableHtml += '<td class="placeholder">' + score + '</td>';
+            }
+        }
+        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
+    }
+    
+    // T-1 row (Flight 1 cumulative)
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1</td>';
+    var t1RowData = data.t1Row || [];
+    for (var h = 1; h <= 18; h++) {
+        var val = (h <= t1RowData.length) ? t1RowData[h-1] : 0;
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">' + (data.t1Total || 0) + '</td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Flight 2 players
+    for (var pi = 0; pi < flight2Players.length; pi++) {
+        var p = flight2Players[pi];
+        var pIdx = -1;
+        for (var ix = 0; ix < players.length; ix++) {
+            if (players[ix].name === p.name) pIdx = ix;
+        }
+        var total = 0;
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        for (var hole = 1; hole <= 18; hole++) {
+            var scoreKey = p.flight + "_" + hole + "_" + pIdx;
+            var score = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[hole-1];
+            total += score;
+            var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(hole) !== -1;
+            if (completed) {
+                tableHtml += '<td class="completed"><strong>' + score + '</strong></td>';
+            } else {
+                tableHtml += '<td class="placeholder">' + score + '</td>';
+            }
+        }
+        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
+    }
+    
+    // T-2 row (Flight 2 cumulative)
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2</td>';
+    var t2RowData = data.t2Row || [];
+    for (var h = 1; h <= 18; h++) {
+        var val = (h <= t2RowData.length) ? t2RowData[h-1] : 0;
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">' + (data.t2Total || 0) + '</td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Strk row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk</td>';
+    var strkRowData = data.strkRow || [];
+    for (var h = 1; h <= 18; h++) {
+        var val = (h <= strkRowData.length) ? strkRowData[h-1] : "-";
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '</td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    tableHtml += '</tbody>赶';
+    
+    var nextBtnClass = isSaved ? "action-btn btn-next-active" : "action-btn btn-next-inactive";
+    var nextBtnDisabled = !isSaved ? "disabled" : "";
+    
+    var modeDisplay = data.modeDisplay || "READY";
+    var modeClass = data.modeClass || "status-real";
+    
+    var html = 
+        '<div class="status-bubble ' + modeClass + '">' + modeDisplay + '</div>' +
+        '<div class="game-info"><div>' + escapeHtml(course.name) + (data.gameDate ? ' | ' + data.gameDate : '') + '</div></div>' +
+        '<div class="game-header">' +
+            '<div class="hole-number">HOLE ' + currentHole + '</div>' +
+            '<div class="hole-par">PAR ' + course.par[currentHole-1] + '  SI ' + course.si[currentHole-1] + '</div>' +
+        '</div>' +
+        flightTabHtml +
+        '<div class="team-score-card"><div class="team-score">' + trHtml + '</div></div>' +
+        '<div class="player-cards">' + playerCards + '</div>' +
+        '<div class="action-buttons">' +
+            '<button class="action-btn btn-back" id="prevHoleBtn"' + (currentHole === 1 ? ' disabled' : '') + '>Back</button>' +
+            '<button class="action-btn btn-save" id="saveBtn">Save</button>' +
+            '<button class="' + nextBtnClass + '" id="nextHoleBtn" ' + nextBtnDisabled + '>Next</button>' +
+        '</div>' +
+        '<div class="scorecard-section">' +
+            '<div class="scorecard-header">' +
+                '<div class="scorecard-title">SCORECARD</div>' +
+                '<button class="refresh-btn" id="refreshBtn">⟳</button>' +
+            '</div>' +
+            '<div class="scorecard-wrapper">' + tableHtml + '</div>' +
+        '</div>' +
+        '<div class="menu-buttons">' +
+            '<button class="btn-menu" id="menuBtn">Main Menu</button>' +
+            '<button class="btn-reset" id="resetRoleBtn">Switch Role</button>' +
+        '</div>';
+    
+    document.getElementById("app").innerHTML = html;
+    attachEvents();
+};
+
+function attachEvents() {
+    // Decrement buttons
+    document.querySelectorAll(".dec-btn").forEach(function(btn) {
+        btn.removeEventListener("click", btn._listener);
+        btn._listener = function() {
+            if (!btn.disabled) {
+                console.log("game: Decrement clicked", {
+                    playerIdx: parseInt(this.dataset.playerIdx),
+                    flight: parseInt(this.dataset.flight),
+                    hole: parseInt(this.dataset.hole)
+                });
+                window.dispatchEvent(new CustomEvent('scoreChange', {
+                    detail: {
+                        playerIdx: parseInt(this.dataset.playerIdx),
+                        flight: parseInt(this.dataset.flight),
+                        hole: parseInt(this.dataset.hole),
+                        delta: -1
+                    }
+                }));
+            }
+        };
+        btn.addEventListener("click", btn._listener);
+    });
+    
+    // Increment buttons
+    document.querySelectorAll(".inc-btn").forEach(function(btn) {
+        btn.removeEventListener("click", btn._listener);
+        btn._listener = function() {
+            if (!btn.disabled) {
+                console.log("game: Increment clicked", {
+                    playerIdx: parseInt(this.dataset.playerIdx),
+                    flight: parseInt(this.dataset.flight),
+                    hole: parseInt(this.dataset.hole)
+                });
+                window.dispatchEvent(new CustomEvent('scoreChange', {
+                    detail: {
+                        playerIdx: parseInt(this.dataset.playerIdx),
+                        flight: parseInt(this.dataset.flight),
+                        hole: parseInt(this.dataset.hole),
+                        delta: 1
+                    }
+                }));
+            }
+        };
+        btn.addEventListener("click", btn._listener);
+    });
+    
+    var saveBtn = document.getElementById("saveBtn");
+    if (saveBtn) {
+        saveBtn.removeEventListener("click", saveBtn._listener);
+        saveBtn._listener = function() {
+            console.log("game: Save clicked");
+            window.dispatchEvent(new CustomEvent('saveHole'));
+        };
+        saveBtn.addEventListener("click", saveBtn._listener);
+    }
+    
+    var nextBtn = document.getElementById("nextHoleBtn");
+    if (nextBtn) {
+        nextBtn.removeEventListener("click", nextBtn._listener);
+        nextBtn._listener = function() {
+            if (!nextBtn.disabled) {
+                console.log("game: Next clicked");
+                window.dispatchEvent(new CustomEvent('nextHole'));
+            }
+        };
+        nextBtn.addEventListener("click", nextBtn._listener);
+    }
+    
+    var prevBtn = document.getElementById("prevHoleBtn");
+    if (prevBtn) {
+        prevBtn.removeEventListener("click", prevBtn._listener);
+        prevBtn._listener = function() {
+            if (!prevBtn.disabled) {
+                console.log("game: Prev clicked");
+                window.dispatchEvent(new CustomEvent('prevHole'));
+            }
+        };
+        prevBtn.addEventListener("click", prevBtn._listener);
+    }
+    
+    var refreshBtn = document.getElementById("refreshBtn");
+    if (refreshBtn) {
+        refreshBtn.removeEventListener("click", refreshBtn._listener);
+        refreshBtn._listener = function() {
+            console.log("game: Refresh clicked");
+            window.dispatchEvent(new CustomEvent('refresh'));
+        };
+        refreshBtn.addEventListener("click", refreshBtn._listener);
+    }
+    
+    var menuBtn = document.getElementById("menuBtn");
+    if (menuBtn) {
+        menuBtn.removeEventListener("click", menuBtn._listener);
+        menuBtn._listener = function() {
+            console.log("game: Menu clicked");
+            window.dispatchEvent(new CustomEvent('mainMenu'));
+        };
+        menuBtn.addEventListener("click", menuBtn._listener);
+    }
+    
+    var resetBtn = document.getElementById("resetRoleBtn");
+    if (resetBtn) {
+        resetBtn.removeEventListener("click", resetBtn._listener);
+        resetBtn._listener = function() {
+            console.log("game: Switch role clicked");
+            window.dispatchEvent(new CustomEvent('switchRole'));
+        };
+        resetBtn.addEventListener("click", resetBtn._listener);
+    }
+}
+
+document.getElementById("app").innerHTML = '<div class="loading">Initializing...</div>';
+console.log("game v1.04: Loaded - waiting for data");
+</script>
+</body>
+</html>

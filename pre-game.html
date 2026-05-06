@@ -1,0 +1,889 @@
+<!-- FILE: pre-game.html - VERSION 2.24 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Ready to Play - SICC Ryder Cup</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/session.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
+            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif; 
+            color: #ffffff; 
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
+        
+        .version-tag { 
+            position: fixed; 
+            top: 8px; 
+            right: 8px; 
+            font-size: 0.6rem; 
+            color: #4caf50; 
+            background: rgba(0,0,0,0.5); 
+            padding: 2px 8px; 
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.6;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            letter-spacing: 0.5px;
+        }
+        
+        .header { text-align: center; margin-bottom: 24px; }
+        .title { font-size: 1.8rem; font-weight: 800; color: #4caf50; }
+        .subtitle { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        
+        .mode-banner {
+            text-align: center;
+            padding: 10px;
+            border-radius: 40px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        .mode-real { background: rgba(76,175,80,0.2); border: 1px solid #4caf50; color: #4caf50; }
+        .mode-practice { background: rgba(255,170,68,0.2); border: 1px solid #ffaa44; color: #ffaa44; }
+        .mode-preview { background: rgba(255,170,68,0.2); border: 1px solid #ffaa44; color: #ffaa44; }
+        .mode-history { background: rgba(136,136,136,0.2); border: 1px solid #888; color: #888; }
+        
+        .course-card {
+            background: linear-gradient(135deg, #111 0%, #0a0a0a 100%);
+            border: 1px solid rgba(76,175,80,0.3);
+            border-radius: 20px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .course-name { font-size: 1.3rem; font-weight: 700; color: #4caf50; }
+        .course-date { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        
+        .flight-box {
+            background: rgba(10,10,10,0.8);
+            border: 1px solid rgba(76,175,80,0.2);
+            border-radius: 20px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+        .flight-header {
+            background: linear-gradient(90deg, #1a3a1a 0%, #0d2a0d 100%);
+            padding: 12px 20px;
+            border-bottom: 1px solid rgba(76,175,80,0.3);
+        }
+        .flight-header h3 { 
+            font-size: 1rem; 
+            font-weight: 700; 
+            color: #4caf50; 
+            letter-spacing: 2px;
+        }
+        .flight-header h3 i { margin-right: 8px; }
+        
+        .teams-grid {
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+        }
+        .team {
+            flex: 1;
+            background: rgba(0,0,0,0.3);
+            border-radius: 16px;
+            padding: 16px;
+        }
+        .team-title {
+            font-size: 1rem;
+            font-weight: 700;
+            text-align: center;
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #4caf50;
+            color: #4caf50;
+            letter-spacing: 1px;
+        }
+        
+        .player-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .player-row:last-child { border-bottom: none; }
+        .player-name { font-size: 0.9rem; font-weight: 500; color: #fff; }
+        .player-handicap { 
+            font-size: 0.8rem; 
+            font-weight: 600; 
+            background: rgba(76,175,80,0.2);
+            padding: 2px 8px;
+            border-radius: 20px;
+            color: #4caf50;
+        }
+        
+        .role-section {
+            margin: 24px 0;
+            padding: 20px;
+            background: #111;
+            border-radius: 20px;
+            border: 1px solid #333;
+            position: relative;
+        }
+        .role-title { 
+            font-size: 1rem; 
+            font-weight: 600; 
+            margin-bottom: 16px; 
+            color: #ffaa44; 
+            text-align: center;
+        }
+        .reset-icon {
+            position: absolute;
+            top: 16px;
+            right: 20px;
+            font-size: 1.3rem;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: all 0.2s ease;
+            color: #ff6b6b;
+        }
+        .reset-icon:hover {
+            opacity: 1;
+            transform: rotate(15deg);
+        }
+        .reset-icon:active {
+            transform: scale(0.95);
+        }
+        .role-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .role-btn {
+            flex: 1;
+            padding: 16px 20px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 1rem;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+            min-width: 120px;
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        .role-btn-selected {
+            background: #0d3b0d;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            box-shadow: 0 0 8px rgba(76,175,80,0.5);
+        }
+        .role-btn-selected::after {
+            content: " ✓";
+            font-size: 1rem;
+        }
+        .role-btn-unavailable {
+            opacity: 0.35;
+            cursor: not-allowed;
+            background: #1a1a1a;
+            border-color: #555;
+            color: #888;
+        }
+        .role-btn-view {
+            background: #1a1a1a;
+            border: 1px solid #ffaa44;
+            color: #ffaa44;
+        }
+        .role-btn-view.role-btn-selected {
+            background: #2a2a1a;
+            border: 2px solid #ffaa44;
+            color: #ffaa44;
+        }
+        .role-btn-view.role-btn-selected::after {
+            content: " ✓";
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 16px;
+            margin-top: 16px;
+            margin-bottom: 20px;
+        }
+        .btn {
+            flex: 1;
+            padding: 14px 20px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 1rem;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+        .btn-back {
+            background: rgba(26,26,26,0.9);
+            border: 1px solid #333;
+            color: #ccc;
+        }
+        .btn-teeoff {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        .btn-teeoff-disabled { opacity: 0.4; cursor: not-allowed; }
+        
+        .role-status {
+            text-align: center;
+            font-size: 0.75rem;
+            margin-top: 16px;
+            padding: 6px;
+            border-radius: 20px;
+        }
+        .role-status-selected { background: #1a3a1a; color: #4caf50; }
+        .role-status-warning { background: #2a2a1a; color: #ffaa44; }
+        
+        .footer { text-align: center; margin-top: 20px; font-size: 0.6rem; color: #444; }
+        .loading { text-align: center; padding: 40px; color: #888; }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .modal {
+            background: #111;
+            border-radius: 24px;
+            padding: 28px;
+            max-width: 340px;
+            width: 90%;
+            border: 1px solid #ffaa44;
+            text-align: center;
+        }
+        .modal-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 16px;
+        }
+        .modal-message {
+            font-size: 0.9rem;
+            color: #ccc;
+            margin-bottom: 24px;
+            line-height: 1.4;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+        }
+        .modal-btn {
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: none;
+        }
+        .modal-btn-reset {
+            background: #3a1a1a;
+            color: #ff6b6b;
+            border: 1px solid #ff6b6b;
+        }
+        .modal-btn-continue {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .modal-btn-reset-disabled {
+            background: #2a2a2a;
+            color: #555;
+            border: 1px solid #444;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <div class="loading">Loading game data...</div>
+</div>
+<div class="device-tag" id="deviceTag">🖥️ ---</div>
+<div class="version-tag">v2.24</div>
+
+<script>
+// FILE: pre-game.html - VERSION 2.24
+// MODIFIED: Redirect to game.html (was game2.html)
+
+var VERSION = "2.24";
+var CACHE_KEY = "pre_game_version";
+var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== VERSION) {
+    localStorage.setItem(CACHE_KEY, VERSION);
+    window.location.href = window.location.pathname + "?v=" + VERSION;
+}
+
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+var db = null;
+var firestoreReady = false;
+var unsubcribeRoles = null;
+
+try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    firestoreReady = true;
+    console.log("Firebase ready - v" + VERSION);
+} catch(e) { 
+    console.warn(e);
+}
+
+var gameData = null;
+var gameId = null;
+var gameMode = null;
+var tempSelectedRole = null;
+var roleLock = { flight1: null, flight2: null, flight1Expiry: null, flight2Expiry: null };
+var deviceSession = null;
+var pendingResetCallback = null;
+
+function displayDeviceId() {
+    var deviceDisplay = SessionManager.getDeviceIdDisplay();
+    document.getElementById("deviceTag").innerHTML = deviceDisplay;
+}
+
+function formatDisplayDate(dateStr) {
+    if (!dateStr) return "";
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+        return parts[2] + '/' + parts[1] + '/' + parts[0];
+    }
+    return dateStr;
+}
+
+// Generate default data string (all F, all scores = par)
+function generateDefaultData(parArray) {
+    var result = "";
+    for (var hole = 1; hole <= 18; hole++) {
+        var par = parArray[hole - 1];
+        var parStr = par.toString().padStart(2, '0');
+        result += "F" + parStr + parStr + parStr + parStr;
+    }
+    return result;
+}
+
+// Check if game has existing data (non-default strings)
+function hasExistingData() {
+    if (!gameData) return false;
+    
+    var defaultData = generateDefaultData(gameData.course.par);
+    
+    var flight1HasData = gameData.flight1 && gameData.flight1.data && gameData.flight1.data !== defaultData;
+    var flight2HasData = gameData.flight2 && gameData.flight2.data && gameData.flight2.data !== defaultData;
+    var flight1HasEvent = gameData.flight1 && (gameData.flight1.saveEvent === true || gameData.flight1.crossEvent === true);
+    var flight2HasEvent = gameData.flight2 && (gameData.flight2.saveEvent === true || gameData.flight2.crossEvent === true);
+    
+    return flight1HasData || flight2HasData || flight1HasEvent || flight2HasEvent;
+}
+
+// Reset game data to default
+function resetGameData(callback) {
+    if (!db || !gameId) {
+        if (callback) callback(false);
+        return;
+    }
+    
+    var defaultData = generateDefaultData(gameData.course.par);
+    
+    var resetData = {
+        flight1: {
+            data: defaultData,
+            saveEvent: false,
+            crossEvent: false
+        },
+        flight2: {
+            data: defaultData,
+            saveEvent: false,
+            crossEvent: false
+        }
+    };
+    
+    db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
+        // Also delete role locks
+        db.collection("gameRoles").doc(gameId).delete().catch(function(e) {
+            console.warn("Error deleting role locks:", e);
+        });
+        
+        if (callback) callback(true);
+    }).catch(function(e) {
+        console.error("Reset error:", e);
+        if (callback) callback(false);
+    });
+}
+
+// Show modal for PREVIEW/PRACTICE session
+function showSessionModal() {
+    var modalHtml = `
+        <div class="modal-overlay" id="sessionModal">
+            <div class="modal">
+                <div class="modal-title">${gameMode === "preview" ? "PREVIEW" : "PRACTICE"} Session</div>
+                <div class="modal-message">Initialise the game data or continue previous session?</div>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-reset" id="resetBtn">RESET</button>
+                    <button class="modal-btn modal-btn-continue" id="continueBtn">CONTINUE</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("resetBtn").addEventListener("click", function() {
+        document.getElementById("sessionModal").remove();
+        resetGameData(function(success) {
+            if (success) {
+                console.log("Game data reset, proceeding...");
+            }
+            proceedToGame();
+        });
+    });
+    
+    document.getElementById("continueBtn").addEventListener("click", function() {
+        document.getElementById("sessionModal").remove();
+        proceedToGame();
+    });
+}
+
+function resetRoleLocks() {
+    if (confirm("⚠️ Reset all role locks? This will allow new devices to take update roles.")) {
+        db.collection("gameRoles").doc(gameId).delete().then(function() {
+            roleLock.flight1 = null;
+            roleLock.flight2 = null;
+            roleLock.flight1Expiry = null;
+            roleLock.flight2Expiry = null;
+            if (tempSelectedRole === "update1" || tempSelectedRole === "update2") {
+                tempSelectedRole = null;
+            }
+            render();
+        }).catch(function(e) {
+            alert("Error resetting locks: " + e.message);
+        });
+    }
+}
+
+function startRoleListener() {
+    if (!firestoreReady || !gameId) return;
+    if (unsubcribeRoles) unsubcribeRoles();
+    
+    unsubcribeRoles = db.collection("gameRoles").doc(gameId)
+        .onSnapshot(function(doc) {
+            if (doc.exists) {
+                var data = doc.data();
+                var now = Date.now();
+                var flight1Locked = data.flight1 && data.flight1Expiry && data.flight1Expiry > now;
+                var flight2Locked = data.flight2 && data.flight2Expiry && data.flight2Expiry > now;
+                
+                roleLock.flight1 = flight1Locked ? data.flight1 : null;
+                roleLock.flight2 = flight2Locked ? data.flight2 : null;
+                roleLock.flight1Expiry = data.flight1Expiry || null;
+                roleLock.flight2Expiry = data.flight2Expiry || null;
+            } else {
+                roleLock.flight1 = null;
+                roleLock.flight2 = null;
+                roleLock.flight1Expiry = null;
+                roleLock.flight2Expiry = null;
+            }
+            render();
+        }, function(error) {
+            console.warn("Role listener error:", error);
+        });
+}
+
+function toggleRole(role) {
+    if (tempSelectedRole === role) {
+        tempSelectedRole = null;
+        render();
+        return;
+    }
+    
+    if (role === "update1" && roleLock.flight1) {
+        alert("Flight 1 update role is already locked by another device");
+        return;
+    }
+    if (role === "update2" && roleLock.flight2) {
+        alert("Flight 2 update role is already locked by another device");
+        return;
+    }
+    
+    tempSelectedRole = role;
+    
+    if (deviceSession) {
+        SessionManager.updateSession({
+            activeGame: {
+                gameId: gameId,
+                gameType: (gameMode === "practice") ? "practice" : "real",
+                gameMode: gameMode,
+                role: role,
+                collection: (gameMode === "practice") ? "practiceGames" : "scheduledGames"
+            }
+        });
+    }
+    
+    render();
+}
+
+function loadGame() {
+    var practiceGameId = sessionStorage.getItem("practiceGameId");
+    var realGameId = sessionStorage.getItem("currentGameId");
+    
+    if (practiceGameId) {
+        gameMode = "practice";
+        gameId = practiceGameId;
+        db.collection("practiceGames").doc(gameId).get().then(function(doc) {
+            if (doc.exists) {
+                gameData = doc.data();
+                gameData.id = doc.id;
+                startRoleListener();
+                
+                // For PRACTICE mode, check if data exists and show modal
+                if (hasExistingData()) {
+                    showSessionModal();
+                } else {
+                    render();
+                }
+            } else {
+                alert("Practice game not found");
+                window.location.href = "practice-mode.html";
+            }
+        }).catch(function(e) {
+            alert("Error loading practice game: " + e.message);
+            window.location.href = "practice-mode.html";
+        });
+    } else if (realGameId) {
+        gameId = realGameId;
+        db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+            if (doc.exists) {
+                gameData = doc.data();
+                gameData.id = doc.id;
+                
+                var today = new Date();
+                today.setHours(0, 0, 0, 0);
+                var gameDate = new Date(gameData.date);
+                gameDate.setHours(0, 0, 0, 0);
+                
+                if (gameDate < today) {
+                    gameMode = "history";
+                } else if (gameDate > today) {
+                    gameMode = "preview";
+                    // For PREVIEW mode, check if data exists and show modal
+                    if (hasExistingData()) {
+                        showSessionModal();
+                    } else {
+                        startRoleListener();
+                        render();
+                    }
+                    return;
+                } else {
+                    gameMode = "real";
+                    // REAL mode: force reset, no modal
+                    if (hasExistingData()) {
+                        resetGameData(function() {
+                            startRoleListener();
+                            render();
+                        });
+                    } else {
+                        startRoleListener();
+                        render();
+                    }
+                    return;
+                }
+                
+                startRoleListener();
+                render();
+            } else {
+                alert("Game not found");
+                window.location.href = "index.html";
+            }
+        }).catch(function(e) {
+            alert("Error loading game: " + e.message);
+            window.location.href = "index.html";
+        });
+    } else {
+        alert("No game selected. Please return to main menu.");
+        window.location.href = "index.html";
+    }
+}
+
+function startGame() {
+    if (!tempSelectedRole) {
+        alert("Please select a role first");
+        return;
+    }
+    
+    if (tempSelectedRole === "view") {
+        localStorage.setItem("userRole", "view");
+        if (deviceSession) {
+            SessionManager.updateSession({
+                activeGame: {
+                    gameId: gameId,
+                    gameType: (gameMode === "practice") ? "practice" : "real",
+                    gameMode: gameMode,
+                    role: "view",
+                    collection: (gameMode === "practice") ? "practiceGames" : "scheduledGames"
+                }
+            });
+            // MODIFIED: game2.html -> game.html
+            SessionManager.addNavigationHistory("game.html", "tee_off_view", { gameId: gameId });
+        }
+        proceedToGame();
+        return;
+    }
+    
+    var deviceId = "device_" + Date.now() + "_" + Math.random().toString(36).substr(2, 8);
+    var expiryTime = Date.now() + LOCK_DURATION_MS;
+    var updateData = {};
+    
+    if (tempSelectedRole === "update1") {
+        updateData.flight1 = deviceId;
+        updateData.flight1Expiry = expiryTime;
+    }
+    if (tempSelectedRole === "update2") {
+        updateData.flight2 = deviceId;
+        updateData.flight2Expiry = expiryTime;
+    }
+    
+    if ((tempSelectedRole === "update1" && roleLock.flight1) ||
+        (tempSelectedRole === "update2" && roleLock.flight2)) {
+        alert("This role was locked by another device. Please select again.");
+        tempSelectedRole = null;
+        render();
+        return;
+    }
+    
+    db.collection("gameRoles").doc(gameId).set(updateData, { merge: true }).then(function() {
+        localStorage.setItem("userRole", tempSelectedRole);
+        
+        if (deviceSession) {
+            SessionManager.updateSession({
+                activeGame: {
+                    gameId: gameId,
+                    gameType: (gameMode === "practice") ? "practice" : "real",
+                    gameMode: gameMode,
+                    role: tempSelectedRole,
+                    collection: (gameMode === "practice") ? "practiceGames" : "scheduledGames"
+                }
+            });
+            // MODIFIED: game2.html -> game.html
+            SessionManager.addNavigationHistory("game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
+        }
+        
+        proceedToGame();
+    }).catch(function(e) {
+        alert("Error locking role: " + e.message);
+    });
+}
+
+function proceedToGame() {
+    // MODIFIED: Redirect to game.html (was game2.html)
+    if (gameMode === "practice") {
+        sessionStorage.setItem("currentPracticeGame", JSON.stringify({
+            id: gameData.id,
+            gameId: gameData.gameId,
+            course: gameData.course,
+            players: gameData.players,
+            mode: "practice"
+        }));
+        window.location.href = "game.html";
+    } else {
+        sessionStorage.setItem("currentGame", JSON.stringify({
+            id: gameData.id,
+            date: gameData.date,
+            course: gameData.course,
+            players: gameData.players,
+            mode: gameMode
+        }));
+        window.location.href = "game.html";
+    }
+}
+
+function goBack() {
+    var returnDest = SessionManager.getReturnDestination();
+    window.location.href = returnDest;
+}
+
+function render() {
+    if (!gameData) return;
+    
+    var courseName = gameData.course ? gameData.course.name : "Unknown Course";
+    var players = gameData.players || [];
+    
+    var modeBanner = '';
+    if (gameMode === "real") {
+        modeBanner = '<div class="mode-banner mode-real">🏆 REAL GAME - Scores are LIVE and synced to all devices</div>';
+    } else if (gameMode === "practice") {
+        modeBanner = '<div class="mode-banner mode-practice">🧪 PRACTICE MODE - Scores saved (auto-delete after 7 days)</div>';
+    } else if (gameMode === "preview") {
+        modeBanner = '<div class="mode-banner mode-preview">🔍 PREVIEW MODE - Future game. Scores will NOT be saved.</div>';
+    } else if (gameMode === "history") {
+        modeBanner = '<div class="mode-banner mode-history">📜 HISTORY MODE - Read only. Past game results.</div>';
+    }
+    
+    var dateDisplay = '';
+    if (gameData.date && gameMode !== "practice") {
+        dateDisplay = '<div class="course-date">📅 ' + formatDisplayDate(gameData.date) + '</div>';
+    }
+    
+    var flight1Players = players.filter(function(p) { return p.flight === 1; });
+    var flight1A = flight1Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+    var flight1B = flight1Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+    
+    var flight2Players = players.filter(function(p) { return p.flight === 2; });
+    var flight2A = flight2Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+    var flight2B = flight2Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+    
+    function renderTeam(teamPlayers) {
+        var html = '';
+        for (var i = 0; i < teamPlayers.length; i++) {
+            var p = teamPlayers[i];
+            html += '<div class="player-row"><span class="player-name">' + escapeHtml(p.name) + '</span><span class="player-handicap">' + p.handicap + '</span></div>';
+        }
+        return html;
+    }
+    
+    var isUpdate1Taken = !!roleLock.flight1;
+    var isUpdate2Taken = !!roleLock.flight2;
+    var update1Selected = (tempSelectedRole === "update1");
+    var update2Selected = (tempSelectedRole === "update2");
+    var viewSelected = (tempSelectedRole === "view");
+    
+    var update1Class = "role-btn";
+    var update2Class = "role-btn";
+    var viewClass = "role-btn role-btn-view";
+    
+    if (update1Selected) update1Class += " role-btn-selected";
+    if (update2Selected) update2Class += " role-btn-selected";
+    if (viewSelected) viewClass += " role-btn-selected";
+    
+    if (isUpdate1Taken && !update1Selected) update1Class += " role-btn-unavailable";
+    if (isUpdate2Taken && !update2Selected) update2Class += " role-btn-unavailable";
+    
+    var isTeeOffDisabled = !tempSelectedRole;
+    
+    var roleStatusText = "";
+    var roleStatusClass = "";
+    if (tempSelectedRole === "update1") {
+        roleStatusText = "✓ Flight 1 selected. Click TEE OFF to lock this role.";
+        roleStatusClass = "role-status-selected";
+    } else if (tempSelectedRole === "update2") {
+        roleStatusText = "✓ Flight 2 selected. Click TEE OFF to lock this role.";
+        roleStatusClass = "role-status-selected";
+    } else if (tempSelectedRole === "view") {
+        roleStatusText = "✓ View Only selected. Click TEE OFF to continue.";
+        roleStatusClass = "role-status-selected";
+    } else {
+        roleStatusText = "⚠️ Select a role above, then click TEE OFF";
+        roleStatusClass = "role-status-warning";
+    }
+    
+    var html = `
+        <div class="header">
+            <div class="title">🏌️ READY TO PLAY</div>
+            <div class="subtitle">Verify teams and handicaps before teeing off</div>
+        </div>
+        
+        ${modeBanner}
+        
+        <div class="course-card">
+            <div class="course-name">⛳ ${escapeHtml(courseName)}</div>
+            ${dateDisplay}
+        </div>
+        
+        <div class="flight-box">
+            <div class="flight-header"><h3><i>⛳</i> FLIGHT 1</h3></div>
+            <div class="teams-grid">
+                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight1A)}</div>
+                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight1B)}</div>
+            </div>
+        </div>
+        
+        <div class="flight-box">
+            <div class="flight-header"><h3><i>⛳</i> FLIGHT 2</h3></div>
+            <div class="teams-grid">
+                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight2A)}</div>
+                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight2B)}</div>
+            </div>
+        </div>
+        
+        <div class="role-section">
+            <div class="reset-icon" onclick="resetRoleLocks()">⟲</div>
+            <div class="role-title">🎮 SELECT YOUR ROLE</div>
+            <div class="role-buttons">
+                <button class="${update1Class}" onclick="toggleRole('update1')" ${isUpdate1Taken && !update1Selected ? 'disabled' : ''}>✏️ UPDATE FLIGHT 1</button>
+                <button class="${update2Class}" onclick="toggleRole('update2')" ${isUpdate2Taken && !update2Selected ? 'disabled' : ''}>✏️ UPDATE FLIGHT 2</button>
+                <button class="${viewClass}" onclick="toggleRole('view')">👁️ VIEW ONLY</button>
+            </div>
+            <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
+        </div>
+        
+        <div class="action-buttons">
+            <button class="btn btn-back" onclick="goBack()">← BACK</button>
+            <button class="btn btn-teeoff ${isTeeOffDisabled ? 'btn-teeoff-disabled' : ''}" onclick="startGame()" ${isTeeOffDisabled ? 'disabled' : ''}>⛳ TEE OFF →</button>
+        </div>
+        
+        <div class="footer">SICC Ryder Cup v${VERSION}</div>
+    `;
+    
+    document.getElementById("app").innerHTML = html;
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
+    });
+}
+
+SessionManager.initSession("pre-game.html", "index.html", function(session) {
+    console.log("Session initialized:", session);
+    deviceSession = session;
+    displayDeviceId();
+    loadGame();
+});
+</script>
+</body>
+</html>
