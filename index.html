@@ -1,4 +1,4 @@
-<!-- FILE: index.html - VERSION 2.16 -->
+<!-- FILE: index.html - VERSION 2.19 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -77,21 +77,8 @@
         .title-active { color: #4caf50; }
         .title-past { color: #888; }
         
-        .practice-btn {
-            background: linear-gradient(145deg, #2a2a1a 0%, #1a1a0a 100%);
-            border: 1px solid #ffaa44;
-            border-radius: 24px;
-            padding: 16px 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            margin-bottom: 20px;
-        }
-        .practice-btn:active { transform: scale(0.98); }
-        .practice-btn .icon { font-size: 1.5rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
-        .practice-btn .label { font-size: 1.1rem; font-weight: 700; color: #ffaa44; display: inline-block; vertical-align: middle; letter-spacing: 1px; }
-        
-        .pgb {
+        /* Both buttons now use same style */
+        .menu-btn {
             background: rgba(17,17,17,0.8);
             border: 1px solid rgba(76,175,80,0.4);
             border-radius: 24px;
@@ -102,9 +89,9 @@
             margin-bottom: 20px;
             backdrop-filter: blur(4px);
         }
-        .pgb:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
-        .pgb .icon { font-size: 1.2rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
-        .pgb .label { font-size: 1rem; font-weight: 600; color: #4caf50; display: inline-block; vertical-align: middle; letter-spacing: 0.5px; }
+        .menu-btn:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
+        .menu-btn .icon { font-size: 1.2rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
+        .menu-btn .label { font-size: 1rem; font-weight: 600; color: #4caf50; display: inline-block; vertical-align: middle; letter-spacing: 0.5px; }
         
         .gsb {
             background: rgba(17,17,17,0.9);
@@ -121,17 +108,6 @@
         .gsb:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
         .gsb .icon { font-size: 1rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
         .gsb .label { font-size: 0.9rem; font-weight: 600; color: #ccc; display: inline-block; vertical-align: middle; }
-        
-        .test-btn {
-            background: #3a1a3a;
-            border: 1px solid #aa44ff;
-            border-radius: 24px;
-            padding: 12px 20px;
-            text-align: center;
-            cursor: pointer;
-            margin-bottom: 20px;
-        }
-        .test-btn .label { font-size: 0.8rem; font-weight: 600; color: #aa44ff; }
         
         .footer { text-align: center; margin-top: 40px; font-size: 0.6rem; color: #444; }
         .loading { text-align: center; padding: 40px; color: #888; }
@@ -204,16 +180,15 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.16</div>
+<div class="version-tag">v2.19</div>
 
 <script>
-// FILE: index.html - VERSION 2.16
-// MODIFIED: TEST NEW UI button now points to game.html
+// FILE: index.html - VERSION 2.19
+// REMOVED TEST NEW UI button
+// PRACTICE MODE button now same style as VIEW PREVIOUS GAMES
 
-var APP_VERSION = "2.16";
+var APP_VERSION = "2.19";
 var CACHE_KEY = "index_version";
-var TEST_MODE = true;
-
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
@@ -235,7 +210,9 @@ var pendingGameId = null;
 var pendingGameMode = null;
 
 try {
-    firebase.initializeApp(FIREBASE_CONFIG);
+    if (!firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+    }
     db = firebase.firestore();
     firestoreReady = true;
     console.log("Firebase ready - v" + APP_VERSION);
@@ -357,42 +334,6 @@ function handleNGB(targetPage) {
     });
 }
 
-function testNewUI() {
-    console.log("TEST: Launching through pre-game.html");
-    
-    db.collection("scheduledGames").limit(1).get().then(function(snapshot) {
-        if (snapshot.empty) {
-            alert("No scheduled game found. Please create a game first.");
-            return;
-        }
-        
-        var gameDoc = snapshot.docs[0];
-        var gameId = gameDoc.id;
-        var gameData = gameDoc.data();
-        var gameStatus = getGameStatus(gameData.date);
-        var gameType = (gameStatus === "today") ? "real" : "preview";
-        var gameMode = (gameType === "preview") ? "preview" : "real";
-        
-        SessionManager.updateSession({
-            returnDestination: "index.html",
-            activeGame: {
-                gameId: gameId,
-                gameType: gameType,
-                gameMode: gameMode,
-                role: null,
-                collection: "scheduledGames"
-            }
-        });
-        
-        sessionStorage.removeItem("practiceGameId");
-        sessionStorage.setItem("currentGameId", gameId);
-        window.location.href = "pre-game.html";
-    }).catch(function(e) {
-        console.error("TEST ERROR:", e);
-        alert("Error: " + e.message);
-    });
-}
-
 function goToPracticeMode() {
     SessionManager.addNavigationHistory("practice-mode.html", "click_pmb");
     SessionManager.updateSession({
@@ -477,15 +418,6 @@ function loadAndRender() {
         
         var todayFormatted = formatTodayDate();
         
-        var testButtonHtml = '';
-        if (TEST_MODE) {
-            testButtonHtml = `
-                <div class="test-btn" onclick="testNewUI()">
-                    <span class="label">🧪 TEST NEW UI</span>
-                </div>
-            `;
-        }
-        
         var html = `
             <div class="header">
                 <div class="golf-icon">⛳</div>
@@ -496,14 +428,12 @@ function loadAndRender() {
             
             ${ngbHtml}
             
-            ${testButtonHtml}
-            
-            <div class="practice-btn" onclick="goToPracticeMode()">
-                <span class="icon">🧪</span>
+            <div class="menu-btn" onclick="goToPracticeMode()">
+                <span class="icon">🏌️</span>
                 <span class="label">PRACTICE MODE</span>
             </div>
             
-            <div class="pgb" onclick="viewPreviousGames()">
+            <div class="menu-btn" onclick="viewPreviousGames()">
                 <span class="icon">📜</span>
                 <span class="label">VIEW PREVIOUS GAMES</span>
             </div>
