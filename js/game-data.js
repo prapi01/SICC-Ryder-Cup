@@ -1,5 +1,6 @@
-// FILE: js/game-data.js - VERSION 1.01
+// FILE: js/game-data.js - VERSION 1.02
 // String-based data manager for SICC Ryder Cup
+// FIX: crossEvent always set for other flight on ANY save
 
 var GameData = (function() {
     
@@ -27,7 +28,6 @@ var GameData = (function() {
     // Generate default data string (all F, all scores = par)
     function generateDefaultData(parArray) {
         if (!parArray || parArray.length !== 18) {
-            // Default par 4 for all holes if course not loaded
             var defaultPar = "04";
             var result = "";
             for (var i = 0; i < 18; i++) {
@@ -71,7 +71,7 @@ var GameData = (function() {
         };
     }
     
-    // Update hole data string
+    // Update hole data string (works for ANY hole number)
     function updateHoleData(existingData, holeNumber, scores, isSaved) {
         if (!existingData || existingData.length !== 162) {
             existingData = generateDefaultData(currentCourse ? currentCourse.par : null);
@@ -188,26 +188,29 @@ var GameData = (function() {
         flight2Data.saveEvent = false;
     }
     
+    // FIXED: Save ANY hole number, ALWAYS set crossEvent for other flight
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
         var flight = (editableFlight === 1) ? 1 : 2;
         
         // Get current data for this flight
         var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
         
-        // Update the hole data with saved flag = true
+        // Update the hole data with saved flag = true (works for ANY hole)
         var newData = updateHoleData(flightData, holeNumber, scores, true);
         
         // Prepare update for Firebase
         var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
         var updatePayload = {};
         var flightField = (flight === 1) ? "flight1" : "flight2";
+        var otherFlightField = (flight === 1) ? "flight2" : "flight1";
         
         updatePayload[flightField + ".data"] = newData;
         updatePayload[flightField + ".saveEvent"] = true;
         
-        // Set crossEvent for the other flight
-        var otherFlightField = (flight === 1) ? "flight2" : "flight1";
+        // CRITICAL FIX: ALWAYS set crossEvent for the OTHER flight
+        // This ensures the other device knows to recalculate
         updatePayload[otherFlightField + ".crossEvent"] = true;
+        
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
         firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
@@ -222,6 +225,7 @@ var GameData = (function() {
                     flight2Data.saveEvent = true;
                     flight1Data.crossEvent = true;
                 }
+                console.log("Save successful - crossEvent set for other flight");
                 notifyDataChanged();
                 if (callback) callback(true);
             })
@@ -250,6 +254,10 @@ var GameData = (function() {
                         flight2Data.saveEvent = data.flight2.saveEvent || false;
                         flight2Data.crossEvent = data.flight2.crossEvent || false;
                     }
+                    console.log("Refresh completed - crossEvent flags:", {
+                        flight1: flight1Data.crossEvent,
+                        flight2: flight2Data.crossEvent
+                    });
                     notifyDataChanged();
                 }
             })
@@ -303,6 +311,11 @@ var GameData = (function() {
                         flight2Data.saveEvent = data.flight2.saveEvent || false;
                         flight2Data.crossEvent = data.flight2.crossEvent || false;
                     }
+                    
+                    console.log("Game loaded - crossEvent flags:", {
+                        flight1: flight1Data.crossEvent,
+                        flight2: flight2Data.crossEvent
+                    });
                     
                     notifyDataChanged();
                     if (callback) callback(true);
