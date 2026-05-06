@@ -1,24 +1,24 @@
-<!-- FILE: setup-game.html - VERSION 1.08 -->
-<!--
-Sets up new scheduled games with the NEW data structure:
-- flight1.data (string: 9 chars per hole, 18 holes)
-- flight2.data (string: 9 chars per hole, 18 holes)
-- flight1.saveEvent and flight1.crossEvent
-- flight2.saveEvent and flight2.crossEvent
--->
+<!-- FILE: setup-game.html - VERSION 1.09 -->
+<!-- Schedule a real Ryder Cup game -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-    <title>Set Up New Game - SICC Ryder Cup</title>
+    <title>Setup Game - SICC Ryder Cup</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: 16px; }
-        .container { max-width: 500px; margin: 0 auto; }
+        body { 
+            background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
+            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif; 
+            color: #ffffff; 
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
         
         .version-tag { 
             position: fixed; 
@@ -49,41 +49,116 @@ Sets up new scheduled games with the NEW data structure:
             letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 24px; }
-        .title { font-size: 1.5rem; font-weight: 700; color: #4caf50; }
-        .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .title { font-size: 1.8rem; font-weight: 800; color: #4caf50; }
+        .subtitle { font-size: 0.8rem; color: #888; margin-top: 4px; }
         
-        .card { background: #111; border-radius: 20px; padding: 20px; margin-bottom: 16px; border: 1px solid #333; }
-        .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .form-group { margin-bottom: 24px; }
+        .form-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: #4caf50; }
+        .form-input, .form-select {
+            width: 100%;
+            padding: 12px 16px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+        }
+        .form-input:focus, .form-select:focus { outline: none; border-color: #4caf50; }
         
-        .date-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-        .date-label { font-size: 0.9rem; color: #888; }
-        .date-input { background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 10px 16px; color: #fff; font-size: 1rem; }
-        .error-msg { color: #ff6b6b; font-size: 0.75rem; margin-top: 8px; }
+        .players-grid {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .team-section { margin-bottom: 16px; }
+        .team-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #333; }
+        .team-title.team-a { color: #4caf50; }
+        .team-title.team-b { color: #ff6b6b; }
         
-        .course-select { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 1rem; }
+        .player-input-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        .player-name-input { flex: 2; }
+        .player-handicap-input { flex: 1; }
+        .player-label-input { flex: 1; }
         
-        .player-row { background: #0a0a0a; border-radius: 12px; padding: 10px; margin-bottom: 8px; }
-        .player-line1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
-        .player-name-group { display: flex; align-items: center; gap: 6px; flex: 2; }
-        .player-name-input { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 8px 10px; color: #fff; font-size: 0.85rem; width: 110px; }
-        .player-label-display { background: #1a3a1a; color: #4caf50; padding: 4px 8px; border-radius: 14px; font-size: 0.7rem; font-weight: 600; }
-        .player-hcp-group { display: flex; align-items: center; gap: 4px; background: #1a1a1a; padding: 4px 10px; border-radius: 20px; }
-        .hcp-label { font-size: 0.65rem; color: #888; }
-        .player-hcp-input { width: 45px; background: transparent; border: none; color: #fff; font-size: 0.85rem; text-align: center; }
-        .player-line2 { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
-        .team-select, .flight-select { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 6px 12px; color: #fff; font-size: 0.8rem; cursor: pointer; }
+        .action-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+        .btn {
+            padding: 14px 30px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+        .btn-primary {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        .btn-secondary {
+            background: rgba(26,26,26,0.9);
+            border: 1px solid #333;
+            color: #ccc;
+        }
+        .btn-danger {
+            background: #3a1a1a;
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+        }
         
-        .btn { padding: 14px 20px; border-radius: 40px; font-weight: 600; font-size: 1rem; text-align: center; cursor: pointer; border: none; margin: 5px; }
-        .btn-primary { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-        .btn-secondary { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .alert {
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+        }
+        .alert-success { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .alert-error { background: #3a1a1a; border: 1px solid #ff6b6b; color: #ff6b6b; }
+        .alert-info { background: #1a1a3a; border: 1px solid #4caf50; color: #4caf50; }
         
-        .button-group { display: flex; gap: 12px; margin-top: 16px; }
-        .back-link { text-align: center; margin-top: 20px; padding: 16px; color: #888; cursor: pointer; border-top: 1px solid #333; }
         .loading { text-align: center; padding: 40px; color: #888; }
-        .success-msg { color: #4caf50; font-size: 0.8rem; text-align: center; margin-top: 10px; }
+        .footer { text-align: center; margin-top: 30px; font-size: 0.6rem; color: #444; }
         
-        .edit-badge { background: #ffaa44; color: #1a1a1a; padding: 2px 10px; border-radius: 20px; font-size: 0.7rem; margin-left: 10px; display: inline-block; }
+        .course-selector {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .course-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .course-btn {
+            flex: 1;
+            padding: 12px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .course-btn.selected {
+            background: #1a3a1a;
+            border-color: #4caf50;
+            color: #4caf50;
+        }
     </style>
 </head>
 <body>
@@ -91,12 +166,14 @@ Sets up new scheduled games with the NEW data structure:
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.08</div>
+<div class="version-tag">v1.09</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.08
+// FILE: setup-game.html - VERSION 1.09
+// Creates REAL game documents with CONSOLIDATED structure
+// All state (scores, flags, locks) in ONE document
 
-var VERSION = "1.08";
+var VERSION = "1.09";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -116,10 +193,12 @@ var FIREBASE_CONFIG = {
 
 var db = null;
 var firestoreReady = false;
-var deviceSession = null;
+var courses = [];
 
 try {
-    firebase.initializeApp(FIREBASE_CONFIG);
+    if (!firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+    }
     db = firebase.firestore();
     firestoreReady = true;
     console.log("Firebase ready - v" + VERSION);
@@ -127,33 +206,32 @@ try {
     console.warn(e);
 }
 
+// Default players (SICC Ryder Cup teams)
 var DEFAULT_PLAYERS = [
-    { name: "Ang C H", handicap: 1, team: "A", flight: 1 },
-    { name: "Kenneth Foo", handicap: 3, team: "A", flight: 1 },
-    { name: "Jeff Goh", handicap: 0, team: "B", flight: 1 },
-    { name: "Ong C B", handicap: 1, team: "B", flight: 1 },
-    { name: "C K", handicap: 8, team: "A", flight: 2 },
-    { name: "Yip H M", handicap: 12, team: "A", flight: 2 },
-    { name: "Piti", handicap: 8, team: "B", flight: 2 },
-    { name: "James Ong", handicap: 11, team: "B", flight: 2 }
+    { name: "Ang CH", team: "A", flight: 1, handicap: 1, label: "ACH" },
+    { name: "Kenneth Foo", team: "A", flight: 1, handicap: 3, label: "KF" },
+    { name: "Jeff Goh", team: "B", flight: 1, handicap: 0, label: "JG" },
+    { name: "Ong C B", team: "B", flight: 1, handicap: 1, label: "OCB" },
+    { name: "C K", team: "A", flight: 2, handicap: 8, label: "CK" },
+    { name: "Yip H M", team: "A", flight: 2, handicap: 12, label: "YHM" },
+    { name: "Piti", team: "B", flight: 2, handicap: 8, label: "P" },
+    { name: "James Ong", team: "B", flight: 2, handicap: 11, label: "JO" }
 ];
 
-function generateLabel(name) {
-    if (!name) return "???";
-    var parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-    if (parts.length === 2) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
-    var label = "";
-    for (var i = 0; i < Math.min(3, parts.length); i++) label += parts[i].charAt(0);
-    return label.toUpperCase();
-}
-
-// Generate default data string for a flight based on course par
-// Format: F + par for A1 + par for A2 + par for B1 + par for B2 (repeat for 18 holes)
+// Generate default data string (all F, all scores = par)
 function generateDefaultData(parArray) {
+    if (!parArray || parArray.length !== 18) {
+        var defaultPar = "04";
+        var result = "";
+        for (var i = 0; i < 18; i++) {
+            result += "F" + defaultPar + defaultPar + defaultPar + defaultPar;
+        }
+        return result;
+    }
+    
     var result = "";
-    for (var hole = 1; hole <= 18; hole++) {
-        var par = parArray[hole - 1];
+    for (var h = 0; h < 18; h++) {
+        var par = parArray[h];
         var parStr = par.toString().padStart(2, '0');
         result += "F" + parStr + parStr + parStr + parStr;
     }
@@ -162,382 +240,188 @@ function generateDefaultData(parArray) {
 
 function displayDeviceId() {
     var deviceDisplay = SessionManager.getDeviceIdDisplay();
-    document.getElementById("deviceTag").innerHTML = deviceDisplay;
-}
-
-var state = {
-    courses: [],
-    selectedCourseId: null,
-    selectedCourseData: null,
-    players: [],
-    dateError: null,
-    editingGameId: null,
-    isEditMode: false,
-    editDate: null,
-    userSelectedDate: null
-};
-
-function loadEditMode() {
-    var urlParams = new URLSearchParams(window.location.search);
-    var mode = urlParams.get('mode');
-    
-    if (mode === 'edit') {
-        state.isEditMode = true;
-        var editData = sessionStorage.getItem("editGameData");
-        if (editData) {
-            var gameData = JSON.parse(editData);
-            state.editingGameId = gameData.id;
-            state.editDate = gameData.date;
-            
-            if (gameData.course) {
-                state.selectedCourseId = gameData.course.id;
-                state.selectedCourseData = gameData.course;
-            }
-            
-            if (gameData.players && gameData.players.length === 8) {
-                state.players = gameData.players;
-            } else {
-                initPlayers();
-            }
-            
-            sessionStorage.removeItem("editGameData");
-        } else {
-            initPlayers();
-        }
-    } else {
-        initPlayers();
-    }
+    var deviceTag = document.getElementById("deviceTag");
+    if (deviceTag) deviceTag.innerHTML = deviceDisplay;
 }
 
 function loadCourses() {
-    if (!firestoreReady) {
-        document.getElementById("app").innerHTML = '<div class="loading">Firebase connection failed. Please check internet.</div>';
-        return;
-    }
-    
-    db.collection("courses").get().then(function(snapshot) {
-        var courses = [];
+    return db.collection("courses").get().then(function(snapshot) {
+        courses = [];
         snapshot.forEach(function(doc) {
             courses.push({ id: doc.id, name: doc.data().name, par: doc.data().par, si: doc.data().si });
         });
-        courses.sort(function(a, b) {
-            var nameA = a.name.toLowerCase();
-            var nameB = b.name.toLowerCase();
-            if (nameA < nameB) return -1;
-            if (nameA > nameB) return 1;
-            return 0;
-        });
-        state.courses = courses;
-        
-        if (!state.isEditMode || !state.selectedCourseId) {
-            if (courses.length > 0) {
-                state.selectedCourseId = courses[0].id;
-                state.selectedCourseData = courses[0];
-            }
-        }
-        
-        render();
-    }).catch(function(e) { 
-        console.warn(e);
-        document.getElementById("app").innerHTML = '<div class="loading">Error loading courses: ' + e.message + '</div>';
+        return courses;
     });
 }
 
-function initPlayers() {
-    state.players = DEFAULT_PLAYERS.map(function(p) {
-        return {
-            name: p.name,
-            handicap: p.handicap,
-            team: p.team,
-            flight: p.flight,
-            label: generateLabel(p.name)
-        };
-    });
-}
-
-function updatePlayerName(idx, value) {
-    state.players[idx].name = value;
-    state.players[idx].label = generateLabel(value);
-    render();
-}
-
-function updatePlayerHandicap(idx, value) {
-    state.players[idx].handicap = parseInt(value) || 0;
-    render();
-}
-
-function updatePlayerTeam(idx, value) {
-    state.players[idx].team = value;
-    render();
-}
-
-function updatePlayerFlight(idx, value) {
-    state.players[idx].flight = parseInt(value);
-    render();
-}
-
-function validateTeamFlight() {
-    var flight1A = state.players.filter(function(p) { return p.flight === 1 && p.team === "A"; }).length;
-    var flight1B = state.players.filter(function(p) { return p.flight === 1 && p.team === "B"; }).length;
-    var flight2A = state.players.filter(function(p) { return p.flight === 2 && p.team === "A"; }).length;
-    var flight2B = state.players.filter(function(p) { return p.flight === 2 && p.team === "B"; }).length;
-    return flight1A === 2 && flight1B === 2 && flight2A === 2 && flight2B === 2;
-}
-
-function validateDate(dateStr) {
-    var today = new Date();
-    today.setHours(0, 0, 0, 0);
-    var selectedDate = new Date(dateStr);
-    selectedDate.setHours(0, 0, 0, 0);
-    
-    var maxDate = new Date();
-    maxDate.setMonth(maxDate.getMonth() + 12);
-    maxDate.setHours(0, 0, 0, 0);
-    
-    if (selectedDate < today) {
-        return "Date must be today or in the future";
-    }
-    if (selectedDate > maxDate) {
-        return "Date cannot be more than 12 months in the future";
-    }
-    return null;
-}
-
-function commitGame() {
-    var dateInput = document.getElementById("datePicker");
-    var selectedDate = dateInput ? dateInput.value : "";
-    
-    var dateError = validateDate(selectedDate);
-    if (dateError) {
-        state.dateError = dateError;
-        render();
-        return;
-    }
-    
-    if (!validateTeamFlight()) {
-        alert("Each flight needs exactly 2 Team A and 2 Team B players");
-        return;
-    }
-    
-    if (!state.selectedCourseData) {
+function saveGame(date, courseId) {
+    var selectedCourse = courses.find(function(c) { return c.id === courseId; });
+    if (!selectedCourse) {
         alert("Please select a course");
         return;
     }
     
-    // Generate default data strings for both flights
-    var defaultData = generateDefaultData(state.selectedCourseData.par);
+    var defaultData = generateDefaultData(selectedCourse.par);
     
+    // CONSOLIDATED STRUCTURE - everything in ONE document
     var gameData = {
-        date: selectedDate,
-        course: state.selectedCourseData,
-        players: state.players,
-        status: "scheduled",
-        updatedAt: new Date().toISOString(),
-        // NEW STRUCTURE
-        flight1: {
-            data: defaultData,
-            saveEvent: false,
-            crossEvent: false
+        date: date,
+        course: {
+            name: selectedCourse.name,
+            par: selectedCourse.par,
+            si: selectedCourse.si
         },
-        flight2: {
-            data: defaultData,
-            saveEvent: false,
-            crossEvent: false
-        }
+        players: DEFAULT_PLAYERS,
+        status: "scheduled",
+        gameType: "real",
+        
+        // Flight 1 data (scores, saveEvent, crossEvent)
+        f1: {
+            d: defaultData,
+            se: false,
+            x: false
+        },
+        
+        // Flight 2 data (scores, saveEvent, crossEvent)
+        f2: {
+            d: defaultData,
+            se: false,
+            x: false
+        },
+        
+        // Role locks (stored here, not in separate collection)
+        locks: {
+            f1: null,
+            f2: null
+        },
+        
+        // Optional: track current hole per flight
+        currentHoleF1: 1,
+        currentHoleF2: 1,
+        
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    if (state.editingGameId) {
-        db.collection("scheduledGames").doc(state.editingGameId).update(gameData).then(function() {
-            SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
-            document.getElementById("successMsg").style.display = "block";
-            setTimeout(function() {
-                window.location.href = "manage-games.html";
-            }, 1500);
-        }).catch(function(e) {
-            alert("Error updating game: " + e.message);
-        });
-    } else {
-        gameData.createdAt = new Date().toISOString();
-        db.collection("scheduledGames").add(gameData).then(function(docRef) {
-            SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: docRef.id });
-            document.getElementById("successMsg").style.display = "block";
-            setTimeout(function() {
-                window.location.href = "admin.html";
-            }, 1500);
-        }).catch(function(e) {
-            alert("Error saving game: " + e.message);
-        });
-    }
+    db.collection("scheduledGames").add(gameData).then(function(docRef) {
+        console.log("Game created with ID:", docRef.id);
+        showAlert("success", "Game scheduled successfully!");
+        setTimeout(function() {
+            window.location.href = "admin.html";
+        }, 1500);
+    }).catch(function(error) {
+        console.error("Error creating game:", error);
+        showAlert("error", "Error creating game: " + error.message);
+    });
+}
+
+function showAlert(type, message) {
+    var alertDiv = document.createElement("div");
+    alertDiv.className = "alert alert-" + type;
+    alertDiv.innerHTML = message;
+    var container = document.querySelector(".container");
+    var form = document.getElementById("gameForm");
+    container.insertBefore(alertDiv, form);
+    setTimeout(function() {
+        alertDiv.remove();
+    }, 3000);
 }
 
 function render() {
-    var courseOptions = '';
-    for (var i = 0; i < state.courses.length; i++) {
-        var c = state.courses[i];
-        var selected = (state.selectedCourseId === c.id) ? 'selected' : '';
-        courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
-    }
-    
-    var playersHtml = '';
-    for (var idx = 0; idx < state.players.length; idx++) {
-        var p = state.players[idx];
-        playersHtml += `
-            <div class="player-row">
-                <div class="player-line1">
-                    <div class="player-name-group">
-                        <input type="text" class="player-name-input" value="${escapeHtml(p.name)}" data-idx="${idx}" placeholder="Name">
-                        <span class="player-label-display">${escapeHtml(p.label)}</span>
-                    </div>
-                    <div class="player-hcp-group">
-                        <span class="hcp-label">Hcp</span>
-                        <input type="number" class="player-hcp-input" value="${p.handicap}" data-idx="${idx}" step="1" min="0" max="54">
-                    </div>
-                </div>
-                <div class="player-line2">
-                    <select class="team-select" data-idx="${idx}">
-                        <option value="A" ${p.team === "A" ? "selected" : ""}>Team A</option>
-                        <option value="B" ${p.team === "B" ? "selected" : ""}>Team B</option>
-                    </select>
-                    <select class="flight-select" data-idx="${idx}">
-                        <option value="1" ${p.flight === 1 ? "selected" : ""}>Flight 1</option>
-                        <option value="2" ${p.flight === 2 ? "selected" : ""}>Flight 2</option>
-                    </select>
-                </div>
-            </div>
-        `;
-    }
-    
-    var isValid = validateTeamFlight();
-    var today = new Date().toISOString().split('T')[0];
-    var maxDate = new Date();
-    maxDate.setMonth(maxDate.getMonth() + 12);
-    var maxDateStr = maxDate.toISOString().split('T')[0];
-    
-    var defaultDate;
-    if (state.userSelectedDate) {
-        defaultDate = state.userSelectedDate;
-    } else if (state.isEditMode && state.editDate) {
-        defaultDate = state.editDate;
-    } else {
-        defaultDate = today;
-    }
-    
-    var modeTitle = state.isEditMode ? 'EDIT SCHEDULED GAME' : 'SET UP NEW GAME';
-    var modeBadge = state.isEditMode ? '<span class="edit-badge">EDIT MODE</span>' : '';
+    var today = new Date();
+    var yyyy = today.getFullYear();
+    var mm = String(today.getMonth() + 1).padStart(2, '0');
+    var dd = String(today.getDate()).padStart(2, '0');
+    var defaultDate = yyyy + "-" + mm + "-" + dd;
     
     var html = `
         <div class="header">
-            <div class="title">📅 ${modeTitle} ${modeBadge}</div>
-            <div class="version">Version ${VERSION}</div>
+            <div class="title">⛳ SCHEDULE REAL GAME</div>
+            <div class="subtitle">Set up a new Ryder Cup match</div>
         </div>
         
-        <div class="card">
-            <div class="card-title">🎯 GAME DATE</div>
-            <div class="date-row">
-                <span class="date-label">Date of Game:</span>
-                <input type="date" id="datePicker" class="date-input" value="${defaultDate}" min="${today}" max="${maxDateStr}">
+        <div id="alertContainer"></div>
+        
+        <form id="gameForm">
+            <div class="form-group">
+                <label class="form-label">📅 GAME DATE</label>
+                <input type="date" class="form-input" id="gameDate" value="${defaultDate}" required>
             </div>
-            ${state.dateError ? '<div class="error-msg">⚠️ ' + state.dateError + '</div>' : ''}
-        </div>
+            
+            <div class="form-group">
+                <label class="form-label">🏟️ COURSE</label>
+                <div id="courseButtons" class="course-buttons">Loading courses...</div>
+            </div>
+            
+            <div class="players-grid">
+                <div class="team-section">
+                    <div class="team-title team-a">🇸🇬 TEAM A</div>
+                    <div>${DEFAULT_PLAYERS.filter(p => p.team === "A").map(p => '<div class="player-input-row"><span>' + p.name + ' (HCP ' + p.handicap + ')</span></div>').join('')}</div>
+                </div>
+                <div class="team-section">
+                    <div class="team-title team-b">🌍 TEAM B</div>
+                    <div>${DEFAULT_PLAYERS.filter(p => p.team === "B").map(p => '<div class="player-input-row"><span>' + p.name + ' (HCP ' + p.handicap + ')</span></div>').join('')}</div>
+                </div>
+            </div>
+            
+            <div class="action-buttons">
+                <button type="button" class="btn btn-secondary" id="cancelBtn">← CANCEL</button>
+                <button type="submit" class="btn btn-primary" id="saveBtn">✅ SAVE GAME</button>
+            </div>
+        </form>
         
-        <div class="card">
-            <div class="card-title">⛳ COURSE SELECTION</div>
-            <select id="courseSelect" class="course-select" onchange="changeCourse(this.value)">
-                ${courseOptions}
-            </select>
-        </div>
-        
-        <div class="card">
-            <div class="card-title">👥 PLAYER SETUP (8 Players)</div>
-            ${playersHtml}
-            ${!isValid ? '<div class="error-msg">⚠️ Each flight needs exactly 2 Team A and 2 Team B players</div>' : ''}
-        </div>
-        
-        <div class="button-group">
-            <button class="btn btn-secondary" onclick="goBack()">← Cancel</button>
-            <button class="btn btn-primary" onclick="commitGame()">✓ ${state.isEditMode ? 'UPDATE GAME' : 'COMMIT GAME'}</button>
-        </div>
-        
-        <div id="successMsg" style="display:none;" class="success-msg">✓ Game ${state.isEditMode ? 'updated' : 'scheduled'} successfully! Redirecting...</div>
-        
-        <div class="back-link" onclick="goBack()">← Back to Game Settings</div>
+        <div class="footer">SICC Ryder Cup v${VERSION}</div>
     `;
     
     document.getElementById("app").innerHTML = html;
     
-    var datePicker = document.getElementById("datePicker");
-    if (datePicker) {
-        datePicker.addEventListener("change", function() {
-            state.userSelectedDate = this.value;
-        });
-    }
-    
-    document.querySelectorAll(".player-name-input").forEach(function(el) {
-        el.addEventListener("change", function() {
-            var idx = parseInt(this.dataset.idx);
-            updatePlayerName(idx, this.value);
-        });
-    });
-    
-    document.querySelectorAll(".player-hcp-input").forEach(function(el) {
-        el.addEventListener("change", function() {
-            var idx = parseInt(this.dataset.idx);
-            updatePlayerHandicap(idx, this.value);
-        });
-    });
-    
-    document.querySelectorAll(".team-select").forEach(function(el) {
-        el.addEventListener("change", function() {
-            var idx = parseInt(this.dataset.idx);
-            updatePlayerTeam(idx, this.value);
-        });
-    });
-    
-    document.querySelectorAll(".flight-select").forEach(function(el) {
-        el.addEventListener("change", function() {
-            var idx = parseInt(this.dataset.idx);
-            updatePlayerFlight(idx, this.value);
-        });
-    });
-}
-
-window.changeCourse = function(courseId) {
-    for (var i = 0; i < state.courses.length; i++) {
-        if (state.courses[i].id === courseId) {
-            state.selectedCourseId = courseId;
-            state.selectedCourseData = state.courses[i];
-            break;
+    // Load courses and render buttons
+    loadCourses().then(function() {
+        var courseContainer = document.getElementById("courseButtons");
+        if (courseContainer && courses.length > 0) {
+            var buttonsHtml = '';
+            for (var i = 0; i < courses.length; i++) {
+                var selected = (i === 0) ? 'selected' : '';
+                buttonsHtml += `<div class="course-btn ${selected}" data-course-id="${courses[i].id}">${courses[i].name}</div>`;
+            }
+            courseContainer.innerHTML = buttonsHtml;
+            
+            // Add click handlers
+            document.querySelectorAll('.course-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.course-btn').forEach(function(b) { b.classList.remove('selected'); });
+                    this.classList.add('selected');
+                });
+            });
+        } else {
+            courseContainer.innerHTML = '<div class="alert alert-info">No courses found. Please add courses in Course Management first.</div>';
         }
-    }
-    render();
-};
-
-window.goBack = function() {
-    if (state.isEditMode) {
-        window.location.href = "manage-games.html";
-    } else {
+    }).catch(function(err) {
+        console.error("Error loading courses:", err);
+        document.getElementById("courseButtons").innerHTML = '<div class="alert alert-error">Error loading courses. Please refresh.</div>';
+    });
+    
+    document.getElementById("gameForm").addEventListener("submit", function(e) {
+        e.preventDefault();
+        var gameDate = document.getElementById("gameDate").value;
+        var selectedCourseBtn = document.querySelector('.course-btn.selected');
+        if (!selectedCourseBtn) {
+            showAlert("error", "Please select a course");
+            return;
+        }
+        var courseId = selectedCourseBtn.dataset.courseId;
+        saveGame(gameDate, courseId);
+    });
+    
+    document.getElementById("cancelBtn").addEventListener("click", function() {
         window.location.href = "admin.html";
-    }
-};
-
-window.commitGame = commitGame;
-
-function escapeHtml(str) {
-    if (!str) return "";
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === "&") return "&amp;";
-        if (m === "<") return "&lt;";
-        if (m === ">") return "&gt;";
-        return m;
     });
 }
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
-    deviceSession = session;
     displayDeviceId();
-    loadEditMode();
-    loadCourses();
+    render();
 });
 </script>
 </body>
