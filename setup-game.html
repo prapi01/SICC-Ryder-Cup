@@ -1,4 +1,4 @@
-<!-- FILE: setup-game.html - VERSION 1.09 -->
+<!-- FILE: setup-game.html - VERSION 1.10 -->
 <!-- Schedule a real Ryder Cup game -->
 <!DOCTYPE html>
 <html lang="en">
@@ -72,20 +72,30 @@
             padding: 16px;
             margin-bottom: 20px;
         }
-        .team-section { margin-bottom: 16px; }
-        .team-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #333; }
-        .team-title.team-a { color: #4caf50; }
-        .team-title.team-b { color: #ff6b6b; }
-        
-        .player-input-row {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 10px;
-            align-items: center;
+        .team-section { margin-bottom: 20px; }
+        .team-title { 
+            font-size: 1rem; 
+            font-weight: 700; 
+            margin-bottom: 12px; 
+            padding-bottom: 6px; 
+            border-bottom: 2px solid;
+            text-align: center;
         }
-        .player-name-input { flex: 2; }
-        .player-handicap-input { flex: 1; }
-        .player-label-input { flex: 1; }
+        .team-title.team-a { color: #4caf50; border-bottom-color: #4caf50; }
+        .team-title.team-b { color: #ff6b6b; border-bottom-color: #ff6b6b; }
+        
+        .player-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            background: #1a1a1a;
+            border-radius: 10px;
+        }
+        .player-name { font-weight: 500; color: #fff; }
+        .player-handicap { font-size: 0.8rem; color: #4caf50; background: rgba(76,175,80,0.2); padding: 2px 8px; border-radius: 20px; }
+        .player-label { font-size: 0.7rem; color: #888; font-family: monospace; }
         
         .action-buttons {
             display: flex;
@@ -112,11 +122,6 @@
             background: rgba(26,26,26,0.9);
             border: 1px solid #333;
             color: #ccc;
-        }
-        .btn-danger {
-            background: #3a1a1a;
-            border: 1px solid #ff6b6b;
-            color: #ff6b6b;
         }
         
         .alert {
@@ -166,14 +171,14 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.09</div>
+<div class="version-tag">v1.10</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.09
+// FILE: setup-game.html - VERSION 1.10
 // Creates REAL game documents with CONSOLIDATED structure
-// All state (scores, flags, locks) in ONE document
+// FIX: Restored Team A/B player display
 
-var VERSION = "1.09";
+var VERSION = "1.10";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -334,6 +339,34 @@ function render() {
     var dd = String(today.getDate()).padStart(2, '0');
     var defaultDate = yyyy + "-" + mm + "-" + dd;
     
+    // Separate players by team for display
+    var teamAPlayers = DEFAULT_PLAYERS.filter(function(p) { return p.team === "A"; });
+    var teamBPlayers = DEFAULT_PLAYERS.filter(function(p) { return p.team === "B"; });
+    
+    var teamAHtml = '';
+    for (var i = 0; i < teamAPlayers.length; i++) {
+        var p = teamAPlayers[i];
+        teamAHtml += `
+            <div class="player-row">
+                <span class="player-name">${escapeHtml(p.name)}</span>
+                <span class="player-handicap">HCP ${p.handicap}</span>
+                <span class="player-label">${p.label}</span>
+            </div>
+        `;
+    }
+    
+    var teamBHtml = '';
+    for (var i = 0; i < teamBPlayers.length; i++) {
+        var p = teamBPlayers[i];
+        teamBHtml += `
+            <div class="player-row">
+                <span class="player-name">${escapeHtml(p.name)}</span>
+                <span class="player-handicap">HCP ${p.handicap}</span>
+                <span class="player-label">${p.label}</span>
+            </div>
+        `;
+    }
+    
     var html = `
         <div class="header">
             <div class="title">⛳ SCHEDULE REAL GAME</div>
@@ -356,11 +389,14 @@ function render() {
             <div class="players-grid">
                 <div class="team-section">
                     <div class="team-title team-a">🇸🇬 TEAM A</div>
-                    <div>${DEFAULT_PLAYERS.filter(p => p.team === "A").map(p => '<div class="player-input-row"><span>' + p.name + ' (HCP ' + p.handicap + ')</span></div>').join('')}</div>
+                    ${teamAHtml}
                 </div>
                 <div class="team-section">
                     <div class="team-title team-b">🌍 TEAM B</div>
-                    <div>${DEFAULT_PLAYERS.filter(p => p.team === "B").map(p => '<div class="player-input-row"><span>' + p.name + ' (HCP ' + p.handicap + ')</span></div>').join('')}</div>
+                    ${teamBHtml}
+                </div>
+                <div style="font-size:0.7rem; color:#555; text-align:center; margin-top:12px; padding-top:8px; border-top:1px solid #222;">
+                    Flight 1: Ang CH, Kenneth Foo, Jeff Goh, Ong C B | Flight 2: C K, Yip H M, Piti, James Ong
                 </div>
             </div>
             
@@ -382,11 +418,10 @@ function render() {
             var buttonsHtml = '';
             for (var i = 0; i < courses.length; i++) {
                 var selected = (i === 0) ? 'selected' : '';
-                buttonsHtml += `<div class="course-btn ${selected}" data-course-id="${courses[i].id}">${courses[i].name}</div>`;
+                buttonsHtml += `<div class="course-btn ${selected}" data-course-id="${courses[i].id}">${escapeHtml(courses[i].name)}</div>`;
             }
             courseContainer.innerHTML = buttonsHtml;
             
-            // Add click handlers
             document.querySelectorAll('.course-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     document.querySelectorAll('.course-btn').forEach(function(b) { b.classList.remove('selected'); });
@@ -415,6 +450,16 @@ function render() {
     
     document.getElementById("cancelBtn").addEventListener("click", function() {
         window.location.href = "admin.html";
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
     });
 }
 
