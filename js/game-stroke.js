@@ -1,161 +1,152 @@
-// FILE: js/game2-stroke.js - VERSION 1.00
+// FILE: js/game-stroke.js - VERSION 1.01
 // Game 3: Net Stroke (1 point)
-//
-// Description:
-// Team aggregate game. All 8 players contribute to their team's total.
-// NETT = Total Gross Scores - Total Handicaps
-// Lower NETT wins the point (0.5 each if tie)
-// Strk row shows which team is leading after each hole (A, B, or AS)
+// Team aggregate NETT = Total Gross - Total Handicap
 
-var Game2Stroke = (function() {
+var GameStroke = (function() {
     
-    // Calculate team NETT strokes for a given hole progress
-    function calculateTeamNett(players, flight1Data, flight2Data, course, upToHole) {
-        var teamAPlayers = players.filter(function(p) { return p.team === "A"; });
-        var teamBPlayers = players.filter(function(p) { return p.team === "B"; });
+    // Calculate team gross total for completed holes
+    // Parameters:
+    //   allPlayers: array of all 8 players with { name, team, handicap }
+    //   flight1Scores: object mapping "flight_hole_playerIdx" to gross score
+    //   flight2Scores: object mapping "flight_hole_playerIdx" to gross score
+    //   maxCompletedHole: number of holes completed (0-18)
+    function calculate(allPlayers, flight1Scores, flight2Scores, maxCompletedHole) {
+        // Separate by team
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
         
-        var teamAGross = 0;
-        var teamBGross = 0;
-        var teamAHandicap = 0;
-        var teamBHandicap = 0;
-        
-        // Calculate total handicaps
+        // Calculate total handicaps (sum of raw handicaps)
+        var teamAHandicapTotal = 0;
         for (var i = 0; i < teamAPlayers.length; i++) {
-            teamAHandicap += teamAPlayers[i].handicap;
+            teamAHandicapTotal += teamAPlayers[i].handicap;
         }
+        
+        var teamBHandicapTotal = 0;
         for (var i = 0; i < teamBPlayers.length; i++) {
-            teamBHandicap += teamBPlayers[i].handicap;
+            teamBHandicapTotal += teamBPlayers[i].handicap;
         }
         
-        // Calculate gross scores for completed holes
-        for (var hole = 1; hole <= upToHole; hole++) {
-            var flight1HoleData = Game2Data.parseHoleData(flight1Data, hole);
-            var flight2HoleData = Game2Data.parseHoleData(flight2Data, hole);
+        // Arrays to store running NETT totals after each hole
+        var teamANettAfterHole = new Array(18).fill(null);
+        var teamBNettAfterHole = new Array(18).fill(null);
+        var strkDisplay = new Array(18).fill("-");
+        
+        var teamAGrossRunning = 0;
+        var teamBGrossRunning = 0;
+        
+        // For each completed hole (in play order)
+        for (var pos = 0; pos < maxCompletedHole; pos++) {
+            var actualHole = GameData.getHoleAtStoragePosition(pos);
             
-            // Both flights must have saved the hole for it to count
-            if (flight1HoleData && flight1HoleData.saved && flight2HoleData && flight2HoleData.saved) {
-                // Flight 1 players (2 A, 2 B)
-                var f1A1 = flight1HoleData.scores.a1;
-                var f1A2 = flight1HoleData.scores.a2;
-                var f1B1 = flight1HoleData.scores.b1;
-                var f1B2 = flight1HoleData.scores.b2;
-                
-                // Flight 2 players (2 A, 2 B)
-                var f2A1 = flight2HoleData.scores.a1;
-                var f2A2 = flight2HoleData.scores.a2;
-                var f2B1 = flight2HoleData.scores.b1;
-                var f2B2 = flight2HoleData.scores.b2;
-                
-                // Team A gross = all A players from both flights
-                teamAGross += f1A1 + f1A2 + f2A1 + f2A2;
-                
-                // Team B gross = all B players from both flights
-                teamBGross += f1B1 + f1B2 + f2B1 + f2B2;
-            }
-        }
-        
-        var teamANett = teamAGross - teamAHandicap;
-        var teamBNett = teamBGross - teamBHandicap;
-        
-        return {
-            teamANett: teamANett,
-            teamBNett: teamBNett,
-            teamAGross: teamAGross,
-            teamBGross: teamBGross,
-            teamAHandicap: teamAHandicap,
-            teamBHandicap: teamBHandicap
-        };
-    }
-    
-    // Get running stroke result after each hole (Strk row)
-    function getStrokeRow(players, flight1Data, flight2Data, course, upToHole) {
-        var strkRow = new Array(18).fill("-");
-        var strkTotal = "-";
-        var lastLeader = null;
-        
-        for (var hole = 1; hole <= upToHole; hole++) {
-            var flight1HoleData = Game2Data.parseHoleData(flight1Data, hole);
-            var flight2HoleData = Game2Data.parseHoleData(flight2Data, hole);
+            // Calculate gross total for this hole for both teams
+            var holeGrossA = 0;
+            var holeGrossB = 0;
             
-            // Both flights must have saved the hole for it to count
-            if (flight1HoleData && flight1HoleData.saved && flight2HoleData && flight2HoleData.saved) {
-                // Calculate NETT up to this hole
-                var result = calculateTeamNett(players, flight1Data, flight2Data, course, hole);
+            // Team A players
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                var p = teamAPlayers[i];
+                var flight = p.flight;
+                var playerIdx = findPlayerIndex(p.name, allPlayers);
+                var scoreKey = flight + "_" + actualHole + "_" + playerIdx;
                 
-                if (result.teamANett < result.teamBNett) {
-                    strkRow[hole - 1] = "A";
-                    lastLeader = "A";
-                } else if (result.teamBNett < result.teamANett) {
-                    strkRow[hole - 1] = "B";
-                    lastLeader = "B";
+                var score = null;
+                if (flight === 1) {
+                    score = flight1Scores[scoreKey];
                 } else {
-                    strkRow[hole - 1] = "AS";
-                    lastLeader = "AS";
+                    score = flight2Scores[scoreKey];
                 }
-            } else if (lastLeader !== null) {
-                // Carry forward last known result
-                strkRow[hole - 1] = lastLeader;
+                
+                if (score !== undefined && score !== null) {
+                    holeGrossA += score;
+                }
+            }
+            
+            // Team B players
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                var p = teamBPlayers[i];
+                var flight = p.flight;
+                var playerIdx = findPlayerIndex(p.name, allPlayers);
+                var scoreKey = flight + "_" + actualHole + "_" + playerIdx;
+                
+                var score = null;
+                if (flight === 1) {
+                    score = flight1Scores[scoreKey];
+                } else {
+                    score = flight2Scores[scoreKey];
+                }
+                
+                if (score !== undefined && score !== null) {
+                    holeGrossB += score;
+                }
+            }
+            
+            // Update running gross totals
+            teamAGrossRunning += holeGrossA;
+            teamBGrossRunning += holeGrossB;
+            
+            // Calculate NETT = Gross - Total Handicap
+            var teamANett = teamAGrossRunning - teamAHandicapTotal;
+            var teamBNett = teamBGrossRunning - teamBHandicapTotal;
+            
+            teamANettAfterHole[actualHole - 1] = teamANett;
+            teamBNettAfterHole[actualHole - 1] = teamBNett;
+            
+            // Determine leader for Strk row
+            if (teamANett < teamBNett) {
+                strkDisplay[actualHole - 1] = "A";
+            } else if (teamBNett < teamANett) {
+                strkDisplay[actualHole - 1] = "B";
+            } else {
+                strkDisplay[actualHole - 1] = "AS";
             }
         }
         
-        // Determine total (last non-empty value)
-        for (var h = upToHole - 1; h >= 0; h--) {
-            if (strkRow[h] !== "-") {
-                strkTotal = strkRow[h];
-                break;
+        // Determine final winner (after 18 holes)
+        var teamAPoints = 0.5;
+        var teamBPoints = 0.5;
+        var finalNettA = null;
+        var finalNettB = null;
+        
+        if (maxCompletedHole === 18) {
+            finalNettA = teamANettAfterHole[17];
+            finalNettB = teamBNettAfterHole[17];
+            
+            if (finalNettA < finalNettB) {
+                teamAPoints = 1;
+                teamBPoints = 0;
+            } else if (finalNettB < finalNettA) {
+                teamAPoints = 0;
+                teamBPoints = 1;
+            } else {
+                teamAPoints = 0.5;
+                teamBPoints = 0.5;
             }
         }
         
+        var finalStrk = (maxCompletedHole > 0) ? strkDisplay[maxCompletedHole - 1] : "-";
+        
+        console.log("Game 3 Results - Team A NETT:", finalNettA, "Team B NETT:", finalNettB);
+        console.log("Game 3 Points - Team A:", teamAPoints, "Team B:", teamBPoints);
+        
         return {
-            strkRow: strkRow,
-            strkTotal: strkTotal
+            teamAPoints: teamAPoints,
+            teamBPoints: teamBPoints,
+            strkRow: strkDisplay,      // Array of "A"/"AS"/"B" per hole
+            strkTotal: finalStrk,
+            teamANett: teamANettAfterHole,
+            teamBNett: teamBNettAfterHole
         };
     }
     
-    // Get final stroke result after all holes
-    function getFinalResult(players, flight1Data, flight2Data, course, upToHole) {
-        var result = calculateTeamNett(players, flight1Data, flight2Data, course, upToHole);
-        
-        var winner = null;
-        var points = 0;
-        
-        if (result.teamANett < result.teamBNett) {
-            winner = "A";
-            points = 1;
-        } else if (result.teamBNett < result.teamANett) {
-            winner = "B";
-            points = 1;
-        } else {
-            winner = "TIE";
-            points = 0.5;
+    // Helper to find player index in allPlayers array
+    function findPlayerIndex(playerName, allPlayers) {
+        for (var i = 0; i < allPlayers.length; i++) {
+            if (allPlayers[i].name === playerName) return i;
         }
-        
-        return {
-            winner: winner,
-            points: points,
-            teamANett: result.teamANett,
-            teamBNett: result.teamBNett
-        };
+        return -1;
     }
     
-    // Get total points for Game 3
-    function getTotalPoints(players, flight1Data, flight2Data, course, upToHole) {
-        var result = getFinalResult(players, flight1Data, flight2Data, course, upToHole);
-        
-        if (result.winner === "A") {
-            return { teamAPoints: 1, teamBPoints: 0 };
-        } else if (result.winner === "B") {
-            return { teamAPoints: 0, teamBPoints: 1 };
-        } else {
-            return { teamAPoints: 0.5, teamBPoints: 0.5 };
-        }
-    }
-    
-    // Public API
     return {
-        calculateTeamNett: calculateTeamNett,
-        getStrokeRow: getStrokeRow,
-        getFinalResult: getFinalResult,
-        getTotalPoints: getTotalPoints
+        calculate: calculate
     };
 })();
