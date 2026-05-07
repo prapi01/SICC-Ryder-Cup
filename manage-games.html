@@ -1,3 +1,5 @@
+<!-- FILE: manage-games.html - VERSION 1.05 -->
+<!-- Manage scheduled games - Edit or Delete upcoming games -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -74,196 +76,197 @@
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.04</div>
+<div class="version-tag">v1.05</div>
 
 <script>
-    var VERSION = "1.04";
-    var CACHE_KEY = "manage_games_version";
-    
-    var storedVersion = localStorage.getItem(CACHE_KEY);
-    if (storedVersion !== VERSION) {
-        localStorage.setItem(CACHE_KEY, VERSION);
-        window.location.href = window.location.pathname + "?v=" + VERSION;
+// FILE: manage-games.html - VERSION 1.05
+
+var VERSION = "1.05";
+var CACHE_KEY = "manage_games_version";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== VERSION) {
+    localStorage.setItem(CACHE_KEY, VERSION);
+    window.location.href = window.location.pathname + "?v=" + VERSION;
+}
+
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+var db = null;
+var firestoreReady = false;
+var deviceSession = null;
+
+try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    firestoreReady = true;
+    console.log("Firebase ready - v" + VERSION);
+} catch(e) { 
+    console.warn(e);
+}
+
+function displayDeviceId() {
+    var deviceDisplay = SessionManager.getDeviceIdDisplay();
+    document.getElementById("deviceTag").innerHTML = deviceDisplay;
+}
+
+function formatDate(dateString) {
+    var parts = dateString.split('-');
+    if (parts.length === 3) {
+        var day = parts[2];
+        var month = parts[1];
+        var year = parts[0];
+        return day + '/' + month + '/' + year;
     }
-    
-    var FIREBASE_CONFIG = {
-        apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-        authDomain: "sicc-ryder-cup.firebaseapp.com",
-        projectId: "sicc-ryder-cup",
-        storageBucket: "sicc-ryder-cup.firebasestorage.app",
-        messagingSenderId: "137641493845",
-        appId: "1:137641493845:web:32399940bce639b01ddbdc"
-    };
-    
-    var db = null;
-    var firestoreReady = false;
-    var deviceSession = null;
-    
-    try {
-        firebase.initializeApp(FIREBASE_CONFIG);
-        db = firebase.firestore();
-        firestoreReady = true;
-        console.log("Firebase ready - v" + VERSION);
-    } catch(e) { 
-        console.warn(e);
-    }
-    
-    function displayDeviceId() {
-        var deviceDisplay = SessionManager.getDeviceIdDisplay();
-        document.getElementById("deviceTag").innerHTML = deviceDisplay;
-    }
-    
-    function formatDate(dateString) {
-        var parts = dateString.split('-');
-        if (parts.length === 3) {
-            var day = parts[2];
-            var month = parts[1];
-            var year = parts[0];
-            return day + '/' + month + '/' + year;
-        }
-        return dateString;
-    }
-    
-    function deleteGame(gameId, gameDate) {
-        if (confirm("Delete scheduled game on " + gameDate + "? This action cannot be undone.")) {
-            SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
-            db.collection("scheduledGames").doc(gameId).delete().then(function() {
-                loadAndRender();
-            }).catch(function(e) {
-                alert("Error deleting game: " + e.message);
-            });
-        }
-    }
-    
-    function editGame(gameId) {
-        SessionManager.addNavigationHistory("setup-game.html", "game_edit", { gameId: gameId });
-        db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
-            if (doc.exists) {
-                var gameData = doc.data();
-                gameData.id = doc.id;
-                sessionStorage.setItem("editGameData", JSON.stringify(gameData));
-                window.location.href = "setup-game.html?mode=edit";
-            } else {
-                alert("Game not found");
-            }
+    return dateString;
+}
+
+function deleteGame(gameId, gameDate) {
+    if (confirm("Delete scheduled game on " + gameDate + "? This action cannot be undone.")) {
+        SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
+        db.collection("scheduledGames").doc(gameId).delete().then(function() {
+            loadAndRender();
         }).catch(function(e) {
-            alert("Error loading game: " + e.message);
+            alert("Error deleting game: " + e.message);
         });
     }
-    
-    function goBackToSettings() {
-        var returnDest = SessionManager.getReturnDestination();
-        window.location.href = returnDest;
+}
+
+function editGame(gameId) {
+    SessionManager.addNavigationHistory("setup-game.html", "game_edit", { gameId: gameId });
+    db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+        if (doc.exists) {
+            var gameData = doc.data();
+            gameData.id = doc.id;
+            sessionStorage.setItem("editGameData", JSON.stringify(gameData));
+            window.location.href = "setup-game.html?mode=edit";
+        } else {
+            alert("Game not found");
+        }
+    }).catch(function(e) {
+        alert("Error loading game: " + e.message);
+    });
+}
+
+function goBackToSettings() {
+    var returnDest = SessionManager.getReturnDestination();
+    window.location.href = returnDest;
+}
+
+function loadAndRender() {
+    if (!firestoreReady) {
+        document.getElementById("app").innerHTML = '<div class="loading">Connecting to server...</div>';
+        return;
     }
     
-    function loadAndRender() {
-        if (!firestoreReady) {
-            document.getElementById("app").innerHTML = '<div class="loading">Connecting to server...</div>';
-            return;
-        }
-        
-        var today = new Date();
-        today.setHours(0, 0, 0, 0);
-        var todayStr = today.toISOString().split('T')[0];
-        
-        db.collection("scheduledGames").get().then(function(snapshot) {
-            var games = [];
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                if (data.date >= todayStr) {
-                    games.push({ id: doc.id, date: data.date, course: data.course, players: data.players });
-                }
-            });
-            
-            games.sort(function(a, b) {
-                if (a.date < b.date) return -1;
-                if (a.date > b.date) return 1;
-                return 0;
-            });
-            
-            if (games.length === 0) {
-                document.getElementById("app").innerHTML = `
-                    <div class="header">
-                        <div class="title">📋 MANAGE SCHEDULED GAMES</div>
-                        <div class="version">Version ${VERSION}</div>
-                    </div>
-                    <div class="card">
-                        <div class="card-title">Upcoming Games</div>
-                        <div class="empty-msg">No scheduled games found.</div>
-                    </div>
-                    <div class="back-btn" onclick="goBackToSettings()">
-                        <div class="label">← Back to Game Settings</div>
-                    </div>
-                `;
-                return;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var todayStr = today.toISOString().split('T')[0];
+    
+    db.collection("scheduledGames").get().then(function(snapshot) {
+        var games = [];
+        snapshot.forEach(function(doc) {
+            var data = doc.data();
+            if (data.date >= todayStr) {
+                games.push({ id: doc.id, date: data.date, course: data.course, players: data.players });
             }
-            
-            var gamesHtml = '';
-            for (var i = 0; i < games.length; i++) {
-                var game = games[i];
-                var formattedDate = formatDate(game.date);
-                var courseName = game.course ? game.course.name : 'Unknown Course';
-                var playerCount = game.players ? game.players.length : 0;
-                
-                gamesHtml += `
-                    <div class="game-item">
-                        <div class="game-info">
-                            <div class="game-date">📅 ${formattedDate}</div>
-                            <div class="game-course">⛳ ${escapeHtml(courseName)}</div>
-                            <div class="game-players">👥 ${playerCount} players</div>
-                        </div>
-                        <div class="game-actions">
-                            <button class="btn-edit" onclick="editGame('${game.id}')">✏️ EDIT</button>
-                            <button class="btn-delete" onclick="deleteGame('${game.id}', '${formattedDate}')">🗑️ DELETE</button>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            var html = `
+        });
+        
+        games.sort(function(a, b) {
+            if (a.date < b.date) return -1;
+            if (a.date > b.date) return 1;
+            return 0;
+        });
+        
+        if (games.length === 0) {
+            document.getElementById("app").innerHTML = `
                 <div class="header">
                     <div class="title">📋 MANAGE SCHEDULED GAMES</div>
                     <div class="version">Version ${VERSION}</div>
                 </div>
                 <div class="card">
                     <div class="card-title">Upcoming Games</div>
-                    <div class="game-list">
-                        ${gamesHtml}
-                    </div>
+                    <div class="empty-msg">No scheduled games found.</div>
                 </div>
                 <div class="back-btn" onclick="goBackToSettings()">
                     <div class="label">← Back to Game Settings</div>
                 </div>
             `;
+            return;
+        }
+        
+        var gamesHtml = '';
+        for (var i = 0; i < games.length; i++) {
+            var game = games[i];
+            var formattedDate = formatDate(game.date);
+            var courseName = game.course ? game.course.name : 'Unknown Course';
+            var playerCount = game.players ? game.players.length : 0;
             
-            document.getElementById("app").innerHTML = html;
-        }).catch(function(e) {
-            console.warn(e);
-            document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
-        });
-    }
-    
-    window.deleteGame = deleteGame;
-    window.editGame = editGame;
-    window.goBackToSettings = goBackToSettings;
-    
-    function escapeHtml(str) {
-        if (!str) return "";
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === "&") return "&amp;";
-            if (m === "<") return "&lt;";
-            if (m === ">") return "&gt;";
-            return m;
-        });
-    }
-    
-    // Initialize session first, then load games
-    SessionManager.initSession("manage-games.html", "admin.html", function(session) {
-        console.log("Session initialized:", session);
-        deviceSession = session;
-        displayDeviceId();
-        loadAndRender();
+            gamesHtml += `
+                <div class="game-item">
+                    <div class="game-info">
+                        <div class="game-date">📅 ${formattedDate}</div>
+                        <div class="game-course">⛳ ${escapeHtml(courseName)}</div>
+                        <div class="game-players">👥 ${playerCount} players</div>
+                    </div>
+                    <div class="game-actions">
+                        <button class="btn-edit" onclick="editGame('${game.id}')">✏️ EDIT</button>
+                        <button class="btn-delete" onclick="deleteGame('${game.id}', '${formattedDate}')">🗑️ DELETE</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        var html = `
+            <div class="header">
+                <div class="title">📋 MANAGE SCHEDULED GAMES</div>
+                <div class="version">Version ${VERSION}</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Upcoming Games</div>
+                <div class="game-list">
+                    ${gamesHtml}
+                </div>
+            </div>
+            <div class="back-btn" onclick="goBackToSettings()">
+                <div class="label">← Back to Game Settings</div>
+            </div>
+        `;
+        
+        document.getElementById("app").innerHTML = html;
+    }).catch(function(e) {
+        console.warn(e);
+        document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
     });
+}
+
+window.deleteGame = deleteGame;
+window.editGame = editGame;
+window.goBackToSettings = goBackToSettings;
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
+    });
+}
+
+SessionManager.initSession("manage-games.html", "admin.html", function(session) {
+    console.log("Session initialized:", session);
+    deviceSession = session;
+    displayDeviceId();
+    loadAndRender();
+});
 </script>
 </body>
 </html>
