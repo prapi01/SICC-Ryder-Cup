@@ -1,6 +1,4 @@
-<!-- FILE: pre-game.html - VERSION 2.29 -->
-<!-- Role selection and verification before game -->
-<!-- REMOVED: PRACTICE mode (only REAL and PREVIEW remain) -->
+<!-- FILE: pre-game.html - VERSION 2.30 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -327,15 +325,13 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.29</div>
+<div class="version-tag">v2.30</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.29
-// REMOVED: PRACTICE mode - only REAL and PREVIEW remain
-// REAL mode: auto-reset on first device of game day
-// PREVIEW mode: modal with RESET/CONTINUE when data exists
+// FILE: pre-game.html - VERSION 2.30
+// SORT: Players by handicap (lowest to highest) within each team (same as game page)
 
-var VERSION = "2.29";
+var VERSION = "2.30";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -788,12 +784,13 @@ function render() {
     }
     
     var flight1Players = players.filter(function(p) { return p.flight === 1; });
-    var flight1A = flight1Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.name.localeCompare(b.name); });
-    var flight1B = flight1Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+    // UPDATED: Sort by handicap (lowest to highest) - same as game page
+    var flight1A = flight1Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var flight1B = flight1Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
     var flight2Players = players.filter(function(p) { return p.flight === 2; });
-    var flight2A = flight2Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.name.localeCompare(b.name); });
-    var flight2B = flight2Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+    var flight2A = flight2Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var flight2B = flight2Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
     function renderTeam(teamPlayers) {
         var html = '';
