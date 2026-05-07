@@ -1,7 +1,5 @@
-// FILE: js/game-controller.js - VERSION 1.12
-// INTEGRATED: Game 1 (Match Play), Game 2 (Team Game), Game 3 (Net Stroke)
-// SUPPORTS: previewSandboxes collection (via GameData)
-// All three games calculate correctly and feed into TR
+// FILE: js/game-controller.js - VERSION 1.13
+// ADDED: Enhanced logging for match bubble debugging
 
 var GameController = (function() {
     
@@ -85,10 +83,13 @@ var GameController = (function() {
     // ============================================================
     
     function calculateMatchBubblesForFlight(players, scores, savedHoles, flight, currentHoleForFlight, maxCompletedHole) {
+        console.log("calculateMatchBubblesForFlight: flight=", flight, "maxCompletedHole=", maxCompletedHole);
+        
         var bubbles = {};
         
         // If no holes completed, return all "AS"
         if (maxCompletedHole === 0) {
+            console.log("No holes completed - returning all AS for flight", flight);
             var flightPlayers = players.filter(function(p) { return p.flight === flight; });
             for (var i = 0; i < flightPlayers.length; i++) {
                 var playerA = flightPlayers[i];
@@ -105,6 +106,8 @@ var GameController = (function() {
         
         var flightPlayers = players.filter(function(p) { return p.flight === flight; });
         var courseSi = currentCourse ? currentCourse.si : null;
+        
+        console.log("Calculating match bubbles for flight", flight, "with", flightPlayers.length, "players");
         
         for (var i = 0; i < flightPlayers.length; i++) {
             var playerA = flightPlayers[i];
@@ -125,6 +128,7 @@ var GameController = (function() {
                 }
             }
         }
+        console.log("Match bubbles calculated for flight", flight, Object.keys(bubbles).length, "matches");
         return bubbles;
     }
     
@@ -184,6 +188,8 @@ var GameController = (function() {
     }
     
     function calculateGame2Points(players, flight1Data, flight2Data, maxCompletedHole, courseSi, flight1Scores, flight2Scores) {
+        console.log("Game2: maxCompletedHole =", maxCompletedHole);
+        
         if (maxCompletedHole === 0) {
             return {
                 teamAPoints: 1,
@@ -199,6 +205,8 @@ var GameController = (function() {
     }
     
     function calculateGame3Points(players, flight1Data, flight2Data, maxCompletedHole, course, flight1Scores, flight2Scores) {
+        console.log("Game3: maxCompletedHole =", maxCompletedHole);
+        
         if (maxCompletedHole === 0) {
             var strkRow = new Array(18).fill("-");
             return {
@@ -245,7 +253,9 @@ var GameController = (function() {
                 var f2Hole = GameData.parseHoleData(flight2Data, actualHole);
                 if (f1Hole && f1Hole.saved && f2Hole && f2Hole.saved) {
                     maxCompletedHole = pos + 1;
+                    console.log("Hole", pos + 1, "(actual", actualHole, ") completed - saved:", f1Hole.saved, f2Hole.saved);
                 } else {
+                    console.log("Hole", pos + 1, "(actual", actualHole, ") NOT completed - f1.saved:", f1Hole ? f1Hole.saved : "no data", "f2.saved:", f2Hole ? f2Hole.saved : "no data");
                     break;
                 }
             }
@@ -319,6 +329,8 @@ var GameController = (function() {
             // Calculate match bubbles
             var matchBubbles = calculateMatchBubbles(currentPlayers, displayScores, displaySavedHoles, currentHoleByFlight, maxCompletedHole);
             
+            console.log("Match bubbles sample:", Object.keys(matchBubbles).slice(0, 3).map(function(k) { return k + ":" + matchBubbles[k]; }));
+            
             var newUIData = {
                 players: currentPlayers,
                 course: currentCourse,
@@ -370,12 +382,15 @@ var GameController = (function() {
         if (refreshInterval) clearInterval(refreshInterval);
         refreshInterval = setInterval(function() {
             if (gameDataLoaded && !isRefreshing) {
+                console.log("GameController: Auto-refresh timer fired, checking events...");
                 if (GameData.hasPendingCrossEvent() || GameData.hasPendingSaveEvent()) {
                     console.log("GameController: Auto-refresh triggered");
                     localScores = {};
                     crd();
                     GameData.clearCrossEvent();
                     GameData.clearSaveEvent();
+                } else {
+                    console.log("GameController: Auto-refresh - no pending events");
                 }
             }
         }, 30000);
@@ -538,7 +553,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.12...");
+        console.log("GameController: Initializing v1.13...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
