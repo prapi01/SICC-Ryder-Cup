@@ -1,5 +1,8 @@
-// FILE: js/game-controller.js - VERSION 1.16
-// ADDED: flight1Started, flight2Started flags based on saved holes
+// FILE: js/game-controller.js - VERSION 1.17
+// IMPLEMENTS VDN #006: Bubble ownership model with cross-flight sync status
+// - Intra-flight bubbles update immediately after that flight saves
+// - Cross-flight bubbles only update when both flights have saved same hole
+// - Grey cross-flight bubbles indicate out-of-sync (showing last synced hole result)
 
 var GameController = (function() {
     
@@ -17,6 +20,9 @@ var GameController = (function() {
     var startingHole = 1;
     
     var localScores = {};
+    
+    // Track the highest hole where both flights have saved
+    var lastSyncedHole = 0;
     
     function findPlayerIndex(playerName) {
         if (!currentPlayers || !currentPlayers.length) return -1;
@@ -74,7 +80,8 @@ var GameController = (function() {
         }
     }
     
-    function calculateMatchBubblesForFlight(players, scores, savedHoles, flight, currentHoleForFlight, maxCompletedHole) {
+    // Calculate ONLY intra-flight bubbles for a specific flight
+    function calculateIntraFlightBubbles(players, scores, flight, currentHoleForFlight) {
         var bubbles = {};
         var flightPlayers = players.filter(function(p) { return p.flight === flight; });
         var courseSi = currentCourse ? currentCourse.si : null;
@@ -86,10 +93,12 @@ var GameController = (function() {
                 if (playerA.team !== playerB.team) {
                     var key = playerA.name + "_vs_" + playerB.name;
                     var upToHole = currentHoleForFlight;
-                    var flightSavedHoles = savedHoles[flight] || [];
+                    var flightSavedHoles = []; // Use current hole as upToHole
+                    
                     var result = GameMatch.getMatchResult(
                         playerA, playerB, scores, flightSavedHoles, players, upToHole, courseSi
                     );
+                    
                     if (result === "⏳") {
                         result = "AS";
                     }
@@ -98,39 +107,61 @@ var GameController = (function() {
             }
         }
         
+        return bubbles;
+    }
+    
+    // Calculate ALL bubbles (intra + cross) for a flight when synced
+    function calculateAllBubblesForFlight(players, scores, savedHoles, flight, currentHoleForFlight, maxCompletedHole) {
+        var bubbles = {};
+        var flightPlayers = players.filter(function(p) { return p.flight === flight; });
+        var courseSi = currentCourse ? currentCourse.si : null;
+        
+        // Intra-flight bubbles
         for (var i = 0; i < flightPlayers.length; i++) {
             var playerA = flightPlayers[i];
-            for (var j = 0; j < players.length; j++) {
-                var playerB = players[j];
-                if (playerA.team !== playerB.team && playerA.flight !== playerB.flight) {
+            for (var j = 0; j < flightPlayers.length; j++) {
+                var playerB = flightPlayers[j];
+                if (playerA.team !== playerB.team) {
                     var key = playerA.name + "_vs_" + playerB.name;
-                    if (maxCompletedHole > 0) {
-                        var upToHole = currentHoleForFlight;
+                    var upToHole = currentHoleForFlight;
+                    var flightSavedHoles = savedHoles[flight] || [];
+                    
+                    var result = GameMatch.getMatchResult(
+                        playerA, playerB, scores, flightSavedHoles, players, upToHole, courseSi
+                    );
+                    
+                    if (result === "⏳") {
+                        result = "AS";
+                    }
+                    bubbles[key] = result;
+                }
+            }
+        }
+        
+        // Cross-flight bubbles (only if synced)
+        if (maxCompletedHole > 0) {
+            for (var i = 0; i < flightPlayers.length; i++) {
+                var playerA = flightPlayers[i];
+                for (var j = 0; j < players.length; j++) {
+                    var playerB = players[j];
+                    if (playerA.team !== playerB.team && playerA.flight !== playerB.flight) {
+                        var key = playerA.name + "_vs_" + playerB.name;
+                        var upToHole = maxCompletedHole;
+                        
                         var result = GameMatch.getMatchResult(
                             playerA, playerB, scores, savedHoles, players, upToHole, courseSi
                         );
+                        
                         if (result === "⏳") {
                             result = "AS";
                         }
                         bubbles[key] = result;
-                    } else {
-                        bubbles[key] = "AS";
                     }
                 }
             }
         }
         
         return bubbles;
-    }
-    
-    function calculateMatchBubbles(players, scores, savedHoles, currentHoleByFlight, maxCompletedHole) {
-        var allBubbles = {};
-        var flight1Bubbles = calculateMatchBubblesForFlight(players, scores, savedHoles, 1, currentHoleByFlight[1], maxCompletedHole);
-        var flight2Bubbles = calculateMatchBubblesForFlight(players, scores, savedHoles, 2, currentHoleByFlight[2], maxCompletedHole);
-        
-        for (var key in flight1Bubbles) allBubbles[key] = flight1Bubbles[key];
-        for (var key in flight2Bubbles) allBubbles[key] = flight2Bubbles[key];
-        return allBubbles;
     }
     
     function calculateGame1Points(players, flight1Data, flight2Data, maxCompletedHole) {
@@ -219,6 +250,7 @@ var GameController = (function() {
             var flight1Data = GameData.getFlightData(1).data;
             var flight2Data = GameData.getFlightData(2).data;
             
+            // Find max completed hole (both flights have saved)
             var maxCompletedHole = 0;
             for (var pos = 0; pos < 18; pos++) {
                 var actualHole = GameData.getHoleAtStoragePosition(pos);
@@ -230,6 +262,9 @@ var GameController = (function() {
                     break;
                 }
             }
+            
+            // Update lastSyncedHole
+            lastSyncedHole = maxCompletedHole;
             
             var displayScores = {};
             for (var flight = 1; flight <= 2; flight++) {
@@ -276,6 +311,7 @@ var GameController = (function() {
             var modeDisplay = GameData.getModeDisplay();
             var modeClass = GameData.getModeClass();
             
+            // Build saved holes arrays
             var displaySavedHoles = { 1: [], 2: [] };
             for (var pos = 0; pos < 18; pos++) {
                 var actualHole = GameData.getHoleAtStoragePosition(pos);
@@ -285,9 +321,25 @@ var GameController = (function() {
                 if (f2Data && f2Data.saved) displaySavedHoles[2].push(actualHole);
             }
             
-            var matchBubbles = calculateMatchBubbles(currentPlayers, displayScores, displaySavedHoles, currentHoleByFlight, maxCompletedHole);
+            // Calculate match bubbles based on sync status
+            var matchBubbles = {};
             
-            // NEW: Per-flight started flags
+            if (maxCompletedHole === 0) {
+                // Case 1: No holes synced yet - only intra-flight bubbles for the active flight
+                var activeFlightBubbles = calculateIntraFlightBubbles(currentPlayers, displayScores, activeFlight, currentHole);
+                for (var key in activeFlightBubbles) {
+                    matchBubbles[key] = activeFlightBubbles[key];
+                }
+                // Other flight's bubbles will be empty (default AS in UI)
+            } else {
+                // Case 2: Some holes synced - calculate all bubbles for both flights
+                var flight1AllBubbles = calculateAllBubblesForFlight(currentPlayers, displayScores, displaySavedHoles, 1, currentHole, maxCompletedHole);
+                var flight2AllBubbles = calculateAllBubblesForFlight(currentPlayers, displayScores, displaySavedHoles, 2, currentHole, maxCompletedHole);
+                
+                for (var key in flight1AllBubbles) matchBubbles[key] = flight1AllBubbles[key];
+                for (var key in flight2AllBubbles) matchBubbles[key] = flight2AllBubbles[key];
+            }
+            
             var flight1Started = (displaySavedHoles[1].length > 0);
             var flight2Started = (displaySavedHoles[2].length > 0);
             
@@ -322,7 +374,8 @@ var GameController = (function() {
                 playOrder: GameData.getPlayOrder(),
                 naturalOrder: GameData.getNaturalOrder(),
                 flight1Started: flight1Started,
-                flight2Started: flight2Started
+                flight2Started: flight2Started,
+                lastSyncedHole: lastSyncedHole
             };
             
             if (typeof window.updateGameUI === 'function') {
@@ -470,7 +523,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.16...");
+        console.log("GameController: Initializing v1.17...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
