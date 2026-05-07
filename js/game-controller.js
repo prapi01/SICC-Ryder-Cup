@@ -1,5 +1,6 @@
-// FILE: js/game-controller.js - VERSION 1.11
+// FILE: js/game-controller.js - VERSION 1.12
 // INTEGRATED: Game 1 (Match Play), Game 2 (Team Game), Game 3 (Net Stroke)
+// SUPPORTS: previewSandboxes collection (via GameData)
 // All three games calculate correctly and feed into TR
 
 var GameController = (function() {
@@ -183,7 +184,6 @@ var GameController = (function() {
     }
     
     function calculateGame2Points(players, flight1Data, flight2Data, maxCompletedHole, courseSi, flight1Scores, flight2Scores) {
-        // If no holes completed, return default display (all "-")
         if (maxCompletedHole === 0) {
             return {
                 teamAPoints: 1,
@@ -195,17 +195,10 @@ var GameController = (function() {
             };
         }
         
-        // Pass the scores to GameTeam.calculate
-        var allScores = {};
-        // Merge flight1Scores and flight2Scores
-        for (var key in flight1Scores) allScores[key] = flight1Scores[key];
-        for (var key in flight2Scores) allScores[key] = flight2Scores[key];
-        
         return GameTeam.calculate(players, flight1Scores, flight2Scores, maxCompletedHole, courseSi);
     }
     
     function calculateGame3Points(players, flight1Data, flight2Data, maxCompletedHole, course, flight1Scores, flight2Scores) {
-        // If no holes completed, return default
         if (maxCompletedHole === 0) {
             var strkRow = new Array(18).fill("-");
             return {
@@ -545,7 +538,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.11...");
+        console.log("GameController: Initializing v1.12...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
