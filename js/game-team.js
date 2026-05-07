@@ -1,324 +1,247 @@
-// FILE: js/game2-team.js - VERSION 1.00
+// FILE: js/game-team.js - VERSION 1.01
 // Game 2: Team Game (2 points)
-// 
-// Description:
-// The 8 players are divided into two flights of 4 players each (2 Team A + 2 Team B per flight).
-// Each flight competes separately for 1 point.
-//
-// Per hole calculation:
-// 1. Calculate effective handicaps (zero-rising within the flight)
-// 2. Calculate strokes received per hole based on SI
-// 3. Calculate NETT scores (Gross - Strokes)
-// 4. Match Best NETT of Team A vs Best NETT of Team B (1 point)
-// 5. Match Second best NETT of Team A vs Second best NETT of Team B (1 point)
-// 6. Total per hole = max 2 points
-// 7. Cumulative points determine flight winner after 18 holes
+// Zero-rise handicapping within each flight
+// Per-hole matches: best A net vs best B net, second A net vs second B net
 
-var Game2Team = (function() {
+var GameTeam = (function() {
     
-    // Calculate strokes received for a hole based on effective handicap and SI
-    function getStrokesForHole(effectiveHcp, si, holeNumber) {
-        var holeSi = si[holeNumber - 1];
-        var strokes = 0;
-        
-        // Each full handicap point gives a stroke on holes where SI <= handicap
-        if (effectiveHcp >= holeSi) {
-            strokes = 1;
-        }
-        // Additional strokes for handicaps > 18
-        if (effectiveHcp > 18) {
-            strokes += Math.floor((effectiveHcp - 18) / 18);
-        }
-        return strokes;
+    // Get strokes for a player on a specific hole based on effective handicap
+    // effectiveHcp: handicap after zero-rise (0-54)
+    // holeNumber: 1-18
+    // courseSi: array of 18 SI values
+    function getStrokesForHole(effectiveHcp, holeNumber, courseSi) {
+        if (effectiveHcp <= 0) return 0;
+        var holeSi = courseSi[holeNumber - 1];
+        return (holeSi <= effectiveHcp) ? 1 : 0;
     }
     
-    // Calculate NETT score
-    function calculateNettScore(grossScore, strokesReceived) {
-        return grossScore - strokesReceived;
+    // Calculate net score for a player on a specific hole
+    function getNetScore(grossScore, effectiveHcp, holeNumber, courseSi) {
+        var strokes = getStrokesForHole(effectiveHcp, holeNumber, courseSi);
+        return grossScore - strokes;
     }
     
-    // Calculate effective handicaps for a flight (zero-rising)
-    function calculateEffectiveHandicaps(playersInFlight) {
-        // Find lowest handicap in the flight
-        var lowestHcp = 999;
-        for (var i = 0; i < playersInFlight.length; i++) {
-            if (playersInFlight[i].handicap < lowestHcp) {
-                lowestHcp = playersInFlight[i].handicap;
-            }
-        }
-        
-        // Calculate effective handicaps
-        var playersWithStrokes = [];
-        for (var i = 0; i < playersInFlight.length; i++) {
-            var player = playersInFlight[i];
-            var effectiveHcp = player.handicap - lowestHcp;
-            playersWithStrokes.push({
-                name: player.name,
-                team: player.team,
-                handicap: player.handicap,
-                effectiveHcp: effectiveHcp,
-                scores: []
-            });
-        }
-        return playersWithStrokes;
-    }
-    
-    // Build scores for players from parsed data
-    function buildPlayerScores(players, flightData, course) {
-        var playerScores = [];
-        
-        for (var i = 0; i < players.length; i++) {
-            var p = players[i];
-            var scores = [];
-            var total = 0;
-            
-            for (var hole = 1; hole <= 18; hole++) {
-                var holeData = Game2Data.parseHoleData(flightData, hole);
-                if (!holeData || !holeData.saved) {
-                    scores.push(null);
-                } else {
-                    var score = 0;
-                    if (p.team === "A") {
-                        // Determine which A player (first or second based on order)
-                        var teamAPlayers = players.filter(function(pl) { return pl.flight === p.flight && pl.team === "A"; });
-                        teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
-                        if (teamAPlayers[0] && teamAPlayers[0].name === p.name) {
-                            score = holeData.scores.a1;
-                        } else {
-                            score = holeData.scores.a2;
-                        }
-                    } else {
-                        // Team B
-                        var teamBPlayers = players.filter(function(pl) { return pl.flight === p.flight && pl.team === "B"; });
-                        teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
-                        if (teamBPlayers[0] && teamBPlayers[0].name === p.name) {
-                            score = holeData.scores.b1;
-                        } else {
-                            score = holeData.scores.b2;
-                        }
-                    }
-                    scores.push(score);
-                    total += score;
-                }
-            }
-            
-            playerScores.push({
-                name: p.name,
-                team: p.team,
-                flight: p.flight,
-                handicap: p.handicap,
-                holeScores: scores,
-                total: total
-            });
-        }
-        
-        return playerScores;
-    }
-    
-    // Calculate flight results for a specific flight
-    function calculateFlightResults(flightNumber, players, flightData, course, upToHole) {
-        // Get players in this flight
-        var flightPlayers = players.filter(function(p) { return p.flight === flightNumber; });
+    // Process a single flight (4 players: 2 Team A, 2 Team B)
+    // Returns: { holePoints: array of 18 hole totals (-2 to +2), cumulative: array of running totals }
+    function processFlight(flightPlayers, flightScores, courseSi, maxCompletedHole) {
+        // Separate by team
         var teamAPlayers = flightPlayers.filter(function(p) { return p.team === "A"; });
         var teamBPlayers = flightPlayers.filter(function(p) { return p.team === "B"; });
         
-        if (teamAPlayers.length !== 2 || teamBPlayers.length !== 2) {
-            console.warn("Flight " + flightNumber + " does not have exactly 2 players per team");
-            return {
-                cumulativePoints: [],
-                finalWinner: null,
-                teamAPoints: 0,
-                teamBPoints: 0
-            };
-        }
+        // Get raw handicaps
+        var rawHcpA = teamAPlayers.map(function(p) { return p.handicap; });
+        var rawHcpB = teamBPlayers.map(function(p) { return p.handicap; });
+        var allRawHcp = rawHcpA.concat(rawHcpB);
         
-        // Sort by handicap (lowest first)
-        teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
-        teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        // Find lowest handicap in the flight (zero-rise)
+        var lowestHcp = Math.min.apply(null, allRawHcp);
         
         // Calculate effective handicaps
-        var allFlightPlayers = teamAPlayers.concat(teamBPlayers);
-        var playersWithEffective = calculateEffectiveHandicaps(allFlightPlayers);
+        var effectiveHcpA = teamAPlayers.map(function(p) { return p.handicap - lowestHcp; });
+        var effectiveHcpB = teamBPlayers.map(function(p) { return p.handicap - lowestHcp; });
         
-        // Create lookup for effective handicaps
-        var effectiveHcpMap = {};
-        for (var i = 0; i < playersWithEffective.length; i++) {
-            effectiveHcpMap[playersWithEffective[i].name] = playersWithEffective[i].effectiveHcp;
+        // Store effective handicaps back to players for reference
+        for (var i = 0; i < teamAPlayers.length; i++) {
+            teamAPlayers[i].effectiveHcp = effectiveHcpA[i];
+        }
+        for (var i = 0; i < teamBPlayers.length; i++) {
+            teamBPlayers[i].effectiveHcp = effectiveHcpB[i];
         }
         
-        var cumulativePoints = [];
-        var teamACumulative = 0;
-        var teamBCumulative = 0;
+        // Array to store hole results (-2, -1, 0, +1, +2 per hole)
+        var holeTotals = new Array(18).fill(0);
+        var cumulative = new Array(18).fill(0);
+        var runningTotal = 0;
         
-        // Process each hole up to upToHole
-        for (var hole = 1; hole <= upToHole; hole++) {
-            var holeData = Game2Data.parseHoleData(flightData, hole);
+        // For each completed hole (up to maxCompletedHole)
+        for (var pos = 0; pos < maxCompletedHole; pos++) {
+            // Get actual hole number from storage position
+            var actualHole = GameData.getHoleAtStoragePosition(pos);
             
-            // Check if hole is saved for this flight
-            if (!holeData || !holeData.saved) {
-                // Not saved yet - add same cumulative points as last hole
-                cumulativePoints.push({
-                    hole: hole,
-                    teamAPoints: teamACumulative,
-                    teamBPoints: teamBCumulative,
-                    holePointsA: 0,
-                    holePointsB: 0
-                });
-                continue;
+            // Get gross scores for each player on this hole
+            var grossScoresA = [];
+            var grossScoresB = [];
+            
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                var p = teamAPlayers[i];
+                var scoreKey = "1_" + actualHole + "_" + findPlayerIndex(p.name, flightPlayers);
+                var gross = (flightScores[scoreKey] !== undefined) ? flightScores[scoreKey] : null;
+                grossScoresA.push({ player: p, gross: gross });
             }
             
-            // Get scores for this hole
-            var a1Score = holeData.scores.a1;
-            var a2Score = holeData.scores.a2;
-            var b1Score = holeData.scores.b1;
-            var b2Score = holeData.scores.b2;
-            
-            // Get effective handicaps
-            var a1Hcp = effectiveHcpMap[teamAPlayers[0].name] || 0;
-            var a2Hcp = effectiveHcpMap[teamAPlayers[1].name] || 0;
-            var b1Hcp = effectiveHcpMap[teamBPlayers[0].name] || 0;
-            var b2Hcp = effectiveHcpMap[teamBPlayers[1].name] || 0;
-            
-            // Calculate strokes received
-            var a1Strokes = getStrokesForHole(a1Hcp, course.si, hole);
-            var a2Strokes = getStrokesForHole(a2Hcp, course.si, hole);
-            var b1Strokes = getStrokesForHole(b1Hcp, course.si, hole);
-            var b2Strokes = getStrokesForHole(b2Hcp, course.si, hole);
-            
-            // Calculate NETT scores
-            var a1Nett = calculateNettScore(a1Score, a1Strokes);
-            var a2Nett = calculateNettScore(a2Score, a2Strokes);
-            var b1Nett = calculateNettScore(b1Score, b1Strokes);
-            var b2Nett = calculateNettScore(b2Score, b2Strokes);
-            
-            // Sort NETT scores (lower is better)
-            var aNett = [a1Nett, a2Nett].sort(function(x, y) { return x - y; });
-            var bNett = [b1Nett, b2Nett].sort(function(x, y) { return x - y; });
-            
-            // Match 1: Best vs Best
-            var holePointsA = 0;
-            var holePointsB = 0;
-            
-            if (aNett[0] < bNett[0]) {
-                holePointsA += 1;
-            } else if (bNett[0] < aNett[0]) {
-                holePointsB += 1;
-            } else {
-                holePointsA += 0.5;
-                holePointsB += 0.5;
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                var p = teamBPlayers[i];
+                var scoreKey = "1_" + actualHole + "_" + findPlayerIndex(p.name, flightPlayers);
+                var gross = (flightScores[scoreKey] !== undefined) ? flightScores[scoreKey] : null;
+                grossScoresB.push({ player: p, gross: gross });
             }
             
-            // Match 2: Second vs Second
-            if (aNett[1] < bNett[1]) {
-                holePointsA += 1;
-            } else if (bNett[1] < aNett[1]) {
-                holePointsB += 1;
-            } else {
-                holePointsA += 0.5;
-                holePointsB += 0.5;
+            // Check if all scores exist for this hole
+            var allScoresExist = true;
+            for (var i = 0; i < grossScoresA.length; i++) {
+                if (grossScoresA[i].gross === null) allScoresExist = false;
+            }
+            for (var i = 0; i < grossScoresB.length; i++) {
+                if (grossScoresB[i].gross === null) allScoresExist = false;
             }
             
-            teamACumulative += holePointsA;
-            teamBCumulative += holePointsB;
+            if (!allScoresExist) continue;
             
-            cumulativePoints.push({
-                hole: hole,
-                teamAPoints: teamACumulative,
-                teamBPoints: teamBCumulative,
-                holePointsA: holePointsA,
-                holePointsB: holePointsB
-            });
-        }
-        
-        // Determine final winner
-        var finalWinner = null;
-        if (teamACumulative > teamBCumulative) {
-            finalWinner = "A";
-        } else if (teamBCumulative > teamACumulative) {
-            finalWinner = "B";
-        } else {
-            finalWinner = "TIE";
+            // Calculate net scores
+            var netScoresA = [];
+            var netScoresB = [];
+            
+            for (var i = 0; i < grossScoresA.length; i++) {
+                var item = grossScoresA[i];
+                var net = getNetScore(item.gross, item.player.effectiveHcp, actualHole, courseSi);
+                netScoresA.push({ player: item.player, net: net, gross: item.gross });
+            }
+            
+            for (var i = 0; i < grossScoresB.length; i++) {
+                var item = grossScoresB[i];
+                var net = getNetScore(item.gross, item.player.effectiveHcp, actualHole, courseSi);
+                netScoresB.push({ player: item.player, net: net, gross: item.gross });
+            }
+            
+            // Sort by net score (lowest to highest)
+            netScoresA.sort(function(a, b) { return a.net - b.net; });
+            netScoresB.sort(function(a, b) { return a.net - b.net; });
+            
+            // Match 1: Best A vs Best B
+            var result1 = 0; // 0 = tie, 1 = A wins, -1 = B wins
+            if (netScoresA[0].net < netScoresB[0].net) {
+                result1 = 1;
+            } else if (netScoresB[0].net < netScoresA[0].net) {
+                result1 = -1;
+            }
+            
+            // Match 2: Second A vs Second B
+            var result2 = 0;
+            if (netScoresA[1].net < netScoresB[1].net) {
+                result2 = 1;
+            } else if (netScoresB[1].net < netScoresA[1].net) {
+                result2 = -1;
+            }
+            
+            // Hole total = result1 + result2 (range -2 to +2)
+            var holeTotal = result1 + result2;
+            holeTotals[actualHole - 1] = holeTotal;
+            
+            // Update cumulative running total
+            runningTotal += holeTotal;
+            cumulative[actualHole - 1] = runningTotal;
         }
         
         return {
-            cumulativePoints: cumulativePoints,
-            finalWinner: finalWinner,
-            teamAPoints: teamACumulative,
-            teamBPoints: teamBCumulative
+            holeTotals: holeTotals,
+            cumulative: cumulative,
+            finalTotal: runningTotal
         };
     }
     
-    // Get team rows for scorecard display (T-1 and T-2)
-    function getTeamRows(players, flight1Data, flight2Data, course, upToHole) {
-        var flight1Result = calculateFlightResults(1, players, flight1Data, course, upToHole);
-        var flight2Result = calculateFlightResults(2, players, flight2Data, course, upToHole);
-        
-        // Build arrays for 18 holes
-        var t1Row = new Array(18).fill(0);
-        var t2Row = new Array(18).fill(0);
-        
-        for (var h = 1; h <= upToHole; h++) {
-            if (flight1Result.cumulativePoints[h-1]) {
-                t1Row[h-1] = flight1Result.cumulativePoints[h-1].teamAPoints;
-            }
-            if (flight2Result.cumulativePoints[h-1]) {
-                t2Row[h-1] = flight2Result.cumulativePoints[h-1].teamAPoints;
-            }
+    // Helper to find player index (needed for score lookup)
+    function findPlayerIndex(playerName, flightPlayers) {
+        for (var i = 0; i < flightPlayers.length; i++) {
+            if (flightPlayers[i].name === playerName) return i;
         }
-        
-        return {
-            t1Row: t1Row,
-            t2Row: t2Row,
-            t1Total: flight1Result.teamAPoints,
-            t2Total: flight2Result.teamAPoints,
-            flight1Winner: flight1Result.finalWinner,
-            flight2Winner: flight2Result.finalWinner
-        };
+        return -1;
     }
     
-    // Get total points for Game 2 (sum of both flights)
-    function getTotalPoints(players, flight1Data, flight2Data, course, upToHole) {
-        var flight1Result = calculateFlightResults(1, players, flight1Data, course, upToHole);
-        var flight2Result = calculateFlightResults(2, players, flight2Data, course, upToHole);
+    // Main calculate function
+    // Parameters:
+    //   allPlayers: array of all 8 players with { name, team, flight, handicap }
+    //   flight1Scores: object mapping "flight_hole_playerIdx" to gross score
+    //   flight2Scores: same for flight 2
+    //   maxCompletedHole: number of holes completed (0-18)
+    //   courseSi: array of 18 SI values
+    function calculate(allPlayers, flight1Scores, flight2Scores, maxCompletedHole, courseSi) {
+        // Separate players by flight
+        var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+        var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
         
-        // Each flight gives 1 point to the winner (0.5 each if tie)
-        var flight1WinnerPoints = 0;
-        var flight2WinnerPoints = 0;
+        // Process each flight
+        var flight1Result = processFlight(flight1Players, flight1Scores, courseSi, maxCompletedHole);
+        var flight2Result = processFlight(flight2Players, flight2Scores, courseSi, maxCompletedHole);
         
-        if (flight1Result.finalWinner === "A") {
-            flight1WinnerPoints = 1;
-        } else if (flight1Result.finalWinner === "B") {
-            flight1WinnerPoints = 0;
-        } else {
-            flight1WinnerPoints = 0.5;
+        // Determine flight winners (after 18 holes, final total determines points)
+        var flight1PointsA = 0;
+        var flight1PointsB = 0;
+        var flight2PointsA = 0;
+        var flight2PointsB = 0;
+        
+        if (maxCompletedHole === 18) {
+            // Flight 1 winner
+            if (flight1Result.finalTotal > 0) {
+                flight1PointsA = 1;
+                flight1PointsB = 0;
+            } else if (flight1Result.finalTotal < 0) {
+                flight1PointsA = 0;
+                flight1PointsB = 1;
+            } else {
+                flight1PointsA = 0.5;
+                flight1PointsB = 0.5;
+            }
+            
+            // Flight 2 winner
+            if (flight2Result.finalTotal > 0) {
+                flight2PointsA = 1;
+                flight2PointsB = 0;
+            } else if (flight2Result.finalTotal < 0) {
+                flight2PointsA = 0;
+                flight2PointsB = 1;
+            } else {
+                flight2PointsA = 0.5;
+                flight2PointsB = 0.5;
+            }
         }
         
-        if (flight2Result.finalWinner === "A") {
-            flight2WinnerPoints = 1;
-        } else if (flight2Result.finalWinner === "B") {
-            flight2WinnerPoints = 0;
-        } else {
-            flight2WinnerPoints = 0.5;
+        // For display (T-1 and T-2 rows), we need per-hole leader
+        // Convert cumulative totals to "A", "AS", "B"
+        var t1Display = new Array(18).fill("-");
+        var t2Display = new Array(18).fill("-");
+        
+        for (var h = 0; h < maxCompletedHole; h++) {
+            // T-1 (Flight 1)
+            if (flight1Result.cumulative[h] > 0) {
+                t1Display[h] = "A";
+            } else if (flight1Result.cumulative[h] < 0) {
+                t1Display[h] = "B";
+            } else {
+                t1Display[h] = "AS";
+            }
+            
+            // T-2 (Flight 2)
+            if (flight2Result.cumulative[h] > 0) {
+                t2Display[h] = "A";
+            } else if (flight2Result.cumulative[h] < 0) {
+                t2Display[h] = "B";
+            } else {
+                t2Display[h] = "AS";
+            }
         }
         
-        // Team A points = sum of flight winner points where Team A won
-        // Team B points = 2 - Team A points (since each flight gives 1 point total)
-        var teamAPoints = flight1WinnerPoints + flight2WinnerPoints;
-        var teamBPoints = 2 - teamAPoints;
+        // Total points for Game 2
+        var teamAPoints = flight1PointsA + flight2PointsA;
+        var teamBPoints = flight1PointsB + flight2PointsB;
+        
+        console.log("Game 2 Results - Team A:", teamAPoints, "Team B:", teamBPoints);
+        console.log("Flight 1 cumulative:", flight1Result.cumulative);
+        console.log("Flight 2 cumulative:", flight2Result.cumulative);
         
         return {
             teamAPoints: teamAPoints,
-            teamBPoints: teamBPoints
+            teamBPoints: teamBPoints,
+            t1Row: t1Display,      // Array of "A"/"AS"/"B" per hole
+            t2Row: t2Display,      // Array of "A"/"AS"/"B" per hole
+            t1Cumulative: flight1Result.cumulative,
+            t2Cumulative: flight2Result.cumulative
         };
     }
     
-    // Public API
     return {
-        calculateFlightResults: calculateFlightResults,
-        getTeamRows: getTeamRows,
-        getTotalPoints: getTotalPoints,
+        calculate: calculate,
         getStrokesForHole: getStrokesForHole,
-        calculateNettScore: calculateNettScore,
-        calculateEffectiveHandicaps: calculateEffectiveHandicaps
+        getNetScore: getNetScore,
+        processFlight: processFlight
     };
 })();
