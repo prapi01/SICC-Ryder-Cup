@@ -1,7 +1,8 @@
-<!-- FILE: game.html - VERSION 1.07 -->
+<!-- FILE: game.html - VERSION 1.08 -->
 <!--
 PURE UI RENDERER - NO BUSINESS LOGIC
 ADDED: Shotgun start support + user-selectable scorecard view (Play Order / Natural Order)
+FIXED: Added missing game-team.js and game-stroke.js script tags
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -29,8 +30,11 @@ ADDED: Shotgun start support + user-selectable scorecard view (Play Order / Natu
         }
     </script>
     
+    <!-- SCRIPTS - ORDER MATTERS -->
     <script src="js/session.js"></script>
     <script src="js/game-match.js"></script>
+    <script src="js/game-team.js"></script>
+    <script src="js/game-stroke.js"></script>
     <script src="js/game-data.js"></script>
     <script src="js/game-controller.js"></script>
     
@@ -110,13 +114,13 @@ ADDED: Shotgun start support + user-selectable scorecard view (Play Order / Natu
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.07</div>
+<div class="version-tag">v1.08</div>
 
 <script>
-// FILE: game.html - VERSION 1.07
-// ADDED: Shotgun start + user-selectable scorecard view
+// FILE: game.html - VERSION 1.08
+// ADDED: game-team.js and game-stroke.js script tags
 
-var UI_VERSION = "1.07";
+var UI_VERSION = "1.08";
 var CACHE_KEY = "game_ui_version";
 
 if (localStorage.getItem(CACHE_KEY) !== UI_VERSION) {
@@ -125,9 +129,8 @@ if (localStorage.getItem(CACHE_KEY) !== UI_VERSION) {
 }
 
 var uiData = null;
-var currentDisplayMode = "play";  // "play" or "natural"
+var currentDisplayMode = "play";
 
-// Load user preference from localStorage
 function loadDisplayPreference() {
     var saved = localStorage.getItem("scorecardDisplay");
     if (saved === "natural" || saved === "play") {
@@ -137,20 +140,18 @@ function loadDisplayPreference() {
     }
 }
 
-// Save user preference to localStorage
 function saveDisplayPreference(mode) {
     currentDisplayMode = mode;
     localStorage.setItem("scorecardDisplay", mode);
 }
 
-// Toggle between Play Order and Natural Order
 function toggleDisplayMode() {
     if (currentDisplayMode === "play") {
         saveDisplayPreference("natural");
     } else {
         saveDisplayPreference("play");
     }
-    renderScorecard();  // Re-render scorecard only
+    renderScorecard();
     updateToggleButtons();
 }
 
@@ -183,7 +184,6 @@ function escapeHtml(str) {
     });
 }
 
-// Render only the scorecard section (for toggle)
 function renderScorecard() {
     if (!uiData) return;
     
@@ -191,7 +191,6 @@ function renderScorecard() {
     var course = data.course;
     var players = data.players;
     
-    // Get display order based on user preference
     var displayHoleOrder;
     if (currentDisplayMode === "natural") {
         displayHoleOrder = data.naturalOrder || [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
@@ -199,13 +198,11 @@ function renderScorecard() {
         displayHoleOrder = data.playOrder || [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
     }
     
-    // Build mapping: display column index -> actual hole number
     var displayToActual = {};
     for (var i = 0; i < displayHoleOrder.length; i++) {
         displayToActual[i] = displayHoleOrder[i];
     }
     
-    // Flight 1 and 2 players
     var flight1Players = players.filter(function(p) { return p.flight === 1; });
     var flight2Players = players.filter(function(p) { return p.flight === 2; });
     
@@ -230,28 +227,25 @@ function renderScorecard() {
     tableHtml += '<th>Tot</th></tr></thead>';
     tableHtml += '<tbody>';
     
-    // Par row
-    tableHtml += '<tr><td style="font-weight:700;">Par</td>';
+    tableHtml += '<table><td style="font-weight:700;">Par<\/td>';
     var totalPar = 0;
     for (var i = 0; i < 18; i++) {
         var holeNum = displayToActual[i];
         var par = course.par[holeNum - 1];
         totalPar += par;
-        tableHtml += '<td>' + par + '</td>';
+        tableHtml += '<td>' + par + '<\/td>';
     }
-    tableHtml += '<td>' + totalPar + '</td></tr>';
+    tableHtml += '<td>' + totalPar + '<\/td><\/tr>';
     
-    // SI row
-    tableHtml += '<tr><td style="font-weight:700;">SI</td>';
+    tableHtml += '<tr><td style="font-weight:700;">SI<\/td>';
     for (var i = 0; i < 18; i++) {
         var holeNum = displayToActual[i];
         var si = course.si[holeNum - 1];
-        tableHtml += '<td>' + si + '</td>';
+        tableHtml += '<td>' + si + '<\/td>';
     }
-    tableHtml += '<td>-</td></tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    tableHtml += '<td>-<\/td><\/tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
     
-    // Flight 1 players
     for (var pi = 0; pi < flight1Players.length; pi++) {
         var p = flight1Players[pi];
         var pIdx = -1;
@@ -259,7 +253,7 @@ function renderScorecard() {
             if (players[ix].name === p.name) pIdx = ix;
         }
         var total = 0;
-        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
         for (var i = 0; i < 18; i++) {
             var holeNum = displayToActual[i];
             var scoreKey = p.flight + "_" + holeNum + "_" + pIdx;
@@ -267,25 +261,23 @@ function renderScorecard() {
             total += score;
             var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(holeNum) !== -1;
             if (completed) {
-                tableHtml += '<td class="completed"><strong>' + score + '</strong></td>';
+                tableHtml += '<td class="completed"><strong>' + score + '<\/strong><\/td>';
             } else {
-                tableHtml += '<td class="placeholder">' + score + '</td>';
+                tableHtml += '<td class="placeholder">' + score + '<\/td>';
             }
         }
-        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
+        tableHtml += '<td class="completed"><strong>' + total + '<\/strong><\/td><\/tr>';
     }
     
-    // T-1 row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1</td>';
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1<\/td>';
     var t1RowData = data.t1Row || [];
     for (var i = 0; i < 18; i++) {
         var val = (i < t1RowData.length) ? t1RowData[i] : 0;
-        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+        tableHtml += '<td style="color:#4caf50;">' + val + '<\/td>';
     }
-    tableHtml += '<td style="color:#4caf50;">' + (data.t1Total || 0) + '</td></tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    tableHtml += '<td style="color:#4caf50;">' + (data.t1Total || 0) + '<\/td><\/tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
     
-    // Flight 2 players
     for (var pi = 0; pi < flight2Players.length; pi++) {
         var p = flight2Players[pi];
         var pIdx = -1;
@@ -293,7 +285,7 @@ function renderScorecard() {
             if (players[ix].name === p.name) pIdx = ix;
         }
         var total = 0;
-        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
         for (var i = 0; i < 18; i++) {
             var holeNum = displayToActual[i];
             var scoreKey = p.flight + "_" + holeNum + "_" + pIdx;
@@ -301,34 +293,32 @@ function renderScorecard() {
             total += score;
             var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(holeNum) !== -1;
             if (completed) {
-                tableHtml += '<td class="completed"><strong>' + score + '</strong></td>';
+                tableHtml += '<td class="completed"><strong>' + score + '<\/strong><\/td>';
             } else {
-                tableHtml += '<td class="placeholder">' + score + '</td>';
+                tableHtml += '<td class="placeholder">' + score + '<\/td>';
             }
         }
-        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
+        tableHtml += '<td class="completed"><strong>' + total + '<\/strong><\/td><\/tr>';
     }
     
-    // T-2 row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2</td>';
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2<\/td>';
     var t2RowData = data.t2Row || [];
     for (var i = 0; i < 18; i++) {
         var val = (i < t2RowData.length) ? t2RowData[i] : 0;
-        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+        tableHtml += '<td style="color:#4caf50;">' + val + '<\/td>';
     }
-    tableHtml += '<td style="color:#4caf50;">' + (data.t2Total || 0) + '</td></tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    tableHtml += '<td style="color:#4caf50;">' + (data.t2Total || 0) + '<\/td><\/tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
     
-    // Strk row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk</td>';
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk<\/td>';
     var strkRowData = data.strkRow || [];
     for (var i = 0; i < 18; i++) {
         var val = (i < strkRowData.length) ? strkRowData[i] : "-";
-        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+        tableHtml += '<td style="color:#4caf50;">' + val + '<\/td>';
     }
-    tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '</td></tr>';
+    tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '<\/td><\/tr>';
     
-    tableHtml += '</tbody></table>';
+    tableHtml += '<\/tbody><\/table>';
     
     var scorecardWrapper = document.querySelector(".scorecard-wrapper");
     if (scorecardWrapper) {
@@ -346,7 +336,6 @@ window.updateGameUI = function(data) {
         return;
     }
     
-    // Load user preference
     loadDisplayPreference();
     
     var course = data.course;
@@ -394,7 +383,6 @@ window.updateGameUI = function(data) {
             }
         }
         
-        // Use currentActualHole for score lookup (actual hole number)
         var scoreKey = activeFlight + "_" + currentActualHole + "_" + playerIdx;
         var currentScore = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[currentActualHole - 1];
         
@@ -445,7 +433,6 @@ window.updateGameUI = function(data) {
     var teamBDisplay = teamBPts % 1 === 0 ? teamBPts : teamBPts.toFixed(1);
     var trHtml = '<span class="' + (teamAGreen ? "team-score-green" : "team-score-red") + '">Team A ' + teamADisplay + '</span> - <span class="' + (teamBGreen ? "team-score-green" : "team-score-red") + '">' + teamBDisplay + ' Team B</span>';
     
-    // Get Par and SI for current actual hole
     var currentPar = course.par[currentActualHole - 1];
     var currentSi = course.si[currentActualHole - 1];
     
@@ -490,7 +477,6 @@ window.updateGameUI = function(data) {
     
     document.getElementById("app").innerHTML = html;
     
-    // Render scorecard after DOM is updated
     renderScorecard();
     updateToggleButtons();
     attachEvents();
@@ -587,7 +573,6 @@ function attachEvents() {
         menuBtn.addEventListener("click", menuBtn._listener);
     }
     
-    // Toggle buttons
     var playViewBtn = document.getElementById("playViewBtn");
     var naturalViewBtn = document.getElementById("naturalViewBtn");
     
@@ -613,7 +598,7 @@ function attachEvents() {
 }
 
 document.getElementById("app").innerHTML = '<div class="loading">Initializing...</div>';
-console.log("game v1.07: Loaded - waiting for data");
+console.log("game v1.08: Loaded - waiting for data");
 </script>
 </body>
 </html>
