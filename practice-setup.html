@@ -1,5 +1,5 @@
-<!-- FILE: practice-setup.html - VERSION 1.06 -->
-<!-- Start a new practice game -->
+<!-- FILE: practice-setup.html - VERSION 1.07 -->
+<!-- Start a new practice game with SHOTGUN START support -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -25,7 +25,7 @@
             top: 8px; 
             right: 8px; 
             font-size: 0.65rem; 
-            color: #4caf50; 
+            color: #ffaa44; 
             background: rgba(0,0,0,0.6); 
             padding: 2px 10px; 
             border-radius: 16px;
@@ -39,7 +39,7 @@
             top: 8px;
             left: 8px;
             font-size: 0.55rem;
-            color: #4caf50;
+            color: #ffaa44;
             background: rgba(0,0,0,0.4);
             padding: 2px 8px;
             border-radius: 12px;
@@ -175,6 +175,18 @@
             background: #2a2a1a;
             border: 2px solid #ffaa44;
         }
+        
+        .starting-hole-select {
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 30px;
+            padding: 12px 16px;
+            color: #fff;
+            font-size: 1rem;
+        }
+        
+        .info-note { font-size: 0.7rem; color: #ffaa44; margin-top: 8px; text-align: center; }
     </style>
 </head>
 <body>
@@ -182,14 +194,14 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.06</div>
+<div class="version-tag">v1.07</div>
 
 <script>
-// FILE: practice-setup.html - VERSION 1.06
-// Creates PRACTICE game documents with CONSOLIDATED structure
-// All state (scores, flags, locks) in ONE document
+// FILE: practice-setup.html - VERSION 1.07
+// Creates PRACTICE game documents with CONSOLIDATED structure + SHOTGUN START support
+// F1-18 string is ROTATED to start at startingHole
 
-var VERSION = "1.06";
+var VERSION = "1.07";
 var CACHE_KEY = "practice_setup_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -234,8 +246,8 @@ var DEFAULT_PLAYERS = [
     { name: "James Ong", team: "B", flight: 2, handicap: 11, label: "JO" }
 ];
 
-// Generate default data string (all F, all scores = par)
-function generateDefaultData(parArray) {
+// Generate default data string in NATURAL order (1-18)
+function generateDefaultDataNatural(parArray) {
     if (!parArray || parArray.length !== 18) {
         var defaultPar = "04";
         var result = "";
@@ -254,6 +266,22 @@ function generateDefaultData(parArray) {
     return result;
 }
 
+// Rotate data string to start at startingHole
+function rotateDataString(naturalData, startingHole) {
+    if (startingHole === 1) return naturalData;
+    
+    var blocks = [];
+    for (var i = 0; i < 18; i++) {
+        blocks.push(naturalData.substr(i * 9, 9));
+    }
+    
+    var rotated = [];
+    for (var i = startingHole - 1; i < 18; i++) rotated.push(blocks[i]);
+    for (var i = 0; i < startingHole - 1; i++) rotated.push(blocks[i]);
+    
+    return rotated.join('');
+}
+
 function displayDeviceId() {
     var deviceDisplay = SessionManager.getDeviceIdDisplay();
     var deviceTag = document.getElementById("deviceTag");
@@ -270,14 +298,16 @@ function loadCourses() {
     });
 }
 
-function savePracticeGame(courseId, selectedRole) {
+function savePracticeGame(courseId, selectedRole, startingHole) {
     var selectedCourse = courses.find(function(c) { return c.id === courseId; });
     if (!selectedCourse) {
         alert("Please select a course");
         return;
     }
     
-    var defaultData = generateDefaultData(selectedCourse.par);
+    // Generate default data in NATURAL order, then ROTATE to play order
+    var naturalData = generateDefaultDataNatural(selectedCourse.par);
+    var rotatedData = rotateDataString(naturalData, startingHole);
     
     // CONSOLIDATED STRUCTURE - everything in ONE document
     var gameData = {
@@ -289,28 +319,27 @@ function savePracticeGame(courseId, selectedRole) {
         players: DEFAULT_PLAYERS,
         status: "practice",
         gameType: "practice",
+        startingHole: startingHole,  // NEW: store starting hole
         
-        // Flight 1 data (scores, saveEvent, crossEvent)
+        // Consolidated flight data (already rotated to play order)
         f1: {
-            d: defaultData,
+            d: rotatedData,
             se: false,
             x: false
         },
         
-        // Flight 2 data (scores, saveEvent, crossEvent)
         f2: {
-            d: defaultData,
+            d: rotatedData,
             se: false,
             x: false
         },
         
-        // Role locks (stored here)
+        // Role locks in same document
         locks: {
             f1: null,
             f2: null
         },
         
-        // Current hole per flight
         currentHoleF1: 1,
         currentHoleF2: 1,
         
@@ -325,7 +354,6 @@ function savePracticeGame(courseId, selectedRole) {
     db.collection("practiceGames").add(gameData).then(function(docRef) {
         console.log("Practice game created with ID:", docRef.id);
         
-        // Store in sessionStorage and redirect
         sessionStorage.setItem("practiceGameId", docRef.id);
         sessionStorage.setItem("practiceRole", selectedRole);
         
@@ -367,6 +395,31 @@ function render() {
             </div>
             
             <div class="form-group">
+                <label class="form-label">⛳ STARTING HOLE (SHOTGUN START)</label>
+                <select id="startingHole" class="starting-hole-select">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10" selected>10</option>
+                    <option value="11">11</option>
+                    <option value="12">12</option>
+                    <option value="13">13</option>
+                    <option value="14">14</option>
+                    <option value="15">15</option>
+                    <option value="16">16</option>
+                    <option value="17">17</option>
+                    <option value="18">18</option>
+                </select>
+                <div class="info-note">💡 Play will begin at selected hole. Scorecard will show holes in play order.</div>
+            </div>
+            
+            <div class="form-group">
                 <label class="form-label">🎮 SELECT YOUR ROLE</label>
                 <div class="role-buttons">
                     <div class="role-btn" data-role="update1">✏️ UPDATE FLIGHT 1</div>
@@ -404,7 +457,7 @@ function render() {
             var buttonsHtml = '';
             for (var i = 0; i < courses.length; i++) {
                 var selected = (i === 0) ? 'selected' : '';
-                buttonsHtml += `<div class="course-btn ${selected}" data-course-id="${courses[i].id}">${courses[i].name}</div>`;
+                buttonsHtml += `<div class="course-btn ${selected}" data-course-id="${courses[i].id}">${escapeHtml(courses[i].name)}</div>`;
             }
             courseContainer.innerHTML = buttonsHtml;
             
@@ -446,12 +499,25 @@ function render() {
             return;
         }
         
+        var startingHoleSelect = document.getElementById("startingHole");
+        var startingHole = startingHoleSelect ? parseInt(startingHoleSelect.value) : 1;
+        
         var courseId = selectedCourseBtn.dataset.courseId;
-        savePracticeGame(courseId, selectedRole);
+        savePracticeGame(courseId, selectedRole, startingHole);
     });
     
     document.getElementById("cancelBtn").addEventListener("click", function() {
         window.location.href = "practice-mode.html";
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
     });
 }
 
