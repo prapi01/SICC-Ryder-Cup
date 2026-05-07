@@ -1,4 +1,8 @@
-<!-- FILE: game.html - VERSION 1.06 -->
+<!-- FILE: game.html - VERSION 1.07 -->
+<!--
+PURE UI RENDERER - NO BUSINESS LOGIC
+ADDED: Shotgun start support + user-selectable scorecard view (Play Order / Natural Order)
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -25,7 +29,6 @@
         }
     </script>
     
-    <!-- UPDATED: Script paths now point to js/ folder -->
     <script src="js/session.js"></script>
     <script src="js/game-match.js"></script>
     <script src="js/game-data.js"></script>
@@ -71,9 +74,13 @@
         .bubble-pending { background: #2a2a2a; color: #888; border: 1px solid #444; }
         
         .scorecard-section { margin: 20px 0; }
-        .scorecard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .scorecard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
         .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .view-toggle { display: flex; gap: 4px; }
+        .toggle-btn { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 4px 12px; font-size: 0.65rem; cursor: pointer; color: #888; transition: all 0.2s; }
+        .toggle-btn.active { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
         .refresh-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #4caf50; padding: 0 10px; }
+        
         .scorecard-wrapper { overflow-x: auto; background: #0a0a0a; border-radius: 12px; padding: 8px; }
         .scorecard-table { width: 100%; min-width: 800px; font-size: 0.7rem; border-collapse: collapse; }
         .scorecard-table th, .scorecard-table td { padding: 8px 5px; text-align: center; border: 1px solid #222; }
@@ -92,23 +99,8 @@
         .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
         .btn-back:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
         
-        .menu-button-container {
-            margin-top: 30px;
-            margin-bottom: 20px;
-        }
-        .btn-menu {
-            width: 100%;
-            padding: 14px;
-            border-radius: 40px;
-            font-weight: 600;
-            font-size: 1rem;
-            text-align: center;
-            cursor: pointer;
-            border: none;
-            background: #1a1a1a;
-            color: #ccc;
-            border: 1px solid #333;
-        }
+        .menu-button-container { margin-top: 30px; margin-bottom: 20px; }
+        .btn-menu { width: 100%; padding: 14px; border-radius: 40px; font-weight: 600; font-size: 1rem; text-align: center; cursor: pointer; border: none; background: #1a1a1a; color: #ccc; border: 1px solid #333; }
         
         .loading { text-align: center; padding: 40px; color: #888; }
     </style>
@@ -118,12 +110,13 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.06</div>
+<div class="version-tag">v1.07</div>
 
 <script>
-// FILE: game.html - VERSION 1.06
+// FILE: game.html - VERSION 1.07
+// ADDED: Shotgun start + user-selectable scorecard view
 
-var UI_VERSION = "1.06";
+var UI_VERSION = "1.07";
 var CACHE_KEY = "game_ui_version";
 
 if (localStorage.getItem(CACHE_KEY) !== UI_VERSION) {
@@ -132,6 +125,48 @@ if (localStorage.getItem(CACHE_KEY) !== UI_VERSION) {
 }
 
 var uiData = null;
+var currentDisplayMode = "play";  // "play" or "natural"
+
+// Load user preference from localStorage
+function loadDisplayPreference() {
+    var saved = localStorage.getItem("scorecardDisplay");
+    if (saved === "natural" || saved === "play") {
+        currentDisplayMode = saved;
+    } else {
+        currentDisplayMode = "play";
+    }
+}
+
+// Save user preference to localStorage
+function saveDisplayPreference(mode) {
+    currentDisplayMode = mode;
+    localStorage.setItem("scorecardDisplay", mode);
+}
+
+// Toggle between Play Order and Natural Order
+function toggleDisplayMode() {
+    if (currentDisplayMode === "play") {
+        saveDisplayPreference("natural");
+    } else {
+        saveDisplayPreference("play");
+    }
+    renderScorecard();  // Re-render scorecard only
+    updateToggleButtons();
+}
+
+function updateToggleButtons() {
+    var playBtn = document.getElementById("playViewBtn");
+    var naturalBtn = document.getElementById("naturalViewBtn");
+    if (playBtn && naturalBtn) {
+        if (currentDisplayMode === "play") {
+            playBtn.classList.add("active");
+            naturalBtn.classList.remove("active");
+        } else {
+            playBtn.classList.remove("active");
+            naturalBtn.classList.add("active");
+        }
+    }
+}
 
 window.setDeviceId = function(deviceId) {
     var deviceTag = document.getElementById("deviceTag");
@@ -148,6 +183,159 @@ function escapeHtml(str) {
     });
 }
 
+// Render only the scorecard section (for toggle)
+function renderScorecard() {
+    if (!uiData) return;
+    
+    var data = uiData;
+    var course = data.course;
+    var players = data.players;
+    
+    // Get display order based on user preference
+    var displayHoleOrder;
+    if (currentDisplayMode === "natural") {
+        displayHoleOrder = data.naturalOrder || [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+    } else {
+        displayHoleOrder = data.playOrder || [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+    }
+    
+    // Build mapping: display column index -> actual hole number
+    var displayToActual = {};
+    for (var i = 0; i < displayHoleOrder.length; i++) {
+        displayToActual[i] = displayHoleOrder[i];
+    }
+    
+    // Flight 1 and 2 players
+    var flight1Players = players.filter(function(p) { return p.flight === 1; });
+    var flight2Players = players.filter(function(p) { return p.flight === 2; });
+    
+    flight1Players.sort(function(a, b) {
+        if (a.team === "A" && b.team === "B") return -1;
+        if (a.team === "B" && b.team === "A") return 1;
+        return 0;
+    });
+    
+    flight2Players.sort(function(a, b) {
+        if (a.team === "A" && b.team === "B") return -1;
+        if (a.team === "B" && b.team === "A") return 1;
+        return 0;
+    });
+    
+    var tableHtml = '<table class="scorecard-table">';
+    tableHtml += '<thead><tr><th>Hole</th>';
+    for (var i = 0; i < 18; i++) {
+        var holeNum = displayToActual[i];
+        tableHtml += '<th>' + holeNum + '</th>';
+    }
+    tableHtml += '<th>Tot</th></tr></thead>';
+    tableHtml += '<tbody>';
+    
+    // Par row
+    tableHtml += '<tr><td style="font-weight:700;">Par</td>';
+    var totalPar = 0;
+    for (var i = 0; i < 18; i++) {
+        var holeNum = displayToActual[i];
+        var par = course.par[holeNum - 1];
+        totalPar += par;
+        tableHtml += '<td>' + par + '</td>';
+    }
+    tableHtml += '<td>' + totalPar + '</td></tr>';
+    
+    // SI row
+    tableHtml += '<tr><td style="font-weight:700;">SI</td>';
+    for (var i = 0; i < 18; i++) {
+        var holeNum = displayToActual[i];
+        var si = course.si[holeNum - 1];
+        tableHtml += '<td>' + si + '</td>';
+    }
+    tableHtml += '<td>-</td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Flight 1 players
+    for (var pi = 0; pi < flight1Players.length; pi++) {
+        var p = flight1Players[pi];
+        var pIdx = -1;
+        for (var ix = 0; ix < players.length; ix++) {
+            if (players[ix].name === p.name) pIdx = ix;
+        }
+        var total = 0;
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        for (var i = 0; i < 18; i++) {
+            var holeNum = displayToActual[i];
+            var scoreKey = p.flight + "_" + holeNum + "_" + pIdx;
+            var score = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[holeNum - 1];
+            total += score;
+            var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(holeNum) !== -1;
+            if (completed) {
+                tableHtml += '<td class="completed"><strong>' + score + '</strong></td>';
+            } else {
+                tableHtml += '<td class="placeholder">' + score + '</td>';
+            }
+        }
+        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
+    }
+    
+    // T-1 row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1</td>';
+    var t1RowData = data.t1Row || [];
+    for (var i = 0; i < 18; i++) {
+        var val = (i < t1RowData.length) ? t1RowData[i] : 0;
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">' + (data.t1Total || 0) + '</td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Flight 2 players
+    for (var pi = 0; pi < flight2Players.length; pi++) {
+        var p = flight2Players[pi];
+        var pIdx = -1;
+        for (var ix = 0; ix < players.length; ix++) {
+            if (players[ix].name === p.name) pIdx = ix;
+        }
+        var total = 0;
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        for (var i = 0; i < 18; i++) {
+            var holeNum = displayToActual[i];
+            var scoreKey = p.flight + "_" + holeNum + "_" + pIdx;
+            var score = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[holeNum - 1];
+            total += score;
+            var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(holeNum) !== -1;
+            if (completed) {
+                tableHtml += '<td class="completed"><strong>' + score + '</strong></td>';
+            } else {
+                tableHtml += '<td class="placeholder">' + score + '</td>';
+            }
+        }
+        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
+    }
+    
+    // T-2 row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2</td>';
+    var t2RowData = data.t2Row || [];
+    for (var i = 0; i < 18; i++) {
+        var val = (i < t2RowData.length) ? t2RowData[i] : 0;
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">' + (data.t2Total || 0) + '</td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Strk row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk</td>';
+    var strkRowData = data.strkRow || [];
+    for (var i = 0; i < 18; i++) {
+        var val = (i < strkRowData.length) ? strkRowData[i] : "-";
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '</td></tr>';
+    
+    tableHtml += '</tbody></table>';
+    
+    var scorecardWrapper = document.querySelector(".scorecard-wrapper");
+    if (scorecardWrapper) {
+        scorecardWrapper.innerHTML = tableHtml;
+    }
+}
+
 window.updateGameUI = function(data) {
     console.log("game: updateGameUI called", data);
     
@@ -158,11 +346,16 @@ window.updateGameUI = function(data) {
         return;
     }
     
+    // Load user preference
+    loadDisplayPreference();
+    
     var course = data.course;
     var isSaved = data.isSaved || false;
     var canModify = data.canModify || false;
     var currentHole = data.currentHole || 1;
+    var currentActualHole = data.currentActualHole || 1;
     var activeFlight = data.activeFlight || 1;
+    var startingHole = data.startingHole || 1;
     
     var teamAPts = 0;
     var teamBPts = 0;
@@ -201,8 +394,9 @@ window.updateGameUI = function(data) {
             }
         }
         
-        var scoreKey = activeFlight + "_" + currentHole + "_" + playerIdx;
-        var currentScore = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[currentHole - 1];
+        // Use currentActualHole for score lookup (actual hole number)
+        var scoreKey = activeFlight + "_" + currentActualHole + "_" + playerIdx;
+        var currentScore = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[currentActualHole - 1];
         
         var opponents = data.players.filter(function(op) { return op.team !== p.team; });
         var bubblesHtml = '<div class="bubbles">';
@@ -235,9 +429,9 @@ window.updateGameUI = function(data) {
                     '<span class="player-label-bubble">' + p.label + ' ' + p.handicap + '</span>' +
                 '</div>' +
                 '<div class="score-control">' +
-                    '<button class="score-btn dec-btn" data-player-idx="' + playerIdx + '" data-flight="' + activeFlight + '" data-hole="' + currentHole + '" ' + btnDisabled + ' ' + btnStyle + '>-</button>' +
+                    '<button class="score-btn dec-btn" data-player-idx="' + playerIdx + '" data-flight="' + activeFlight + '" data-hole="' + currentActualHole + '" ' + btnDisabled + ' ' + btnStyle + '>-</button>' +
                     '<span class="score-value">' + currentScore + '</span>' +
-                    '<button class="score-btn inc-btn" data-player-idx="' + playerIdx + '" data-flight="' + activeFlight + '" data-hole="' + currentHole + '" ' + btnDisabled + ' ' + btnStyle + '>+</button>' +
+                    '<button class="score-btn inc-btn" data-player-idx="' + playerIdx + '" data-flight="' + activeFlight + '" data-hole="' + currentActualHole + '" ' + btnDisabled + ' ' + btnStyle + '>+</button>' +
                 '</div>' +
             '</div>' +
             bubblesHtml +
@@ -251,123 +445,9 @@ window.updateGameUI = function(data) {
     var teamBDisplay = teamBPts % 1 === 0 ? teamBPts : teamBPts.toFixed(1);
     var trHtml = '<span class="' + (teamAGreen ? "team-score-green" : "team-score-red") + '">Team A ' + teamADisplay + '</span> - <span class="' + (teamBGreen ? "team-score-green" : "team-score-red") + '">' + teamBDisplay + ' Team B</span>';
     
-    // SCORECARD TABLE
-    var players = data.players;
-    var flight1Players = players.filter(function(p) { return p.flight === 1; });
-    var flight2Players = players.filter(function(p) { return p.flight === 2; });
-    
-    flight1Players.sort(function(a, b) {
-        if (a.team === "A" && b.team === "B") return -1;
-        if (a.team === "B" && b.team === "A") return 1;
-        return 0;
-    });
-    
-    flight2Players.sort(function(a, b) {
-        if (a.team === "A" && b.team === "B") return -1;
-        if (a.team === "B" && b.team === "A") return 1;
-        return 0;
-    });
-    
-    var tableHtml = '<table class="scorecard-table">';
-    tableHtml += '<thead><tr><th>Hole</th>';
-    for (var h = 1; h <= 18; h++) tableHtml += '<th>' + h + '</th>';
-    tableHtml += '<th>Tot</th></tr></thead>';
-    tableHtml += '<tbody>';
-    
-    // Par row
-    tableHtml += '<tr><td style="font-weight:700;">Par</td>';
-    var totalPar = 0;
-    for (var ph = 1; ph <= 18; ph++) {
-        totalPar += course.par[ph-1];
-        tableHtml += '<td>' + course.par[ph-1] + '</td>';
-    }
-    tableHtml += '<td>' + totalPar + 'NonNullable';
-    tableHtml += '<\/tr>';
-    
-    // SI row
-    tableHtml += '<tr><td style="font-weight:700;">SI<\/td>';
-    for (var sh = 0; sh < 18; sh++) {
-        tableHtml += '<td>' + course.si[sh] + '<\/td>';
-    }
-    tableHtml += '<td>-<\/td><\/tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
-    
-    // Flight 1 players
-    for (var pi = 0; pi < flight1Players.length; pi++) {
-        var p = flight1Players[pi];
-        var pIdx = -1;
-        for (var ix = 0; ix < players.length; ix++) {
-            if (players[ix].name === p.name) pIdx = ix;
-        }
-        var total = 0;
-        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
-        for (var hole = 1; hole <= 18; hole++) {
-            var scoreKey = p.flight + "_" + hole + "_" + pIdx;
-            var score = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[hole-1];
-            total += score;
-            var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(hole) !== -1;
-            if (completed) {
-                tableHtml += '<td class="completed"><strong>' + score + '<\/strong><\/td>';
-            } else {
-                tableHtml += '<td class="placeholder">' + score + '<\/td>';
-            }
-        }
-        tableHtml += '<td class="completed"><strong>' + total + '<\/strong><\/td><\/tr>';
-    }
-    
-    // T-1 row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1<\/td>';
-    var t1RowData = data.t1Row || [];
-    for (var h = 1; h <= 18; h++) {
-        var val = (h <= t1RowData.length) ? t1RowData[h-1] : 0;
-        tableHtml += '<td style="color:#4caf50;">' + val + '<\/td>';
-    }
-    tableHtml += '<td style="color:#4caf50;">' + (data.t1Total || 0) + '<\/td><\/tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
-    
-    // Flight 2 players
-    for (var pi = 0; pi < flight2Players.length; pi++) {
-        var p = flight2Players[pi];
-        var pIdx = -1;
-        for (var ix = 0; ix < players.length; ix++) {
-            if (players[ix].name === p.name) pIdx = ix;
-        }
-        var total = 0;
-        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
-        for (var hole = 1; hole <= 18; hole++) {
-            var scoreKey = p.flight + "_" + hole + "_" + pIdx;
-            var score = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[hole-1];
-            total += score;
-            var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(hole) !== -1;
-            if (completed) {
-                tableHtml += '<td class="completed"><strong>' + score + '<\/strong><\/td>';
-            } else {
-                tableHtml += '<td class="placeholder">' + score + '<\/td>';
-            }
-        }
-        tableHtml += '<td class="completed"><strong>' + total + '<\/strong><\/td><\/tr>';
-    }
-    
-    // T-2 row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2<\/td>';
-    var t2RowData = data.t2Row || [];
-    for (var h = 1; h <= 18; h++) {
-        var val = (h <= t2RowData.length) ? t2RowData[h-1] : 0;
-        tableHtml += '<td style="color:#4caf50;">' + val + '<\/td>';
-    }
-    tableHtml += '<td style="color:#4caf50;">' + (data.t2Total || 0) + '<\/td><\/tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
-    
-    // Strk row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk<\/td>';
-    var strkRowData = data.strkRow || [];
-    for (var h = 1; h <= 18; h++) {
-        var val = (h <= strkRowData.length) ? strkRowData[h-1] : "-";
-        tableHtml += '<td style="color:#4caf50;">' + val + '<\/td>';
-    }
-    tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '<\/td><\/tr>';
-    
-    tableHtml += '<\/tbody><\/table>';
+    // Get Par and SI for current actual hole
+    var currentPar = course.par[currentActualHole - 1];
+    var currentSi = course.si[currentActualHole - 1];
     
     var nextBtnClass = isSaved ? "action-btn btn-next-active" : "action-btn btn-next-inactive";
     var nextBtnDisabled = !isSaved ? "disabled" : "";
@@ -375,33 +455,44 @@ window.updateGameUI = function(data) {
     var modeDisplay = data.modeDisplay || "READY";
     var modeClass = data.modeClass || "status-real";
     
+    var shotgunNote = (startingHole !== 1) ? '<div class="game-info" style="color:#ffaa44;">⛳ Shotgun Start - Starting at Hole ' + startingHole + '</div>' : '';
+    
     var html = 
-        '<div class="status-bubble ' + modeClass + '">' + modeDisplay + '<\/div>' +
-        '<div class="game-info"><div>' + escapeHtml(course.name) + (data.gameDate ? ' | ' + data.gameDate : '') + '<\/div><\/div>' +
+        '<div class="status-bubble ' + modeClass + '">' + modeDisplay + '</div>' +
+        '<div class="game-info"><div>' + escapeHtml(course.name) + (data.gameDate ? ' | ' + data.gameDate : '') + '</div></div>' +
+        shotgunNote +
         '<div class="game-header">' +
-            '<div class="hole-number">HOLE ' + currentHole + '<\/div>' +
-            '<div class="hole-par">PAR ' + course.par[currentHole-1] + '  SI ' + course.si[currentHole-1] + '<\/div>' +
-        '<\/div>' +
+            '<div class="hole-number">HOLE ' + currentActualHole + '</div>' +
+            '<div class="hole-par">PAR ' + currentPar + '  SI ' + currentSi + '</div>' +
+        '</div>' +
         flightTabHtml +
-        '<div class="team-score-card"><div class="team-score">' + trHtml + '<\/div><\/div>' +
-        '<div class="player-cards">' + playerCards + '<\/div>' +
+        '<div class="team-score-card"><div class="team-score">' + trHtml + '</div></div>' +
+        '<div class="player-cards">' + playerCards + '</div>' +
         '<div class="action-buttons">' +
-            '<button class="action-btn btn-back" id="prevHoleBtn"' + (currentHole === 1 ? ' disabled' : '') + '>Back<\/button>' +
-            '<button class="action-btn btn-save" id="saveBtn">Save<\/button>' +
-            '<button class="' + nextBtnClass + '" id="nextHoleBtn" ' + nextBtnDisabled + '>Next<\/button>' +
-        '<\/div>' +
+            '<button class="action-btn btn-back" id="prevHoleBtn"' + (currentHole === 1 ? ' disabled' : '') + '>Back</button>' +
+            '<button class="action-btn btn-save" id="saveBtn">Save</button>' +
+            '<button class="' + nextBtnClass + '" id="nextHoleBtn" ' + nextBtnDisabled + '>Next</button>' +
+        '</div>' +
         '<div class="scorecard-section">' +
             '<div class="scorecard-header">' +
-                '<div class="scorecard-title">SCORECARD<\/div>' +
-                '<button class="refresh-btn" id="refreshBtn">⟳<\/button>' +
-            '<\/div>' +
-            '<div class="scorecard-wrapper">' + tableHtml + '<\/div>' +
-        '<\/div>' +
+                '<div class="scorecard-title">SCORECARD</div>' +
+                '<div class="view-toggle">' +
+                    '<button class="toggle-btn" id="playViewBtn">⛳ Play Order</button>' +
+                    '<button class="toggle-btn" id="naturalViewBtn">📋 Natural Order</button>' +
+                '</div>' +
+                '<button class="refresh-btn" id="refreshBtn">⟳</button>' +
+            '</div>' +
+            '<div class="scorecard-wrapper"></div>' +
+        '</div>' +
         '<div class="menu-button-container">' +
-            '<button class="btn-menu" id="menuBtn">Main Menu<\/button>' +
-        '<\/div>';
+            '<button class="btn-menu" id="menuBtn">Main Menu</button>' +
+        '</div>';
     
     document.getElementById("app").innerHTML = html;
+    
+    // Render scorecard after DOM is updated
+    renderScorecard();
+    updateToggleButtons();
     attachEvents();
 };
 
@@ -495,10 +586,34 @@ function attachEvents() {
         };
         menuBtn.addEventListener("click", menuBtn._listener);
     }
+    
+    // Toggle buttons
+    var playViewBtn = document.getElementById("playViewBtn");
+    var naturalViewBtn = document.getElementById("naturalViewBtn");
+    
+    if (playViewBtn) {
+        playViewBtn.removeEventListener("click", playViewBtn._listener);
+        playViewBtn._listener = function() {
+            if (currentDisplayMode !== "play") {
+                toggleDisplayMode();
+            }
+        };
+        playViewBtn.addEventListener("click", playViewBtn._listener);
+    }
+    
+    if (naturalViewBtn) {
+        naturalViewBtn.removeEventListener("click", naturalViewBtn._listener);
+        naturalViewBtn._listener = function() {
+            if (currentDisplayMode !== "natural") {
+                toggleDisplayMode();
+            }
+        };
+        naturalViewBtn.addEventListener("click", naturalViewBtn._listener);
+    }
 }
 
 document.getElementById("app").innerHTML = '<div class="loading">Initializing...</div>';
-console.log("game v1.06: Loaded - waiting for data");
+console.log("game v1.07: Loaded - waiting for data");
 </script>
 </body>
 </html>
