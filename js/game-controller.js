@@ -1,5 +1,5 @@
-// FILE: js/game-controller.js - VERSION 1.15
-// ADDED: gameStarted flag (true when at least one hole completed on both flights)
+// FILE: js/game-controller.js - VERSION 1.16
+// ADDED: flight1Started, flight2Started flags based on saved holes
 
 var GameController = (function() {
     
@@ -287,8 +287,9 @@ var GameController = (function() {
             
             var matchBubbles = calculateMatchBubbles(currentPlayers, displayScores, displaySavedHoles, currentHoleByFlight, maxCompletedHole);
             
-            // NEW: gameStarted flag
-            var gameStarted = (maxCompletedHole > 0);
+            // NEW: Per-flight started flags
+            var flight1Started = (displaySavedHoles[1].length > 0);
+            var flight2Started = (displaySavedHoles[2].length > 0);
             
             var newUIData = {
                 players: currentPlayers,
@@ -320,7 +321,8 @@ var GameController = (function() {
                 startingHole: startingHole,
                 playOrder: GameData.getPlayOrder(),
                 naturalOrder: GameData.getNaturalOrder(),
-                gameStarted: gameStarted
+                flight1Started: flight1Started,
+                flight2Started: flight2Started
             };
             
             if (typeof window.updateGameUI === 'function') {
@@ -468,7 +470,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.15...");
+        console.log("GameController: Initializing v1.16...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
