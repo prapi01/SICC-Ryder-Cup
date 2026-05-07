@@ -1,4 +1,6 @@
-<!-- FILE: pre-game.html - VERSION 2.30 -->
+<!-- FILE: pre-game.html - VERSION 2.31 -->
+<!-- Role selection and verification before game -->
+<!-- FIX: REAL mode resets if ANY data exists (saved holes, flags, or locks) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -325,13 +327,13 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.30</div>
+<div class="version-tag">v2.31</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.30
-// SORT: Players by handicap (lowest to highest) within each team (same as game page)
+// FILE: pre-game.html - VERSION 2.31
+// FIX: REAL mode resets if ANY data exists (saved holes, flags, or locks)
 
-var VERSION = "2.30";
+var VERSION = "2.31";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -591,13 +593,16 @@ function loadGame() {
             
             var today = getTodayString();
             var isToday = (gameData.date === today);
-            var hasLocks = (locks.f1 !== null || locks.f2 !== null);
             
             if (isToday) {
                 gameMode = "real";
-                if (!hasLocks) {
-                    console.log("REAL mode - First device on game day. Resetting all data.");
+                // FIXED: Check if ANY data exists (saved holes, flags, OR locks)
+                var hasAnyData = hasExistingData() || (locks.f1 !== null || locks.f2 !== null);
+                
+                if (hasAnyData) {
+                    console.log("REAL mode - Resetting game data for today's match");
                     resetGameData(function(success) {
+                        // Reload game data after reset
                         db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
                             if (updatedDoc.exists) {
                                 gameData = updatedDoc.data();
@@ -615,6 +620,7 @@ function loadGame() {
                         });
                     });
                 } else {
+                    console.log("REAL mode - No existing data, proceeding normally");
                     startGameListener();
                     render();
                 }
@@ -784,7 +790,6 @@ function render() {
     }
     
     var flight1Players = players.filter(function(p) { return p.flight === 1; });
-    // UPDATED: Sort by handicap (lowest to highest) - same as game page
     var flight1A = flight1Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var flight1B = flight1Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
