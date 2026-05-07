@@ -1,5 +1,6 @@
-<!-- FILE: practice-setup.html - VERSION 1.07 -->
+<!-- FILE: practice-setup.html - VERSION 1.08 -->
 <!-- Start a new practice game with SHOTGUN START support -->
+<!-- Three-button toggle: Hole 1 | Hole 10 | Shotgun (dropdown) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65,6 +66,51 @@
             font-size: 1rem;
         }
         .form-input:focus, .form-select:focus { outline: none; border-color: #ffaa44; }
+        
+        /* Three-button toggle for Starting Hole */
+        .starting-hole-toggle {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        .hole-toggle-btn {
+            flex: 1;
+            padding: 12px 16px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 40px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #ccc;
+            transition: all 0.2s;
+        }
+        .hole-toggle-btn.active {
+            background: #2a2a1a;
+            border-color: #ffaa44;
+            color: #ffaa44;
+        }
+        .hole-toggle-btn.shotgun-btn {
+            flex: 0.8;
+        }
+        .shotgun-dropdown-container {
+            margin-top: 8px;
+        }
+        .shotgun-select {
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 30px;
+            padding: 10px 16px;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        .shotgun-select:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
         
         .players-grid {
             background: #111;
@@ -176,16 +222,6 @@
             border: 2px solid #ffaa44;
         }
         
-        .starting-hole-select {
-            width: 100%;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 30px;
-            padding: 12px 16px;
-            color: #fff;
-            font-size: 1rem;
-        }
-        
         .info-note { font-size: 0.7rem; color: #ffaa44; margin-top: 8px; text-align: center; }
     </style>
 </head>
@@ -194,14 +230,14 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.07</div>
+<div class="version-tag">v1.08</div>
 
 <script>
-// FILE: practice-setup.html - VERSION 1.07
+// FILE: practice-setup.html - VERSION 1.08
 // Creates PRACTICE game documents with CONSOLIDATED structure + SHOTGUN START support
-// F1-18 string is ROTATED to start at startingHole
+// Three-button toggle: Hole 1 | Hole 10 | Shotgun (dropdown)
 
-var VERSION = "1.07";
+var VERSION = "1.08";
 var CACHE_KEY = "practice_setup_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -298,18 +334,33 @@ function loadCourses() {
     });
 }
 
-function savePracticeGame(courseId, selectedRole, startingHole) {
+var state = {
+    startingHole: 1,
+    startingHoleType: "hole1"  // "hole1", "hole10", "shotgun"
+};
+
+function setStartingHole(type, value) {
+    state.startingHoleType = type;
+    if (type === "hole1") {
+        state.startingHole = 1;
+    } else if (type === "hole10") {
+        state.startingHole = 10;
+    } else if (type === "shotgun") {
+        state.startingHole = value || 1;
+    }
+    render();
+}
+
+function savePracticeGame(courseId, selectedRole) {
     var selectedCourse = courses.find(function(c) { return c.id === courseId; });
     if (!selectedCourse) {
         alert("Please select a course");
         return;
     }
     
-    // Generate default data in NATURAL order, then ROTATE to play order
     var naturalData = generateDefaultDataNatural(selectedCourse.par);
-    var rotatedData = rotateDataString(naturalData, startingHole);
+    var rotatedData = rotateDataString(naturalData, state.startingHole);
     
-    // CONSOLIDATED STRUCTURE - everything in ONE document
     var gameData = {
         course: {
             name: selectedCourse.name,
@@ -319,9 +370,8 @@ function savePracticeGame(courseId, selectedRole, startingHole) {
         players: DEFAULT_PLAYERS,
         status: "practice",
         gameType: "practice",
-        startingHole: startingHole,  // NEW: store starting hole
+        startingHole: state.startingHole,
         
-        // Consolidated flight data (already rotated to play order)
         f1: {
             d: rotatedData,
             se: false,
@@ -334,7 +384,6 @@ function savePracticeGame(courseId, selectedRole, startingHole) {
             x: false
         },
         
-        // Role locks in same document
         locks: {
             f1: null,
             f2: null
@@ -343,12 +392,11 @@ function savePracticeGame(courseId, selectedRole, startingHole) {
         currentHoleF1: 1,
         currentHoleF2: 1,
         
-        // Practice session info
         practiceRole: selectedRole,
         
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000) // 7 days auto-delete
+        expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000)
     };
     
     db.collection("practiceGames").add(gameData).then(function(docRef) {
@@ -380,6 +428,13 @@ function showAlert(type, message) {
 }
 
 function render() {
+    var hole1Class = "hole-toggle-btn" + (state.startingHoleType === "hole1" ? " active" : "");
+    var hole10Class = "hole-toggle-btn" + (state.startingHoleType === "hole10" ? " active" : "");
+    var shotgunClass = "hole-toggle-btn shotgun-btn" + (state.startingHoleType === "shotgun" ? " active" : "");
+    
+    var shotgunSelectDisabled = (state.startingHoleType !== "shotgun");
+    var shotgunSelectValue = (state.startingHoleType === "shotgun") ? state.startingHole : 1;
+    
     var html = `
         <div class="header">
             <div class="title">🧪 START PRACTICE GAME</div>
@@ -396,26 +451,33 @@ function render() {
             
             <div class="form-group">
                 <label class="form-label">⛳ STARTING HOLE (SHOTGUN START)</label>
-                <select id="startingHole" class="starting-hole-select">
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9</option>
-                    <option value="10" selected>10</option>
-                    <option value="11">11</option>
-                    <option value="12">12</option>
-                    <option value="13">13</option>
-                    <option value="14">14</option>
-                    <option value="15">15</option>
-                    <option value="16">16</option>
-                    <option value="17">17</option>
-                    <option value="18">18</option>
-                </select>
+                <div class="starting-hole-toggle">
+                    <div class="${hole1Class}" data-type="hole1">Hole 1</div>
+                    <div class="${hole10Class}" data-type="hole10">Hole 10</div>
+                    <div class="${shotgunClass}" data-type="shotgun">Shotgun</div>
+                </div>
+                <div class="shotgun-dropdown-container">
+                    <select id="shotgunHoleSelect" class="shotgun-select" ${shotgunSelectDisabled ? 'disabled' : ''}>
+                        <option value="1" ${shotgunSelectValue === 1 ? 'selected' : ''}>Hole 1</option>
+                        <option value="2" ${shotgunSelectValue === 2 ? 'selected' : ''}>Hole 2</option>
+                        <option value="3" ${shotgunSelectValue === 3 ? 'selected' : ''}>Hole 3</option>
+                        <option value="4" ${shotgunSelectValue === 4 ? 'selected' : ''}>Hole 4</option>
+                        <option value="5" ${shotgunSelectValue === 5 ? 'selected' : ''}>Hole 5</option>
+                        <option value="6" ${shotgunSelectValue === 6 ? 'selected' : ''}>Hole 6</option>
+                        <option value="7" ${shotgunSelectValue === 7 ? 'selected' : ''}>Hole 7</option>
+                        <option value="8" ${shotgunSelectValue === 8 ? 'selected' : ''}>Hole 8</option>
+                        <option value="9" ${shotgunSelectValue === 9 ? 'selected' : ''}>Hole 9</option>
+                        <option value="10" ${shotgunSelectValue === 10 ? 'selected' : ''}>Hole 10</option>
+                        <option value="11" ${shotgunSelectValue === 11 ? 'selected' : ''}>Hole 11</option>
+                        <option value="12" ${shotgunSelectValue === 12 ? 'selected' : ''}>Hole 12</option>
+                        <option value="13" ${shotgunSelectValue === 13 ? 'selected' : ''}>Hole 13</option>
+                        <option value="14" ${shotgunSelectValue === 14 ? 'selected' : ''}>Hole 14</option>
+                        <option value="15" ${shotgunSelectValue === 15 ? 'selected' : ''}>Hole 15</option>
+                        <option value="16" ${shotgunSelectValue === 16 ? 'selected' : ''}>Hole 16</option>
+                        <option value="17" ${shotgunSelectValue === 17 ? 'selected' : ''}>Hole 17</option>
+                        <option value="18" ${shotgunSelectValue === 18 ? 'selected' : ''}>Hole 18</option>
+                    </select>
+                </div>
                 <div class="info-note">💡 Play will begin at selected hole. Scorecard will show holes in play order.</div>
             </div>
             
@@ -475,6 +537,32 @@ function render() {
         document.getElementById("courseButtons").innerHTML = '<div class="alert alert-error">Error loading courses. Please refresh.</div>';
     });
     
+    // Three-button toggle listeners
+    document.querySelectorAll(".hole-toggle-btn").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+            var type = this.dataset.type;
+            if (type === "shotgun") {
+                var select = document.getElementById("shotgunHoleSelect");
+                var holeValue = select ? parseInt(select.value) : 1;
+                setStartingHole("shotgun", holeValue);
+            } else if (type === "hole1") {
+                setStartingHole("hole1", 1);
+            } else if (type === "hole10") {
+                setStartingHole("hole10", 10);
+            }
+        });
+    });
+    
+    // Shotgun dropdown listener
+    var shotgunSelect = document.getElementById("shotgunHoleSelect");
+    if (shotgunSelect) {
+        shotgunSelect.addEventListener("change", function() {
+            if (state.startingHoleType === "shotgun") {
+                state.startingHole = parseInt(this.value);
+            }
+        });
+    }
+    
     // Role selection
     var selectedRole = null;
     document.querySelectorAll('.role-btn').forEach(function(btn) {
@@ -499,11 +587,8 @@ function render() {
             return;
         }
         
-        var startingHoleSelect = document.getElementById("startingHole");
-        var startingHole = startingHoleSelect ? parseInt(startingHoleSelect.value) : 1;
-        
         var courseId = selectedCourseBtn.dataset.courseId;
-        savePracticeGame(courseId, selectedRole, startingHole);
+        savePracticeGame(courseId, selectedRole);
     });
     
     document.getElementById("cancelBtn").addEventListener("click", function() {
