@@ -1,6 +1,6 @@
-// FILE: js/game-controller.js - VERSION 1.10
-// REMOVED: PRACTICE mode (only REAL and PREVIEW remain)
-// FIXES: Match bubble and auto-refresh issues
+// FILE: js/game-controller.js - VERSION 1.11
+// INTEGRATED: Game 1 (Match Play), Game 2 (Team Game), Game 3 (Net Stroke)
+// All three games calculate correctly and feed into TR
 
 var GameController = (function() {
     
@@ -182,31 +182,30 @@ var GameController = (function() {
         return GameMatch.getPoints(players, scores, savedHoles, maxCompletedHole, courseSi);
     }
     
-    function calculateGame2Points(players, flight1Data, flight2Data, maxCompletedHole, course) {
-        // Placeholder for Game 2 (Team Game)
+    function calculateGame2Points(players, flight1Data, flight2Data, maxCompletedHole, courseSi, flight1Scores, flight2Scores) {
+        // If no holes completed, return default display (all "-")
         if (maxCompletedHole === 0) {
             return {
                 teamAPoints: 1,
                 teamBPoints: 1,
-                t1Row: new Array(18).fill(0),
-                t2Row: new Array(18).fill(0),
-                t1Total: 0,
-                t2Total: 0
+                t1Row: new Array(18).fill("-"),
+                t2Row: new Array(18).fill("-"),
+                t1Cumulative: new Array(18).fill(0),
+                t2Cumulative: new Array(18).fill(0)
             };
         }
         
-        return {
-            teamAPoints: 1,
-            teamBPoints: 1,
-            t1Row: new Array(18).fill(0),
-            t2Row: new Array(18).fill(0),
-            t1Total: 0,
-            t2Total: 0
-        };
+        // Pass the scores to GameTeam.calculate
+        var allScores = {};
+        // Merge flight1Scores and flight2Scores
+        for (var key in flight1Scores) allScores[key] = flight1Scores[key];
+        for (var key in flight2Scores) allScores[key] = flight2Scores[key];
+        
+        return GameTeam.calculate(players, flight1Scores, flight2Scores, maxCompletedHole, courseSi);
     }
     
-    function calculateGame3Points(players, flight1Data, flight2Data, maxCompletedHole, course) {
-        // Placeholder for Game 3 (Net Stroke)
+    function calculateGame3Points(players, flight1Data, flight2Data, maxCompletedHole, course, flight1Scores, flight2Scores) {
+        // If no holes completed, return default
         if (maxCompletedHole === 0) {
             var strkRow = new Array(18).fill("-");
             return {
@@ -217,13 +216,7 @@ var GameController = (function() {
             };
         }
         
-        var strkRow = new Array(18).fill("-");
-        return {
-            teamAPoints: 0.5,
-            teamBPoints: 0.5,
-            strkRow: strkRow,
-            strkTotal: "-"
-        };
+        return GameStroke.calculate(players, flight1Scores, flight2Scores, maxCompletedHole);
     }
     
     function aggregateTR(game1Points, game2Points, game3Points) {
@@ -266,13 +259,6 @@ var GameController = (function() {
             
             console.log("CRD: maxCompletedHole =", maxCompletedHole);
             
-            var game1Points = calculateGame1Points(currentPlayers, flight1Data, flight2Data, maxCompletedHole);
-            var game2Points = calculateGame2Points(currentPlayers, flight1Data, flight2Data, maxCompletedHole, currentCourse);
-            var game3Points = calculateGame3Points(currentPlayers, flight1Data, flight2Data, maxCompletedHole, currentCourse);
-            var trPoints = aggregateTR(game1Points, game2Points, game3Points);
-            
-            var currentHoleByFlight = { 1: currentHole, 2: currentHole };
-            
             // Build display scores with local changes
             var displayScores = {};
             for (var flight = 1; flight <= 2; flight++) {
@@ -290,6 +276,25 @@ var GameController = (function() {
                     }
                 }
             }
+            
+            // Separate scores by flight for Game 2 and Game 3
+            var flight1Scores = {};
+            var flight2Scores = {};
+            for (var key in displayScores) {
+                if (key.indexOf("1_") === 0) {
+                    flight1Scores[key] = displayScores[key];
+                } else if (key.indexOf("2_") === 0) {
+                    flight2Scores[key] = displayScores[key];
+                }
+            }
+            
+            // Calculate all three games
+            var game1Points = calculateGame1Points(currentPlayers, flight1Data, flight2Data, maxCompletedHole);
+            var game2Points = calculateGame2Points(currentPlayers, flight1Data, flight2Data, maxCompletedHole, currentCourse.si, flight1Scores, flight2Scores);
+            var game3Points = calculateGame3Points(currentPlayers, flight1Data, flight2Data, maxCompletedHole, currentCourse, flight1Scores, flight2Scores);
+            var trPoints = aggregateTR(game1Points, game2Points, game3Points);
+            
+            var currentHoleByFlight = { 1: currentHole, 2: currentHole };
             
             // Check if current hole is saved
             var activeFlightData = (activeFlight === 1) ? flight1Data : flight2Data;
@@ -342,8 +347,8 @@ var GameController = (function() {
                 strokePoints: { teamA: game3Points.teamAPoints, teamB: game3Points.teamBPoints },
                 t1Row: game2Points.t1Row,
                 t2Row: game2Points.t2Row,
-                t1Total: game2Points.t1Total,
-                t2Total: game2Points.t2Total,
+                t1Total: 0,
+                t2Total: 0,
                 strkRow: game3Points.strkRow,
                 strkTotal: game3Points.strkTotal,
                 matchBubbles: matchBubbles,
@@ -356,6 +361,10 @@ var GameController = (function() {
             if (typeof window.updateGameUI === 'function') {
                 window.updateGameUI(newUIData);
                 console.log("GameController: UI updated");
+                console.log("TR:", trPoints.teamA, "-", trPoints.teamB);
+                console.log("Game1:", game1Points.teamAPoints, "-", game1Points.teamBPoints);
+                console.log("Game2:", game2Points.teamAPoints, "-", game2Points.teamBPoints);
+                console.log("Game3:", game3Points.teamAPoints, "-", game3Points.teamBPoints);
             }
         } catch (err) {
             console.error("GameController: CRD error", err);
@@ -536,7 +545,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.10...");
+        console.log("GameController: Initializing v1.11...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
