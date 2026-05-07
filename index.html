@@ -1,4 +1,4 @@
-<!-- FILE: index.html - VERSION 2.22 -->
+<!-- FILE: index.html - VERSION 2.23 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -84,32 +84,38 @@
         
         .menu-btn {
             background: linear-gradient(145deg, #1a1a1a, #111);
-            border: 1px solid #333;
+            border: 1px solid #4caf50;
             border-radius: 60px;
             padding: 14px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
         }
-        
         .menu-btn:hover {
             transform: scale(1.02);
             border-color: #4caf50;
         }
-        
         .menu-btn .label {
             font-size: 0.95rem;
             font-weight: 600;
             color: #fff;
         }
         
-        .menu-btn.warning {
-            border-color: #ffaa44;
+        .gsb {
+            background: rgba(17,17,17,0.9);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 60px;
+            padding: 12px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 220px;
+            margin: 0 auto;
+            backdrop-filter: blur(4px);
         }
-        
-        .menu-btn.warning .label {
-            color: #ffaa44;
-        }
+        .gsb:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
+        .gsb .icon { font-size: 1rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
+        .gsb .label { font-size: 0.85rem; font-weight: 600; color: #ccc; display: inline-block; vertical-align: middle; }
         
         .footer {
             text-align: center;
@@ -188,14 +194,14 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.22</div>
+<div class="version-tag">v2.23</div>
 
 <script>
-// FILE: index.html - VERSION 2.22
-// REMOVED: PRACTICE MODE button
-// UPDATED: NGB shows PREVIEW/NEXT GAME/TODAY GAME with course name
+// FILE: index.html - VERSION 2.23
+// FIXED: VIEW PREVIOUS GAMES - green border (same as NGB)
+// FIXED: GAME SETTINGS - smaller button, faint grey border (restored)
 
-var APP_VERSION = "2.22";
+var APP_VERSION = "2.23";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -327,13 +333,11 @@ function showResumeModal(gameId, gameDate, callback) {
 }
 
 function resetGameData(gameId) {
-    // Get current game data first to know course par and startingHole
     return db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
         if (!doc.exists) return false;
         var gameData = doc.data();
         var startingHole = gameData.startingHole || 1;
         
-        // Generate default data in natural order then rotate
         function generateDefaultDataNatural(parArray) {
             var result = "";
             for (var h = 0; h < 18; h++) {
@@ -374,8 +378,6 @@ function resetGameData(gameId) {
         };
         
         return db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
-            return db.collection("gameRoles").doc(gameId).delete().catch(function() {});
-        }).then(function() {
             return true;
         });
     });
@@ -395,7 +397,6 @@ function proceedToGame(gameId, gameType, targetPage) {
             collection: "scheduledGames"
         }
     });
-    sessionStorage.removeItem("practiceGameId");
     sessionStorage.setItem("currentGameId", gameId);
     window.location.href = targetPage;
 }
@@ -425,7 +426,6 @@ function handleNGB(targetPage) {
         if (gameStatus === "today") {
             proceedToGame(gameId, "real", targetPage);
         } else if (gameStatus === "future") {
-            // Check if existing data exists for preview
             checkExistingPreviewData(gameId).then(function(hasData) {
                 if (hasData) {
                     showResumeModal(gameId, gameDate, function(action) {
@@ -442,7 +442,6 @@ function handleNGB(targetPage) {
                 }
             });
         } else {
-            // Past game - treat as preview/read-only
             proceedToGame(gameId, "preview", targetPage);
         }
     }).catch(function(e) {
@@ -529,9 +528,11 @@ function loadAndRender() {
                 <div class="menu-btn" id="previousGamesBtn">
                     <span class="label">📋 VIEW PREVIOUS GAMES</span>
                 </div>
-                <div class="menu-btn warning" id="adminBtn">
-                    <span class="label">⚙️ GAME SETTINGS</span>
-                </div>
+            </div>
+            
+            <div class="gsb" id="adminBtn">
+                <span class="icon">⚙️</span>
+                <span class="label">GAME SETTINGS</span>
             </div>
             
             <div class="footer">SICC Ryder Cup App v${APP_VERSION}<br>© 2026 Singapore Island Country Club</div>
