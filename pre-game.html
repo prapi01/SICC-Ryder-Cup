@@ -1,6 +1,6 @@
-<!-- FILE: pre-game.html - VERSION 2.28 -->
+<!-- FILE: pre-game.html - VERSION 2.29 -->
 <!-- Role selection and verification before game -->
-<!-- ADDED: REAL mode auto-reset on first device of game day -->
+<!-- REMOVED: PRACTICE mode (only REAL and PREVIEW remain) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -63,7 +63,6 @@
             font-size: 0.85rem;
         }
         .mode-real { background: rgba(76,175,80,0.2); border: 1px solid #4caf50; color: #4caf50; }
-        .mode-practice { background: rgba(255,170,68,0.2); border: 1px solid #ffaa44; color: #ffaa44; }
         .mode-preview { background: rgba(255,170,68,0.2); border: 1px solid #ffaa44; color: #ffaa44; }
         .mode-history { background: rgba(136,136,136,0.2); border: 1px solid #888; color: #888; }
         
@@ -321,12 +320,6 @@
             color: #4caf50;
             border: 1px solid #4caf50;
         }
-        .modal-btn-reset-disabled {
-            background: #2a2a2a;
-            color: #555;
-            border: 1px solid #444;
-            cursor: not-allowed;
-        }
     </style>
 </head>
 <body>
@@ -334,14 +327,15 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.28</div>
+<div class="version-tag">v2.29</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.28
-// FIXED: REAL mode auto-reset on first device of game day
-// PREVIEW/PRACTICE modes: modal with RESET/CONTINUE
+// FILE: pre-game.html - VERSION 2.29
+// REMOVED: PRACTICE mode - only REAL and PREVIEW remain
+// REAL mode: auto-reset on first device of game day
+// PREVIEW mode: modal with RESET/CONTINUE when data exists
 
-var VERSION = "2.28";
+var VERSION = "2.29";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -383,7 +377,6 @@ var currentDeviceId = null;
 var currentSessionId = null;
 var deviceSession = null;
 
-// Locks stored in main document
 var locks = { f1: null, f2: null };
 
 function displayDeviceId() {
@@ -408,7 +401,6 @@ function getTodayString() {
     return year + "-" + month + "-" + day;
 }
 
-// Generate default data string in NATURAL order
 function generateDefaultDataNatural(parArray) {
     if (!parArray || parArray.length !== 18) {
         var defaultPar = "04";
@@ -428,7 +420,6 @@ function generateDefaultDataNatural(parArray) {
     return result;
 }
 
-// Rotate data string to start at startingHole
 function rotateDataString(naturalData, startingHole) {
     if (startingHole === 1) return naturalData;
     
@@ -444,7 +435,6 @@ function rotateDataString(naturalData, startingHole) {
     return rotated.join('');
 }
 
-// Reset ALL game data (scores, flags, locks) to default
 function resetGameData(callback) {
     if (!db || !gameId) {
         if (callback) callback(false);
@@ -471,11 +461,9 @@ function resetGameData(callback) {
     
     db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
         console.log("Game data reset to default - locks cleared");
-        
         locks.f1 = null;
         locks.f2 = null;
         tempSelectedRole = null;
-        
         if (callback) callback(true);
     }).catch(function(e) {
         console.error("Reset error:", e);
@@ -483,19 +471,13 @@ function resetGameData(callback) {
     });
 }
 
-// Check if any data exists (non-default scores or flags)
 function hasExistingData() {
     if (!gameData) return false;
     
-    // Check if f1 or f2 have any saved holes (contains 'T')
     var f1HasData = gameData.f1 && gameData.f1.d && gameData.f1.d.indexOf('T') !== -1;
     var f2HasData = gameData.f2 && gameData.f2.d && gameData.f2.d.indexOf('T') !== -1;
-    
-    // Check if any flags are true
     var f1HasEvent = gameData.f1 && (gameData.f1.se === true || gameData.f1.x === true);
     var f2HasEvent = gameData.f2 && (gameData.f2.se === true || gameData.f2.x === true);
-    
-    // Check if any locks exist
     var hasLocks = (gameData.locks && (gameData.locks.f1 !== null || gameData.locks.f2 !== null));
     
     return f1HasData || f2HasData || f1HasEvent || f2HasEvent || hasLocks;
@@ -505,23 +487,14 @@ function startGameListener() {
     if (!firestoreReady || !gameId) return;
     if (unsubcribeGame) unsubcribeGame();
     
-    var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
-    
-    unsubcribeGame = db.collection(collection).doc(gameId)
+    unsubcribeGame = db.collection("scheduledGames").doc(gameId)
         .onSnapshot(function(doc) {
             if (doc.exists) {
                 var data = doc.data();
-                
                 if (data.locks) {
                     locks.f1 = data.locks.f1 || null;
                     locks.f2 = data.locks.f2 || null;
                 }
-                
-                console.log("Game listener - locks updated:", {
-                    f1: locks.f1 ? "locked" : "free",
-                    f2: locks.f2 ? "locked" : "free"
-                });
-                
                 render();
             }
         }, function(error) {
@@ -555,10 +528,10 @@ function toggleRole(role) {
         SessionManager.updateSession({
             activeGame: {
                 gameId: gameId,
-                gameType: (gameMode === "practice") ? "practice" : "real",
+                gameType: gameMode,
                 gameMode: gameMode,
                 role: role,
-                collection: (gameMode === "practice") ? "practiceGames" : "scheduledGames"
+                collection: "scheduledGames"
             }
         });
     }
@@ -570,7 +543,7 @@ function showSessionModal(callback) {
     var modalHtml = `
         <div class="modal-overlay" id="sessionModal">
             <div class="modal">
-                <div class="modal-title">${gameMode === "preview" ? "PREVIEW" : "PRACTICE"} Session</div>
+                <div class="modal-title">PREVIEW Session</div>
                 <div class="modal-message">Existing game data found. What would you like to do?</div>
                 <div class="modal-buttons">
                     <button class="modal-btn modal-btn-reset" id="resetBtn">RESET (Start Over)</button>
@@ -586,7 +559,6 @@ function showSessionModal(callback) {
         document.getElementById("sessionModal").remove();
         resetGameData(function(success) {
             if (success) {
-                console.log("Game data reset, proceeding...");
                 window.location.reload();
             } else {
                 if (callback) callback();
@@ -601,64 +573,35 @@ function showSessionModal(callback) {
 }
 
 function loadGame() {
-    var practiceGameId = sessionStorage.getItem("practiceGameId");
     var realGameId = sessionStorage.getItem("currentGameId");
     
-    if (practiceGameId) {
-        gameMode = "practice";
-        gameId = practiceGameId;
-        db.collection("practiceGames").doc(gameId).get().then(function(doc) {
-            if (doc.exists) {
-                gameData = doc.data();
-                gameData.id = doc.id;
-                
-                if (gameData.locks) {
-                    locks.f1 = gameData.locks.f1 || null;
-                    locks.f2 = gameData.locks.f2 || null;
-                }
-                
-                startGameListener();
-                
-                if (hasExistingData()) {
-                    showSessionModal(function() {
-                        render();
-                    });
-                } else {
-                    render();
-                }
-            } else {
-                alert("Practice game not found");
-                window.location.href = "practice-mode.html";
+    if (!realGameId) {
+        alert("No game selected. Please return to main menu.");
+        window.location.href = "index.html";
+        return;
+    }
+    
+    gameId = realGameId;
+    
+    db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+        if (doc.exists) {
+            gameData = doc.data();
+            gameData.id = doc.id;
+            
+            if (gameData.locks) {
+                locks.f1 = gameData.locks.f1 || null;
+                locks.f2 = gameData.locks.f2 || null;
             }
-        }).catch(function(e) {
-            alert("Error loading practice game: " + e.message);
-            window.location.href = "practice-mode.html";
-        });
-    } else if (realGameId) {
-        gameId = realGameId;
-        gameMode = "real";
-        
-        db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
-            if (doc.exists) {
-                gameData = doc.data();
-                gameData.id = doc.id;
-                
-                if (gameData.locks) {
-                    locks.f1 = gameData.locks.f1 || null;
-                    locks.f2 = gameData.locks.f2 || null;
-                }
-                
-                var today = getTodayString();
-                var isToday = (gameData.date === today);
-                var hasLocks = (locks.f1 !== null || locks.f2 !== null);
-                
-                console.log("REAL mode check:", { isToday, hasLocks });
-                
-                if (isToday && !hasLocks) {
-                    // FIRST DEVICE ON GAME DAY - RESET EVERYTHING
+            
+            var today = getTodayString();
+            var isToday = (gameData.date === today);
+            var hasLocks = (locks.f1 !== null || locks.f2 !== null);
+            
+            if (isToday) {
+                gameMode = "real";
+                if (!hasLocks) {
                     console.log("REAL mode - First device on game day. Resetting all data.");
                     resetGameData(function(success) {
-                        // Reload game data after reset
                         db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
                             if (updatedDoc.exists) {
                                 gameData = updatedDoc.data();
@@ -676,22 +619,28 @@ function loadGame() {
                         });
                     });
                 } else {
-                    // Not first device or not game day - normal flow
                     startGameListener();
                     render();
                 }
             } else {
-                alert("Game not found");
-                window.location.href = "index.html";
+                gameMode = "preview";
+                if (hasExistingData()) {
+                    showSessionModal(function() {
+                        render();
+                    });
+                } else {
+                    startGameListener();
+                    render();
+                }
             }
-        }).catch(function(e) {
-            alert("Error loading game: " + e.message);
+        } else {
+            alert("Game not found");
             window.location.href = "index.html";
-        });
-    } else {
-        alert("No game selected. Please return to main menu.");
+        }
+    }).catch(function(e) {
+        alert("Error loading game: " + e.message);
         window.location.href = "index.html";
-    }
+    });
 }
 
 function startGame() {
@@ -702,7 +651,6 @@ function startGame() {
     
     var now = Date.now();
     var expiryTime = now + LOCK_DURATION_MS;
-    var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
     var updatePayload = {};
     
     if (tempSelectedRole === "view") {
@@ -711,10 +659,10 @@ function startGame() {
             SessionManager.updateSession({
                 activeGame: {
                     gameId: gameId,
-                    gameType: (gameMode === "practice") ? "practice" : "real",
+                    gameType: gameMode,
                     gameMode: gameMode,
                     role: "view",
-                    collection: collection
+                    collection: "scheduledGames"
                 }
             });
             SessionManager.addNavigationHistory("game.html", "tee_off_view", { gameId: gameId });
@@ -760,17 +708,17 @@ function startGame() {
     
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
-    db.collection(collection).doc(gameId).update(updatePayload).then(function() {
+    db.collection("scheduledGames").doc(gameId).update(updatePayload).then(function() {
         localStorage.setItem("userRole", tempSelectedRole);
         
         if (deviceSession) {
             SessionManager.updateSession({
                 activeGame: {
                     gameId: gameId,
-                    gameType: (gameMode === "practice") ? "practice" : "real",
+                    gameType: gameMode,
                     gameMode: gameMode,
                     role: tempSelectedRole,
-                    collection: collection
+                    collection: "scheduledGames"
                 }
             });
             SessionManager.addNavigationHistory("game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
@@ -784,14 +732,13 @@ function startGame() {
 
 function resetRoleLocks() {
     if (confirm("⚠️ Reset all role locks? This will allow new devices to take update roles.")) {
-        var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
         var resetPayload = {
             "locks.f1": null,
             "locks.f2": null,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         
-        db.collection(collection).doc(gameId).update(resetPayload).then(function() {
+        db.collection("scheduledGames").doc(gameId).update(resetPayload).then(function() {
             locks.f1 = null;
             locks.f2 = null;
             if (tempSelectedRole === "update1" || tempSelectedRole === "update2") {
@@ -805,25 +752,14 @@ function resetRoleLocks() {
 }
 
 function proceedToGame() {
-    if (gameMode === "practice") {
-        sessionStorage.setItem("currentPracticeGame", JSON.stringify({
-            id: gameData.id,
-            gameId: gameData.gameId,
-            course: gameData.course,
-            players: gameData.players,
-            mode: "practice"
-        }));
-        window.location.href = "game.html";
-    } else {
-        sessionStorage.setItem("currentGame", JSON.stringify({
-            id: gameData.id,
-            date: gameData.date,
-            course: gameData.course,
-            players: gameData.players,
-            mode: gameMode
-        }));
-        window.location.href = "game.html";
-    }
+    sessionStorage.setItem("currentGame", JSON.stringify({
+        id: gameData.id,
+        date: gameData.date,
+        course: gameData.course,
+        players: gameData.players,
+        mode: gameMode
+    }));
+    window.location.href = "game.html";
 }
 
 function goBack() {
@@ -840,8 +776,6 @@ function render() {
     var modeBanner = '';
     if (gameMode === "real") {
         modeBanner = '<div class="mode-banner mode-real">🏆 REAL GAME - Scores are LIVE and synced to all devices</div>';
-    } else if (gameMode === "practice") {
-        modeBanner = '<div class="mode-banner mode-practice">🧪 PRACTICE MODE - Scores saved (auto-delete after 7 days)</div>';
     } else if (gameMode === "preview") {
         modeBanner = '<div class="mode-banner mode-preview">🔍 PREVIEW MODE - Future game. Scores will NOT be saved.</div>';
     } else if (gameMode === "history") {
@@ -849,7 +783,7 @@ function render() {
     }
     
     var dateDisplay = '';
-    if (gameData.date && gameMode !== "practice") {
+    if (gameData.date) {
         dateDisplay = '<div class="course-date">📅 ' + formatDisplayDate(gameData.date) + '</div>';
     }
     
