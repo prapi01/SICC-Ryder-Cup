@@ -1,6 +1,6 @@
-// FILE: js/game-data.js - VERSION 1.04
+// FILE: js/game-data.js - VERSION 1.05
 // String-based data manager for SICC Ryder Cup
-// ADDED: Shotgun start support - startingHole, display order mapping
+// REMOVED: PRACTICE mode (only REAL and PREVIEW remain)
 
 var GameData = (function() {
     
@@ -9,7 +9,7 @@ var GameData = (function() {
     var editableFlight = null;
     var currentCourse = null;
     var currentPlayers = [];
-    var startingHole = 1;  // NEW: stored in game document
+    var startingHole = 1;
     
     var flight1Data = {
         data: "",
@@ -39,7 +39,6 @@ var GameData = (function() {
         return startingHole;
     }
     
-    // Returns array of actual hole numbers in PLAY ORDER (starting hole first)
     function getPlayOrder() {
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
@@ -47,15 +46,12 @@ var GameData = (function() {
         return order;
     }
     
-    // Returns array of actual hole numbers in NATURAL ORDER (1-18)
     function getNaturalOrder() {
         var order = [];
         for (var i = 1; i <= 18; i++) order.push(i);
         return order;
     }
     
-    // Get storage block index for a given actual hole number
-    // Since F1-18 is stored in PLAY ORDER (starting hole first)
     function getStorageIndexForHole(actualHoleNumber) {
         if (startingHole === 1) {
             return actualHoleNumber - 1;
@@ -67,7 +63,6 @@ var GameData = (function() {
         return actualHoleNumber - 1;
     }
     
-    // Get actual hole number for a given storage position
     function getHoleAtStoragePosition(storageIndex) {
         if (startingHole === 1) {
             return storageIndex + 1;
@@ -76,9 +71,6 @@ var GameData = (function() {
         return playOrder[storageIndex];
     }
     
-    // Get mapping array for NATURAL ORDER display
-    // Returns array where index = display column (0-17), value = storage block index
-    // Example startingHole=10: display col 0 (Hole 1) → storage block 9
     function getNaturalOrderMapping() {
         var mapping = [];
         for (var hole = 1; hole <= 18; hole++) {
@@ -87,8 +79,6 @@ var GameData = (function() {
         return mapping;
     }
     
-    // Get display order based on user preference
-    // preference = "play" (default) or "natural"
     function getDisplayOrder(preference) {
         if (preference === "natural") {
             return getNaturalOrder();
@@ -97,8 +87,6 @@ var GameData = (function() {
         }
     }
     
-    // Get display mapping for scorecard columns
-    // Returns array where index = display column (0-17), value = actual hole number
     function getDisplayHoleOrder(preference) {
         if (preference === "natural") {
             return getNaturalOrder();
@@ -139,8 +127,6 @@ var GameData = (function() {
             return null;
         }
         
-        // holeNumber is actual hole number (1-18)
-        // Need to find which storage block contains this hole
         var storageIndex = getStorageIndexForHole(holeNumber);
         var startIndex = storageIndex * 9;
         
@@ -177,7 +163,6 @@ var GameData = (function() {
         
         var newHoleSegment = savedFlag + a1Str + a2Str + b1Str + b2Str;
         
-        // Find storage index for this actual hole number
         var storageIndex = getStorageIndexForHole(holeNumber);
         var startIndex = storageIndex * 9;
         var newData = existingData.substr(0, startIndex) + newHoleSegment + existingData.substr(startIndex + 9);
@@ -225,14 +210,12 @@ var GameData = (function() {
     function getModeDisplay() {
         if (gameMode === "real") return "LIVE";
         if (gameMode === "preview") return "PREVIEW";
-        if (gameMode === "practice") return "PRACTICE";
         return "READY";
     }
     
     function getModeClass() {
         if (gameMode === "real") return "status-real";
         if (gameMode === "preview") return "status-preview";
-        if (gameMode === "practice") return "status-practice";
         return "status-real";
     }
     
@@ -293,7 +276,7 @@ var GameData = (function() {
         var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
         var newData = updateHoleData(flightData, holeNumber, scores, true);
         
-        var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
+        var collection = "scheduledGames";
         var updatePayload = {};
         var flightField = (flight === 1) ? "f1" : "f2";
         var otherFlightField = (flight === 1) ? "f2" : "f1";
@@ -328,7 +311,7 @@ var GameData = (function() {
     function forceRefresh() {
         if (!gameId) return;
         
-        var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
+        var collection = "scheduledGames";
         firebase.firestore().collection(collection).doc(gameId).get()
             .then(function(doc) {
                 if (doc.exists) {
@@ -350,7 +333,6 @@ var GameData = (function() {
                         locks.f2 = data.locks.f2 || null;
                     }
                     
-                    // NEW: Read startingHole
                     if (data.startingHole) {
                         startingHole = data.startingHole;
                     } else {
@@ -387,21 +369,20 @@ var GameData = (function() {
         } else if (userRole === "view") {
             editableFlight = null;
         } else {
-            if (gameMode === "preview" || gameMode === "practice") {
+            if (gameMode === "preview") {
                 editableFlight = 1;
             } else {
                 editableFlight = null;
             }
         }
         
-        var collection = activeGame.collection || (gameMode === "practice" ? "practiceGames" : "scheduledGames");
+        var collection = "scheduledGames";
         
         firebase.firestore().collection(collection).doc(gameId).get()
             .then(function(doc) {
                 if (doc.exists) {
                     var data = doc.data();
                     
-                    // NEW: Read startingHole first (needed for parseHoleData)
                     if (data.startingHole) {
                         startingHole = data.startingHole;
                     } else {
@@ -467,7 +448,6 @@ var GameData = (function() {
         hasPendingSaveEvent: hasPendingSaveEvent,
         clearCrossEvent: clearCrossEvent,
         clearSaveEvent: clearSaveEvent,
-        // NEW: Shotgun start helpers
         getStartingHole: getStartingHole,
         getPlayOrder: getPlayOrder,
         getNaturalOrder: getNaturalOrder,
