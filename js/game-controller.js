@@ -1,5 +1,6 @@
-// FILE: js/game-controller.js - VERSION 1.13
-// ADDED: Enhanced logging for match bubble debugging
+// FILE: js/game-controller.js - VERSION 1.14
+// FIX: Intra-flight match bubbles update immediately after save
+// Cross-flight bubbles wait for both flights
 
 var GameController = (function() {
     
@@ -86,39 +87,25 @@ var GameController = (function() {
         console.log("calculateMatchBubblesForFlight: flight=", flight, "maxCompletedHole=", maxCompletedHole);
         
         var bubbles = {};
-        
-        // If no holes completed, return all "AS"
-        if (maxCompletedHole === 0) {
-            console.log("No holes completed - returning all AS for flight", flight);
-            var flightPlayers = players.filter(function(p) { return p.flight === flight; });
-            for (var i = 0; i < flightPlayers.length; i++) {
-                var playerA = flightPlayers[i];
-                for (var j = 0; j < players.length; j++) {
-                    var playerB = players[j];
-                    if (playerA.team !== playerB.team) {
-                        var key = playerA.name + "_vs_" + playerB.name;
-                        bubbles[key] = "AS";
-                    }
-                }
-            }
-            return bubbles;
-        }
-        
         var flightPlayers = players.filter(function(p) { return p.flight === flight; });
         var courseSi = currentCourse ? currentCourse.si : null;
         
-        console.log("Calculating match bubbles for flight", flight, "with", flightPlayers.length, "players");
-        
+        // Calculate intra-flight matches (same flight)
         for (var i = 0; i < flightPlayers.length; i++) {
             var playerA = flightPlayers[i];
-            for (var j = 0; j < players.length; j++) {
-                var playerB = players[j];
+            for (var j = 0; j < flightPlayers.length; j++) {
+                var playerB = flightPlayers[j];
                 if (playerA.team !== playerB.team) {
                     var key = playerA.name + "_vs_" + playerB.name;
+                    
+                    // Intra-flight: use currentHoleForFlight (the hole this flight has played up to)
                     var upToHole = currentHoleForFlight;
                     
+                    // Get saved holes for this flight only
+                    var flightSavedHoles = savedHoles[flight] || [];
+                    
                     var result = GameMatch.getMatchResult(
-                        playerA, playerB, scores, savedHoles, players, upToHole, courseSi
+                        playerA, playerB, scores, flightSavedHoles, players, upToHole, courseSi
                     );
                     
                     if (result === "⏳") {
@@ -128,6 +115,32 @@ var GameController = (function() {
                 }
             }
         }
+        
+        // Calculate cross-flight matches (different flights)
+        for (var i = 0; i < flightPlayers.length; i++) {
+            var playerA = flightPlayers[i];
+            for (var j = 0; j < players.length; j++) {
+                var playerB = players[j];
+                if (playerA.team !== playerB.team && playerA.flight !== playerB.flight) {
+                    var key = playerA.name + "_vs_" + playerB.name;
+                    
+                    // Cross-flight: only calculate if both flights have completed the hole
+                    if (maxCompletedHole > 0) {
+                        var upToHole = currentHoleForFlight;
+                        var result = GameMatch.getMatchResult(
+                            playerA, playerB, scores, savedHoles, players, upToHole, courseSi
+                        );
+                        if (result === "⏳") {
+                            result = "AS";
+                        }
+                        bubbles[key] = result;
+                    } else {
+                        bubbles[key] = "AS";
+                    }
+                }
+            }
+        }
+        
         console.log("Match bubbles calculated for flight", flight, Object.keys(bubbles).length, "matches");
         return bubbles;
     }
@@ -143,7 +156,6 @@ var GameController = (function() {
     }
     
     function calculateGame1Points(players, flight1Data, flight2Data, maxCompletedHole) {
-        // If no holes completed, return default 8-8
         if (maxCompletedHole === 0) {
             console.log("Game1: No holes completed - returning 8-8");
             return {
@@ -245,7 +257,7 @@ var GameController = (function() {
             var flight1Data = GameData.getFlightData(1).data;
             var flight2Data = GameData.getFlightData(2).data;
             
-            // Find max completed hole (based on PLAY ORDER - sequential processing)
+            // Find max completed hole (both flights have saved)
             var maxCompletedHole = 0;
             for (var pos = 0; pos < 18; pos++) {
                 var actualHole = GameData.getHoleAtStoragePosition(pos);
@@ -253,9 +265,7 @@ var GameController = (function() {
                 var f2Hole = GameData.parseHoleData(flight2Data, actualHole);
                 if (f1Hole && f1Hole.saved && f2Hole && f2Hole.saved) {
                     maxCompletedHole = pos + 1;
-                    console.log("Hole", pos + 1, "(actual", actualHole, ") completed - saved:", f1Hole.saved, f2Hole.saved);
                 } else {
-                    console.log("Hole", pos + 1, "(actual", actualHole, ") NOT completed - f1.saved:", f1Hole ? f1Hole.saved : "no data", "f2.saved:", f2Hole ? f2Hole.saved : "no data");
                     break;
                 }
             }
@@ -316,7 +326,7 @@ var GameController = (function() {
             var modeDisplay = GameData.getModeDisplay();
             var modeClass = GameData.getModeClass();
             
-            // Build saved holes arrays
+            // Build saved holes arrays (for UI)
             var displaySavedHoles = { 1: [], 2: [] };
             for (var pos = 0; pos < 18; pos++) {
                 var actualHole = GameData.getHoleAtStoragePosition(pos);
@@ -326,10 +336,8 @@ var GameController = (function() {
                 if (f2Data && f2Data.saved) displaySavedHoles[2].push(actualHole);
             }
             
-            // Calculate match bubbles
+            // Calculate match bubbles (intra-flight updates immediately)
             var matchBubbles = calculateMatchBubbles(currentPlayers, displayScores, displaySavedHoles, currentHoleByFlight, maxCompletedHole);
-            
-            console.log("Match bubbles sample:", Object.keys(matchBubbles).slice(0, 3).map(function(k) { return k + ":" + matchBubbles[k]; }));
             
             var newUIData = {
                 players: currentPlayers,
@@ -553,7 +561,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.13...");
+        console.log("GameController: Initializing v1.14...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
