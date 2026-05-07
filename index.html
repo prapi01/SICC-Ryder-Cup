@@ -1,4 +1,4 @@
-<!-- FILE: index.html - VERSION 2.20 -->
+<!-- FILE: index.html - VERSION 2.22 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,17 +51,16 @@
             opacity: 0.8;
         }
         
-        .header { text-align: center; margin-bottom: 40px; }
+        .header { text-align: center; margin-bottom: 30px; }
         .golf-icon { font-size: 4rem; margin-bottom: 16px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)); }
-        .title { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%); background-clip: text; -webkit-background-clip: text; color: transparent; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .subtitle { font-size: 0.8rem; color: #888; margin-top: 4px; letter-spacing: 1px; }
-        .today-date { margin-top: 16px; padding: 8px 16px; background: rgba(255,255,255,0.05); border-radius: 60px; display: inline-block; font-size: 0.85rem; color: #4caf50; border: 1px solid rgba(76,175,80,0.3); backdrop-filter: blur(4px); }
+        .title { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%); background-clip: text; -webkit-background-clip: text; color: transparent; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .subtitle { font-size: 0.75rem; color: #888; margin-top: 4px; letter-spacing: 1px; }
         
         .ngb { 
             background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
             border: 2px solid #4caf50;
             border-radius: 32px;
-            padding: 50px 20px;
+            padding: 30px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -69,47 +68,55 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
         }
         .ngb:active { transform: scale(0.98); }
-        .ngb .icon { font-size: 3rem; margin-bottom: 16px; display: block; }
-        .ngb .title { font-size: 1.8rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 12px; background: none; -webkit-background-clip: unset; }
-        .ngb .date { font-size: 1.3rem; font-weight: 600; color: #ffffff; }
-        .ngb .no-game { font-size: 1.1rem; font-weight: 500; color: #888; }
+        .ngb .icon { font-size: 2.5rem; margin-bottom: 12px; display: block; }
+        .ngb .title { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 8px; background: none; -webkit-background-clip: unset; color: #4caf50; }
+        .ngb .subtitle-text { font-size: 1rem; font-weight: 500; color: #ccc; margin-bottom: 4px; }
+        .ngb .date { font-size: 0.9rem; font-weight: 400; color: #aaa; }
+        .ngb .course-name { font-size: 0.85rem; font-weight: 400; color: #888; margin-top: 8px; }
+        .ngb .no-game { font-size: 1rem; font-weight: 500; color: #888; }
         
-        .title-active { color: #4caf50; }
-        .title-past { color: #888; }
+        .menu-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
         
         .menu-btn {
-            background: rgba(17,17,17,0.8);
-            border: 1px solid rgba(76,175,80,0.4);
-            border-radius: 24px;
+            background: linear-gradient(145deg, #1a1a1a, #111);
+            border: 1px solid #333;
+            border-radius: 60px;
             padding: 14px 20px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.2s ease;
-            margin-bottom: 20px;
-            backdrop-filter: blur(4px);
+            transition: all 0.2s;
         }
-        .menu-btn:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
-        .menu-btn .icon { font-size: 1.2rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
-        .menu-btn .label { font-size: 1rem; font-weight: 600; color: #4caf50; display: inline-block; vertical-align: middle; letter-spacing: 0.5px; }
         
-        .gsb {
-            background: rgba(17,17,17,0.9);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 60px;
-            padding: 14px 24px;
+        .menu-btn:hover {
+            transform: scale(1.02);
+            border-color: #4caf50;
+        }
+        
+        .menu-btn .label {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #fff;
+        }
+        
+        .menu-btn.warning {
+            border-color: #ffaa44;
+        }
+        
+        .menu-btn.warning .label {
+            color: #ffaa44;
+        }
+        
+        .footer {
             text-align: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            width: 220px;
-            margin: 0 auto;
-            backdrop-filter: blur(4px);
+            font-size: 0.65rem;
+            color: #555;
+            margin-top: 20px;
         }
-        .gsb:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
-        .gsb .icon { font-size: 1rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
-        .gsb .label { font-size: 0.9rem; font-weight: 600; color: #ccc; display: inline-block; vertical-align: middle; }
-        
-        .footer { text-align: center; margin-top: 40px; font-size: 0.6rem; color: #444; }
-        .loading { text-align: center; padding: 40px; color: #888; }
         
         .modal-overlay {
             position: fixed;
@@ -172,6 +179,8 @@
             color: #4caf50;
             border: 1px solid #4caf50;
         }
+        
+        .loading { text-align: center; padding: 40px; color: #888; }
     </style>
 </head>
 <body>
@@ -179,14 +188,16 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.20</div>
+<div class="version-tag">v2.22</div>
 
 <script>
-// FILE: index.html - VERSION 2.20
-// FIX: TODAY GAME goes through pre-game.html (not directly to game.html)
+// FILE: index.html - VERSION 2.22
+// REMOVED: PRACTICE MODE button
+// UPDATED: NGB shows PREVIEW/NEXT GAME/TODAY GAME with course name
 
-var APP_VERSION = "2.20";
+var APP_VERSION = "2.22";
 var CACHE_KEY = "index_version";
+
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
@@ -204,8 +215,6 @@ var FIREBASE_CONFIG = {
 
 var db = null;
 var firestoreReady = false;
-var pendingGameId = null;
-var pendingGameMode = null;
 
 try {
     if (!firebase.apps.length) {
@@ -223,7 +232,8 @@ function displayDeviceId() {
     document.getElementById("deviceTag").innerHTML = deviceDisplay;
 }
 
-function formatDate(dateString) {
+function formatDisplayDate(dateString) {
+    if (!dateString) return "";
     var parts = dateString.split('-');
     if (parts.length === 3) {
         var day = parts[2];
@@ -236,22 +246,19 @@ function formatDate(dateString) {
     return dateString;
 }
 
-function formatTodayDate() {
+function getTodayString() {
     var today = new Date();
-    var day = today.getDate();
-    var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    var month = monthNames[today.getMonth()];
     var year = today.getFullYear();
-    return day + ' ' + month + ' ' + year;
+    var month = String(today.getMonth() + 1).padStart(2, '0');
+    var day = String(today.getDate()).padStart(2, '0');
+    return year + "-" + month + "-" + day;
 }
 
 function findNextGame(scheduledGames) {
-    var today = new Date();
-    today.setHours(0, 0, 0, 0);
-    var todayStr = today.toISOString().split('T')[0];
+    var today = getTodayString();
     
     var futureGames = scheduledGames.filter(function(game) {
-        return game.date >= todayStr;
+        return game.date >= today;
     });
     
     if (futureGames.length === 0) return null;
@@ -266,14 +273,112 @@ function findNextGame(scheduledGames) {
 }
 
 function getGameStatus(gameDateStr) {
-    var today = new Date();
-    today.setHours(0, 0, 0, 0);
-    var gameDate = new Date(gameDateStr);
-    gameDate.setHours(0, 0, 0, 0);
+    var today = getTodayString();
+    if (gameDateStr === today) return "today";
+    if (gameDateStr > today) return "future";
+    return "past";
+}
+
+function checkExistingPreviewData(gameId) {
+    return db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+        if (doc.exists) {
+            var data = doc.data();
+            var f1HasData = data.f1 && data.f1.d && data.f1.d.indexOf('T') !== -1;
+            var f2HasData = data.f2 && data.f2.d && data.f2.d.indexOf('T') !== -1;
+            var hasLocks = data.locks && (data.locks.f1 !== null || data.locks.f2 !== null);
+            return f1HasData || f2HasData || hasLocks;
+        }
+        return false;
+    }).catch(function() { return false; });
+}
+
+function showResumeModal(gameId, gameDate, callback) {
+    var modalHtml = `
+        <div class="modal-overlay" id="resumeModal">
+            <div class="modal">
+                <div class="modal-title">⚠️ Existing Game Data Found</div>
+                <div class="modal-message">This game already has saved scores.</div>
+                <div class="modal-time">📅 ${formatDisplayDate(gameDate)}</div>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-continue" id="resumeContinueBtn">Continue</button>
+                    <button class="modal-btn modal-btn-new" id="resumeResetBtn">Reset (Start Over)</button>
+                    <button class="modal-btn" id="resumeCancelBtn" style="background:#333; color:#fff;">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
     
-    if (gameDate > today) return "future";
-    if (gameDate < today) return "past";
-    return "today";
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("resumeContinueBtn").addEventListener('click', function() {
+        document.getElementById("resumeModal").remove();
+        callback("continue");
+    });
+    
+    document.getElementById("resumeResetBtn").addEventListener('click', function() {
+        document.getElementById("resumeModal").remove();
+        callback("reset");
+    });
+    
+    document.getElementById("resumeCancelBtn").addEventListener('click', function() {
+        document.getElementById("resumeModal").remove();
+        callback("cancel");
+    });
+}
+
+function resetGameData(gameId) {
+    // Get current game data first to know course par and startingHole
+    return db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+        if (!doc.exists) return false;
+        var gameData = doc.data();
+        var startingHole = gameData.startingHole || 1;
+        
+        // Generate default data in natural order then rotate
+        function generateDefaultDataNatural(parArray) {
+            var result = "";
+            for (var h = 0; h < 18; h++) {
+                var par = parArray[h];
+                var parStr = par.toString().padStart(2, '0');
+                result += "F" + parStr + parStr + parStr + parStr;
+            }
+            return result;
+        }
+        
+        function rotateDataString(naturalData, startHole) {
+            if (startHole === 1) return naturalData;
+            var blocks = [];
+            for (var i = 0; i < 18; i++) {
+                blocks.push(naturalData.substr(i * 9, 9));
+            }
+            var rotated = [];
+            for (var i = startHole - 1; i < 18; i++) rotated.push(blocks[i]);
+            for (var i = 0; i < startHole - 1; i++) rotated.push(blocks[i]);
+            return rotated.join('');
+        }
+        
+        var naturalData = generateDefaultDataNatural(gameData.course.par);
+        var rotatedData = rotateDataString(naturalData, startingHole);
+        
+        var resetData = {
+            "f1.d": rotatedData,
+            "f1.se": false,
+            "f1.x": false,
+            "f2.d": rotatedData,
+            "f2.se": false,
+            "f2.x": false,
+            "locks.f1": null,
+            "locks.f2": null,
+            "currentHoleF1": 1,
+            "currentHoleF2": 1,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        return db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
+            return db.collection("gameRoles").doc(gameId).delete().catch(function() {});
+        }).then(function() {
+            return true;
+        });
+    });
 }
 
 function proceedToGame(gameId, gameType, targetPage) {
@@ -317,13 +422,27 @@ function handleNGB(targetPage) {
         var gameDate = nextGame.date;
         var gameStatus = getGameStatus(gameDate);
         
-        console.log("handleNGB:", { gameId, gameDate, gameStatus, targetPage });
-        
         if (gameStatus === "today") {
             proceedToGame(gameId, "real", targetPage);
         } else if (gameStatus === "future") {
-            proceedToGame(gameId, "preview", targetPage);
+            // Check if existing data exists for preview
+            checkExistingPreviewData(gameId).then(function(hasData) {
+                if (hasData) {
+                    showResumeModal(gameId, gameDate, function(action) {
+                        if (action === "continue") {
+                            proceedToGame(gameId, "preview", targetPage);
+                        } else if (action === "reset") {
+                            resetGameData(gameId).then(function() {
+                                proceedToGame(gameId, "preview", targetPage);
+                            });
+                        }
+                    });
+                } else {
+                    proceedToGame(gameId, "preview", targetPage);
+                }
+            });
         } else {
+            // Past game - treat as preview/read-only
             proceedToGame(gameId, "preview", targetPage);
         }
     }).catch(function(e) {
@@ -332,35 +451,20 @@ function handleNGB(targetPage) {
     });
 }
 
-function goToPracticeMode() {
-    SessionManager.addNavigationHistory("practice-mode.html", "click_pmb");
-    SessionManager.updateSession({
-        returnDestination: "practice-mode.html",
-        activeGame: {
-            gameId: null,
-            gameType: "practice",
-            gameMode: "practice",
-            role: null,
-            collection: null
-        }
-    });
-    window.location.href = "practice-mode.html";
-}
-
-function goToAdmin() {
-    SessionManager.addNavigationHistory("admin.html", "click_gsb");
-    SessionManager.updateSession({
-        returnDestination: "index.html"
-    });
-    window.location.href = "admin.html";
-}
-
-function viewPreviousGames() {
-    SessionManager.addNavigationHistory("history.html", "click_pvg");
+function goToPreviousGames() {
+    SessionManager.addNavigationHistory("history.html", "previous_games");
     SessionManager.updateSession({
         returnDestination: "index.html"
     });
     window.location.href = "history.html";
+}
+
+function goToAdmin() {
+    SessionManager.addNavigationHistory("admin.html", "game_settings");
+    SessionManager.updateSession({
+        returnDestination: "index.html"
+    });
+    window.location.href = "admin.html";
 }
 
 function loadAndRender() {
@@ -372,7 +476,7 @@ function loadAndRender() {
     db.collection("scheduledGames").get().then(function(snapshot) {
         var games = [];
         snapshot.forEach(function(doc) {
-            games.push({ id: doc.id, date: doc.data().date, course: doc.data().course });
+            games.push({ id: doc.id, date: doc.data().date, course: doc.data().course, startingHole: doc.data().startingHole });
         });
         
         var nextGame = findNextGame(games);
@@ -380,75 +484,77 @@ function loadAndRender() {
         var ngbHtml = '';
         if (nextGame) {
             var status = getGameStatus(nextGame.date);
-            var formattedDate = formatDate(nextGame.date);
-            var displayTitle = "";
-            var displaySubText = "";
+            var formattedDate = formatDisplayDate(nextGame.date);
+            var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
             
             if (status === "today") {
-                displayTitle = "TODAY GAME";
-                displaySubText = "";
-            } else if (status === "future") {
-                displayTitle = "NEXT GAME";
-                displaySubText = '<div class="date">' + formattedDate + '</div>';
+                ngbHtml = `
+                    <div class="ngb" onclick="handleNGB('pre-game.html')">
+                        <div class="icon">⛳</div>
+                        <div class="title">TODAY GAME</div>
+                        <div class="course-name">${escapeHtml(courseName)}</div>
+                    </div>
+                `;
             } else {
-                displayTitle = "PAST GAME";
-                displaySubText = '<div class="date">' + formattedDate + '</div>';
+                ngbHtml = `
+                    <div class="ngb" onclick="handleNGB('pre-game.html')">
+                        <div class="icon">🔍</div>
+                        <div class="title">PREVIEW</div>
+                        <div class="subtitle-text">NEXT GAME</div>
+                        <div class="date">${formattedDate}</div>
+                        <div class="course-name">${escapeHtml(courseName)}</div>
+                    </div>
+                `;
             }
-            
-            var titleClass = (status === "past") ? "title-past" : "title-active";
-            
-            // FIXED: Goes to pre-game.html, not directly to game.html
-            ngbHtml = `
-                <div class="ngb" onclick="handleNGB('pre-game.html')">
-                    <div class="icon">⛳</div>
-                    <div class="title ${titleClass}">${displayTitle}</div>
-                    ${displaySubText}
-                </div>
-            `;
         } else {
             ngbHtml = `
-                <div class="ngb" style="opacity:0.7;">
+                <div class="ngb" style="opacity:0.7; cursor:default;">
                     <div class="icon">🏌️</div>
-                    <div class="title title-past">NEXT GAME</div>
-                    <div class="no-game">No Game Scheduled</div>
+                    <div class="title">NO GAME</div>
+                    <div class="no-game">No scheduled games found</div>
                 </div>
             `;
         }
-        
-        var todayFormatted = formatTodayDate();
         
         var html = `
             <div class="header">
                 <div class="golf-icon">⛳</div>
                 <div class="title">SICC RYDER CUP</div>
                 <div class="subtitle">Match Play · Team Game · Net Stroke</div>
-                <div class="today-date">📅 ${todayFormatted}</div>
             </div>
             
             ${ngbHtml}
             
-            <div class="menu-btn" onclick="goToPracticeMode()">
-                <span class="icon">🏌️</span>
-                <span class="label">PRACTICE MODE</span>
+            <div class="menu-buttons">
+                <div class="menu-btn" id="previousGamesBtn">
+                    <span class="label">📋 VIEW PREVIOUS GAMES</span>
+                </div>
+                <div class="menu-btn warning" id="adminBtn">
+                    <span class="label">⚙️ GAME SETTINGS</span>
+                </div>
             </div>
             
-            <div class="menu-btn" onclick="viewPreviousGames()">
-                <span class="icon">📜</span>
-                <span class="label">VIEW PREVIOUS GAMES</span>
-            </div>
-            
-            <div class="gsb" onclick="goToAdmin()">
-                <span class="icon">⚙️</span>
-                <span class="label">GAME SETTINGS</span>
-            </div>
-            
-            <div class="footer">SICC Ryder Cup</div>
+            <div class="footer">SICC Ryder Cup App v${APP_VERSION}<br>© 2026 Singapore Island Country Club</div>
         `;
         
         document.getElementById("app").innerHTML = html;
+        
+        document.getElementById("previousGamesBtn").addEventListener("click", goToPreviousGames);
+        document.getElementById("adminBtn").addEventListener("click", goToAdmin);
+        
     }).catch(function(e) {
         console.warn(e);
         document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
     });
 }
 
