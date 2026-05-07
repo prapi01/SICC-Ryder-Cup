@@ -1,5 +1,5 @@
-// FILE: js/game-controller.js - VERSION 1.08
-// ADDED: Shotgun start support - passes startingHole and display mode to UI
+// FILE: js/game-controller.js - VERSION 1.09
+// FIX: At start (no holes saved), all match bubbles show grey "AS", Game 1 returns 8-8
 
 var GameController = (function() {
     
@@ -14,7 +14,7 @@ var GameController = (function() {
     var activeFlight = 1;
     var editableFlight = null;
     var gameMode = null;
-    var startingHole = 1;  // NEW
+    var startingHole = 1;
     
     var localScores = {};
     
@@ -54,7 +54,6 @@ var GameController = (function() {
             return localScores[key];
         }
         
-        // hole is actual hole number (1-18)
         var flightData = GameData.getFlightData(flight).data;
         var holeData = GameData.parseHoleData(flightData, hole);
         
@@ -83,8 +82,25 @@ var GameController = (function() {
     // Core Calculation Functions
     // ============================================================
     
-    function calculateMatchBubblesForFlight(players, scores, savedHoles, flight, currentHoleForFlight) {
+    function calculateMatchBubblesForFlight(players, scores, savedHoles, flight, currentHoleForFlight, maxCompletedHole) {
         var bubbles = {};
+        
+        // NEW: If no holes completed, return all "AS"
+        if (maxCompletedHole === 0) {
+            var flightPlayers = players.filter(function(p) { return p.flight === flight; });
+            for (var i = 0; i < flightPlayers.length; i++) {
+                var playerA = flightPlayers[i];
+                for (var j = 0; j < players.length; j++) {
+                    var playerB = players[j];
+                    if (playerA.team !== playerB.team) {
+                        var key = playerA.name + "_vs_" + playerB.name;
+                        bubbles[key] = "AS";
+                    }
+                }
+            }
+            return bubbles;
+        }
+        
         var flightPlayers = players.filter(function(p) { return p.flight === flight; });
         var courseSi = currentCourse ? currentCourse.si : null;
         
@@ -116,10 +132,10 @@ var GameController = (function() {
         return bubbles;
     }
     
-    function calculateMatchBubbles(players, scores, savedHoles, currentHoleByFlight) {
+    function calculateMatchBubbles(players, scores, savedHoles, currentHoleByFlight, maxCompletedHole) {
         var allBubbles = {};
-        var flight1Bubbles = calculateMatchBubblesForFlight(players, scores, savedHoles, 1, currentHoleByFlight[1]);
-        var flight2Bubbles = calculateMatchBubblesForFlight(players, scores, savedHoles, 2, currentHoleByFlight[2]);
+        var flight1Bubbles = calculateMatchBubblesForFlight(players, scores, savedHoles, 1, currentHoleByFlight[1], maxCompletedHole);
+        var flight2Bubbles = calculateMatchBubblesForFlight(players, scores, savedHoles, 2, currentHoleByFlight[2], maxCompletedHole);
         
         for (var key in flight1Bubbles) allBubbles[key] = flight1Bubbles[key];
         for (var key in flight2Bubbles) allBubbles[key] = flight2Bubbles[key];
@@ -127,20 +143,26 @@ var GameController = (function() {
     }
     
     function calculateGame1Points(players, flight1Data, flight2Data, maxCompletedHole) {
+        // NEW: If no holes completed, return default 8-8
+        if (maxCompletedHole === 0) {
+            console.log("Game1: No holes completed - returning 8-8");
+            return {
+                teamAPoints: 8,
+                teamBPoints: 8
+            };
+        }
+        
         var scores = {};
         var savedHoles = { 1: [], 2: [] };
         
         for (var flight = 1; flight <= 2; flight++) {
             var flightData = (flight === 1) ? flight1Data : flight2Data;
-            for (var hole = 1; hole <= maxCompletedHole; hole++) {
-                // Note: maxCompletedHole refers to PLAY ORDER position, not actual hole number
-                // But parseHoleData expects actual hole number
-                // For shotgun start, we need to convert position to actual hole
-                var actualHole = GameData.getHoleAtStoragePosition(hole - 1);
+            for (var pos = 0; pos < maxCompletedHole; pos++) {
+                var actualHole = GameData.getHoleAtStoragePosition(pos);
                 var holeData = GameData.parseHoleData(flightData, actualHole);
                 if (!holeData || !holeData.saved) continue;
                 
-                savedHoles[flight].push(hole);
+                savedHoles[flight].push(pos + 1);
                 
                 var flightPlayers = players.filter(function(p) { return p.flight === flight; });
                 for (var i = 0; i < flightPlayers.length; i++) {
@@ -156,7 +178,7 @@ var GameController = (function() {
                         case "b1": score = holeData.scores.b1; break;
                         case "b2": score = holeData.scores.b2; break;
                     }
-                    scores[flight + "_" + hole + "_" + playerIdx] = score;
+                    scores[flight + "_" + (pos + 1) + "_" + playerIdx] = score;
                 }
             }
         }
@@ -166,6 +188,18 @@ var GameController = (function() {
     }
     
     function calculateGame2Points(players, flight1Data, flight2Data, maxCompletedHole, course) {
+        // NEW: If no holes completed, return default tied 1-1
+        if (maxCompletedHole === 0) {
+            return {
+                teamAPoints: 1,
+                teamBPoints: 1,
+                t1Row: new Array(18).fill(0),
+                t2Row: new Array(18).fill(0),
+                t1Total: 0,
+                t2Total: 0
+            };
+        }
+        
         return {
             teamAPoints: 1,
             teamBPoints: 1,
@@ -177,6 +211,17 @@ var GameController = (function() {
     }
     
     function calculateGame3Points(players, flight1Data, flight2Data, maxCompletedHole, course) {
+        // NEW: If no holes completed, return default tied 0.5-0.5
+        if (maxCompletedHole === 0) {
+            var strkRow = new Array(18).fill("-");
+            return {
+                teamAPoints: 0.5,
+                teamBPoints: 0.5,
+                strkRow: strkRow,
+                strkTotal: "-"
+            };
+        }
+        
         var strkRow = new Array(18).fill("-");
         return {
             teamAPoints: 0.5,
@@ -224,12 +269,13 @@ var GameController = (function() {
                 }
             }
             
+            console.log("CRD: maxCompletedHole =", maxCompletedHole);
+            
             var game1Points = calculateGame1Points(currentPlayers, flight1Data, flight2Data, maxCompletedHole);
             var game2Points = calculateGame2Points(currentPlayers, flight1Data, flight2Data, maxCompletedHole, currentCourse);
             var game3Points = calculateGame3Points(currentPlayers, flight1Data, flight2Data, maxCompletedHole, currentCourse);
             var trPoints = aggregateTR(game1Points, game2Points, game3Points);
             
-            // currentHole is PLAY ORDER position (1-18)
             var currentHoleByFlight = { 1: currentHole, 2: currentHole };
             
             // Build display scores with local changes
@@ -277,16 +323,16 @@ var GameController = (function() {
                 if (f2Data && f2Data.saved) displaySavedHoles[2].push(actualHole);
             }
             
-            // Calculate match bubbles
-            var matchBubbles = calculateMatchBubbles(currentPlayers, displayScores, displaySavedHoles, currentHoleByFlight);
+            // Calculate match bubbles (pass maxCompletedHole)
+            var matchBubbles = calculateMatchBubbles(currentPlayers, displayScores, displaySavedHoles, currentHoleByFlight, maxCompletedHole);
             
             var newUIData = {
                 players: currentPlayers,
                 course: currentCourse,
                 scores: displayScores,
                 savedHoles: displaySavedHoles,
-                currentHole: currentHole,  // PLAY ORDER position
-                currentActualHole: currentActualHole,  // NEW: actual hole number
+                currentHole: currentHole,
+                currentActualHole: currentActualHole,
                 currentHoleByFlight: currentHoleByFlight,
                 activeFlight: activeFlight,
                 isSaved: isSaved,
@@ -307,7 +353,6 @@ var GameController = (function() {
                 strkTotal: game3Points.strkTotal,
                 matchBubbles: matchBubbles,
                 trPoints: trPoints,
-                // NEW: Shotgun start data
                 startingHole: startingHole,
                 playOrder: GameData.getPlayOrder(),
                 naturalOrder: GameData.getNaturalOrder()
@@ -315,7 +360,7 @@ var GameController = (function() {
             
             if (typeof window.updateGameUI === 'function') {
                 window.updateGameUI(newUIData);
-                console.log("GameController: UI updated - currentHole:", currentHole, "actual:", currentActualHole);
+                console.log("GameController: UI updated");
             }
         } catch (err) {
             console.error("GameController: CRD error", err);
@@ -358,7 +403,7 @@ var GameController = (function() {
         
         var playerIdx = detail.playerIdx;
         var flight = detail.flight;
-        var hole = detail.hole;  // This is actual hole number from UI
+        var hole = detail.hole;
         var delta = detail.delta;
         
         var currentScore = getCurrentScore(flight, hole, playerIdx);
@@ -499,7 +544,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.08...");
+        console.log("GameController: Initializing v1.09...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
@@ -536,7 +581,7 @@ var GameController = (function() {
                     gameMode = metadata.gameMode;
                     editableFlight = metadata.editableFlight;
                     activeFlight = metadata.editableFlight || 1;
-                    startingHole = metadata.startingHole || 1;  // NEW
+                    startingHole = metadata.startingHole || 1;
                     
                     var storedGame = sessionStorage.getItem("currentGame");
                     if (storedGame) {
