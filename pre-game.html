@@ -1,6 +1,6 @@
-<!-- FILE: pre-game.html - VERSION 2.31 -->
+<!-- FILE: pre-game.html - VERSION 2.32 -->
 <!-- Role selection and verification before game -->
-<!-- FIX: REAL mode resets if ANY data exists (saved holes, flags, or locks) -->
+<!-- UPDATED: Support preview sandboxes collection -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -327,13 +327,13 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.31</div>
+<div class="version-tag">v2.32</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.31
-// FIX: REAL mode resets if ANY data exists (saved holes, flags, or locks)
+// FILE: pre-game.html - VERSION 2.32
+// SUPPORT: previewSandboxes collection for PREVIEW mode
 
-var VERSION = "2.31";
+var VERSION = "2.32";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -374,6 +374,7 @@ var tempSelectedRole = null;
 var currentDeviceId = null;
 var currentSessionId = null;
 var deviceSession = null;
+var isPreviewSandbox = false;
 
 var locks = { f1: null, f2: null };
 
@@ -457,7 +458,7 @@ function resetGameData(callback) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
+    db.collection(isPreviewSandbox ? "previewSandboxes" : "scheduledGames").doc(gameId).update(resetData).then(function() {
         console.log("Game data reset to default - locks cleared");
         locks.f1 = null;
         locks.f2 = null;
@@ -485,7 +486,9 @@ function startGameListener() {
     if (!firestoreReady || !gameId) return;
     if (unsubcribeGame) unsubcribeGame();
     
-    unsubcribeGame = db.collection("scheduledGames").doc(gameId)
+    var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
+    
+    unsubcribeGame = db.collection(collection).doc(gameId)
         .onSnapshot(function(doc) {
             if (doc.exists) {
                 var data = doc.data();
@@ -529,7 +532,7 @@ function toggleRole(role) {
                 gameType: gameMode,
                 gameMode: gameMode,
                 role: role,
-                collection: "scheduledGames"
+                collection: isPreviewSandbox ? "previewSandboxes" : "scheduledGames"
             }
         });
     }
@@ -572,6 +575,7 @@ function showSessionModal(callback) {
 
 function loadGame() {
     var realGameId = sessionStorage.getItem("currentGameId");
+    var activeGame = deviceSession ? deviceSession.activeGame : null;
     
     if (!realGameId) {
         alert("No game selected. Please return to main menu.");
@@ -581,6 +585,37 @@ function loadGame() {
     
     gameId = realGameId;
     
+    // Determine if this is a preview sandbox
+    if (activeGame && activeGame.collection === "previewSandboxes") {
+        isPreviewSandbox = true;
+        gameMode = "preview";
+        console.log("Loading preview sandbox:", gameId);
+        
+        db.collection("previewSandboxes").doc(gameId).get().then(function(doc) {
+            if (doc.exists) {
+                gameData = doc.data();
+                gameData.id = doc.id;
+                
+                if (gameData.locks) {
+                    locks.f1 = gameData.locks.f1 || null;
+                    locks.f2 = gameData.locks.f2 || null;
+                }
+                
+                startGameListener();
+                render();
+            } else {
+                alert("Preview session not found");
+                window.location.href = "index.html";
+            }
+        }).catch(function(e) {
+            alert("Error loading preview session: " + e.message);
+            window.location.href = "index.html";
+        });
+        return;
+    }
+    
+    // Regular scheduled game
+    isPreviewSandbox = false;
     db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
         if (doc.exists) {
             gameData = doc.data();
@@ -596,13 +631,11 @@ function loadGame() {
             
             if (isToday) {
                 gameMode = "real";
-                // FIXED: Check if ANY data exists (saved holes, flags, OR locks)
                 var hasAnyData = hasExistingData() || (locks.f1 !== null || locks.f2 !== null);
                 
                 if (hasAnyData) {
                     console.log("REAL mode - Resetting game data for today's match");
                     resetGameData(function(success) {
-                        // Reload game data after reset
                         db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
                             if (updatedDoc.exists) {
                                 gameData = updatedDoc.data();
@@ -653,6 +686,7 @@ function startGame() {
     
     var now = Date.now();
     var expiryTime = now + LOCK_DURATION_MS;
+    var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
     var updatePayload = {};
     
     if (tempSelectedRole === "view") {
@@ -664,7 +698,7 @@ function startGame() {
                     gameType: gameMode,
                     gameMode: gameMode,
                     role: "view",
-                    collection: "scheduledGames"
+                    collection: collection
                 }
             });
             SessionManager.addNavigationHistory("game.html", "tee_off_view", { gameId: gameId });
@@ -710,7 +744,7 @@ function startGame() {
     
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
-    db.collection("scheduledGames").doc(gameId).update(updatePayload).then(function() {
+    db.collection(collection).doc(gameId).update(updatePayload).then(function() {
         localStorage.setItem("userRole", tempSelectedRole);
         
         if (deviceSession) {
@@ -720,7 +754,7 @@ function startGame() {
                     gameType: gameMode,
                     gameMode: gameMode,
                     role: tempSelectedRole,
-                    collection: "scheduledGames"
+                    collection: collection
                 }
             });
             SessionManager.addNavigationHistory("game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
@@ -734,13 +768,14 @@ function startGame() {
 
 function resetRoleLocks() {
     if (confirm("⚠️ Reset all role locks? This will allow new devices to take update roles.")) {
+        var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
         var resetPayload = {
             "locks.f1": null,
             "locks.f2": null,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         
-        db.collection("scheduledGames").doc(gameId).update(resetPayload).then(function() {
+        db.collection(collection).doc(gameId).update(resetPayload).then(function() {
             locks.f1 = null;
             locks.f2 = null;
             if (tempSelectedRole === "update1" || tempSelectedRole === "update2") {
@@ -785,8 +820,11 @@ function render() {
     }
     
     var dateDisplay = '';
-    if (gameData.date) {
+    if (gameData.date && gameMode !== "preview") {
         dateDisplay = '<div class="course-date">📅 ' + formatDisplayDate(gameData.date) + '</div>';
+    } else if (isPreviewSandbox && gameData.originalGameId) {
+        // For preview sandboxes, show original game date
+        dateDisplay = '<div class="course-date">📅 Preview Session</div>';
     }
     
     var flight1Players = players.filter(function(p) { return p.flight === 1; });
