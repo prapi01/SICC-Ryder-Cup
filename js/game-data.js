@@ -1,6 +1,6 @@
-// FILE: js/game-data.js - VERSION 1.03
+// FILE: js/game-data.js - VERSION 1.04
 // String-based data manager for SICC Ryder Cup
-// UPDATED: Consolidated structure (f1.d, f1.se, f1.x, locks)
+// ADDED: Shotgun start support - startingHole, display order mapping
 
 var GameData = (function() {
     
@@ -9,6 +9,7 @@ var GameData = (function() {
     var editableFlight = null;
     var currentCourse = null;
     var currentPlayers = [];
+    var startingHole = 1;  // NEW: stored in game document
     
     var flight1Data = {
         data: "",
@@ -22,7 +23,6 @@ var GameData = (function() {
         crossEvent: false
     };
     
-    // Locks stored in main document, not separate collection
     var locks = {
         f1: null,
         f2: null
@@ -31,7 +31,86 @@ var GameData = (function() {
     var dataCallbacks = [];
     var errorCallbacks = [];
     
+    // ============================================================
+    // SHOTGUN START HELPER FUNCTIONS
+    // ============================================================
+    
+    function getStartingHole() {
+        return startingHole;
+    }
+    
+    // Returns array of actual hole numbers in PLAY ORDER (starting hole first)
+    function getPlayOrder() {
+        var order = [];
+        for (var i = startingHole; i <= 18; i++) order.push(i);
+        for (var i = 1; i < startingHole; i++) order.push(i);
+        return order;
+    }
+    
+    // Returns array of actual hole numbers in NATURAL ORDER (1-18)
+    function getNaturalOrder() {
+        var order = [];
+        for (var i = 1; i <= 18; i++) order.push(i);
+        return order;
+    }
+    
+    // Get storage block index for a given actual hole number
+    // Since F1-18 is stored in PLAY ORDER (starting hole first)
+    function getStorageIndexForHole(actualHoleNumber) {
+        if (startingHole === 1) {
+            return actualHoleNumber - 1;
+        }
+        var playOrder = getPlayOrder();
+        for (var i = 0; i < playOrder.length; i++) {
+            if (playOrder[i] === actualHoleNumber) return i;
+        }
+        return actualHoleNumber - 1;
+    }
+    
+    // Get actual hole number for a given storage position
+    function getHoleAtStoragePosition(storageIndex) {
+        if (startingHole === 1) {
+            return storageIndex + 1;
+        }
+        var playOrder = getPlayOrder();
+        return playOrder[storageIndex];
+    }
+    
+    // Get mapping array for NATURAL ORDER display
+    // Returns array where index = display column (0-17), value = storage block index
+    // Example startingHole=10: display col 0 (Hole 1) → storage block 9
+    function getNaturalOrderMapping() {
+        var mapping = [];
+        for (var hole = 1; hole <= 18; hole++) {
+            mapping.push(getStorageIndexForHole(hole));
+        }
+        return mapping;
+    }
+    
+    // Get display order based on user preference
+    // preference = "play" (default) or "natural"
+    function getDisplayOrder(preference) {
+        if (preference === "natural") {
+            return getNaturalOrder();
+        } else {
+            return getPlayOrder();
+        }
+    }
+    
+    // Get display mapping for scorecard columns
+    // Returns array where index = display column (0-17), value = actual hole number
+    function getDisplayHoleOrder(preference) {
+        if (preference === "natural") {
+            return getNaturalOrder();
+        } else {
+            return getPlayOrder();
+        }
+    }
+    
+    // ============================================================
     // Generate default data string (all F, all scores = par)
+    // ============================================================
+    
     function generateDefaultData(parArray) {
         if (!parArray || parArray.length !== 18) {
             var defaultPar = "04";
@@ -51,13 +130,20 @@ var GameData = (function() {
         return result;
     }
     
+    // ============================================================
     // Parse hole data from string
+    // ============================================================
+    
     function parseHoleData(dataString, holeNumber) {
         if (!dataString || dataString.length !== 162) {
             return null;
         }
         
-        var startIndex = (holeNumber - 1) * 9;
+        // holeNumber is actual hole number (1-18)
+        // Need to find which storage block contains this hole
+        var storageIndex = getStorageIndexForHole(holeNumber);
+        var startIndex = storageIndex * 9;
+        
         if (startIndex + 9 > dataString.length) {
             return null;
         }
@@ -91,13 +177,18 @@ var GameData = (function() {
         
         var newHoleSegment = savedFlag + a1Str + a2Str + b1Str + b2Str;
         
-        var startIndex = (holeNumber - 1) * 9;
+        // Find storage index for this actual hole number
+        var storageIndex = getStorageIndexForHole(holeNumber);
+        var startIndex = storageIndex * 9;
         var newData = existingData.substr(0, startIndex) + newHoleSegment + existingData.substr(startIndex + 9);
         
         return newData;
     }
     
+    // ============================================================
     // Set course and generate default data
+    // ============================================================
+    
     function setCourse(course) {
         currentCourse = course;
         if (course && course.par) {
@@ -126,8 +217,8 @@ var GameData = (function() {
     function isFlightLocked(flight, deviceId) {
         var lock = flight === 1 ? locks.f1 : locks.f2;
         if (!lock) return false;
-        if (lock.expiresAt && lock.expiresAt < Date.now()) return false;
-        if (deviceId && lock.deviceId === deviceId) return false; // Self lock doesn't block
+        if (lock.ex && lock.ex < Date.now()) return false;
+        if (deviceId && lock.did === deviceId) return false;
         return true;
     }
     
@@ -149,7 +240,8 @@ var GameData = (function() {
         return {
             gameMode: gameMode,
             editableFlight: editableFlight,
-            gameId: gameId
+            gameId: gameId,
+            startingHole: startingHole
         };
     }
     
@@ -198,13 +290,9 @@ var GameData = (function() {
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
         var flight = (editableFlight === 1) ? 1 : 2;
         
-        // Get current data for this flight
         var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
-        
-        // Update the hole data with saved flag = true (works for ANY hole)
         var newData = updateHoleData(flightData, holeNumber, scores, true);
         
-        // Prepare update for Firebase
         var collection = (gameMode === "practice") ? "practiceGames" : "scheduledGames";
         var updatePayload = {};
         var flightField = (flight === 1) ? "f1" : "f2";
@@ -212,15 +300,11 @@ var GameData = (function() {
         
         updatePayload[flightField + ".d"] = newData;
         updatePayload[flightField + ".se"] = true;
-        
-        // CRITICAL: ALWAYS set crossEvent for the OTHER flight
         updatePayload[otherFlightField + ".x"] = true;
-        
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
         firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
             .then(function() {
-                // Update local data
                 if (flight === 1) {
                     flight1Data.data = newData;
                     flight1Data.saveEvent = true;
@@ -250,7 +334,6 @@ var GameData = (function() {
                 if (doc.exists) {
                     var data = doc.data();
                     
-                    // Read consolidated structure
                     if (data.f1) {
                         flight1Data.data = data.f1.d || flight1Data.data;
                         flight1Data.saveEvent = data.f1.se || false;
@@ -262,16 +345,19 @@ var GameData = (function() {
                         flight2Data.crossEvent = data.f2.x || false;
                     }
                     
-                    // Read locks from main document
                     if (data.locks) {
                         locks.f1 = data.locks.f1 || null;
                         locks.f2 = data.locks.f2 || null;
                     }
                     
-                    console.log("Refresh completed - crossEvent flags:", {
-                        flight1: flight1Data.crossEvent,
-                        flight2: flight2Data.crossEvent
-                    });
+                    // NEW: Read startingHole
+                    if (data.startingHole) {
+                        startingHole = data.startingHole;
+                    } else {
+                        startingHole = 1;
+                    }
+                    
+                    console.log("Refresh completed - startingHole:", startingHole);
                     notifyDataChanged();
                 }
             })
@@ -315,44 +401,40 @@ var GameData = (function() {
                 if (doc.exists) {
                     var data = doc.data();
                     
-                    // Read consolidated structure
+                    // NEW: Read startingHole first (needed for parseHoleData)
+                    if (data.startingHole) {
+                        startingHole = data.startingHole;
+                    } else {
+                        startingHole = 1;
+                    }
+                    
                     if (data.f1) {
                         flight1Data.data = data.f1.d || generateDefaultData(currentCourse ? currentCourse.par : null);
                         flight1Data.saveEvent = data.f1.se || false;
                         flight1Data.crossEvent = data.f1.x || false;
-                    } else {
-                        // Fallback for old structure (temporary migration support)
-                        if (data.flight1) {
-                            flight1Data.data = data.flight1.data || generateDefaultData(currentCourse ? currentCourse.par : null);
-                            flight1Data.saveEvent = data.flight1.saveEvent || false;
-                            flight1Data.crossEvent = data.flight1.crossEvent || false;
-                        }
+                    } else if (data.flight1) {
+                        // Fallback for old structure
+                        flight1Data.data = data.flight1.data || generateDefaultData(currentCourse ? currentCourse.par : null);
+                        flight1Data.saveEvent = data.flight1.saveEvent || false;
+                        flight1Data.crossEvent = data.flight1.crossEvent || false;
                     }
                     
                     if (data.f2) {
                         flight2Data.data = data.f2.d || generateDefaultData(currentCourse ? currentCourse.par : null);
                         flight2Data.saveEvent = data.f2.se || false;
                         flight2Data.crossEvent = data.f2.x || false;
-                    } else {
-                        if (data.flight2) {
-                            flight2Data.data = data.flight2.data || generateDefaultData(currentCourse ? currentCourse.par : null);
-                            flight2Data.saveEvent = data.flight2.saveEvent || false;
-                            flight2Data.crossEvent = data.flight2.crossEvent || false;
-                        }
+                    } else if (data.flight2) {
+                        flight2Data.data = data.flight2.data || generateDefaultData(currentCourse ? currentCourse.par : null);
+                        flight2Data.saveEvent = data.flight2.saveEvent || false;
+                        flight2Data.crossEvent = data.flight2.crossEvent || false;
                     }
                     
-                    // Read locks from main document
                     if (data.locks) {
                         locks.f1 = data.locks.f1 || null;
                         locks.f2 = data.locks.f2 || null;
                     }
                     
-                    console.log("Game loaded - structure:", {
-                        hasF1: !!data.f1,
-                        hasF2: !!data.f2,
-                        locks: locks
-                    });
-                    
+                    console.log("Game loaded - startingHole:", startingHole);
                     notifyDataChanged();
                     if (callback) callback(true);
                 } else {
@@ -384,6 +466,14 @@ var GameData = (function() {
         hasPendingCrossEvent: hasPendingCrossEvent,
         hasPendingSaveEvent: hasPendingSaveEvent,
         clearCrossEvent: clearCrossEvent,
-        clearSaveEvent: clearSaveEvent
+        clearSaveEvent: clearSaveEvent,
+        // NEW: Shotgun start helpers
+        getStartingHole: getStartingHole,
+        getPlayOrder: getPlayOrder,
+        getNaturalOrder: getNaturalOrder,
+        getDisplayHoleOrder: getDisplayHoleOrder,
+        getNaturalOrderMapping: getNaturalOrderMapping,
+        getHoleAtStoragePosition: getHoleAtStoragePosition,
+        getStorageIndexForHole: getStorageIndexForHole
     };
 })();
