@@ -1,6 +1,6 @@
-// FILE: js/game-data.js - VERSION 1.05
+// FILE: js/game-data.js - VERSION 1.06
 // String-based data manager for SICC Ryder Cup
-// REMOVED: PRACTICE mode (only REAL and PREVIEW remain)
+// SUPPORT: previewSandboxes collection for PREVIEW mode
 
 var GameData = (function() {
     
@@ -10,6 +10,7 @@ var GameData = (function() {
     var currentCourse = null;
     var currentPlayers = [];
     var startingHole = 1;
+    var isPreviewSandbox = false;
     
     var flight1Data = {
         data: "",
@@ -224,7 +225,8 @@ var GameData = (function() {
             gameMode: gameMode,
             editableFlight: editableFlight,
             gameId: gameId,
-            startingHole: startingHole
+            startingHole: startingHole,
+            isPreviewSandbox: isPreviewSandbox
         };
     }
     
@@ -269,6 +271,14 @@ var GameData = (function() {
         flight2Data.saveEvent = false;
     }
     
+    // Get collection name based on mode
+    function getCollectionName() {
+        if (isPreviewSandbox) {
+            return "previewSandboxes";
+        }
+        return "scheduledGames";
+    }
+    
     // Save ANY hole number, ALWAYS set crossEvent for other flight
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
         var flight = (editableFlight === 1) ? 1 : 2;
@@ -276,7 +286,7 @@ var GameData = (function() {
         var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
         var newData = updateHoleData(flightData, holeNumber, scores, true);
         
-        var collection = "scheduledGames";
+        var collection = getCollectionName();
         var updatePayload = {};
         var flightField = (flight === 1) ? "f1" : "f2";
         var otherFlightField = (flight === 1) ? "f2" : "f1";
@@ -311,7 +321,7 @@ var GameData = (function() {
     function forceRefresh() {
         if (!gameId) return;
         
-        var collection = "scheduledGames";
+        var collection = getCollectionName();
         firebase.firestore().collection(collection).doc(gameId).get()
             .then(function(doc) {
                 if (doc.exists) {
@@ -360,6 +370,9 @@ var GameData = (function() {
         gameMode = activeGame.gameMode || activeGame.gameType || "real";
         editableFlight = null;
         
+        // Check if this is a preview sandbox
+        isPreviewSandbox = (activeGame.collection === "previewSandboxes");
+        
         var userRole = session.userRole || activeGame.role;
         
         if (userRole === "update1") {
@@ -376,7 +389,7 @@ var GameData = (function() {
             }
         }
         
-        var collection = "scheduledGames";
+        var collection = getCollectionName();
         
         firebase.firestore().collection(collection).doc(gameId).get()
             .then(function(doc) {
@@ -415,7 +428,7 @@ var GameData = (function() {
                         locks.f2 = data.locks.f2 || null;
                     }
                     
-                    console.log("Game loaded - startingHole:", startingHole);
+                    console.log("Game loaded - startingHole:", startingHole, "isPreviewSandbox:", isPreviewSandbox);
                     notifyDataChanged();
                     if (callback) callback(true);
                 } else {
