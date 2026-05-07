@@ -1,35 +1,61 @@
-// FILE: js/game-match.js - VERSION 1.05
+// FILE: js/game-match.js - VERSION 1.07
 // Game 1: Match Play (16 points)
-// Updated: Uses net scores (gross - strokes received based on SI)
+// Full handicap difference method
+// ADDED: Detailed match result logging for debugging
 
 var GameMatch = (function() {
     
-    // Calculate strokes a player receives on a specific hole
-    // Player gets 1 stroke on holes where SI <= player.handicap
-    function getStrokesForHole(holeNumber, playerHandicap, courseSi) {
-        if (!courseSi || playerHandicap <= 0) return 0;
-        var holeSi = courseSi[holeNumber - 1];
-        return (holeSi <= playerHandicap) ? 1 : 0;
+    // Get the list of holes where a player receives strokes
+    function getStrokeHoles(handicapDiff, courseSi) {
+        if (handicapDiff <= 0) return [];
+        
+        var holesWithSi = [];
+        for (var i = 0; i < 18; i++) {
+            holesWithSi.push({ hole: i + 1, si: courseSi[i] });
+        }
+        
+        holesWithSi.sort(function(a, b) { return a.si - b.si; });
+        
+        var strokeHoles = [];
+        for (var i = 0; i < handicapDiff && i < 18; i++) {
+            strokeHoles.push(holesWithSi[i].hole);
+        }
+        
+        return strokeHoles;
     }
     
-    // Calculate net score for a player on a specific hole
-    function getNetScore(player, grossScore, holeNumber, courseSi) {
-        var strokes = getStrokesForHole(holeNumber, player.handicap, courseSi);
+    function getStrokesForHole(holeNumber, handicapDiff, courseSi, strokeHolesCache) {
+        if (handicapDiff <= 0) return 0;
+        
+        var strokeHoles = strokeHolesCache || getStrokeHoles(handicapDiff, courseSi);
+        
+        for (var i = 0; i < strokeHoles.length; i++) {
+            if (strokeHoles[i] === holeNumber) return 1;
+        }
+        return 0;
+    }
+    
+    function getNetScore(grossScore, handicapDiff, holeNumber, courseSi, strokeHolesCache) {
+        var strokes = getStrokesForHole(holeNumber, handicapDiff, courseSi, strokeHolesCache);
         return grossScore - strokes;
     }
     
-    // Get match result between two players up to a certain hole
-    // Returns: "+X" (winning by X holes), "-X" (losing by X holes), "AS" (tie), "⏳" (not started)
     function getMatchResult(playerA, playerB, scores, savedHoles, allPlayers, upToHole, courseSi) {
+        var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+        var higherHandicapPlayer = (playerA.handicap > playerB.handicap) ? playerA : playerB;
+        var isPlayerAReceivingStrokes = (playerA.handicap > playerB.handicap);
+        
+        var strokeHoles = getStrokeHoles(handicapDiff, courseSi);
+        
         var holesCompleted = 0;
         var playerAWon = 0;
         var playerBWon = 0;
         
-        // Determine which holes are completed for both players
+        var holeResults = [];
+        
         for (var hole = 1; hole <= upToHole; hole++) {
-            // Check if both players have saved scores for this hole
-            var playerAHasScore = false;
-            var playerBHasScore = false;
+            var playerAScore = null;
+            var playerBScore = null;
             
             for (var flight = 1; flight <= 2; flight++) {
                 var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
@@ -39,54 +65,43 @@ var GameMatch = (function() {
                     if (p.name === playerA.name) {
                         var key = flight + "_" + hole + "_" + i;
                         if (scores[key] !== undefined && scores[key] !== null) {
-                            playerAHasScore = true;
+                            playerAScore = scores[key];
                         }
                     }
                     if (p.name === playerB.name) {
                         var key2 = flight + "_" + hole + "_" + i;
                         if (scores[key2] !== undefined && scores[key2] !== null) {
-                            playerBHasScore = true;
+                            playerBScore = scores[key2];
                         }
                     }
                 }
             }
             
-            if (!playerAHasScore || !playerBHasScore) continue;
+            if (playerAScore === null || playerBScore === null) continue;
             
             holesCompleted++;
             
-            // Get gross scores
-            var scoreA = null;
-            var scoreB = null;
+            var netA = playerAScore;
+            var netB = playerBScore;
             
-            for (var flight = 1; flight <= 2; flight++) {
-                var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
-                
-                for (var i = 0; i < flightPlayers.length; i++) {
-                    var p = flightPlayers[i];
-                    if (p.name === playerA.name) {
-                        var key = flight + "_" + hole + "_" + i;
-                        scoreA = scores[key];
-                    }
-                    if (p.name === playerB.name) {
-                        var key2 = flight + "_" + hole + "_" + i;
-                        scoreB = scores[key2];
-                    }
-                }
+            if (isPlayerAReceivingStrokes) {
+                netA = getNetScore(playerAScore, handicapDiff, hole, courseSi, strokeHoles);
+            } else {
+                netB = getNetScore(playerBScore, handicapDiff, hole, courseSi, strokeHoles);
             }
             
-            if (scoreA === null || scoreB === null) continue;
-            
-            // Calculate net scores with handicaps
-            var netA = getNetScore(playerA, scoreA, hole, courseSi);
-            var netB = getNetScore(playerB, scoreB, hole, courseSi);
-            
+            var holeWinner = "";
             if (netA < netB) {
                 playerAWon++;
+                holeWinner = "A";
             } else if (netB < netA) {
                 playerBWon++;
+                holeWinner = "B";
+            } else {
+                holeWinner = "AS";
             }
-            // Tie: no change
+            
+            holeResults.push({ hole: hole, netA: netA, netB: netB, grossA: playerAScore, grossB: playerBScore, strokes: handicapDiff, winner: holeWinner });
         }
         
         if (holesCompleted === 0) {
@@ -94,26 +109,38 @@ var GameMatch = (function() {
         }
         
         var diff = playerAWon - playerBWon;
+        var result;
         if (diff > 0) {
-            return "+" + diff;
+            result = "+" + diff;
         } else if (diff < 0) {
-            return "" + diff;
+            result = "" + diff;
         } else {
-            return "AS";
+            result = "AS";
         }
+        
+        // Detailed logging for debugging
+        console.log("=== MATCH RESULT ===");
+        console.log(playerA.name, "(HCP", playerA.handicap, ") vs", playerB.name, "(HCP", playerB.handicap, ")");
+        console.log("Handicap difference:", handicapDiff, "-", higherHandicapPlayer.name, "receives strokes");
+        console.log("Stroke holes:", strokeHoles);
+        console.log("Hole results:", holeResults);
+        console.log("Final result:", result, "(A won:", playerAWon, "B won:", playerBWon, "holes:", holesCompleted, ")");
+        console.log("==================");
+        
+        return result;
     }
     
-    // Calculate total points for all matches
     function getPoints(allPlayers, allScores, savedHolesPerFlight, upToHole, courseSi) {
         var teamAPoints = 0;
         var teamBPoints = 0;
         var totalMatches = 0;
         
-        // Get all Team A players and Team B players
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
         
-        // For each Team A vs Team B match
+        console.log("=== GAME 1 POINTS CALCULATION ===");
+        console.log("upToHole:", upToHole);
+        
         for (var a = 0; a < teamAPlayers.length; a++) {
             for (var b = 0; b < teamBPlayers.length; b++) {
                 totalMatches++;
@@ -122,26 +149,26 @@ var GameMatch = (function() {
                 
                 var result = getMatchResult(playerA, playerB, allScores, savedHolesPerFlight, allPlayers, upToHole, courseSi);
                 
-                // Points based on match result
                 if (result === "⏳") {
-                    // Not started yet - 0.5 points each
                     teamAPoints += 0.5;
                     teamBPoints += 0.5;
+                    console.log(playerA.name, "vs", playerB.name, "→", result, "(0.5 each)");
                 } else if (result.indexOf("+") === 0) {
-                    // Player A is winning (or won) - 1 point to Team A
                     teamAPoints += 1;
+                    console.log(playerA.name, "vs", playerB.name, "→", result, "(1 point to Team A)");
                 } else if (result.indexOf("-") === 0) {
-                    // Player B is winning (or won) - 1 point to Team B
                     teamBPoints += 1;
+                    console.log(playerA.name, "vs", playerB.name, "→", result, "(1 point to Team B)");
                 } else if (result === "AS") {
-                    // All square - 0.5 points each
                     teamAPoints += 0.5;
                     teamBPoints += 0.5;
+                    console.log(playerA.name, "vs", playerB.name, "→ AS (0.5 each)");
                 }
             }
         }
         
-        console.log("Match Play Results - Team A:", teamAPoints, "Team B:", teamBPoints);
+        console.log("TOTAL - Team A:", teamAPoints, "Team B:", teamBPoints);
+        console.log("================================");
         
         return {
             teamAPoints: teamAPoints,
@@ -153,6 +180,7 @@ var GameMatch = (function() {
         getPoints: getPoints,
         getMatchResult: getMatchResult,
         getNetScore: getNetScore,
-        getStrokesForHole: getStrokesForHole
+        getStrokesForHole: getStrokesForHole,
+        getStrokeHoles: getStrokeHoles
     };
 })();
