@@ -1,5 +1,6 @@
-<!-- FILE: pre-game.html - VERSION 2.27 -->
+<!-- FILE: pre-game.html - VERSION 2.28 -->
 <!-- Role selection and verification before game -->
+<!-- ADDED: REAL mode auto-reset on first device of game day -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -333,13 +334,14 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.27</div>
+<div class="version-tag">v2.28</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.27
-// UPDATED: Locks stored in main document (locks.f1, locks.f2)
+// FILE: pre-game.html - VERSION 2.28
+// FIXED: REAL mode auto-reset on first device of game day
+// PREVIEW/PRACTICE modes: modal with RESET/CONTINUE
 
-var VERSION = "2.27";
+var VERSION = "2.28";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -381,7 +383,7 @@ var currentDeviceId = null;
 var currentSessionId = null;
 var deviceSession = null;
 
-// Locks stored in main document, not separate collection
+// Locks stored in main document
 var locks = { f1: null, f2: null };
 
 function displayDeviceId() {
@@ -398,8 +400,16 @@ function formatDisplayDate(dateStr) {
     return dateStr;
 }
 
-// Generate default data string (all F, all scores = par)
-function generateDefaultData(parArray) {
+function getTodayString() {
+    var today = new Date();
+    var year = today.getFullYear();
+    var month = String(today.getMonth() + 1).padStart(2, '0');
+    var day = String(today.getDate()).padStart(2, '0');
+    return year + "-" + month + "-" + day;
+}
+
+// Generate default data string in NATURAL order
+function generateDefaultDataNatural(parArray) {
     if (!parArray || parArray.length !== 18) {
         var defaultPar = "04";
         var result = "";
@@ -418,6 +428,22 @@ function generateDefaultData(parArray) {
     return result;
 }
 
+// Rotate data string to start at startingHole
+function rotateDataString(naturalData, startingHole) {
+    if (startingHole === 1) return naturalData;
+    
+    var blocks = [];
+    for (var i = 0; i < 18; i++) {
+        blocks.push(naturalData.substr(i * 9, 9));
+    }
+    
+    var rotated = [];
+    for (var i = startingHole - 1; i < 18; i++) rotated.push(blocks[i]);
+    for (var i = 0; i < startingHole - 1; i++) rotated.push(blocks[i]);
+    
+    return rotated.join('');
+}
+
 // Reset ALL game data (scores, flags, locks) to default
 function resetGameData(callback) {
     if (!db || !gameId) {
@@ -425,28 +451,29 @@ function resetGameData(callback) {
         return;
     }
     
-    var defaultData = generateDefaultData(gameData.course.par);
+    var startingHole = gameData.startingHole || 1;
+    var naturalData = generateDefaultDataNatural(gameData.course.par);
+    var rotatedData = rotateDataString(naturalData, startingHole);
     
     var resetData = {
-        "f1.d": defaultData,
+        "f1.d": rotatedData,
         "f1.se": false,
         "f1.x": false,
-        "f2.d": defaultData,
+        "f2.d": rotatedData,
         "f2.se": false,
         "f2.x": false,
         "locks.f1": null,
         "locks.f2": null,
+        "currentHoleF1": 1,
+        "currentHoleF2": 1,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
     db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
         console.log("Game data reset to default - locks cleared");
         
-        // Clear local locks
         locks.f1 = null;
         locks.f2 = null;
-        
-        // Clear any selected role
         tempSelectedRole = null;
         
         if (callback) callback(true);
@@ -456,12 +483,22 @@ function resetGameData(callback) {
     });
 }
 
-// Check if any role locks exist in the main document
-function checkRoleLocksExist() {
-    var now = Date.now();
-    var hasF1Lock = locks.f1 && locks.f1.ex && locks.f1.ex > now;
-    var hasF2Lock = locks.f2 && locks.f2.ex && locks.f2.ex > now;
-    return hasF1Lock || hasF2Lock;
+// Check if any data exists (non-default scores or flags)
+function hasExistingData() {
+    if (!gameData) return false;
+    
+    // Check if f1 or f2 have any saved holes (contains 'T')
+    var f1HasData = gameData.f1 && gameData.f1.d && gameData.f1.d.indexOf('T') !== -1;
+    var f2HasData = gameData.f2 && gameData.f2.d && gameData.f2.d.indexOf('T') !== -1;
+    
+    // Check if any flags are true
+    var f1HasEvent = gameData.f1 && (gameData.f1.se === true || gameData.f1.x === true);
+    var f2HasEvent = gameData.f2 && (gameData.f2.se === true || gameData.f2.x === true);
+    
+    // Check if any locks exist
+    var hasLocks = (gameData.locks && (gameData.locks.f1 !== null || gameData.locks.f2 !== null));
+    
+    return f1HasData || f2HasData || f1HasEvent || f2HasEvent || hasLocks;
 }
 
 function startGameListener() {
@@ -475,7 +512,6 @@ function startGameListener() {
             if (doc.exists) {
                 var data = doc.data();
                 
-                // Read locks from main document
                 if (data.locks) {
                     locks.f1 = data.locks.f1 || null;
                     locks.f2 = data.locks.f2 || null;
@@ -530,6 +566,40 @@ function toggleRole(role) {
     render();
 }
 
+function showSessionModal(callback) {
+    var modalHtml = `
+        <div class="modal-overlay" id="sessionModal">
+            <div class="modal">
+                <div class="modal-title">${gameMode === "preview" ? "PREVIEW" : "PRACTICE"} Session</div>
+                <div class="modal-message">Existing game data found. What would you like to do?</div>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-reset" id="resetBtn">RESET (Start Over)</button>
+                    <button class="modal-btn modal-btn-continue" id="continueBtn">CONTINUE</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("resetBtn").addEventListener("click", function() {
+        document.getElementById("sessionModal").remove();
+        resetGameData(function(success) {
+            if (success) {
+                console.log("Game data reset, proceeding...");
+                window.location.reload();
+            } else {
+                if (callback) callback();
+            }
+        });
+    });
+    
+    document.getElementById("continueBtn").addEventListener("click", function() {
+        document.getElementById("sessionModal").remove();
+        if (callback) callback();
+    });
+}
+
 function loadGame() {
     var practiceGameId = sessionStorage.getItem("practiceGameId");
     var realGameId = sessionStorage.getItem("currentGameId");
@@ -542,7 +612,6 @@ function loadGame() {
                 gameData = doc.data();
                 gameData.id = doc.id;
                 
-                // Read locks from main document
                 if (gameData.locks) {
                     locks.f1 = gameData.locks.f1 || null;
                     locks.f2 = gameData.locks.f2 || null;
@@ -550,14 +619,10 @@ function loadGame() {
                 
                 startGameListener();
                 
-                // Check if data exists (non-default)
-                var defaultData = generateDefaultData(gameData.course.par);
-                var f1HasData = gameData.f1 && gameData.f1.d && gameData.f1.d !== defaultData;
-                var f2HasData = gameData.f2 && gameData.f2.d && gameData.f2.d !== defaultData;
-                var hasData = f1HasData || f2HasData;
-                
-                if (hasData) {
-                    showSessionModal();
+                if (hasExistingData()) {
+                    showSessionModal(function() {
+                        render();
+                    });
                 } else {
                     render();
                 }
@@ -578,24 +643,40 @@ function loadGame() {
                 gameData = doc.data();
                 gameData.id = doc.id;
                 
-                // Read locks from main document
                 if (gameData.locks) {
                     locks.f1 = gameData.locks.f1 || null;
                     locks.f2 = gameData.locks.f2 || null;
                 }
                 
-                var locksExist = checkRoleLocksExist();
+                var today = getTodayString();
+                var isToday = (gameData.date === today);
+                var hasLocks = (locks.f1 !== null || locks.f2 !== null);
                 
-                if (!locksExist) {
-                    // FIRST DEVICE - RESET everything
-                    console.log("REAL mode - First device detected. Resetting all data and locks.");
+                console.log("REAL mode check:", { isToday, hasLocks });
+                
+                if (isToday && !hasLocks) {
+                    // FIRST DEVICE ON GAME DAY - RESET EVERYTHING
+                    console.log("REAL mode - First device on game day. Resetting all data.");
                     resetGameData(function(success) {
-                        startGameListener();
-                        render();
+                        // Reload game data after reset
+                        db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
+                            if (updatedDoc.exists) {
+                                gameData = updatedDoc.data();
+                                gameData.id = updatedDoc.id;
+                                if (gameData.locks) {
+                                    locks.f1 = gameData.locks.f1 || null;
+                                    locks.f2 = gameData.locks.f2 || null;
+                                }
+                            }
+                            startGameListener();
+                            render();
+                        }).catch(function() {
+                            startGameListener();
+                            render();
+                        });
                     });
                 } else {
-                    // Subsequent device - data already reset, just proceed
-                    console.log("REAL mode - Subsequent device. Data already reset.");
+                    // Not first device or not game day - normal flow
                     startGameListener();
                     render();
                 }
@@ -642,7 +723,6 @@ function startGame() {
         return;
     }
     
-    // Check if locks still available
     var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
     var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
     
@@ -659,7 +739,6 @@ function startGame() {
         return;
     }
     
-    // Acquire lock
     var deviceId = SessionManager.getDeviceIdDisplay();
     var sessionId = deviceSession ? deviceSession.sessionId : "unknown";
     
@@ -723,40 +802,6 @@ function resetRoleLocks() {
             alert("Error resetting locks: " + e.message);
         });
     }
-}
-
-function showSessionModal() {
-    var modalHtml = `
-        <div class="modal-overlay" id="sessionModal">
-            <div class="modal">
-                <div class="modal-title">${gameMode === "preview" ? "PREVIEW" : "PRACTICE"} Session</div>
-                <div class="modal-message">Initialise the game data or continue previous session?</div>
-                <div class="modal-buttons">
-                    <button class="modal-btn modal-btn-reset" id="resetBtn">RESET</button>
-                    <button class="modal-btn modal-btn-continue" id="continueBtn">CONTINUE</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    document.getElementById("resetBtn").addEventListener("click", function() {
-        document.getElementById("sessionModal").remove();
-        resetGameData(function(success) {
-            if (success) {
-                console.log("Game data reset, proceeding...");
-                window.location.reload();
-            } else {
-                proceedToGame();
-            }
-        });
-    });
-    
-    document.getElementById("continueBtn").addEventListener("click", function() {
-        document.getElementById("sessionModal").remove();
-        proceedToGame();
-    });
 }
 
 function proceedToGame() {
