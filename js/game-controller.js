@@ -1,8 +1,5 @@
-// FILE: js/game-controller.js - VERSION 1.17
-// IMPLEMENTS VDN #006: Bubble ownership model with cross-flight sync status
-// - Intra-flight bubbles update immediately after that flight saves
-// - Cross-flight bubbles only update when both flights have saved same hole
-// - Grey cross-flight bubbles indicate out-of-sync (showing last synced hole result)
+// FILE: js/game-controller.js - VERSION 1.18
+// SEPARATE START OF GAME STATE: No calculations until any flight saves a hole
 
 var GameController = (function() {
     
@@ -263,7 +260,6 @@ var GameController = (function() {
                 }
             }
             
-            // Update lastSyncedHole
             lastSyncedHole = maxCompletedHole;
             
             var displayScores = {};
@@ -321,23 +317,34 @@ var GameController = (function() {
                 if (f2Data && f2Data.saved) displaySavedHoles[2].push(actualHole);
             }
             
-            // Calculate match bubbles based on sync status
+            // ============================================================
+            // START OF GAME STATE DETECTION
+            // ============================================================
+            var gameStarted = (displaySavedHoles[1].length > 0 || displaySavedHoles[2].length > 0);
+            
             var matchBubbles = {};
             
-            if (maxCompletedHole === 0) {
-                // Case 1: No holes synced yet - only intra-flight bubbles for the active flight
+            if (!gameStarted) {
+                // START OF GAME STATE - No calculations, all bubbles remain default "AS"
+                // matchBubbles remains empty - UI will show grey "AS"
+                console.log("START OF GAME: No bubbles calculated");
+            } else if (maxCompletedHole === 0) {
+                // GAME STARTED but no holes synced yet
+                // Calculate ONLY intra-flight bubbles for the active flight
                 var activeFlightBubbles = calculateIntraFlightBubbles(currentPlayers, displayScores, activeFlight, currentHole);
                 for (var key in activeFlightBubbles) {
                     matchBubbles[key] = activeFlightBubbles[key];
                 }
-                // Other flight's bubbles will be empty (default AS in UI)
+                console.log("GAME STARTED - Active flight intra bubbles calculated");
             } else {
-                // Case 2: Some holes synced - calculate all bubbles for both flights
+                // GAME STARTED and holes are synced
+                // Calculate all bubbles for both flights
                 var flight1AllBubbles = calculateAllBubblesForFlight(currentPlayers, displayScores, displaySavedHoles, 1, currentHole, maxCompletedHole);
                 var flight2AllBubbles = calculateAllBubblesForFlight(currentPlayers, displayScores, displaySavedHoles, 2, currentHole, maxCompletedHole);
                 
                 for (var key in flight1AllBubbles) matchBubbles[key] = flight1AllBubbles[key];
                 for (var key in flight2AllBubbles) matchBubbles[key] = flight2AllBubbles[key];
+                console.log("GAME STARTED - All bubbles calculated (synced)");
             }
             
             var flight1Started = (displaySavedHoles[1].length > 0);
@@ -523,7 +530,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.17...");
+        console.log("GameController: Initializing v1.18...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
