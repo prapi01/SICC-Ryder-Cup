@@ -1,11 +1,11 @@
-<!-- FILE: setup-game.html - VERSION 1.12 -->
+<!-- FILE: setup-game.html - VERSION 1.13 -->
 <!--
-Sets up new scheduled games with the NEW consolidated data structure:
-- f1.d (string: 9 chars per hole, 18 holes)
-- f2.d (string: 9 chars per hole, 18 holes)
-- f1.se and f1.x
-- f2.se and f2.x
-- locks.f1 and locks.f2 (role locks)
+Sets up new scheduled games with consolidated structure + SHOTGUN START support
+- f1.d, f1.se, f1.x
+- f2.d, f2.se, f2.x
+- locks.f1, locks.f2
+- startingHole (1-18, default=1)
+- F1-18 string is ROTATED to start at startingHole
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -64,6 +64,8 @@ Sets up new scheduled games with the NEW consolidated data structure:
         
         .course-select { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 1rem; }
         
+        .starting-hole-select { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 1rem; }
+        
         .player-row { background: #0a0a0a; border-radius: 12px; padding: 10px; margin-bottom: 8px; }
         .player-line1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
         .player-name-group { display: flex; align-items: center; gap: 6px; flex: 2; }
@@ -85,6 +87,8 @@ Sets up new scheduled games with the NEW consolidated data structure:
         .success-msg { color: #4caf50; font-size: 0.8rem; text-align: center; margin-top: 10px; }
         
         .edit-badge { background: #ffaa44; color: #1a1a1a; padding: 2px 10px; border-radius: 20px; font-size: 0.7rem; margin-left: 10px; display: inline-block; }
+        
+        .info-note { font-size: 0.7rem; color: #ffaa44; margin-top: 8px; text-align: center; }
     </style>
 </head>
 <body>
@@ -92,13 +96,13 @@ Sets up new scheduled games with the NEW consolidated data structure:
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.12</div>
+<div class="version-tag">v1.13</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.12
-// Consolidated structure: f1.d, f1.se, f1.x, f2.d, f2.se, f2.x, locks.f1, locks.f2
+// FILE: setup-game.html - VERSION 1.13
+// Consolidated structure + SHOTGUN START: startingHole selection, F1-18 rotation
 
-var VERSION = "1.12";
+var VERSION = "1.13";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -150,9 +154,8 @@ function generateLabel(name) {
     return label.toUpperCase();
 }
 
-// Generate default data string for a flight based on course par
-// Format: F + par for A1 + par for A2 + par for B1 + par for B2 (repeat for 18 holes)
-function generateDefaultData(parArray) {
+// Generate default data string in NATURAL order (1-18)
+function generateDefaultDataNatural(parArray) {
     var result = "";
     for (var hole = 1; hole <= 18; hole++) {
         var par = parArray[hole - 1];
@@ -160,6 +163,24 @@ function generateDefaultData(parArray) {
         result += "F" + parStr + parStr + parStr + parStr;
     }
     return result;
+}
+
+// Rotate data string to start at startingHole
+// Input: natural order [H1][H2]...[H18]
+// Output: play order [HX][HX+1]...[H18][H1]...[HX-1]
+function rotateDataString(naturalData, startingHole) {
+    if (startingHole === 1) return naturalData;
+    
+    var blocks = [];
+    for (var i = 0; i < 18; i++) {
+        blocks.push(naturalData.substr(i * 9, 9));
+    }
+    
+    var rotated = [];
+    for (var i = startingHole - 1; i < 18; i++) rotated.push(blocks[i]);
+    for (var i = 0; i < startingHole - 1; i++) rotated.push(blocks[i]);
+    
+    return rotated.join('');
 }
 
 function displayDeviceId() {
@@ -176,7 +197,8 @@ var state = {
     editingGameId: null,
     isEditMode: false,
     editDate: null,
-    userSelectedDate: null
+    userSelectedDate: null,
+    startingHole: 1  // NEW: default starting hole
 };
 
 function loadEditMode() {
@@ -194,6 +216,11 @@ function loadEditMode() {
             if (gameData.course) {
                 state.selectedCourseId = gameData.course.id;
                 state.selectedCourseData = gameData.course;
+            }
+            
+            // Read startingHole from existing game if present
+            if (gameData.startingHole) {
+                state.startingHole = gameData.startingHole;
             }
             
             if (gameData.players && gameData.players.length === 8) {
@@ -309,6 +336,9 @@ function commitGame() {
     var dateInput = document.getElementById("datePicker");
     var selectedDate = dateInput ? dateInput.value : "";
     
+    var startingHoleInput = document.getElementById("startingHole");
+    var startingHole = startingHoleInput ? parseInt(startingHoleInput.value) : 1;
+    
     var dateError = validateDate(selectedDate);
     if (dateError) {
         state.dateError = dateError;
@@ -326,8 +356,9 @@ function commitGame() {
         return;
     }
     
-    // Generate default data strings for both flights
-    var defaultData = generateDefaultData(state.selectedCourseData.par);
+    // Generate default data in NATURAL order, then ROTATE to play order
+    var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
+    var rotatedData = rotateDataString(naturalData, startingHole);
     
     // CONSOLIDATED STRUCTURE - everything in ONE document
     var gameData = {
@@ -336,16 +367,17 @@ function commitGame() {
         players: state.players,
         status: "scheduled",
         gameType: "real",
+        startingHole: startingHole,  // NEW: store starting hole
         updatedAt: new Date().toISOString(),
         
-        // Consolidated flight data
+        // Consolidated flight data (already rotated to play order)
         f1: {
-            d: defaultData,
+            d: rotatedData,
             se: false,
             x: false
         },
         f2: {
-            d: defaultData,
+            d: rotatedData,
             se: false,
             x: false
         },
@@ -390,6 +422,13 @@ function render() {
         var c = state.courses[i];
         var selected = (state.selectedCourseId === c.id) ? 'selected' : '';
         courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
+    }
+    
+    // Starting hole options 1-18
+    var startingHoleOptions = '';
+    for (var i = 1; i <= 18; i++) {
+        var selected = (state.startingHole === i) ? 'selected' : '';
+        startingHoleOptions += '<option value="' + i + '" ' + selected + '>' + i + '</option>';
     }
     
     var playersHtml = '';
@@ -455,10 +494,18 @@ function render() {
         </div>
         
         <div class="card">
-            <div class="card-title">⛳ COURSE SELECTION</div>
+            <div class="card-title">🏟️ COURSE SELECTION</div>
             <select id="courseSelect" class="course-select" onchange="changeCourse(this.value)">
                 ${courseOptions}
             </select>
+        </div>
+        
+        <div class="card">
+            <div class="card-title">⛳ STARTING HOLE (SHOTGUN START)</div>
+            <select id="startingHole" class="starting-hole-select">
+                ${startingHoleOptions}
+            </select>
+            <div class="info-note">💡 Play will begin at selected hole. Scorecard will show holes in play order.</div>
         </div>
         
         <div class="card">
@@ -483,6 +530,14 @@ function render() {
     if (datePicker) {
         datePicker.addEventListener("change", function() {
             state.userSelectedDate = this.value;
+        });
+    }
+    
+    // Update state.startingHole when dropdown changes
+    var startingHoleSelect = document.getElementById("startingHole");
+    if (startingHoleSelect) {
+        startingHoleSelect.addEventListener("change", function() {
+            state.startingHole = parseInt(this.value);
         });
     }
     
