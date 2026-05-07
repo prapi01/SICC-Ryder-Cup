@@ -1,5 +1,6 @@
-// FILE: js/game-controller.js - VERSION 1.09
-// FIX: At start (no holes saved), all match bubbles show grey "AS", Game 1 returns 8-8
+// FILE: js/game-controller.js - VERSION 1.10
+// REMOVED: PRACTICE mode (only REAL and PREVIEW remain)
+// FIXES: Match bubble and auto-refresh issues
 
 var GameController = (function() {
     
@@ -85,7 +86,7 @@ var GameController = (function() {
     function calculateMatchBubblesForFlight(players, scores, savedHoles, flight, currentHoleForFlight, maxCompletedHole) {
         var bubbles = {};
         
-        // NEW: If no holes completed, return all "AS"
+        // If no holes completed, return all "AS"
         if (maxCompletedHole === 0) {
             var flightPlayers = players.filter(function(p) { return p.flight === flight; });
             for (var i = 0; i < flightPlayers.length; i++) {
@@ -110,13 +111,7 @@ var GameController = (function() {
                 var playerB = players[j];
                 if (playerA.team !== playerB.team) {
                     var key = playerA.name + "_vs_" + playerB.name;
-                    var upToHole;
-                    
-                    if (playerA.flight === playerB.flight) {
-                        upToHole = currentHoleForFlight;
-                    } else {
-                        upToHole = currentHoleForFlight;
-                    }
+                    var upToHole = currentHoleForFlight;
                     
                     var result = GameMatch.getMatchResult(
                         playerA, playerB, scores, savedHoles, players, upToHole, courseSi
@@ -143,7 +138,7 @@ var GameController = (function() {
     }
     
     function calculateGame1Points(players, flight1Data, flight2Data, maxCompletedHole) {
-        // NEW: If no holes completed, return default 8-8
+        // If no holes completed, return default 8-8
         if (maxCompletedHole === 0) {
             console.log("Game1: No holes completed - returning 8-8");
             return {
@@ -188,7 +183,7 @@ var GameController = (function() {
     }
     
     function calculateGame2Points(players, flight1Data, flight2Data, maxCompletedHole, course) {
-        // NEW: If no holes completed, return default tied 1-1
+        // Placeholder for Game 2 (Team Game)
         if (maxCompletedHole === 0) {
             return {
                 teamAPoints: 1,
@@ -211,7 +206,7 @@ var GameController = (function() {
     }
     
     function calculateGame3Points(players, flight1Data, flight2Data, maxCompletedHole, course) {
-        // NEW: If no holes completed, return default tied 0.5-0.5
+        // Placeholder for Game 3 (Net Stroke)
         if (maxCompletedHole === 0) {
             var strkRow = new Array(18).fill("-");
             return {
@@ -296,7 +291,7 @@ var GameController = (function() {
                 }
             }
             
-            // Check if current hole is saved (using actual hole number)
+            // Check if current hole is saved
             var activeFlightData = (activeFlight === 1) ? flight1Data : flight2Data;
             var currentActualHole = GameData.getHoleAtStoragePosition(currentHole - 1);
             var currentHoleData = GameData.parseHoleData(activeFlightData, currentActualHole);
@@ -323,7 +318,7 @@ var GameController = (function() {
                 if (f2Data && f2Data.saved) displaySavedHoles[2].push(actualHole);
             }
             
-            // Calculate match bubbles (pass maxCompletedHole)
+            // Calculate match bubbles
             var matchBubbles = calculateMatchBubbles(currentPlayers, displayScores, displaySavedHoles, currentHoleByFlight, maxCompletedHole);
             
             var newUIData = {
@@ -523,10 +518,7 @@ var GameController = (function() {
     
     function handleMainMenu() {
         console.log("GameController: Main menu");
-        var dest = (gameMode === "practice") ? "practice-mode.html" : "index.html";
-        if (confirm("Leave this game? Progress will be saved.")) {
-            window.location.href = dest;
-        }
+        window.location.href = "index.html";
     }
     
     function handleSwitchRole() {
@@ -544,7 +536,7 @@ var GameController = (function() {
     
     function init() {
         if (isInitialized) return;
-        console.log("GameController: Initializing v1.09...");
+        console.log("GameController: Initializing v1.10...");
         
         window.addEventListener('scoreChange', function(e) {
             if (e.detail) handleScoreChange(e.detail);
@@ -591,16 +583,6 @@ var GameController = (function() {
                         GameData.setCourse(currentCourse);
                         GameData.setPlayers(currentPlayers);
                         console.log("GameController: Course and players loaded", currentCourse.name, currentPlayers.length);
-                    } else {
-                        var storedPractice = sessionStorage.getItem("currentPracticeGame");
-                        if (storedPractice) {
-                            var practiceData = JSON.parse(storedPractice);
-                            currentCourse = practiceData.course;
-                            currentPlayers = practiceData.players;
-                            GameData.setCourse(currentCourse);
-                            GameData.setPlayers(currentPlayers);
-                            console.log("GameController: Course and players loaded from practice");
-                        }
                     }
                     
                     gameDataLoaded = true;
