@@ -1,6 +1,6 @@
-<!-- FILE: practice-setup.html - VERSION 1.08 -->
+<!-- FILE: practice-setup.html - VERSION 1.09 -->
 <!-- Start a new practice game with SHOTGUN START support -->
-<!-- Three-button toggle: Hole 1 | Hole 10 | Shotgun (dropdown) -->
+<!-- Compact Shotgun button with inline dropdown -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -67,7 +67,7 @@
         }
         .form-input:focus, .form-select:focus { outline: none; border-color: #ffaa44; }
         
-        /* Three-button toggle for Starting Hole */
+        /* Three-button toggle for Starting Hole - with inline dropdown */
         .starting-hole-toggle {
             display: flex;
             gap: 12px;
@@ -86,6 +86,10 @@
             font-size: 0.9rem;
             color: #ccc;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
         }
         .hole-toggle-btn.active {
             background: #2a2a1a;
@@ -93,23 +97,25 @@
             color: #ffaa44;
         }
         .hole-toggle-btn.shotgun-btn {
-            flex: 0.8;
+            flex: 1.2;
+            gap: 2px;
         }
-        .shotgun-dropdown-container {
-            margin-top: 8px;
-        }
-        .shotgun-select {
-            width: 100%;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 30px;
-            padding: 10px 16px;
-            color: #fff;
+        .inline-shotgun-select {
+            background: transparent;
+            border: none;
+            color: inherit;
+            font-weight: 600;
             font-size: 0.9rem;
+            cursor: pointer;
+            width: 50px;
+            text-align: center;
         }
-        .shotgun-select:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .inline-shotgun-select:focus {
+            outline: none;
+        }
+        .inline-shotgun-select option {
+            background: #1a1a1a;
+            color: #fff;
         }
         
         .players-grid {
@@ -230,14 +236,14 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.08</div>
+<div class="version-tag">v1.09</div>
 
 <script>
-// FILE: practice-setup.html - VERSION 1.08
+// FILE: practice-setup.html - VERSION 1.09
 // Creates PRACTICE game documents with CONSOLIDATED structure + SHOTGUN START support
-// Three-button toggle: Hole 1 | Hole 10 | Shotgun (dropdown)
+// Compact Shotgun button with inline dropdown
 
-var VERSION = "1.08";
+var VERSION = "1.09";
 var CACHE_KEY = "practice_setup_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -432,8 +438,7 @@ function render() {
     var hole10Class = "hole-toggle-btn" + (state.startingHoleType === "hole10" ? " active" : "");
     var shotgunClass = "hole-toggle-btn shotgun-btn" + (state.startingHoleType === "shotgun" ? " active" : "");
     
-    var shotgunSelectDisabled = (state.startingHoleType !== "shotgun");
-    var shotgunSelectValue = (state.startingHoleType === "shotgun") ? state.startingHole : 1;
+    var shotgunSelectValue = state.startingHole;
     
     var html = `
         <div class="header">
@@ -454,29 +459,29 @@ function render() {
                 <div class="starting-hole-toggle">
                     <div class="${hole1Class}" data-type="hole1">Hole 1</div>
                     <div class="${hole10Class}" data-type="hole10">Hole 10</div>
-                    <div class="${shotgunClass}" data-type="shotgun">Shotgun</div>
-                </div>
-                <div class="shotgun-dropdown-container">
-                    <select id="shotgunHoleSelect" class="shotgun-select" ${shotgunSelectDisabled ? 'disabled' : ''}>
-                        <option value="1" ${shotgunSelectValue === 1 ? 'selected' : ''}>Hole 1</option>
-                        <option value="2" ${shotgunSelectValue === 2 ? 'selected' : ''}>Hole 2</option>
-                        <option value="3" ${shotgunSelectValue === 3 ? 'selected' : ''}>Hole 3</option>
-                        <option value="4" ${shotgunSelectValue === 4 ? 'selected' : ''}>Hole 4</option>
-                        <option value="5" ${shotgunSelectValue === 5 ? 'selected' : ''}>Hole 5</option>
-                        <option value="6" ${shotgunSelectValue === 6 ? 'selected' : ''}>Hole 6</option>
-                        <option value="7" ${shotgunSelectValue === 7 ? 'selected' : ''}>Hole 7</option>
-                        <option value="8" ${shotgunSelectValue === 8 ? 'selected' : ''}>Hole 8</option>
-                        <option value="9" ${shotgunSelectValue === 9 ? 'selected' : ''}>Hole 9</option>
-                        <option value="10" ${shotgunSelectValue === 10 ? 'selected' : ''}>Hole 10</option>
-                        <option value="11" ${shotgunSelectValue === 11 ? 'selected' : ''}>Hole 11</option>
-                        <option value="12" ${shotgunSelectValue === 12 ? 'selected' : ''}>Hole 12</option>
-                        <option value="13" ${shotgunSelectValue === 13 ? 'selected' : ''}>Hole 13</option>
-                        <option value="14" ${shotgunSelectValue === 14 ? 'selected' : ''}>Hole 14</option>
-                        <option value="15" ${shotgunSelectValue === 15 ? 'selected' : ''}>Hole 15</option>
-                        <option value="16" ${shotgunSelectValue === 16 ? 'selected' : ''}>Hole 16</option>
-                        <option value="17" ${shotgunSelectValue === 17 ? 'selected' : ''}>Hole 17</option>
-                        <option value="18" ${shotgunSelectValue === 18 ? 'selected' : ''}>Hole 18</option>
-                    </select>
+                    <div class="${shotgunClass}" data-type="shotgun">
+                        Shotgun 
+                        <select id="shotgunHoleSelect" class="inline-shotgun-select">
+                            <option value="1" ${shotgunSelectValue === 1 ? 'selected' : ''}>1</option>
+                            <option value="2" ${shotgunSelectValue === 2 ? 'selected' : ''}>2</option>
+                            <option value="3" ${shotgunSelectValue === 3 ? 'selected' : ''}>3</option>
+                            <option value="4" ${shotgunSelectValue === 4 ? 'selected' : ''}>4</option>
+                            <option value="5" ${shotgunSelectValue === 5 ? 'selected' : ''}>5</option>
+                            <option value="6" ${shotgunSelectValue === 6 ? 'selected' : ''}>6</option>
+                            <option value="7" ${shotgunSelectValue === 7 ? 'selected' : ''}>7</option>
+                            <option value="8" ${shotgunSelectValue === 8 ? 'selected' : ''}>8</option>
+                            <option value="9" ${shotgunSelectValue === 9 ? 'selected' : ''}>9</option>
+                            <option value="10" ${shotgunSelectValue === 10 ? 'selected' : ''}>10</option>
+                            <option value="11" ${shotgunSelectValue === 11 ? 'selected' : ''}>11</option>
+                            <option value="12" ${shotgunSelectValue === 12 ? 'selected' : ''}>12</option>
+                            <option value="13" ${shotgunSelectValue === 13 ? 'selected' : ''}>13</option>
+                            <option value="14" ${shotgunSelectValue === 14 ? 'selected' : ''}>14</option>
+                            <option value="15" ${shotgunSelectValue === 15 ? 'selected' : ''}>15</option>
+                            <option value="16" ${shotgunSelectValue === 16 ? 'selected' : ''}>16</option>
+                            <option value="17" ${shotgunSelectValue === 17 ? 'selected' : ''}>17</option>
+                            <option value="18" ${shotgunSelectValue === 18 ? 'selected' : ''}>18</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="info-note">💡 Play will begin at selected hole. Scorecard will show holes in play order.</div>
             </div>
@@ -539,7 +544,10 @@ function render() {
     
     // Three-button toggle listeners
     document.querySelectorAll(".hole-toggle-btn").forEach(function(btn) {
-        btn.addEventListener("click", function() {
+        btn.addEventListener("click", function(e) {
+            // Don't trigger if clicking on the select dropdown inside shotgun button
+            if (e.target.tagName === 'SELECT') return;
+            
             var type = this.dataset.type;
             if (type === "shotgun") {
                 var select = document.getElementById("shotgunHoleSelect");
@@ -559,6 +567,9 @@ function render() {
         shotgunSelect.addEventListener("change", function() {
             if (state.startingHoleType === "shotgun") {
                 state.startingHole = parseInt(this.value);
+            } else {
+                // If dropdown is changed while shotgun not active, activate shotgun
+                setStartingHole("shotgun", parseInt(this.value));
             }
         });
     }
