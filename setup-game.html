@@ -1,17 +1,4 @@
-/**
- * FILE: setup-game.html
- * VERSION: 1.16
- * KEY CHANGES:
- *   - Load default players from Firebase playerInformation/defaultPlayers
- *   - Fallback to hardcoded players if no default exists
- *   - After successful NEW game creation, save current players as new default
- *   - Edit mode does NOT save as default (preserves existing default)
- *   - Added Team Game Format selector (Tournament/Relative) per VDN #008
- *   - Team Game Format saved to Firestore game document
- *   - Starting hole defaults to 1
- * STATUS: Complete. Ready for testing.
- */
- <!-- FILE: setup-game.html - VERSION 1.16 -->
+<!-- FILE: setup-game.html - VERSION 1.16 -->
 <!--
 Sets up new scheduled games with:
 - Default players loaded from Firebase playerInformation/defaultPlayers
@@ -33,14 +20,14 @@ Sets up new scheduled games with:
         body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: 16px; }
         .container { max-width: 500px; margin: 0 auto; }
         
-        .version-tag {
-            position: fixed;
-            top: 8px;
-            right: 8px;
-            font-size: 0.65rem;
-            color: #4caf50;
-            background: rgba(0,0,0,0.6);
-            padding: 2px 10px;
+        .version-tag { 
+            position: fixed; 
+            top: 8px; 
+            right: 8px; 
+            font-size: 0.65rem; 
+            color: #4caf50; 
+            background: rgba(0,0,0,0.6); 
+            padding: 2px 10px; 
             border-radius: 16px;
             font-family: monospace;
             z-index: 1000;
@@ -199,7 +186,7 @@ Sets up new scheduled games with:
 
 <script>
 // FILE: setup-game.html - VERSION 1.16
-// ADDED:
+// ADDED: 
 //   - Load default players from Firebase playerInformation/defaultPlayers
 //   - Save players as new default after successful game creation
 //   - Team Game Format selector (Tournament/Relative) per VDN #008
@@ -231,7 +218,7 @@ try {
     db = firebase.firestore();
     firestoreReady = true;
     console.log("Firebase ready - v" + VERSION);
-} catch(e) {
+} catch(e) { 
     console.warn(e);
 }
 
@@ -481,7 +468,7 @@ function loadCourses(callback) {
         }
         
         if (callback) callback();
-    }).catch(function(e) {
+    }).catch(function(e) { 
         console.warn(e);
         document.getElementById("app").innerHTML = '<div class="loading">Error loading courses: ' + e.message + '</div>';
     });
@@ -753,7 +740,7 @@ function render() {
                 <div class="${hole1Class}" data-type="hole1">Hole 1</div>
                 <div class="${hole10Class}" data-type="hole10">Hole 10</div>
                 <div class="${shotgunClass}" data-type="shotgun">
-                    Shotgun
+                    Shotgun 
                     <select id="shotgunHoleSelect" class="inline-shotgun-select">
                         <option value="1" ${shotgunSelectValue === 1 ? 'selected' : ''}>1</option>
                         <option value="2" ${shotgunSelectValue === 2 ? 'selected' : ''}>2</option>
@@ -944,4 +931,3 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 </script>
 </body>
 </html>
-
