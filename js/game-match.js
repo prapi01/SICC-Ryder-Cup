@@ -1,3 +1,15 @@
+/*
+FILE: js/game-match.js
+VERSION: 1.08
+KEY CHANGES:
+   - Rewritten to process ALL 18 holes, stops at first 'F' in either flight
+   - Returns matchResults[16][18] - each cell is "X" (1-18) or "AS"
+   - Added calculatePoints() for TR aggregation
+   - Added formatBubbleString() for UI string generation
+   - Full handicap difference method (always, not switchable)
+STATUS: Complete. Ready for integration.
+*/
+
 // FILE: js/game-match.js - VERSION 1.08
 // Game 1: Match Play (16 points)
 // Full handicap difference method
@@ -38,10 +50,30 @@ var GameMatch = (function() {
         return grossScore - strokes;
     }
     
-    // Get match result for a SINGLE pair across holes 1-18
+    // Helper to get a player's score for a specific hole from flight data
+    function getPlayerScore(player, flightData, actualHole, flightPlayers) {
+        var holeData = GameData.parseHoleData(flightData, actualHole);
+        if (!holeData || !holeData.saved) return null;
+        
+        var teamAPlayers = flightPlayers.filter(function(p) { return p.team === "A"; });
+        var teamBPlayers = flightPlayers.filter(function(p) { return p.team === "B"; });
+        teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        if (player.team === "A") {
+            if (teamAPlayers[0] && teamAPlayers[0].name === player.name) return holeData.scores.a1;
+            if (teamAPlayers[1] && teamAPlayers[1].name === player.name) return holeData.scores.a2;
+        } else {
+            if (teamBPlayers[0] && teamBPlayers[0].name === player.name) return holeData.scores.b1;
+            if (teamBPlayers[1] && teamBPlayers[1].name === player.name) return holeData.scores.b2;
+        }
+        return null;
+    }
+    
+    // Get match result array for a SINGLE pair across holes 1-18
     // Returns array of 18 values: "X" (1-18) or "AS" for each hole position
-    function getMatchResultArray(playerA, playerB, flight1Data, flight2Data, players, courseSi, startingHole) {
-        var resultArray = new Array(18).fill("0"); // "0" = not yet played / default
+    function getMatchResultArray(playerA, playerB, flight1Data, flight2Data, allPlayers, courseSi, startingHole) {
+        var resultArray = new Array(18).fill("0");
         
         var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
         var isPlayerAReceivingStrokes = (playerA.handicap > playerB.handicap);
@@ -49,6 +81,9 @@ var GameMatch = (function() {
         
         var playerAWon = 0;
         var playerBWon = 0;
+        
+        var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+        var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
         
         // Process holes in play order (storage positions 0-17)
         for (var pos = 0; pos < 18; pos++) {
@@ -60,8 +95,6 @@ var GameMatch = (function() {
             
             // STOP if either flight hasn't saved this hole
             if (!f1HoleData || !f1HoleData.saved || !f2HoleData || !f2HoleData.saved) {
-                // For remaining holes, leave as "0" (not played)
-                // For the current hole, if one flight saved but other didn't, still "0"
                 break;
             }
             
@@ -69,36 +102,16 @@ var GameMatch = (function() {
             var playerAScore = null;
             var playerBScore = null;
             
-            // Helper to get score based on player's flight and position
-            function getPlayerScore(player, holeData, flightPlayers) {
-                var teamAPlayers = flightPlayers.filter(function(p) { return p.team === "A"; });
-                var teamBPlayers = flightPlayers.filter(function(p) { return p.team === "B"; });
-                teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
-                teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
-                
-                if (player.team === "A") {
-                    if (teamAPlayers[0] && teamAPlayers[0].name === player.name) return holeData.scores.a1;
-                    if (teamAPlayers[1] && teamAPlayers[1].name === player.name) return holeData.scores.a2;
-                } else {
-                    if (teamBPlayers[0] && teamBPlayers[0].name === player.name) return holeData.scores.b1;
-                    if (teamBPlayers[1] && teamBPlayers[1].name === player.name) return holeData.scores.b2;
-                }
-                return null;
-            }
-            
-            var flight1Players = players.filter(function(p) { return p.flight === 1; });
-            var flight2Players = players.filter(function(p) { return p.flight === 2; });
-            
             if (playerA.flight === 1) {
-                playerAScore = getPlayerScore(playerA, f1HoleData, flight1Players);
+                playerAScore = getPlayerScore(playerA, flight1Data, actualHole, flight1Players);
             } else {
-                playerAScore = getPlayerScore(playerA, f2HoleData, flight2Players);
+                playerAScore = getPlayerScore(playerA, flight2Data, actualHole, flight2Players);
             }
             
             if (playerB.flight === 1) {
-                playerBScore = getPlayerScore(playerB, f1HoleData, flight1Players);
+                playerBScore = getPlayerScore(playerB, flight1Data, actualHole, flight1Players);
             } else {
-                playerBScore = getPlayerScore(playerB, f2HoleData, flight2Players);
+                playerBScore = getPlayerScore(playerB, flight2Data, actualHole, flight2Players);
             }
             
             if (playerAScore === null || playerBScore === null) continue;
@@ -125,9 +138,9 @@ var GameMatch = (function() {
             var diff = playerAWon - playerBWon;
             var resultValue;
             if (diff > 0) {
-                resultValue = diff.toString();  // "1", "2", "3", etc.
+                resultValue = diff.toString();
             } else if (diff < 0) {
-                resultValue = Math.abs(diff).toString();  // "1", "2", etc.
+                resultValue = Math.abs(diff).toString();
             } else {
                 resultValue = "AS";
             }
@@ -138,14 +151,23 @@ var GameMatch = (function() {
         return resultArray;
     }
     
-    // Main function: returns matchResults[16][18]
-    // Each cell: "X" (1-18) or "AS"
+    // Main calculate function - returns matchResults[16][18]
     function calculate(allPlayers, flight1Data, flight2Data, courseSi, startingHole) {
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
         
+        // Sort players by flight then handicap for consistent ordering
+        teamAPlayers.sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        
+        teamBPlayers.sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        
         var matchResults = [];
-        var matchIndex = 0;
         
         for (var a = 0; a < teamAPlayers.length; a++) {
             for (var b = 0; b < teamBPlayers.length; b++) {
@@ -154,28 +176,25 @@ var GameMatch = (function() {
                     flight1Data, flight2Data,
                     allPlayers, courseSi, startingHole
                 );
-                matchResults[matchIndex] = resultArray;
-                matchIndex++;
+                matchResults.push(resultArray);
             }
         }
         
-        return matchResults;  // [16][18]
+        return matchResults;
     }
     
-    // Calculate total points (used in controller for TR)
-    function calculatePoints(matchResults, upToHole) {
-        var teamAPoints = 0;
-        var teamBPoints = 0;
-        
-        // upToHole is the number of SYNCED holes (both flights saved)
-        // If upToHole = 0, return 8-8
-        if (upToHole === 0) {
+    // Calculate total points for Game 1 based on synced holes
+    function calculatePoints(matchResults, maxSyncedHole) {
+        if (maxSyncedHole === 0) {
             return { teamAPoints: 8, teamBPoints: 8 };
         }
         
+        var teamAPoints = 0;
+        var teamBPoints = 0;
+        
         for (var m = 0; m < matchResults.length; m++) {
             var matchResultArray = matchResults[m];
-            var resultAtHole = matchResultArray[upToHole - 1];
+            var resultAtHole = matchResultArray[maxSyncedHole - 1];
             
             if (resultAtHole === "AS") {
                 teamAPoints += 0.5;
@@ -184,12 +203,11 @@ var GameMatch = (function() {
                 var numValue = parseInt(resultAtHole, 10);
                 if (!isNaN(numValue)) {
                     if (numValue > 0) {
-                        teamAPoints += 1;  // Positive number means Team A winning
+                        teamAPoints += 1;
                     } else {
-                        teamBPoints += 1;  // Negative would be shown as positive number with color
+                        teamBPoints += 1;
                     }
                 } else {
-                    // Fallback
                     teamAPoints += 0.5;
                     teamBPoints += 0.5;
                 }
@@ -199,34 +217,49 @@ var GameMatch = (function() {
         return { teamAPoints: teamAPoints, teamBPoints: teamBPoints };
     }
     
-    // Format match bubble string for UI string (Cxx format)
-    function formatBubbleString(matchResults, syncedHoleCount) {
+    // Format match bubbles for UI string (Cxx format)
+    // flightPerspective: "f1" or "f2"
+    function formatBubbleString(matchResults, maxSyncedHole, flightPerspective) {
         var result = "";
         
         for (var m = 0; m < matchResults.length; m++) {
-            var matchResultArray = matchResults[m];
+            var matchArray = matchResults[m];
             
-            if (syncedHoleCount === 0) {
-                // No holes synced - all grey AS
+            if (maxSyncedHole === 0) {
                 result += "BAS";
                 continue;
             }
             
-            var resultValue = matchResultArray[syncedHoleCount - 1];
+            var value = matchArray[maxSyncedHole - 1];
             
-            if (resultValue === "AS") {
-                result += "GAS";  // Green AS (tie)
+            if (value === "AS") {
+                result += "GAS";
             } else {
-                var numVal = parseInt(resultValue, 10);
-                if (!isNaN(numVal) && numVal > 0) {
-                    // Team A winning
-                    var padded = numVal.toString().padStart(2, ' ');
-                    result += "G" + padded;
+                var numVal = parseInt(value, 10);
+                if (!isNaN(numVal)) {
+                    if (flightPerspective === "f1") {
+                        if (numVal > 0) {
+                            var padded = numVal.toString().padStart(2, ' ');
+                            result += "G" + padded;
+                        } else {
+                            var absVal = Math.abs(numVal);
+                            var padded2 = absVal.toString().padStart(2, ' ');
+                            result += "R" + padded2;
+                        }
+                    } else {
+                        // F2 perspective: inverted
+                        if (numVal < 0) {
+                            var padded = Math.abs(numVal).toString().padStart(2, ' ');
+                            result += "G" + padded;
+                        } else if (numVal > 0) {
+                            var padded2 = numVal.toString().padStart(2, ' ');
+                            result += "R" + padded2;
+                        } else {
+                            result += "G0";
+                        }
+                    }
                 } else {
-                    // Team B winning (value is positive number but color indicates loser)
-                    var absVal = parseInt(resultValue, 10);
-                    var padded2 = absVal.toString().padStart(2, ' ');
-                    result += "R" + padded2;
+                    result += "BAS";
                 }
             }
         }
@@ -241,3 +274,15 @@ var GameMatch = (function() {
         getMatchResultArray: getMatchResultArray
     };
 })();
+
+/*
+FILE: js/game-match.js
+VERSION: 1.08
+KEY CHANGES:
+   - Rewritten to process ALL 18 holes, stops at first 'F' in either flight
+   - Returns matchResults[16][18] - each cell is "X" (1-18) or "AS"
+   - Added calculatePoints() for TR aggregation
+   - Added formatBubbleString() for UI string generation
+   - Full handicap difference method (always, not switchable)
+STATUS: Complete. Ready for integration.
+*/
