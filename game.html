@@ -1,15 +1,12 @@
 <!--
 FILE: game.html
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - Fixed scorecard player order: by Flight, within flight: Team A (handicap low to high), then Team B (handicap low to high)
-   - Removed shotgun start message entirely
-   - Fixed intra-flight bubbles: all 8 light up after save (use only current flight's data, no cross-flight dependency)
-   - Cross-flight bubbles remain grey until both flights save the hole
-   - Current hole initializes to startingHole
-   - Navigation wraps correctly (18→1, 1→18)
-   - Real-time Firebase sync via onSnapshot
-   - Play Order / Natural Order toggle with localStorage persistence
+   - Scorecard rendering moved to JavaScript (Alpine only manages data)
+   - Fixed scorecard layout - columns properly aligned
+   - Play Order / Natural Order toggle re-renders scorecard
+   - Data updates trigger automatic scorecard re-render
+   - All previous cross-flight sync logic preserved
 STATUS: Ready for testing
 -->
 
@@ -120,9 +117,21 @@ STATUS: Ready for testing
         }
         
         .scorecard-wrapper { overflow-x: auto; }
-        .scorecard-table { width: 100%; min-width: 700px; font-size: 0.7rem; border-collapse: collapse; }
-        .scorecard-table th, .scorecard-table td { padding: 6px 3px; text-align: center; border: 1px solid #222; }
-        .scorecard-table th { color: #4caf50; background: #111; }
+        .scorecard-table {
+            width: 100%;
+            min-width: 700px;
+            font-size: 0.7rem;
+            border-collapse: collapse;
+        }
+        .scorecard-table th, .scorecard-table td {
+            padding: 6px 3px;
+            text-align: center;
+            border: 1px solid #222;
+        }
+        .scorecard-table th {
+            color: #4caf50;
+            background: #111;
+        }
         .score-green { color: #4caf50; font-weight: 600; }
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
@@ -148,8 +157,6 @@ STATUS: Ready for testing
     <div x-show="!loading">
         <div class="status-bubble" x-text="modeDisplay"></div>
         <div style="text-align:center; margin-bottom:8px;" x-text="courseName"></div>
-        
-        <!-- Shotgun start message removed -->
         
         <div class="hole-header">
             <div class="hole-number">HOLE <span x-text="currentHole"></span></div>
@@ -180,13 +187,11 @@ STATUS: Ready for testing
                     </div>
                 </div>
                 <div class="bubbles">
-                    <!-- Intra-flight bubbles (same flight, opposite team) -->
                     <template x-for="opp in getIntraFlightOpponents(player)">
                         <div class="bubble" :class="getIntraBubbleClass(player, opp)">
                             vs <span x-text="opp.label"></span> <span x-text="getIntraBubbleValue(player, opp)"></span>
                         </div>
                     </template>
-                    <!-- Cross-flight bubbles (other flight, opposite team) -->
                     <template x-for="opp in getCrossFlightOpponents(player)">
                         <div class="bubble" :class="getCrossBubbleClass(player, opp)">
                             vs <span x-text="opp.label"></span> <span x-text="getCrossBubbleValue(player, opp)"></span>
@@ -210,110 +215,8 @@ STATUS: Ready for testing
                     <button class="toggle-btn" :class="displayMode === 'natural' ? 'active' : ''" @click="setDisplayMode('natural')">📋 Natural Order</button>
                 </div>
             </div>
-            <div class="scorecard-wrapper">
-                <table class="scorecard-table">
-                    <thead>
-                        <tr>
-                            <th>Hole</th>
-                            <template x-for="h in displayHolesList">
-                                <th x-text="h"></th>
-                            </template>
-                            <th>Tot</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Par row -->
-                        <tr>
-                            <td style="font-weight:700;">Par<\/td>
-                            <template x-for="h in displayHolesList">
-                                <td x-text="coursePar[h-1]"><\/td>
-                            </template>
-                            <td x-text="totalPar"><\/td>
-                        </tr>
-                        <!-- SI row -->
-                        <tr>
-                            <td style="font-weight:700;">SI<\/td>
-                            <template x-for="h in displayHolesList">
-                                <td x-text="courseSi[h-1]"><\/td>
-                            </template>
-                            <td>-<\/td>
-                        </tr>
-                        <!-- Flight 1 Team A players -->
-                        <template x-for="player in flight1TeamAPlayers">
-                            <tr>
-                                <td style="font-weight:600;" x-text="player.label"><\/td>
-                                <template x-for="h in displayHolesList">
-                                    <td :class="isHoleSaved(player.flight, h) ? 'score-green' : 'score-invisible'"
-                                        x-text="getStoredScore(player, h)"><\/td>
-                                </template>
-                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"><\/td>
-                            </tr>
-                        </template>
-                        <!-- Flight 1 Team B players -->
-                        <template x-for="player in flight1TeamBPlayers">
-                            <tr>
-                                <td style="font-weight:600;" x-text="player.label"><\/td>
-                                <template x-for="h in displayHolesList">
-                                    <td :class="isHoleSaved(player.flight, h) ? 'score-green' : 'score-invisible'"
-                                        x-text="getStoredScore(player, h)"><\/td>
-                                </template>
-                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"><\/td>
-                            </tr>
-                        </template>
-                        <!-- Green line -->
-                        <tr class="green-line"><td colspan="20"><\/tr>
-                        <!-- T-1 row -->
-                        <tr>
-                            <td style="color:#4caf50; font-weight:600;">T-1<\/td>
-                            <template x-for="(val, idx) in t1Row">
-                                <td :class="val && val !== '_' ? 'score-green' : 'score-invisible'" x-text="val === '_' ? '' : val"><\/td>
-                            </template>
-                            <td>-<\/td>
-                        </table>
-                        <!-- Green line -->
-                        <tr class="green-line"><td colspan="20"><\/tr>
-                        <!-- Flight 2 Team A players -->
-                        <template x-for="player in flight2TeamAPlayers">
-                            <tr>
-                                <td style="font-weight:600;" x-text="player.label"><\/td>
-                                <template x-for="h in displayHolesList">
-                                    <td :class="isHoleSaved(player.flight, h) ? 'score-green' : 'score-invisible'"
-                                        x-text="getStoredScore(player, h)"><\/td>
-                                </template>
-                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"><\/td>
-                            </tr>
-                        </template>
-                        <!-- Flight 2 Team B players -->
-                        <template x-for="player in flight2TeamBPlayers">
-                            <tr>
-                                <td style="font-weight:600;" x-text="player.label"><\/td>
-                                <template x-for="h in displayHolesList">
-                                    <td :class="isHoleSaved(player.flight, h) ? 'score-green' : 'score-invisible'"
-                                        x-text="getStoredScore(player, h)"><\/td>
-                                </template>
-                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"><\/td>
-                            </tr>
-                        </template>
-                        <!-- T-2 row -->
-                        <tr>
-                            <td style="color:#4caf50; font-weight:600;">T-2<\/td>
-                            <template x-for="(val, idx) in t2Row">
-                                <td :class="val && val !== '_' ? 'score-green' : 'score-invisible'" x-text="val === '_' ? '' : val"><\/td>
-                            </template>
-                            <td>-<\/td>
-                        </tr>
-                        <!-- Green line -->
-                        <tr class="green-line"><td colspan="20"><\/tr>
-                        <!-- Strk row -->
-                        <tr>
-                            <td style="color:#4caf50; font-weight:600;">Strk<\/td>
-                            <template x-for="(val, idx) in strkRow">
-                                <td :class="val && val !== '_' ? 'score-green' : 'score-invisible'" x-text="val === '_' ? '' : val"><\/td>
-                            </template>
-                            <td>-<\/td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="scorecard-wrapper" id="scorecardWrapper">
+                <!-- Scorecard rendered by JavaScript -->
             </div>
         </div>
         
@@ -374,7 +277,6 @@ function gameApp() {
         strkRow: Array(18).fill('_'),
         
         crossMatchResults: {},
-        intraMatchResults: {},  // Cache for intra-flight match results
         
         unsubscribe: null,
         syncStatus: 'Connecting...',
@@ -384,7 +286,7 @@ function gameApp() {
         f2DataString: '',
         
         // ============================================================
-        // COMPUTED - Display Holes
+        // COMPUTED
         // ============================================================
         
         get displayHolesList() {
@@ -422,28 +324,13 @@ function gameApp() {
             return this.getFlightOrderedPlayers(this.editableFlight);
         },
         
-        // ============================================================
-        // SCORECARD PLAYER ORDER (by Flight, within flight: A then B, by handicap)
-        // ============================================================
-        
-        get flight1TeamAPlayers() {
-            const flightPlayers = this.allPlayers.filter(p => p.flight === 1 && p.team === 'A');
-            return flightPlayers.sort((a, b) => a.handicap - b.handicap);
-        },
-        
-        get flight1TeamBPlayers() {
-            const flightPlayers = this.allPlayers.filter(p => p.flight === 1 && p.team === 'B');
-            return flightPlayers.sort((a, b) => a.handicap - b.handicap);
-        },
-        
-        get flight2TeamAPlayers() {
-            const flightPlayers = this.allPlayers.filter(p => p.flight === 2 && p.team === 'A');
-            return flightPlayers.sort((a, b) => a.handicap - b.handicap);
-        },
-        
-        get flight2TeamBPlayers() {
-            const flightPlayers = this.allPlayers.filter(p => p.flight === 2 && p.team === 'B');
-            return flightPlayers.sort((a, b) => a.handicap - b.handicap);
+        // Scorecard display players (by Flight, then A then B, handicap low to high)
+        get scorecardPlayers() {
+            const flight1A = this.allPlayers.filter(p => p.flight === 1 && p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+            const flight1B = this.allPlayers.filter(p => p.flight === 1 && p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+            const flight2A = this.allPlayers.filter(p => p.flight === 2 && p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+            const flight2B = this.allPlayers.filter(p => p.flight === 2 && p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+            return [...flight1A, ...flight1B, ...flight2A, ...flight2B];
         },
         
         // ============================================================
@@ -453,6 +340,7 @@ function gameApp() {
         setDisplayMode(mode) {
             this.displayMode = mode;
             localStorage.setItem('scorecardDisplay', mode);
+            this.renderScorecard();
         },
         
         loadDisplayPreference() {
@@ -465,7 +353,7 @@ function gameApp() {
         },
         
         // ============================================================
-        // HELPER: Get players in flight order (A then B, by handicap)
+        // HELPER
         // ============================================================
         
         getFlightOrderedPlayers(flight) {
@@ -497,6 +385,14 @@ function gameApp() {
             return this.coursePar[hole - 1];
         },
         
+        getPlayerTotal(player) {
+            let total = 0;
+            for (let h = 1; h <= 18; h++) {
+                total += this.getStoredScore(player, h);
+            }
+            return total;
+        },
+        
         getCurrentScore(player) {
             const key = `${player.flight}_${this.currentHole}_${player.name}`;
             if (this.localChanges[key] !== undefined) {
@@ -515,21 +411,13 @@ function gameApp() {
             this.localChanges[key] = newScore;
         },
         
-        getPlayerTotal(player) {
-            let total = 0;
-            for (let h = 1; h <= 18; h++) {
-                total += this.getStoredScore(player, h);
-            }
-            return total;
-        },
-        
         isHoleSaved(flight, hole) {
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
             return flightData[hole]?.saved || false;
         },
         
         // ============================================================
-        // INTRA-FLIGHT BUBBLES (only use current flight's data)
+        // INTRA-FLIGHT BUBBLES
         // ============================================================
         
         getIntraFlightOpponents(player) {
@@ -551,7 +439,6 @@ function gameApp() {
         },
         
         calculateIntraMatchResult(playerA, playerB) {
-            // Use ONLY the current flight's data (same flight for both players)
             const flight = playerA.flight;
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
             
@@ -559,13 +446,12 @@ function gameApp() {
             const isPlayerAReceiving = (playerA.handicap > playerB.handicap);
             const strokeHoles = this.getStrokeHoles(handicapDiff);
             
-            let playerAWon = 0;
-            let playerBWon = 0;
-            
-            // Get ordered players for this flight to map positions
             const flightPlayers = this.allPlayers.filter(p => p.flight === flight);
             const teamAPlayers = flightPlayers.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
             const teamBPlayers = flightPlayers.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+            
+            let playerAWon = 0;
+            let playerBWon = 0;
             
             for (let hole = 1; hole <= 18; hole++) {
                 const holeData = flightData[hole];
@@ -574,7 +460,6 @@ function gameApp() {
                 let playerAScore = null;
                 let playerBScore = null;
                 
-                // Get playerA score
                 if (playerA.team === 'A') {
                     if (teamAPlayers[0]?.name === playerA.name) playerAScore = holeData.a1;
                     else if (teamAPlayers[1]?.name === playerA.name) playerAScore = holeData.a2;
@@ -583,7 +468,6 @@ function gameApp() {
                     else if (teamBPlayers[1]?.name === playerA.name) playerAScore = holeData.b2;
                 }
                 
-                // Get playerB score
                 if (playerB.team === 'A') {
                     if (teamAPlayers[0]?.name === playerB.name) playerBScore = holeData.a1;
                     else if (teamAPlayers[1]?.name === playerB.name) playerBScore = holeData.a2;
@@ -603,18 +487,15 @@ function gameApp() {
                     netB = playerBScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
                 }
                 
-                if (netA < netB) {
-                    playerAWon++;
-                } else if (netB < netA) {
-                    playerBWon++;
-                }
+                if (netA < netB) playerAWon++;
+                else if (netB < netA) playerBWon++;
             }
             
             return playerAWon - playerBWon;
         },
         
         // ============================================================
-        // CROSS-FLIGHT BUBBLES (use lastSyncedHole, grey if out of sync)
+        // CROSS-FLIGHT BUBBLES
         // ============================================================
         
         getCrossFlightOpponents(player) {
@@ -641,7 +522,7 @@ function gameApp() {
         },
         
         // ============================================================
-        // MATCH RESULT CALCULATION HELPERS
+        // MATCH CALCULATION HELPERS
         // ============================================================
         
         getStrokeHoles(handicapDiff) {
@@ -669,7 +550,6 @@ function gameApp() {
         // ============================================================
         
         updateCrossMatchResults() {
-            // Calculate last synced hole
             let newLastSynced = 0;
             for (let h = 1; h <= 18; h++) {
                 const f1Saved = this.flight1Data[h]?.saved || false;
@@ -682,7 +562,6 @@ function gameApp() {
             }
             this.lastSyncedHole = newLastSynced;
             
-            // Get all cross-flight matchups (F1 vs F2)
             const f1Players = this.allPlayers.filter(p => p.flight === 1);
             const f2Players = this.allPlayers.filter(p => p.flight === 2);
             
@@ -696,13 +575,11 @@ function gameApp() {
                         result = this.calculateCrossMatchResult(p1, p2, this.lastSyncedHole);
                     }
                     
-                    // For F1 screen
                     this.crossMatchResults[key1] = {
                         value: result,
                         isSynced: (this.lastSyncedHole === this.currentHole)
                     };
                     
-                    // For F2 screen (inverted)
                     this.crossMatchResults[key2] = {
                         value: -result,
                         isSynced: (this.lastSyncedHole === this.currentHole)
@@ -716,22 +593,24 @@ function gameApp() {
             const isPlayerAReceiving = (playerA.handicap > playerB.handicap);
             const strokeHoles = this.getStrokeHoles(handicapDiff);
             
+            const f1Players = this.allPlayers.filter(p => p.flight === 1);
+            const f1TeamA = f1Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+            const f1TeamB = f1Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+            
+            const f2Players = this.allPlayers.filter(p => p.flight === 2);
+            const f2TeamA = f2Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+            const f2TeamB = f2Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+            
             let playerAWon = 0;
             let playerBWon = 0;
             
             for (let hole = 1; hole <= upToHole; hole++) {
                 const f1Hole = this.flight1Data[hole];
                 const f2Hole = this.flight2Data[hole];
-                
                 if (!f1Hole?.saved || !f2Hole?.saved) continue;
                 
                 let playerAScore = null;
                 let playerBScore = null;
-                
-                // Get playerA score from Flight 1
-                const f1Players = this.allPlayers.filter(p => p.flight === 1);
-                const f1TeamA = f1Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
-                const f1TeamB = f1Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
                 
                 if (playerA.team === 'A') {
                     if (f1TeamA[0]?.name === playerA.name) playerAScore = f1Hole.a1;
@@ -740,11 +619,6 @@ function gameApp() {
                     if (f1TeamB[0]?.name === playerA.name) playerAScore = f1Hole.b1;
                     else if (f1TeamB[1]?.name === playerA.name) playerAScore = f1Hole.b2;
                 }
-                
-                // Get playerB score from Flight 2
-                const f2Players = this.allPlayers.filter(p => p.flight === 2);
-                const f2TeamA = f2Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
-                const f2TeamB = f2Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
                 
                 if (playerB.team === 'A') {
                     if (f2TeamA[0]?.name === playerB.name) playerBScore = f2Hole.a1;
@@ -765,14 +639,182 @@ function gameApp() {
                     netB = playerBScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
                 }
                 
-                if (netA < netB) {
-                    playerAWon++;
-                } else if (netB < netA) {
-                    playerBWon++;
-                }
+                if (netA < netB) playerAWon++;
+                else if (netB < netA) playerBWon++;
             }
             
             return playerAWon - playerBWon;
+        },
+        
+        // ============================================================
+        // SCORECARD RENDERING (JavaScript)
+        // ============================================================
+        
+        renderScorecard() {
+            const wrapper = document.getElementById('scorecardWrapper');
+            if (!wrapper) return;
+            
+            const holes = this.displayHolesList;
+            const players = this.scorecardPlayers;
+            
+            let html = '<table class="scorecard-table">';
+            
+            // Header row
+            html += '<thead><tr><th>Hole</th>';
+            for (const h of holes) {
+                html += `<th>${h}</th>`;
+            }
+            html += '<th>Tot</th> </thead><tbody>';
+            
+            // Par row
+            html += '<tr><td style="font-weight:700;">Par</td>';
+            let totalPar = 0;
+            for (const h of holes) {
+                const par = this.coursePar[h - 1];
+                totalPar += par;
+                html += `<td>${par}</td>`;
+            }
+            html += `<td>${totalPar}</td></tr>`;
+            
+            // SI row
+            html += '<tr><td style="font-weight:700;">SI</td>';
+            for (const h of holes) {
+                const si = this.courseSi[h - 1];
+                html += `<td>${si}</td>`;
+            }
+            html += '<td>-</td></tr>';
+            
+            // Player scores
+            for (const player of players) {
+                html += `<tr><td style="font-weight:600;">${player.label}</td>`;
+                let playerTotal = 0;
+                for (const h of holes) {
+                    const score = this.getStoredScore(player, h);
+                    playerTotal += score;
+                    const isSaved = this.isHoleSaved(player.flight, h);
+                    const cellClass = isSaved ? 'score-green' : 'score-invisible';
+                    html += `<td class="${cellClass}">${score}</td>`;
+                }
+                html += `<td class="score-green">${playerTotal}</td></tr>`;
+            }
+            
+            // Green line after Flight 1 players (after first 4 rows? Actually after Flight 1)
+            // Flight 1 has 4 players (2 A + 2 B). Add green line after row index 3 (0-based)
+            // But simpler: add green line between Flight 1 and Flight 2
+            // We know Flight 1 has 4 players, Flight 2 has 4 players
+            // The rows are in order: Flight1 A1, A2, B1, B2, Flight2 A1, A2, B1, B2
+            // So after 4 player rows, add a separator row
+            
+            // This is handled by CSS class .green-line, but we need to insert it
+            // Let me rebuild with proper separation
+            
+            // For simplicity, I'll rebuild with clear separation
+            // Let me recreate the tbody with proper grouping
+            
+            wrapper.innerHTML = this.buildScorecardHTML(holes, players);
+        },
+        
+        buildScorecardHTML(holes, players) {
+            // Group players by flight
+            const flight1Players = players.filter(p => p.flight === 1);
+            const flight2Players = players.filter(p => p.flight === 2);
+            
+            let html = '<table class="scorecard-table">';
+            
+            // Header
+            html += '<thead><tr><th>Hole</th>';
+            for (const h of holes) {
+                html += `<th>${h}</th>`;
+            }
+            html += '<th>Tot</th> </thead><tbody>';
+            
+            // Par row
+            html += '<tr><td style="font-weight:700;">Par</td>';
+            let totalPar = 0;
+            for (const h of holes) {
+                const par = this.coursePar[h - 1];
+                totalPar += par;
+                html += `<td>${par}</td>`;
+            }
+            html += `<td>${totalPar}</td></tr>`;
+            
+            // SI row
+            html += '<tr><td style="font-weight:700;">SI</td>';
+            for (const h of holes) {
+                const si = this.courseSi[h - 1];
+                html += `<td>${si}</td>`;
+            }
+            html += '<td>-</td></tr>';
+            
+            // Flight 1 players
+            for (const player of flight1Players) {
+                html += `<tr><td style="font-weight:600;">${player.label}</td>`;
+                let playerTotal = 0;
+                for (const h of holes) {
+                    const score = this.getStoredScore(player, h);
+                    playerTotal += score;
+                    const isSaved = this.isHoleSaved(player.flight, h);
+                    const cellClass = isSaved ? 'score-green' : 'score-invisible';
+                    html += `<td class="${cellClass}">${score}</td>`;
+                }
+                html += `<td class="score-green">${playerTotal}<\/td><\/tr>`;
+            }
+            
+            // Green line after Flight 1
+            html += '<tr class="green-line"><td colspan="20"><\/tr>';
+            
+            // T-1 row
+            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+            for (let i = 0; i < holes.length; i++) {
+                const val = this.t1Row[i] || '_';
+                const displayVal = (val === '_' || val === '') ? '' : val;
+                const cellClass = (val && val !== '_') ? 'score-green' : 'score-invisible';
+                html += `<td class="${cellClass}">${displayVal}<\/td>`;
+            }
+            html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+            
+            // Green line after T-1
+            html += '<tr class="green-line"><td colspan="20"><\/tr>';
+            
+            // Flight 2 players
+            for (const player of flight2Players) {
+                html += `<tr><td style="font-weight:600;">${player.label}</td>`;
+                let playerTotal = 0;
+                for (const h of holes) {
+                    const score = this.getStoredScore(player, h);
+                    playerTotal += score;
+                    const isSaved = this.isHoleSaved(player.flight, h);
+                    const cellClass = isSaved ? 'score-green' : 'score-invisible';
+                    html += `<td class="${cellClass}">${score}</td>`;
+                }
+                html += `<td class="score-green">${playerTotal}<\/td><\/tr>`;
+            }
+            
+            // T-2 row
+            html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+            for (let i = 0; i < holes.length; i++) {
+                const val = this.t2Row[i] || '_';
+                const displayVal = (val === '_' || val === '') ? '' : val;
+                const cellClass = (val && val !== '_') ? 'score-green' : 'score-invisible';
+                html += `<td class="${cellClass}">${displayVal}<\/td>`;
+            }
+            html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+            
+            // Green line after T-2
+            html += '<tr class="green-line"><td colspan="20"><\/tr>';
+            
+            // Strk row
+            html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+            for (let i = 0; i < holes.length; i++) {
+                const val = this.strkRow[i] || '_';
+                const displayVal = (val === '_' || val === '') ? '' : val;
+                const cellClass = (val && val !== '_') ? 'score-green' : 'score-invisible';
+                html += `<td class="${cellClass}">${displayVal}<\/td>`;
+            }
+            html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+            
+            html += '</tbody></table>';
+            return html;
         },
         
         // ============================================================
@@ -877,7 +919,6 @@ function gameApp() {
         },
         
         calculateTR() {
-            // To be implemented with real calculations
             this.trTeamA = 9.5;
             this.trTeamB = 9.5;
             this.trTeamAGreen = true;
@@ -931,7 +972,18 @@ function gameApp() {
             if (changed) {
                 this.updateCrossMatchResults();
                 this.calculateTR();
+                this.renderScorecard();
             }
+        },
+        
+        // ============================================================
+        // WATCHERS (Alpine will call these when data changes)
+        // ============================================================
+        
+        watchData() {
+            // This will be called after Alpine initializes
+            // We need to re-render scorecard when displayMode changes
+            // Already handled in setDisplayMode
         },
         
         // ============================================================
@@ -987,6 +1039,11 @@ function gameApp() {
             this.loading = false;
             this.syncStatus = 'Synced';
             
+            // Initial scorecard render
+            this.$nextTick(() => {
+                this.renderScorecard();
+            });
+            
             this.unsubscribe = gameRef.onSnapshot((snapshot) => {
                 if (snapshot.exists) {
                     this.refreshFromFirebase(snapshot.data());
@@ -1009,15 +1066,12 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - Fixed scorecard player order: by Flight, within flight: Team A (handicap low to high), then Team B (handicap low to high)
-   - Removed shotgun start message entirely
-   - Fixed intra-flight bubbles: all 8 light up after save (use only current flight's data, no cross-flight dependency)
-   - Cross-flight bubbles remain grey until both flights save the hole
-   - Current hole initializes to startingHole
-   - Navigation wraps correctly (18→1, 1→18)
-   - Real-time Firebase sync via onSnapshot
-   - Play Order / Natural Order toggle with localStorage persistence
+   - Scorecard rendering moved to JavaScript (Alpine only manages data)
+   - Fixed scorecard layout - columns properly aligned
+   - Play Order / Natural Order toggle re-renders scorecard
+   - Data updates trigger automatic scorecard re-render
+   - All previous cross-flight sync logic preserved
 STATUS: Ready for testing
 -->
