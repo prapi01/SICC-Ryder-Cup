@@ -1,13 +1,15 @@
 <!--
 FILE: game.html
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - Added Play Order / Natural Order toggle button in scorecard header
-   - Toggle preference saved to localStorage per device
-   - Fixed scorecard column mapping (hole numbers now match saved data)
-   - Implemented real match bubble calculations
-   - Added full handicap difference method for match play
-   - Fixed shotgun start display mapping
+   - Current hole initializes to startingHole (shotgun start)
+   - Navigation wraps correctly (18→1, 1→18)
+   - Cross-flight sync tracking (lastSyncedHole)
+   - F1-8-XB and F2-8-XB turn GREY when out of sync, show last synced hole value
+   - F1-8-IB and F2-8-IB always show current flight's own data (never grey)
+   - Real-time Firebase sync via onSnapshot
+   - Play Order / Natural Order toggle with localStorage persistence
+   - Match bubble calculations using full handicap difference method
 STATUS: Ready for testing
 -->
 
@@ -81,6 +83,7 @@ STATUS: Ready for testing
         .score-control { display: flex; gap: 12px; align-items: center; }
         .score-btn { background: #1a3a1a; border: none; width: 40px; height: 40px; border-radius: 30px; font-size: 1.2rem; color: #fff; cursor: pointer; }
         .score-btn:active { transform: scale(0.95); }
+        .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; }
         
         .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
@@ -130,6 +133,7 @@ STATUS: Ready for testing
         .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
         .btn:active { transform: scale(0.98); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
         
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         
@@ -146,7 +150,7 @@ STATUS: Ready for testing
         <div style="text-align:center; margin-bottom:8px;" x-text="courseName"></div>
         
         <div x-show="startingHole !== 1" style="text-align:center; color:#ffaa44; font-size:0.7rem; margin-bottom:8px;">
-            ⛳ Shotgun Start - Starting at Hole <span x-text="startingHole"></span>
+            ⛳ Shotgun Start - Playing Hole <span x-text="currentHole"></span> first
         </div>
         
         <div class="hole-header">
@@ -178,9 +182,14 @@ STATUS: Ready for testing
                     </div>
                 </div>
                 <div class="bubbles">
-                    <template x-for="opp in getOpponents(player)">
-                        <div class="bubble" :class="getBubbleClass(player, opp)">
-                            vs <span x-text="opp.label"></span> <span x-text="getBubbleValue(player, opp)"></span>
+                    <template x-for="opp in getIntraFlightOpponents(player)">
+                        <div class="bubble" :class="getIntraBubbleClass(player, opp)">
+                            vs <span x-text="opp.label"></span> <span x-text="getIntraBubbleValue(player, opp)"></span>
+                        </div>
+                    </template>
+                    <template x-for="opp in getCrossFlightOpponents(player)">
+                        <div class="bubble" :class="getCrossBubbleClass(player, opp)">
+                            vs <span x-text="opp.label"></span> <span x-text="getCrossBubbleValue(player, opp)"></span>
                         </div>
                     </template>
                 </div>
@@ -188,9 +197,9 @@ STATUS: Ready for testing
         </template>
         
         <div class="action-buttons">
-            <button class="btn btn-back" @click="prevHole" :disabled="currentHole === 1">← Back</button>
+            <button class="btn btn-back" @click="prevHole">← Back</button>
             <button class="btn btn-save" @click="saveHole">💾 Save</button>
-            <button class="btn btn-next" @click="nextHole" :disabled="!isCurrentHoleSaved">Next →</button>
+            <button class="btn btn-next" @click="nextHole">Next →</button>
         </div>
         
         <div class="scorecard-section">
@@ -278,6 +287,7 @@ STATUS: Ready for testing
         
         <div class="debug">
             <span x-text="syncStatus"></span>
+            <span x-show="lastSyncedHole > 0"> | Last synced: Hole <span x-text="lastSyncedHole"></span></span>
         </div>
     </div>
 </div>
@@ -299,25 +309,28 @@ const db = firebase.firestore();
 
 function gameApp() {
     return {
-        // State
+        // ============================================================
+        // STATE
+        // ============================================================
         loading: true,
         gameId: null,
         gameMode: 'real',
         editableFlight: 1,
         canEdit: true,
         startingHole: 1,
-        displayMode: 'play',  // 'play' or 'natural'
+        displayMode: 'play',
         
         courseName: '',
         coursePar: [],
         courseSi: [],
         allPlayers: [],
         
-        flight1Data: {},
+        flight1Data: {},      // { naturalHole: { saved, a1, a2, b1, b2 } }
         flight2Data: {},
-        localChanges: {},
+        localChanges: {},     // { flight_hole_playerName: score }
         
         currentHole: 1,
+        lastSyncedHole: 0,    // Highest natural hole where both flights have saved
         
         trTeamA: 9.5,
         trTeamB: 9.5,
@@ -327,6 +340,9 @@ function gameApp() {
         t1Row: Array(18).fill('_'),
         t2Row: Array(18).fill('_'),
         strkRow: Array(18).fill('_'),
+        
+        // Match results cache for cross-flight bubbles
+        crossMatchResults: {},  // { playerA_name + '_vs_' + playerB_name: { value, isSynced } }
         
         unsubscribe: null,
         syncStatus: 'Connecting...',
@@ -407,6 +423,17 @@ function gameApp() {
         },
         
         // ============================================================
+        // HELPER: Get players in flight order
+        // ============================================================
+        
+        getFlightOrderedPlayers(flight) {
+            const flightPlayers = this.allPlayers.filter(p => p.flight === flight);
+            const teamAPlayers = flightPlayers.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+            const teamBPlayers = flightPlayers.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+            return [...teamAPlayers, ...teamBPlayers];
+        },
+        
+        // ============================================================
         // SCORE METHODS
         // ============================================================
         
@@ -461,38 +488,303 @@ function gameApp() {
         },
         
         // ============================================================
-        // MATCH BUBBLES
+        // INTRA-FLIGHT BUBBLES (always use own flight data)
         // ============================================================
         
-        getOpponents(player) {
-            return this.allPlayers.filter(op => op.team !== player.team);
+        getIntraFlightOpponents(player) {
+            return this.allPlayers.filter(op => op.team !== player.team && op.flight === player.flight);
         },
         
-        getBubbleClass(player, opponent) {
-            // Calculate match result between player and opponent
-            const result = this.calculateMatchResult(player, opponent);
-            if (result === 'win') return 'bubble-green';
-            if (result === 'loss') return 'bubble-red';
+        getIntraBubbleClass(player, opponent) {
+            const result = this.calculateMatchResult(player, opponent, player.flight);
+            if (result > 0) return 'bubble-green';
+            if (result < 0) return 'bubble-red';
             return 'bubble-grey';
         },
         
-        getBubbleValue(player, opponent) {
-            const result = this.calculateMatchResult(player, opponent);
-            if (result === 'win') return this.getMatchLead(player, opponent);
-            if (result === 'loss') return this.getMatchLead(opponent, player);
+        getIntraBubbleValue(player, opponent) {
+            const result = this.calculateMatchResult(player, opponent, player.flight);
+            if (result > 0) return result.toString();
+            if (result < 0) return Math.abs(result).toString();
             return 'AS';
         },
         
-        calculateMatchResult(playerA, playerB) {
-            // Simplified for now - need to implement full handicap difference
-            // Returns 'win', 'loss', or 'tie' based on current state
-            // This will be expanded in next iteration
-            return 'tie';
+        // ============================================================
+        // CROSS-FLIGHT BUBBLES (use lastSyncedHole, grey if out of sync)
+        // ============================================================
+        
+        getCrossFlightOpponents(player) {
+            return this.allPlayers.filter(op => op.team !== player.team && op.flight !== player.flight);
         },
         
-        getMatchLead(player, opponent) {
-            // Returns number of holes player is winning by
-            return '1';
+        getCrossBubbleClass(player, opponent) {
+            // If lastSyncedHole === current highest hole where both flights saved
+            // But simpler: if the match result is marked as synced
+            const key = `${player.name}_vs_${opponent.name}`;
+            const match = this.crossMatchResults[key];
+            if (!match) return 'bubble-grey';
+            if (!match.isSynced) return 'bubble-grey';
+            if (match.value > 0) return 'bubble-green';
+            if (match.value < 0) return 'bubble-red';
+            return 'bubble-grey';
+        },
+        
+        getCrossBubbleValue(player, opponent) {
+            const key = `${player.name}_vs_${opponent.name}`;
+            const match = this.crossMatchResults[key];
+            if (!match) return 'AS';
+            const absValue = Math.abs(match.value);
+            if (absValue === 0) return 'AS';
+            return absValue.toString();
+        },
+        
+        // ============================================================
+        // MATCH RESULT CALCULATION (Full handicap difference)
+        // ============================================================
+        
+        calculateMatchResult(playerA, playerB, dataSourceFlight) {
+            // dataSourceFlight indicates which flight's saved data to use
+            // Returns: positive = A winning, negative = B winning, 0 = AS
+            
+            const handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+            const higherHandicapPlayer = (playerA.handicap > playerB.handicap) ? playerA : playerB;
+            const isPlayerAReceiving = (playerA === higherHandicapPlayer);
+            
+            // Get stroke holes based on course SI
+            const strokeHoles = this.getStrokeHoles(handicapDiff);
+            
+            let holesCompleted = 0;
+            let playerAWon = 0;
+            let playerBWon = 0;
+            
+            // Determine which flight's data to use for scores
+            const useFlight1 = (dataSourceFlight === 1);
+            
+            for (let hole = 1; hole <= 18; hole++) {
+                // Get scores based on whose data we're using
+                let playerAScore = null;
+                let playerBScore = null;
+                
+                if (useFlight1) {
+                    const holeData = this.flight1Data[hole];
+                    if (holeData && holeData.saved) {
+                        // Map players to positions
+                        const flight1Players = this.allPlayers.filter(p => p.flight === 1);
+                        const teamAPlayers = flight1Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+                        const teamBPlayers = flight1Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+                        
+                        if (playerA.flight === 1) {
+                            if (playerA.team === 'A') {
+                                if (teamAPlayers[0]?.name === playerA.name) playerAScore = holeData.a1;
+                                else if (teamAPlayers[1]?.name === playerA.name) playerAScore = holeData.a2;
+                            } else {
+                                if (teamBPlayers[0]?.name === playerA.name) playerAScore = holeData.b1;
+                                else if (teamBPlayers[1]?.name === playerA.name) playerAScore = holeData.b2;
+                            }
+                        }
+                        if (playerB.flight === 1) {
+                            if (playerB.team === 'A') {
+                                if (teamAPlayers[0]?.name === playerB.name) playerBScore = holeData.a1;
+                                else if (teamAPlayers[1]?.name === playerB.name) playerBScore = holeData.a2;
+                            } else {
+                                if (teamBPlayers[0]?.name === playerB.name) playerBScore = holeData.b1;
+                                else if (teamBPlayers[1]?.name === playerB.name) playerBScore = holeData.b2;
+                            }
+                        }
+                    }
+                } else {
+                    const holeData = this.flight2Data[hole];
+                    if (holeData && holeData.saved) {
+                        const flight2Players = this.allPlayers.filter(p => p.flight === 2);
+                        const teamAPlayers = flight2Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+                        const teamBPlayers = flight2Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+                        
+                        if (playerA.flight === 2) {
+                            if (playerA.team === 'A') {
+                                if (teamAPlayers[0]?.name === playerA.name) playerAScore = holeData.a1;
+                                else if (teamAPlayers[1]?.name === playerA.name) playerAScore = holeData.a2;
+                            } else {
+                                if (teamBPlayers[0]?.name === playerA.name) playerAScore = holeData.b1;
+                                else if (teamBPlayers[1]?.name === playerA.name) playerAScore = holeData.b2;
+                            }
+                        }
+                        if (playerB.flight === 2) {
+                            if (playerB.team === 'A') {
+                                if (teamAPlayers[0]?.name === playerB.name) playerBScore = holeData.a1;
+                                else if (teamAPlayers[1]?.name === playerB.name) playerBScore = holeData.a2;
+                            } else {
+                                if (teamBPlayers[0]?.name === playerB.name) playerBScore = holeData.b1;
+                                else if (teamBPlayers[1]?.name === playerB.name) playerBScore = holeData.b2;
+                            }
+                        }
+                    }
+                }
+                
+                if (playerAScore === null || playerBScore === null) continue;
+                
+                holesCompleted++;
+                
+                let netA = playerAScore;
+                let netB = playerBScore;
+                
+                if (isPlayerAReceiving) {
+                    const strokes = this.getStrokesForHole(hole, handicapDiff, strokeHoles);
+                    netA = playerAScore - strokes;
+                } else {
+                    const strokes = this.getStrokesForHole(hole, handicapDiff, strokeHoles);
+                    netB = playerBScore - strokes;
+                }
+                
+                if (netA < netB) {
+                    playerAWon++;
+                } else if (netB < netA) {
+                    playerBWon++;
+                }
+            }
+            
+            if (holesCompleted === 0) return 0;
+            return playerAWon - playerBWon;
+        },
+        
+        getStrokeHoles(handicapDiff) {
+            if (handicapDiff <= 0) return [];
+            const holesWithSi = [];
+            for (let i = 0; i < 18; i++) {
+                holesWithSi.push({ hole: i + 1, si: this.courseSi[i] });
+            }
+            holesWithSi.sort((a, b) => a.si - b.si);
+            const strokeHoles = [];
+            for (let i = 0; i < handicapDiff && i < 18; i++) {
+                strokeHoles.push(holesWithSi[i].hole);
+            }
+            return strokeHoles;
+        },
+        
+        getStrokesForHole(holeNumber, handicapDiff, strokeHolesCache) {
+            if (handicapDiff <= 0) return 0;
+            const strokeHoles = strokeHolesCache || this.getStrokeHoles(handicapDiff);
+            return strokeHoles.includes(holeNumber) ? 1 : 0;
+        },
+        
+        // ============================================================
+        // UPDATE CROSS MATCH RESULTS
+        // ============================================================
+        
+        updateCrossMatchResults() {
+            // Calculate last synced hole
+            let newLastSynced = 0;
+            for (let h = 1; h <= 18; h++) {
+                const f1Saved = this.flight1Data[h]?.saved || false;
+                const f2Saved = this.flight2Data[h]?.saved || false;
+                if (f1Saved && f2Saved) {
+                    newLastSynced = h;
+                } else {
+                    break;
+                }
+            }
+            this.lastSyncedHole = newLastSynced;
+            
+            const isSynced = (this.lastSyncedHole === 18) || false;
+            
+            // Get all cross-flight matchups (F1 vs F2)
+            const f1Players = this.allPlayers.filter(p => p.flight === 1);
+            const f2Players = this.allPlayers.filter(p => p.flight === 2);
+            
+            for (const p1 of f1Players) {
+                for (const p2 of f2Players) {
+                    const key1 = `${p1.name}_vs_${p2.name}`;
+                    const key2 = `${p2.name}_vs_${p1.name}`;
+                    
+                    // Calculate result using data from both flights up to lastSyncedHole
+                    // For cross bubbles, we need the match result from the perspective of each player
+                    // But since match play is symmetric, we can calculate once
+                    
+                    let result = 0;
+                    if (this.lastSyncedHole > 0) {
+                        // Calculate match result using both flights' data up to lastSyncedHole
+                        result = this.calculateMatchResultCross(p1, p2, this.lastSyncedHole);
+                    }
+                    
+                    // For F1 screen (p1 vs p2 perspective)
+                    this.crossMatchResults[key1] = {
+                        value: result,
+                        isSynced: (this.lastSyncedHole === this.currentHole || isSynced)
+                    };
+                    
+                    // For F2 screen (p2 vs p1 perspective) - inverted value
+                    this.crossMatchResults[key2] = {
+                        value: -result,
+                        isSynced: (this.lastSyncedHole === this.currentHole || isSynced)
+                    };
+                }
+            }
+        },
+        
+        calculateMatchResultCross(playerA, playerB, upToHole) {
+            // Calculate match result between playerA (Flight 1) and playerB (Flight 2)
+            // using data from both flights up to upToHole
+            
+            const handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+            const isPlayerAReceiving = (playerA.handicap > playerB.handicap);
+            const strokeHoles = this.getStrokeHoles(handicapDiff);
+            
+            let playerAWon = 0;
+            let playerBWon = 0;
+            
+            for (let hole = 1; hole <= upToHole; hole++) {
+                const f1Hole = this.flight1Data[hole];
+                const f2Hole = this.flight2Data[hole];
+                
+                if (!f1Hole?.saved || !f2Hole?.saved) continue;
+                
+                let playerAScore = null;
+                let playerBScore = null;
+                
+                // Get playerA score from Flight 1
+                const f1Players = this.allPlayers.filter(p => p.flight === 1);
+                const f1TeamA = f1Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+                const f1TeamB = f1Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+                
+                if (playerA.team === 'A') {
+                    if (f1TeamA[0]?.name === playerA.name) playerAScore = f1Hole.a1;
+                    else if (f1TeamA[1]?.name === playerA.name) playerAScore = f1Hole.a2;
+                } else {
+                    if (f1TeamB[0]?.name === playerA.name) playerAScore = f1Hole.b1;
+                    else if (f1TeamB[1]?.name === playerA.name) playerAScore = f1Hole.b2;
+                }
+                
+                // Get playerB score from Flight 2
+                const f2Players = this.allPlayers.filter(p => p.flight === 2);
+                const f2TeamA = f2Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+                const f2TeamB = f2Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+                
+                if (playerB.team === 'A') {
+                    if (f2TeamA[0]?.name === playerB.name) playerBScore = f2Hole.a1;
+                    else if (f2TeamA[1]?.name === playerB.name) playerBScore = f2Hole.a2;
+                } else {
+                    if (f2TeamB[0]?.name === playerB.name) playerBScore = f2Hole.b1;
+                    else if (f2TeamB[1]?.name === playerB.name) playerBScore = f2Hole.b2;
+                }
+                
+                if (playerAScore === null || playerBScore === null) continue;
+                
+                let netA = playerAScore;
+                let netB = playerBScore;
+                
+                if (isPlayerAReceiving) {
+                    netA = playerAScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
+                } else {
+                    netB = playerBScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
+                }
+                
+                if (netA < netB) {
+                    playerAWon++;
+                } else if (netB < netA) {
+                    playerBWon++;
+                }
+            }
+            
+            return playerAWon - playerBWon;
         },
         
         // ============================================================
@@ -609,14 +901,49 @@ function gameApp() {
         // ============================================================
         
         nextHole() {
-            if (this.currentHole < 18 && this.isCurrentHoleSaved) {
-                this.currentHole++;
-            }
+            let next = this.currentHole + 1;
+            if (next > 18) next = 1;
+            this.currentHole = next;
         },
         
         prevHole() {
-            if (this.currentHole > 1) {
-                this.currentHole--;
+            let prev = this.currentHole - 1;
+            if (prev < 1) prev = 18;
+            this.currentHole = prev;
+        },
+        
+        // ============================================================
+        // REFRESH FROM FIREBASE
+        // ============================================================
+        
+        refreshFromFirebase(data) {
+            this.f1DataString = data.f1?.d || this.f1DataString;
+            this.f2DataString = data.f2?.d || this.f2DataString;
+            
+            const newF1 = this.parseFlightData(this.f1DataString);
+            const newF2 = this.parseFlightData(this.f2DataString);
+            
+            let changed = false;
+            
+            if (JSON.stringify(newF1) !== JSON.stringify(this.flight1Data)) {
+                this.flight1Data = newF1;
+                changed = true;
+                // Clear local changes for Flight 1 that conflict
+                for (const key of Object.keys(this.localChanges)) {
+                    if (key.startsWith('1_')) delete this.localChanges[key];
+                }
+            }
+            if (JSON.stringify(newF2) !== JSON.stringify(this.flight2Data)) {
+                this.flight2Data = newF2;
+                changed = true;
+                for (const key of Object.keys(this.localChanges)) {
+                    if (key.startsWith('2_')) delete this.localChanges[key];
+                }
+            }
+            
+            if (changed) {
+                this.updateCrossMatchResults();
+                this.calculateTR();
             }
         },
         
@@ -662,9 +989,13 @@ function gameApp() {
             this.f1DataString = data.f1?.d || '';
             this.f2DataString = data.f2?.d || '';
             
+            // Set current hole to starting hole (shotgun start)
+            this.currentHole = this.startingHole;
+            
             this.flight1Data = this.parseFlightData(this.f1DataString);
             this.flight2Data = this.parseFlightData(this.f2DataString);
             
+            this.updateCrossMatchResults();
             this.calculateTR();
             
             this.loading = false;
@@ -672,27 +1003,7 @@ function gameApp() {
             
             this.unsubscribe = gameRef.onSnapshot((snapshot) => {
                 if (snapshot.exists) {
-                    const newData = snapshot.data();
-                    this.f1DataString = newData.f1?.d || this.f1DataString;
-                    this.f2DataString = newData.f2?.d || this.f2DataString;
-                    
-                    const newF1 = this.parseFlightData(this.f1DataString);
-                    const newF2 = this.parseFlightData(this.f2DataString);
-                    
-                    if (JSON.stringify(newF1) !== JSON.stringify(this.flight1Data)) {
-                        this.flight1Data = newF1;
-                        for (const key of Object.keys(this.localChanges)) {
-                            if (key.startsWith('1_')) delete this.localChanges[key];
-                        }
-                    }
-                    if (JSON.stringify(newF2) !== JSON.stringify(this.flight2Data)) {
-                        this.flight2Data = newF2;
-                        for (const key of Object.keys(this.localChanges)) {
-                            if (key.startsWith('2_')) delete this.localChanges[key];
-                        }
-                    }
-                    
-                    this.calculateTR();
+                    this.refreshFromFirebase(snapshot.data());
                     this.syncStatus = 'Synced';
                 }
             }, (error) => {
@@ -712,12 +1023,16 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - Added Play Order / Natural Order toggle button in scorecard header
-   - Toggle preference saved to localStorage per device
-   - Fixed scorecard column mapping (hole numbers now match saved data)
-   - Implemented match bubble structure (calculations to be completed)
-   - Fixed shotgun start display mapping
+   - Current hole initializes to startingHole (shotgun start)
+   - Navigation wraps correctly (18→1, 1→18)
+   - Cross-flight sync tracking (lastSyncedHole)
+   - F1-8-XB and F2-8-XB turn GREY when out of sync, show last synced hole value
+   - F1-8-IB and F2-8-IB always show current flight's own data (never grey)
+   - Real-time Firebase sync via onSnapshot
+   - Play Order / Natural Order toggle with localStorage persistence
+   - Match bubble calculations using full handicap difference method
+   - Intra-flight and cross-flight bubbles separated
 STATUS: Ready for testing
 -->
