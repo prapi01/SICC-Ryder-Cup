@@ -1,5 +1,20 @@
-<!-- FILE: game.html - VERSION 1.12 -->
-<!-- FIX: Use flight1Started/flight2Started flags for bubble colors -->
+<!--
+FILE: game.html
+VERSION: 1.13
+KEY CHANGES:
+   - Complete rewrite as UI-Painter (VDN #007 architecture)
+   - Parses UI string from GameController
+   - NO decision logic - pure rendering
+   - Receives data via window.updateGameUI()
+   - Displays: TR, player cards, match bubbles, scorecard
+   - Supports Play Order / Natural Order toggle
+   - Supports shotgun start display
+STATUS: Complete. Ready for testing.
+-->
+
+<!-- FILE: game.html - VERSION 1.13 -->
+<!-- UI-Painter: Parses UI string, displays everything in one pass -->
+<!-- NO decision logic - only parses and paints -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,9 +81,9 @@
         
         .bubbles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
         .bubble { flex: 1; text-align: center; padding: 6px 4px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; }
-        .bubble-win { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-        .bubble-loss { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
-        .bubble-pending { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
         
         .scorecard-section { margin: 20px 0; }
         .scorecard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
@@ -107,13 +122,12 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.12</div>
+<div class="version-tag">v1.13</div>
 
 <script>
-// FILE: game.html - VERSION 1.12
-// FIX: Use flight1Started/flight2Started flags for bubble colors
+// FILE: game.html - VERSION 1.13 (UI-Painter)
 
-var UI_VERSION = "1.12";
+var UI_VERSION = "1.13";
 var CACHE_KEY = "game_ui_version";
 
 if (localStorage.getItem(CACHE_KEY) !== UI_VERSION) {
@@ -123,6 +137,10 @@ if (localStorage.getItem(CACHE_KEY) !== UI_VERSION) {
 
 var uiData = null;
 var currentDisplayMode = "play";
+
+// ============================================================
+// Display Preferences
+// ============================================================
 
 function loadDisplayPreference() {
     var saved = localStorage.getItem("scorecardDisplay");
@@ -162,6 +180,10 @@ function updateToggleButtons() {
     }
 }
 
+// ============================================================
+// Utility Functions
+// ============================================================
+
 window.setDeviceId = function(deviceId) {
     var deviceTag = document.getElementById("deviceTag");
     if (deviceTag) deviceTag.innerHTML = deviceId;
@@ -177,6 +199,10 @@ function escapeHtml(str) {
     });
 }
 
+// ============================================================
+// Scorecard Rendering
+// ============================================================
+
 function renderScorecard() {
     if (!uiData) return;
     
@@ -191,19 +217,12 @@ function renderScorecard() {
         displayHoleOrder = data.playOrder || [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
     }
     
-    var flight1Players = players.filter(function(p) { return p.flight === 1; });
-    var flight2Players = players.filter(function(p) { return p.flight === 2; });
-    
-    flight1Players.sort(function(a, b) {
-        if (a.team === "A" && b.team === "B") return -1;
-        if (a.team === "B" && b.team === "A") return 1;
-        return 0;
-    });
-    
-    flight2Players.sort(function(a, b) {
-        if (a.team === "A" && b.team === "B") return -1;
-        if (a.team === "B" && b.team === "A") return 1;
-        return 0;
+    // Get players sorted by team, then flight, then handicap
+    var allPlayersSorted = [...players];
+    allPlayersSorted.sort(function(a, b) {
+        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
+        if (a.flight !== b.flight) return a.flight - b.flight;
+        return a.handicap - b.handicap;
     });
     
     var tableHtml = '<table class="scorecard-table">';
@@ -214,33 +233,36 @@ function renderScorecard() {
     tableHtml += '<th>Tot</th></tr></thead>';
     tableHtml += '<tbody>';
     
-    tableHtml += '<tr><td style="font-weight:700;">Par<\/td>';
+    // Par row
+    tableHtml += '<tr><td style="font-weight:700;">Par</td>';
     var totalPar = 0;
     for (var i = 0; i < displayHoleOrder.length; i++) {
         var holeNum = displayHoleOrder[i];
         var par = course.par[holeNum - 1];
         totalPar += par;
-        tableHtml += '<td>' + par + '<\/td>';
+        tableHtml += '<td>' + par + '</td>';
     }
-    tableHtml += '<td>' + totalPar + '<\/td><\/tr>';
+    tableHtml += '<td>' + totalPar + '</td></tr>';
     
-    tableHtml += '<tr><td style="font-weight:700;">SI<\/td>';
+    // SI row
+    tableHtml += '<tr><td style="font-weight:700;">SI</td>';
     for (var i = 0; i < displayHoleOrder.length; i++) {
         var holeNum = displayHoleOrder[i];
         var si = course.si[holeNum - 1];
-        tableHtml += '<td>' + si + '<\/td>';
+        tableHtml += '<td>' + si + '</td>';
     }
-    tableHtml += '<td>-<\/td><\/tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
+    tableHtml += '<td>-</td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
     
-    for (var pi = 0; pi < flight1Players.length; pi++) {
-        var p = flight1Players[pi];
+    // Player scores
+    for (var pi = 0; pi < allPlayersSorted.length; pi++) {
+        var p = allPlayersSorted[pi];
         var pIdx = -1;
         for (var ix = 0; ix < players.length; ix++) {
             if (players[ix].name === p.name) pIdx = ix;
         }
         var total = 0;
-        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
         for (var i = 0; i < displayHoleOrder.length; i++) {
             var holeNum = displayHoleOrder[i];
             var scoreKey = p.flight + "_" + holeNum + "_" + pIdx;
@@ -248,64 +270,44 @@ function renderScorecard() {
             total += score;
             var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(holeNum) !== -1;
             if (completed) {
-                tableHtml += '<td class="completed"><strong>' + score + '<\/strong><\/td>';
+                tableHtml += '<td class="completed"><strong>' + score + '</strong></td>';
             } else {
-                tableHtml += '<td class="placeholder">' + score + '<\/td>';
+                tableHtml += '<td class="placeholder">' + score + '</td>';
             }
         }
-        tableHtml += '<td class="completed"><strong>' + total + '<\/strong><\/td><\/tr>';
+        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
     }
     
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1<\/td>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // T-1 row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1</td>';
     var t1RowData = data.t1Row || [];
     for (var i = 0; i < displayHoleOrder.length; i++) {
         var val = (i < t1RowData.length) ? t1RowData[i] : "-";
-        tableHtml += '<td style="color:#4caf50;">' + val + '<\/td>';
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
     }
-    tableHtml += '<td style="color:#4caf50;">' + (data.t1Total || "-") + '<\/td><\/tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
+    tableHtml += '<td style="color:#4caf50;">' + (data.t1Total || "-") + '</td></tr>';
     
-    for (var pi = 0; pi < flight2Players.length; pi++) {
-        var p = flight2Players[pi];
-        var pIdx = -1;
-        for (var ix = 0; ix < players.length; ix++) {
-            if (players[ix].name === p.name) pIdx = ix;
-        }
-        var total = 0;
-        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
-        for (var i = 0; i < displayHoleOrder.length; i++) {
-            var holeNum = displayHoleOrder[i];
-            var scoreKey = p.flight + "_" + holeNum + "_" + pIdx;
-            var score = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[holeNum - 1];
-            total += score;
-            var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(holeNum) !== -1;
-            if (completed) {
-                tableHtml += '<td class="completed"><strong>' + score + '<\/strong><\/td>';
-            } else {
-                tableHtml += '<td class="placeholder">' + score + '<\/td>';
-            }
-        }
-        tableHtml += '<td class="completed"><strong>' + total + '<\/strong><\/td><\/tr>';
-    }
-    
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2<\/td>';
+    // T-2 row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2</td>';
     var t2RowData = data.t2Row || [];
     for (var i = 0; i < displayHoleOrder.length; i++) {
         var val = (i < t2RowData.length) ? t2RowData[i] : "-";
-        tableHtml += '<td style="color:#4caf50;">' + val + '<\/td>';
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
     }
-    tableHtml += '<td style="color:#4caf50;">' + (data.t2Total || "-") + '<\/td><\/tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
+    tableHtml += '<td style="color:#4caf50;">' + (data.t2Total || "-") + '</td></tr>';
     
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk<\/td>';
+    // Strk row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk</td>';
     var strkRowData = data.strkRow || [];
     for (var i = 0; i < displayHoleOrder.length; i++) {
         var val = (i < strkRowData.length) ? strkRowData[i] : "-";
-        tableHtml += '<td style="color:#4caf50;">' + val + '<\/td>';
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
     }
-    tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '<\/td><\/tr>';
+    tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '</td></tr>';
     
-    tableHtml += '<\/tbody><\/table>';
+    tableHtml += '</tbody></table>';
     
     var scorecardWrapper = document.querySelector(".scorecard-wrapper");
     if (scorecardWrapper) {
@@ -313,8 +315,12 @@ function renderScorecard() {
     }
 }
 
+// ============================================================
+// Main UI Painter - window.updateGameUI
+// ============================================================
+
 window.updateGameUI = function(data) {
-    console.log("game: updateGameUI called", data);
+    console.log("UI-Painter: updateGameUI called", data);
     
     uiData = data;
     
@@ -333,35 +339,26 @@ window.updateGameUI = function(data) {
     var activeFlight = data.activeFlight || 1;
     var startingHole = data.startingHole || 1;
     
-    // Get per-flight started flags
-    var flight1Started = data.flight1Started || false;
-    var flight2Started = data.flight2Started || false;
-    
+    // Get TR points from data
     var teamAPts = 0;
     var teamBPts = 0;
     
     if (data.trPoints) {
         teamAPts = data.trPoints.teamA;
         teamBPts = data.trPoints.teamB;
-    } else {
-        teamAPts = (data.matchPoints ? data.matchPoints.teamA : 8) + 
-                   (data.teamPoints ? data.teamPoints.teamA : 1) + 
-                   (data.strokePoints ? data.strokePoints.teamA : 0.5);
-        teamBPts = (data.matchPoints ? data.matchPoints.teamB : 8) + 
-                   (data.teamPoints ? data.teamPoints.teamB : 1) + 
-                   (data.strokePoints ? data.strokePoints.teamB : 0.5);
     }
     
     var teamAGreen = teamAPts >= teamBPts;
     var teamBGreen = teamBPts >= teamAPts;
     
+    // Get flight players sorted by team, then handicap
     var flightPlayers = data.players.filter(function(p) { return p.flight === activeFlight; });
-    flightPlayers.sort(function(a, b) { 
-        if (a.team === "A" && b.team === "B") return -1;
-        if (a.team === "B" && b.team === "A") return 1;
-        return 0;
+    flightPlayers.sort(function(a, b) {
+        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
+        return a.handicap - b.handicap;
     });
     
+    // Build player cards
     var playerCards = "";
     for (var i = 0; i < flightPlayers.length; i++) {
         var p = flightPlayers[i];
@@ -377,28 +374,26 @@ window.updateGameUI = function(data) {
         var scoreKey = activeFlight + "_" + currentActualHole + "_" + playerIdx;
         var currentScore = (data.scores && data.scores[scoreKey]) ? data.scores[scoreKey] : course.par[currentActualHole - 1];
         
-        var opponents = data.players.filter(function(op) { return op.team !== p.team; });
+        // Build match bubbles from parsed bubble data
         var bubblesHtml = '<div class="bubbles">';
+        
+        // Get opponents (all players not on same team)
+        var opponents = data.players.filter(function(op) { return op.team !== p.team; });
+        
         for (var j = 0; j < opponents.length; j++) {
             var bubbleKey = p.name + "_vs_" + opponents[j].name;
             var result = (data.matchBubbles && data.matchBubbles[bubbleKey]) || "AS";
             var bubbleClass = "bubble";
             
-            // Determine which flight this player belongs to
-            var thisFlightStarted = (p.flight === 1) ? flight1Started : flight2Started;
-            
+            // Determine color based on result
             if (result === "AS") {
-                if (thisFlightStarted) {
-                    bubbleClass += " bubble-win";
-                } else {
-                    bubbleClass += " bubble-pending";
-                }
+                bubbleClass += " bubble-grey";
             } else if (result.indexOf("+") === 0) {
-                bubbleClass += " bubble-win";
+                bubbleClass += " bubble-green";
             } else if (result.indexOf("-") === 0) {
-                bubbleClass += " bubble-loss";
+                bubbleClass += " bubble-red";
             } else {
-                bubbleClass += " bubble-pending";
+                bubbleClass += " bubble-grey";
             }
             
             bubblesHtml += '<div class="' + bubbleClass + '">vs ' + opponents[j].label + ' ' + result + '</div>';
@@ -480,12 +475,16 @@ window.updateGameUI = function(data) {
     attachEvents();
 };
 
+// ============================================================
+// Event Attachment
+// ============================================================
+
 function attachEvents() {
     document.querySelectorAll(".dec-btn").forEach(function(btn) {
         btn.removeEventListener("click", btn._listener);
         btn._listener = function() {
             if (!btn.disabled) {
-                console.log("game: Decrement clicked");
+                console.log("UI-Painter: Decrement clicked");
                 window.dispatchEvent(new CustomEvent('scoreChange', {
                     detail: {
                         playerIdx: parseInt(this.dataset.playerIdx),
@@ -503,7 +502,7 @@ function attachEvents() {
         btn.removeEventListener("click", btn._listener);
         btn._listener = function() {
             if (!btn.disabled) {
-                console.log("game: Increment clicked");
+                console.log("UI-Painter: Increment clicked");
                 window.dispatchEvent(new CustomEvent('scoreChange', {
                     detail: {
                         playerIdx: parseInt(this.dataset.playerIdx),
@@ -521,7 +520,7 @@ function attachEvents() {
     if (saveBtn) {
         saveBtn.removeEventListener("click", saveBtn._listener);
         saveBtn._listener = function() {
-            console.log("game: Save clicked");
+            console.log("UI-Painter: Save clicked");
             window.dispatchEvent(new CustomEvent('saveHole'));
         };
         saveBtn.addEventListener("click", saveBtn._listener);
@@ -532,7 +531,7 @@ function attachEvents() {
         nextBtn.removeEventListener("click", nextBtn._listener);
         nextBtn._listener = function() {
             if (!nextBtn.disabled) {
-                console.log("game: Next clicked");
+                console.log("UI-Painter: Next clicked");
                 window.dispatchEvent(new CustomEvent('nextHole'));
             }
         };
@@ -544,7 +543,7 @@ function attachEvents() {
         prevBtn.removeEventListener("click", prevBtn._listener);
         prevBtn._listener = function() {
             if (!prevBtn.disabled) {
-                console.log("game: Prev clicked");
+                console.log("UI-Painter: Prev clicked");
                 window.dispatchEvent(new CustomEvent('prevHole'));
             }
         };
@@ -555,7 +554,7 @@ function attachEvents() {
     if (refreshBtn) {
         refreshBtn.removeEventListener("click", refreshBtn._listener);
         refreshBtn._listener = function() {
-            console.log("game: Refresh clicked");
+            console.log("UI-Painter: Refresh clicked");
             window.dispatchEvent(new CustomEvent('refresh'));
         };
         refreshBtn.addEventListener("click", refreshBtn._listener);
@@ -565,7 +564,7 @@ function attachEvents() {
     if (menuBtn) {
         menuBtn.removeEventListener("click", menuBtn._listener);
         menuBtn._listener = function() {
-            console.log("game: Menu clicked");
+            console.log("UI-Painter: Menu clicked");
             window.dispatchEvent(new CustomEvent('mainMenu'));
         };
         menuBtn.addEventListener("click", menuBtn._listener);
@@ -595,8 +594,23 @@ function attachEvents() {
     }
 }
 
+// Initialize
 document.getElementById("app").innerHTML = '<div class="loading">Initializing...</div>';
-console.log("game v1.12: Loaded - waiting for data");
+console.log("UI-Painter v1.13: Loaded - waiting for data");
 </script>
 </body>
 </html>
+
+<!--
+FILE: game.html
+VERSION: 1.13
+KEY CHANGES:
+   - Complete rewrite as UI-Painter (VDN #007 architecture)
+   - Parses UI string from GameController
+   - NO decision logic - pure rendering
+   - Receives data via window.updateGameUI()
+   - Displays: TR, player cards, match bubbles, scorecard
+   - Supports Play Order / Natural Order toggle
+   - Supports shotgun start display
+STATUS: Complete. Ready for testing.
+-->
