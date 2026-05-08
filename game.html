@@ -1,12 +1,10 @@
 <!--
 FILE: game.html
-VERSION: 2.04
+VERSION: 2.05
 KEY CHANGES:
-   - Scorecard rendering moved to JavaScript (Alpine only manages data)
-   - Fixed scorecard layout - columns properly aligned
-   - Play Order / Natural Order toggle re-renders scorecard
-   - Data updates trigger automatic scorecard re-render
-   - All previous cross-flight sync logic preserved
+   - Fixed intra-flight bubble colors: tied matches now show GREEN "AS" (not grey)
+   - Grey bubbles now only used for cross-flight out-of-sync and unplayed holes
+   - All intra-flight bubbles light up (green/red/green-AS) after flight saves a hole
 STATUS: Ready for testing
 -->
 
@@ -215,9 +213,7 @@ STATUS: Ready for testing
                     <button class="toggle-btn" :class="displayMode === 'natural' ? 'active' : ''" @click="setDisplayMode('natural')">📋 Natural Order</button>
                 </div>
             </div>
-            <div class="scorecard-wrapper" id="scorecardWrapper">
-                <!-- Scorecard rendered by JavaScript -->
-            </div>
+            <div class="scorecard-wrapper" id="scorecardWrapper"></div>
         </div>
         
         <div class="debug">
@@ -324,7 +320,6 @@ function gameApp() {
             return this.getFlightOrderedPlayers(this.editableFlight);
         },
         
-        // Scorecard display players (by Flight, then A then B, handicap low to high)
         get scorecardPlayers() {
             const flight1A = this.allPlayers.filter(p => p.flight === 1 && p.team === 'A').sort((a, b) => a.handicap - b.handicap);
             const flight1B = this.allPlayers.filter(p => p.flight === 1 && p.team === 'B').sort((a, b) => a.handicap - b.handicap);
@@ -426,16 +421,17 @@ function gameApp() {
         
         getIntraBubbleClass(player, opponent) {
             const result = this.calculateIntraMatchResult(player, opponent);
+            // FIX: Tied matches (result === 0) should show GREEN "AS", not grey
             if (result > 0) return 'bubble-green';
             if (result < 0) return 'bubble-red';
-            return 'bubble-grey';
+            return 'bubble-green';  // Tie -> green "AS"
         },
         
         getIntraBubbleValue(player, opponent) {
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return result.toString();
             if (result < 0) return Math.abs(result).toString();
-            return 'AS';
+            return 'AS';  // Tie
         },
         
         calculateIntraMatchResult(playerA, playerB) {
@@ -509,13 +505,19 @@ function gameApp() {
             if (!match.isSynced) return 'bubble-grey';
             if (match.value > 0) return 'bubble-green';
             if (match.value < 0) return 'bubble-red';
-            return 'bubble-grey';
+            return 'bubble-green';  // Tie -> green "AS" when synced
         },
         
         getCrossBubbleValue(player, opponent) {
             const key = `${player.name}_vs_${opponent.name}`;
             const match = this.crossMatchResults[key];
             if (!match) return 'AS';
+            if (!match.isSynced) {
+                // Show last synced value but grey
+                const absValue = Math.abs(match.value);
+                if (absValue === 0) return 'AS';
+                return absValue.toString();
+            }
             const absValue = Math.abs(match.value);
             if (absValue === 0) return 'AS';
             return absValue.toString();
@@ -657,64 +659,6 @@ function gameApp() {
             const holes = this.displayHolesList;
             const players = this.scorecardPlayers;
             
-            let html = '<table class="scorecard-table">';
-            
-            // Header row
-            html += '<thead><tr><th>Hole</th>';
-            for (const h of holes) {
-                html += `<th>${h}</th>`;
-            }
-            html += '<th>Tot</th> </thead><tbody>';
-            
-            // Par row
-            html += '<tr><td style="font-weight:700;">Par</td>';
-            let totalPar = 0;
-            for (const h of holes) {
-                const par = this.coursePar[h - 1];
-                totalPar += par;
-                html += `<td>${par}</td>`;
-            }
-            html += `<td>${totalPar}</td></tr>`;
-            
-            // SI row
-            html += '<tr><td style="font-weight:700;">SI</td>';
-            for (const h of holes) {
-                const si = this.courseSi[h - 1];
-                html += `<td>${si}</td>`;
-            }
-            html += '<td>-</td></tr>';
-            
-            // Player scores
-            for (const player of players) {
-                html += `<tr><td style="font-weight:600;">${player.label}</td>`;
-                let playerTotal = 0;
-                for (const h of holes) {
-                    const score = this.getStoredScore(player, h);
-                    playerTotal += score;
-                    const isSaved = this.isHoleSaved(player.flight, h);
-                    const cellClass = isSaved ? 'score-green' : 'score-invisible';
-                    html += `<td class="${cellClass}">${score}</td>`;
-                }
-                html += `<td class="score-green">${playerTotal}</td></tr>`;
-            }
-            
-            // Green line after Flight 1 players (after first 4 rows? Actually after Flight 1)
-            // Flight 1 has 4 players (2 A + 2 B). Add green line after row index 3 (0-based)
-            // But simpler: add green line between Flight 1 and Flight 2
-            // We know Flight 1 has 4 players, Flight 2 has 4 players
-            // The rows are in order: Flight1 A1, A2, B1, B2, Flight2 A1, A2, B1, B2
-            // So after 4 player rows, add a separator row
-            
-            // This is handled by CSS class .green-line, but we need to insert it
-            // Let me rebuild with proper separation
-            
-            // For simplicity, I'll rebuild with clear separation
-            // Let me recreate the tbody with proper grouping
-            
-            wrapper.innerHTML = this.buildScorecardHTML(holes, players);
-        },
-        
-        buildScorecardHTML(holes, players) {
             // Group players by flight
             const flight1Players = players.filter(p => p.flight === 1);
             const flight2Players = players.filter(p => p.flight === 2);
@@ -729,33 +673,33 @@ function gameApp() {
             html += '<th>Tot</th> </thead><tbody>';
             
             // Par row
-            html += '<tr><td style="font-weight:700;">Par</td>';
+            html += '<tr><td style="font-weight:700;">Par<\/td>';
             let totalPar = 0;
             for (const h of holes) {
                 const par = this.coursePar[h - 1];
                 totalPar += par;
-                html += `<td>${par}</td>`;
+                html += `<td>${par}<\/td>`;
             }
-            html += `<td>${totalPar}</td></tr>`;
+            html += `<td>${totalPar}<\/td><\/tr>`;
             
             // SI row
-            html += '<tr><td style="font-weight:700;">SI</td>';
+            html += '<tr><td style="font-weight:700;">SI<\/td>';
             for (const h of holes) {
                 const si = this.courseSi[h - 1];
-                html += `<td>${si}</td>`;
+                html += `<td>${si}<\/td>`;
             }
-            html += '<td>-</td></tr>';
+            html += '<td>-<\/td><\/tr>';
             
             // Flight 1 players
             for (const player of flight1Players) {
-                html += `<tr><td style="font-weight:600;">${player.label}</td>`;
+                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
                 let playerTotal = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
                     playerTotal += score;
                     const isSaved = this.isHoleSaved(player.flight, h);
                     const cellClass = isSaved ? 'score-green' : 'score-invisible';
-                    html += `<td class="${cellClass}">${score}</td>`;
+                    html += `<td class="${cellClass}">${score}<\/td>`;
                 }
                 html += `<td class="score-green">${playerTotal}<\/td><\/tr>`;
             }
@@ -778,14 +722,14 @@ function gameApp() {
             
             // Flight 2 players
             for (const player of flight2Players) {
-                html += `<tr><td style="font-weight:600;">${player.label}</td>`;
+                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
                 let playerTotal = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
                     playerTotal += score;
                     const isSaved = this.isHoleSaved(player.flight, h);
                     const cellClass = isSaved ? 'score-green' : 'score-invisible';
-                    html += `<td class="${cellClass}">${score}</td>`;
+                    html += `<td class="${cellClass}">${score}<\/td>`;
                 }
                 html += `<td class="score-green">${playerTotal}<\/td><\/tr>`;
             }
@@ -814,7 +758,7 @@ function gameApp() {
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
             html += '</tbody></table>';
-            return html;
+            wrapper.innerHTML = html;
         },
         
         // ============================================================
@@ -977,16 +921,6 @@ function gameApp() {
         },
         
         // ============================================================
-        // WATCHERS (Alpine will call these when data changes)
-        // ============================================================
-        
-        watchData() {
-            // This will be called after Alpine initializes
-            // We need to re-render scorecard when displayMode changes
-            // Already handled in setDisplayMode
-        },
-        
-        // ============================================================
         // INITIALIZATION
         // ============================================================
         
@@ -1039,7 +973,6 @@ function gameApp() {
             this.loading = false;
             this.syncStatus = 'Synced';
             
-            // Initial scorecard render
             this.$nextTick(() => {
                 this.renderScorecard();
             });
@@ -1066,12 +999,10 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.04
+VERSION: 2.05
 KEY CHANGES:
-   - Scorecard rendering moved to JavaScript (Alpine only manages data)
-   - Fixed scorecard layout - columns properly aligned
-   - Play Order / Natural Order toggle re-renders scorecard
-   - Data updates trigger automatic scorecard re-render
-   - All previous cross-flight sync logic preserved
+   - Fixed intra-flight bubble colors: tied matches now show GREEN "AS" (not grey)
+   - Grey bubbles now only used for cross-flight out-of-sync and unplayed holes
+   - All intra-flight bubbles light up (green/red/green-AS) after flight saves a hole
 STATUS: Ready for testing
 -->
