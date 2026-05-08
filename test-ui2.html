@@ -142,6 +142,9 @@
         .row-cell-black {
             color: #000;
         }
+        .score-invisible {
+            color: #000;
+        }
         
         .action-buttons {
             display: flex;
@@ -226,7 +229,7 @@
 <div class="container" id="app">
     <div class="loading">Click a test button below</div>
 </div>
-<div class="version-tag">v2.00 - Direct JS</div>
+<div class="version-tag">v2.01 - Fixed invisible scores</div>
 
 <div class="test-panel">
     <div class="test-buttons">
@@ -340,86 +343,88 @@ function renderGame(uiData) {
     scorecardHtml += '<th>Tot</th></tr></thead><tbody>';
     
     // Par row
-    scorecardHtml += '<tr><td style="font-weight:700;">Par</td>';
+    scorecardHtml += '<tr><td style="font-weight:700;">Par<\/td>';
     var totalPar = 0;
     for (var h = 0; h < displayHoles.length; h++) {
         var par = course.par[displayHoles[h] - 1];
         totalPar += par;
-        scorecardHtml += '<td>' + par + '</td>';
+        scorecardHtml += '<td>' + par + '<\/td>';
     }
-    scorecardHtml += '<td>' + totalPar + '</td></tr>';
+    scorecardHtml += '<td>' + totalPar + '<\/td><\/tr>';
     
     // SI row
-    scorecardHtml += '<tr><td style="font-weight:700;">SI</td>';
+    scorecardHtml += '<tr><td style="font-weight:700;">SI<\/td>';
     for (var h = 0; h < displayHoles.length; h++) {
         var si = course.si[displayHoles[h] - 1];
-        scorecardHtml += '<td>' + si + '</td>';
+        scorecardHtml += '<td>' + si + '<\/td>';
     }
-    scorecardHtml += '<td>-</td></tr>';
+    scorecardHtml += '<td>-<\/td><\/tr>';
     
-    // Team A players (placeholder scores)
+    // Team A players (scores invisible until played)
     for (var pi = 0; pi < teamAPlayers.length; pi++) {
         var p = teamAPlayers[pi];
-        scorecardHtml += '<tr><td>' + p.label + '</td>';
+        scorecardHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
         for (var h = 0; h < displayHoles.length; h++) {
-            scorecardHtml += '<td class="placeholder">' + course.par[displayHoles[h] - 1] + '</td>';
+            // FIXED: scores are invisible (black text on black background)
+            scorecardHtml += '<td class="score-invisible">' + course.par[displayHoles[h] - 1] + '<\/td>';
         }
-        scorecardHtml += '<td>-</td></tr>';
+        scorecardHtml += '<td>-<\/td><\/tr>';
     }
     
     // Green line
-    scorecardHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    scorecardHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
     
     // T-1 row
-    scorecardHtml += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
+    scorecardHtml += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
     for (var h = 0; h < displayHoles.length; h++) {
         var val = t1Row[h] || '';
         var colorClass = (val !== '' && val !== '_') ? 'row-cell-green' : 'row-cell-black';
         var displayVal = (val === '_' || val === '') ? '' : val;
-        scorecardHtml += '<td class="' + colorClass + '">' + displayVal + '</td>';
+        scorecardHtml += '<td class="' + colorClass + '">' + displayVal + '<\/td>';
     }
-    scorecardHtml += '<td>-</td></tr>';
+    scorecardHtml += '<td>-<\/td><\/tr>';
     
     // Green line
-    scorecardHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    scorecardHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
     
-    // Team B players
+    // Team B players (scores invisible until played)
     for (var pi = 0; pi < teamBPlayers.length; pi++) {
         var p = teamBPlayers[pi];
-        scorecardHtml += '<tr><td>' + p.label + '</td>';
+        scorecardHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
         for (var h = 0; h < displayHoles.length; h++) {
-            scorecardHtml += '<td class="placeholder">' + course.par[displayHoles[h] - 1] + '</td>';
+            // FIXED: scores are invisible (black text on black background)
+            scorecardHtml += '<td class="score-invisible">' + course.par[displayHoles[h] - 1] + '<\/td>';
         }
-        scorecardHtml += '<td>-</td></tr>';
+        scorecardHtml += '<td>-<\/td><\/tr>';
     }
     
     // T-2 row
-    scorecardHtml += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
+    scorecardHtml += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
     for (var h = 0; h < displayHoles.length; h++) {
         var val = t2Row[h] || '';
         var colorClass = (val !== '' && val !== '_') ? 'row-cell-green' : 'row-cell-black';
         var displayVal = (val === '_' || val === '') ? '' : val;
-        scorecardHtml += '<td class="' + colorClass + '">' + displayVal + '</td>';
+        scorecardHtml += '<td class="' + colorClass + '">' + displayVal + '<\/td>';
     }
-    scorecardHtml += '<td>-</td></tr>';
+    scorecardHtml += '<td>-<\/td><\/tr>';
     
     // Green line
-    scorecardHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    scorecardHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
     
     // Strk row
-    scorecardHtml += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
+    scorecardHtml += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
     for (var h = 0; h < displayHoles.length; h++) {
         var val = strkRow[h] || '';
         var colorClass = (val !== '' && val !== '_') ? 'row-cell-green' : 'row-cell-black';
         var displayVal = (val === '_' || val === '') ? '' : val;
-        scorecardHtml += '<td class="' + colorClass + '">' + displayVal + '</td>';
+        scorecardHtml += '<td class="' + colorClass + '">' + displayVal + '<\/td>';
     }
-    scorecardHtml += '<td>-</td></tr>';
+    scorecardHtml += '<td>-<\/td><\/tr>';
     
-    scorecardHtml += '</tbody></table>';
+    scorecardHtml += '</tbody><\/table>';
     
     var html = 
-        '<div class="status-bubble">TEST v2.00</div>' +
+        '<div class="status-bubble">TEST v2.01</div>' +
         '<div class="game-info" style="text-align:center; margin-bottom:8px;">' + course.name + '</div>' +
         '<div class="game-header">' +
             '<div class="hole-number">HOLE 1</div>' +
@@ -459,7 +464,7 @@ function testStartOfGame() {
         }
     }
     
-    // All rows empty (unsynced)
+    // All rows empty (unsynced) - underscore means invisible
     var emptyRow = [];
     for (var h = 0; h < 18; h++) emptyRow.push("_");
     
@@ -486,7 +491,6 @@ function testAfterHole1() {
     var allPlayers = MOCK_PLAYERS;
     
     // For simplicity, set all bubbles to show Hole 1 results
-    // Flight 1 players vs Flight 2 players: A winning (G), B losing (R)
     for (var i = 0; i < allPlayers.length; i++) {
         for (var j = 0; j < allPlayers.length; j++) {
             if (allPlayers[i].team !== allPlayers[j].team) {
@@ -581,7 +585,7 @@ function testAfter6Holes() {
     renderGame(uiData);
 }
 
-console.log("test-ui2.html loaded - v2.00");
+console.log("test-ui2.html v2.01 loaded - Fixed invisible scores");
 </script>
 </body>
 </html>
