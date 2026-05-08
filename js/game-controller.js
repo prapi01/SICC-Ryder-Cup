@@ -1,13 +1,14 @@
-/**
- * FILE: js/game-controller.js
- * VERSION: 1.20
- * KEY CHANGES:
- *   - Reads teamGameFormat from GameData.getTeamGameFormat()
- *   - Passes teamGameFormat to GameTeam.calculate()
- *   - UI-Builder architecture per VDN #007
- *   - Builds UI string: V01 + TR + F1_BUBBLES + F2_BUBBLES + T1_ROW + T2_ROW + STRK_ROW
- * STATUS: Complete. Ready for integration.
- */
+/*
+FILE: js/game-controller.js
+VERSION: 1.20
+KEY CHANGES:
+   - Reads teamGameFormat from GameData.getTeamGameFormat()
+   - Passes teamGameFormat to GameTeam.calculate()
+   - UI-Builder architecture per VDN #007
+   - Builds UI string: V01 + TR + F1_BUBBLES + F2_BUBBLES + T1_ROW + T2_ROW + STRK_ROW
+   - Sends parsed UI data to game.html via window.updateGameUI()
+STATUS: Complete. Ready for integration with UI-Painter (game.html v1.13)
+*/
 
 // FILE: js/game-controller.js - VERSION 1.20
 // UI-Builder: Reads F1-18/F2-18, calls calculators, builds UI string
@@ -166,6 +167,7 @@ var GameController = (function() {
                 var numVal = parseInt(value, 10);
                 if (!isNaN(numVal)) {
                     if (flightPerspective === "f1") {
+                        // F1 perspective: Green if positive (winning), Red if negative (losing)
                         if (numVal > 0) {
                             var padded = numVal.toString().padStart(2, ' ');
                             result += "G" + padded;
@@ -175,7 +177,7 @@ var GameController = (function() {
                             result += "R" + padded2;
                         }
                     } else {
-                        // F2 perspective: Inverted
+                        // F2 perspective: Inverted (F2 wins when F1 is losing)
                         if (numVal < 0) {
                             var padded = Math.abs(numVal).toString().padStart(2, ' ');
                             result += "G" + padded;
@@ -624,3 +626,15 @@ if (document.readyState === 'loading') {
 } else {
     GameController.init();
 }
+
+/*
+FILE: js/game-controller.js
+VERSION: 1.20
+KEY CHANGES:
+   - Reads teamGameFormat from GameData.getTeamGameFormat()
+   - Passes teamGameFormat to GameTeam.calculate()
+   - UI-Builder architecture per VDN #007
+   - Builds UI string: V01 + TR + F1_BUBBLES + F2_BUBBLES + T1_ROW + T2_ROW + STRK_ROW
+   - Sends parsed UI data to game.html via window.updateGameUI()
+STATUS: Complete. Ready for integration with UI-Painter (game.html v1.13)
+*/
