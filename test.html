@@ -1,0 +1,202 @@
+<!-- FILE: admin.html - VERSION 1.04 -->
+<!-- Admin panel for SICC Ryder Cup App -->
+<!-- Navigation: Setup Game, Manage Games, Course Management -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Admin - SICC Ryder Cup</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/session.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: 20px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        
+        .version-tag { 
+            position: fixed; 
+            top: 8px; 
+            right: 8px; 
+            font-size: 0.65rem; 
+            color: #4caf50; 
+            background: rgba(0,0,0,0.6); 
+            padding: 2px 10px; 
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.8;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            letter-spacing: 0.5px;
+        }
+        
+        .header { text-align: center; margin-bottom: 40px; }
+        .title { font-size: 1.8rem; font-weight: 800; color: #4caf50; }
+        .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        
+        .menu { display: flex; flex-direction: column; gap: 16px; }
+        .admin-btn {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 60px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .admin-btn:active { transform: scale(0.98); background: #1a1a1a; }
+        .admin-btn .icon { font-size: 1.8rem; display: block; margin-bottom: 8px; }
+        .admin-btn .label { font-size: 1.2rem; font-weight: 600; color: #4caf50; }
+        .admin-btn .desc { font-size: 0.7rem; color: #888; margin-top: 4px; }
+        
+        .back-btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 40px;
+            padding: 14px;
+            text-align: center;
+            cursor: pointer;
+            margin-top: 30px;
+            transition: all 0.2s ease;
+        }
+        .back-btn:active { transform: scale(0.98); background: #2a2a2a; }
+        .back-btn .label { font-size: 0.9rem; font-weight: 600; color: #ccc; }
+        
+        .footer { text-align: center; margin-top: 40px; font-size: 0.6rem; color: #444; }
+        .loading { text-align: center; padding: 40px; color: #888; }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <div class="loading">Loading...</div>
+</div>
+<div class="device-tag" id="deviceTag">🖥️ ---</div>
+<div class="version-tag">v1.04</div>
+
+<script>
+// FILE: admin.html - VERSION 1.04
+
+var VERSION = "1.04";
+var CACHE_KEY = "admin_version";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== VERSION) {
+    localStorage.setItem(CACHE_KEY, VERSION);
+    window.location.href = window.location.pathname + "?v=" + VERSION;
+}
+
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+var db = null;
+var firestoreReady = false;
+var deviceSession = null;
+
+try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    firestoreReady = true;
+    console.log("Firebase ready - v" + VERSION);
+} catch(e) { 
+    console.warn(e);
+}
+
+function displayDeviceId() {
+    var deviceDisplay = SessionManager.getDeviceIdDisplay();
+    document.getElementById("deviceTag").innerHTML = deviceDisplay;
+}
+
+function goToSetupGame() {
+    SessionManager.addNavigationHistory("setup-game.html", "click_setup_new_game");
+    SessionManager.updateSession({
+        returnDestination: "admin.html"
+    });
+    window.location.href = "setup-game.html";
+}
+
+function goToManageGames() {
+    SessionManager.addNavigationHistory("manage-games.html", "click_manage_games");
+    SessionManager.updateSession({
+        returnDestination: "admin.html"
+    });
+    window.location.href = "manage-games.html";
+}
+
+function goToCourses() {
+    SessionManager.addNavigationHistory("courses.html", "click_course_management");
+    SessionManager.updateSession({
+        returnDestination: "admin.html"
+    });
+    window.location.href = "courses.html";
+}
+
+function goBackToMenu() {
+    window.location.href = "index.html";
+}
+
+function render() {
+    var html = `
+        <div class="header">
+            <div class="title">⚙️ GAME SETTINGS</div>
+            <div class="version">Administration Panel</div>
+        </div>
+        
+        <div class="menu">
+            <div class="admin-btn" onclick="goToSetupGame()">
+                <div class="icon">📅</div>
+                <div class="label">SET UP NEW GAME</div>
+                <div class="desc">Schedule a new match</div>
+            </div>
+            
+            <div class="admin-btn" onclick="goToManageGames()">
+                <div class="icon">📋</div>
+                <div class="label">MANAGE SCHEDULED GAMES</div>
+                <div class="desc">Edit or delete upcoming games</div>
+            </div>
+            
+            <div class="admin-btn" onclick="goToCourses()">
+                <div class="icon">⛳</div>
+                <div class="label">COURSE MANAGEMENT</div>
+                <div class="desc">Add or edit courses</div>
+            </div>
+        </div>
+        
+        <div class="back-btn" onclick="goBackToMenu()">
+            <div class="label">← Back to Main Menu</div>
+        </div>
+        
+        <div class="footer">SICC Ryder Cup</div>
+    `;
+    
+    document.getElementById("app").innerHTML = html;
+}
+
+SessionManager.initSession("admin.html", "admin.html", function(session) {
+    console.log("Session initialized:", session);
+    deviceSession = session;
+    displayDeviceId();
+    render();
+});
+</script>
+</body>
+</html>
