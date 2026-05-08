@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI Test - Simple Static</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        
+        .status-bubble {
+            background: rgba(76,175,80,0.3);
+            border: 1px solid #4caf50;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            margin-bottom: 16px;
+        }
+        
+        .hole-header { text-align: center; margin: 16px 0; }
+        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
+        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        
+        .flight-tab {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            border-radius: 40px;
+            padding: 10px;
+            text-align: center;
+            margin: 16px 0;
+        }
+        
+        .team-score-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .team-score-green { color: #4caf50; }
+        .team-score-red { color: #ff6b6b; }
+        .team-score { font-size: 1.3rem; font-weight: 700; }
+        
+        .player-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #333;
+        }
+        .player-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .player-name { font-size: 1rem; font-weight: 600; }
+        .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
+        .score-control { display: flex; gap: 12px; align-items: center; }
+        .score-btn { background: #1a3a1a; border: none; width: 40px; height: 40px; border-radius: 30px; font-size: 1.2rem; color: #fff; cursor: pointer; }
+        .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; }
+        
+        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
+        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        
+        .scorecard-wrapper { overflow-x: auto; margin: 20px 0; }
+        .scorecard-table { width: 100%; min-width: 700px; font-size: 0.7rem; border-collapse: collapse; }
+        .scorecard-table th, .scorecard-table td { padding: 6px 3px; text-align: center; border: 1px solid #222; }
+        .scorecard-table th { color: #4caf50; background: #111; }
+        .score-green { color: #4caf50; font-weight: 600; }
+        .score-invisible { color: #000; }
+        .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+        
+        .action-buttons { display: flex; gap: 12px; margin: 20px 0; }
+        .btn { flex: 1; padding: 12px; border-radius: 40px; font-weight: 600; text-align: center; cursor: pointer; }
+        .btn-save { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        
+        .test-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #1a1a1a;
+            border-top: 2px solid #4caf50;
+            padding: 12px;
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .test-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.7rem;
+        }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <!-- Content will be rendered by JavaScript -->
+</div>
+<div class="test-panel">
+    <button class="test-btn" onclick="showStartOfGame()">🏁 Start of Game</button>
+    <button class="test-btn" onclick="showAfterHole1()">📌 After Hole 1</button>
+    <button class="test-btn" onclick="showAfter6Holes()">📊 After 6 Holes</button>
+</div>
+
+<script>
+// ============================================================
+// HARDCODED DATA - NO PARSING, NO FIREBASE
+// ============================================================
+
+const COURSE = {
+    name: "SICC Bukit Course",
+    par: [4, 3, 4, 5, 3, 4, 4, 4, 4, 4, 4, 3, 5, 3, 5, 4, 3, 5],
+    si: [13, 15, 7, 3, 17, 1, 5, 11, 9, 14, 2, 8, 6, 16, 10, 4, 18, 12]
+};
+
+const PLAYERS = [
+    { name: "Ang C H", label: "ACH", handicap: 1, team: "A", flight: 1 },
+    { name: "Kenneth Foo", label: "KF", handicap: 3, team: "A", flight: 1 },
+    { name: "C K", label: "CK", handicap: 8, team: "A", flight: 2 },
+    { name: "Yip H M", label: "YHM", handicap: 12, team: "A", flight: 2 },
+    { name: "Jeff Goh", label: "JG", handicap: 0, team: "B", flight: 1 },
+    { name: "Ong C B", label: "OCB", handicap: 1, team: "B", flight: 1 },
+    { name: "Piti", label: "P", handicap: 8, team: "B", flight: 2 },
+    { name: "James Ong", label: "JO", handicap: 11, team: "B", flight: 2 }
+];
+
+// ============================================================
+// RENDER FUNCTION
+// ============================================================
+
+function render(data) {
+    const { tr, matchBubbles, t1Row, t2Row, strkRow, currentHole, savedHoles, scores, startingHole } = data;
+    
+    // Build TR display
+    const teamAGreen = tr.teamA >= tr.teamB;
+    const teamBGreen = tr.teamB >= tr.teamA;
+    const trHtml = `<span class="${teamAGreen ? 'team-score-green' : 'team-score-red'}">Team A ${tr.teamA}</span> - <span class="${teamBGreen ? 'team-score-green' : 'team-score-red'}">${tr.teamB} Team B</span>`;
+    
+    // Get current hole par and si
+    const currentPar = COURSE.par[currentHole - 1];
+    const currentSi = COURSE.si[currentHole - 1];
+    
+    // Build player cards for Flight 1
+    const flight1Players = PLAYERS.filter(p => p.flight === 1);
+    let playerCards = '';
+    
+    for (const p of flight1Players) {
+        // Get score for current hole
+        const scoreKey = `${p.flight}_${currentHole}_${p.name}`;
+        const currentScore = (scores && scores[scoreKey] !== undefined) ? scores[scoreKey] : currentPar;
+        
+        // Build match bubbles for this player
+        const opponents = PLAYERS.filter(op => op.team !== p.team);
+        let bubblesHtml = '<div class="bubbles">';
+        for (const opp of opponents) {
+            const bubbleKey = `${p.name}_vs_${opp.name}`;
+            const bubble = matchBubbles[bubbleKey] || { color: 'Y', value: 'AS' };
+            let bubbleClass = 'bubble';
+            if (bubble.color === 'G') bubbleClass += ' bubble-green';
+            else if (bubble.color === 'R') bubbleClass += ' bubble-red';
+            else bubbleClass += ' bubble-grey';
+            bubblesHtml += `<div class="${bubbleClass}">vs ${opp.label} ${bubble.value}</div>`;
+        }
+        bubblesHtml += '</div>';
+        
+        playerCards += `
+            <div class="player-card">
+                <div class="player-header">
+                    <div><span class="player-name">${p.name}</span><span class="player-handicap">${p.label} ${p.handicap}</span></div>
+                    <div class="score-control">
+                        <button class="score-btn" onclick="alert('+/- disabled in static test')">-</button>
+                        <span class="score-value">${currentScore}</span>
+                        <button class="score-btn" onclick="alert('+/- disabled in static test')">+</button>
+                    </div>
+                </div>
+                ${bubblesHtml}
+            </div>
+        `;
+    }
+    
+    // Build scorecard - with shotgun start support
+    // Create display order (startingHole to 18, then 1 to startingHole-1)
+    const displayHoles = [];
+    for (let i = startingHole; i <= 18; i++) displayHoles.push(i);
+    for (let i = 1; i < startingHole; i++) displayHoles.push(i);
+    
+    // Sort players by team then flight then handicap for scorecard
+    const sortedPlayers = [...PLAYERS];
+    sortedPlayers.sort((a, b) => {
+        if (a.team !== b.team) return a.team === 'A' ? -1 : 1;
+        if (a.flight !== b.flight) return a.flight - b.flight;
+        return a.handicap - b.handicap;
+    });
+    
+    const teamAPlayers = sortedPlayers.filter(p => p.team === 'A');
+    const teamBPlayers = sortedPlayers.filter(p => p.team === 'B');
+    
+    let scorecardHtml = '<table class="scorecard-table">';
+    scorecardHtml += '<thead><tr><th>Hole</th>';
+    for (const h of displayHoles) scorecardHtml += `<th>${h}</th>`;
+    scorecardHtml += '<th>Tot</th></tr></thead><tbody>';
+    
+    // Par row
+    scorecardHtml += '<tr><td style="font-weight:700;">Par</td>';
+    let totalPar = 0;
+    for (const h of displayHoles) {
+        const par = COURSE.par[h-1];
+        totalPar += par;
+        scorecardHtml += `<td>${par}</td>`;
+    }
+    scorecardHtml += `<td>${totalPar}</td></tr>`;
+    
+    // SI row
+    scorecardHtml += '<tr><td style="font-weight:700;">SI</td>';
+    for (const h of displayHoles) {
+        const si = COURSE.si[h-1];
+        scorecardHtml += `<td>${si}</td>`;
+    }
+    scorecardHtml += '<td>-</td></tr>';
+    
+    // Team A players
+    for (const p of teamAPlayers) {
+        scorecardHtml += `<tr><td style="font-weight:600;">${p.label}</td>`;
+        let total = 0;
+        for (const h of displayHoles) {
+            const scoreKey = `${p.flight}_${h}_${p.name}`;
+            let score = COURSE.par[h-1];
+            let isSaved = false;
+            
+            if (scores && scores[scoreKey] !== undefined) {
+                score = scores[scoreKey];
+                isSaved = true;
+            } else if (savedHoles && savedHoles[p.flight] && savedHoles[p.flight].includes(h)) {
+                score = COURSE.par[h-1];
+                isSaved = true;
+            }
+            
+            total += score;
+            const cellClass = isSaved ? 'score-green' : 'score-invisible';
+            scorecardHtml += `<td class="${cellClass}">${score}</td>`;
+        }
+        scorecardHtml += `<td class="score-green">${total}</td></tr>`;
+    }
+    
+    // Green line after Team A
+    scorecardHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // T-1 row
+    scorecardHtml += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
+    for (let i = 0; i < displayHoles.length; i++) {
+        const val = t1Row[i] || '';
+        const displayVal = (val === '_' || val === '') ? '' : val;
+        const cellClass = val && val !== '_' ? 'score-green' : 'score-invisible';
+        scorecardHtml += `<td class="${cellClass}">${displayVal}</td>`;
+    }
+    scorecardHtml += '<td>-</td></tr>';
+    
+    // Green line
+    scorecardHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Team B players
+    for (const p of teamBPlayers) {
+        scorecardHtml += `<tr><td style="font-weight:600;">${p.label}</td>`;
+        let total = 0;
+        for (const h of displayHoles) {
+            const scoreKey = `${p.flight}_${h}_${p.name}`;
+            let score = COURSE.par[h-1];
+            let isSaved = false;
+            
+            if (scores && scores[scoreKey] !== undefined) {
+                score = scores[scoreKey];
+                isSaved = true;
+            } else if (savedHoles && savedHoles[p.flight] && savedHoles[p.flight].includes(h)) {
+                score = COURSE.par[h-1];
+                isSaved = true;
+            }
+            
+            total += score;
+            const cellClass = isSaved ? 'score-green' : 'score-invisible';
+            scorecardHtml += `<td class="${cellClass}">${score}</td>`;
+        }
+        scorecardHtml += `<td class="score-green">${total}</td></tr>`;
+    }
+    
+    // T-2 row
+    scorecardHtml += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
+    for (let i = 0; i < displayHoles.length; i++) {
+        const val = t2Row[i] || '';
+        const displayVal = (val === '_' || val === '') ? '' : val;
+        const cellClass = val && val !== '_' ? 'score-green' : 'score-invisible';
+        scorecardHtml += `<td class="${cellClass}">${displayVal}</td>`;
+    }
+    scorecardHtml += '<td>-</td></tr>';
+    
+    // Green line
+    scorecardHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Strk row
+    scorecardHtml += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
+    for (let i = 0; i < displayHoles.length; i++) {
+        const val = strkRow[i] || '';
+        const displayVal = (val === '_' || val === '') ? '' : val;
+        const cellClass = val && val !== '_' ? 'score-green' : 'score-invisible';
+        scorecardHtml += `<td class="${cellClass}">${displayVal}</td>`;
+    }
+    scorecardHtml += '<td>-</td></tr>';
+    
+    scorecardHtml += '</tbody></table>';
+    
+    // Build full page
+    const html = `
+        <div class="status-bubble">STATIC TEST</div>
+        <div style="text-align:center; margin-bottom:8px;">${COURSE.name}</div>
+        <div class="hole-header">
+            <div class="hole-number">HOLE ${currentHole}</div>
+            <div class="hole-par">PAR ${currentPar}  SI ${currentSi}</div>
+        </div>
+        <div class="flight-tab">Flight 1</div>
+        <div class="team-score-card"><div class="team-score">${trHtml}</div></div>
+        <div class="player-cards">${playerCards}</div>
+        <div class="action-buttons">
+            <button class="btn btn-back" disabled>Back</button>
+            <button class="btn btn-save" disabled>Save</button>
+            <button class="btn btn-next" disabled>Next</button>
+        </div>
+        <div class="scorecard-wrapper">${scorecardHtml}</div>
+        <div style="text-align:center; font-size:0.6rem; color:#555; margin-top:20px;">Static test • Buttons disabled • Data is hardcoded</div>
+    `;
+    
+    document.getElementById("app").innerHTML = html;
+}
+
+// ============================================================
+// TEST SCENARIOS
+// ============================================================
+
+function showStartOfGame() {
+    // TR tied 9.5 - 9.5
+    const tr = { teamA: 9.5, teamB: 9.5 };
+    
+    // All bubbles grey AS
+    const matchBubbles = {};
+    for (const p1 of PLAYERS) {
+        for (const p2 of PLAYERS) {
+            if (p1.team !== p2.team) {
+                matchBubbles[`${p1.name}_vs_${p2.name}`] = { color: 'Y', value: 'AS' };
+            }
+        }
+    }
+    
+    // No holes synced - all underscores (invisible)
+    const t1Row = Array(18).fill('_');
+    const t2Row = Array(18).fill('_');
+    const strkRow = Array(18).fill('_');
+    
+    // No saved holes
+    const savedHoles = { 1: [], 2: [] };
+    const scores = {};
+    
+    render({
+        tr,
+        matchBubbles,
+        t1Row,
+        t2Row,
+        strkRow,
+        currentHole: 10,  // Starting hole 10
+        savedHoles,
+        scores,
+        startingHole: 10
+    });
+}
+
+function showAfterHole1() {
+    // TR: Team A leads 10.5 - 8.5
+    const tr = { teamA: 10.5, teamB: 8.5 };
+    
+    // Match bubbles: Flight 1 A players winning vs B players
+    const matchBubbles = {};
+    for (const p1 of PLAYERS) {
+        for (const p2 of PLAYERS) {
+            if (p1.team !== p2.team) {
+                // A players winning
+                if (p1.team === 'A') {
+                    matchBubbles[`${p1.name}_vs_${p2.name}`] = { color: 'G', value: '1' };
+                } else {
+                    matchBubbles[`${p1.name}_vs_${p2.name}`] = { color: 'R', value: '1' };
+                }
+            }
+        }
+    }
+    
+    // T1: Team A leads hole 10 (first in display order), rest unsynced
+    // T2: Team B leads hole 10, Strk: Team A leads hole 10
+    const t1Row = Array(18).fill('_');
+    const t2Row = Array(18).fill('_');
+    const strkRow = Array(18).fill('_');
+    t1Row[0] = 'A';  // Hole 10 (first in display order)
+    t2Row[0] = 'B';
+    strkRow[0] = 'A';
+    
+    // Hole 10 saved for both flights
+    const savedHoles = { 1: [10], 2: [10] };
+    const scores = {};
+    
+    render({
+        tr,
+        matchBubbles,
+        t1Row,
+        t2Row,
+        strkRow,
+        currentHole: 11,  // Move to next hole
+        savedHoles,
+        scores,
+        startingHole: 10
+    });
+}
+
+function showAfter6Holes() {
+    // TR: Team A leads 11.5 - 7.5
+    const tr = { teamA: 11.5, teamB: 7.5 };
+    
+    // Match bubbles: A winning solidly
+    const matchBubbles = {};
+    for (const p1 of PLAYERS) {
+        for (const p2 of PLAYERS) {
+            if (p1.team !== p2.team) {
+                matchBubbles[`${p1.name}_vs_${p2.name}`] = { color: 'G', value: '3' };
+            }
+        }
+    }
+    
+    // Display order: 10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9
+    // First 6 holes in display order: 10,11,12,13,14,15
+    const t1Row = Array(18).fill('_');
+    const t2Row = Array(18).fill('_');
+    const strkRow = Array(18).fill('_');
+    
+    // Team A leads T1 and Strk, Team B leads T2 for first 6 holes
+    for (let i = 0; i < 6; i++) {
+        t1Row[i] = 'A';
+        t2Row[i] = 'B';
+        strkRow[i] = 'A';
+    }
+    
+    // Holes 10-15 saved
+    const savedHoles = { 1: [10,11,12,13,14,15], 2: [10,11,12,13,14,15] };
+    const scores = {};
+    
+    render({
+        tr,
+        matchBubbles,
+        t1Row,
+        t2Row,
+        strkRow,
+        currentHole: 16,  // Next hole to play
+        savedHoles,
+        scores,
+        startingHole: 10
+    });
+}
+
+// Show start of game by default
+showStartOfGame();
+</script>
+</body>
+</html>
