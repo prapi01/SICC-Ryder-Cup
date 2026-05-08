@@ -1,6 +1,17 @@
-// FILE: js/game-data.js - VERSION 1.06
+/**
+ * FILE: js/game-data.js
+ * VERSION: 1.07
+ * KEY CHANGES:
+ *   - Added teamGameFormat field (tournament/relative) per VDN #008
+ *   - Added getTeamGameFormat() getter
+ *   - Loads teamGameFormat from Firestore document on load and refresh
+ *   - Defaults to "tournament" for existing games (backward compatible)
+ * STATUS: Complete. Ready for integration.
+ */
+
+// FILE: js/game-data.js - VERSION 1.07
 // String-based data manager for SICC Ryder Cup
-// SUPPORT: previewSandboxes collection for PREVIEW mode
+// ADDED: teamGameFormat support (tournament/relative)
 
 var GameData = (function() {
     
@@ -11,6 +22,7 @@ var GameData = (function() {
     var currentPlayers = [];
     var startingHole = 1;
     var isPreviewSandbox = false;
+    var teamGameFormat = "tournament";  // NEW: "tournament" or "relative"
     
     var flight1Data = {
         data: "",
@@ -38,6 +50,10 @@ var GameData = (function() {
     
     function getStartingHole() {
         return startingHole;
+    }
+    
+    function getTeamGameFormat() {
+        return teamGameFormat;
     }
     
     function getPlayOrder() {
@@ -226,7 +242,8 @@ var GameData = (function() {
             editableFlight: editableFlight,
             gameId: gameId,
             startingHole: startingHole,
-            isPreviewSandbox: isPreviewSandbox
+            isPreviewSandbox: isPreviewSandbox,
+            teamGameFormat: teamGameFormat
         };
     }
     
@@ -349,7 +366,14 @@ var GameData = (function() {
                         startingHole = 1;
                     }
                     
-                    console.log("Refresh completed - startingHole:", startingHole);
+                    // NEW: Read teamGameFormat
+                    if (data.teamGameFormat) {
+                        teamGameFormat = data.teamGameFormat;
+                    } else {
+                        teamGameFormat = "tournament";
+                    }
+                    
+                    console.log("Refresh completed - startingHole:", startingHole, "teamGameFormat:", teamGameFormat);
                     notifyDataChanged();
                 }
             })
@@ -402,6 +426,13 @@ var GameData = (function() {
                         startingHole = 1;
                     }
                     
+                    // NEW: Read teamGameFormat
+                    if (data.teamGameFormat) {
+                        teamGameFormat = data.teamGameFormat;
+                    } else {
+                        teamGameFormat = "tournament";
+                    }
+                    
                     if (data.f1) {
                         flight1Data.data = data.f1.d || generateDefaultData(currentCourse ? currentCourse.par : null);
                         flight1Data.saveEvent = data.f1.se || false;
@@ -428,7 +459,7 @@ var GameData = (function() {
                         locks.f2 = data.locks.f2 || null;
                     }
                     
-                    console.log("Game loaded - startingHole:", startingHole, "isPreviewSandbox:", isPreviewSandbox);
+                    console.log("Game loaded - startingHole:", startingHole, "teamGameFormat:", teamGameFormat, "isPreviewSandbox:", isPreviewSandbox);
                     notifyDataChanged();
                     if (callback) callback(true);
                 } else {
@@ -462,6 +493,7 @@ var GameData = (function() {
         clearCrossEvent: clearCrossEvent,
         clearSaveEvent: clearSaveEvent,
         getStartingHole: getStartingHole,
+        getTeamGameFormat: getTeamGameFormat,
         getPlayOrder: getPlayOrder,
         getNaturalOrder: getNaturalOrder,
         getDisplayHoleOrder: getDisplayHoleOrder,
