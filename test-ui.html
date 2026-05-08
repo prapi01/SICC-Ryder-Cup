@@ -1,0 +1,764 @@
+<!--
+FILE: test-ui.html
+VERSION: 1.00
+PURPOSE: Standalone UI-Painter test harness
+          - Accepts UI string input
+          - Renders using game.html v1.13 logic
+          - No Firebase, no controllers, no dependencies
+          - Once verified, same rendering logic works in real game.html
+STATUS: Complete. Ready for testing.
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>UI-Painter Test Harness - SICC Ryder Cup</title>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        /* Test Panel Styles */
+        .test-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #1a1a1a;
+            border-top: 2px solid #4caf50;
+            padding: 16px;
+            z-index: 2000;
+            max-height: 40%;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+        .test-panel h3 {
+            color: #4caf50;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+        .test-input {
+            width: 100%;
+            padding: 8px;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            color: #fff;
+            font-family: monospace;
+            font-size: 0.7rem;
+            margin-bottom: 8px;
+            resize: vertical;
+        }
+        .test-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .test-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .test-btn:hover {
+            background: #2a4a2a;
+        }
+        .status {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 8px;
+        }
+        
+        /* Game UI Styles - Copied from game.html v1.13 */
+        body { 
+            background: #000; 
+            font-family: system-ui, sans-serif; 
+            color: #fff; 
+            padding: 12px; 
+            padding-bottom: 35%; /* Make room for test panel */
+        }
+        .container { max-width: 500px; margin: 0 auto; padding-bottom: 80px; }
+        
+        .version-tag { 
+            position: fixed; 
+            top: 8px; 
+            right: 8px; 
+            font-size: 0.65rem; 
+            color: #4caf50; 
+            background: rgba(0,0,0,0.6); 
+            padding: 2px 10px; 
+            border-radius: 16px;
+            z-index: 1000;
+        }
+        .device-tag {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            z-index: 1000;
+            opacity: 0.4;
+        }
+        .status-bubble { 
+            position: fixed; 
+            top: 32px; 
+            left: 8px; 
+            font-size: 0.65rem; 
+            padding: 4px 10px; 
+            border-radius: 20px; 
+            font-weight: 600; 
+            background: rgba(0,0,0,0.7); 
+            z-index: 1000; 
+        }
+        .status-real { background: rgba(76,175,80,0.3); border: 1px solid #4caf50; color: #4caf50; }
+        .status-preview { background: rgba(255,170,68,0.3); border: 1px solid #ffaa44; color: #ffaa44; }
+        
+        .game-header { text-align: center; margin-bottom: 20px; margin-top: 8px; }
+        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
+        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        
+        .flight-tab { display: block; width: 100%; max-width: 350px; margin: 0 auto 20px auto; padding: 12px; text-align: center; background: #1a3a1a; border-radius: 40px; border: 1px solid #4caf50; font-weight: 600; font-size: 1rem; }
+        
+        .team-score-card { background: #111; border-radius: 16px; padding: 12px; text-align: center; margin-bottom: 20px; border: 1px solid #333; }
+        .team-score { font-size: 1.3rem; font-weight: 700; }
+        .team-score-green { color: #4caf50; }
+        .team-score-red { color: #ff6b6b; }
+        
+        .player-card { background: #111; border-radius: 16px; padding: 12px; margin-bottom: 10px; border: 1px solid #333; }
+        .player-row { display: flex; justify-content: space-between; align-items: center; }
+        .player-name { font-size: 1rem; font-weight: 600; }
+        .player-label-bubble { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; color: #fff; }
+        .score-control { display: flex; align-items: center; gap: 12px; }
+        .score-btn { background: #1a3a1a; border: none; width: 42px; height: 42px; border-radius: 30px; font-size: 1.3rem; font-weight: bold; color: #fff; cursor: pointer; }
+        .score-btn:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
+        .score-value { font-size: 1.3rem; font-weight: 700; min-width: 50px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
+        
+        .bubbles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+        .bubble { flex: 1; text-align: center; padding: 6px 4px; border-radius: 20px; font-size: 0.65rem; font-weight: 700; }
+        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        
+        .scorecard-section { margin: 20px 0; }
+        .scorecard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+        .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .view-toggle { display: flex; gap: 4px; }
+        .toggle-btn { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 4px 12px; font-size: 0.65rem; cursor: pointer; color: #888; transition: all 0.2s; }
+        .toggle-btn.active { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+        .refresh-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #4caf50; padding: 0 10px; }
+        
+        .scorecard-wrapper { overflow-x: auto; background: #0a0a0a; border-radius: 12px; padding: 8px; }
+        .scorecard-table { width: 100%; min-width: 800px; font-size: 0.7rem; border-collapse: collapse; }
+        .scorecard-table th, .scorecard-table td { padding: 8px 5px; text-align: center; border: 1px solid #222; }
+        .scorecard-table th { color: #4caf50; background: #111; }
+        .scorecard-table .completed { background: #1a3a1a30; font-weight: 700; color: #ffffff; }
+        .scorecard-table .placeholder { color: #000000 !important; background: #0a0a0a; opacity: 0.4; }
+        .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+        
+        .game-info { text-align: center; margin-bottom: 16px; font-size: 0.8rem; color: #888; }
+        
+        .action-buttons { display: flex; gap: 16px; justify-content: center; margin: 20px 0; }
+        .action-btn { width: 100px; padding: 12px 0; border-radius: 40px; font-weight: 600; font-size: 1rem; cursor: pointer; border: none; }
+        .btn-save { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-next-active { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; cursor: pointer; }
+        .btn-next-inactive { background: #2a2a2a; color: #555; border: 1px solid #444; cursor: not-allowed; }
+        .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .btn-back:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
+        
+        .menu-button-container { margin-top: 30px; margin-bottom: 20px; }
+        .btn-menu { width: 100%; padding: 14px; border-radius: 40px; font-weight: 600; font-size: 1rem; text-align: center; cursor: pointer; border: none; background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        
+        .loading { text-align: center; padding: 40px; color: #888; }
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <div class="loading">Waiting for UI string...</div>
+</div>
+<div class="device-tag">🧪 TEST MODE</div>
+<div class="version-tag">v1.00</div>
+
+<!-- Test Panel -->
+<div class="test-panel">
+    <h3>🧪 UI-Painter Test Harness</h3>
+    <textarea id="uiStringInput" class="test-input" rows="3" placeholder="Paste UI string here..."></textarea>
+    <div class="test-buttons">
+        <button class="test-btn" onclick="renderFromString()">▶ Render</button>
+        <button class="test-btn" onclick="loadExample1()">📋 Example 1: Start of Game</button>
+        <button class="test-btn" onclick="loadExample2()">📋 Example 2: After Hole 1 (Both Saved)</button>
+        <button class="test-btn" onclick="loadExample3()">📋 Example 3: After Hole 6 (A Leading)</button>
+        <button class="test-btn" onclick="clearUI()">🗑 Clear</button>
+    </div>
+    <div class="status" id="status">Ready. Paste a UI string or click an example.</div>
+</div>
+
+<script>
+// ============================================================
+// UI-Painter Core (same as game.html v1.13)
+// ============================================================
+
+var uiData = null;
+var currentDisplayMode = "play";
+
+// Mock data for test harness (since no Firebase/controller)
+var mockPlayers = [
+    { name: "Ang C H", label: "ACH", handicap: 1, team: "A", flight: 1 },
+    { name: "Kenneth Foo", label: "KF", handicap: 3, team: "A", flight: 1 },
+    { name: "Jeff Goh", label: "JG", handicap: 0, team: "B", flight: 1 },
+    { name: "Ong C B", label: "OCB", handicap: 1, team: "B", flight: 1 },
+    { name: "C K", label: "CK", handicap: 8, team: "A", flight: 2 },
+    { name: "Yip H M", label: "YHM", handicap: 12, team: "A", flight: 2 },
+    { name: "Piti", label: "P", handicap: 8, team: "B", flight: 2 },
+    { name: "James Ong", label: "JO", handicap: 11, team: "B", flight: 2 }
+];
+
+var mockCourse = {
+    name: "SICC Bukit Course",
+    par: [4, 4, 5, 3, 4, 4, 3, 5, 4, 4, 3, 4, 5, 4, 3, 4, 4, 5],
+    si: [1, 11, 3, 5, 13, 15, 7, 9, 17, 18, 6, 8, 16, 12, 2, 4, 14, 10]
+};
+
+// Display preferences
+function loadDisplayPreference() {
+    var saved = localStorage.getItem("scorecardDisplay");
+    if (saved === "natural" || saved === "play") {
+        currentDisplayMode = saved;
+    } else {
+        currentDisplayMode = "play";
+    }
+}
+
+function saveDisplayPreference(mode) {
+    currentDisplayMode = mode;
+    localStorage.setItem("scorecardDisplay", mode);
+}
+
+function toggleDisplayMode() {
+    if (currentDisplayMode === "play") {
+        saveDisplayPreference("natural");
+    } else {
+        saveDisplayPreference("play");
+    }
+    renderScorecard();
+    updateToggleButtons();
+}
+
+function updateToggleButtons() {
+    var playBtn = document.getElementById("playViewBtn");
+    var naturalBtn = document.getElementById("naturalViewBtn");
+    if (playBtn && naturalBtn) {
+        if (currentDisplayMode === "play") {
+            playBtn.classList.add("active");
+            naturalBtn.classList.remove("active");
+        } else {
+            playBtn.classList.remove("active");
+            naturalBtn.classList.add("active");
+        }
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
+    });
+}
+
+// Render scorecard
+function renderScorecard() {
+    if (!uiData) return;
+    
+    var data = uiData;
+    var course = data.course || mockCourse;
+    var players = data.players || mockPlayers;
+    
+    var displayHoleOrder;
+    if (currentDisplayMode === "natural") {
+        displayHoleOrder = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+    } else {
+        displayHoleOrder = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+    }
+    
+    var allPlayersSorted = [...players];
+    allPlayersSorted.sort(function(a, b) {
+        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
+        if (a.flight !== b.flight) return a.flight - b.flight;
+        return a.handicap - b.handicap;
+    });
+    
+    var tableHtml = '<table class="scorecard-table">';
+    tableHtml += '<thead><tr><th>Hole</th>';
+    for (var i = 0; i < displayHoleOrder.length; i++) {
+        tableHtml += '<th>' + displayHoleOrder[i] + '</th>';
+    }
+    tableHtml += '<th>Tot</th></tr></thead>';
+    tableHtml += '<tbody>';
+    
+    // Par row
+    tableHtml += '<tr><td style="font-weight:700;">Par</td>';
+    var totalPar = 0;
+    for (var i = 0; i < displayHoleOrder.length; i++) {
+        var holeNum = displayHoleOrder[i];
+        var par = course.par[holeNum - 1];
+        totalPar += par;
+        tableHtml += '<td>' + par + '</td>';
+    }
+    tableHtml += '<td>' + totalPar + '</td></tr>';
+    
+    // SI row
+    tableHtml += '<tr><td style="font-weight:700;">SI</td>';
+    for (var i = 0; i < displayHoleOrder.length; i++) {
+        var holeNum = displayHoleOrder[i];
+        var si = course.si[holeNum - 1];
+        tableHtml += '<td>' + si + '</td>';
+    }
+    tableHtml += '<td>-</td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Player scores
+    for (var pi = 0; pi < allPlayersSorted.length; pi++) {
+        var p = allPlayersSorted[pi];
+        var total = 0;
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        for (var i = 0; i < displayHoleOrder.length; i++) {
+            var holeNum = displayHoleOrder[i];
+            var score = (data.scores && data.scores[p.flight + "_" + holeNum + "_" + pi]) ? data.scores[p.flight + "_" + holeNum + "_" + pi] : course.par[holeNum - 1];
+            total += score;
+            var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(holeNum) !== -1;
+            if (completed) {
+                tableHtml += '<td class="completed"><strong>' + score + '</strong></td>';
+            } else {
+                tableHtml += '<td class="placeholder">' + score + '</td>';
+            }
+        }
+        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
+    }
+    
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // T-1 row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1</td>';
+    var t1RowData = data.t1Row || [];
+    for (var i = 0; i < displayHoleOrder.length; i++) {
+        var val = (i < t1RowData.length) ? t1RowData[i] : "-";
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">' + (data.t1Total || "-") + '</td></tr>';
+    
+    // T-2 row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2</td>';
+    var t2RowData = data.t2Row || [];
+    for (var i = 0; i < displayHoleOrder.length; i++) {
+        var val = (i < t2RowData.length) ? t2RowData[i] : "-";
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">' + (data.t2Total || "-") + '</td></tr>';
+    
+    // Strk row
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk</td>';
+    var strkRowData = data.strkRow || [];
+    for (var i = 0; i < displayHoleOrder.length; i++) {
+        var val = (i < strkRowData.length) ? strkRowData[i] : "-";
+        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '</td></tr>';
+    
+    tableHtml += '</tbody></table>';
+    
+    var scorecardWrapper = document.querySelector(".scorecard-wrapper");
+    if (scorecardWrapper) {
+        scorecardWrapper.innerHTML = tableHtml;
+    }
+}
+
+// Parse UI string (from game-controller.js)
+function parseUIString(uiString) {
+    if (!uiString || uiString.length < 10) {
+        return null;
+    }
+    
+    var pos = 0;
+    
+    // Version (3 chars)
+    var version = uiString.substr(pos, 3);
+    pos += 3;
+    
+    // Find TR segment
+    var taIndex = uiString.indexOf("TA", pos);
+    var tbIndex = uiString.indexOf("TB", taIndex);
+    if (taIndex === -1 || tbIndex === -1) return null;
+    
+    var trEnd = uiString.indexOf("G", tbIndex);
+    if (trEnd === -1) trEnd = uiString.length;
+    
+    var trSegment = uiString.substring(taIndex, trEnd);
+    var trMatch = trSegment.match(/TA([\d\.]+)TB([\d\.]+)/);
+    var trPoints = { teamA: 9.5, teamB: 9.5 };
+    if (trMatch) {
+        trPoints.teamA = parseFloat(trMatch[1]);
+        trPoints.teamB = parseFloat(trMatch[2]);
+    }
+    
+    pos = trEnd;
+    
+    // F1_BUBBLES (48 chars)
+    var f1BubblesRaw = uiString.substr(pos, 48);
+    pos += 48;
+    
+    // F2_BUBBLES (48 chars)
+    var f2BubblesRaw = uiString.substr(pos, 48);
+    pos += 48;
+    
+    // T1_ROW (36 chars)
+    var t1Raw = uiString.substr(pos, 36);
+    pos += 36;
+    
+    // T2_ROW (36 chars)
+    var t2Raw = uiString.substr(pos, 36);
+    pos += 36;
+    
+    // STRK_ROW (36 chars)
+    var strkRaw = uiString.substr(pos, 36);
+    
+    function parseRow(raw, length) {
+        var result = [];
+        for (var i = 0; i < length; i++) {
+            var cell = raw.substr(i * 2, 2);
+            var value = cell.charAt(1);
+            result.push(value === "0" ? "AS" : value);
+        }
+        return result;
+    }
+    
+    function parseBubbles(raw) {
+        var bubbles = [];
+        for (var i = 0; i < 16; i++) {
+            var bubble = raw.substr(i * 3, 3);
+            var color = bubble.charAt(0);
+            var value = bubble.substr(1, 2).trim();
+            bubbles.push({ color: color, value: value });
+        }
+        return bubbles;
+    }
+    
+    // Build matchBubbles object for UI
+    var matchBubbles = {};
+    var f1BubblesParsed = parseBubbles(f1BubblesRaw);
+    var f2BubblesParsed = parseBubbles(f2BubblesRaw);
+    
+    // Map bubbles to player matches (simplified for test)
+    // In real game, controller provides matchBubbles mapping
+    
+    return {
+        version: version,
+        trPoints: trPoints,
+        t1Row: parseRow(t1Raw, 18),
+        t2Row: parseRow(t2Raw, 18),
+        strkRow: parseRow(strkRaw, 18),
+        f1Bubbles: f1BubblesParsed,
+        f2Bubbles: f2BubblesParsed,
+        // Additional data for UI
+        players: mockPlayers,
+        course: mockCourse,
+        startingHole: 1,
+        editableFlight: 1,
+        gameMode: "real",
+        currentHole: 1,
+        currentActualHole: 1,
+        canModify: true,
+        isSaved: true,
+        activeFlight: 1,
+        modeDisplay: "TEST",
+        modeClass: "status-real",
+        playOrder: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
+        naturalOrder: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
+        savedHoles: { 1: [1], 2: [1] },
+        scores: {}
+    };
+}
+
+// Main UI Painter - window.updateGameUI (same as game.html)
+window.updateGameUI = function(data) {
+    console.log("UI-Painter: updateGameUI called", data);
+    
+    uiData = data;
+    
+    if (!data || !data.players || !data.course) {
+        document.getElementById("app").innerHTML = '<div class="loading">Waiting for game data...</div>';
+        return;
+    }
+    
+    loadDisplayPreference();
+    
+    var course = data.course;
+    var isSaved = data.isSaved || false;
+    var canModify = data.canModify || false;
+    var currentHole = data.currentHole || 1;
+    var currentActualHole = data.currentActualHole || 1;
+    var activeFlight = data.activeFlight || 1;
+    var startingHole = data.startingHole || 1;
+    
+    // Get TR points from data
+    var teamAPts = 0;
+    var teamBPts = 0;
+    
+    if (data.trPoints) {
+        teamAPts = data.trPoints.teamA;
+        teamBPts = data.trPoints.teamB;
+    }
+    
+    var teamAGreen = teamAPts >= teamBPts;
+    var teamBGreen = teamBPts >= teamAPts;
+    
+    // Get flight players sorted by team, then handicap
+    var flightPlayers = data.players.filter(function(p) { return p.flight === activeFlight; });
+    flightPlayers.sort(function(a, b) {
+        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
+        return a.handicap - b.handicap;
+    });
+    
+    // Build player cards with match bubbles from parsed data
+    var playerCards = "";
+    for (var i = 0; i < flightPlayers.length; i++) {
+        var p = flightPlayers[i];
+        
+        // Get opponents (all players not on same team)
+        var opponents = data.players.filter(function(op) { return op.team !== p.team; });
+        
+        var bubblesHtml = '<div class="bubbles">';
+        
+        // Use f1Bubbles or f2Bubbles based on player's flight
+        var bubbleIndex = 0;
+        if (p.flight === 1) {
+            // Flight 1 player: use f1Bubbles
+            for (var j = 0; j < opponents.length; j++) {
+                var bubble = data.f1Bubbles && data.f1Bubbles[bubbleIndex];
+                var bubbleColor = bubble ? bubble.color : "B";
+                var bubbleValue = bubble ? bubble.value : "AS";
+                var bubbleClass = "bubble";
+                
+                if (bubbleColor === "G") bubbleClass += " bubble-green";
+                else if (bubbleColor === "R") bubbleClass += " bubble-red";
+                else bubbleClass += " bubble-grey";
+                
+                bubblesHtml += '<div class="' + bubbleClass + '">vs ' + opponents[j].label + ' ' + bubbleValue + '</div>';
+                bubbleIndex++;
+            }
+        } else {
+            // Flight 2 player: use f2Bubbles
+            for (var j = 0; j < opponents.length; j++) {
+                var bubble = data.f2Bubbles && data.f2Bubbles[bubbleIndex];
+                var bubbleColor = bubble ? bubble.color : "B";
+                var bubbleValue = bubble ? bubble.value : "AS";
+                var bubbleClass = "bubble";
+                
+                if (bubbleColor === "G") bubbleClass += " bubble-green";
+                else if (bubbleColor === "R") bubbleClass += " bubble-red";
+                else bubbleClass += " bubble-grey";
+                
+                bubblesHtml += '<div class="' + bubbleClass + '">vs ' + opponents[j].label + ' ' + bubbleValue + '</div>';
+                bubbleIndex++;
+            }
+        }
+        bubblesHtml += '</div>';
+        
+        var currentScore = course.par[currentActualHole - 1];
+        var btnDisabled = canModify ? "" : "disabled";
+        
+        playerCards += '<div class="player-card">' +
+            '<div class="player-row">' +
+                '<div>' +
+                    '<span class="player-name">' + escapeHtml(p.name) + '</span>' +
+                    '<span class="player-label-bubble">' + p.label + ' ' + p.handicap + '</span>' +
+                '</div>' +
+                '<div class="score-control">' +
+                    '<button class="score-btn dec-btn" disabled ' + btnDisabled + '>-</button>' +
+                    '<span class="score-value">' + currentScore + '</span>' +
+                    '<button class="score-btn inc-btn" disabled ' + btnDisabled + '>+</button>' +
+                '</div>' +
+            '</div>' +
+            bubblesHtml +
+        '</div>';
+    }
+    
+    var flightTabHtml = '<div class="flight-tab">Flight ' + (data.editableFlight || activeFlight) + '</div>';
+    
+    var teamADisplay = teamAPts % 1 === 0 ? teamAPts : teamAPts.toFixed(1);
+    var teamBDisplay = teamBPts % 1 === 0 ? teamBPts : teamBPts.toFixed(1);
+    var trHtml = '<span class="' + (teamAGreen ? "team-score-green" : "team-score-red") + '">Team A ' + teamADisplay + '</span> - <span class="' + (teamBGreen ? "team-score-green" : "team-score-red") + '">' + teamBDisplay + ' Team B</span>';
+    
+    var currentPar = course.par[currentActualHole - 1];
+    var currentSi = course.si[currentActualHole - 1];
+    
+    var nextBtnClass = isSaved ? "action-btn btn-next-active" : "action-btn btn-next-inactive";
+    var nextBtnDisabled = !isSaved ? "disabled" : "";
+    
+    var modeDisplay = data.modeDisplay || "TEST";
+    var modeClass = data.modeClass || "status-real";
+    
+    var shotgunNote = (startingHole !== 1) ? '<div class="game-info" style="color:#ffaa44;">⛳ Shotgun Start - Starting at Hole ' + startingHole + '</div>' : '';
+    
+    var html = 
+        '<div class="status-bubble ' + modeClass + '">' + modeDisplay + '</div>' +
+        '<div class="game-info"><div>' + escapeHtml(course.name) + (data.gameDate ? ' | ' + data.gameDate : '') + '</div></div>' +
+        shotgunNote +
+        '<div class="game-header">' +
+            '<div class="hole-number">HOLE ' + currentActualHole + '</div>' +
+            '<div class="hole-par">PAR ' + currentPar + '  SI ' + currentSi + '</div>' +
+        '</div>' +
+        flightTabHtml +
+        '<div class="team-score-card"><div class="team-score">' + trHtml + '</div></div>' +
+        '<div class="player-cards">' + playerCards + '</div>' +
+        '<div class="action-buttons">' +
+            '<button class="action-btn btn-back" id="prevHoleBtn" disabled>Back</button>' +
+            '<button class="action-btn btn-save" id="saveBtn" disabled>Save</button>' +
+            '<button class="' + nextBtnClass + '" id="nextHoleBtn" ' + nextBtnDisabled + ' disabled>Next</button>' +
+        '</div>' +
+        '<div class="scorecard-section">' +
+            '<div class="scorecard-header">' +
+                '<div class="scorecard-title">SCORECARD</div>' +
+                '<div class="view-toggle">' +
+                    '<button class="toggle-btn" id="playViewBtn">⛳ Play Order</button>' +
+                    '<button class="toggle-btn" id="naturalViewBtn">📋 Natural Order</button>' +
+                '</div>' +
+                '<button class="refresh-btn" id="refreshBtn" disabled>⟳</button>' +
+            '</div>' +
+            '<div class="scorecard-wrapper"></div>' +
+        '</div>' +
+        '<div class="menu-button-container">' +
+            '<button class="btn-menu" id="menuBtn" disabled>Main Menu</button>' +
+        '</div>';
+    
+    document.getElementById("app").innerHTML = html;
+    
+    renderScorecard();
+    updateToggleButtons();
+    attachTestEvents();
+};
+
+function attachTestEvents() {
+    var playViewBtn = document.getElementById("playViewBtn");
+    var naturalViewBtn = document.getElementById("naturalViewBtn");
+    
+    if (playViewBtn) {
+        playViewBtn.onclick = function() {
+            if (currentDisplayMode !== "play") {
+                toggleDisplayMode();
+            }
+        };
+    }
+    
+    if (naturalViewBtn) {
+        naturalViewBtn.onclick = function() {
+            if (currentDisplayMode !== "natural") {
+                toggleDisplayMode();
+            }
+        };
+    }
+}
+
+// ============================================================
+// Test Harness Functions
+// ============================================================
+
+function renderFromString() {
+    var uiString = document.getElementById("uiStringInput").value;
+    if (!uiString.trim()) {
+        document.getElementById("status").innerHTML = "❌ Please enter a UI string";
+        return;
+    }
+    
+    var parsed = parseUIString(uiString);
+    if (!parsed) {
+        document.getElementById("status").innerHTML = "❌ Failed to parse UI string. Check format.";
+        return;
+    }
+    
+    window.updateGameUI(parsed);
+    document.getElementById("status").innerHTML = "✅ Rendered from UI string: " + uiString.length + " chars";
+}
+
+function clearUI() {
+    document.getElementById("app").innerHTML = '<div class="loading">Waiting for UI string...</div>';
+    document.getElementById("uiStringInput").value = "";
+    document.getElementById("status").innerHTML = "Ready. Paste a UI string or click an example.";
+}
+
+function loadExample1() {
+    // Example 1: Start of Game - no holes saved, all grey AS, TR 9.5-9.5
+    var uiString = "V01TA9.5TB9.5" +
+        "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS" +  // F1_BUBBLES (16 x BAS)
+        "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS" +  // F2_BUBBLES (16 x BAS)
+        "G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0" +              // T1_ROW (18 x G0)
+        "G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0" +              // T2_ROW (18 x G0)
+        "G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0";               // STRK_ROW (18 x G0)
+    
+    document.getElementById("uiStringInput").value = uiString;
+    renderFromString();
+}
+
+function loadExample2() {
+    // Example 2: After Hole 1 - both flights saved, A leading Flight 1, B leading Flight 2, A leading Stroke
+    // TR: Game1=8.5-7.5, Game2 F1=A, Game2 F2=B, Game3=A → TR = 10.5-8.5
+    var uiString = "V01TA10.5TB8.5" +
+        // F1_BUBBLES - mixed: some A winning (G), some B winning (R), some AS (GAS)
+        "G1R1GASR1G1BASG1R1" + "G1R1GASR1G1BASG1R1" +  // 16 bubbles
+        // F2_BUBBLES - inverted perspective
+        "R1G1GASR1G1BASR1G1" + "R1G1GASR1G1BASR1G1" +
+        // T1_ROW: A leading after hole 1 → GA for hole 1, rest AS
+        "GAG0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0" +
+        // T2_ROW: B leading after hole 1 → GB for hole 1, rest AS
+        "GBG0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0" +
+        // STRK_ROW: A leading stroke → GA for hole 1, rest AS
+        "GAG0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0";
+    
+    document.getElementById("uiStringInput").value = uiString;
+    renderFromString();
+}
+
+function loadExample3() {
+    // Example 3: After Hole 6 - Flight 1 A leading, Flight 2 Tie, Stroke A leading
+    // T1: A, A, A, A, A, A, rest AS
+    // T2: B, B, B, B, B, AS, rest AS (Flight 2 tied after 6)
+    var uiString = "V01TA9.5TB9.5" +
+        "G2R5GASR3G1BASG2R1" + "G2R5GASR3G1BASG2R1" + "G2R5GASR3G1BASG2R1" + "G2R5GASR3G1BASG2R1" +  // 16 bubbles
+        "R2G5GASR3G1BASR2G1" + "R2G5GASR3G1BASR2G1" + "R2G5GASR3G1BASR2G1" + "R2G5GASR3G1BASR2G1" +  // 16 bubbles
+        // T1_ROW: A leading all 6 holes
+        "GAGAGAGAGAGAG0G0G0G0G0G0G0G0G0G0G0G0" +
+        // T2_ROW: B leading first 5, AS on hole 6
+        "GBGBGBGBGBG0G0G0G0G0G0G0G0G0G0G0G0" +
+        // STRK_ROW: A leading all 6 holes
+        "GAGAGAGAGAGAG0G0G0G0G0G0G0G0G0G0G0G0";
+    
+    document.getElementById("uiStringInput").value = uiString;
+    renderFromString();
+}
+
+// Initialize
+document.getElementById("status").innerHTML = "Ready. Paste a UI string or click an example.";
+console.log("Test UI Harness v1.00 loaded");
+</script>
+</body>
+</html>
+
+<!--
+FILE: test-ui.html
+VERSION: 1.00
+PURPOSE: Standalone UI-Painter test harness
+          - Accepts UI string input
+          - Renders using game.html v1.13 logic
+          - No Firebase, no controllers, no dependencies
+          - Once verified, same rendering logic works in real game.html
+STATUS: Complete. Ready for testing.
+-->
