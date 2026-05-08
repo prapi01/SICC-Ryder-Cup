@@ -1,11 +1,21 @@
-<!-- FILE: setup-game.html - VERSION 1.16 -->
 <!--
-Sets up new scheduled games with:
-- Default players loaded from Firebase playerInformation/defaultPlayers
-- After successful commit, saves players as new default
-- Shotgun start support (startingHole 1-18)
-- Team Game Format selector (Tournament/Relative) per VDN #008
+FILE: setup-game.html
+VERSION: 1.17
+KEY CHANGES:
+   - Fixed player display sort order: Team A first, then Team B (instead of by Flight)
+   - Within each team, sort by Flight (1 then 2), then Handicap (lowest first)
+   - Display order now: T-A1, T-A2, T-A3, T-A4, T-B1, T-B2, T-B3, T-B4
+   - Load default players from Firebase playerInformation/defaultPlayers
+   - Fallback to hardcoded players if no default exists
+   - After successful NEW game creation, save current players as new default
+   - Edit mode does NOT save as default (preserves existing default)
+   - Added Team Game Format selector (Tournament/Relative) per VDN #008
+   - Team Game Format saved to Firestore game document
+   - Starting hole defaults to 1
+STATUS: Complete. Ready for testing.
 -->
+
+<!-- FILE: setup-game.html - VERSION 1.17 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -182,16 +192,13 @@ Sets up new scheduled games with:
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.16</div>
+<div class="version-tag">v1.17</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.16
-// ADDED: 
-//   - Load default players from Firebase playerInformation/defaultPlayers
-//   - Save players as new default after successful game creation
-//   - Team Game Format selector (Tournament/Relative) per VDN #008
+// FILE: setup-game.html - VERSION 1.17 (JavaScript section)
+// FIXED: Player display sort order - Team A first, then Team B
 
-var VERSION = "1.16";
+var VERSION = "1.17";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -223,13 +230,14 @@ try {
 }
 
 // HARDCODED FALLBACK PLAYERS (only used if Firebase defaultPlayers not found)
+// Sorted: Team A first, then Team B, then by flight, then handicap
 var FALLBACK_PLAYERS = [
     { name: "Ang C H", handicap: 1, team: "A", flight: 1 },
     { name: "Kenneth Foo", handicap: 3, team: "A", flight: 1 },
-    { name: "Jeff Goh", handicap: 0, team: "B", flight: 1 },
-    { name: "Ong C B", handicap: 1, team: "B", flight: 1 },
     { name: "C K", handicap: 8, team: "A", flight: 2 },
     { name: "Yip H M", handicap: 12, team: "A", flight: 2 },
+    { name: "Jeff Goh", handicap: 0, team: "B", flight: 1 },
+    { name: "Ong C B", handicap: 1, team: "B", flight: 1 },
     { name: "Piti", handicap: 8, team: "B", flight: 2 },
     { name: "James Ong", handicap: 11, team: "B", flight: 2 }
 ];
@@ -358,8 +366,16 @@ function saveAsDefaultPlayers(players, callback) {
         return;
     }
     
+    // Sort players before saving: Team A first, then Team B, then by flight, then handicap
+    var playersToSave = [...players];
+    playersToSave.sort(function(a, b) {
+        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
+        if (a.flight !== b.flight) return a.flight - b.flight;
+        return a.handicap - b.handicap;
+    });
+    
     // Remove label field before saving (only save name, handicap, team, flight)
-    var playersToSave = players.map(function(p) {
+    var playersForStorage = playersToSave.map(function(p) {
         return {
             name: p.name,
             handicap: p.handicap,
@@ -369,7 +385,7 @@ function saveAsDefaultPlayers(players, callback) {
     });
     
     db.collection("playerInformation").doc("defaultPlayers").set({
-        players: playersToSave,
+        players: playersForStorage,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(function() {
         console.log("Default players saved to Firebase");
@@ -425,7 +441,6 @@ function loadEditMode(callback) {
                     };
                 });
             } else {
-                // If edit game has invalid players, load defaults
                 loadDefaultPlayers(callback);
                 return;
             }
@@ -643,11 +658,14 @@ function render() {
         courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
     }
     
-    // Sort players for display: by flight, then team, then handicap (lowest first)
+    // Sort players for display: Team A first, then Team B, then by flight, then handicap
     var displayPlayers = [...state.players];
     displayPlayers.sort(function(a, b) {
-        if (a.flight !== b.flight) return a.flight - b.flight;
+        // Team A first, then Team B
         if (a.team !== b.team) return a.team === "A" ? -1 : 1;
+        // Within same team, sort by flight (1 then 2)
+        if (a.flight !== b.flight) return a.flight - b.flight;
+        // Within same flight, sort by handicap (lowest first)
         return a.handicap - b.handicap;
     });
     
@@ -655,7 +673,9 @@ function render() {
     for (var idx = 0; idx < displayPlayers.length; idx++) {
         var p = displayPlayers[idx];
         // Find original index for updating
-        var originalIdx = state.players.findIndex(function(orig) { return orig.name === p.name && orig.flight === p.flight && orig.team === p.team; });
+        var originalIdx = state.players.findIndex(function(orig) { 
+            return orig.name === p.name && orig.flight === p.flight && orig.team === p.team; 
+        });
         if (originalIdx === -1) originalIdx = idx;
         
         playersHtml += `
@@ -931,3 +951,20 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 </script>
 </body>
 </html>
+
+<!--
+FILE: setup-game.html
+VERSION: 1.17
+KEY CHANGES:
+   - Fixed player display sort order: Team A first, then Team B (instead of by Flight)
+   - Within each team, sort by Flight (1 then 2), then Handicap (lowest first)
+   - Display order now: T-A1, T-A2, T-A3, T-A4, T-B1, T-B2, T-B3, T-B4
+   - Load default players from Firebase playerInformation/defaultPlayers
+   - Fallback to hardcoded players if no default exists
+   - After successful NEW game creation, save current players as new default
+   - Edit mode does NOT save as default (preserves existing default)
+   - Added Team Game Format selector (Tournament/Relative) per VDN #008
+   - Team Game Format saved to Firestore game document
+   - Starting hole defaults to 1
+STATUS: Complete. Ready for testing.
+-->
