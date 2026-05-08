@@ -1,12 +1,11 @@
 <!--
 FILE: test-ui.html
-VERSION: 1.02
+VERSION: 1.04
 PURPOSE: Standalone UI-Painter test harness
-          - Accepts UI string in final format (underscore instead of space)
-          - Renders using game.html v1.13 logic
-          - No Firebase, no controllers, no dependencies
-          - Format: TR|F1|F2|T1|T2|STRK
-          - Underscore _ replaces space for display formatting
+          - Fixed length, NO delimiters (pipe removed)
+          - Format: TR(10) + F1(48) + F2(48) + T1(36) + T2(36) + STRK(36) = 214 chars total
+          - Underscore _ replaces space
+          - Hardcoded test buttons inject directly (no copy/paste issues)
 STATUS: Complete. Ready for testing.
 -->
 
@@ -187,20 +186,19 @@ STATUS: Complete. Ready for testing.
     <div class="loading">Waiting for UI string...</div>
 </div>
 <div class="device-tag">🧪 TEST MODE</div>
-<div class="version-tag">v1.02</div>
+<div class="version-tag">v1.04</div>
 
 <!-- Test Panel -->
 <div class="test-panel">
-    <h3>🧪 UI-Painter Test Harness (v1.02 - underscore replaces space)</h3>
-    <textarea id="uiStringInput" class="test-input" rows="3" placeholder="Paste UI string here..."></textarea>
+    <h3>🧪 UI-Painter Test Harness v1.04 (Fixed Length, No Delimiters)</h3>
+    <textarea id="uiStringInput" class="test-input" rows="2" placeholder="UI string (214 chars) will appear here when you click an example"></textarea>
     <div class="test-buttons">
-        <button class="test-btn" onclick="renderFromString()">▶ Render</button>
-        <button class="test-btn" onclick="loadExample1()">📋 Example 1: Start of Game</button>
-        <button class="test-btn" onclick="loadExample2()">📋 Example 2: After Hole 1 (Synced)</button>
-        <button class="test-btn" onclick="loadExample3()">📋 Example 3: After 6 Holes (A Leading)</button>
+        <button class="test-btn" onclick="testExample1()">📋 Example 1: Start of Game</button>
+        <button class="test-btn" onclick="testExample2()">📋 Example 2: After Hole 1 (Synced)</button>
+        <button class="test-btn" onclick="testExample3()">📋 Example 3: After 6 Holes (A Leading)</button>
         <button class="test-btn" onclick="clearUI()">🗑 Clear</button>
     </div>
-    <div class="status" id="status">Ready. Underscore _ replaces space in UI string.</div>
+    <div class="status" id="status">Ready. Click an example button to test.</div>
 </div>
 
 <script>
@@ -279,43 +277,34 @@ function escapeHtml(str) {
     });
 }
 
-// Helper: replace underscore with space for display
 function underscoreToSpace(str) {
     return str.replace(/_/g, ' ');
 }
 
 // ============================================================
-// UI String Parser
+// UI String Parser (Fixed Length, No Delimiters)
 // ============================================================
 
 function parseUIString(uiString) {
-    // Split by pipe
-    var parts = uiString.split('|');
-    if (parts.length !== 7) {
-        console.error("Invalid UI string: expected 7 parts, got", parts.length);
+    if (!uiString || uiString.length !== 214) {
+        console.error("Invalid UI string length: expected 214, got", uiString?.length);
         return null;
     }
     
-    var trString = parts[0];      // Format: G_9.5G_9.5
-    var f1BubblesRaw = parts[1];  // 48 chars
-    var f2BubblesRaw = parts[2];  // 48 chars
-    var t1Raw = parts[3];         // 36 chars
-    var t2Raw = parts[4];         // 36 chars
-    var strkRaw = parts[5];       // 36 chars
+    // Extract fixed segments
+    var trString = uiString.substr(0, 10);           // G_9.5G_9.5
+    var f1BubblesRaw = uiString.substr(10, 48);      // 48 chars
+    var f2BubblesRaw = uiString.substr(58, 48);      // 48 chars
+    var t1Raw = uiString.substr(106, 36);            // 36 chars
+    var t2Raw = uiString.substr(142, 36);            // 36 chars
+    var strkRaw = uiString.substr(178, 36);          // 36 chars
     
     // Parse TR string
-    // Format: [COLOR_A][SCORE_A][COLOR_B][SCORE_B] with underscore instead of space
-    if (trString.length !== 10) {
-        console.error("Invalid TR string: expected 10 chars, got", trString.length);
-        return null;
-    }
-    
     var colorA = trString.charAt(0);
     var scoreAUnderscore = trString.substr(1, 4);
     var colorB = trString.charAt(5);
     var scoreBUnderscore = trString.substr(6, 4);
     
-    // Replace underscore with space for display
     var scoreA = underscoreToSpace(scoreAUnderscore);
     var scoreB = underscoreToSpace(scoreBUnderscore);
     
@@ -323,7 +312,7 @@ function parseUIString(uiString) {
     var teamAGreen = (colorA === 'G');
     var teamBGreen = (colorB === 'G');
     
-    // Parse bubbles (3 chars each, 16 bubbles = 48 chars)
+    // Parse bubbles (3 chars each)
     function parseBubbles(raw) {
         var bubbles = [];
         for (var i = 0; i < 16; i++) {
@@ -336,7 +325,7 @@ function parseUIString(uiString) {
         return bubbles;
     }
     
-    // Parse row (2 chars per cell, 18 cells = 36 chars)
+    // Parse row (2 chars per cell)
     function parseRow(raw) {
         var row = [];
         for (var i = 0; i < 18; i++) {
@@ -353,7 +342,7 @@ function parseUIString(uiString) {
     var t2Row = parseRow(t2Raw);
     var strkRow = parseRow(strkRaw);
     
-    // Build T1/T2/Strk display arrays
+    // Build display arrays
     var t1Display = t1Row.map(function(cell) {
         return cell.value === '_' ? '' : cell.value;
     });
@@ -364,12 +353,11 @@ function parseUIString(uiString) {
         return cell.value === '_' ? '' : cell.value;
     });
     
-    // Build matchBubbles mapping for UI
+    // Build match bubbles mapping
     var matchBubbles = {};
     var flight1Players = mockPlayers.filter(function(p) { return p.flight === 1; });
     var flight2Players = mockPlayers.filter(function(p) { return p.flight === 2; });
     
-    // Map F1 bubbles to Flight 1 players vs Flight 2 players
     var bubbleIdx = 0;
     for (var i = 0; i < flight1Players.length; i++) {
         for (var j = 0; j < flight2Players.length; j++) {
@@ -380,7 +368,6 @@ function parseUIString(uiString) {
         }
     }
     
-    // Map F2 bubbles to Flight 2 players vs Flight 1 players
     bubbleIdx = 0;
     for (var i = 0; i < flight2Players.length; i++) {
         for (var j = 0; j < flight1Players.length; j++) {
@@ -393,8 +380,6 @@ function parseUIString(uiString) {
     
     return {
         trPoints: trPoints,
-        trColorA: colorA,
-        trColorB: colorB,
         teamAGreen: teamAGreen,
         teamBGreen: teamBGreen,
         t1Row: t1Display,
@@ -477,79 +462,79 @@ function renderScorecard() {
         var si = course.si[holeNum - 1];
         tableHtml += '<td>' + si + '</td>';
     }
-    tableHtml += '<td>-</td></tr>';
+    tableHtml += '<td>-<\/td><\/tr>';
     
     // Team A players
     for (var pi = 0; pi < teamAPlayers.length; pi++) {
         var p = teamAPlayers[pi];
         var total = 0;
-        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
         for (var i = 0; i < displayHoleOrder.length; i++) {
             var holeNum = displayHoleOrder[i];
             var score = course.par[holeNum - 1];
             total += score;
-            tableHtml += '<td class="placeholder">' + score + '</td>';
+            tableHtml += '<td class="placeholder">' + score + '<\/td>';
         }
-        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
+        tableHtml += '<td class="completed"><strong>' + total + '<\/strong><\/td><\/tr>';
     }
     
     // Green line after Team A
-    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
     
     // T-1 row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1</td>';
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1<\/td>';
     for (var i = 0; i < displayHoleOrder.length; i++) {
         var holeIdx = displayHoleOrder[i] - 1;
         var value = data.t1Row[holeIdx] || '';
         var color = data.t1Colors[holeIdx];
         var cellClass = (color === 'G') ? 'row-cell-green' : 'row-cell-black';
-        tableHtml += '<td class="' + cellClass + '">' + value + '</td>';
+        tableHtml += '<td class="' + cellClass + '">' + value + '<\/td>';
     }
-    tableHtml += '<td style="color:#4caf50;">-</td></tr>';
+    tableHtml += '<td style="color:#4caf50;">-<\/td><\/tr>';
     
     // Green line after T-1
-    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
     
     // Team B players
     for (var pi = 0; pi < teamBPlayers.length; pi++) {
         var p = teamBPlayers[pi];
         var total = 0;
-        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '<\/td>';
         for (var i = 0; i < displayHoleOrder.length; i++) {
             var holeNum = displayHoleOrder[i];
             var score = course.par[holeNum - 1];
             total += score;
-            tableHtml += '<td class="placeholder">' + score + '</td>';
+            tableHtml += '<td class="placeholder">' + score + '<\/td>';
         }
-        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
+        tableHtml += '<td class="completed"><strong>' + total + '<\/strong><\/td><\/tr>';
     }
     
     // T-2 row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2</td>';
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2<\/td>';
     for (var i = 0; i < displayHoleOrder.length; i++) {
         var holeIdx = displayHoleOrder[i] - 1;
         var value = data.t2Row[holeIdx] || '';
         var color = data.t2Colors[holeIdx];
         var cellClass = (color === 'G') ? 'row-cell-green' : 'row-cell-black';
-        tableHtml += '<td class="' + cellClass + '">' + value + '</td>';
+        tableHtml += '<td class="' + cellClass + '">' + value + '<\/td>';
     }
-    tableHtml += '<td style="color:#4caf50;">-</td></tr>';
+    tableHtml += '<td style="color:#4caf50;">-<\/td><\/tr>';
     
     // Green line after T-2
-    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    tableHtml += '<tr class="green-line"><td colspan="20"><\/td><\/tr>';
     
     // Strk row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk</td>';
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk<\/td>';
     for (var i = 0; i < displayHoleOrder.length; i++) {
         var holeIdx = displayHoleOrder[i] - 1;
         var value = data.strkRow[holeIdx] || '';
         var color = data.strkColors[holeIdx];
         var cellClass = (color === 'G') ? 'row-cell-green' : 'row-cell-black';
-        tableHtml += '<td class="' + cellClass + '">' + value + '</td>';
+        tableHtml += '<td class="' + cellClass + '">' + value + '<\/td>';
     }
-    tableHtml += '<td style="color:#4caf50;">-</td></tr>';
+    tableHtml += '<td style="color:#4caf50;">-<\/td><\/tr>';
     
-    tableHtml += '</tbody></table>';
+    tableHtml += '<\/tbody><\/table>';
     
     var scorecardWrapper = document.querySelector(".scorecard-wrapper");
     if (scorecardWrapper) {
@@ -562,7 +547,7 @@ function renderScorecard() {
 // ============================================================
 
 window.updateGameUI = function(data) {
-    console.log("UI-Painter: updateGameUI called", data);
+    console.log("UI-Painter: updateGameUI called");
     
     window.uiData = data;
     
@@ -574,8 +559,6 @@ window.updateGameUI = function(data) {
     loadDisplayPreference();
     
     var course = data.course;
-    var currentActualHole = 1;
-    var activeFlight = 1;
     
     var teamAPts = data.trPoints.teamA;
     var teamBPts = data.trPoints.teamB;
@@ -589,13 +572,13 @@ window.updateGameUI = function(data) {
     var trHtml = '<span class="' + teamAColorClass + '">Team A ' + teamADisplay + '</span> - <span class="' + teamBColorClass + '">' + teamBDisplay + ' Team B</span>';
     
     // Get flight players
-    var flightPlayers = data.players.filter(function(p) { return p.flight === activeFlight; });
+    var flightPlayers = data.players.filter(function(p) { return p.flight === 1; });
     flightPlayers.sort(function(a, b) {
         if (a.team !== b.team) return a.team === "A" ? -1 : 1;
         return a.handicap - b.handicap;
     });
     
-    // Build player cards with match bubbles
+    // Build player cards
     var playerCards = "";
     for (var i = 0; i < flightPlayers.length; i++) {
         var p = flightPlayers[i];
@@ -697,92 +680,142 @@ function attachTestEvents() {
 }
 
 // ============================================================
-// Test Harness Functions
+// Helper function to pad string to exact length
 // ============================================================
 
-function renderFromString() {
-    var uiString = document.getElementById("uiStringInput").value;
-    if (!uiString.trim()) {
-        document.getElementById("status").innerHTML = "❌ Please enter a UI string";
-        return;
-    }
+function buildUIString(tr, f1, f2, t1, t2, strk) {
+    // Ensure each segment is exactly the right length
+    while (tr.length < 10) tr = tr + "_";
+    while (f1.length < 48) f1 = f1 + "B";
+    while (f2.length < 48) f2 = f2 + "B";
+    while (t1.length < 36) t1 = t1 + "B_";
+    while (t2.length < 36) t2 = t2 + "B_";
+    while (strk.length < 36) strk = strk + "B_";
+    
+    return tr + f1 + f2 + t1 + t2 + strk;
+}
+
+// ============================================================
+// Test Examples (HARDCODED, no copy/paste)
+// ============================================================
+
+function testExample1() {
+    // Example 1: Start of Game
+    var tr = "G_9.5G_9.5";
+    var f1 = "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS";
+    var f2 = "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS";
+    var t1 = "B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_";
+    var t2 = "B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_";
+    var strk = "B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_";
+    
+    var uiString = buildUIString(tr, f1, f2, t1, t2, strk);
+    document.getElementById("uiStringInput").value = uiString;
     
     var parsed = parseUIString(uiString);
-    if (!parsed) {
-        document.getElementById("status").innerHTML = "❌ Failed to parse UI string. Check format.";
-        return;
+    if (parsed) {
+        window.updateGameUI(parsed);
+        document.getElementById("status").innerHTML = "✅ Example 1: Start of Game - 214 chars";
+    } else {
+        document.getElementById("status").innerHTML = "❌ Parse failed!";
     }
+}
+
+function testExample2() {
+    // Example 2: After Hole 1 Synced
+    var tr = "G10.5R_8.5";
     
-    window.updateGameUI(parsed);
-    document.getElementById("status").innerHTML = "✅ Rendered from UI string: " + uiString.length + " chars";
+    // F1: first bubble G_1, rest BAS
+    var f1 = "G_1";
+    for (var i = 0; i < 15; i++) f1 += "BAS";
+    
+    // F2: first bubble R_1, rest BAS
+    var f2 = "R_1";
+    for (var i = 0; i < 15; i++) f2 += "BAS";
+    
+    // T1: hole1 = GA, rest B_
+    var t1 = "GA";
+    for (var i = 0; i < 17; i++) t1 += "B_";
+    
+    // T2: hole1 = GB, rest B_
+    var t2 = "GB";
+    for (var i = 0; i < 17; i++) t2 += "B_";
+    
+    // Strk: hole1 = GA, rest B_
+    var strk = "GA";
+    for (var i = 0; i < 17; i++) strk += "B_";
+    
+    var uiString = buildUIString(tr, f1, f2, t1, t2, strk);
+    document.getElementById("uiStringInput").value = uiString;
+    
+    var parsed = parseUIString(uiString);
+    if (parsed) {
+        window.updateGameUI(parsed);
+        document.getElementById("status").innerHTML = "✅ Example 2: After Hole 1 Synced - 214 chars";
+    } else {
+        document.getElementById("status").innerHTML = "❌ Parse failed!";
+    }
+}
+
+function testExample3() {
+    // Example 3: After 6 Holes (A Leading)
+    var tr = "G11.5R_7.5";
+    
+    // F1 bubbles (16 bubbles)
+    var f1 = "G_1R_2GASR_3G_1BASG_2R_1G_2R_3GASG_1R_2";
+    while (f1.length < 48) f1 += "BAS";
+    
+    // F2 bubbles (16 bubbles)
+    var f2 = "R_1G_2GASR_3G_1BASR_2G_1R_2G_3GASR_1G_2";
+    while (f2.length < 48) f2 += "BAS";
+    
+    // T1: A leading first 6 holes
+    var t1 = "";
+    for (var i = 0; i < 6; i++) t1 += "GA";
+    for (var i = 0; i < 12; i++) t1 += "B_";
+    
+    // T2: B leading first 5, tie on 6th
+    var t2 = "";
+    for (var i = 0; i < 5; i++) t2 += "GB";
+    t2 += "G0";
+    for (var i = 0; i < 12; i++) t2 += "B_";
+    
+    // Strk: A leading first 6 holes
+    var strk = "";
+    for (var i = 0; i < 6; i++) strk += "GA";
+    for (var i = 0; i < 12; i++) strk += "B_";
+    
+    var uiString = buildUIString(tr, f1, f2, t1, t2, strk);
+    document.getElementById("uiStringInput").value = uiString;
+    
+    var parsed = parseUIString(uiString);
+    if (parsed) {
+        window.updateGameUI(parsed);
+        document.getElementById("status").innerHTML = "✅ Example 3: After 6 Holes - 214 chars";
+    } else {
+        document.getElementById("status").innerHTML = "❌ Parse failed!";
+    }
 }
 
 function clearUI() {
     document.getElementById("app").innerHTML = '<div class="loading">Waiting for UI string...</div>';
     document.getElementById("uiStringInput").value = "";
-    document.getElementById("status").innerHTML = "Ready. Underscore _ replaces space in UI string.";
-}
-
-function loadExample1() {
-    // Start of Game: TR 9.5-9.5, all bubbles BAS, all rows B_
-    var uiString = "G_9.5G_9.5|" +
-        "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS|" +
-        "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS|" +
-        "B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_|" +
-        "B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_|" +
-        "B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_";
-    
-    document.getElementById("uiStringInput").value = uiString;
-    renderFromString();
-}
-
-function loadExample2() {
-    // After Hole 1 Synced: TR 10.5-8.5, T1 A leads, T2 B leads, Strk A leads
-    var uiString = "G10.5R_8.5|" +
-        "G_1BASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS|" +
-        "R_1BASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS|" +
-        "GAB_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_|" +
-        "GBB_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_|" +
-        "GAB_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_";
-    
-    document.getElementById("uiStringInput").value = uiString;
-    renderFromString();
-}
-
-function loadExample3() {
-    // After 6 Holes: TR 11.5-7.5
-    var t1Row = "GAGAGAGAGAGAB_B_B_B_B_B_B_B_B_B_B_B_";
-    var t2Row = "GBGBGBGBGBG0B_B_B_B_B_B_B_B_B_B_B_";
-    var strkRow = "GAGAGAGAGAGAB_B_B_B_B_B_B_B_B_B_B_B_";
-    
-    while (t1Row.length < 36) t1Row += "B_";
-    while (t2Row.length < 36) t2Row += "B_";
-    while (strkRow.length < 36) strkRow += "B_";
-    
-    var uiString = "G11.5R_7.5|" +
-        "G_1R_2GASR_3G_1BASG_2R_1G_2R_3GASG_1R_2|" +
-        "R_1G_2GASR_3G_1BASR_2G_1R_2G_3GASR_1G_2|" +
-        t1Row + "|" + t2Row + "|" + strkRow;
-    
-    document.getElementById("uiStringInput").value = uiString;
-    renderFromString();
+    document.getElementById("status").innerHTML = "Ready. Click an example button to test.";
 }
 
 // Initialize
-document.getElementById("status").innerHTML = "Ready. Underscore _ replaces space in UI string.";
-console.log("Test UI Harness v1.02 loaded");
+document.getElementById("status").innerHTML = "Ready. Click an example button to test.";
+console.log("Test UI Harness v1.04 loaded - Fixed length, no delimiters");
 </script>
 </body>
 </html>
 
 <!--
 FILE: test-ui.html
-VERSION: 1.02
+VERSION: 1.04
 PURPOSE: Standalone UI-Painter test harness
-          - Accepts UI string in final format (underscore instead of space)
-          - Renders using game.html v1.13 logic
-          - No Firebase, no controllers, no dependencies
-          - Format: TR|F1|F2|T1|T2|STRK
-          - Underscore _ replaces space for display formatting
+          - Fixed length, NO delimiters (pipe removed)
+          - Format: TR(10) + F1(48) + F2(48) + T1(36) + T2(36) + STRK(36) = 214 chars total
+          - Underscore _ replaces space
+          - Hardcoded test buttons inject directly (no copy/paste issues)
 STATUS: Complete. Ready for testing.
 -->
