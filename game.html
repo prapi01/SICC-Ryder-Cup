@@ -1,15 +1,15 @@
 <!--
 FILE: game.html
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - Current hole initializes to startingHole (shotgun start)
+   - Fixed scorecard player order: by Flight, within flight: Team A (handicap low to high), then Team B (handicap low to high)
+   - Removed shotgun start message entirely
+   - Fixed intra-flight bubbles: all 8 light up after save (use only current flight's data, no cross-flight dependency)
+   - Cross-flight bubbles remain grey until both flights save the hole
+   - Current hole initializes to startingHole
    - Navigation wraps correctly (18→1, 1→18)
-   - Cross-flight sync tracking (lastSyncedHole)
-   - F1-8-XB and F2-8-XB turn GREY when out of sync, show last synced hole value
-   - F1-8-IB and F2-8-IB always show current flight's own data (never grey)
    - Real-time Firebase sync via onSnapshot
    - Play Order / Natural Order toggle with localStorage persistence
-   - Match bubble calculations using full handicap difference method
 STATUS: Ready for testing
 -->
 
@@ -149,9 +149,7 @@ STATUS: Ready for testing
         <div class="status-bubble" x-text="modeDisplay"></div>
         <div style="text-align:center; margin-bottom:8px;" x-text="courseName"></div>
         
-        <div x-show="startingHole !== 1" style="text-align:center; color:#ffaa44; font-size:0.7rem; margin-bottom:8px;">
-            ⛳ Shotgun Start - Playing Hole <span x-text="currentHole"></span> first
-        </div>
+        <!-- Shotgun start message removed -->
         
         <div class="hole-header">
             <div class="hole-number">HOLE <span x-text="currentHole"></span></div>
@@ -182,11 +180,13 @@ STATUS: Ready for testing
                     </div>
                 </div>
                 <div class="bubbles">
+                    <!-- Intra-flight bubbles (same flight, opposite team) -->
                     <template x-for="opp in getIntraFlightOpponents(player)">
                         <div class="bubble" :class="getIntraBubbleClass(player, opp)">
                             vs <span x-text="opp.label"></span> <span x-text="getIntraBubbleValue(player, opp)"></span>
                         </div>
                     </template>
+                    <!-- Cross-flight bubbles (other flight, opposite team) -->
                     <template x-for="opp in getCrossFlightOpponents(player)">
                         <div class="bubble" :class="getCrossBubbleClass(player, opp)">
                             vs <span x-text="opp.label"></span> <span x-text="getCrossBubbleValue(player, opp)"></span>
@@ -222,63 +222,95 @@ STATUS: Ready for testing
                         </tr>
                     </thead>
                     <tbody>
+                        <!-- Par row -->
                         <tr>
-                            <td style="font-weight:700;">Par</td>
+                            <td style="font-weight:700;">Par<\/td>
                             <template x-for="h in displayHolesList">
-                                <td x-text="coursePar[h-1]"></td>
+                                <td x-text="coursePar[h-1]"><\/td>
                             </template>
-                            <td x-text="totalPar"></td>
+                            <td x-text="totalPar"><\/td>
                         </tr>
+                        <!-- SI row -->
                         <tr>
-                            <td style="font-weight:700;">SI</td>
+                            <td style="font-weight:700;">SI<\/td>
                             <template x-for="h in displayHolesList">
-                                <td x-text="courseSi[h-1]"></td>
+                                <td x-text="courseSi[h-1]"><\/td>
                             </template>
-                            <td>-</td>
+                            <td>-<\/td>
                         </tr>
-                        <template x-for="player in teamAPlayers">
+                        <!-- Flight 1 Team A players -->
+                        <template x-for="player in flight1TeamAPlayers">
                             <tr>
-                                <td style="font-weight:600;" x-text="player.label"></td>
+                                <td style="font-weight:600;" x-text="player.label"><\/td>
                                 <template x-for="h in displayHolesList">
                                     <td :class="isHoleSaved(player.flight, h) ? 'score-green' : 'score-invisible'"
-                                        x-text="getStoredScore(player, h)"></td>
+                                        x-text="getStoredScore(player, h)"><\/td>
                                 </template>
-                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"></td>
+                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"><\/td>
                             </tr>
                         </template>
-                        <tr class="green-line"><td colspan="20"></td></tr>
+                        <!-- Flight 1 Team B players -->
+                        <template x-for="player in flight1TeamBPlayers">
+                            <tr>
+                                <td style="font-weight:600;" x-text="player.label"><\/td>
+                                <template x-for="h in displayHolesList">
+                                    <td :class="isHoleSaved(player.flight, h) ? 'score-green' : 'score-invisible'"
+                                        x-text="getStoredScore(player, h)"><\/td>
+                                </template>
+                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"><\/td>
+                            </tr>
+                        </template>
+                        <!-- Green line -->
+                        <tr class="green-line"><td colspan="20"><\/tr>
+                        <!-- T-1 row -->
                         <tr>
-                            <td style="color:#4caf50; font-weight:600;">T-1</td>
+                            <td style="color:#4caf50; font-weight:600;">T-1<\/td>
                             <template x-for="(val, idx) in t1Row">
-                                <td :class="val && val !== '_' ? 'score-green' : 'score-invisible'" x-text="val === '_' ? '' : val"></td>
+                                <td :class="val && val !== '_' ? 'score-green' : 'score-invisible'" x-text="val === '_' ? '' : val"><\/td>
                             </template>
-                            <td>-</td>
-                        </tr>
-                        <tr class="green-line"><td colspan="20"></td></tr>
-                        <template x-for="player in teamBPlayers">
+                            <td>-<\/td>
+                        </table>
+                        <!-- Green line -->
+                        <tr class="green-line"><td colspan="20"><\/tr>
+                        <!-- Flight 2 Team A players -->
+                        <template x-for="player in flight2TeamAPlayers">
                             <tr>
-                                <td style="font-weight:600;" x-text="player.label"></td>
+                                <td style="font-weight:600;" x-text="player.label"><\/td>
                                 <template x-for="h in displayHolesList">
                                     <td :class="isHoleSaved(player.flight, h) ? 'score-green' : 'score-invisible'"
-                                        x-text="getStoredScore(player, h)"></td>
+                                        x-text="getStoredScore(player, h)"><\/td>
                                 </template>
-                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"></td>
+                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"><\/td>
                             </tr>
                         </template>
+                        <!-- Flight 2 Team B players -->
+                        <template x-for="player in flight2TeamBPlayers">
+                            <tr>
+                                <td style="font-weight:600;" x-text="player.label"><\/td>
+                                <template x-for="h in displayHolesList">
+                                    <td :class="isHoleSaved(player.flight, h) ? 'score-green' : 'score-invisible'"
+                                        x-text="getStoredScore(player, h)"><\/td>
+                                </template>
+                                <td :class="getPlayerTotal(player) > 0 ? 'score-green' : 'score-invisible'" x-text="getPlayerTotal(player)"><\/td>
+                            </tr>
+                        </template>
+                        <!-- T-2 row -->
                         <tr>
-                            <td style="color:#4caf50; font-weight:600;">T-2</td>
+                            <td style="color:#4caf50; font-weight:600;">T-2<\/td>
                             <template x-for="(val, idx) in t2Row">
-                                <td :class="val && val !== '_' ? 'score-green' : 'score-invisible'" x-text="val === '_' ? '' : val"></td>
+                                <td :class="val && val !== '_' ? 'score-green' : 'score-invisible'" x-text="val === '_' ? '' : val"><\/td>
                             </template>
-                            <td>-</td>
+                            <td>-<\/td>
                         </tr>
-                        <tr class="green-line"><td colspan="20"></td></tr>
+                        <!-- Green line -->
+                        <tr class="green-line"><td colspan="20"><\/tr>
+                        <!-- Strk row -->
                         <tr>
-                            <td style="color:#4caf50; font-weight:600;">Strk</td>
+                            <td style="color:#4caf50; font-weight:600;">Strk<\/td>
                             <template x-for="(val, idx) in strkRow">
-                                <td :class="val && val !== '_' ? 'score-green' : 'score-invisible'" x-text="val === '_' ? '' : val"></td>
+                                <td :class="val && val !== '_' ? 'score-green' : 'score-invisible'" x-text="val === '_' ? '' : val"><\/td>
                             </template>
-                            <td>-</td>
+                            <td>-<\/td>
                         </tr>
                     </tbody>
                 </table>
@@ -325,12 +357,12 @@ function gameApp() {
         courseSi: [],
         allPlayers: [],
         
-        flight1Data: {},      // { naturalHole: { saved, a1, a2, b1, b2 } }
+        flight1Data: {},
         flight2Data: {},
-        localChanges: {},     // { flight_hole_playerName: score }
+        localChanges: {},
         
         currentHole: 1,
-        lastSyncedHole: 0,    // Highest natural hole where both flights have saved
+        lastSyncedHole: 0,
         
         trTeamA: 9.5,
         trTeamB: 9.5,
@@ -341,8 +373,8 @@ function gameApp() {
         t2Row: Array(18).fill('_'),
         strkRow: Array(18).fill('_'),
         
-        // Match results cache for cross-flight bubbles
-        crossMatchResults: {},  // { playerA_name + '_vs_' + playerB_name: { value, isSynced } }
+        crossMatchResults: {},
+        intraMatchResults: {},  // Cache for intra-flight match results
         
         unsubscribe: null,
         syncStatus: 'Connecting...',
@@ -352,7 +384,7 @@ function gameApp() {
         f2DataString: '',
         
         // ============================================================
-        // COMPUTED
+        // COMPUTED - Display Holes
         // ============================================================
         
         get displayHolesList() {
@@ -387,21 +419,31 @@ function gameApp() {
         },
         
         get currentFlightPlayers() {
-            return this.allPlayers.filter(p => p.flight === this.editableFlight);
+            return this.getFlightOrderedPlayers(this.editableFlight);
         },
         
-        get teamAPlayers() {
-            return this.allPlayers.filter(p => p.team === 'A').sort((a, b) => {
-                if (a.flight !== b.flight) return a.flight - b.flight;
-                return a.handicap - b.handicap;
-            });
+        // ============================================================
+        // SCORECARD PLAYER ORDER (by Flight, within flight: A then B, by handicap)
+        // ============================================================
+        
+        get flight1TeamAPlayers() {
+            const flightPlayers = this.allPlayers.filter(p => p.flight === 1 && p.team === 'A');
+            return flightPlayers.sort((a, b) => a.handicap - b.handicap);
         },
         
-        get teamBPlayers() {
-            return this.allPlayers.filter(p => p.team === 'B').sort((a, b) => {
-                if (a.flight !== b.flight) return a.flight - b.flight;
-                return a.handicap - b.handicap;
-            });
+        get flight1TeamBPlayers() {
+            const flightPlayers = this.allPlayers.filter(p => p.flight === 1 && p.team === 'B');
+            return flightPlayers.sort((a, b) => a.handicap - b.handicap);
+        },
+        
+        get flight2TeamAPlayers() {
+            const flightPlayers = this.allPlayers.filter(p => p.flight === 2 && p.team === 'A');
+            return flightPlayers.sort((a, b) => a.handicap - b.handicap);
+        },
+        
+        get flight2TeamBPlayers() {
+            const flightPlayers = this.allPlayers.filter(p => p.flight === 2 && p.team === 'B');
+            return flightPlayers.sort((a, b) => a.handicap - b.handicap);
         },
         
         // ============================================================
@@ -423,13 +465,12 @@ function gameApp() {
         },
         
         // ============================================================
-        // HELPER: Get players in flight order
+        // HELPER: Get players in flight order (A then B, by handicap)
         // ============================================================
         
         getFlightOrderedPlayers(flight) {
-            const flightPlayers = this.allPlayers.filter(p => p.flight === flight);
-            const teamAPlayers = flightPlayers.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
-            const teamBPlayers = flightPlayers.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+            const teamAPlayers = this.allPlayers.filter(p => p.flight === flight && p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+            const teamBPlayers = this.allPlayers.filter(p => p.flight === flight && p.team === 'B').sort((a, b) => a.handicap - b.handicap);
             return [...teamAPlayers, ...teamBPlayers];
         },
         
@@ -488,7 +529,7 @@ function gameApp() {
         },
         
         // ============================================================
-        // INTRA-FLIGHT BUBBLES (always use own flight data)
+        // INTRA-FLIGHT BUBBLES (only use current flight's data)
         // ============================================================
         
         getIntraFlightOpponents(player) {
@@ -496,17 +537,80 @@ function gameApp() {
         },
         
         getIntraBubbleClass(player, opponent) {
-            const result = this.calculateMatchResult(player, opponent, player.flight);
+            const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return 'bubble-green';
             if (result < 0) return 'bubble-red';
             return 'bubble-grey';
         },
         
         getIntraBubbleValue(player, opponent) {
-            const result = this.calculateMatchResult(player, opponent, player.flight);
+            const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return result.toString();
             if (result < 0) return Math.abs(result).toString();
             return 'AS';
+        },
+        
+        calculateIntraMatchResult(playerA, playerB) {
+            // Use ONLY the current flight's data (same flight for both players)
+            const flight = playerA.flight;
+            const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
+            
+            const handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+            const isPlayerAReceiving = (playerA.handicap > playerB.handicap);
+            const strokeHoles = this.getStrokeHoles(handicapDiff);
+            
+            let playerAWon = 0;
+            let playerBWon = 0;
+            
+            // Get ordered players for this flight to map positions
+            const flightPlayers = this.allPlayers.filter(p => p.flight === flight);
+            const teamAPlayers = flightPlayers.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
+            const teamBPlayers = flightPlayers.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
+            
+            for (let hole = 1; hole <= 18; hole++) {
+                const holeData = flightData[hole];
+                if (!holeData || !holeData.saved) continue;
+                
+                let playerAScore = null;
+                let playerBScore = null;
+                
+                // Get playerA score
+                if (playerA.team === 'A') {
+                    if (teamAPlayers[0]?.name === playerA.name) playerAScore = holeData.a1;
+                    else if (teamAPlayers[1]?.name === playerA.name) playerAScore = holeData.a2;
+                } else {
+                    if (teamBPlayers[0]?.name === playerA.name) playerAScore = holeData.b1;
+                    else if (teamBPlayers[1]?.name === playerA.name) playerAScore = holeData.b2;
+                }
+                
+                // Get playerB score
+                if (playerB.team === 'A') {
+                    if (teamAPlayers[0]?.name === playerB.name) playerBScore = holeData.a1;
+                    else if (teamAPlayers[1]?.name === playerB.name) playerBScore = holeData.a2;
+                } else {
+                    if (teamBPlayers[0]?.name === playerB.name) playerBScore = holeData.b1;
+                    else if (teamBPlayers[1]?.name === playerB.name) playerBScore = holeData.b2;
+                }
+                
+                if (playerAScore === null || playerBScore === null) continue;
+                
+                let netA = playerAScore;
+                let netB = playerBScore;
+                
+                if (isPlayerAReceiving) {
+                    netA = playerAScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
+                } else {
+                    netB = playerBScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
+                }
+                
+                if (netA < netB) {
+                    playerAWon++;
+                } else if (netB < netA) {
+                    playerBWon++;
+                }
+            }
+            
+            return playerAWon - playerBWon;
         },
         
         // ============================================================
@@ -518,8 +622,6 @@ function gameApp() {
         },
         
         getCrossBubbleClass(player, opponent) {
-            // If lastSyncedHole === current highest hole where both flights saved
-            // But simpler: if the match result is marked as synced
             const key = `${player.name}_vs_${opponent.name}`;
             const match = this.crossMatchResults[key];
             if (!match) return 'bubble-grey';
@@ -539,112 +641,8 @@ function gameApp() {
         },
         
         // ============================================================
-        // MATCH RESULT CALCULATION (Full handicap difference)
+        // MATCH RESULT CALCULATION HELPERS
         // ============================================================
-        
-        calculateMatchResult(playerA, playerB, dataSourceFlight) {
-            // dataSourceFlight indicates which flight's saved data to use
-            // Returns: positive = A winning, negative = B winning, 0 = AS
-            
-            const handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
-            const higherHandicapPlayer = (playerA.handicap > playerB.handicap) ? playerA : playerB;
-            const isPlayerAReceiving = (playerA === higherHandicapPlayer);
-            
-            // Get stroke holes based on course SI
-            const strokeHoles = this.getStrokeHoles(handicapDiff);
-            
-            let holesCompleted = 0;
-            let playerAWon = 0;
-            let playerBWon = 0;
-            
-            // Determine which flight's data to use for scores
-            const useFlight1 = (dataSourceFlight === 1);
-            
-            for (let hole = 1; hole <= 18; hole++) {
-                // Get scores based on whose data we're using
-                let playerAScore = null;
-                let playerBScore = null;
-                
-                if (useFlight1) {
-                    const holeData = this.flight1Data[hole];
-                    if (holeData && holeData.saved) {
-                        // Map players to positions
-                        const flight1Players = this.allPlayers.filter(p => p.flight === 1);
-                        const teamAPlayers = flight1Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
-                        const teamBPlayers = flight1Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
-                        
-                        if (playerA.flight === 1) {
-                            if (playerA.team === 'A') {
-                                if (teamAPlayers[0]?.name === playerA.name) playerAScore = holeData.a1;
-                                else if (teamAPlayers[1]?.name === playerA.name) playerAScore = holeData.a2;
-                            } else {
-                                if (teamBPlayers[0]?.name === playerA.name) playerAScore = holeData.b1;
-                                else if (teamBPlayers[1]?.name === playerA.name) playerAScore = holeData.b2;
-                            }
-                        }
-                        if (playerB.flight === 1) {
-                            if (playerB.team === 'A') {
-                                if (teamAPlayers[0]?.name === playerB.name) playerBScore = holeData.a1;
-                                else if (teamAPlayers[1]?.name === playerB.name) playerBScore = holeData.a2;
-                            } else {
-                                if (teamBPlayers[0]?.name === playerB.name) playerBScore = holeData.b1;
-                                else if (teamBPlayers[1]?.name === playerB.name) playerBScore = holeData.b2;
-                            }
-                        }
-                    }
-                } else {
-                    const holeData = this.flight2Data[hole];
-                    if (holeData && holeData.saved) {
-                        const flight2Players = this.allPlayers.filter(p => p.flight === 2);
-                        const teamAPlayers = flight2Players.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
-                        const teamBPlayers = flight2Players.filter(p => p.team === 'B').sort((a, b) => a.handicap - b.handicap);
-                        
-                        if (playerA.flight === 2) {
-                            if (playerA.team === 'A') {
-                                if (teamAPlayers[0]?.name === playerA.name) playerAScore = holeData.a1;
-                                else if (teamAPlayers[1]?.name === playerA.name) playerAScore = holeData.a2;
-                            } else {
-                                if (teamBPlayers[0]?.name === playerA.name) playerAScore = holeData.b1;
-                                else if (teamBPlayers[1]?.name === playerA.name) playerAScore = holeData.b2;
-                            }
-                        }
-                        if (playerB.flight === 2) {
-                            if (playerB.team === 'A') {
-                                if (teamAPlayers[0]?.name === playerB.name) playerBScore = holeData.a1;
-                                else if (teamAPlayers[1]?.name === playerB.name) playerBScore = holeData.a2;
-                            } else {
-                                if (teamBPlayers[0]?.name === playerB.name) playerBScore = holeData.b1;
-                                else if (teamBPlayers[1]?.name === playerB.name) playerBScore = holeData.b2;
-                            }
-                        }
-                    }
-                }
-                
-                if (playerAScore === null || playerBScore === null) continue;
-                
-                holesCompleted++;
-                
-                let netA = playerAScore;
-                let netB = playerBScore;
-                
-                if (isPlayerAReceiving) {
-                    const strokes = this.getStrokesForHole(hole, handicapDiff, strokeHoles);
-                    netA = playerAScore - strokes;
-                } else {
-                    const strokes = this.getStrokesForHole(hole, handicapDiff, strokeHoles);
-                    netB = playerBScore - strokes;
-                }
-                
-                if (netA < netB) {
-                    playerAWon++;
-                } else if (netB < netA) {
-                    playerBWon++;
-                }
-            }
-            
-            if (holesCompleted === 0) return 0;
-            return playerAWon - playerBWon;
-        },
         
         getStrokeHoles(handicapDiff) {
             if (handicapDiff <= 0) return [];
@@ -684,8 +682,6 @@ function gameApp() {
             }
             this.lastSyncedHole = newLastSynced;
             
-            const isSynced = (this.lastSyncedHole === 18) || false;
-            
             // Get all cross-flight matchups (F1 vs F2)
             const f1Players = this.allPlayers.filter(p => p.flight === 1);
             const f2Players = this.allPlayers.filter(p => p.flight === 2);
@@ -695,35 +691,27 @@ function gameApp() {
                     const key1 = `${p1.name}_vs_${p2.name}`;
                     const key2 = `${p2.name}_vs_${p1.name}`;
                     
-                    // Calculate result using data from both flights up to lastSyncedHole
-                    // For cross bubbles, we need the match result from the perspective of each player
-                    // But since match play is symmetric, we can calculate once
-                    
                     let result = 0;
                     if (this.lastSyncedHole > 0) {
-                        // Calculate match result using both flights' data up to lastSyncedHole
-                        result = this.calculateMatchResultCross(p1, p2, this.lastSyncedHole);
+                        result = this.calculateCrossMatchResult(p1, p2, this.lastSyncedHole);
                     }
                     
-                    // For F1 screen (p1 vs p2 perspective)
+                    // For F1 screen
                     this.crossMatchResults[key1] = {
                         value: result,
-                        isSynced: (this.lastSyncedHole === this.currentHole || isSynced)
+                        isSynced: (this.lastSyncedHole === this.currentHole)
                     };
                     
-                    // For F2 screen (p2 vs p1 perspective) - inverted value
+                    // For F2 screen (inverted)
                     this.crossMatchResults[key2] = {
                         value: -result,
-                        isSynced: (this.lastSyncedHole === this.currentHole || isSynced)
+                        isSynced: (this.lastSyncedHole === this.currentHole)
                     };
                 }
             }
         },
         
-        calculateMatchResultCross(playerA, playerB, upToHole) {
-            // Calculate match result between playerA (Flight 1) and playerB (Flight 2)
-            // using data from both flights up to upToHole
-            
+        calculateCrossMatchResult(playerA, playerB, upToHole) {
             const handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
             const isPlayerAReceiving = (playerA.handicap > playerB.handicap);
             const strokeHoles = this.getStrokeHoles(handicapDiff);
@@ -928,7 +916,6 @@ function gameApp() {
             if (JSON.stringify(newF1) !== JSON.stringify(this.flight1Data)) {
                 this.flight1Data = newF1;
                 changed = true;
-                // Clear local changes for Flight 1 that conflict
                 for (const key of Object.keys(this.localChanges)) {
                     if (key.startsWith('1_')) delete this.localChanges[key];
                 }
@@ -989,7 +976,6 @@ function gameApp() {
             this.f1DataString = data.f1?.d || '';
             this.f2DataString = data.f2?.d || '';
             
-            // Set current hole to starting hole (shotgun start)
             this.currentHole = this.startingHole;
             
             this.flight1Data = this.parseFlightData(this.f1DataString);
@@ -1023,16 +1009,15 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - Current hole initializes to startingHole (shotgun start)
+   - Fixed scorecard player order: by Flight, within flight: Team A (handicap low to high), then Team B (handicap low to high)
+   - Removed shotgun start message entirely
+   - Fixed intra-flight bubbles: all 8 light up after save (use only current flight's data, no cross-flight dependency)
+   - Cross-flight bubbles remain grey until both flights save the hole
+   - Current hole initializes to startingHole
    - Navigation wraps correctly (18→1, 1→18)
-   - Cross-flight sync tracking (lastSyncedHole)
-   - F1-8-XB and F2-8-XB turn GREY when out of sync, show last synced hole value
-   - F1-8-IB and F2-8-IB always show current flight's own data (never grey)
    - Real-time Firebase sync via onSnapshot
    - Play Order / Natural Order toggle with localStorage persistence
-   - Match bubble calculations using full handicap difference method
-   - Intra-flight and cross-flight bubbles separated
 STATUS: Ready for testing
 -->
