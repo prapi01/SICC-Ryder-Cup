@@ -1,12 +1,11 @@
 <!--
 FILE: game.html
-VERSION: 2.06
+VERSION: 2.07
 KEY CHANGES:
-   - Fixed start of game: all intra-flight bubbles grey "AS" (no saved holes)
-   - Intra-flight bubbles only light up after flight saves at least one hole
-   - Added hasAnySavedHoles check before calculating intra-flight bubbles
-   - Cross-flight bubbles remain grey until both flights save the hole
-STATUS: Ready for testing
+   - Added debug logging to track scorecard rendering
+   - Logs displayHolesList order and scores for first player
+   - Helps identify column misalignment
+STATUS: Debug version - for testing only
 -->
 
 <!DOCTYPE html>
@@ -146,6 +145,20 @@ STATUS: Ready for testing
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         
         .loading { text-align: center; padding: 40px; color: #888; }
+        
+        /* Debug panel */
+        .debug-panel {
+            background: #1a1a1a;
+            border: 1px solid #ffaa44;
+            border-radius: 8px;
+            padding: 8px;
+            margin: 10px 0;
+            font-size: 0.6rem;
+            font-family: monospace;
+            color: #ffaa44;
+            max-height: 150px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -217,6 +230,11 @@ STATUS: Ready for testing
             <div class="scorecard-wrapper" id="scorecardWrapper"></div>
         </div>
         
+        <!-- Debug Panel -->
+        <div class="debug-panel" x-show="debugLog.length > 0">
+            <div x-repeat="log in debugLog" x-text="log"></div>
+        </div>
+        
         <div class="debug">
             <span x-text="syncStatus"></span>
             <span x-show="lastSyncedHole > 0"> | Last synced: Hole <span x-text="lastSyncedHole"></span></span>
@@ -282,6 +300,8 @@ function gameApp() {
         f1DataString: '',
         f2DataString: '',
         
+        debugLog: [],
+        
         // ============================================================
         // COMPUTED
         // ============================================================
@@ -329,7 +349,6 @@ function gameApp() {
             return [...flight1A, ...flight1B, ...flight2A, ...flight2B];
         },
         
-        // Helper: Check if a flight has any saved holes
         hasAnySavedHoles(flight) {
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
             for (let h = 1; h <= 18; h++) {
@@ -430,23 +449,19 @@ function gameApp() {
         },
         
         getIntraBubbleClass(player, opponent) {
-            // If this flight has no saved holes, all bubbles are grey
             if (!this.hasAnySavedHoles(player.flight)) {
                 return 'bubble-grey';
             }
-            
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return 'bubble-green';
             if (result < 0) return 'bubble-red';
-            return 'bubble-green';  // Tie with at least one saved hole -> green AS
+            return 'bubble-green';
         },
         
         getIntraBubbleValue(player, opponent) {
-            // If this flight has no saved holes, show AS
             if (!this.hasAnySavedHoles(player.flight)) {
                 return 'AS';
             }
-            
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return result.toString();
             if (result < 0) return Math.abs(result).toString();
@@ -456,7 +471,6 @@ function gameApp() {
         calculateIntraMatchResult(playerA, playerB) {
             const flight = playerA.flight;
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
-            
             const handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
             const isPlayerAReceiving = (playerA.handicap > playerB.handicap);
             const strokeHoles = this.getStrokeHoles(handicapDiff);
@@ -495,7 +509,6 @@ function gameApp() {
                 
                 let netA = playerAScore;
                 let netB = playerBScore;
-                
                 if (isPlayerAReceiving) {
                     netA = playerAScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
                 } else {
@@ -505,7 +518,6 @@ function gameApp() {
                 if (netA < netB) playerAWon++;
                 else if (netB < netA) playerBWon++;
             }
-            
             return playerAWon - playerBWon;
         },
         
@@ -647,7 +659,6 @@ function gameApp() {
                 
                 let netA = playerAScore;
                 let netB = playerBScore;
-                
                 if (isPlayerAReceiving) {
                     netA = playerAScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
                 } else {
@@ -657,12 +668,11 @@ function gameApp() {
                 if (netA < netB) playerAWon++;
                 else if (netB < netA) playerBWon++;
             }
-            
             return playerAWon - playerBWon;
         },
         
         // ============================================================
-        // SCORECARD RENDERING (JavaScript)
+        // SCORECARD RENDERING WITH DEBUG LOGGING
         // ============================================================
         
         renderScorecard() {
@@ -672,11 +682,29 @@ function gameApp() {
             const holes = this.displayHolesList;
             const players = this.scorecardPlayers;
             
+            // DEBUG: Log holes order
+            console.log('=== SCORECARD DEBUG ===');
+            console.log('Display mode:', this.displayMode);
+            console.log('Starting hole:', this.startingHole);
+            console.log('Holes order:', holes);
+            
+            // DEBUG: Log first player's scores for each hole
+            if (players.length > 0) {
+                const testPlayer = players[0];
+                console.log('Test player:', testPlayer.label);
+                for (const h of holes) {
+                    const score = this.getStoredScore(testPlayer, h);
+                    const isSaved = this.isHoleSaved(testPlayer.flight, h);
+                    console.log(`  Hole ${h}: score=${score}, saved=${isSaved}`);
+                }
+            }
+            
             const flight1Players = players.filter(p => p.flight === 1);
             const flight2Players = players.filter(p => p.flight === 2);
             
             let html = '<table class="scorecard-table">';
             
+            // Header
             html += '<thead><tr><th>Hole</th>';
             for (const h of holes) {
                 html += `<th>${h}</th>`;
@@ -703,7 +731,7 @@ function gameApp() {
             
             // Flight 1 players
             for (const player of flight1Players) {
-                html += `<table><td style="font-weight:600;">${player.label}<\/td>`;
+                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
                 let playerTotal = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
@@ -767,6 +795,14 @@ function gameApp() {
             
             html += '</tbody></table>';
             wrapper.innerHTML = html;
+            
+            // Add debug to page
+            this.debugLog = [
+                `Display mode: ${this.displayMode}`,
+                `Starting hole: ${this.startingHole}`,
+                `Holes order: ${holes.join(',')}`,
+                `First player ${players[0]?.label} holes 10-15 scores: ${holes.slice(0,6).map(h => this.getStoredScore(players[0], h)).join(',')}`
+            ];
         },
         
         // ============================================================
@@ -1007,11 +1043,10 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.06
+VERSION: 2.07
 KEY CHANGES:
-   - Fixed start of game: all intra-flight bubbles grey "AS" (no saved holes)
-   - Intra-flight bubbles only light up after flight saves at least one hole
-   - Added hasAnySavedHoles check before calculating intra-flight bubbles
-   - Cross-flight bubbles remain grey until both flights save the hole
-STATUS: Ready for testing
+   - Added debug logging to track scorecard rendering
+   - Logs displayHolesList order and scores for first player
+   - Helps identify column misalignment
+STATUS: Debug version - for testing only
 -->
