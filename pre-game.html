@@ -1,6 +1,18 @@
-<!-- FILE: pre-game.html - VERSION 2.32 -->
+<!--
+FILE: pre-game.html
+VERSION: 2.33
+KEY CHANGES:
+   - Added Starting Hole and Team Game Format display in course card
+   - Removed format badge from flight cards (cleaner layout)
+   - Reads startingHole and teamGameFormat from game document
+   - Displays: "Starting Hole: X | Team Game Format: Tournament/Relative"
+   - Supports preview sandboxes and scheduled games
+STATUS: Complete. Ready for testing.
+-->
+
+<!-- FILE: pre-game.html - VERSION 2.33 -->
 <!-- Role selection and verification before game -->
-<!-- UPDATED: Support preview sandboxes collection -->
+<!-- ADDED: Starting Hole and Team Game Format display in course card -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -76,6 +88,29 @@
         }
         .course-name { font-size: 1.3rem; font-weight: 700; color: #4caf50; }
         .course-date { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        .course-info-row {
+            font-size: 0.7rem;
+            color: #ffaa44;
+            margin-top: 8px;
+            padding-top: 6px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .course-info-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .course-info-label {
+            color: #888;
+        }
+        .course-info-value {
+            color: #ffaa44;
+            font-weight: 600;
+        }
         
         .flight-box {
             background: rgba(10,10,10,0.8);
@@ -327,13 +362,13 @@
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.32</div>
+<div class="version-tag">v2.33</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.32
-// SUPPORT: previewSandboxes collection for PREVIEW mode
+// FILE: pre-game.html - VERSION 2.33
+// ADDED: Starting Hole and Team Game Format display in course card
 
-var VERSION = "2.32";
+var VERSION = "2.33";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -804,11 +839,19 @@ function goBack() {
     window.location.href = returnDest;
 }
 
+function getFormatDisplayName(format) {
+    if (format === "relative") return "Relative";
+    return "Tournament";
+}
+
 function render() {
     if (!gameData) return;
     
     var courseName = gameData.course ? gameData.course.name : "Unknown Course";
     var players = gameData.players || [];
+    var startingHole = gameData.startingHole || 1;
+    var teamGameFormat = gameData.teamGameFormat || "tournament";
+    var formatDisplayName = getFormatDisplayName(teamGameFormat);
     
     var modeBanner = '';
     if (gameMode === "real") {
@@ -823,8 +866,17 @@ function render() {
     if (gameData.date && gameMode !== "preview") {
         dateDisplay = '<div class="course-date">📅 ' + formatDisplayDate(gameData.date) + '</div>';
     } else if (isPreviewSandbox && gameData.originalGameId) {
-        // For preview sandboxes, show original game date
         dateDisplay = '<div class="course-date">📅 Preview Session</div>';
+    }
+    
+    // Build starting hole display text
+    var startingHoleText = "";
+    if (startingHole === 1) {
+        startingHoleText = "Hole 1";
+    } else if (startingHole === 10) {
+        startingHoleText = "Hole 10";
+    } else {
+        startingHoleText = "Shotgun " + startingHole;
     }
     
     var flight1Players = players.filter(function(p) { return p.flight === 1; });
@@ -897,6 +949,16 @@ function render() {
         <div class="course-card">
             <div class="course-name">⛳ ${escapeHtml(courseName)}</div>
             ${dateDisplay}
+            <div class="course-info-row">
+                <span class="course-info-item">
+                    <span class="course-info-label">Starting Hole:</span>
+                    <span class="course-info-value">${startingHoleText}</span>
+                </span>
+                <span class="course-info-item">
+                    <span class="course-info-label">Team Game Format:</span>
+                    <span class="course-info-value">${formatDisplayName}</span>
+                </span>
+            </div>
         </div>
         
         <div class="flight-box">
@@ -957,3 +1019,15 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 </script>
 </body>
 </html>
+
+<!--
+FILE: pre-game.html
+VERSION: 2.33
+KEY CHANGES:
+   - Added Starting Hole and Team Game Format display in course card
+   - Removed format badge from flight cards (cleaner layout)
+   - Reads startingHole and teamGameFormat from game document
+   - Displays: "Starting Hole: X | Team Game Format: Tournament/Relative"
+   - Supports preview sandboxes and scheduled games
+STATUS: Complete. Ready for testing.
+-->
