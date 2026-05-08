@@ -1,11 +1,11 @@
 <!--
 FILE: test-ui.html
-VERSION: 1.00
+VERSION: 1.01
 PURPOSE: Standalone UI-Painter test harness
-          - Accepts UI string input
+          - Accepts UI string in final format
           - Renders using game.html v1.13 logic
           - No Firebase, no controllers, no dependencies
-          - Once verified, same rendering logic works in real game.html
+          - Format: TR|F1|F2|T1|T2|STRK
 STATUS: Complete. Ready for testing.
 -->
 
@@ -29,7 +29,7 @@ STATUS: Complete. Ready for testing.
             border-top: 2px solid #4caf50;
             padding: 16px;
             z-index: 2000;
-            max-height: 40%;
+            max-height: 35%;
             overflow-y: auto;
             font-family: monospace;
         }
@@ -74,13 +74,13 @@ STATUS: Complete. Ready for testing.
             margin-top: 8px;
         }
         
-        /* Game UI Styles - Copied from game.html v1.13 */
+        /* Game UI Styles */
         body { 
             background: #000; 
             font-family: system-ui, sans-serif; 
             color: #fff; 
             padding: 12px; 
-            padding-bottom: 35%; /* Make room for test panel */
+            padding-bottom: 30%;
         }
         .container { max-width: 500px; margin: 0 auto; padding-bottom: 80px; }
         
@@ -119,7 +119,6 @@ STATUS: Complete. Ready for testing.
             z-index: 1000; 
         }
         .status-real { background: rgba(76,175,80,0.3); border: 1px solid #4caf50; color: #4caf50; }
-        .status-preview { background: rgba(255,170,68,0.3); border: 1px solid #ffaa44; color: #ffaa44; }
         
         .game-header { text-align: center; margin-bottom: 20px; margin-top: 8px; }
         .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
@@ -146,6 +145,7 @@ STATUS: Complete. Ready for testing.
         .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        .bubble-black { background: #000; color: #000; border: 1px solid #111; }
         
         .scorecard-section { margin: 20px 0; }
         .scorecard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
@@ -162,6 +162,8 @@ STATUS: Complete. Ready for testing.
         .scorecard-table .completed { background: #1a3a1a30; font-weight: 700; color: #ffffff; }
         .scorecard-table .placeholder { color: #000000 !important; background: #0a0a0a; opacity: 0.4; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+        .row-cell-green { color: #4caf50; font-weight: 600; }
+        .row-cell-black { color: #000; }
         
         .game-info { text-align: center; margin-bottom: 16px; font-size: 0.8rem; color: #888; }
         
@@ -184,7 +186,7 @@ STATUS: Complete. Ready for testing.
     <div class="loading">Waiting for UI string...</div>
 </div>
 <div class="device-tag">🧪 TEST MODE</div>
-<div class="version-tag">v1.00</div>
+<div class="version-tag">v1.01</div>
 
 <!-- Test Panel -->
 <div class="test-panel">
@@ -193,8 +195,8 @@ STATUS: Complete. Ready for testing.
     <div class="test-buttons">
         <button class="test-btn" onclick="renderFromString()">▶ Render</button>
         <button class="test-btn" onclick="loadExample1()">📋 Example 1: Start of Game</button>
-        <button class="test-btn" onclick="loadExample2()">📋 Example 2: After Hole 1 (Both Saved)</button>
-        <button class="test-btn" onclick="loadExample3()">📋 Example 3: After Hole 6 (A Leading)</button>
+        <button class="test-btn" onclick="loadExample2()">📋 Example 2: After Hole 1 (Synced)</button>
+        <button class="test-btn" onclick="loadExample3()">📋 Example 3: After 6 Holes (A Leading)</button>
         <button class="test-btn" onclick="clearUI()">🗑 Clear</button>
     </div>
     <div class="status" id="status">Ready. Paste a UI string or click an example.</div>
@@ -202,13 +204,9 @@ STATUS: Complete. Ready for testing.
 
 <script>
 // ============================================================
-// UI-Painter Core (same as game.html v1.13)
+// Mock Data
 // ============================================================
 
-var uiData = null;
-var currentDisplayMode = "play";
-
-// Mock data for test harness (since no Firebase/controller)
 var mockPlayers = [
     { name: "Ang C H", label: "ACH", handicap: 1, team: "A", flight: 1 },
     { name: "Kenneth Foo", label: "KF", handicap: 3, team: "A", flight: 1 },
@@ -226,7 +224,12 @@ var mockCourse = {
     si: [1, 11, 3, 5, 13, 15, 7, 9, 17, 18, 6, 8, 16, 12, 2, 4, 14, 10]
 };
 
-// Display preferences
+// ============================================================
+// Display Preferences
+// ============================================================
+
+var currentDisplayMode = "play";
+
 function loadDisplayPreference() {
     var saved = localStorage.getItem("scorecardDisplay");
     if (saved === "natural" || saved === "play") {
@@ -275,13 +278,152 @@ function escapeHtml(str) {
     });
 }
 
-// Render scorecard
-function renderScorecard() {
-    if (!uiData) return;
+// ============================================================
+// UI String Parser
+// ============================================================
+
+function parseUIString(uiString) {
+    // Split by pipe
+    var parts = uiString.split('|');
+    if (parts.length !== 7) {
+        console.error("Invalid UI string: expected 7 parts, got", parts.length);
+        return null;
+    }
     
-    var data = uiData;
-    var course = data.course || mockCourse;
-    var players = data.players || mockPlayers;
+    var trString = parts[0];      // Format: G 9.5G 9.5
+    var f1BubblesRaw = parts[1];  // 48 chars
+    var f2BubblesRaw = parts[2];  // 48 chars
+    var t1Raw = parts[3];         // 36 chars
+    var t2Raw = parts[4];         // 36 chars
+    var strkRaw = parts[5];       // 36 chars
+    
+    // Parse TR string
+    // Format: [COLOR_A][SCORE_A][COLOR_B][SCORE_B]
+    // COLOR_A = 1 char, SCORE_A = 4 chars, COLOR_B = 1 char, SCORE_B = 4 chars
+    if (trString.length !== 10) {
+        console.error("Invalid TR string: expected 10 chars, got", trString.length);
+        return null;
+    }
+    
+    var colorA = trString.charAt(0);
+    var scoreA = trString.substr(1, 4).trim();
+    var colorB = trString.charAt(5);
+    var scoreB = trString.substr(6, 4).trim();
+    
+    var trPoints = { teamA: parseFloat(scoreA), teamB: parseFloat(scoreB) };
+    var teamAGreen = (colorA === 'G');
+    var teamBGreen = (colorB === 'G');
+    
+    // Parse bubbles (3 chars each, 16 bubbles = 48 chars)
+    function parseBubbles(raw) {
+        var bubbles = [];
+        for (var i = 0; i < 16; i++) {
+            var bubble = raw.substr(i * 3, 3);
+            var color = bubble.charAt(0);
+            var value = bubble.substr(1, 2).trim();
+            bubbles.push({ color: color, value: value });
+        }
+        return bubbles;
+    }
+    
+    // Parse row (2 chars per cell, 18 cells = 36 chars)
+    // Format: [COLOR][VALUE] repeated 18 times
+    function parseRow(raw) {
+        var row = [];
+        for (var i = 0; i < 18; i++) {
+            var color = raw.charAt(i * 2);
+            var value = raw.charAt(i * 2 + 1);
+            row.push({ color: color, value: value });
+        }
+        return row;
+    }
+    
+    var f1Bubbles = parseBubbles(f1BubblesRaw);
+    var f2Bubbles = parseBubbles(f2BubblesRaw);
+    var t1Row = parseRow(t1Raw);
+    var t2Row = parseRow(t2Raw);
+    var strkRow = parseRow(strkRaw);
+    
+    // Build T1/T2/Strk display arrays (the value only, color handled separately)
+    var t1Display = t1Row.map(function(cell) {
+        return cell.value === '_' ? '' : cell.value;
+    });
+    var t2Display = t2Row.map(function(cell) {
+        return cell.value === '_' ? '' : cell.value;
+    });
+    var strkDisplay = strkRow.map(function(cell) {
+        return cell.value === '_' ? '' : cell.value;
+    });
+    
+    // Build matchBubbles mapping for UI
+    var matchBubbles = {};
+    var flight1Players = mockPlayers.filter(function(p) { return p.flight === 1; });
+    var flight2Players = mockPlayers.filter(function(p) { return p.flight === 2; });
+    
+    // Map F1 bubbles to Flight 1 players vs Flight 2 players
+    var bubbleIdx = 0;
+    for (var i = 0; i < flight1Players.length; i++) {
+        for (var j = 0; j < flight2Players.length; j++) {
+            var bubble = f1Bubbles[bubbleIdx];
+            var key = flight1Players[i].name + "_vs_" + flight2Players[j].name;
+            matchBubbles[key] = { color: bubble.color, value: bubble.value };
+            bubbleIdx++;
+        }
+    }
+    
+    // Map F2 bubbles to Flight 2 players vs Flight 1 players
+    bubbleIdx = 0;
+    for (var i = 0; i < flight2Players.length; i++) {
+        for (var j = 0; j < flight1Players.length; j++) {
+            var bubble = f2Bubbles[bubbleIdx];
+            var key = flight2Players[i].name + "_vs_" + flight1Players[j].name;
+            matchBubbles[key] = { color: bubble.color, value: bubble.value };
+            bubbleIdx++;
+        }
+    }
+    
+    return {
+        trPoints: trPoints,
+        trColorA: colorA,
+        trColorB: colorB,
+        teamAGreen: teamAGreen,
+        teamBGreen: teamBGreen,
+        t1Row: t1Display,
+        t2Row: t2Display,
+        strkRow: strkDisplay,
+        t1Colors: t1Row.map(function(cell) { return cell.color; }),
+        t2Colors: t2Row.map(function(cell) { return cell.color; }),
+        strkColors: strkRow.map(function(cell) { return cell.color; }),
+        matchBubbles: matchBubbles,
+        players: mockPlayers,
+        course: mockCourse,
+        startingHole: 1,
+        editableFlight: 1,
+        gameMode: "test",
+        currentHole: 1,
+        currentActualHole: 1,
+        canModify: false,
+        isSaved: true,
+        activeFlight: 1,
+        modeDisplay: "TEST",
+        modeClass: "status-real",
+        playOrder: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
+        naturalOrder: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
+        savedHoles: { 1: [], 2: [] },
+        scores: {}
+    };
+}
+
+// ============================================================
+// Scorecard Rendering (with row colors)
+// ============================================================
+
+function renderScorecard() {
+    if (!window.uiData) return;
+    
+    var data = window.uiData;
+    var course = data.course;
+    var players = data.players;
     
     var displayHoleOrder;
     if (currentDisplayMode === "natural") {
@@ -296,6 +438,10 @@ function renderScorecard() {
         if (a.flight !== b.flight) return a.flight - b.flight;
         return a.handicap - b.handicap;
     });
+    
+    // Split players into Team A and Team B for correct ordering
+    var teamAPlayers = allPlayersSorted.filter(function(p) { return p.team === "A"; });
+    var teamBPlayers = allPlayersSorted.filter(function(p) { return p.team === "B"; });
     
     var tableHtml = '<table class="scorecard-table">';
     tableHtml += '<thead><tr><th>Hole</th>';
@@ -324,55 +470,76 @@ function renderScorecard() {
         tableHtml += '<td>' + si + '</td>';
     }
     tableHtml += '<td>-</td></tr>';
-    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
     
-    // Player scores
-    for (var pi = 0; pi < allPlayersSorted.length; pi++) {
-        var p = allPlayersSorted[pi];
+    // Team A players
+    for (var pi = 0; pi < teamAPlayers.length; pi++) {
+        var p = teamAPlayers[pi];
         var total = 0;
         tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
         for (var i = 0; i < displayHoleOrder.length; i++) {
             var holeNum = displayHoleOrder[i];
-            var score = (data.scores && data.scores[p.flight + "_" + holeNum + "_" + pi]) ? data.scores[p.flight + "_" + holeNum + "_" + pi] : course.par[holeNum - 1];
+            var score = course.par[holeNum - 1];
             total += score;
-            var completed = data.savedHoles && data.savedHoles[p.flight] && data.savedHoles[p.flight].indexOf(holeNum) !== -1;
-            if (completed) {
-                tableHtml += '<td class="completed"><strong>' + score + '</strong></td>';
-            } else {
-                tableHtml += '<td class="placeholder">' + score + '</td>';
-            }
+            tableHtml += '<td class="placeholder">' + score + '</td>';
         }
         tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
     }
     
+    // Green line after Team A
     tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
     
-    // T-1 row
+    // T-1 row (below Team A)
     tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-1</td>';
-    var t1RowData = data.t1Row || [];
     for (var i = 0; i < displayHoleOrder.length; i++) {
-        var val = (i < t1RowData.length) ? t1RowData[i] : "-";
-        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+        var holeIdx = displayHoleOrder[i] - 1;
+        var value = data.t1Row[holeIdx] || '';
+        var color = data.t1Colors[holeIdx];
+        var cellClass = (color === 'G') ? 'row-cell-green' : 'row-cell-black';
+        tableHtml += '<td class="' + cellClass + '">' + value + '</td>';
     }
-    tableHtml += '<td style="color:#4caf50;">' + (data.t1Total || "-") + '</td></tr>';
+    tableHtml += '<td style="color:#4caf50;">-</td></tr>';
     
-    // T-2 row
-    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2</td>';
-    var t2RowData = data.t2Row || [];
-    for (var i = 0; i < displayHoleOrder.length; i++) {
-        var val = (i < t2RowData.length) ? t2RowData[i] : "-";
-        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+    // Green line after T-1
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
+    
+    // Team B players
+    for (var pi = 0; pi < teamBPlayers.length; pi++) {
+        var p = teamBPlayers[pi];
+        var total = 0;
+        tableHtml += '<tr><td style="font-weight:600;">' + p.label + '</td>';
+        for (var i = 0; i < displayHoleOrder.length; i++) {
+            var holeNum = displayHoleOrder[i];
+            var score = course.par[holeNum - 1];
+            total += score;
+            tableHtml += '<td class="placeholder">' + score + '</td>';
+        }
+        tableHtml += '<td class="completed"><strong>' + total + '</strong></td></tr>';
     }
-    tableHtml += '<td style="color:#4caf50;">' + (data.t2Total || "-") + '</td></tr>';
+    
+    // T-2 row (below Team B)
+    tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">T-2</td>';
+    for (var i = 0; i < displayHoleOrder.length; i++) {
+        var holeIdx = displayHoleOrder[i] - 1;
+        var value = data.t2Row[holeIdx] || '';
+        var color = data.t2Colors[holeIdx];
+        var cellClass = (color === 'G') ? 'row-cell-green' : 'row-cell-black';
+        tableHtml += '<td class="' + cellClass + '">' + value + '</td>';
+    }
+    tableHtml += '<td style="color:#4caf50;">-</td></tr>';
+    
+    // Green line after T-2
+    tableHtml += '<tr class="green-line"><td colspan="20"></td></tr>';
     
     // Strk row
     tableHtml += '<tr><td style="font-weight:600; color:#4caf50;">Strk</td>';
-    var strkRowData = data.strkRow || [];
     for (var i = 0; i < displayHoleOrder.length; i++) {
-        var val = (i < strkRowData.length) ? strkRowData[i] : "-";
-        tableHtml += '<td style="color:#4caf50;">' + val + '</td>';
+        var holeIdx = displayHoleOrder[i] - 1;
+        var value = data.strkRow[holeIdx] || '';
+        var color = data.strkColors[holeIdx];
+        var cellClass = (color === 'G') ? 'row-cell-green' : 'row-cell-black';
+        tableHtml += '<td class="' + cellClass + '">' + value + '</td>';
     }
-    tableHtml += '<td style="color:#4caf50;">' + (data.strkTotal || "-") + '</td></tr>';
+    tableHtml += '<td style="color:#4caf50;">-</td></tr>';
     
     tableHtml += '</tbody></table>';
     
@@ -382,117 +549,14 @@ function renderScorecard() {
     }
 }
 
-// Parse UI string (from game-controller.js)
-function parseUIString(uiString) {
-    if (!uiString || uiString.length < 10) {
-        return null;
-    }
-    
-    var pos = 0;
-    
-    // Version (3 chars)
-    var version = uiString.substr(pos, 3);
-    pos += 3;
-    
-    // Find TR segment
-    var taIndex = uiString.indexOf("TA", pos);
-    var tbIndex = uiString.indexOf("TB", taIndex);
-    if (taIndex === -1 || tbIndex === -1) return null;
-    
-    var trEnd = uiString.indexOf("G", tbIndex);
-    if (trEnd === -1) trEnd = uiString.length;
-    
-    var trSegment = uiString.substring(taIndex, trEnd);
-    var trMatch = trSegment.match(/TA([\d\.]+)TB([\d\.]+)/);
-    var trPoints = { teamA: 9.5, teamB: 9.5 };
-    if (trMatch) {
-        trPoints.teamA = parseFloat(trMatch[1]);
-        trPoints.teamB = parseFloat(trMatch[2]);
-    }
-    
-    pos = trEnd;
-    
-    // F1_BUBBLES (48 chars)
-    var f1BubblesRaw = uiString.substr(pos, 48);
-    pos += 48;
-    
-    // F2_BUBBLES (48 chars)
-    var f2BubblesRaw = uiString.substr(pos, 48);
-    pos += 48;
-    
-    // T1_ROW (36 chars)
-    var t1Raw = uiString.substr(pos, 36);
-    pos += 36;
-    
-    // T2_ROW (36 chars)
-    var t2Raw = uiString.substr(pos, 36);
-    pos += 36;
-    
-    // STRK_ROW (36 chars)
-    var strkRaw = uiString.substr(pos, 36);
-    
-    function parseRow(raw, length) {
-        var result = [];
-        for (var i = 0; i < length; i++) {
-            var cell = raw.substr(i * 2, 2);
-            var value = cell.charAt(1);
-            result.push(value === "0" ? "AS" : value);
-        }
-        return result;
-    }
-    
-    function parseBubbles(raw) {
-        var bubbles = [];
-        for (var i = 0; i < 16; i++) {
-            var bubble = raw.substr(i * 3, 3);
-            var color = bubble.charAt(0);
-            var value = bubble.substr(1, 2).trim();
-            bubbles.push({ color: color, value: value });
-        }
-        return bubbles;
-    }
-    
-    // Build matchBubbles object for UI
-    var matchBubbles = {};
-    var f1BubblesParsed = parseBubbles(f1BubblesRaw);
-    var f2BubblesParsed = parseBubbles(f2BubblesRaw);
-    
-    // Map bubbles to player matches (simplified for test)
-    // In real game, controller provides matchBubbles mapping
-    
-    return {
-        version: version,
-        trPoints: trPoints,
-        t1Row: parseRow(t1Raw, 18),
-        t2Row: parseRow(t2Raw, 18),
-        strkRow: parseRow(strkRaw, 18),
-        f1Bubbles: f1BubblesParsed,
-        f2Bubbles: f2BubblesParsed,
-        // Additional data for UI
-        players: mockPlayers,
-        course: mockCourse,
-        startingHole: 1,
-        editableFlight: 1,
-        gameMode: "real",
-        currentHole: 1,
-        currentActualHole: 1,
-        canModify: true,
-        isSaved: true,
-        activeFlight: 1,
-        modeDisplay: "TEST",
-        modeClass: "status-real",
-        playOrder: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
-        naturalOrder: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],
-        savedHoles: { 1: [1], 2: [1] },
-        scores: {}
-    };
-}
+// ============================================================
+// Main UI Painter
+// ============================================================
 
-// Main UI Painter - window.updateGameUI (same as game.html)
 window.updateGameUI = function(data) {
     console.log("UI-Painter: updateGameUI called", data);
     
-    uiData = data;
+    window.uiData = data;
     
     if (!data || !data.players || !data.course) {
         document.getElementById("app").innerHTML = '<div class="loading">Waiting for game data...</div>';
@@ -502,79 +566,54 @@ window.updateGameUI = function(data) {
     loadDisplayPreference();
     
     var course = data.course;
-    var isSaved = data.isSaved || false;
-    var canModify = data.canModify || false;
-    var currentHole = data.currentHole || 1;
-    var currentActualHole = data.currentActualHole || 1;
-    var activeFlight = data.activeFlight || 1;
-    var startingHole = data.startingHole || 1;
+    var currentActualHole = 1;
+    var activeFlight = 1;
     
-    // Get TR points from data
-    var teamAPts = 0;
-    var teamBPts = 0;
+    var teamAPts = data.trPoints.teamA;
+    var teamBPts = data.trPoints.teamB;
     
-    if (data.trPoints) {
-        teamAPts = data.trPoints.teamA;
-        teamBPts = data.trPoints.teamB;
-    }
+    var teamADisplay = teamAPts % 1 === 0 ? teamAPts : teamAPts.toFixed(1);
+    var teamBDisplay = teamBPts % 1 === 0 ? teamBPts : teamBPts.toFixed(1);
     
-    var teamAGreen = teamAPts >= teamBPts;
-    var teamBGreen = teamBPts >= teamAPts;
+    var teamAColorClass = data.teamAGreen ? "team-score-green" : "team-score-red";
+    var teamBColorClass = data.teamBGreen ? "team-score-green" : "team-score-red";
     
-    // Get flight players sorted by team, then handicap
+    var trHtml = '<span class="' + teamAColorClass + '">Team A ' + teamADisplay + '</span> - <span class="' + teamBColorClass + '">' + teamBDisplay + ' Team B</span>';
+    
+    // Get flight players
     var flightPlayers = data.players.filter(function(p) { return p.flight === activeFlight; });
     flightPlayers.sort(function(a, b) {
         if (a.team !== b.team) return a.team === "A" ? -1 : 1;
         return a.handicap - b.handicap;
     });
     
-    // Build player cards with match bubbles from parsed data
+    // Build player cards with match bubbles
     var playerCards = "";
     for (var i = 0; i < flightPlayers.length; i++) {
         var p = flightPlayers[i];
         
-        // Get opponents (all players not on same team)
+        // Get opponents
         var opponents = data.players.filter(function(op) { return op.team !== p.team; });
         
         var bubblesHtml = '<div class="bubbles">';
-        
-        // Use f1Bubbles or f2Bubbles based on player's flight
-        var bubbleIndex = 0;
-        if (p.flight === 1) {
-            // Flight 1 player: use f1Bubbles
-            for (var j = 0; j < opponents.length; j++) {
-                var bubble = data.f1Bubbles && data.f1Bubbles[bubbleIndex];
-                var bubbleColor = bubble ? bubble.color : "B";
-                var bubbleValue = bubble ? bubble.value : "AS";
-                var bubbleClass = "bubble";
-                
-                if (bubbleColor === "G") bubbleClass += " bubble-green";
-                else if (bubbleColor === "R") bubbleClass += " bubble-red";
-                else bubbleClass += " bubble-grey";
-                
-                bubblesHtml += '<div class="' + bubbleClass + '">vs ' + opponents[j].label + ' ' + bubbleValue + '</div>';
-                bubbleIndex++;
-            }
-        } else {
-            // Flight 2 player: use f2Bubbles
-            for (var j = 0; j < opponents.length; j++) {
-                var bubble = data.f2Bubbles && data.f2Bubbles[bubbleIndex];
-                var bubbleColor = bubble ? bubble.color : "B";
-                var bubbleValue = bubble ? bubble.value : "AS";
-                var bubbleClass = "bubble";
-                
-                if (bubbleColor === "G") bubbleClass += " bubble-green";
-                else if (bubbleColor === "R") bubbleClass += " bubble-red";
-                else bubbleClass += " bubble-grey";
-                
-                bubblesHtml += '<div class="' + bubbleClass + '">vs ' + opponents[j].label + ' ' + bubbleValue + '</div>';
-                bubbleIndex++;
-            }
+        for (var j = 0; j < opponents.length; j++) {
+            var key = p.name + "_vs_" + opponents[j].name;
+            var bubble = data.matchBubbles[key];
+            
+            var color = bubble ? bubble.color : 'B';
+            var value = bubble ? bubble.value : 'AS';
+            
+            var bubbleClass = "bubble";
+            if (color === 'G') bubbleClass += " bubble-green";
+            else if (color === 'R') bubbleClass += " bubble-red";
+            else if (color === 'Y') bubbleClass += " bubble-grey";
+            else bubbleClass += " bubble-black";
+            
+            bubblesHtml += '<div class="' + bubbleClass + '">vs ' + opponents[j].label + ' ' + value + '</div>';
         }
         bubblesHtml += '</div>';
         
-        var currentScore = course.par[currentActualHole - 1];
-        var btnDisabled = canModify ? "" : "disabled";
+        var currentScore = course.par[0];
         
         playerCards += '<div class="player-card">' +
             '<div class="player-row">' +
@@ -583,47 +622,29 @@ window.updateGameUI = function(data) {
                     '<span class="player-label-bubble">' + p.label + ' ' + p.handicap + '</span>' +
                 '</div>' +
                 '<div class="score-control">' +
-                    '<button class="score-btn dec-btn" disabled ' + btnDisabled + '>-</button>' +
+                    '<button class="score-btn dec-btn" disabled>-</button>' +
                     '<span class="score-value">' + currentScore + '</span>' +
-                    '<button class="score-btn inc-btn" disabled ' + btnDisabled + '>+</button>' +
+                    '<button class="score-btn inc-btn" disabled>+</button>' +
                 '</div>' +
             '</div>' +
             bubblesHtml +
         '</div>';
     }
     
-    var flightTabHtml = '<div class="flight-tab">Flight ' + (data.editableFlight || activeFlight) + '</div>';
-    
-    var teamADisplay = teamAPts % 1 === 0 ? teamAPts : teamAPts.toFixed(1);
-    var teamBDisplay = teamBPts % 1 === 0 ? teamBPts : teamBPts.toFixed(1);
-    var trHtml = '<span class="' + (teamAGreen ? "team-score-green" : "team-score-red") + '">Team A ' + teamADisplay + '</span> - <span class="' + (teamBGreen ? "team-score-green" : "team-score-red") + '">' + teamBDisplay + ' Team B</span>';
-    
-    var currentPar = course.par[currentActualHole - 1];
-    var currentSi = course.si[currentActualHole - 1];
-    
-    var nextBtnClass = isSaved ? "action-btn btn-next-active" : "action-btn btn-next-inactive";
-    var nextBtnDisabled = !isSaved ? "disabled" : "";
-    
-    var modeDisplay = data.modeDisplay || "TEST";
-    var modeClass = data.modeClass || "status-real";
-    
-    var shotgunNote = (startingHole !== 1) ? '<div class="game-info" style="color:#ffaa44;">⛳ Shotgun Start - Starting at Hole ' + startingHole + '</div>' : '';
-    
     var html = 
-        '<div class="status-bubble ' + modeClass + '">' + modeDisplay + '</div>' +
-        '<div class="game-info"><div>' + escapeHtml(course.name) + (data.gameDate ? ' | ' + data.gameDate : '') + '</div></div>' +
-        shotgunNote +
+        '<div class="status-bubble status-real">TEST</div>' +
+        '<div class="game-info"><div>' + escapeHtml(course.name) + '</div></div>' +
         '<div class="game-header">' +
-            '<div class="hole-number">HOLE ' + currentActualHole + '</div>' +
-            '<div class="hole-par">PAR ' + currentPar + '  SI ' + currentSi + '</div>' +
+            '<div class="hole-number">HOLE 1</div>' +
+            '<div class="hole-par">PAR ' + course.par[0] + '  SI ' + course.si[0] + '</div>' +
         '</div>' +
-        flightTabHtml +
+        '<div class="flight-tab">Flight 1</div>' +
         '<div class="team-score-card"><div class="team-score">' + trHtml + '</div></div>' +
         '<div class="player-cards">' + playerCards + '</div>' +
         '<div class="action-buttons">' +
-            '<button class="action-btn btn-back" id="prevHoleBtn" disabled>Back</button>' +
-            '<button class="action-btn btn-save" id="saveBtn" disabled>Save</button>' +
-            '<button class="' + nextBtnClass + '" id="nextHoleBtn" ' + nextBtnDisabled + ' disabled>Next</button>' +
+            '<button class="action-btn btn-back" disabled>Back</button>' +
+            '<button class="action-btn btn-save" disabled>Save</button>' +
+            '<button class="action-btn btn-next-inactive" disabled>Next</button>' +
         '</div>' +
         '<div class="scorecard-section">' +
             '<div class="scorecard-header">' +
@@ -632,12 +653,12 @@ window.updateGameUI = function(data) {
                     '<button class="toggle-btn" id="playViewBtn">⛳ Play Order</button>' +
                     '<button class="toggle-btn" id="naturalViewBtn">📋 Natural Order</button>' +
                 '</div>' +
-                '<button class="refresh-btn" id="refreshBtn" disabled>⟳</button>' +
+                '<button class="refresh-btn" disabled>⟳</button>' +
             '</div>' +
             '<div class="scorecard-wrapper"></div>' +
         '</div>' +
         '<div class="menu-button-container">' +
-            '<button class="btn-menu" id="menuBtn" disabled>Main Menu</button>' +
+            '<button class="btn-menu" disabled>Main Menu</button>' +
         '</div>';
     
     document.getElementById("app").innerHTML = html;
@@ -696,50 +717,52 @@ function clearUI() {
 }
 
 function loadExample1() {
-    // Example 1: Start of Game - no holes saved, all grey AS, TR 9.5-9.5
-    var uiString = "V01TA9.5TB9.5" +
-        "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS" +  // F1_BUBBLES (16 x BAS)
-        "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS" +  // F2_BUBBLES (16 x BAS)
-        "G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0" +              // T1_ROW (18 x G0)
-        "G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0" +              // T2_ROW (18 x G0)
-        "G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0";               // STRK_ROW (18 x G0)
+    // Start of Game: TR 9.5-9.5, all bubbles BAS, all rows B_ (black underscore = invisible)
+    var uiString = "G 9.5G 9.5|" +
+        "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS|" +
+        "BASBASBASBASBASBASBASBASBASBASBASBASBASBASBASBAS|" +
+        "B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_|" +
+        "B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_|" +
+        "B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_";
     
     document.getElementById("uiStringInput").value = uiString;
     renderFromString();
 }
 
 function loadExample2() {
-    // Example 2: After Hole 1 - both flights saved, A leading Flight 1, B leading Flight 2, A leading Stroke
-    // TR: Game1=8.5-7.5, Game2 F1=A, Game2 F2=B, Game3=A → TR = 10.5-8.5
-    var uiString = "V01TA10.5TB8.5" +
-        // F1_BUBBLES - mixed: some A winning (G), some B winning (R), some AS (GAS)
-        "G1R1GASR1G1BASG1R1" + "G1R1GASR1G1BASG1R1" +  // 16 bubbles
-        // F2_BUBBLES - inverted perspective
-        "R1G1GASR1G1BASR1G1" + "R1G1GASR1G1BASR1G1" +
-        // T1_ROW: A leading after hole 1 → GA for hole 1, rest AS
-        "GAG0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0" +
-        // T2_ROW: B leading after hole 1 → GB for hole 1, rest AS
-        "GBG0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0" +
-        // STRK_ROW: A leading stroke → GA for hole 1, rest AS
-        "GAG0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0G0";
+    // After Hole 1 Synced: TR 10.5-8.5, T1 A leads, T2 B leads, Strk A leads
+    // Hole 1 values: T1=GA, T2=GB, Strk=GA, rest B_
+    var uiString = "G10.5R 8.5|" +
+        "G 1G 1G 1G 1G 1G 1G 1G 1G 1G 1G 1G 1G 1G 1G 1G 1|" +
+        "R 1R 1R 1R 1R 1R 1R 1R 1R 1R 1R 1R 1R 1R 1R 1R 1|" +
+        "GAB_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_|" +
+        "GBB_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_|" +
+        "GAB_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_B_";
     
     document.getElementById("uiStringInput").value = uiString;
     renderFromString();
 }
 
 function loadExample3() {
-    // Example 3: After Hole 6 - Flight 1 A leading, Flight 2 Tie, Stroke A leading
-    // T1: A, A, A, A, A, A, rest AS
-    // T2: B, B, B, B, B, AS, rest AS (Flight 2 tied after 6)
-    var uiString = "V01TA9.5TB9.5" +
-        "G2R5GASR3G1BASG2R1" + "G2R5GASR3G1BASG2R1" + "G2R5GASR3G1BASG2R1" + "G2R5GASR3G1BASG2R1" +  // 16 bubbles
-        "R2G5GASR3G1BASR2G1" + "R2G5GASR3G1BASR2G1" + "R2G5GASR3G1BASR2G1" + "R2G5GASR3G1BASR2G1" +  // 16 bubbles
-        // T1_ROW: A leading all 6 holes
-        "GAGAGAGAGAGAG0G0G0G0G0G0G0G0G0G0G0G0" +
-        // T2_ROW: B leading first 5, AS on hole 6
-        "GBGBGBGBGBG0G0G0G0G0G0G0G0G0G0G0G0" +
-        // STRK_ROW: A leading all 6 holes
-        "GAGAGAGAGAGAG0G0G0G0G0G0G0G0G0G0G0G0";
+    // After 6 Holes: TR 11.5-7.5, T1 A leads all 6, T2 B leads 5 then AS, Strk A leads all 6
+    // Format: [COLOR][VALUE] for each hole
+    // T1: GA GA GA GA GA GA B_ B_ B_ B_ B_ B_ B_ B_ B_ B_ B_ B_
+    // T2: GB GB GB GB GB G0 B_ B_ B_ B_ B_ B_ B_ B_ B_ B_ B_ B_
+    // Strk: GA GA GA GA GA GA B_ B_ B_ B_ B_ B_ B_ B_ B_ B_ B_ B_
+    
+    var t1Row = "GAGAGAGAGAGAB_B_B_B_B_B_B_B_B_B_B_B_";
+    var t2Row = "GBGBGBGBGBG0B_B_B_B_B_B_B_B_B_B_B_";
+    var strkRow = "GAGAGAGAGAGAB_B_B_B_B_B_B_B_B_B_B_B_";
+    
+    // Ensure each is exactly 36 chars
+    while (t1Row.length < 36) t1Row += "B_";
+    while (t2Row.length < 36) t2Row += "B_";
+    while (strkRow.length < 36) strkRow += "B_";
+    
+    var uiString = "G11.5R 7.5|" +
+        "G 1R 2GASR 3G 1BASG 2R 1G 2R 3GASG 1R 2|" +
+        "R 1G 2GASR 3G 1BASR 2G 1R 2G 3GASR 1G 2|" +
+        t1Row + "|" + t2Row + "|" + strkRow;
     
     document.getElementById("uiStringInput").value = uiString;
     renderFromString();
@@ -747,18 +770,18 @@ function loadExample3() {
 
 // Initialize
 document.getElementById("status").innerHTML = "Ready. Paste a UI string or click an example.";
-console.log("Test UI Harness v1.00 loaded");
+console.log("Test UI Harness v1.01 loaded");
 </script>
 </body>
 </html>
 
 <!--
 FILE: test-ui.html
-VERSION: 1.00
+VERSION: 1.01
 PURPOSE: Standalone UI-Painter test harness
-          - Accepts UI string input
+          - Accepts UI string in final format
           - Renders using game.html v1.13 logic
           - No Firebase, no controllers, no dependencies
-          - Once verified, same rendering logic works in real game.html
+          - Format: TR|F1|F2|T1|T2|STRK
 STATUS: Complete. Ready for testing.
 -->
