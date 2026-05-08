@@ -1,18 +1,16 @@
 <!--
 FILE: pre-game.html
-VERSION: 2.33
+VERSION: 2.34
 KEY CHANGES:
-   - Added Starting Hole and Team Game Format display in course card
-   - Removed format badge from flight cards (cleaner layout)
-   - Reads startingHole and teamGameFormat from game document
-   - Displays: "Starting Hole: X | Team Game Format: Tournament/Relative"
-   - Supports preview sandboxes and scheduled games
+   - Added calculator script tags for testing (game-match.js, game-team.js, game-stroke.js)
+   - Allows console testing of calculators before entering game
+   - No UI changes, no functional impact on normal flow
 STATUS: Complete. Ready for testing.
 -->
 
-<!-- FILE: pre-game.html - VERSION 2.33 -->
+<!-- FILE: pre-game.html - VERSION 2.34 -->
 <!-- Role selection and verification before game -->
-<!-- ADDED: Starting Hole and Team Game Format display in course card -->
+<!-- ADDED: Calculator scripts for testing (DEBUG) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,6 +20,13 @@ STATUS: Complete. Ready for testing.
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
+    
+    <!-- DEBUG: Calculator scripts for testing - can be removed after testing -->
+    <script src="js/game-match.js"></script>
+    <script src="js/game-team.js"></script>
+    <script src="js/game-stroke.js"></script>
+    <!-- END DEBUG -->
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -362,13 +367,13 @@ STATUS: Complete. Ready for testing.
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.33</div>
+<div class="version-tag">v2.34</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.33
-// ADDED: Starting Hole and Team Game Format display in course card
+// FILE: pre-game.html - VERSION 2.34
+// ADDED: Calculator scripts for testing
 
-var VERSION = "2.33";
+var VERSION = "2.34";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -1022,12 +1027,10 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 2.33
+VERSION: 2.34
 KEY CHANGES:
-   - Added Starting Hole and Team Game Format display in course card
-   - Removed format badge from flight cards (cleaner layout)
-   - Reads startingHole and teamGameFormat from game document
-   - Displays: "Starting Hole: X | Team Game Format: Tournament/Relative"
-   - Supports preview sandboxes and scheduled games
+   - Added calculator script tags for testing (game-match.js, game-team.js, game-stroke.js)
+   - Allows console testing of calculators before entering game
+   - No UI changes, no functional impact on normal flow
 STATUS: Complete. Ready for testing.
 -->
