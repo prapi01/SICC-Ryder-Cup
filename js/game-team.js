@@ -1,14 +1,14 @@
-/**
- * FILE: js/game-team.js
- * VERSION: 1.02
- * KEY CHANGES:
- *   - Accepts teamGameFormat parameter ("tournament" or "relative")
- *   - Tournament method: uses raw handicaps directly
- *   - Relative method: zero-rise (subtract lowest handicap in flight)
- *   - Returns t1Row[18] and t2Row[18] as arrays of "A"/"B"/"0"
- *   - Process ALL 18 holes, stops at first 'F' in flight data
- * STATUS: Complete. Ready for integration.
- */
+/*
+FILE: js/game-team.js
+VERSION: 1.02
+KEY CHANGES:
+   - Accepts teamGameFormat parameter ("tournament" or "relative")
+   - Tournament method: uses raw handicaps directly
+   - Relative method: zero-rise (subtract lowest handicap in flight)
+   - Returns t1Row[18] and t2Row[18] as arrays of "A"/"B"/"0"
+   - Process ALL 18 holes, stops at first 'F' in flight data
+STATUS: Complete. Ready for integration.
+*/
 
 // FILE: js/game-team.js - VERSION 1.02
 // Game 2: Team Game (2 points)
@@ -198,3 +198,15 @@ var GameTeam = (function() {
         processFlight: processFlight
     };
 })();
+
+/*
+FILE: js/game-team.js
+VERSION: 1.02
+KEY CHANGES:
+   - Accepts teamGameFormat parameter ("tournament" or "relative")
+   - Tournament method: uses raw handicaps directly
+   - Relative method: zero-rise (subtract lowest handicap in flight)
+   - Returns t1Row[18] and t2Row[18] as arrays of "A"/"B"/"0"
+   - Process ALL 18 holes, stops at first 'F' in flight data
+STATUS: Complete. Ready for integration.
+*/
