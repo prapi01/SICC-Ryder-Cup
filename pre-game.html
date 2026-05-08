@@ -1,16 +1,16 @@
 <!--
 FILE: pre-game.html
-VERSION: 2.34
+VERSION: 2.35
 KEY CHANGES:
-   - Added calculator script tags for testing (game-match.js, game-team.js, game-stroke.js)
-   - Allows console testing of calculators before entering game
-   - No UI changes, no functional impact on normal flow
+   - Added game-data.js to calculator script tags (was missing, causing GameData not defined)
+   - Full set: game-data.js, game-match.js, game-team.js, game-stroke.js
+   - Allows proper console testing of calculators
 STATUS: Complete. Ready for testing.
 -->
 
-<!-- FILE: pre-game.html - VERSION 2.34 -->
+<!-- FILE: pre-game.html - VERSION 2.35 -->
 <!-- Role selection and verification before game -->
-<!-- ADDED: Calculator scripts for testing (DEBUG) -->
+<!-- ADDED: game-data.js to calculator scripts for testing -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,6 +22,7 @@ STATUS: Complete. Ready for testing.
     <script src="js/session.js"></script>
     
     <!-- DEBUG: Calculator scripts for testing - can be removed after testing -->
+    <script src="js/game-data.js"></script>
     <script src="js/game-match.js"></script>
     <script src="js/game-team.js"></script>
     <script src="js/game-stroke.js"></script>
@@ -367,13 +368,13 @@ STATUS: Complete. Ready for testing.
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.34</div>
+<div class="version-tag">v2.35</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.34
-// ADDED: Calculator scripts for testing
+// FILE: pre-game.html - VERSION 2.35
+// ADDED: game-data.js to calculator scripts
 
-var VERSION = "2.34";
+var VERSION = "2.35";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -1027,10 +1028,10 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 2.34
+VERSION: 2.35
 KEY CHANGES:
-   - Added calculator script tags for testing (game-match.js, game-team.js, game-stroke.js)
-   - Allows console testing of calculators before entering game
-   - No UI changes, no functional impact on normal flow
+   - Added game-data.js to calculator script tags (was missing, causing GameData not defined)
+   - Full set: game-data.js, game-match.js, game-team.js, game-stroke.js
+   - Allows proper console testing of calculators
 STATUS: Complete. Ready for testing.
 -->
