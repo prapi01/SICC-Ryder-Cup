@@ -1,13 +1,13 @@
-/**
- * FILE: js/game-data.js
- * VERSION: 1.07
- * KEY CHANGES:
- *   - Added teamGameFormat field (tournament/relative) per VDN #008
- *   - Added getTeamGameFormat() getter
- *   - Loads teamGameFormat from Firestore document on load and refresh
- *   - Defaults to "tournament" for existing games (backward compatible)
- * STATUS: Complete. Ready for integration.
- */
+/*
+FILE: js/game-data.js
+VERSION: 1.07
+KEY CHANGES:
+   - Added teamGameFormat field (tournament/relative) per VDN #008
+   - Added getTeamGameFormat() getter
+   - Loads teamGameFormat from Firestore document on load and refresh
+   - Defaults to "tournament" for existing games (backward compatible)
+STATUS: Complete. Ready for integration.
+*/
 
 // FILE: js/game-data.js - VERSION 1.07
 // String-based data manager for SICC Ryder Cup
@@ -502,3 +502,14 @@ var GameData = (function() {
         getStorageIndexForHole: getStorageIndexForHole
     };
 })();
+
+/*
+FILE: js/game-data.js
+VERSION: 1.07
+KEY CHANGES:
+   - Added teamGameFormat field (tournament/relative) per VDN #008
+   - Added getTeamGameFormat() getter
+   - Loads teamGameFormat from Firestore document on load and refresh
+   - Defaults to "tournament" for existing games (backward compatible)
+STATUS: Complete. Ready for integration.
+*/
