@@ -1,9 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 1.04
+VERSION: 1.05
 KEY CHANGES:
-   - Updated onScoreChange callback to use player NAME instead of index (3 params)
-   - Now finds player by name in allPlayers array for correct mapping
+   - Fixed bubble order: intra-flight (same flight) shown first, then cross-flight
+   - Intra-flight bubbles stay GREY until hole is saved (only show result after SAVE)
+   - Updated getBubbleClass to check isHoleSavedForFlight before showing intra-flight results
    - Compatible with game-ui.js v1.09
    - Uses GameUI display mode management
 DEPENDS ON: js/game-ui.js v1.09 or higher
@@ -219,7 +220,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.04 REAL</div>
+<div class="version-tag">v1.05 REAL</div>
 
 <script>
 // ============================================================
@@ -389,9 +390,20 @@ function getCurrentScore(player) {
 }
 
 function getAllOpponents(player) {
-    return allPlayers.filter(function(op) {
+    var opponents = allPlayers.filter(function(op) {
         return op.team !== player.team;
     });
+    
+    // Sort: intra-flight (same flight) first, then cross-flight (different flight)
+    opponents.sort(function(a, b) {
+        var aIsIntra = (a.flight === player.flight);
+        var bIsIntra = (b.flight === player.flight);
+        if (aIsIntra && !bIsIntra) return -1;
+        if (!aIsIntra && bIsIntra) return 1;
+        return 0;
+    });
+    
+    return opponents;
 }
 
 function getBubbleClass(player, opponent) {
@@ -399,14 +411,18 @@ function getBubbleClass(player, opponent) {
     var match = crossMatchResults[key];
     if (!match) return 'bubble-grey';
     
-    // Intra-flight (same flight) - always show result, never grey
+    // Intra-flight (same flight)
     if (player.flight === opponent.flight) {
+        // Check if current hole is saved for this flight
+        var isHoleSavedForFlight = savedHoles[player.flight] && savedHoles[player.flight].indexOf(currentHole) !== -1;
+        if (!isHoleSavedForFlight) return 'bubble-grey';
+        
         if (match.value > 0) return 'bubble-green';
         if (match.value < 0) return 'bubble-red';
         return 'bubble-green';
     }
     
-    // Cross-flight (different flight) - grey if not synced
+    // Cross-flight (different flight)
     if (!match.isSynced) return 'bubble-grey';
     if (match.value > 0) return 'bubble-green';
     if (match.value < 0) return 'bubble-red';
@@ -1067,11 +1083,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 1.04
+VERSION: 1.05
 KEY CHANGES:
-   - Updated onScoreChange callback to use player NAME instead of index (3 params)
-   - Now finds player by name in allPlayers array for correct mapping
-   - Added intra-flight match result calculation in updateCrossMatchResults
+   - Fixed bubble order: intra-flight (same flight) shown first, then cross-flight
+   - Intra-flight bubbles stay GREY until hole is saved (only show result after SAVE)
+   - Updated getBubbleClass to check isHoleSavedForFlight before showing intra-flight results
    - Compatible with game-ui.js v1.09
    - Uses GameUI display mode management
 DEPENDS ON: js/game-ui.js v1.09 or higher
