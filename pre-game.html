@@ -1,11 +1,11 @@
 <!--
 FILE: pre-game.html
-VERSION: 2.42
+VERSION: 2.43
 KEY CHANGES:
-   - Based on v2.35 (working role selection)
-   - Added short device name display in flight headers
-   - No changes to role buttons or lock logic
-   - View Only redirects to view-game.html
+   - REAL mode redirects to real-game.html
+   - PREVIEW mode redirects to preview-game.html
+   - VIEW ONLY redirects to view-game.html
+   - Role lock logic preserved
 STATUS: Ready for testing
 -->
 
@@ -379,13 +379,13 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.42</div>
+<div class="version-tag">v2.43</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.42
-// Based on v2.35, added short device name display
+// FILE: pre-game.html - VERSION 2.43
+// Redirects: REAL → real-game.html, PREVIEW → preview-game.html, VIEW → view-game.html
 
-var VERSION = "2.42";
+var VERSION = "2.43";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -723,8 +723,27 @@ function loadGame() {
                     locks.f2 = gameData.locks.f2 || null;
                 }
                 
-                startGameListener();
-                render();
+                var hasData = hasExistingData();
+                var gameStartedFlag = gameData.gameStarted === true;
+                
+                console.log("PREVIEW mode - hasData:", hasData, "gameStarted:", gameStartedFlag);
+                
+                if (hasData && !gameStartedFlag) {
+                    showSessionModal(function(choice) {
+                        if (choice === "new") {
+                            resetGameData(function() {
+                                startGameListener();
+                                render();
+                            });
+                        } else {
+                            startGameListener();
+                            render();
+                        }
+                    });
+                } else {
+                    startGameListener();
+                    render();
+                }
             } else {
                 alert("Preview session not found");
                 window.location.href = "index.html";
@@ -806,6 +825,7 @@ function startGame() {
         return;
     }
     
+    // VIEW ONLY: redirect to view-game.html
     if (tempSelectedRole === "view") {
         localStorage.setItem("userRole", "view");
         if (deviceSession) {
@@ -824,6 +844,7 @@ function startGame() {
         return;
     }
     
+    // UPDATE roles - determine destination based on mode
     var now = Date.now();
     var expiryTime = now + LOCK_DURATION_MS;
     var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
@@ -879,10 +900,23 @@ function startGame() {
                     collection: collection
                 }
             });
-            SessionManager.addNavigationHistory("game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
+            
+            // Redirect based on game mode
+            if (gameMode === "real") {
+                SessionManager.addNavigationHistory("real-game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
+                window.location.href = "real-game.html";
+            } else {
+                SessionManager.addNavigationHistory("preview-game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
+                window.location.href = "preview-game.html";
+            }
+        } else {
+            // Fallback
+            if (gameMode === "real") {
+                window.location.href = "real-game.html";
+            } else {
+                window.location.href = "preview-game.html";
+            }
         }
-        
-        window.location.href = "game.html";
     }).catch(function(e) {
         alert("Error locking role: " + e.message);
     });
@@ -977,23 +1011,19 @@ function render() {
     var isF1LockedBySelf = isF1Locked && locks.f1.did === SessionManager.getDeviceIdDisplay();
     var isF2LockedBySelf = isF2Locked && locks.f2.did === SessionManager.getDeviceIdDisplay();
     
-    // Flight lock info with short device name
     var flight1LockInfo = '';
     var flight2LockInfo = '';
     
     if (isF1Locked) {
         var lockHolder = locks.f1.did || 'Unknown';
-        // Extract short name if possible
-        var shortLockHolder = lockHolder;
-        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${shortLockHolder}</span></div>`;
+        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder}</span></div>`;
     } else {
         flight1LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
     }
     
     if (isF2Locked) {
         var lockHolder2 = locks.f2.did || 'Unknown';
-        var shortLockHolder2 = lockHolder2;
-        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${shortLockHolder2}</span></div>`;
+        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder2}</span></div>`;
     } else {
         flight2LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
     }
@@ -1131,11 +1161,11 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 2.42
+VERSION: 2.43
 KEY CHANGES:
-   - Based on v2.35 (working role selection)
-   - Added short device name display in flight headers
-   - No changes to role buttons or lock logic
-   - View Only redirects to view-game.html
+   - REAL mode redirects to real-game.html
+   - PREVIEW mode redirects to preview-game.html
+   - VIEW ONLY redirects to view-game.html
+   - Role lock logic preserved
 STATUS: Ready for testing
 -->
