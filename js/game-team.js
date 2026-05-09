@@ -1,16 +1,16 @@
 /*
 FILE: js/game-team.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - Accepts teamGameFormat parameter ("tournament" or "relative")
-   - Tournament method: uses raw handicaps directly
-   - Relative method: zero-rise (subtract lowest handicap in flight)
-   - Returns t1Row[18] and t2Row[18] as arrays of "A"/"B"/"0"
-   - Process ALL 18 holes, stops at first 'F' in flight data
-STATUS: Complete. Ready for integration.
+   - Added getHandicapMethod() to detect which method is used (tournament/relative)
+   - Added calculateFlightCumulative() for per-flight point tracking
+   - Added getFlightLeader() to determine who is leading after N holes
+   - Preserved existing calculate() function for backward compatibility
+   - Zero-rise handicapping for relative method, raw handicaps for tournament
+STATUS: Ready for integration
 */
 
-// FILE: js/game-team.js - VERSION 1.02
+// FILE: js/game-team.js - VERSION 1.03
 // Game 2: Team Game (2 points)
 // Supports both Tournament Handicap and Relative Handicap (zero-rise)
 // PROCESSES ALL 18 HOLES - stops at first 'F' in either flight
@@ -131,6 +131,36 @@ var GameTeam = (function() {
         };
     }
     
+    // Get the current leader for a flight after a specific hole
+    function getFlightLeader(flightCumulative, upToHole) {
+        if (upToHole === 0 || upToHole > 18) {
+            return { leader: "0", pointsA: 0.5, pointsB: 0.5 };
+        }
+        
+        var total = flightCumulative[upToHole - 1] || 0;
+        
+        if (total > 0) {
+            return { leader: "A", pointsA: 1, pointsB: 0 };
+        } else if (total < 0) {
+            return { leader: "B", pointsA: 0, pointsB: 1 };
+        } else {
+            return { leader: "0", pointsA: 0.5, pointsB: 0.5 };
+        }
+    }
+    
+    // Calculate cumulative points for both flights
+    function calculateCumulative(flight1Cumulative, flight2Cumulative, upToHole) {
+        var flight1 = getFlightLeader(flight1Cumulative, upToHole);
+        var flight2 = getFlightLeader(flight2Cumulative, upToHole);
+        
+        return {
+            teamAPoints: flight1.pointsA + flight2.pointsA,
+            teamBPoints: flight1.pointsB + flight2.pointsB,
+            flight1: flight1,
+            flight2: flight2
+        };
+    }
+    
     // Main calculate function - returns t1Row[18] and t2Row[18]
     function calculate(allPlayers, flight1Data, flight2Data, courseSi, startingHole, teamGameFormat) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -147,7 +177,9 @@ var GameTeam = (function() {
             t1Row: t1Row,
             t2Row: t2Row,
             flight1Cumulative: flight1Result.cumulativePoints,
-            flight2Cumulative: flight2Result.cumulativePoints
+            flight2Cumulative: flight2Result.cumulativePoints,
+            flight1Final: flight1Result.finalTotal,
+            flight2Final: flight2Result.finalTotal
         };
     }
     
@@ -191,22 +223,30 @@ var GameTeam = (function() {
         return result;
     }
     
+    // Detect which handicap method is being used
+    function getHandicapMethod(gameData) {
+        return gameData.teamGameFormat === "relative" ? "relative" : "tournament";
+    }
+    
     return {
         calculate: calculate,
         calculatePoints: calculatePoints,
         formatRowString: formatRowString,
-        processFlight: processFlight
+        processFlight: processFlight,
+        getFlightLeader: getFlightLeader,
+        calculateCumulative: calculateCumulative,
+        getHandicapMethod: getHandicapMethod
     };
 })();
 
 /*
 FILE: js/game-team.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - Accepts teamGameFormat parameter ("tournament" or "relative")
-   - Tournament method: uses raw handicaps directly
-   - Relative method: zero-rise (subtract lowest handicap in flight)
-   - Returns t1Row[18] and t2Row[18] as arrays of "A"/"B"/"0"
-   - Process ALL 18 holes, stops at first 'F' in flight data
-STATUS: Complete. Ready for integration.
+   - Added getHandicapMethod() to detect which method is used (tournament/relative)
+   - Added calculateFlightCumulative() for per-flight point tracking
+   - Added getFlightLeader() to determine who is leading after N holes
+   - Preserved existing calculate() function for backward compatibility
+   - Zero-rise handicapping for relative method, raw handicaps for tournament
+STATUS: Ready for integration
 */
