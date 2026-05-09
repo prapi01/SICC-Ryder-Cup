@@ -1,11 +1,10 @@
 <!--
 FILE: view-game.html
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - Added Device ID display (top-left)
-   - Fixed lastSyncedHole calculation (was always 0)
-   - Cross-flight bubbles now calculate correctly
-   - Same logic as game.html for cross-flight sync
+   - Fixed calculateLastSyncedHole() to use play order (starting hole first)
+   - Cross-flight bubbles now detect synced holes correctly with shotgun start
+   - Navigation (current hole) now follows play order
 STATUS: Ready for testing
 -->
 
@@ -204,7 +203,6 @@ STATUS: Ready for testing
             <div class="hole-par">PAR <span x-text="currentPar"></span>  SI <span x-text="currentSi"></span></div>
         </div>
         
-        <!-- Flight Toggle for Viewer -->
         <div class="flight-toggle">
             <button class="toggle-flight-btn" :class="selectedFlight === 1 ? 'active' : ''" @click="selectedFlight = 1">✈️ Flight 1</button>
             <button class="toggle-flight-btn" :class="selectedFlight === 2 ? 'active' : ''" @click="selectedFlight = 2">✈️ Flight 2</button>
@@ -218,7 +216,6 @@ STATUS: Ready for testing
             </div>
         </div>
         
-        <!-- Player Cards for selected flight -->
         <template x-for="player in currentFlightPlayers">
             <div class="player-card">
                 <div class="player-header">
@@ -264,7 +261,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.01</div>
+<div class="version-tag">v1.02</div>
 
 <script>
 const FIREBASE_CONFIG = {
@@ -319,14 +316,24 @@ function viewerApp() {
         f1DataString: '',
         f2DataString: '',
         
-        // Helper: Calculate last synced hole (highest hole where both flights have saved)
+        // Helper: Get play order based on starting hole
+        getPlayOrder() {
+            const order = [];
+            for (let i = this.startingHole; i <= 18; i++) order.push(i);
+            for (let i = 1; i < this.startingHole; i++) order.push(i);
+            return order;
+        },
+        
+        // Helper: Calculate last synced hole (using play order)
         calculateLastSyncedHole() {
+            const playOrder = this.getPlayOrder();
             let lastSynced = 0;
-            for (let h = 1; h <= 18; h++) {
-                const f1Saved = this.flight1Data[h]?.saved || false;
-                const f2Saved = this.flight2Data[h]?.saved || false;
+            for (let i = 0; i < playOrder.length; i++) {
+                const hole = playOrder[i];
+                const f1Saved = this.flight1Data[hole]?.saved || false;
+                const f2Saved = this.flight2Data[hole]?.saved || false;
                 if (f1Saved && f2Saved) {
-                    lastSynced = h;
+                    lastSynced = hole;
                 } else {
                     break;
                 }
@@ -347,10 +354,7 @@ function viewerApp() {
             if (this.displayMode === 'natural') {
                 return [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
             } else {
-                const holes = [];
-                for (let i = this.startingHole; i <= 18; i++) holes.push(i);
-                for (let i = 1; i < this.startingHole; i++) holes.push(i);
-                return holes;
+                return this.getPlayOrder();
             }
         },
         
@@ -558,7 +562,6 @@ function viewerApp() {
         },
         
         updateCrossMatchResults() {
-            // Calculate last synced hole
             this.lastSyncedHole = this.calculateLastSyncedHole();
             
             console.log("updateCrossMatchResults - lastSyncedHole:", this.lastSyncedHole);
@@ -771,11 +774,13 @@ function viewerApp() {
             }
             
             if (changed) {
-                // Update current hole based on highest saved hole
+                // Update current hole based on highest saved hole in play order
+                const playOrder = this.getPlayOrder();
                 let highest = this.startingHole;
-                for (let h = 1; h <= 18; h++) {
-                    if (this.flight1Data[h]?.saved || this.flight2Data[h]?.saved) {
-                        highest = h;
+                for (let i = 0; i < playOrder.length; i++) {
+                    const hole = playOrder[i];
+                    if (this.flight1Data[hole]?.saved || this.flight2Data[hole]?.saved) {
+                        highest = hole;
                     }
                 }
                 this.currentHole = Math.max(this.startingHole, highest);
@@ -793,9 +798,7 @@ function viewerApp() {
                 if (this.startingHole === 1) {
                     actualHole = pos + 1;
                 } else {
-                    const playOrder = [];
-                    for (let i = this.startingHole; i <= 18; i++) playOrder.push(i);
-                    for (let i = 1; i < this.startingHole; i++) playOrder.push(i);
+                    const playOrder = this.getPlayOrder();
                     actualHole = playOrder[pos];
                 }
                 
@@ -819,7 +822,6 @@ function viewerApp() {
         },
         
         async init() {
-            // Set device ID display
             document.getElementById("deviceTag").innerHTML = SessionManager.getDeviceIdDisplay();
             
             this.loadDisplayPreference();
@@ -861,11 +863,13 @@ function viewerApp() {
             this.flight1Data = this.parseFlightData(this.f1DataString);
             this.flight2Data = this.parseFlightData(this.f2DataString);
             
-            // Find highest saved hole
+            // Find highest saved hole in play order
+            const playOrder = this.getPlayOrder();
             let highest = this.startingHole;
-            for (let h = 1; h <= 18; h++) {
-                if (this.flight1Data[h]?.saved || this.flight2Data[h]?.saved) {
-                    highest = h;
+            for (let i = 0; i < playOrder.length; i++) {
+                const hole = playOrder[i];
+                if (this.flight1Data[hole]?.saved || this.flight2Data[hole]?.saved) {
+                    highest = hole;
                 }
             }
             this.currentHole = Math.max(this.startingHole, highest);
@@ -902,11 +906,10 @@ function viewerApp() {
 
 <!--
 FILE: view-game.html
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - Added Device ID display (top-left)
-   - Fixed lastSyncedHole calculation (was always 0)
-   - Cross-flight bubbles now calculate correctly
-   - Same logic as game.html for cross-flight sync
+   - Fixed calculateLastSyncedHole() to use play order (starting hole first)
+   - Cross-flight bubbles now detect synced holes correctly with shotgun start
+   - Navigation (current hole) now follows play order
 STATUS: Ready for testing
 -->
