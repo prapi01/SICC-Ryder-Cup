@@ -1,13 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 1.02
-PURPOSE: VIEW ONLY mode - read-only viewer
-          - Uses game-ui.js for all rendering
-          - Flight toggle (F1/F2) to see both perspectives
-          - No save/next/back buttons
-          - Shows all bubbles (intra and cross) for selected flight
-          - Real-time Firebase sync (reads only)
-DEPENDS ON: js/session.js, js/game-ui.js
+VERSION: 1.03
+KEY CHANGES:
+   - Uses GameUI display mode management (getDisplayMode, setDisplayMode, getDisplayHoles)
+   - Removed local display mode functions (delegated to GameUI)
+   - Toggle buttons now properly update active states via GameUI
+   - All display logic centralized in game-ui.js
+DEPENDS ON: js/game-ui.js v1.08 or higher
 STATUS: Ready for testing
 -->
 
@@ -210,7 +209,7 @@ STATUS: Ready for testing
         <div class="scorecard-header">
             <div class="scorecard-title">SCORECARD</div>
             <div class="view-toggle">
-                <button class="toggle-btn active" id="playOrderBtn">⛳ Play Order</button>
+                <button class="toggle-btn" id="playOrderBtn">⛳ Play Order</button>
                 <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
             </div>
         </div>
@@ -223,7 +222,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.02 VIEWER</div>
+<div class="version-tag">v1.03 VIEWER</div>
 
 <script>
 // ============================================================
@@ -252,8 +251,7 @@ var gameId = null;
 var gameMode = null;
 var startingHole = 1;
 var currentHole = 1;
-var displayMode = "play";
-var selectedFlight = 1;  // 1 or 2
+var selectedFlight = 1;
 
 var courseName = "";
 var coursePar = [];
@@ -292,11 +290,7 @@ function getPlayOrder() {
 }
 
 function getDisplayHoles() {
-    if (displayMode === "natural") {
-        return [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
-    } else {
-        return getPlayOrder();
-    }
+    return GameUI.getDisplayHoles(startingHole, GameUI.getDisplayMode());
 }
 
 function getFlightOrderedPlayers(flight) {
@@ -546,15 +540,12 @@ function renderAll() {
     var currentSi = courseSi[currentHole - 1];
     GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
     
-    // Flight tab shows current selected flight (read-only, no edit icon)
     GameUI.updateFlightTab("flightTab", selectedFlight, false);
     
     GameUI.updateTR("trDisplay", trTeamA, trTeamB, trTeamAGreen, trTeamBGreen);
     
-    // Get players for selected flight
     var currentPlayers = getFlightOrderedPlayers(selectedFlight);
     
-    // Render player cards (read-only: canEdit = false)
     GameUI.renderPlayerCards(
         "playerCards",
         currentPlayers,
@@ -562,8 +553,8 @@ function renderAll() {
         getBubbleClass,
         getBubbleValue,
         getCurrentScore,
-        false,  // canEdit = false (read-only)
-        null    // no onScoreChange
+        false,
+        null
     );
     
     var holes = getDisplayHoles();
@@ -604,16 +595,6 @@ function refreshFromFirebase(data) {
     }
     
     if (changed) {
-        // Find highest saved hole to determine current hole
-        var playOrder = getPlayOrder();
-        var highest = startingHole;
-        for (var i = 0; i < playOrder.length; i++) {
-            var hole = playOrder[i];
-            if (flight1Data[hole] && flight1Data[hole].saved) highest = hole;
-            if (flight2Data[hole] && flight2Data[hole].saved) highest = hole;
-        }
-        currentHole = Math.max(startingHole, highest);
-        
         updateSavedHolesList();
         updateCrossMatchResults();
         calculateTR();
@@ -622,34 +603,13 @@ function refreshFromFirebase(data) {
 }
 
 // ============================================================
-// Display Mode
+// Display Mode (using GameUI)
 // ============================================================
 
 function setDisplayMode(mode) {
-    displayMode = mode;
-    localStorage.setItem("scorecardDisplay", mode);
-    renderAll();
-}
-
-function loadDisplayPreference() {
-    var saved = localStorage.getItem("scorecardDisplay");
-    if (saved === "natural" || saved === "play") {
-        displayMode = saved;
-    } else {
-        displayMode = "play";
-    }
-    
-    var playBtn = document.getElementById("playOrderBtn");
-    var naturalBtn = document.getElementById("naturalOrderBtn");
-    if (playBtn && naturalBtn) {
-        if (displayMode === "play") {
-            playBtn.classList.add("active");
-            naturalBtn.classList.remove("active");
-        } else {
-            playBtn.classList.remove("active");
-            naturalBtn.classList.add("active");
-        }
-    }
+    GameUI.setDisplayMode(mode, function() {
+        renderAll();
+    });
 }
 
 // ============================================================
@@ -659,8 +619,6 @@ function loadDisplayPreference() {
 async function init() {
     myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
-    
-    loadDisplayPreference();
     
     var session = await new Promise(function(resolve) {
         SessionManager.initSession("view-game.html", "index.html", resolve);
@@ -694,26 +652,29 @@ async function init() {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
     f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
     
-    currentHole = startingHole;
+    // Get the starting hole in play order
+    var playOrder = getPlayOrder();
+    currentHole = playOrder[0];
     
     flight1Data = parseFlightData(f1DataString);
     flight2Data = parseFlightData(f2DataString);
-    
-    // Find highest saved hole
-    var playOrder = getPlayOrder();
-    var highest = startingHole;
-    for (var i = 0; i < playOrder.length; i++) {
-        var hole = playOrder[i];
-        if (flight1Data[hole] && flight1Data[hole].saved) highest = hole;
-        if (flight2Data[hole] && flight2Data[hole].saved) highest = hole;
-    }
-    currentHole = Math.max(startingHole, highest);
-    
     updateSavedHolesList();
     updateCrossMatchResults();
     calculateTR();
     
+    // Initialize display mode buttons via GameUI
+    GameUI.updateToggleButtons(GameUI.getDisplayMode());
+    
     renderAll();
+    
+    // Set up toggle button handlers
+    document.getElementById("playOrderBtn").addEventListener("click", function() {
+        setDisplayMode("play");
+    });
+    
+    document.getElementById("naturalOrderBtn").addEventListener("click", function() {
+        setDisplayMode("natural");
+    });
     
     unsubscribe = gameRef.onSnapshot(function(snapshot) {
         if (snapshot.exists) {
@@ -730,14 +691,6 @@ async function init() {
 
 document.getElementById("menuBtn").addEventListener("click", function() {
     window.location.href = "index.html";
-});
-
-document.getElementById("playOrderBtn").addEventListener("click", function() {
-    setDisplayMode("play");
-});
-
-document.getElementById("naturalOrderBtn").addEventListener("click", function() {
-    setDisplayMode("natural");
 });
 
 document.getElementById("flight1Btn").addEventListener("click", function() {
@@ -762,13 +715,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 1.02
-PURPOSE: VIEW ONLY mode - read-only viewer
-          - Uses game-ui.js for all rendering
-          - Flight toggle (F1/F2) to see both perspectives
-          - No save/next/back buttons
-          - Shows all bubbles (intra and cross) for selected flight
-          - Real-time Firebase sync (reads only)
-DEPENDS ON: js/session.js, js/game-ui.js
+VERSION: 1.03
+KEY CHANGES:
+   - Uses GameUI display mode management (getDisplayMode, setDisplayMode, getDisplayHoles)
+   - Removed local display mode functions (delegated to GameUI)
+   - Toggle buttons now properly update active states via GameUI
+   - All display logic centralized in game-ui.js
+DEPENDS ON: js/game-ui.js v1.08 or higher
 STATUS: Ready for testing
 -->
