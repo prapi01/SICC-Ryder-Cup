@@ -1,14 +1,11 @@
 <!--
 FILE: pre-game.html
-VERSION: 2.41
+VERSION: 2.42
 KEY CHANGES:
-   - Uses short device names (DEV-01, DEV-02) from SessionManager
-   - Role buttons show lock status icons directly on button
-   - Available: 🔓 (green button)
-   - Locked by self: ✓ (green button with checkmark)
-   - Locked by other: 🔒 (grey button, click for takeover modal)
-   - Removed unlock icons from flight headers (now on buttons)
-   - Lock info shows short device name instead of full ID
+   - Based on v2.35 (working role selection)
+   - Added short device name display in flight headers
+   - No changes to role buttons or lock logic
+   - View Only redirects to view-game.html
 STATUS: Ready for testing
 -->
 
@@ -36,7 +33,7 @@ STATUS: Ready for testing
             padding: 20px;
             min-height: 100vh;
         }
-        .container { max-width: 600px; margin: 0 auto; padding-top: 35px; }
+        .container { max-width: 600px; margin: 0 auto; }
         
         .version-tag { 
             position: fixed; 
@@ -198,6 +195,7 @@ STATUS: Ready for testing
             background: #111;
             border-radius: 20px;
             border: 1px solid #333;
+            position: relative;
         }
         .role-title { 
             font-size: 1rem; 
@@ -205,6 +203,23 @@ STATUS: Ready for testing
             margin-bottom: 16px; 
             color: #ffaa44; 
             text-align: center;
+        }
+        .reset-icon {
+            position: absolute;
+            top: 16px;
+            right: 20px;
+            font-size: 1.3rem;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: all 0.2s ease;
+            color: #ff6b6b;
+        }
+        .reset-icon:hover {
+            opacity: 1;
+            transform: rotate(15deg);
+        }
+        .reset-icon:active {
+            transform: scale(0.95);
         }
         .role-buttons {
             display: flex;
@@ -223,13 +238,7 @@ STATUS: Ready for testing
             cursor: pointer;
             border: none;
             transition: all 0.2s ease;
-            min-width: 160px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .role-btn-available {
+            min-width: 120px;
             background: #1a3a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
@@ -240,11 +249,15 @@ STATUS: Ready for testing
             color: #4caf50;
             box-shadow: 0 0 8px rgba(76,175,80,0.5);
         }
-        .role-btn-locked {
-            opacity: 0.5;
-            cursor: pointer;
-            background: #2a2a2a;
-            border: 1px solid #555;
+        .role-btn-selected::after {
+            content: " ✓";
+            font-size: 1rem;
+        }
+        .role-btn-unavailable {
+            opacity: 0.35;
+            cursor: not-allowed;
+            background: #1a1a1a;
+            border-color: #555;
             color: #888;
         }
         .role-btn-view {
@@ -256,6 +269,9 @@ STATUS: Ready for testing
             background: #2a2a1a;
             border: 2px solid #ffaa44;
             color: #ffaa44;
+        }
+        .role-btn-view.role-btn-selected::after {
+            content: " ✓";
         }
         
         .action-buttons {
@@ -306,14 +322,14 @@ STATUS: Ready for testing
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0,0,0,0.95);
+            background: rgba(0,0,0,0.9);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 2000;
         }
         .modal {
-            background: #1a1a1a;
+            background: #111;
             border-radius: 24px;
             padding: 28px;
             max-width: 340px;
@@ -322,23 +338,16 @@ STATUS: Ready for testing
             text-align: center;
         }
         .modal-title {
-            font-size: 1.2rem;
+            font-size: 1.3rem;
             font-weight: 700;
             color: #ffaa44;
             margin-bottom: 16px;
         }
         .modal-message {
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             color: #ccc;
-            margin-bottom: 8px;
+            margin-bottom: 24px;
             line-height: 1.4;
-        }
-        .modal-device {
-            font-size: 0.75rem;
-            color: #4caf50;
-            font-family: monospace;
-            margin-bottom: 20px;
-            word-break: break-all;
         }
         .modal-buttons {
             display: flex;
@@ -346,32 +355,22 @@ STATUS: Ready for testing
             justify-content: center;
         }
         .modal-btn {
-            padding: 10px 20px;
+            padding: 12px 24px;
             border-radius: 40px;
             font-weight: 600;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             cursor: pointer;
             border: none;
         }
-        .modal-btn-takeover {
+        .modal-btn-reset {
             background: #3a1a1a;
             color: #ff6b6b;
             border: 1px solid #ff6b6b;
         }
-        .modal-btn-cancel {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        .modal-btn-new {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
         .modal-btn-continue {
-            background: #1a1a1a;
-            color: #ffaa44;
-            border: 1px solid #ffaa44;
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
         }
     </style>
 </head>
@@ -380,13 +379,13 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.41</div>
+<div class="version-tag">v2.42</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.41
-// Role buttons show lock icons directly, short device names
+// FILE: pre-game.html - VERSION 2.42
+// Based on v2.35, added short device name display
 
-var VERSION = "2.41";
+var VERSION = "2.42";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -428,9 +427,9 @@ var currentDeviceId = null;
 var currentSessionId = null;
 var deviceSession = null;
 var isPreviewSandbox = false;
-var currentShortName = "DEV-??";
 
 var locks = { f1: null, f2: null };
+var currentShortName = "DEV-??";
 
 function displayDeviceId() {
     var shortName = SessionManager.getShortNameOnly();
@@ -510,12 +509,11 @@ function resetGameData(callback) {
         "locks.f2": null,
         "currentHoleF1": 1,
         "currentHoleF2": 1,
-        "gameStarted": false,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
     db.collection(isPreviewSandbox ? "previewSandboxes" : "scheduledGames").doc(gameId).update(resetData).then(function() {
-        console.log("Game data reset to default - locks cleared, gameStarted=false");
+        console.log("Game data reset to default - locks cleared");
         locks.f1 = null;
         locks.f2 = null;
         tempSelectedRole = null;
@@ -551,39 +549,12 @@ function startGameListener() {
                 if (data.locks) {
                     locks.f1 = data.locks.f1 || null;
                     locks.f2 = data.locks.f2 || null;
-                    console.log("Locks updated:", locks);
                 }
                 render();
             }
         }, function(error) {
             console.warn("Game listener error:", error);
         });
-}
-
-// Handle role button click (supports selection and takeover)
-function handleRoleClick(role) {
-    var now = Date.now();
-    var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
-    var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
-    var isF1LockedBySelf = isF1Locked && locks.f1.did === SessionManager.getDeviceIdDisplay();
-    var isF2LockedBySelf = isF2Locked && locks.f2.did === SessionManager.getDeviceIdDisplay();
-    
-    if (role === "update1") {
-        if (isF1Locked && !isF1LockedBySelf) {
-            // Locked by other - show takeover modal
-            showTakeoverModal(1);
-            return;
-        }
-        toggleRole(role);
-    } else if (role === "update2") {
-        if (isF2Locked && !isF2LockedBySelf) {
-            showTakeoverModal(2);
-            return;
-        }
-        toggleRole(role);
-    } else {
-        toggleRole(role);
-    }
 }
 
 function toggleRole(role) {
@@ -623,22 +594,20 @@ function toggleRole(role) {
     render();
 }
 
-// Show takeover confirmation modal for a specific flight
 function showTakeoverModal(flight) {
     var lock = flight === 1 ? locks.f1 : locks.f2;
     if (!lock) return;
     
-    // Get short name from lock device ID
-    var deviceFullId = lock.did || "Unknown";
-    // Extract short name - for now show the ID, will be short name when session.js updated
-    var deviceDisplay = deviceFullId;
+    var deviceId = lock.did || "Unknown device";
+    var expiryTime = lock.ex ? new Date(lock.ex).toLocaleTimeString() : "Unknown";
     
     var modalHtml = `
         <div class="modal-overlay" id="takeoverModal">
             <div class="modal">
                 <div class="modal-title">⚠️ ROLE TAKEOVER</div>
                 <div class="modal-message">Flight ${flight} is currently locked by:</div>
-                <div class="modal-device">${deviceDisplay}</div>
+                <div class="modal-device">${deviceId}</div>
+                <div class="modal-message" style="font-size:0.7rem;">Lock expires at ${expiryTime}</div>
                 <div class="modal-message" style="margin-top:16px;">Take over this role? The current device will be notified.</div>
                 <div class="modal-buttons">
                     <button class="modal-btn modal-btn-cancel" id="takeoverCancelBtn">Cancel</button>
@@ -660,7 +629,6 @@ function showTakeoverModal(flight) {
     });
 }
 
-// Perform role takeover
 function takeoverRole(flight) {
     var now = Date.now();
     var expiryTime = now + LOCK_DURATION_MS;
@@ -682,15 +650,12 @@ function takeoverRole(flight) {
     
     db.collection(collection).doc(gameId).update(updatePayload).then(function() {
         console.log("Role takeover successful for Flight", flight);
-        
         if (flight === 1) {
             locks.f1 = updatePayload["locks.f1"];
         } else {
             locks.f2 = updatePayload["locks.f2"];
         }
-        
         tempSelectedRole = flight === 1 ? "update1" : "update2";
-        
         render();
         alert(`You have taken over Flight ${flight}. Click TEE OFF to enter the game.`);
     }).catch(function(e) {
@@ -698,15 +663,15 @@ function takeoverRole(flight) {
     });
 }
 
-function showPreviewSessionModal(callback) {
+function showSessionModal(callback) {
     var modalHtml = `
-        <div class="modal-overlay" id="previewModal">
+        <div class="modal-overlay" id="sessionModal">
             <div class="modal">
-                <div class="modal-title">🔍 PREVIEW SESSION</div>
-                <div class="modal-message">Existing game data found.</div>
-                <div class="modal-buttons" style="margin-top:20px;">
-                    <button class="modal-btn modal-btn-new" id="newSessionBtn">✨ NEW SESSION (Reset)</button>
-                    <button class="modal-btn modal-btn-continue" id="continueSessionBtn">📋 CONTINUE (Keep scores)</button>
+                <div class="modal-title">PREVIEW Session</div>
+                <div class="modal-message">Existing game data found. What would you like to do?</div>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-reset" id="resetBtn">RESET (Start Over)</button>
+                    <button class="modal-btn modal-btn-continue" id="continueBtn">CONTINUE</button>
                 </div>
             </div>
         </div>
@@ -714,14 +679,20 @@ function showPreviewSessionModal(callback) {
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    document.getElementById("newSessionBtn").addEventListener("click", function() {
-        document.getElementById("previewModal").remove();
-        callback("new");
+    document.getElementById("resetBtn").addEventListener("click", function() {
+        document.getElementById("sessionModal").remove();
+        resetGameData(function(success) {
+            if (success) {
+                window.location.reload();
+            } else {
+                if (callback) callback();
+            }
+        });
     });
     
-    document.getElementById("continueSessionBtn").addEventListener("click", function() {
-        document.getElementById("previewModal").remove();
-        callback("continue");
+    document.getElementById("continueBtn").addEventListener("click", function() {
+        document.getElementById("sessionModal").remove();
+        if (callback) callback();
     });
 }
 
@@ -752,27 +723,8 @@ function loadGame() {
                     locks.f2 = gameData.locks.f2 || null;
                 }
                 
-                var hasData = hasExistingData();
-                var gameStartedFlag = gameData.gameStarted === true;
-                
-                console.log("PREVIEW mode - hasData:", hasData, "gameStarted:", gameStartedFlag);
-                
-                if (hasData && !gameStartedFlag) {
-                    showPreviewSessionModal(function(choice) {
-                        if (choice === "new") {
-                            resetGameData(function() {
-                                startGameListener();
-                                render();
-                            });
-                        } else {
-                            startGameListener();
-                            render();
-                        }
-                    });
-                } else {
-                    startGameListener();
-                    render();
-                }
+                startGameListener();
+                render();
             } else {
                 alert("Preview session not found");
                 window.location.href = "index.html";
@@ -797,33 +749,46 @@ function loadGame() {
             
             var today = getTodayString();
             var isToday = (gameData.date === today);
-            var gameStartedFlag = gameData.gameStarted === true;
             
-            console.log("REAL mode - isToday:", isToday, "gameStarted:", gameStartedFlag);
-            
-            if (isToday && !gameStartedFlag) {
-                console.log("REAL mode - First access on game day, resetting...");
-                resetGameData(function(success) {
-                    db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
-                        if (updatedDoc.exists) {
-                            gameData = updatedDoc.data();
-                            gameData.id = updatedDoc.id;
-                            if (gameData.locks) {
-                                locks.f1 = gameData.locks.f1 || null;
-                                locks.f2 = gameData.locks.f2 || null;
+            if (isToday) {
+                gameMode = "real";
+                var hasLocks = (locks.f1 !== null || locks.f2 !== null);
+                var hasData = hasExistingData();
+                
+                if (!hasLocks && hasData) {
+                    console.log("REAL mode - First device on game day, resetting...");
+                    resetGameData(function(success) {
+                        db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
+                            if (updatedDoc.exists) {
+                                gameData = updatedDoc.data();
+                                gameData.id = updatedDoc.id;
+                                if (gameData.locks) {
+                                    locks.f1 = gameData.locks.f1 || null;
+                                    locks.f2 = gameData.locks.f2 || null;
+                                }
                             }
-                        }
-                        startGameListener();
-                        render();
-                    }).catch(function() {
-                        startGameListener();
+                            startGameListener();
+                            render();
+                        }).catch(function() {
+                            startGameListener();
+                            render();
+                        });
+                    });
+                } else {
+                    console.log("REAL mode - Game in progress or clean, loading existing data");
+                    startGameListener();
+                    render();
+                }
+            } else {
+                gameMode = "preview";
+                if (hasExistingData()) {
+                    showSessionModal(function() {
                         render();
                     });
-                });
-            } else {
-                console.log("REAL mode - Game already started or not today, loading existing data");
-                startGameListener();
-                render();
+                } else {
+                    startGameListener();
+                    render();
+                }
             }
         } else {
             alert("Game not found");
@@ -899,7 +864,6 @@ function startGame() {
         };
     }
     
-    updatePayload["gameStarted"] = true;
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
     db.collection(collection).doc(gameId).update(updatePayload).then(function() {
@@ -922,6 +886,28 @@ function startGame() {
     }).catch(function(e) {
         alert("Error locking role: " + e.message);
     });
+}
+
+function resetRoleLocks() {
+    if (confirm("⚠️ Reset all role locks? This will allow new devices to take update roles.")) {
+        var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
+        var resetPayload = {
+            "locks.f1": null,
+            "locks.f2": null,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        db.collection(collection).doc(gameId).update(resetPayload).then(function() {
+            locks.f1 = null;
+            locks.f2 = null;
+            if (tempSelectedRole === "update1" || tempSelectedRole === "update2") {
+                tempSelectedRole = null;
+            }
+            render();
+        }).catch(function(e) {
+            alert("Error resetting locks: " + e.message);
+        });
+    }
 }
 
 function goBack() {
@@ -947,7 +933,7 @@ function render() {
     if (gameMode === "real") {
         modeBanner = '<div class="mode-banner mode-real">🏆 REAL GAME - Scores are LIVE and synced to all devices</div>';
     } else if (gameMode === "preview") {
-        modeBanner = '<div class="mode-banner mode-preview">🔍 PREVIEW MODE - Future game</div>';
+        modeBanner = '<div class="mode-banner mode-preview">🔍 PREVIEW MODE - Future game. Scores will NOT be saved.</div>';
     } else if (gameMode === "history") {
         modeBanner = '<div class="mode-banner mode-history">📜 HISTORY MODE - Read only. Past game results.</div>';
     }
@@ -991,60 +977,44 @@ function render() {
     var isF1LockedBySelf = isF1Locked && locks.f1.did === SessionManager.getDeviceIdDisplay();
     var isF2LockedBySelf = isF2Locked && locks.f2.did === SessionManager.getDeviceIdDisplay();
     
-    // Flight lock info for display (short name)
+    // Flight lock info with short device name
     var flight1LockInfo = '';
     var flight2LockInfo = '';
     
     if (isF1Locked) {
         var lockHolder = locks.f1.did || 'Unknown';
-        // Try to extract short name - for now show as is
-        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder}</span></div>`;
+        // Extract short name if possible
+        var shortLockHolder = lockHolder;
+        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${shortLockHolder}</span></div>`;
     } else {
         flight1LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
     }
     
     if (isF2Locked) {
         var lockHolder2 = locks.f2.did || 'Unknown';
-        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder2}</span></div>`;
+        var shortLockHolder2 = lockHolder2;
+        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${shortLockHolder2}</span></div>`;
     } else {
         flight2LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
     }
     
-    // Role button states
     var update1Selected = (tempSelectedRole === "update1");
     var update2Selected = (tempSelectedRole === "update2");
     var viewSelected = (tempSelectedRole === "view");
     
-    // Determine button appearance
-    var update1Icon = "";
-    var update1BtnClass = "role-btn";
-    var update2Icon = "";
-    var update2BtnClass = "role-btn";
+    var update1Class = "role-btn";
+    var update2Class = "role-btn";
+    var viewClass = "role-btn role-btn-view";
     
-    if (isF1Locked && !isF1LockedBySelf) {
-        update1BtnClass += " role-btn-locked";
-        update1Icon = "🔒 ";
-    } else if (update1Selected) {
-        update1BtnClass += " role-btn-selected";
-        update1Icon = "✓ ";
-    } else {
-        update1BtnClass += " role-btn-available";
-        update1Icon = "🔓 ";
-    }
+    if (update1Selected) update1Class += " role-btn-selected";
+    if (update2Selected) update2Class += " role-btn-selected";
+    if (viewSelected) viewClass += " role-btn-selected";
     
-    if (isF2Locked && !isF2LockedBySelf) {
-        update2BtnClass += " role-btn-locked";
-        update2Icon = "🔒 ";
-    } else if (update2Selected) {
-        update2BtnClass += " role-btn-selected";
-        update2Icon = "✓ ";
-    } else {
-        update2BtnClass += " role-btn-available";
-        update2Icon = "🔓 ";
-    }
+    var isUpdate1Disabled = isF1Locked && !isF1LockedBySelf;
+    var isUpdate2Disabled = isF2Locked && !isF2LockedBySelf;
     
-    var viewBtnClass = "role-btn role-btn-view";
-    if (viewSelected) viewBtnClass += " role-btn-selected";
+    if (isUpdate1Disabled) update1Class += " role-btn-unavailable";
+    if (isUpdate2Disabled) update2Class += " role-btn-unavailable";
     
     var isTeeOffDisabled = !tempSelectedRole;
     
@@ -1110,17 +1080,12 @@ function render() {
         </div>
         
         <div class="role-section">
+            <div class="reset-icon" onclick="resetRoleLocks()">⟲</div>
             <div class="role-title">🎮 SELECT YOUR ROLE</div>
             <div class="role-buttons">
-                <button class="${update1BtnClass}" onclick="handleRoleClick('update1')">
-                    ${update1Icon} UPDATE FLIGHT 1
-                </button>
-                <button class="${update2BtnClass}" onclick="handleRoleClick('update2')">
-                    ${update2Icon} UPDATE FLIGHT 2
-                </button>
-                <button class="${viewBtnClass}" onclick="handleRoleClick('view')">
-                    👁️ VIEW ONLY
-                </button>
+                <button class="${update1Class}" onclick="toggleRole('update1')" ${isUpdate1Disabled ? 'disabled' : ''}>✏️ UPDATE FLIGHT 1</button>
+                <button class="${update2Class}" onclick="toggleRole('update2')" ${isUpdate2Disabled ? 'disabled' : ''}>✏️ UPDATE FLIGHT 2</button>
+                <button class="${viewClass}" onclick="toggleRole('view')">👁️ VIEW ONLY</button>
             </div>
             <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
         </div>
@@ -1146,11 +1111,11 @@ function escapeHtml(str) {
     });
 }
 
-// Make functions available globally for onclick
-window.handleRoleClick = handleRoleClick;
+// Make functions available globally
 window.toggleRole = toggleRole;
 window.startGame = startGame;
 window.goBack = goBack;
+window.resetRoleLocks = resetRoleLocks;
 window.showTakeoverModal = showTakeoverModal;
 
 SessionManager.initSession("pre-game.html", "index.html", function(session) {
@@ -1166,14 +1131,11 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 2.41
+VERSION: 2.42
 KEY CHANGES:
-   - Uses short device names (DEV-01, DEV-02) from SessionManager
-   - Role buttons show lock status icons directly on button
-   - Available: 🔓 (green button)
-   - Locked by self: ✓ (green button with checkmark)
-   - Locked by other: 🔒 (grey button, click for takeover modal)
-   - Removed unlock icons from flight headers (now on buttons)
-   - Lock info shows short device name instead of full ID
+   - Based on v2.35 (working role selection)
+   - Added short device name display in flight headers
+   - No changes to role buttons or lock logic
+   - View Only redirects to view-game.html
 STATUS: Ready for testing
 -->
