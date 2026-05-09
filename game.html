@@ -1,11 +1,12 @@
 <!--
 FILE: game.html
-VERSION: 2.08
+VERSION: 2.06
 KEY CHANGES:
-   - Added detailed debug logging for f1.d string before/after save
-   - Logs parsed scores from flight data after refresh
-   - Helps identify where score values are being lost
-STATUS: Debug version - for testing only
+   - Fixed start of game: all intra-flight bubbles grey "AS" (no saved holes)
+   - Intra-flight bubbles only light up after flight saves at least one hole
+   - Added hasAnySavedHoles check before calculating intra-flight bubbles
+   - Cross-flight bubbles remain grey until both flights save the hole
+STATUS: Ready for testing
 -->
 
 <!DOCTYPE html>
@@ -143,20 +144,6 @@ STATUS: Debug version - for testing only
         .btn:disabled { opacity: 0.4; cursor: not-allowed; }
         
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
-        .debug-panel {
-            background: #1a1a1a;
-            border: 1px solid #ffaa44;
-            border-radius: 8px;
-            padding: 8px;
-            margin: 10px 0;
-            font-size: 0.6rem;
-            font-family: monospace;
-            color: #ffaa44;
-            max-height: 200px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
         
         .loading { text-align: center; padding: 40px; color: #888; }
     </style>
@@ -230,9 +217,6 @@ STATUS: Debug version - for testing only
             <div class="scorecard-wrapper" id="scorecardWrapper"></div>
         </div>
         
-        <!-- Debug Panel -->
-        <div class="debug-panel" x-show="debugLog.length > 0" x-html="debugLog.join('<br>')"></div>
-        
         <div class="debug">
             <span x-text="syncStatus"></span>
             <span x-show="lastSyncedHole > 0"> | Last synced: Hole <span x-text="lastSyncedHole"></span></span>
@@ -298,8 +282,6 @@ function gameApp() {
         f1DataString: '',
         f2DataString: '',
         
-        debugLog: [],
-        
         // ============================================================
         // COMPUTED
         // ============================================================
@@ -347,6 +329,7 @@ function gameApp() {
             return [...flight1A, ...flight1B, ...flight2A, ...flight2B];
         },
         
+        // Helper: Check if a flight has any saved holes
         hasAnySavedHoles(flight) {
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
             for (let h = 1; h <= 18; h++) {
@@ -431,19 +414,11 @@ function gameApp() {
             if (newScore > 99) newScore = 99;
             const key = `${player.flight}_${this.currentHole}_${player.name}`;
             this.localChanges[key] = newScore;
-            this.addDebug(`Score changed: ${player.name} ${current} -> ${newScore}`);
         },
         
         isHoleSaved(flight, hole) {
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
             return flightData[hole]?.saved || false;
-        },
-        
-        addDebug(msg) {
-            const timestamp = new Date().toLocaleTimeString();
-            this.debugLog.unshift(`[${timestamp}] ${msg}`);
-            if (this.debugLog.length > 20) this.debugLog.pop();
-            console.log(msg);
         },
         
         // ============================================================
@@ -455,19 +430,23 @@ function gameApp() {
         },
         
         getIntraBubbleClass(player, opponent) {
+            // If this flight has no saved holes, all bubbles are grey
             if (!this.hasAnySavedHoles(player.flight)) {
                 return 'bubble-grey';
             }
+            
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return 'bubble-green';
             if (result < 0) return 'bubble-red';
-            return 'bubble-green';
+            return 'bubble-green';  // Tie with at least one saved hole -> green AS
         },
         
         getIntraBubbleValue(player, opponent) {
+            // If this flight has no saved holes, show AS
             if (!this.hasAnySavedHoles(player.flight)) {
                 return 'AS';
             }
+            
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return result.toString();
             if (result < 0) return Math.abs(result).toString();
@@ -477,6 +456,7 @@ function gameApp() {
         calculateIntraMatchResult(playerA, playerB) {
             const flight = playerA.flight;
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
+            
             const handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
             const isPlayerAReceiving = (playerA.handicap > playerB.handicap);
             const strokeHoles = this.getStrokeHoles(handicapDiff);
@@ -515,6 +495,7 @@ function gameApp() {
                 
                 let netA = playerAScore;
                 let netB = playerBScore;
+                
                 if (isPlayerAReceiving) {
                     netA = playerAScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
                 } else {
@@ -524,6 +505,7 @@ function gameApp() {
                 if (netA < netB) playerAWon++;
                 else if (netB < netA) playerBWon++;
             }
+            
             return playerAWon - playerBWon;
         },
         
@@ -665,6 +647,7 @@ function gameApp() {
                 
                 let netA = playerAScore;
                 let netB = playerBScore;
+                
                 if (isPlayerAReceiving) {
                     netA = playerAScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
                 } else {
@@ -674,11 +657,12 @@ function gameApp() {
                 if (netA < netB) playerAWon++;
                 else if (netB < netA) playerBWon++;
             }
+            
             return playerAWon - playerBWon;
         },
         
         // ============================================================
-        // SCORECARD RENDERING WITH DEBUG LOGGING
+        // SCORECARD RENDERING (JavaScript)
         // ============================================================
         
         renderScorecard() {
@@ -719,7 +703,7 @@ function gameApp() {
             
             // Flight 1 players
             for (const player of flight1Players) {
-                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
+                html += `<table><td style="font-weight:600;">${player.label}<\/td>`;
                 let playerTotal = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
@@ -734,7 +718,7 @@ function gameApp() {
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // T-1 row
-            html += '</table><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
             for (let i = 0; i < holes.length; i++) {
                 const val = this.t1Row[i] || '_';
                 const displayVal = (val === '_' || val === '') ? '' : val;
@@ -786,13 +770,11 @@ function gameApp() {
         },
         
         // ============================================================
-        // FIREBASE OPERATIONS WITH DEBUG
+        // FIREBASE OPERATIONS
         // ============================================================
         
         async saveHole() {
             if (!this.canEdit) return;
-            
-            this.addDebug(`=== SAVE HOLE ${this.currentHole} ===`);
             
             const flight = this.editableFlight;
             const flightPlayers = this.allPlayers.filter(p => p.flight === flight);
@@ -804,9 +786,6 @@ function gameApp() {
             let b1Score = this.getStoredScore(teamBPlayers[0], this.currentHole);
             let b2Score = this.getStoredScore(teamBPlayers[1], this.currentHole);
             
-            this.addDebug(`Current stored scores: A1=${a1Score}, A2=${a2Score}, B1=${b1Score}, B2=${b2Score}`);
-            
-            // Override with local changes
             for (const [key, score] of Object.entries(this.localChanges)) {
                 if (key.startsWith(`${flight}_${this.currentHole}_`)) {
                     const playerName = key.split('_')[2];
@@ -814,36 +793,13 @@ function gameApp() {
                     if (teamAPlayers[1]?.name === playerName) a2Score = score;
                     if (teamBPlayers[0]?.name === playerName) b1Score = score;
                     if (teamBPlayers[1]?.name === playerName) b2Score = score;
-                    this.addDebug(`Local override: ${playerName} = ${score}`);
                 }
             }
             
-            this.addDebug(`Final scores to save: A1=${a1Score}, A2=${a2Score}, B1=${b1Score}, B2=${b2Score}`);
-            
             const currentDataString = flight === 1 ? this.f1DataString : this.f2DataString;
-            this.addDebug(`Current f${flight}.d length: ${currentDataString.length}`);
-            this.addDebug(`Current f${flight}.d (first 50 chars): ${currentDataString.substring(0, 50)}`);
-            
             const newDataString = this.updateFlightDataString(currentDataString, this.currentHole, {
                 a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score
             });
-            
-            this.addDebug(`New f${flight}.d length: ${newDataString.length}`);
-            this.addDebug(`New f${flight}.d (first 50 chars): ${newDataString.substring(0, 50)}`);
-            
-            // Find the segment for this hole to verify
-            let storagePos;
-            if (this.startingHole === 1) {
-                storagePos = this.currentHole - 1;
-            } else {
-                const playOrder = [];
-                for (let i = this.startingHole; i <= 18; i++) playOrder.push(i);
-                for (let i = 1; i < this.startingHole; i++) playOrder.push(i);
-                storagePos = playOrder.indexOf(this.currentHole);
-            }
-            const segmentStart = storagePos * 9;
-            const newSegment = newDataString.substring(segmentStart, segmentStart + 9);
-            this.addDebug(`New segment at position ${storagePos}: "${newSegment}"`);
             
             const collection = 'scheduledGames';
             const updatePayload = {};
@@ -853,7 +809,6 @@ function gameApp() {
             
             try {
                 await db.collection(collection).doc(this.gameId).update(updatePayload);
-                this.addDebug(`Save successful!`);
                 for (const key of Object.keys(this.localChanges)) {
                     if (key.startsWith(`${flight}_${this.currentHole}_`)) {
                         delete this.localChanges[key];
@@ -862,7 +817,6 @@ function gameApp() {
                 this.syncStatus = 'Saved!';
                 setTimeout(() => { if (this.syncStatus === 'Saved!') this.syncStatus = 'Synced'; }, 2000);
             } catch (error) {
-                this.addDebug(`Save error: ${error.message}`);
                 this.syncStatus = `Save error: ${error.message}`;
             }
         },
@@ -931,14 +885,12 @@ function gameApp() {
             let next = this.currentHole + 1;
             if (next > 18) next = 1;
             this.currentHole = next;
-            this.addDebug(`Navigate to hole ${this.currentHole}`);
         },
         
         prevHole() {
             let prev = this.currentHole - 1;
             if (prev < 1) prev = 18;
             this.currentHole = prev;
-            this.addDebug(`Navigate to hole ${this.currentHole}`);
         },
         
         // ============================================================
@@ -946,39 +898,34 @@ function gameApp() {
         // ============================================================
         
         refreshFromFirebase(data) {
-            this.addDebug(`=== REFRESH FROM FIREBASE ===`);
+            this.f1DataString = data.f1?.d || this.f1DataString;
+            this.f2DataString = data.f2?.d || this.f2DataString;
             
-            const newF1String = data.f1?.d || this.f1DataString;
-            const newF2String = data.f2?.d || this.f2DataString;
+            const newF1 = this.parseFlightData(this.f1DataString);
+            const newF2 = this.parseFlightData(this.f2DataString);
             
-            if (newF1String !== this.f1DataString) {
-                this.addDebug(`f1.d changed. Old length: ${this.f1DataString.length}, New length: ${newF1String.length}`);
-                this.f1DataString = newF1String;
-                const newF1 = this.parseFlightData(this.f1DataString);
-                
-                // Check hole 10 specifically
-                if (newF1[10]) {
-                    this.addDebug(`After refresh - Hole 10: saved=${newF1[10].saved}, a1=${newF1[10].a1}, a2=${newF1[10].a2}, b1=${newF1[10].b1}, b2=${newF1[10].b2}`);
-                }
-                
+            let changed = false;
+            
+            if (JSON.stringify(newF1) !== JSON.stringify(this.flight1Data)) {
                 this.flight1Data = newF1;
+                changed = true;
                 for (const key of Object.keys(this.localChanges)) {
                     if (key.startsWith('1_')) delete this.localChanges[key];
                 }
             }
-            
-            if (newF2String !== this.f2DataString) {
-                this.f2DataString = newF2String;
-                const newF2 = this.parseFlightData(this.f2DataString);
+            if (JSON.stringify(newF2) !== JSON.stringify(this.flight2Data)) {
                 this.flight2Data = newF2;
+                changed = true;
                 for (const key of Object.keys(this.localChanges)) {
                     if (key.startsWith('2_')) delete this.localChanges[key];
                 }
             }
             
-            this.updateCrossMatchResults();
-            this.calculateTR();
-            this.renderScorecard();
+            if (changed) {
+                this.updateCrossMatchResults();
+                this.calculateTR();
+                this.renderScorecard();
+            }
         },
         
         // ============================================================
@@ -1045,12 +992,7 @@ function gameApp() {
                 }
             }, (error) => {
                 this.syncStatus = `Sync error: ${error.message}`;
-                this.addDebug(`Sync error: ${error.message}`);
             });
-            
-            this.addDebug(`Initialized. Starting hole: ${this.startingHole}, Current hole: ${this.currentHole}`);
-            this.addDebug(`f1.d length: ${this.f1DataString.length}`);
-            this.addDebug(`f1.d first 50 chars: ${this.f1DataString.substring(0, 50)}`);
         },
         
         destroy() {
@@ -1065,10 +1007,11 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.08
+VERSION: 2.06
 KEY CHANGES:
-   - Added detailed debug logging for f1.d string before/after save
-   - Logs parsed scores from flight data after refresh
-   - Helps identify where score values are being lost
-STATUS: Debug version - for testing only
+   - Fixed start of game: all intra-flight bubbles grey "AS" (no saved holes)
+   - Intra-flight bubbles only light up after flight saves at least one hole
+   - Added hasAnySavedHoles check before calculating intra-flight bubbles
+   - Cross-flight bubbles remain grey until both flights save the hole
+STATUS: Ready for testing
 -->
