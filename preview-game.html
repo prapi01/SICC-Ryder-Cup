@@ -1,0 +1,891 @@
+<!--
+FILE: preview-game.html
+VERSION: 1.00
+PURPOSE: PREVIEW mode game updater (previewSandboxes collection)
+          - Uses game-ui.js for all rendering
+          - Firebase read/write with real-time sync
+          - One-device-one-role enforcement
+          - Updates lastActive on save
+          - Redirects to view-game.html if lock taken
+DEPENDS ON: js/session.js, js/game-ui.js
+STATUS: Ready for testing
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>SICC Ryder Cup - PREVIEW Game</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/game-ui.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
+        .container { max-width: 550px; margin: 0 auto; padding-top: 35px; }
+        
+        .version-tag {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            font-size: 0.65rem;
+            color: #ffaa44;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            font-size: 0.55rem;
+            color: #ffaa44;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+        }
+        
+        .status-bubble {
+            background: rgba(255,170,68,0.3);
+            border: 1px solid #ffaa44;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            margin-bottom: 16px;
+            color: #ffaa44;
+        }
+        
+        .hole-header { text-align: center; margin: 16px 0; }
+        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
+        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        
+        .flight-tab {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            border-radius: 40px;
+            padding: 10px;
+            text-align: center;
+            margin: 16px 0;
+        }
+        
+        .team-score-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .team-score-green { color: #4caf50; }
+        .team-score-red { color: #ff6b6b; }
+        .team-score { font-size: 1.3rem; font-weight: 700; }
+        
+        .player-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #333;
+        }
+        .player-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .player-name { font-size: 1rem; font-weight: 600; }
+        .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
+        .score-control { display: flex; gap: 12px; align-items: center; }
+        .score-btn { background: #1a3a1a; border: none; width: 40px; height: 40px; border-radius: 30px; font-size: 1.2rem; color: #fff; cursor: pointer; }
+        .score-btn:active { transform: scale(0.95); }
+        .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; }
+        
+        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
+        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        
+        .scorecard-section { margin: 20px 0; }
+        .scorecard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .view-toggle { display: flex; gap: 4px; }
+        .toggle-btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 0.65rem;
+            cursor: pointer;
+            color: #888;
+        }
+        .toggle-btn.active {
+            background: #1a3a1a;
+            border-color: #4caf50;
+            color: #4caf50;
+        }
+        
+        .scorecard-wrapper { overflow-x: auto; }
+        .scorecard-table {
+            width: 100%;
+            min-width: 700px;
+            font-size: 0.7rem;
+            border-collapse: collapse;
+        }
+        .scorecard-table th, .scorecard-table td {
+            padding: 6px 3px;
+            text-align: center;
+            border: 1px solid #222;
+        }
+        .scorecard-table th {
+            color: #4caf50;
+            background: #111;
+        }
+        .score-green { color: #4caf50; font-weight: 600; }
+        .score-invisible { color: #000; }
+        .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+        
+        .action-buttons { display: flex; gap: 12px; margin: 20px 0; }
+        .btn { flex: 1; padding: 12px; border-radius: 40px; font-weight: 600; text-align: center; cursor: pointer; border: none; }
+        .btn-save { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .btn-menu {
+            width: 100%;
+            padding: 14px;
+            border-radius: 40px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+            margin-top: 20px;
+        }
+        
+        .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
+        .loading { text-align: center; padding: 40px; color: #888; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="status-bubble" id="statusBubble">PREVIEW</div>
+    <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
+    
+    <div id="holeHeader" class="hole-header"></div>
+    <div id="flightTab" class="flight-tab"></div>
+    <div id="trDisplay" class="team-score-card"></div>
+    <div id="playerCards" class="player-cards"></div>
+    
+    <div class="action-buttons">
+        <button class="btn btn-back" id="backBtn">← Back</button>
+        <button class="btn btn-save" id="saveBtn">💾 Save</button>
+        <button class="btn btn-next" id="nextBtn">Next →</button>
+    </div>
+    
+    <div class="scorecard-section">
+        <div class="scorecard-header">
+            <div class="scorecard-title">SCORECARD</div>
+            <div class="view-toggle">
+                <button class="toggle-btn active" id="playOrderBtn">⛳ Play Order</button>
+                <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
+            </div>
+        </div>
+        <div class="scorecard-wrapper" id="scorecardWrapper"></div>
+    </div>
+    
+    <button class="btn btn-menu" id="menuBtn">← Back to Main Menu</button>
+    
+    <div class="debug" id="debug"></div>
+</div>
+
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.00 PREVIEW</div>
+
+<script>
+// ============================================================
+// Firebase Config
+// ============================================================
+
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+if (!firebase.apps.length) {
+    firebase.initializeApp(FIREBASE_CONFIG);
+}
+var db = firebase.firestore();
+
+// ============================================================
+// Game State
+// ============================================================
+
+var gameId = null;
+var editableFlight = 1;
+var canEdit = true;
+var startingHole = 1;
+var currentHole = 1;
+var displayMode = "play";
+
+var courseName = "";
+var coursePar = [];
+var courseSi = [];
+var allPlayers = [];
+
+var flight1Data = {};
+var flight2Data = {};
+var localChanges = {};
+var savedHoles = { 1: [], 2: [] };
+
+var t1Row = Array(18).fill('_');
+var t2Row = Array(18).fill('_');
+var strkRow = Array(18).fill('_');
+var trTeamA = 9.5;
+var trTeamB = 9.5;
+var trTeamAGreen = true;
+var trTeamBGreen = true;
+var lastSyncedHole = 0;
+
+var crossMatchResults = {};
+
+var myDeviceShortName = "";
+var unsubscribe = null;
+var f1DataString = "";
+var f2DataString = "";
+
+// ============================================================
+// Helper Functions
+// ============================================================
+
+function getPlayOrder() {
+    var order = [];
+    for (var i = startingHole; i <= 18; i++) order.push(i);
+    for (var i = 1; i < startingHole; i++) order.push(i);
+    return order;
+}
+
+function getDisplayHoles() {
+    if (displayMode === "natural") {
+        return [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+    } else {
+        return getPlayOrder();
+    }
+}
+
+function getFlightOrderedPlayers(flight) {
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    return teamA.concat(teamB);
+}
+
+function parseFlightData(dataString) {
+    var result = {};
+    for (var pos = 0; pos < 18; pos++) {
+        var actualHole;
+        if (startingHole === 1) {
+            actualHole = pos + 1;
+        } else {
+            var playOrder = getPlayOrder();
+            actualHole = playOrder[pos];
+        }
+        
+        var startIdx = pos * 9;
+        var segment = dataString.substring(startIdx, startIdx + 9);
+        if (segment.length === 9) {
+            result[actualHole] = {
+                saved: segment[0] === 'T',
+                a1: parseInt(segment.substring(1, 3), 10),
+                a2: parseInt(segment.substring(3, 5), 10),
+                b1: parseInt(segment.substring(5, 7), 10),
+                b2: parseInt(segment.substring(7, 9), 10)
+            };
+        }
+    }
+    return result;
+}
+
+function updateSavedHolesList() {
+    savedHoles[1] = [];
+    savedHoles[2] = [];
+    for (var h = 1; h <= 18; h++) {
+        if (flight1Data[h] && flight1Data[h].saved) savedHoles[1].push(h);
+        if (flight2Data[h] && flight2Data[h].saved) savedHoles[2].push(h);
+    }
+}
+
+function calculateLastSyncedHole() {
+    var playOrder = getPlayOrder();
+    var lastSynced = 0;
+    for (var i = 0; i < playOrder.length; i++) {
+        var hole = playOrder[i];
+        var f1Saved = flight1Data[hole] && flight1Data[hole].saved;
+        var f2Saved = flight2Data[hole] && flight2Data[hole].saved;
+        if (f1Saved && f2Saved) {
+            lastSynced = hole;
+        } else {
+            break;
+        }
+    }
+    return lastSynced;
+}
+
+// ============================================================
+// Callback Functions for GameUI
+// ============================================================
+
+function getStoredScore(player, hole) {
+    var flightData = player.flight === 1 ? flight1Data : flight2Data;
+    var holeData = flightData[hole];
+    if (!holeData || !holeData.saved) return coursePar[hole - 1];
+    
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    if (player.team === 'A') {
+        if (teamA[0] && teamA[0].name === player.name) return holeData.a1;
+        if (teamA[1] && teamA[1].name === player.name) return holeData.a2;
+    } else {
+        if (teamB[0] && teamB[0].name === player.name) return holeData.b1;
+        if (teamB[1] && teamB[1].name === player.name) return holeData.b2;
+    }
+    return coursePar[hole - 1];
+}
+
+function isHoleSaved(flight, hole) {
+    return savedHoles[flight] && savedHoles[flight].indexOf(hole) !== -1;
+}
+
+function getCurrentScore(player) {
+    var key = player.flight + "_" + currentHole + "_" + player.name;
+    if (localChanges[key] !== undefined) {
+        return localChanges[key];
+    }
+    return getStoredScore(player, currentHole);
+}
+
+function getAllOpponents(player) {
+    return allPlayers.filter(function(op) {
+        return op.team !== player.team;
+    });
+}
+
+function getBubbleClass(player, opponent) {
+    var key = player.name + "_vs_" + opponent.name;
+    var match = crossMatchResults[key];
+    if (!match) return 'bubble-grey';
+    if (!match.isSynced) return 'bubble-grey';
+    if (match.value > 0) return 'bubble-green';
+    if (match.value < 0) return 'bubble-red';
+    return 'bubble-green';
+}
+
+function getBubbleValue(player, opponent) {
+    var key = player.name + "_vs_" + opponent.name;
+    var match = crossMatchResults[key];
+    if (!match) return 'AS';
+    var absValue = Math.abs(match.value);
+    if (absValue === 0) return 'AS';
+    return absValue.toString();
+}
+
+// ============================================================
+// Cross-Flight Calculations
+// ============================================================
+
+function getStrokeHoles(handicapDiff) {
+    if (handicapDiff <= 0) return [];
+    var holesWithSi = [];
+    for (var i = 0; i < 18; i++) {
+        holesWithSi.push({ hole: i + 1, si: courseSi[i] });
+    }
+    holesWithSi.sort(function(a, b) { return a.si - b.si; });
+    var strokeHoles = [];
+    for (var i = 0; i < handicapDiff && i < 18; i++) {
+        strokeHoles.push(holesWithSi[i].hole);
+    }
+    return strokeHoles;
+}
+
+function getStrokesForHole(holeNumber, handicapDiff, strokeHolesCache) {
+    if (handicapDiff <= 0) return 0;
+    var strokeHoles = strokeHolesCache || getStrokeHoles(handicapDiff);
+    for (var i = 0; i < strokeHoles.length; i++) {
+        if (strokeHoles[i] === holeNumber) return 1;
+    }
+    return 0;
+}
+
+function calculateCrossMatchResult(playerA, playerB, upToHole) {
+    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
+    var strokeHoles = getStrokeHoles(handicapDiff);
+    
+    var f1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+    var f1TeamA = f1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var f1TeamB = f1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var f2Players = allPlayers.filter(function(p) { return p.flight === 2; });
+    var f2TeamA = f2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var f2TeamB = f2Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var playerAWon = 0;
+    var playerBWon = 0;
+    
+    for (var hole = 1; hole <= upToHole; hole++) {
+        var f1Hole = flight1Data[hole];
+        var f2Hole = flight2Data[hole];
+        if (!f1Hole || !f1Hole.saved || !f2Hole || !f2Hole.saved) continue;
+        
+        var playerAScore = null;
+        var playerBScore = null;
+        
+        if (playerA.team === 'A') {
+            if (f1TeamA[0] && f1TeamA[0].name === playerA.name) playerAScore = f1Hole.a1;
+            else if (f1TeamA[1] && f1TeamA[1].name === playerA.name) playerAScore = f1Hole.a2;
+        } else {
+            if (f1TeamB[0] && f1TeamB[0].name === playerA.name) playerAScore = f1Hole.b1;
+            else if (f1TeamB[1] && f1TeamB[1].name === playerA.name) playerAScore = f1Hole.b2;
+        }
+        
+        if (playerB.team === 'A') {
+            if (f2TeamA[0] && f2TeamA[0].name === playerB.name) playerBScore = f2Hole.a1;
+            else if (f2TeamA[1] && f2TeamA[1].name === playerB.name) playerBScore = f2Hole.a2;
+        } else {
+            if (f2TeamB[0] && f2TeamB[0].name === playerB.name) playerBScore = f2Hole.b1;
+            else if (f2TeamB[1] && f2TeamB[1].name === playerB.name) playerBScore = f2Hole.b2;
+        }
+        
+        if (playerAScore === null || playerBScore === null) continue;
+        
+        var netA = playerAScore;
+        var netB = playerBScore;
+        if (isPlayerAReceiving) {
+            netA = playerAScore - getStrokesForHole(hole, handicapDiff, strokeHoles);
+        } else {
+            netB = playerBScore - getStrokesForHole(hole, handicapDiff, strokeHoles);
+        }
+        
+        if (netA < netB) playerAWon++;
+        else if (netB < netA) playerBWon++;
+    }
+    
+    return playerAWon - playerBWon;
+}
+
+function updateCrossMatchResults() {
+    lastSyncedHole = calculateLastSyncedHole();
+    
+    var f1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+    var f2Players = allPlayers.filter(function(p) { return p.flight === 2; });
+    
+    var newResults = {};
+    for (var i = 0; i < f1Players.length; i++) {
+        for (var j = 0; j < f2Players.length; j++) {
+            var p1 = f1Players[i];
+            var p2 = f2Players[j];
+            var key1 = p1.name + "_vs_" + p2.name;
+            var key2 = p2.name + "_vs_" + p1.name;
+            
+            var result = 0;
+            var isSynced = false;
+            
+            if (lastSyncedHole > 0) {
+                result = calculateCrossMatchResult(p1, p2, lastSyncedHole);
+                isSynced = (lastSyncedHole >= currentHole);
+            }
+            
+            newResults[key1] = { value: result, isSynced: isSynced };
+            newResults[key2] = { value: -result, isSynced: isSynced };
+        }
+    }
+    crossMatchResults = newResults;
+}
+
+// ============================================================
+// TR Calculation (Simplified - to be enhanced)
+// ============================================================
+
+function calculateTR() {
+    trTeamA = 9.5;
+    trTeamB = 9.5;
+    trTeamAGreen = true;
+    trTeamBGreen = true;
+}
+
+// ============================================================
+// Full Render
+// ============================================================
+
+function renderAll() {
+    var currentPar = coursePar[currentHole - 1];
+    var currentSi = courseSi[currentHole - 1];
+    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    
+    GameUI.updateFlightTab("flightTab", editableFlight, canEdit);
+    
+    GameUI.updateTR("trDisplay", trTeamA, trTeamB, trTeamAGreen, trTeamBGreen);
+    
+    var currentPlayers = getFlightOrderedPlayers(editableFlight);
+    
+    GameUI.renderPlayerCards(
+        "playerCards",
+        currentPlayers,
+        getAllOpponents,
+        getBubbleClass,
+        getBubbleValue,
+        getCurrentScore,
+        canEdit,
+        function(playerName, flight, playerIdx, delta) {
+            var player = allPlayers[playerIdx];
+            if (!player) return;
+            var current = getCurrentScore(player);
+            var newScore = current + delta;
+            if (newScore < 1) newScore = 1;
+            if (newScore > 99) newScore = 99;
+            var key = flight + "_" + currentHole + "_" + player.name;
+            localChanges[key] = newScore;
+            renderAll();
+        }
+    );
+    
+    var holes = getDisplayHoles();
+    GameUI.renderScorecard(
+        "scorecardWrapper",
+        holes,
+        allPlayers,
+        getStoredScore,
+        isHoleSaved,
+        t1Row,
+        t2Row,
+        strkRow,
+        coursePar,
+        courseSi
+    );
+}
+
+// ============================================================
+// Save Hole
+// ============================================================
+
+async function saveHole() {
+    if (!canEdit) return;
+    
+    // Check lock ownership
+    var collection = 'previewSandboxes';
+    var doc = await db.collection(collection).doc(gameId).get();
+    if (!doc.exists) return;
+    var data = doc.data();
+    var lockField = editableFlight === 1 ? 'f1' : 'f2';
+    var currentLock = data.locks ? data.locks[lockField] : null;
+    var myDeviceFull = SessionManager.getDeviceIdDisplay();
+    
+    if (currentLock && currentLock.did !== myDeviceFull) {
+        alert("Your role has been taken by another device. You are now in View Only mode.");
+        window.location.href = "view-game.html";
+        return;
+    }
+    
+    var flight = editableFlight;
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var a1Score = getStoredScore(teamA[0], currentHole);
+    var a2Score = getStoredScore(teamA[1], currentHole);
+    var b1Score = getStoredScore(teamB[0], currentHole);
+    var b2Score = getStoredScore(teamB[1], currentHole);
+    
+    for (var key in localChanges) {
+        if (key.startsWith(flight + "_" + currentHole + "_")) {
+            var playerName = key.split('_')[2];
+            if (teamA[0] && teamA[0].name === playerName) a1Score = localChanges[key];
+            if (teamA[1] && teamA[1].name === playerName) a2Score = localChanges[key];
+            if (teamB[0] && teamB[0].name === playerName) b1Score = localChanges[key];
+            if (teamB[1] && teamB[1].name === playerName) b2Score = localChanges[key];
+        }
+    }
+    
+    var currentDataString = flight === 1 ? f1DataString : f2DataString;
+    var newDataString = updateFlightDataString(currentDataString, currentHole, {
+        a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score
+    });
+    
+    var updatePayload = {};
+    updatePayload["f" + flight + ".d"] = newDataString;
+    updatePayload["f" + flight + ".se"] = true;
+    updatePayload["f" + (flight === 1 ? 2 : 1) + ".x"] = true;
+    updatePayload["lastActive"] = firebase.firestore.FieldValue.serverTimestamp();
+    
+    try {
+        await db.collection(collection).doc(gameId).update(updatePayload);
+        for (var key in localChanges) {
+            if (key.startsWith(flight + "_" + currentHole + "_")) {
+                delete localChanges[key];
+            }
+        }
+        document.getElementById("debug").innerHTML = "Saved!";
+        setTimeout(function() {
+            if (document.getElementById("debug").innerHTML === "Saved!") {
+                document.getElementById("debug").innerHTML = "";
+            }
+        }, 2000);
+    } catch (error) {
+        document.getElementById("debug").innerHTML = "Save error: " + error.message;
+    }
+}
+
+function updateFlightDataString(oldString, holeNumber, scores) {
+    var storagePos;
+    if (startingHole === 1) {
+        storagePos = holeNumber - 1;
+    } else {
+        var playOrder = getPlayOrder();
+        storagePos = playOrder.indexOf(holeNumber);
+    }
+    
+    var a1Str = scores.a1.toString().padStart(2, '0');
+    var a2Str = scores.a2.toString().padStart(2, '0');
+    var b1Str = scores.b1.toString().padStart(2, '0');
+    var b2Str = scores.b2.toString().padStart(2, '0');
+    var newSegment = "T" + a1Str + a2Str + b1Str + b2Str;
+    var startIdx = storagePos * 9;
+    return oldString.substring(0, startIdx) + newSegment + oldString.substring(startIdx + 9);
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+
+function nextHole() {
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    var nextIndex = (currentIndex + 1) % 18;
+    currentHole = playOrder[nextIndex];
+    updateCrossMatchResults();
+    renderAll();
+}
+
+function prevHole() {
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    var prevIndex = (currentIndex - 1 + 18) % 18;
+    currentHole = playOrder[prevIndex];
+    updateCrossMatchResults();
+    renderAll();
+}
+
+// ============================================================
+// Exit to Main Menu
+// ============================================================
+
+async function exitToMainMenu() {
+    if (!confirm("Leave the game? Your current unsaved changes will be lost.")) {
+        return;
+    }
+    
+    var collection = 'previewSandboxes';
+    var releasePayload = {};
+    if (canEdit) {
+        releasePayload["locks.f" + editableFlight] = null;
+        releasePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        try {
+            await db.collection(collection).doc(gameId).update(releasePayload);
+        } catch (error) {
+            console.error("Error releasing lock:", error);
+        }
+    }
+    
+    sessionStorage.removeItem("currentGame");
+    localStorage.removeItem("userRole");
+    window.location.href = "index.html";
+}
+
+// ============================================================
+// Refresh from Firebase
+// ============================================================
+
+function refreshFromFirebase(data) {
+    f1DataString = data.f1 && data.f1.d ? data.f1.d : f1DataString;
+    f2DataString = data.f2 && data.f2.d ? data.f2.d : f2DataString;
+    
+    var newF1 = parseFlightData(f1DataString);
+    var newF2 = parseFlightData(f2DataString);
+    
+    var changed = false;
+    
+    if (JSON.stringify(newF1) !== JSON.stringify(flight1Data)) {
+        flight1Data = newF1;
+        changed = true;
+        for (var key in localChanges) {
+            if (key.startsWith("1_")) delete localChanges[key];
+        }
+    }
+    if (JSON.stringify(newF2) !== JSON.stringify(flight2Data)) {
+        flight2Data = newF2;
+        changed = true;
+        for (var key in localChanges) {
+            if (key.startsWith("2_")) delete localChanges[key];
+        }
+    }
+    
+    if (changed) {
+        updateSavedHolesList();
+        updateCrossMatchResults();
+        calculateTR();
+        renderAll();
+    }
+}
+
+// ============================================================
+// Display Mode
+// ============================================================
+
+function setDisplayMode(mode) {
+    displayMode = mode;
+    localStorage.setItem("scorecardDisplay", mode);
+    renderAll();
+}
+
+function loadDisplayPreference() {
+    var saved = localStorage.getItem("scorecardDisplay");
+    if (saved === "natural" || saved === "play") {
+        displayMode = saved;
+    } else {
+        displayMode = "play";
+    }
+    
+    var playBtn = document.getElementById("playOrderBtn");
+    var naturalBtn = document.getElementById("naturalOrderBtn");
+    if (playBtn && naturalBtn) {
+        if (displayMode === "play") {
+            playBtn.classList.add("active");
+            naturalBtn.classList.remove("active");
+        } else {
+            playBtn.classList.remove("active");
+            naturalBtn.classList.add("active");
+        }
+    }
+}
+
+// ============================================================
+// Initialization
+// ============================================================
+
+async function init() {
+    myDeviceShortName = await SessionManager.getShortNameOnly();
+    document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
+    
+    loadDisplayPreference();
+    
+    var session = await new Promise(function(resolve) {
+        SessionManager.initSession("preview-game.html", "index.html", resolve);
+    });
+    
+    gameId = session.activeGame ? session.activeGame.gameId : null;
+    editableFlight = session.activeGame && session.activeGame.role === "update1" ? 1 :
+                     session.activeGame && session.activeGame.role === "update2" ? 2 : 1;
+    canEdit = (editableFlight === 1 || editableFlight === 2);
+    
+    if (!gameId) {
+        document.getElementById("debug").innerHTML = "Error: No game ID";
+        return;
+    }
+    
+    var gameRef = db.collection("previewSandboxes").doc(gameId);
+    var doc = await gameRef.get();
+    if (!doc.exists) {
+        document.getElementById("debug").innerHTML = "Error: Game not found";
+        return;
+    }
+    
+    var data = doc.data();
+    courseName = data.course ? data.course.name : "Unknown Course";
+    document.getElementById("courseName").innerHTML = courseName;
+    coursePar = data.course ? data.course.par : [];
+    courseSi = data.course ? data.course.si : [];
+    allPlayers = data.players || [];
+    startingHole = data.startingHole || 1;
+    f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
+    f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
+    
+    currentHole = startingHole;
+    
+    flight1Data = parseFlightData(f1DataString);
+    flight2Data = parseFlightData(f2DataString);
+    updateSavedHolesList();
+    updateCrossMatchResults();
+    calculateTR();
+    
+    renderAll();
+    
+    unsubscribe = gameRef.onSnapshot(function(snapshot) {
+        if (snapshot.exists) {
+            refreshFromFirebase(snapshot.data());
+        }
+    }, function(error) {
+        document.getElementById("debug").innerHTML = "Sync error: " + error.message;
+    });
+}
+
+// ============================================================
+// Event Listeners
+// ============================================================
+
+document.getElementById("saveBtn").addEventListener("click", saveHole);
+document.getElementById("nextBtn").addEventListener("click", nextHole);
+document.getElementById("backBtn").addEventListener("click", prevHole);
+document.getElementById("menuBtn").addEventListener("click", exitToMainMenu);
+
+document.getElementById("playOrderBtn").addEventListener("click", function() {
+    setDisplayMode("play");
+});
+
+document.getElementById("naturalOrderBtn").addEventListener("click", function() {
+    setDisplayMode("natural");
+});
+
+init();
+</script>
+
+</body>
+</html>
+
+<!--
+FILE: preview-game.html
+VERSION: 1.00
+PURPOSE: PREVIEW mode game updater (previewSandboxes collection)
+          - Uses game-ui.js for all rendering
+          - Firebase read/write with real-time sync
+          - One-device-one-role enforcement
+          - Updates lastActive on save
+          - Redirects to view-game.html if lock taken
+DEPENDS ON: js/session.js, js/game-ui.js
+STATUS: Ready for testing
+-->
