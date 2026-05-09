@@ -1,12 +1,10 @@
 <!--
 FILE: game.html
-VERSION: 2.13
+VERSION: 2.14
 KEY CHANGES:
-   - Lock ownership check before save (prevents stale updates)
-   - If lock taken, alert and redirect to view-game.html
-   - Device ID display (top-left)
-   - Back to Main Menu button with lock release
-   - Cross-flight bubbles update correctly
+   - Fixed calculateLastSyncedHole() to use play order (starting hole first)
+   - Cross-flight bubbles now detect synced holes correctly with shotgun start
+   - lastSyncedHole now returns the actual hole number, not position
 STATUS: Ready for testing
 -->
 
@@ -262,7 +260,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.13</div>
+<div class="version-tag">v2.14</div>
 
 <script>
 const FIREBASE_CONFIG = {
@@ -319,8 +317,33 @@ function gameApp() {
         f1DataString: '',
         f2DataString: '',
         
-        currentLock: null,  // Store current lock info for this flight
+        currentLock: null,
         myDeviceId: '',
+        
+        // Helper: Get play order based on starting hole
+        getPlayOrder() {
+            const order = [];
+            for (let i = this.startingHole; i <= 18; i++) order.push(i);
+            for (let i = 1; i < this.startingHole; i++) order.push(i);
+            return order;
+        },
+        
+        // Helper: Calculate last synced hole (using play order)
+        calculateLastSyncedHole() {
+            const playOrder = this.getPlayOrder();
+            let lastSynced = 0;
+            for (let i = 0; i < playOrder.length; i++) {
+                const hole = playOrder[i];
+                const f1Saved = this.flight1Data[hole]?.saved || false;
+                const f2Saved = this.flight2Data[hole]?.saved || false;
+                if (f1Saved && f2Saved) {
+                    lastSynced = hole;
+                } else {
+                    break;
+                }
+            }
+            return lastSynced;
+        },
         
         // Helper: Check if a flight has any saved holes
         hasAnySavedHoles(flight) {
@@ -329,21 +352,6 @@ function gameApp() {
                 if (flightData[h]?.saved === true) return true;
             }
             return false;
-        },
-        
-        // Helper: Get the highest hole where both flights have saved
-        calculateLastSyncedHole() {
-            let lastSynced = 0;
-            for (let h = 1; h <= 18; h++) {
-                const f1Saved = this.flight1Data[h]?.saved || false;
-                const f2Saved = this.flight2Data[h]?.saved || false;
-                if (f1Saved && f2Saved) {
-                    lastSynced = h;
-                } else {
-                    break;
-                }
-            }
-            return lastSynced;
         },
         
         // Check if current device still owns the lock
@@ -366,7 +374,6 @@ function gameApp() {
             
             if (isExpired) return false;
             if (!isMine) {
-                // Lock taken by another device
                 alert("Your role has been taken by another device. You are now in View Only mode.");
                 window.location.href = "view-game.html";
                 return false;
@@ -378,10 +385,7 @@ function gameApp() {
             if (this.displayMode === 'natural') {
                 return [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
             } else {
-                const holes = [];
-                for (let i = this.startingHole; i <= 18; i++) holes.push(i);
-                for (let i = 1; i < this.startingHole; i++) holes.push(i);
-                return holes;
+                return this.getPlayOrder();
             }
         },
         
@@ -613,6 +617,8 @@ function gameApp() {
         updateCrossMatchResults() {
             this.lastSyncedHole = this.calculateLastSyncedHole();
             
+            console.log("updateCrossMatchResults - lastSyncedHole:", this.lastSyncedHole, "currentHole:", this.currentHole);
+            
             const f1Players = this.allPlayers.filter(p => p.flight === 1);
             const f2Players = this.allPlayers.filter(p => p.flight === 2);
             
@@ -706,7 +712,7 @@ function gameApp() {
             html += '<th>Tot</th> </thead><tbody>';
             
             // Par row
-            html += '<tr><td style="font-weight:700;">Par<\/td>';
+            html += '</table><td style="font-weight:700;">Par<\/td>';
             let totalPar = 0;
             for (const h of holes) {
                 const par = this.coursePar[h - 1];
@@ -739,8 +745,7 @@ function gameApp() {
             
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
-            // T-1 row
-            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+            // T-1 row            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
             for (let i = 0; i < holes.length; i++) {
                 const val = this.t1Row[i] || '_';
                 const displayVal = (val === '_' || val === '') ? '' : val;
@@ -794,7 +799,6 @@ function gameApp() {
         async saveHole() {
             if (!this.canEdit) return;
             
-            // Check if lock still belongs to this device
             const hasLock = await this.checkLockOwnership();
             if (!hasLock) return;
             
@@ -848,9 +852,7 @@ function gameApp() {
             if (this.startingHole === 1) {
                 storagePos = holeNumber - 1;
             } else {
-                const playOrder = [];
-                for (let i = this.startingHole; i <= 18; i++) playOrder.push(i);
-                for (let i = 1; i < this.startingHole; i++) playOrder.push(i);
+                const playOrder = this.getPlayOrder();
                 storagePos = playOrder.indexOf(holeNumber);
             }
             
@@ -871,9 +873,7 @@ function gameApp() {
                 if (this.startingHole === 1) {
                     actualHole = pos + 1;
                 } else {
-                    const playOrder = [];
-                    for (let i = this.startingHole; i <= 18; i++) playOrder.push(i);
-                    for (let i = 1; i < this.startingHole; i++) playOrder.push(i);
+                    const playOrder = this.getPlayOrder();
                     actualHole = playOrder[pos];
                 }
                 
@@ -900,17 +900,19 @@ function gameApp() {
         },
         
         nextHole() {
-            let next = this.currentHole + 1;
-            if (next > 18) next = 1;
-            this.currentHole = next;
+            const playOrder = this.getPlayOrder();
+            const currentIndex = playOrder.indexOf(this.currentHole);
+            const nextIndex = (currentIndex + 1) % 18;
+            this.currentHole = playOrder[nextIndex];
             this.updateCrossMatchResults();
             this.renderScorecard();
         },
         
         prevHole() {
-            let prev = this.currentHole - 1;
-            if (prev < 1) prev = 18;
-            this.currentHole = prev;
+            const playOrder = this.getPlayOrder();
+            const currentIndex = playOrder.indexOf(this.currentHole);
+            const prevIndex = (currentIndex - 1 + 18) % 18;
+            this.currentHole = playOrder[prevIndex];
             this.updateCrossMatchResults();
             this.renderScorecard();
         },
@@ -920,7 +922,6 @@ function gameApp() {
                 return;
             }
             
-            // Release role lock if this device holds it
             const flight = this.editableFlight;
             const collection = 'scheduledGames';
             const releasePayload = {};
@@ -974,7 +975,6 @@ function gameApp() {
         },
         
         async init() {
-            // Get device ID
             this.myDeviceId = SessionManager.getDeviceIdDisplay();
             document.getElementById("deviceTag").innerHTML = this.myDeviceId;
             
@@ -1052,12 +1052,11 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.13
+VERSION: 2.14
 KEY CHANGES:
-   - Lock ownership check before save
-   - If lock taken, alert and redirect to view-game.html
-   - Device ID display (top-left)
-   - Back to Main Menu button with lock release
-   - Cross-flight bubbles update correctly
+   - Fixed calculateLastSyncedHole() to use play order (starting hole first)
+   - Cross-flight bubbles now detect synced holes correctly with shotgun start
+   - lastSyncedHole now returns the actual hole number, not position
+   - Navigation (next/prev) now follows play order
 STATUS: Ready for testing
 -->
