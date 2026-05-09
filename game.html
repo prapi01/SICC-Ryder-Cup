@@ -1,11 +1,10 @@
 <!--
 FILE: game.html
-VERSION: 2.06
+VERSION: 2.05
 KEY CHANGES:
-   - Fixed start of game: all intra-flight bubbles grey "AS" (no saved holes)
-   - Intra-flight bubbles only light up after flight saves at least one hole
-   - Added hasAnySavedHoles check before calculating intra-flight bubbles
-   - Cross-flight bubbles remain grey until both flights save the hole
+   - Fixed intra-flight bubble colors: tied matches now show GREEN "AS" (not grey)
+   - Grey bubbles now only used for cross-flight out-of-sync and unplayed holes
+   - All intra-flight bubbles light up (green/red/green-AS) after flight saves a hole
 STATUS: Ready for testing
 -->
 
@@ -329,15 +328,6 @@ function gameApp() {
             return [...flight1A, ...flight1B, ...flight2A, ...flight2B];
         },
         
-        // Helper: Check if a flight has any saved holes
-        hasAnySavedHoles(flight) {
-            const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
-            for (let h = 1; h <= 18; h++) {
-                if (flightData[h]?.saved === true) return true;
-            }
-            return false;
-        },
-        
         // ============================================================
         // DISPLAY MODE
         // ============================================================
@@ -430,27 +420,18 @@ function gameApp() {
         },
         
         getIntraBubbleClass(player, opponent) {
-            // If this flight has no saved holes, all bubbles are grey
-            if (!this.hasAnySavedHoles(player.flight)) {
-                return 'bubble-grey';
-            }
-            
             const result = this.calculateIntraMatchResult(player, opponent);
+            // FIX: Tied matches (result === 0) should show GREEN "AS", not grey
             if (result > 0) return 'bubble-green';
             if (result < 0) return 'bubble-red';
-            return 'bubble-green';  // Tie with at least one saved hole -> green AS
+            return 'bubble-green';  // Tie -> green "AS"
         },
         
         getIntraBubbleValue(player, opponent) {
-            // If this flight has no saved holes, show AS
-            if (!this.hasAnySavedHoles(player.flight)) {
-                return 'AS';
-            }
-            
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return result.toString();
             if (result < 0) return Math.abs(result).toString();
-            return 'AS';
+            return 'AS';  // Tie
         },
         
         calculateIntraMatchResult(playerA, playerB) {
@@ -524,13 +505,19 @@ function gameApp() {
             if (!match.isSynced) return 'bubble-grey';
             if (match.value > 0) return 'bubble-green';
             if (match.value < 0) return 'bubble-red';
-            return 'bubble-green';
+            return 'bubble-green';  // Tie -> green "AS" when synced
         },
         
         getCrossBubbleValue(player, opponent) {
             const key = `${player.name}_vs_${opponent.name}`;
             const match = this.crossMatchResults[key];
             if (!match) return 'AS';
+            if (!match.isSynced) {
+                // Show last synced value but grey
+                const absValue = Math.abs(match.value);
+                if (absValue === 0) return 'AS';
+                return absValue.toString();
+            }
             const absValue = Math.abs(match.value);
             if (absValue === 0) return 'AS';
             return absValue.toString();
@@ -672,11 +659,13 @@ function gameApp() {
             const holes = this.displayHolesList;
             const players = this.scorecardPlayers;
             
+            // Group players by flight
             const flight1Players = players.filter(p => p.flight === 1);
             const flight2Players = players.filter(p => p.flight === 2);
             
             let html = '<table class="scorecard-table">';
             
+            // Header
             html += '<thead><tr><th>Hole</th>';
             for (const h of holes) {
                 html += `<th>${h}</th>`;
@@ -703,7 +692,7 @@ function gameApp() {
             
             // Flight 1 players
             for (const player of flight1Players) {
-                html += `<table><td style="font-weight:600;">${player.label}<\/td>`;
+                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
                 let playerTotal = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
@@ -715,6 +704,7 @@ function gameApp() {
                 html += `<td class="score-green">${playerTotal}<\/td><\/tr>`;
             }
             
+            // Green line after Flight 1
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // T-1 row
@@ -727,6 +717,7 @@ function gameApp() {
             }
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
+            // Green line after T-1
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // Flight 2 players
@@ -753,6 +744,7 @@ function gameApp() {
             }
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
+            // Green line after T-2
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // Strk row
@@ -1007,11 +999,10 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.06
+VERSION: 2.05
 KEY CHANGES:
-   - Fixed start of game: all intra-flight bubbles grey "AS" (no saved holes)
-   - Intra-flight bubbles only light up after flight saves at least one hole
-   - Added hasAnySavedHoles check before calculating intra-flight bubbles
-   - Cross-flight bubbles remain grey until both flights save the hole
+   - Fixed intra-flight bubble colors: tied matches now show GREEN "AS" (not grey)
+   - Grey bubbles now only used for cross-flight out-of-sync and unplayed holes
+   - All intra-flight bubbles light up (green/red/green-AS) after flight saves a hole
 STATUS: Ready for testing
 -->
