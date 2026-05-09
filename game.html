@@ -1,11 +1,12 @@
 <!--
 FILE: game.html
-VERSION: 2.12
+VERSION: 2.13
 KEY CHANGES:
-   - Fixed cross-flight bubble calculation (XB now update when both flights save)
-   - Out-of-sync detection: XB turn grey when one flight is ahead
-   - Added Back to Main Menu button with confirmation and lock release
-   - Cross-flight sync triggers on every refresh from Firebase
+   - Lock ownership check before save (prevents stale updates)
+   - If lock taken, alert and redirect to view-game.html
+   - Device ID display (top-left)
+   - Back to Main Menu button with lock release
+   - Cross-flight bubbles update correctly
 STATUS: Ready for testing
 -->
 
@@ -48,6 +49,7 @@ STATUS: Ready for testing
             background: rgba(0,0,0,0.4);
             padding: 2px 8px;
             border-radius: 12px;
+            font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
         }
@@ -250,7 +252,6 @@ STATUS: Ready for testing
             <div class="scorecard-wrapper" id="scorecardWrapper"></div>
         </div>
         
-        <!-- Back to Main Menu Button -->
         <button class="btn btn-menu" @click="exitToMainMenu">← Back to Main Menu</button>
         
         <div class="debug">
@@ -261,7 +262,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.12</div>
+<div class="version-tag">v2.13</div>
 
 <script>
 const FIREBASE_CONFIG = {
@@ -318,6 +319,9 @@ function gameApp() {
         f1DataString: '',
         f2DataString: '',
         
+        currentLock: null,  // Store current lock info for this flight
+        myDeviceId: '',
+        
         // Helper: Check if a flight has any saved holes
         hasAnySavedHoles(flight) {
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
@@ -342,10 +346,32 @@ function gameApp() {
             return lastSynced;
         },
         
-        // Helper: Check if cross-flight is synced for current hole
-        isCrossFlightSynced() {
-            if (this.lastSyncedHole === 0) return false;
-            return this.lastSyncedHole >= this.currentHole;
+        // Check if current device still owns the lock
+        async checkLockOwnership() {
+            if (!this.canEdit) return true;
+            
+            const collection = 'scheduledGames';
+            const doc = await db.collection(collection).doc(this.gameId).get();
+            if (!doc.exists) return false;
+            
+            const data = doc.data();
+            const lockField = this.editableFlight === 1 ? 'f1' : 'f2';
+            const currentLockData = data.locks?.[lockField];
+            
+            if (!currentLockData) return false;
+            
+            const now = Date.now();
+            const isExpired = currentLockData.ex && currentLockData.ex < now;
+            const isMine = currentLockData.did === this.myDeviceId;
+            
+            if (isExpired) return false;
+            if (!isMine) {
+                // Lock taken by another device
+                alert("Your role has been taken by another device. You are now in View Only mode.");
+                window.location.href = "view-game.html";
+                return false;
+            }
+            return true;
         },
         
         get displayHolesList() {
@@ -549,7 +575,6 @@ function gameApp() {
             const key = `${player.name}_vs_${opponent.name}`;
             const match = this.crossMatchResults[key];
             if (!match) return 'bubble-grey';
-            // Out of sync = grey
             if (!match.isSynced) return 'bubble-grey';
             if (match.value > 0) return 'bubble-green';
             if (match.value < 0) return 'bubble-red';
@@ -585,12 +610,8 @@ function gameApp() {
             return strokeHoles.includes(holeNumber) ? 1 : 0;
         },
         
-        // Update cross-flight match results
         updateCrossMatchResults() {
-            // Calculate last synced hole
             this.lastSyncedHole = this.calculateLastSyncedHole();
-            
-            console.log("updateCrossMatchResults - lastSyncedHole:", this.lastSyncedHole, "currentHole:", this.currentHole);
             
             const f1Players = this.allPlayers.filter(p => p.flight === 1);
             const f2Players = this.allPlayers.filter(p => p.flight === 2);
@@ -604,25 +625,14 @@ function gameApp() {
                     let isSynced = false;
                     
                     if (this.lastSyncedHole > 0) {
-                        // Calculate result up to last synced hole
                         result = this.calculateCrossMatchResult(p1, p2, this.lastSyncedHole);
-                        // Synced if last synced hole is at least current hole
                         isSynced = (this.lastSyncedHole >= this.currentHole);
                     }
                     
-                    this.crossMatchResults[key1] = {
-                        value: result,
-                        isSynced: isSynced
-                    };
-                    
-                    this.crossMatchResults[key2] = {
-                        value: -result,
-                        isSynced: isSynced
-                    };
+                    this.crossMatchResults[key1] = { value: result, isSynced: isSynced };
+                    this.crossMatchResults[key2] = { value: -result, isSynced: isSynced };
                 }
             }
-            
-            console.log("crossMatchResults updated, example:", this.crossMatchResults[`${f1Players[0]?.name}_vs_${f2Players[0]?.name}`]);
         },
         
         calculateCrossMatchResult(playerA, playerB, upToHole) {
@@ -678,7 +688,6 @@ function gameApp() {
                 if (netA < netB) playerAWon++;
                 else if (netB < netA) playerBWon++;
             }
-            
             return playerAWon - playerBWon;
         },
         
@@ -785,6 +794,10 @@ function gameApp() {
         async saveHole() {
             if (!this.canEdit) return;
             
+            // Check if lock still belongs to this device
+            const hasLock = await this.checkLockOwnership();
+            if (!hasLock) return;
+            
             const flight = this.editableFlight;
             const flightPlayers = this.allPlayers.filter(p => p.flight === flight);
             const teamAPlayers = flightPlayers.filter(p => p.team === 'A').sort((a, b) => a.handicap - b.handicap);
@@ -890,7 +903,6 @@ function gameApp() {
             let next = this.currentHole + 1;
             if (next > 18) next = 1;
             this.currentHole = next;
-            // Re-evaluate cross-flight sync status on hole change
             this.updateCrossMatchResults();
             this.renderScorecard();
         },
@@ -903,7 +915,6 @@ function gameApp() {
             this.renderScorecard();
         },
         
-        // Exit to main menu with confirmation and lock release
         async exitToMainMenu() {
             if (!confirm("Leave the game? Your current unsaved changes will be lost.")) {
                 return;
@@ -926,7 +937,6 @@ function gameApp() {
                 }
             }
             
-            // Clear session and go to index
             sessionStorage.removeItem("currentGame");
             localStorage.removeItem("userRole");
             window.location.href = "index.html";
@@ -957,7 +967,6 @@ function gameApp() {
             }
             
             if (changed) {
-                console.log("Data changed, updating cross-flight results");
                 this.updateCrossMatchResults();
                 this.calculateTR();
                 this.renderScorecard();
@@ -965,8 +974,9 @@ function gameApp() {
         },
         
         async init() {
-            // Set device ID display
-            document.getElementById("deviceTag").innerHTML = SessionManager.getDeviceIdDisplay();
+            // Get device ID
+            this.myDeviceId = SessionManager.getDeviceIdDisplay();
+            document.getElementById("deviceTag").innerHTML = this.myDeviceId;
             
             this.loadDisplayPreference();
             
@@ -1042,11 +1052,12 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.12
+VERSION: 2.13
 KEY CHANGES:
-   - Fixed cross-flight bubble calculation (XB now update when both flights save)
-   - Out-of-sync detection: XB turn grey when one flight is ahead
-   - Added Back to Main Menu button with confirmation and lock release
-   - Cross-flight sync triggers on every refresh from Firebase
+   - Lock ownership check before save
+   - If lock taken, alert and redirect to view-game.html
+   - Device ID display (top-left)
+   - Back to Main Menu button with lock release
+   - Cross-flight bubbles update correctly
 STATUS: Ready for testing
 -->
