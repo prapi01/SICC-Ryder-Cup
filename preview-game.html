@@ -1,13 +1,12 @@
 <!--
 FILE: preview-game.html
-VERSION: 1.00
-PURPOSE: PREVIEW mode game updater (previewSandboxes collection)
-          - Uses game-ui.js for all rendering
-          - Firebase read/write with real-time sync
-          - One-device-one-role enforcement
-          - Updates lastActive on save
-          - Redirects to view-game.html if lock taken
-DEPENDS ON: js/session.js, js/game-ui.js
+VERSION: 1.01
+KEY CHANGES:
+   - Uses GameUI display mode management (getDisplayMode, setDisplayMode, getDisplayHoles)
+   - Removed local display mode functions (delegated to GameUI)
+   - Toggle buttons now properly update active states via GameUI
+   - All display logic centralized in game-ui.js
+DEPENDS ON: js/game-ui.js v1.08 or higher
 STATUS: Ready for testing
 -->
 
@@ -207,7 +206,7 @@ STATUS: Ready for testing
         <div class="scorecard-header">
             <div class="scorecard-title">SCORECARD</div>
             <div class="view-toggle">
-                <button class="toggle-btn active" id="playOrderBtn">⛳ Play Order</button>
+                <button class="toggle-btn" id="playOrderBtn">⛳ Play Order</button>
                 <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
             </div>
         </div>
@@ -220,7 +219,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.00 PREVIEW</div>
+<div class="version-tag">v1.01 PREVIEW</div>
 
 <script>
 // ============================================================
@@ -250,7 +249,6 @@ var editableFlight = 1;
 var canEdit = true;
 var startingHole = 1;
 var currentHole = 1;
-var displayMode = "play";
 
 var courseName = "";
 var coursePar = [];
@@ -290,11 +288,7 @@ function getPlayOrder() {
 }
 
 function getDisplayHoles() {
-    if (displayMode === "natural") {
-        return [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
-    } else {
-        return getPlayOrder();
-    }
+    return GameUI.getDisplayHoles(startingHole, GameUI.getDisplayMode());
 }
 
 function getFlightOrderedPlayers(flight) {
@@ -597,7 +591,6 @@ function renderAll() {
 async function saveHole() {
     if (!canEdit) return;
     
-    // Check lock ownership
     var collection = 'previewSandboxes';
     var doc = await db.collection(collection).doc(gameId).get();
     if (!doc.exists) return;
@@ -764,34 +757,13 @@ function refreshFromFirebase(data) {
 }
 
 // ============================================================
-// Display Mode
+// Display Mode (using GameUI)
 // ============================================================
 
 function setDisplayMode(mode) {
-    displayMode = mode;
-    localStorage.setItem("scorecardDisplay", mode);
-    renderAll();
-}
-
-function loadDisplayPreference() {
-    var saved = localStorage.getItem("scorecardDisplay");
-    if (saved === "natural" || saved === "play") {
-        displayMode = saved;
-    } else {
-        displayMode = "play";
-    }
-    
-    var playBtn = document.getElementById("playOrderBtn");
-    var naturalBtn = document.getElementById("naturalOrderBtn");
-    if (playBtn && naturalBtn) {
-        if (displayMode === "play") {
-            playBtn.classList.add("active");
-            naturalBtn.classList.remove("active");
-        } else {
-            playBtn.classList.remove("active");
-            naturalBtn.classList.add("active");
-        }
-    }
+    GameUI.setDisplayMode(mode, function() {
+        renderAll();
+    });
 }
 
 // ============================================================
@@ -801,8 +773,6 @@ function loadDisplayPreference() {
 async function init() {
     myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
-    
-    loadDisplayPreference();
     
     var session = await new Promise(function(resolve) {
         SessionManager.initSession("preview-game.html", "index.html", resolve);
@@ -835,7 +805,9 @@ async function init() {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
     f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
     
-    currentHole = startingHole;
+    // Get the starting hole in play order
+    var playOrder = getPlayOrder();
+    currentHole = playOrder[0];
     
     flight1Data = parseFlightData(f1DataString);
     flight2Data = parseFlightData(f2DataString);
@@ -843,7 +815,19 @@ async function init() {
     updateCrossMatchResults();
     calculateTR();
     
+    // Initialize display mode buttons via GameUI
+    GameUI.updateToggleButtons(GameUI.getDisplayMode());
+    
     renderAll();
+    
+    // Set up toggle button handlers
+    document.getElementById("playOrderBtn").addEventListener("click", function() {
+        setDisplayMode("play");
+    });
+    
+    document.getElementById("naturalOrderBtn").addEventListener("click", function() {
+        setDisplayMode("natural");
+    });
     
     unsubscribe = gameRef.onSnapshot(function(snapshot) {
         if (snapshot.exists) {
@@ -863,14 +847,7 @@ document.getElementById("nextBtn").addEventListener("click", nextHole);
 document.getElementById("backBtn").addEventListener("click", prevHole);
 document.getElementById("menuBtn").addEventListener("click", exitToMainMenu);
 
-document.getElementById("playOrderBtn").addEventListener("click", function() {
-    setDisplayMode("play");
-});
-
-document.getElementById("naturalOrderBtn").addEventListener("click", function() {
-    setDisplayMode("natural");
-});
-
+// Start
 init();
 </script>
 
@@ -879,13 +856,12 @@ init();
 
 <!--
 FILE: preview-game.html
-VERSION: 1.00
-PURPOSE: PREVIEW mode game updater (previewSandboxes collection)
-          - Uses game-ui.js for all rendering
-          - Firebase read/write with real-time sync
-          - One-device-one-role enforcement
-          - Updates lastActive on save
-          - Redirects to view-game.html if lock taken
-DEPENDS ON: js/session.js, js/game-ui.js
+VERSION: 1.01
+KEY CHANGES:
+   - Uses GameUI display mode management (getDisplayMode, setDisplayMode, getDisplayHoles)
+   - Removed local display mode functions (delegated to GameUI)
+   - Toggle buttons now properly update active states via GameUI
+   - All display logic centralized in game-ui.js
+DEPENDS ON: js/game-ui.js v1.08 or higher
 STATUS: Ready for testing
 -->
