@@ -1,0 +1,483 @@
+<!--
+FILE: test-ui-module.html
+VERSION: 1.00
+PURPOSE: Standalone test for game-ui.js module
+          - No Firebase, no controllers
+          - Hardcoded test data
+          - Tests scorecard, player cards, bubbles, TR
+          - Play Order / Natural Order toggle
+STATUS: Ready for testing
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>UI Module Test - SICC Ryder Cup</title>
+    
+    <script src="js/game-ui.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
+        .container { max-width: 550px; margin: 0 auto; padding-top: 35px; }
+        
+        .version-tag {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        
+        .status-bubble {
+            background: rgba(76,175,80,0.3);
+            border: 1px solid #4caf50;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            margin-bottom: 16px;
+        }
+        
+        .hole-header { text-align: center; margin: 16px 0; }
+        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
+        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        
+        .flight-tab {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            border-radius: 40px;
+            padding: 10px;
+            text-align: center;
+            margin: 16px 0;
+        }
+        
+        .team-score-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .team-score-green { color: #4caf50; }
+        .team-score-red { color: #ff6b6b; }
+        .team-score { font-size: 1.3rem; font-weight: 700; }
+        
+        .player-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #333;
+        }
+        .player-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .player-name { font-size: 1rem; font-weight: 600; }
+        .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
+        .score-control { display: flex; gap: 12px; align-items: center; }
+        .score-btn { background: #1a3a1a; border: none; width: 40px; height: 40px; border-radius: 30px; font-size: 1.2rem; color: #fff; cursor: pointer; }
+        .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; }
+        
+        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
+        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        
+        .scorecard-section { margin: 20px 0; }
+        .scorecard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .view-toggle { display: flex; gap: 4px; }
+        .toggle-btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 0.65rem;
+            cursor: pointer;
+            color: #888;
+        }
+        .toggle-btn.active {
+            background: #1a3a1a;
+            border-color: #4caf50;
+            color: #4caf50;
+        }
+        
+        .scorecard-wrapper { overflow-x: auto; }
+        .scorecard-table {
+            width: 100%;
+            min-width: 700px;
+            font-size: 0.7rem;
+            border-collapse: collapse;
+        }
+        .scorecard-table th, .scorecard-table td {
+            padding: 6px 3px;
+            text-align: center;
+            border: 1px solid #222;
+        }
+        .scorecard-table th {
+            color: #4caf50;
+            background: #111;
+        }
+        .score-green { color: #4caf50; font-weight: 600; }
+        .score-invisible { color: #000; }
+        .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+        
+        .action-buttons { display: flex; gap: 12px; margin: 20px 0; }
+        .btn { flex: 1; padding: 12px; border-radius: 40px; font-weight: 600; text-align: center; cursor: pointer; border: none; }
+        .btn-save { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        
+        .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
+        
+        .test-buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .test-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .loading { text-align: center; padding: 40px; color: #888; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="status-bubble">TEST MODE</div>
+    <div style="text-align:center; margin-bottom:8px;">UI Module Test - No Firebase</div>
+    
+    <div id="holeHeader" class="hole-header"></div>
+    <div id="flightTab" class="flight-tab"></div>
+    <div id="trDisplay" class="team-score-card"></div>
+    <div id="playerCards" class="player-cards"></div>
+    
+    <div class="action-buttons">
+        <button class="btn btn-back" disabled>← Back</button>
+        <button class="btn btn-save">💾 Save (Demo)</button>
+        <button class="btn btn-next" disabled>Next →</button>
+    </div>
+    
+    <div class="scorecard-section">
+        <div class="scorecard-header">
+            <div class="scorecard-title">SCORECARD</div>
+            <div class="view-toggle">
+                <button class="toggle-btn active" id="playOrderBtn">⛳ Play Order</button>
+                <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
+            </div>
+        </div>
+        <div class="scorecard-wrapper" id="scorecardWrapper"></div>
+    </div>
+    
+    <div class="test-buttons">
+        <button class="test-btn" id="testStartBtn">🏁 Start of Game</button>
+        <button class="test-btn" id="testAfterHole1Btn">📌 After Hole 1 (Synced)</button>
+        <button class="test-btn" id="testAfter6HolesBtn">📊 After 6 Holes</button>
+    </div>
+    
+    <div class="debug" id="debug">
+        Click a test button to render
+    </div>
+</div>
+
+<div class="version-tag">v1.00</div>
+
+<script>
+// ============================================================
+// MOCK DATA
+// ============================================================
+
+var MOCK_PLAYERS = [
+    { name: "Ang C H", label: "ACH", handicap: 1, team: "A", flight: 1 },
+    { name: "Kenneth Foo", label: "KF", handicap: 3, team: "A", flight: 1 },
+    { name: "C K", label: "CK", handicap: 8, team: "A", flight: 2 },
+    { name: "Yip H M", label: "YHM", handicap: 12, team: "A", flight: 2 },
+    { name: "Jeff Goh", label: "JG", handicap: 0, team: "B", flight: 1 },
+    { name: "Ong C B", label: "OCB", handicap: 1, team: "B", flight: 1 },
+    { name: "Piti", label: "P", handicap: 8, team: "B", flight: 2 },
+    { name: "James Ong", label: "JO", handicap: 11, team: "B", flight: 2 }
+];
+
+var MOCK_COURSE = {
+    name: "SICC Bukit Course",
+    par: [4, 3, 4, 5, 3, 4, 4, 4, 4, 4, 4, 3, 5, 3, 5, 4, 3, 5],
+    si: [13, 15, 7, 3, 17, 1, 5, 11, 9, 14, 2, 8, 6, 16, 10, 4, 18, 12]
+};
+
+var STARTING_HOLE = 10;
+
+// State
+var currentHole = STARTING_HOLE;
+var currentDisplayMode = "play";
+var flightScores = {};
+var savedHoles = { 1: [], 2: [] };
+var t1Row = Array(18).fill('_');
+var t2Row = Array(18).fill('_');
+var strkRow = Array(18).fill('_');
+var trPoints = { teamA: 9.5, teamB: 9.5 };
+var trTeamAGreen = true;
+var trTeamBGreen = true;
+
+// ============================================================
+// Helper Functions
+// ============================================================
+
+function getPlayOrder() {
+    var order = [];
+    for (var i = STARTING_HOLE; i <= 18; i++) order.push(i);
+    for (var i = 1; i < STARTING_HOLE; i++) order.push(i);
+    return order;
+}
+
+function getDisplayHoles() {
+    if (currentDisplayMode === "natural") {
+        return [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+    } else {
+        return getPlayOrder();
+    }
+}
+
+function getStoredScore(player, hole) {
+    var key = player.flight + "_" + hole + "_" + player.name;
+    if (flightScores[key] !== undefined) {
+        return flightScores[key];
+    }
+    return MOCK_COURSE.par[hole - 1];
+}
+
+function isHoleSaved(flight, hole) {
+    return savedHoles[flight] && savedHoles[flight].indexOf(hole) !== -1;
+}
+
+function getCurrentScore(player) {
+    return getStoredScore(player, currentHole);
+}
+
+function getBubbleClass(player, opponent) {
+    return 'bubble-green';
+}
+
+function getBubbleValue(player, opponent) {
+    return '1';
+}
+
+function getAllOpponents(player) {
+    return MOCK_PLAYERS.filter(function(op) {
+        return op.team !== player.team;
+    });
+}
+
+// ============================================================
+// Render Functions
+// ============================================================
+
+function renderAll() {
+    var currentPar = MOCK_COURSE.par[currentHole - 1];
+    var currentSi = MOCK_COURSE.si[currentHole - 1];
+    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    GameUI.updateFlightTab("flightTab", 1, true);
+    GameUI.updateTR("trDisplay", trPoints.teamA, trPoints.teamB, trTeamAGreen, trTeamBGreen);
+    
+    var currentFlightPlayers = MOCK_PLAYERS.filter(function(p) { return p.flight === 1; });
+    currentFlightPlayers.sort(function(a, b) {
+        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
+        return a.handicap - b.handicap;
+    });
+    
+    GameUI.renderPlayerCards(
+        "playerCards",
+        currentFlightPlayers,
+        getAllOpponents,
+        getBubbleClass,
+        getBubbleValue,
+        getCurrentScore,
+        true,
+        function(playerName, flight, playerIdx, delta) {
+            console.log("Score change:", playerName, delta);
+        }
+    );
+    
+    var holes = getDisplayHoles();
+    GameUI.renderScorecard(
+        "scorecardWrapper",
+        holes,
+        MOCK_PLAYERS,
+        getStoredScore,
+        isHoleSaved,
+        t1Row,
+        t2Row,
+        strkRow,
+        MOCK_COURSE.par,
+        MOCK_COURSE.si
+    );
+}
+
+// ============================================================
+// Test Scenarios
+// ============================================================
+
+function testStartOfGame() {
+    flightScores = {};
+    savedHoles = { 1: [], 2: [] };
+    t1Row = Array(18).fill('_');
+    t2Row = Array(18).fill('_');
+    strkRow = Array(18).fill('_');
+    trPoints = { teamA: 9.5, teamB: 9.5 };
+    trTeamAGreen = true;
+    trTeamBGreen = true;
+    currentHole = STARTING_HOLE;
+    renderAll();
+    document.getElementById("debug").innerHTML = "✅ Start of Game - No holes saved";
+}
+
+function testAfterHole1() {
+    var hole10 = 10;
+    var f1Players = MOCK_PLAYERS.filter(function(p) { return p.flight === 1; });
+    flightScores["1_" + hole10 + "_" + f1Players[0].name] = 6;
+    flightScores["1_" + hole10 + "_" + f1Players[1].name] = 5;
+    flightScores["1_" + hole10 + "_" + f1Players[2].name] = 4;
+    flightScores["1_" + hole10 + "_" + f1Players[3].name] = 5;
+    
+    var f2Players = MOCK_PLAYERS.filter(function(p) { return p.flight === 2; });
+    flightScores["2_" + hole10 + "_" + f2Players[0].name] = 5;
+    flightScores["2_" + hole10 + "_" + f2Players[1].name] = 5;
+    flightScores["2_" + hole10 + "_" + f2Players[2].name] = 5;
+    flightScores["2_" + hole10 + "_" + f2Players[3].name] = 5;
+    
+    savedHoles[1].push(hole10);
+    savedHoles[2].push(hole10);
+    
+    var playOrder = getPlayOrder();
+    var holeIndex = playOrder.indexOf(hole10);
+    t1Row = Array(18).fill('_');
+    t2Row = Array(18).fill('_');
+    strkRow = Array(18).fill('_');
+    t1Row[holeIndex] = "A";
+    t2Row[holeIndex] = "B";
+    strkRow[holeIndex] = "A";
+    
+    trPoints = { teamA: 10.5, teamB: 8.5 };
+    trTeamAGreen = true;
+    trTeamBGreen = false;
+    
+    currentHole = hole10 + 1;
+    if (currentHole > 18) currentHole = 1;
+    
+    renderAll();
+    document.getElementById("debug").innerHTML = "✅ After Hole 1 (Synced) - Scores saved";
+}
+
+function testAfter6Holes() {
+    var playOrder = getPlayOrder();
+    flightScores = {};
+    savedHoles = { 1: [], 2: [] };
+    
+    for (var pos = 0; pos < 6; pos++) {
+        var actualHole = playOrder[pos];
+        var f1Players = MOCK_PLAYERS.filter(function(p) { return p.flight === 1; });
+        flightScores["1_" + actualHole + "_" + f1Players[0].name] = 4 + pos;
+        flightScores["1_" + actualHole + "_" + f1Players[1].name] = 4 + pos;
+        flightScores["1_" + actualHole + "_" + f1Players[2].name] = 4 + pos;
+        flightScores["1_" + actualHole + "_" + f1Players[3].name] = 4 + pos;
+        
+        var f2Players = MOCK_PLAYERS.filter(function(p) { return p.flight === 2; });
+        flightScores["2_" + actualHole + "_" + f2Players[0].name] = 4;
+        flightScores["2_" + actualHole + "_" + f2Players[1].name] = 4;
+        flightScores["2_" + actualHole + "_" + f2Players[2].name] = 4;
+        flightScores["2_" + actualHole + "_" + f2Players[3].name] = 4;
+        
+        savedHoles[1].push(actualHole);
+        savedHoles[2].push(actualHole);
+    }
+    
+    t1Row = Array(18).fill('_');
+    t2Row = Array(18).fill('_');
+    strkRow = Array(18).fill('_');
+    for (var pos = 0; pos < 6; pos++) {
+        t1Row[pos] = "A";
+        t2Row[pos] = "B";
+        strkRow[pos] = "A";
+    }
+    
+    trPoints = { teamA: 11.5, teamB: 7.5 };
+    trTeamAGreen = true;
+    trTeamBGreen = false;
+    
+    currentHole = playOrder[6];
+    
+    renderAll();
+    document.getElementById("debug").innerHTML = "✅ After 6 Holes - Team A leading";
+}
+
+// ============================================================
+// Event Listeners
+// ============================================================
+
+document.getElementById("playOrderBtn").addEventListener("click", function() {
+    currentDisplayMode = "play";
+    document.getElementById("playOrderBtn").classList.add("active");
+    document.getElementById("naturalOrderBtn").classList.remove("active");
+    renderAll();
+});
+
+document.getElementById("naturalOrderBtn").addEventListener("click", function() {
+    currentDisplayMode = "natural";
+    document.getElementById("naturalOrderBtn").classList.add("active");
+    document.getElementById("playOrderBtn").classList.remove("active");
+    renderAll();
+});
+
+document.getElementById("testStartBtn").addEventListener("click", testStartOfGame);
+document.getElementById("testAfterHole1Btn").addEventListener("click", testAfterHole1);
+document.getElementById("testAfter6HolesBtn").addEventListener("click", testAfter6Holes);
+
+document.querySelector(".btn-save").addEventListener("click", function() {
+    alert("Save demo - In real app, this would save to Firebase");
+});
+
+testStartOfGame();
+</script>
+
+</body>
+</html>
+
+<!--
+FILE: test-ui-module.html
+VERSION: 1.00
+PURPOSE: Standalone test for game-ui.js module
+          - No Firebase, no controllers
+          - Hardcoded test data
+          - Tests scorecard, player cards, bubbles, TR
+          - Play Order / Natural Order toggle
+STATUS: Ready for testing
+-->
