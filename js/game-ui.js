@@ -1,14 +1,70 @@
 /*
 FILE: js/game-ui.js
-VERSION: 1.07
-KEY CHANGES (based on v1.06):
-   - ADDED: Green line after Flight 2 players (before T-2 row) - CORRECT POSITION
-   - TR font size: 2rem, font-weight 800 (from v1.06)
-   - All other code identical to v1.01
+VERSION: 1.08
+KEY CHANGES:
+   - ADDED: updateToggleButtons(displayMode) function to manage button active states
+   - ADDED: setDisplayModeAndUpdateButtons(mode, onModeChanged) - complete display mode manager
+   - All display logic now centralized in game-ui.js
+   - TR font size: 2rem, font-weight 800
+   - Green line after Flight 2 (before T-2)
 STATUS: Ready for testing
 */
 
 var GameUI = (function() {
+    
+    // ============================================================
+    // Display Mode Management (NEW)
+    // ============================================================
+    
+    var currentDisplayMode = "play";
+    
+    function getDisplayMode() {
+        var saved = localStorage.getItem("scorecardDisplay");
+        if (saved === "natural" || saved === "play") {
+            currentDisplayMode = saved;
+        } else {
+            currentDisplayMode = "play";
+        }
+        return currentDisplayMode;
+    }
+    
+    function updateToggleButtons(mode) {
+        var playBtn = document.getElementById('playOrderBtn');
+        var naturalBtn = document.getElementById('naturalOrderBtn');
+        if (playBtn && naturalBtn) {
+            if (mode === 'play') {
+                playBtn.classList.add('active');
+                naturalBtn.classList.remove('active');
+            } else {
+                playBtn.classList.remove('active');
+                naturalBtn.classList.add('active');
+            }
+        }
+    }
+    
+    function setDisplayMode(mode, onModeChanged) {
+        if (mode !== "play" && mode !== "natural") return;
+        currentDisplayMode = mode;
+        localStorage.setItem("scorecardDisplay", mode);
+        updateToggleButtons(mode);
+        if (onModeChanged && typeof onModeChanged === 'function') {
+            onModeChanged(mode);
+        }
+    }
+    
+    function getDisplayHoles(startingHole, preference) {
+        var useNatural = (preference === "natural");
+        if (useNatural) {
+            var natural = [];
+            for (var i = 1; i <= 18; i++) natural.push(i);
+            return natural;
+        } else {
+            var playOrder = [];
+            for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+            for (var i = 1; i < startingHole; i++) playOrder.push(i);
+            return playOrder;
+        }
+    }
     
     // ============================================================
     // Scorecard Rendering
@@ -108,7 +164,7 @@ var GameUI = (function() {
             html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        // ***** GREEN LINE AFTER FLIGHT 2 (BEFORE T-2) - ADDED CORRECTLY *****
+        // GREEN LINE AFTER FLIGHT 2 (BEFORE T-2)
         html += '<tr class="green-line"><td colspan="20"> </td>';
         
         // T-2 row
@@ -281,21 +337,30 @@ var GameUI = (function() {
     // ============================================================
     
     return {
+        // Core rendering functions
         renderScorecard: renderScorecard,
         renderPlayerCards: renderPlayerCards,
         updateTR: updateTR,
         updateHoleHeader: updateHoleHeader,
-        updateFlightTab: updateFlightTab
+        updateFlightTab: updateFlightTab,
+        
+        // Display mode management (NEW)
+        getDisplayMode: getDisplayMode,
+        setDisplayMode: setDisplayMode,
+        updateToggleButtons: updateToggleButtons,
+        getDisplayHoles: getDisplayHoles
     };
     
 })();
 
 /*
 FILE: js/game-ui.js
-VERSION: 1.07
-KEY CHANGES (based on v1.06):
-   - ADDED: Green line after Flight 2 players (before T-2 row) - CORRECT POSITION
-   - TR font size: 2rem, font-weight 800 (from v1.06)
-   - All other code identical to v1.01
+VERSION: 1.08
+KEY CHANGES:
+   - ADDED: updateToggleButtons(displayMode) function to manage button active states
+   - ADDED: setDisplayModeAndUpdateButtons(mode, onModeChanged) - complete display mode manager
+   - All display logic now centralized in game-ui.js
+   - TR font size: 2rem, font-weight 800
+   - Green line after Flight 2 (before T-2)
 STATUS: Ready for testing
 */
