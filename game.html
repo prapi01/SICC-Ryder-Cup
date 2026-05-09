@@ -1,11 +1,11 @@
 <!--
 FILE: game.html
-VERSION: 2.10
+VERSION: 2.11
 KEY CHANGES:
-   - Restored from v2.05 (working display)
-   - Added version tag to screen (top-right)
-   - No debug panels or logging
-   - Ready for save/load testing via Firestore console
+   - Restored hasAnySavedHoles() function (removed in v2.10)
+   - Intra-flight bubbles now grey at start of game (no saved holes)
+   - Intra-flight bubbles light up only after flight saves a hole
+   - Keeps all working save/load functionality from v2.10
 STATUS: Ready for testing
 -->
 
@@ -237,7 +237,7 @@ STATUS: Ready for testing
     </div>
 </div>
 
-<div class="version-tag">v2.10</div>
+<div class="version-tag">v2.11</div>
 
 <script>
 const FIREBASE_CONFIG = {
@@ -293,6 +293,22 @@ function gameApp() {
         
         f1DataString: '',
         f2DataString: '',
+        
+        // ============================================================
+        // HELPER: Check if a flight has any saved holes
+        // ============================================================
+        
+        hasAnySavedHoles(flight) {
+            const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
+            for (let h = 1; h <= 18; h++) {
+                if (flightData[h]?.saved === true) return true;
+            }
+            return false;
+        },
+        
+        // ============================================================
+        // COMPUTED
+        // ============================================================
         
         get displayHolesList() {
             if (this.displayMode === 'natural') {
@@ -408,18 +424,29 @@ function gameApp() {
             return flightData[hole]?.saved || false;
         },
         
+        // ============================================================
+        // INTRA-FLIGHT BUBBLES
+        // ============================================================
+        
         getIntraFlightOpponents(player) {
             return this.allPlayers.filter(op => op.team !== player.team && op.flight === player.flight);
         },
         
         getIntraBubbleClass(player, opponent) {
+            // If no saved holes in this flight, all bubbles are grey
+            if (!this.hasAnySavedHoles(player.flight)) {
+                return 'bubble-grey';
+            }
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return 'bubble-green';
             if (result < 0) return 'bubble-red';
-            return 'bubble-green';
+            return 'bubble-green';  // Tie -> green AS
         },
         
         getIntraBubbleValue(player, opponent) {
+            if (!this.hasAnySavedHoles(player.flight)) {
+                return 'AS';
+            }
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return result.toString();
             if (result < 0) return Math.abs(result).toString();
@@ -479,6 +506,10 @@ function gameApp() {
             return playerAWon - playerBWon;
         },
         
+        // ============================================================
+        // CROSS-FLIGHT BUBBLES
+        // ============================================================
+        
         getCrossFlightOpponents(player) {
             return this.allPlayers.filter(op => op.team !== player.team && op.flight !== player.flight);
         },
@@ -502,6 +533,10 @@ function gameApp() {
             return absValue.toString();
         },
         
+        // ============================================================
+        // MATCH CALCULATION HELPERS
+        // ============================================================
+        
         getStrokeHoles(handicapDiff) {
             if (handicapDiff <= 0) return [];
             const holesWithSi = [];
@@ -521,6 +556,10 @@ function gameApp() {
             const strokeHoles = strokeHolesCache || this.getStrokeHoles(handicapDiff);
             return strokeHoles.includes(holeNumber) ? 1 : 0;
         },
+        
+        // ============================================================
+        // UPDATE CROSS MATCH RESULTS
+        // ============================================================
         
         updateCrossMatchResults() {
             let newLastSynced = 0;
@@ -617,6 +656,10 @@ function gameApp() {
             return playerAWon - playerBWon;
         },
         
+        // ============================================================
+        // SCORECARD RENDERING
+        // ============================================================
+        
         renderScorecard() {
             const wrapper = document.getElementById('scorecardWrapper');
             if (!wrapper) return;
@@ -679,7 +722,7 @@ function gameApp() {
             
             // Flight 2 players
             for (const player of flight2Players) {
-                html += `</tr><td style="font-weight:600;">${player.label}<\/td>`;
+                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
                 let playerTotal = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
@@ -713,9 +756,13 @@ function gameApp() {
             }
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
-            html += '</tbody></table>';
+            html += '</tbody><tr>';
             wrapper.innerHTML = html;
         },
+        
+        // ============================================================
+        // FIREBASE OPERATIONS
+        // ============================================================
         
         async saveHole() {
             if (!this.canEdit) return;
@@ -939,11 +986,11 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.10
+VERSION: 2.11
 KEY CHANGES:
-   - Restored from v2.05 (working display)
-   - Added version tag to screen (top-right)
-   - No debug panels or logging
-   - Ready for save/load testing via Firestore console
+   - Restored hasAnySavedHoles() function (removed in v2.10)
+   - Intra-flight bubbles now grey at start of game (no saved holes)
+   - Intra-flight bubbles light up only after flight saves a hole
+   - Keeps all working save/load functionality from v2.10
 STATUS: Ready for testing
 -->
