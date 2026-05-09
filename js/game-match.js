@@ -1,19 +1,20 @@
 /*
 FILE: js/game-match.js
-VERSION: 1.08
+VERSION: 1.09
 KEY CHANGES:
-   - Rewritten to process ALL 18 holes, stops at first 'F' in either flight
-   - Returns matchResults[16][18] - each cell is "X" (1-18) or "AS"
-   - Added calculatePoints() for TR aggregation
-   - Added formatBubbleString() for UI string generation
-   - Full handicap difference method (always, not switchable)
-STATUS: Complete. Ready for integration.
+   - Added calculateIntraFlight() for intra-flight matches (A vs B within same flight)
+   - Added calculateAllMatches() that returns both cross and intra results
+   - Preserved existing calculate() function for backward compatibility
+   - Intra-flight matches: 4 per flight (2 Team A × 2 Team B) = 8 total intra matches
+   - Cross-flight matches: 16 matches (4 Team A × 4 Team B across flights)
+   - Full handicap difference method for all matches
+STATUS: Ready for integration
 */
 
-// FILE: js/game-match.js - VERSION 1.08
+// FILE: js/game-match.js - VERSION 1.09
 // Game 1: Match Play (16 points)
 // Full handicap difference method
-// PROCESSES ALL 18 HOLES - stops at first 'F' in either flight
+// NOW INCLUDES intra-flight calculations
 
 var GameMatch = (function() {
     
@@ -70,8 +71,7 @@ var GameMatch = (function() {
         return null;
     }
     
-    // Get match result array for a SINGLE pair across holes 1-18
-    // Returns array of 18 values: "X" (1-18) or "AS" for each hole position
+    // Get match result array for a SINGLE pair across holes 1-18 (cross-flight)
     function getMatchResultArray(playerA, playerB, flight1Data, flight2Data, allPlayers, courseSi, startingHole) {
         var resultArray = new Array(18).fill("0");
         
@@ -151,7 +151,90 @@ var GameMatch = (function() {
         return resultArray;
     }
     
-    // Main calculate function - returns matchResults[16][18]
+    // Get intra-flight match result array for players in the SAME flight
+    function getIntraMatchResultArray(playerA, playerB, flightData, flightPlayers, courseSi, startingHole) {
+        var resultArray = new Array(18).fill("0");
+        
+        var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+        var isPlayerAReceivingStrokes = (playerA.handicap > playerB.handicap);
+        var strokeHoles = getStrokeHoles(handicapDiff, courseSi);
+        
+        var playerAWon = 0;
+        var playerBWon = 0;
+        
+        // Get ordered team players for this flight
+        var teamAPlayers = flightPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayers = flightPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        // Process holes in play order (storage positions 0-17)
+        for (var pos = 0; pos < 18; pos++) {
+            var actualHole = GameData.getHoleAtStoragePosition(pos);
+            
+            // Parse hole data from this flight only
+            var holeData = GameData.parseHoleData(flightData, actualHole);
+            
+            // STOP if this flight hasn't saved this hole
+            if (!holeData || !holeData.saved) {
+                break;
+            }
+            
+            // Get scores for both players
+            var playerAScore = null;
+            var playerBScore = null;
+            
+            if (playerA.team === "A") {
+                if (teamAPlayers[0] && teamAPlayers[0].name === playerA.name) playerAScore = holeData.scores.a1;
+                else if (teamAPlayers[1] && teamAPlayers[1].name === playerA.name) playerAScore = holeData.scores.a2;
+            } else {
+                if (teamBPlayers[0] && teamBPlayers[0].name === playerA.name) playerAScore = holeData.scores.b1;
+                else if (teamBPlayers[1] && teamBPlayers[1].name === playerA.name) playerAScore = holeData.scores.b2;
+            }
+            
+            if (playerB.team === "A") {
+                if (teamAPlayers[0] && teamAPlayers[0].name === playerB.name) playerBScore = holeData.scores.a1;
+                else if (teamAPlayers[1] && teamAPlayers[1].name === playerB.name) playerBScore = holeData.scores.a2;
+            } else {
+                if (teamBPlayers[0] && teamBPlayers[0].name === playerB.name) playerBScore = holeData.scores.b1;
+                else if (teamBPlayers[1] && teamBPlayers[1].name === playerB.name) playerBScore = holeData.scores.b2;
+            }
+            
+            if (playerAScore === null || playerBScore === null) continue;
+            
+            // Calculate net scores
+            var netA = playerAScore;
+            var netB = playerBScore;
+            
+            if (isPlayerAReceivingStrokes) {
+                netA = getNetScore(playerAScore, handicapDiff, actualHole, courseSi, strokeHoles);
+            } else {
+                netB = getNetScore(playerBScore, handicapDiff, actualHole, courseSi, strokeHoles);
+            }
+            
+            // Determine hole winner
+            if (netA < netB) {
+                playerAWon++;
+            } else if (netB < netA) {
+                playerBWon++;
+            }
+            
+            // Calculate running result
+            var diff = playerAWon - playerBWon;
+            var resultValue;
+            if (diff > 0) {
+                resultValue = diff.toString();
+            } else if (diff < 0) {
+                resultValue = Math.abs(diff).toString();
+            } else {
+                resultValue = "AS";
+            }
+            
+            resultArray[pos] = resultValue;
+        }
+        
+        return resultArray;
+    }
+    
+    // Calculate cross-flight matches (Team A vs Team B across both flights)
     function calculate(allPlayers, flight1Data, flight2Data, courseSi, startingHole) {
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
@@ -181,6 +264,44 @@ var GameMatch = (function() {
         }
         
         return matchResults;
+    }
+    
+    // Calculate intra-flight matches for a specific flight
+    function calculateIntraFlight(flight, flightPlayers, flightData, courseSi, startingHole) {
+        // Split into Team A and Team B
+        var teamA = flightPlayers.filter(function(p) { return p.team === "A"; });
+        var teamB = flightPlayers.filter(function(p) { return p.team === "B"; });
+        
+        // Sort by handicap (lowest first)
+        teamA.sort(function(a, b) { return a.handicap - b.handicap; });
+        teamB.sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        var matchResults = [];
+        
+        for (var a = 0; a < teamA.length; a++) {
+            for (var b = 0; b < teamB.length; b++) {
+                var resultArray = getIntraMatchResultArray(
+                    teamA[a], teamB[b],
+                    flightData, flightPlayers,
+                    courseSi, startingHole
+                );
+                matchResults.push(resultArray);
+            }
+        }
+        
+        return matchResults;
+    }
+    
+    // Calculate ALL matches (cross + intra for both flights)
+    function calculateAllMatches(allPlayers, flight1Data, flight2Data, courseSi, startingHole) {
+        var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+        var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
+        
+        return {
+            crossFlight: calculate(allPlayers, flight1Data, flight2Data, courseSi, startingHole),
+            intraFlight1: calculateIntraFlight(1, flight1Players, flight1Data, courseSi, startingHole),
+            intraFlight2: calculateIntraFlight(2, flight2Players, flight2Data, courseSi, startingHole)
+        };
     }
     
     // Calculate total points for Game 1 based on synced holes
@@ -218,7 +339,6 @@ var GameMatch = (function() {
     }
     
     // Format match bubbles for UI string (Cxx format)
-    // flightPerspective: "f1" or "f2"
     function formatBubbleString(matchResults, maxSyncedHole, flightPerspective) {
         var result = "";
         
@@ -268,21 +388,27 @@ var GameMatch = (function() {
     }
     
     return {
+        // Existing functions (backward compatible)
         calculate: calculate,
         calculatePoints: calculatePoints,
         formatBubbleString: formatBubbleString,
-        getMatchResultArray: getMatchResultArray
+        getMatchResultArray: getMatchResultArray,
+        
+        // New functions
+        calculateIntraFlight: calculateIntraFlight,
+        calculateAllMatches: calculateAllMatches
     };
 })();
 
 /*
 FILE: js/game-match.js
-VERSION: 1.08
+VERSION: 1.09
 KEY CHANGES:
-   - Rewritten to process ALL 18 holes, stops at first 'F' in either flight
-   - Returns matchResults[16][18] - each cell is "X" (1-18) or "AS"
-   - Added calculatePoints() for TR aggregation
-   - Added formatBubbleString() for UI string generation
-   - Full handicap difference method (always, not switchable)
-STATUS: Complete. Ready for integration.
+   - Added calculateIntraFlight() for intra-flight matches (A vs B within same flight)
+   - Added calculateAllMatches() that returns both cross and intra results
+   - Preserved existing calculate() function for backward compatibility
+   - Intra-flight matches: 4 per flight (2 Team A × 2 Team B) = 8 total intra matches
+   - Cross-flight matches: 16 matches (4 Team A × 4 Team B across flights)
+   - Full handicap difference method for all matches
+STATUS: Ready for integration
 */
