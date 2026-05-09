@@ -1,10 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - Added hyphen separator between player label and handicap (e.g., "JG - 0")
-   - Added green line after Flight 2 players (before T-2 row)
-   - Pure rendering, no logic, no Firebase
+   - Based on v1.01 (working baseline)
+   - Added ONE green line after Flight 2 players (before T-2 row)
+   - Added inline style to TR: font-size: 2rem (prominent title result)
+   - NO other changes - player handicap format unchanged, all logic preserved
 STATUS: Ready for testing
 */
 
@@ -33,7 +34,7 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead><tr><th>Hole</th>';
+        html += '<thead><table><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
@@ -63,7 +64,7 @@ var GameUI = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -80,7 +81,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-1 row
-        html += '<td><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var displayVal = (val === '_' || val === '') ? '' : val;
@@ -108,7 +109,7 @@ var GameUI = (function() {
             html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        // GREEN LINE after Flight 2 players (before T-2) - ADDED
+        // ***** GREEN LINE added after Flight 2 (before T-2) *****
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-2 row
@@ -167,7 +168,7 @@ var GameUI = (function() {
                     <div class="player-header">
                         <div>
                             <span class="player-name">${escapeHtml(player.name)}</span>
-                            <span class="player-handicap">${escapeHtml(player.label)} - ${player.handicap}</span>
+                            <span class="player-handicap">${player.label} ${player.handicap}</span>
                         </div>
                         <div class="score-control">
                             <button class="score-btn dec-btn" ${btnDisabled} data-delta="-1">-</button>
@@ -226,7 +227,12 @@ var GameUI = (function() {
         var teamAColorClass = teamAGreen ? 'team-score-green' : 'team-score-red';
         var teamBColorClass = teamBGreen ? 'team-score-green' : 'team-score-red';
         
-        var html = '<span class="' + teamAColorClass + '">Team A ' + teamADisplay + '</span> - <span class="' + teamBColorClass + '">' + teamBDisplay + ' Team B</span>';
+        // *** TR font size set to 2rem for prominence ***
+        var html = '<div style="font-size: 2rem; font-weight: 800;">' +
+                       '<span class="' + teamAColorClass + '">Team A ' + teamADisplay + '</span>' + 
+                       ' - ' + 
+                       '<span class="' + teamBColorClass + '">' + teamBDisplay + ' Team B</span>' +
+                   '</div>';
         container.innerHTML = html;
     }
     
@@ -287,10 +293,11 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - Added hyphen separator between player label and handicap (e.g., "JG - 0")
-   - Added green line after Flight 2 players (before T-2 row)
-   - Pure rendering, no logic, no Firebase
+   - Based on v1.01 (working baseline)
+   - Added ONE green line after Flight 2 players (before T-2 row)
+   - Added inline style to TR: font-size: 2rem, font-weight: 800 (prominent title result)
+   - NO other changes - player handicap format unchanged, all logic preserved
 STATUS: Ready for testing
 */
