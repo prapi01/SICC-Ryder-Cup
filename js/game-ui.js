@@ -1,10 +1,10 @@
 /*
 FILE: js/game-ui.js
-VERSION: 1.08
+VERSION: 1.09
 KEY CHANGES:
-   - ADDED: updateToggleButtons(displayMode) function to manage button active states
-   - ADDED: setDisplayModeAndUpdateButtons(mode, onModeChanged) - complete display mode manager
-   - All display logic now centralized in game-ui.js
+   - FIXED: Event listeners now use player NAME instead of player index for lookup
+   - This ensures correct player identification when currentPlayers order differs from allPlayers
+   - All other display logic preserved from v1.08
    - TR font size: 2rem, font-weight 800
    - Green line after Flight 2 (before T-2)
 STATUS: Ready for testing
@@ -13,7 +13,7 @@ STATUS: Ready for testing
 var GameUI = (function() {
     
     // ============================================================
-    // Display Mode Management (NEW)
+    // Display Mode Management
     // ============================================================
     
     var currentDisplayMode = "play";
@@ -181,7 +181,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Strk row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        html += '</tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var displayVal = (val === '_' || val === '') ? '' : val;
@@ -219,7 +219,7 @@ var GameUI = (function() {
             bubblesHtml += '</div>';
             
             html += `
-                <div class="player-card" data-player-idx="${i}" data-player-flight="${player.flight}" data-player-name="${escapeHtml(player.name)}">
+                <div class="player-card" data-player-name="${escapeHtml(player.name)}" data-player-flight="${player.flight}">
                     <div class="player-header">
                         <div>
                             <span class="player-name">${escapeHtml(player.name)}</span>
@@ -245,25 +245,25 @@ var GameUI = (function() {
                 var card = playerCards[i];
                 var playerName = card.getAttribute('data-player-name');
                 var playerFlight = parseInt(card.getAttribute('data-player-flight'));
-                var playerIdx = parseInt(card.getAttribute('data-player-idx'));
                 
                 var decBtn = card.querySelector('.dec-btn');
                 var incBtn = card.querySelector('.inc-btn');
                 
+                // Use player NAME instead of index for lookup
                 if (decBtn) {
-                    decBtn.addEventListener('click', (function(pName, pFlight, pIdx) {
+                    decBtn.addEventListener('click', (function(pName, pFlight) {
                         return function() {
-                            onScoreChange(pName, pFlight, pIdx, -1);
+                            onScoreChange(pName, pFlight, -1);
                         };
-                    })(playerName, playerFlight, playerIdx));
+                    })(playerName, playerFlight));
                 }
                 
                 if (incBtn) {
-                    incBtn.addEventListener('click', (function(pName, pFlight, pIdx) {
+                    incBtn.addEventListener('click', (function(pName, pFlight) {
                         return function() {
-                            onScoreChange(pName, pFlight, pIdx, 1);
+                            onScoreChange(pName, pFlight, 1);
                         };
-                    })(playerName, playerFlight, playerIdx));
+                    })(playerName, playerFlight));
                 }
             }
         }
@@ -344,7 +344,7 @@ var GameUI = (function() {
         updateHoleHeader: updateHoleHeader,
         updateFlightTab: updateFlightTab,
         
-        // Display mode management (NEW)
+        // Display mode management
         getDisplayMode: getDisplayMode,
         setDisplayMode: setDisplayMode,
         updateToggleButtons: updateToggleButtons,
@@ -355,11 +355,12 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 1.08
+VERSION: 1.09
 KEY CHANGES:
-   - ADDED: updateToggleButtons(displayMode) function to manage button active states
-   - ADDED: setDisplayModeAndUpdateButtons(mode, onModeChanged) - complete display mode manager
-   - All display logic now centralized in game-ui.js
+   - FIXED: Event listeners now use player NAME instead of player index for lookup
+   - This ensures correct player identification when currentPlayers order differs from allPlayers
+   - Removed data-player-idx attribute (no longer needed)
+   - All other display logic preserved from v1.08
    - TR font size: 2rem, font-weight 800
    - Green line after Flight 2 (before T-2)
 STATUS: Ready for testing
