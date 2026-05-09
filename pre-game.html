@@ -1,13 +1,14 @@
 <!--
 FILE: pre-game.html
-VERSION: 2.39
+VERSION: 2.41
 KEY CHANGES:
-   - Added gameStarted flag to track if game has begun
-   - Reset only if !gameStarted AND (REAL today OR PREVIEW new session)
-   - Set gameStarted = true when user takes UPDATE role (F1 or F2)
-   - Preview modal: NEW = reset + gameStarted=false, CONTINUE = load existing
-   - Individual unlock icons per flight (already working)
-   - Takeover logic preserved
+   - Uses short device names (DEV-01, DEV-02) from SessionManager
+   - Role buttons show lock status icons directly on button
+   - Available: 🔓 (green button)
+   - Locked by self: ✓ (green button with checkmark)
+   - Locked by other: 🔒 (grey button, click for takeover modal)
+   - Removed unlock icons from flight headers (now on buttons)
+   - Lock info shows short device name instead of full ID
 STATUS: Ready for testing
 -->
 
@@ -35,7 +36,7 @@ STATUS: Ready for testing
             padding: 20px;
             min-height: 100vh;
         }
-        .container { max-width: 600px; margin: 0 auto; }
+        .container { max-width: 600px; margin: 0 auto; padding-top: 35px; }
         
         .version-tag { 
             position: fixed; 
@@ -143,16 +144,12 @@ STATUS: Ready for testing
             color: #ffaa44;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 4px;
         }
-        .unlock-icon {
-            cursor: pointer;
-            font-size: 1rem;
-            opacity: 0.6;
-            transition: opacity 0.2s;
-        }
-        .unlock-icon:hover {
-            opacity: 1;
+        .flight-device-id {
+            font-family: monospace;
+            font-size: 0.6rem;
+            color: #888;
         }
         
         .teams-grid {
@@ -226,7 +223,13 @@ STATUS: Ready for testing
             cursor: pointer;
             border: none;
             transition: all 0.2s ease;
-            min-width: 120px;
+            min-width: 160px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .role-btn-available {
             background: #1a3a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
@@ -237,15 +240,11 @@ STATUS: Ready for testing
             color: #4caf50;
             box-shadow: 0 0 8px rgba(76,175,80,0.5);
         }
-        .role-btn-selected::after {
-            content: " ✓";
-            font-size: 1rem;
-        }
-        .role-btn-unavailable {
-            opacity: 0.35;
-            cursor: not-allowed;
-            background: #1a1a1a;
-            border-color: #555;
+        .role-btn-locked {
+            opacity: 0.5;
+            cursor: pointer;
+            background: #2a2a2a;
+            border: 1px solid #555;
             color: #888;
         }
         .role-btn-view {
@@ -257,9 +256,6 @@ STATUS: Ready for testing
             background: #2a2a1a;
             border: 2px solid #ffaa44;
             color: #ffaa44;
-        }
-        .role-btn-view.role-btn-selected::after {
-            content: " ✓";
         }
         
         .action-buttons {
@@ -384,13 +380,13 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.39</div>
+<div class="version-tag">v2.41</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.39
-// ADDED: gameStarted flag to prevent resets after game begins
+// FILE: pre-game.html - VERSION 2.41
+// Role buttons show lock icons directly, short device names
 
-var VERSION = "2.39";
+var VERSION = "2.41";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -432,13 +428,14 @@ var currentDeviceId = null;
 var currentSessionId = null;
 var deviceSession = null;
 var isPreviewSandbox = false;
+var currentShortName = "DEV-??";
 
 var locks = { f1: null, f2: null };
 
 function displayDeviceId() {
-    var deviceDisplay = SessionManager.getDeviceIdDisplay();
-    document.getElementById("deviceTag").innerHTML = deviceDisplay;
-    currentDeviceId = SessionManager.getDeviceIdDisplay();
+    var shortName = SessionManager.getShortNameOnly();
+    currentShortName = shortName;
+    document.getElementById("deviceTag").innerHTML = "🖥️ " + shortName;
 }
 
 function formatDisplayDate(dateStr) {
@@ -492,7 +489,6 @@ function rotateDataString(naturalData, startingHole) {
     return rotated.join('');
 }
 
-// Reset game data (scores, locks, flags)
 function resetGameData(callback) {
     if (!db || !gameId) {
         if (callback) callback(false);
@@ -514,7 +510,7 @@ function resetGameData(callback) {
         "locks.f2": null,
         "currentHoleF1": 1,
         "currentHoleF2": 1,
-        "gameStarted": false,  // Reset gameStarted flag
+        "gameStarted": false,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
@@ -564,6 +560,32 @@ function startGameListener() {
         });
 }
 
+// Handle role button click (supports selection and takeover)
+function handleRoleClick(role) {
+    var now = Date.now();
+    var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
+    var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
+    var isF1LockedBySelf = isF1Locked && locks.f1.did === SessionManager.getDeviceIdDisplay();
+    var isF2LockedBySelf = isF2Locked && locks.f2.did === SessionManager.getDeviceIdDisplay();
+    
+    if (role === "update1") {
+        if (isF1Locked && !isF1LockedBySelf) {
+            // Locked by other - show takeover modal
+            showTakeoverModal(1);
+            return;
+        }
+        toggleRole(role);
+    } else if (role === "update2") {
+        if (isF2Locked && !isF2LockedBySelf) {
+            showTakeoverModal(2);
+            return;
+        }
+        toggleRole(role);
+    } else {
+        toggleRole(role);
+    }
+}
+
 function toggleRole(role) {
     if (tempSelectedRole === role) {
         tempSelectedRole = null;
@@ -574,8 +596,6 @@ function toggleRole(role) {
     var now = Date.now();
     var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
     var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
-    
-    console.log("toggleRole:", role, "isF1Locked:", isF1Locked, "isF2Locked:", isF2Locked);
     
     if (role === "update1" && isF1Locked) {
         alert("Flight 1 update role is already locked by another device");
@@ -608,16 +628,17 @@ function showTakeoverModal(flight) {
     var lock = flight === 1 ? locks.f1 : locks.f2;
     if (!lock) return;
     
-    var deviceId = lock.did || "Unknown device";
-    var expiryTime = lock.ex ? new Date(lock.ex).toLocaleTimeString() : "Unknown";
+    // Get short name from lock device ID
+    var deviceFullId = lock.did || "Unknown";
+    // Extract short name - for now show the ID, will be short name when session.js updated
+    var deviceDisplay = deviceFullId;
     
     var modalHtml = `
         <div class="modal-overlay" id="takeoverModal">
             <div class="modal">
                 <div class="modal-title">⚠️ ROLE TAKEOVER</div>
                 <div class="modal-message">Flight ${flight} is currently locked by:</div>
-                <div class="modal-device">${deviceId}</div>
-                <div class="modal-message" style="font-size:0.7rem;">Lock expires at ${expiryTime}</div>
+                <div class="modal-device">${deviceDisplay}</div>
                 <div class="modal-message" style="margin-top:16px;">Take over this role? The current device will be notified.</div>
                 <div class="modal-buttons">
                     <button class="modal-btn modal-btn-cancel" id="takeoverCancelBtn">Cancel</button>
@@ -677,7 +698,6 @@ function takeoverRole(flight) {
     });
 }
 
-// Preview session modal (NEW vs CONTINUE)
 function showPreviewSessionModal(callback) {
     var modalHtml = `
         <div class="modal-overlay" id="previewModal">
@@ -717,7 +737,6 @@ function loadGame() {
     
     gameId = realGameId;
     
-    // Determine if this is a preview sandbox
     if (activeGame && activeGame.collection === "previewSandboxes") {
         isPreviewSandbox = true;
         gameMode = "preview";
@@ -733,14 +752,12 @@ function loadGame() {
                     locks.f2 = gameData.locks.f2 || null;
                 }
                 
-                // Check if we should show modal or just load
                 var hasData = hasExistingData();
                 var gameStartedFlag = gameData.gameStarted === true;
                 
                 console.log("PREVIEW mode - hasData:", hasData, "gameStarted:", gameStartedFlag);
                 
                 if (hasData && !gameStartedFlag) {
-                    // Existing data but game not started - ask user
                     showPreviewSessionModal(function(choice) {
                         if (choice === "new") {
                             resetGameData(function() {
@@ -767,7 +784,6 @@ function loadGame() {
         return;
     }
     
-    // Regular scheduled game
     isPreviewSandbox = false;
     db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
         if (doc.exists) {
@@ -786,7 +802,6 @@ function loadGame() {
             console.log("REAL mode - isToday:", isToday, "gameStarted:", gameStartedFlag);
             
             if (isToday && !gameStartedFlag) {
-                // First access on game day (game not started) - RESET
                 console.log("REAL mode - First access on game day, resetting...");
                 resetGameData(function(success) {
                     db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
@@ -806,7 +821,6 @@ function loadGame() {
                     });
                 });
             } else {
-                // Game already started or not today - proceed normally
                 console.log("REAL mode - Game already started or not today, loading existing data");
                 startGameListener();
                 render();
@@ -827,7 +841,6 @@ function startGame() {
         return;
     }
     
-    // View Only role goes to view-game.html (read-only)
     if (tempSelectedRole === "view") {
         localStorage.setItem("userRole", "view");
         if (deviceSession) {
@@ -846,7 +859,6 @@ function startGame() {
         return;
     }
     
-    // UPDATE roles - lock the role and set gameStarted = true
     var now = Date.now();
     var expiryTime = now + LOCK_DURATION_MS;
     var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
@@ -887,7 +899,6 @@ function startGame() {
         };
     }
     
-    // Set gameStarted = true when first UPDATE role is taken
     updatePayload["gameStarted"] = true;
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
@@ -980,45 +991,62 @@ function render() {
     var isF1LockedBySelf = isF1Locked && locks.f1.did === SessionManager.getDeviceIdDisplay();
     var isF2LockedBySelf = isF2Locked && locks.f2.did === SessionManager.getDeviceIdDisplay();
     
-    var update1Selected = (tempSelectedRole === "update1");
-    var update2Selected = (tempSelectedRole === "update2");
-    var viewSelected = (tempSelectedRole === "view");
-    
-    var update1Class = "role-btn";
-    var update2Class = "role-btn";
-    var viewClass = "role-btn role-btn-view";
-    
-    if (update1Selected) update1Class += " role-btn-selected";
-    if (update2Selected) update2Class += " role-btn-selected";
-    if (viewSelected) viewClass += " role-btn-selected";
-    
-    var isUpdate1Disabled = isF1Locked && !isF1LockedBySelf;
-    var isUpdate2Disabled = isF2Locked && !isF2LockedBySelf;
-    
-    if (isUpdate1Disabled) update1Class += " role-btn-unavailable";
-    if (isUpdate2Disabled) update2Class += " role-btn-unavailable";
-    
-    var isTeeOffDisabled = !tempSelectedRole;
-    
-    // Flight lock info and unlock icons
+    // Flight lock info for display (short name)
     var flight1LockInfo = '';
     var flight2LockInfo = '';
     
     if (isF1Locked) {
         var lockHolder = locks.f1.did || 'Unknown';
-        var unlockIcon = isF1LockedBySelf ? '' : '<span class="unlock-icon" onclick="showTakeoverModal(1)">⟲</span>';
-        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder.substring(0, 15)}...</span>${unlockIcon}</div>`;
+        // Try to extract short name - for now show as is
+        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder}</span></div>`;
     } else {
         flight1LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
     }
     
     if (isF2Locked) {
         var lockHolder2 = locks.f2.did || 'Unknown';
-        var unlockIcon2 = isF2LockedBySelf ? '' : '<span class="unlock-icon" onclick="showTakeoverModal(2)">⟲</span>';
-        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder2.substring(0, 15)}...</span>${unlockIcon2}</div>`;
+        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder2}</span></div>`;
     } else {
         flight2LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
     }
+    
+    // Role button states
+    var update1Selected = (tempSelectedRole === "update1");
+    var update2Selected = (tempSelectedRole === "update2");
+    var viewSelected = (tempSelectedRole === "view");
+    
+    // Determine button appearance
+    var update1Icon = "";
+    var update1BtnClass = "role-btn";
+    var update2Icon = "";
+    var update2BtnClass = "role-btn";
+    
+    if (isF1Locked && !isF1LockedBySelf) {
+        update1BtnClass += " role-btn-locked";
+        update1Icon = "🔒 ";
+    } else if (update1Selected) {
+        update1BtnClass += " role-btn-selected";
+        update1Icon = "✓ ";
+    } else {
+        update1BtnClass += " role-btn-available";
+        update1Icon = "🔓 ";
+    }
+    
+    if (isF2Locked && !isF2LockedBySelf) {
+        update2BtnClass += " role-btn-locked";
+        update2Icon = "🔒 ";
+    } else if (update2Selected) {
+        update2BtnClass += " role-btn-selected";
+        update2Icon = "✓ ";
+    } else {
+        update2BtnClass += " role-btn-available";
+        update2Icon = "🔓 ";
+    }
+    
+    var viewBtnClass = "role-btn role-btn-view";
+    if (viewSelected) viewBtnClass += " role-btn-selected";
+    
+    var isTeeOffDisabled = !tempSelectedRole;
     
     var roleStatusText = "";
     var roleStatusClass = "";
@@ -1084,9 +1112,15 @@ function render() {
         <div class="role-section">
             <div class="role-title">🎮 SELECT YOUR ROLE</div>
             <div class="role-buttons">
-                <button class="${update1Class}" onclick="toggleRole('update1')" ${isUpdate1Disabled ? 'disabled' : ''}>✏️ UPDATE FLIGHT 1</button>
-                <button class="${update2Class}" onclick="toggleRole('update2')" ${isUpdate2Disabled ? 'disabled' : ''}>✏️ UPDATE FLIGHT 2</button>
-                <button class="${viewClass}" onclick="toggleRole('view')">👁️ VIEW ONLY</button>
+                <button class="${update1BtnClass}" onclick="handleRoleClick('update1')">
+                    ${update1Icon} UPDATE FLIGHT 1
+                </button>
+                <button class="${update2BtnClass}" onclick="handleRoleClick('update2')">
+                    ${update2Icon} UPDATE FLIGHT 2
+                </button>
+                <button class="${viewBtnClass}" onclick="handleRoleClick('view')">
+                    👁️ VIEW ONLY
+                </button>
             </div>
             <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
         </div>
@@ -1113,10 +1147,11 @@ function escapeHtml(str) {
 }
 
 // Make functions available globally for onclick
-window.showTakeoverModal = showTakeoverModal;
+window.handleRoleClick = handleRoleClick;
 window.toggleRole = toggleRole;
 window.startGame = startGame;
 window.goBack = goBack;
+window.showTakeoverModal = showTakeoverModal;
 
 SessionManager.initSession("pre-game.html", "index.html", function(session) {
     console.log("Session initialized:", session);
@@ -1131,13 +1166,14 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 2.39
+VERSION: 2.41
 KEY CHANGES:
-   - Added gameStarted flag to track if game has begun
-   - Reset only if !gameStarted AND (REAL today OR PREVIEW new session)
-   - Set gameStarted = true when user takes UPDATE role (F1 or F2)
-   - Preview modal: NEW = reset + gameStarted=false, CONTINUE = load existing
-   - Individual unlock icons per flight (already working)
-   - Takeover logic preserved
+   - Uses short device names (DEV-01, DEV-02) from SessionManager
+   - Role buttons show lock status icons directly on button
+   - Available: 🔓 (green button)
+   - Locked by self: ✓ (green button with checkmark)
+   - Locked by other: 🔒 (grey button, click for takeover modal)
+   - Removed unlock icons from flight headers (now on buttons)
+   - Lock info shows short device name instead of full ID
 STATUS: Ready for testing
 -->
