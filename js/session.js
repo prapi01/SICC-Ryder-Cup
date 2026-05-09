@@ -1,15 +1,30 @@
+/*
+FILE: js/session.js
+VERSION: 1.01
+KEY CHANGES:
+   - Added Firestore-based short device names (DEV-01, DEV-02, etc.)
+   - New function getShortDeviceName() for async short name retrieval
+   - New function getShortNameOnly() for sync short name
+   - Updated getDeviceIdDisplay() to show short name
+   - Stores mapping in deviceMapping collection
+   - Caches short name in localStorage
+STATUS: Ready for integration
+*/
+
 // js/session.js
-// Device Session Manager v1.0
-// Tracks device identity and navigation path across the app
+// Device Session Manager v1.01
+// ADDED: Firestore-based short device names (DEV-01, DEV-02, etc.)
 
 var SessionManager = (function() {
     
     var SESSION_COLLECTION = "deviceSessions";
+    var DEVICE_MAPPING_COLLECTION = "deviceMapping";
     var SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
     
     var db = null;
     var currentSession = null;
     var deviceId = null;
+    var shortDeviceName = null;
     
     function getDeviceId() {
         var storedId = localStorage.getItem("deviceId");
@@ -22,18 +37,103 @@ var SessionManager = (function() {
     }
     
     function getFirestore() {
-        // Return existing db if already initialized
         if (db) return db;
-        
-        // Check if Firebase is already initialized
         if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
             db = firebase.firestore();
             return db;
         }
-        
-        // Firebase not initialized yet - this should not happen if pages include Firebase first
         console.warn("Firebase not initialized. Session manager requires Firebase.");
         return null;
+    }
+    
+    // Get or create short device name (DEV-01, DEV-02, etc.)
+    async function getShortDeviceName() {
+        // Check localStorage cache first
+        var cached = localStorage.getItem("shortDeviceName");
+        if (cached) {
+            shortDeviceName = cached;
+            return cached;
+        }
+        
+        var firestore = getFirestore();
+        if (!firestore) {
+            // Fallback: use last 6 chars of device ID
+            var fallback = getDeviceId().slice(-6);
+            shortDeviceName = fallback;
+            return fallback;
+        }
+        
+        var deviceIdFull = getDeviceId();
+        
+        try {
+            // Check if this device already has a mapping
+            var mappingDoc = await firestore.collection(DEVICE_MAPPING_COLLECTION).doc(deviceIdFull).get();
+            
+            if (mappingDoc.exists) {
+                var existingShortName = mappingDoc.data().shortName;
+                // Update lastSeen
+                await firestore.collection(DEVICE_MAPPING_COLLECTION).doc(deviceIdFull).update({
+                    lastSeen: Date.now()
+                });
+                shortDeviceName = existingShortName;
+                localStorage.setItem("shortDeviceName", existingShortName);
+                console.log("Short device name (existing):", existingShortName);
+                return existingShortName;
+            }
+            
+            // Get counter document
+            var counterRef = firestore.collection(DEVICE_MAPPING_COLLECTION).doc("counter");
+            var counterDoc = await counterRef.get();
+            
+            var nextNumber = 1;
+            if (counterDoc.exists) {
+                nextNumber = (counterDoc.data().lastNumber % 99) + 1;
+            }
+            
+            // Check if this number is already in use (by another active device)
+            var existingWithNumber = await firestore.collection(DEVICE_MAPPING_COLLECTION)
+                .where("shortName", "==", "DEV-" + nextNumber.toString().padStart(2, '0'))
+                .get();
+            
+            // If taken, find next available number (simple linear search, max 99)
+            while (!existingWithNumber.empty) {
+                nextNumber = (nextNumber % 99) + 1;
+                existingWithNumber = await firestore.collection(DEVICE_MAPPING_COLLECTION)
+                    .where("shortName", "==", "DEV-" + nextNumber.toString().padStart(2, '0'))
+                    .get();
+            }
+            
+            var newShortName = "DEV-" + nextNumber.toString().padStart(2, '0');
+            
+            // Save mapping
+            await firestore.collection(DEVICE_MAPPING_COLLECTION).doc(deviceIdFull).set({
+                shortName: newShortName,
+                deviceId: deviceIdFull,
+                createdAt: Date.now(),
+                lastSeen: Date.now()
+            });
+            
+            // Update counter
+            await counterRef.set({
+                lastNumber: nextNumber
+            });
+            
+            shortDeviceName = newShortName;
+            localStorage.setItem("shortDeviceName", newShortName);
+            console.log("Short device name (new):", newShortName);
+            return newShortName;
+            
+        } catch (error) {
+            console.error("Error getting short device name:", error);
+            // Fallback
+            var fallbackId = getDeviceId().slice(-6);
+            shortDeviceName = fallbackId;
+            return fallbackId;
+        }
+    }
+    
+    function getShortDeviceNameSync() {
+        return shortDeviceName || localStorage.getItem("shortDeviceName") || getDeviceId().slice(-6);
     }
     
     function generateSessionId() {
@@ -187,16 +287,24 @@ var SessionManager = (function() {
     function initSession(currentPage, returnDestination, callback) {
         deviceId = getDeviceId();
         
-        getSessionAsync(function(session) {
+        getSessionAsync(async function(session) {
             if (session) {
                 updateSession({
                     lastActive: Date.now(),
                     currentPath: currentPage
                 });
                 addNavigationHistory(currentPage, "page_load");
-                if (callback) callback(session);
+                
+                // Get short device name asynchronously
+                if (callback) {
+                    var shortName = await getShortDeviceName();
+                    session.shortDeviceName = shortName;
+                    callback(session);
+                }
             } else {
                 var newSession = createSession(deviceId, currentPage, returnDestination);
+                var shortName = await getShortDeviceName();
+                newSession.shortDeviceName = shortName;
                 if (callback) callback(newSession);
             }
         });
@@ -229,11 +337,12 @@ var SessionManager = (function() {
     }
     
     function getDeviceIdDisplay() {
-        var id = getDeviceId();
-        if (id.length > 12) {
-            return "🖥️ " + id.substring(id.length - 10);
-        }
-        return "🖥️ " + id;
+        var short = getShortDeviceNameSync();
+        return "🖥️ " + short;
+    }
+    
+    function getShortNameOnly() {
+        return getShortDeviceNameSync();
     }
     
     return {
@@ -247,6 +356,20 @@ var SessionManager = (function() {
         getActiveGame: getActiveGame,
         getDeviceId: getDeviceId,
         getDeviceIdDisplay: getDeviceIdDisplay,
+        getShortNameOnly: getShortNameOnly,
         SESSION_TIMEOUT_MS: SESSION_TIMEOUT_MS
     };
 })();
+
+/*
+FILE: js/session.js
+VERSION: 1.01
+KEY CHANGES:
+   - Added Firestore-based short device names (DEV-01, DEV-02, etc.)
+   - New function getShortDeviceName() for async short name retrieval
+   - New function getShortNameOnly() for sync short name
+   - Updated getDeviceIdDisplay() to show short name
+   - Stores mapping in deviceMapping collection
+   - Caches short name in localStorage
+STATUS: Ready for integration
+*/
