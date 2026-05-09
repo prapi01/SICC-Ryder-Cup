@@ -1,12 +1,12 @@
 <!--
 FILE: game.html
-VERSION: 2.15
+VERSION: 2.16
 KEY CHANGES:
-   - Completely rewritten renderScorecard() with proper table structure
-   - Fixed column alignment for Par, SI, player scores, T-1, T-2, Strk rows
-   - Added padding-top to container to fix LIVE bubble overlap
-   - Verified all 18 holes display correctly with shotgun start
-STATUS: Ready for testing
+   - Added debug logging to trace data loading
+   - Fixed player loading from Firestore
+   - Ensured allPlayers array is populated correctly
+   - Added console logs for each step of init()
+STATUS: Debug version - for testing data loading
 -->
 
 <!DOCTYPE html>
@@ -261,7 +261,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.15</div>
+<div class="version-tag">v2.16</div>
 
 <script>
 const FIREBASE_CONFIG = {
@@ -318,7 +318,6 @@ function gameApp() {
         f1DataString: '',
         f2DataString: '',
         
-        currentLock: null,
         myDeviceId: '',
         
         getPlayOrder() {
@@ -406,6 +405,7 @@ function gameApp() {
         },
         
         get scorecardPlayers() {
+            // Return all players sorted by flight then team then handicap
             const flight1A = this.allPlayers.filter(p => p.flight === 1 && p.team === 'A').sort((a, b) => a.handicap - b.handicap);
             const flight1B = this.allPlayers.filter(p => p.flight === 1 && p.team === 'B').sort((a, b) => a.handicap - b.handicap);
             const flight2A = this.allPlayers.filter(p => p.flight === 2 && p.team === 'A').sort((a, b) => a.handicap - b.handicap);
@@ -602,7 +602,7 @@ function gameApp() {
         
         updateCrossMatchResults() {
             this.lastSyncedHole = this.calculateLastSyncedHole();
-            console.log("updateCrossMatchResults - lastSyncedHole:", this.lastSyncedHole, "currentHole:", this.currentHole);
+            console.log("updateCrossMatchResults - lastSyncedHole:", this.lastSyncedHole);
             
             const f1Players = this.allPlayers.filter(p => p.flight === 1);
             const f2Players = this.allPlayers.filter(p => p.flight === 2);
@@ -689,18 +689,11 @@ function gameApp() {
             const holes = this.displayHolesList;
             const players = this.scorecardPlayers;
             
-            // Group players by flight for proper display order
-            const flight1Players = players.filter(p => p.flight === 1);
-            const flight2Players = players.filter(p => p.flight === 2);
+            console.log("renderScorecard - holes:", holes.length, "players:", players.length);
             
-            // Start building table
             let html = '<table class="scorecard-table">';
-            
-            // Header row
             html += '<thead><tr><th>Hole</th>';
-            for (const h of holes) {
-                html += `<th>${h}</th>`;
-            }
+            for (const h of holes) html += `<th>${h}</th>`;
             html += '<th>Tot</th> </thead><tbody>';
             
             // Par row
@@ -716,54 +709,37 @@ function gameApp() {
             // SI row
             html += '<tr><td style="font-weight:700;">SI</td>';
             for (const h of holes) {
-                const si = this.courseSi[h - 1];
-                html += `<td>${si}</td>`;
+                html += `<td>${this.courseSi[h - 1]}</td>`;
             }
             html += '<td>-</td></tr>';
             
-            // Flight 1 players
-            for (const player of flight1Players) {
+            // Player rows
+            for (const player of players) {
                 html += `<tr><td style="font-weight:600;">${player.label}</td>`;
-                let playerTotal = 0;
+                let total = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
-                    playerTotal += score;
+                    total += score;
                     const isSaved = this.isHoleSaved(player.flight, h);
                     const cellClass = isSaved ? 'score-green' : 'score-invisible';
                     html += `<td class="${cellClass}">${score}</td>`;
                 }
-                html += `<td class="score-green">${playerTotal}</td></tr>`;
+                html += `<td class="score-green">${total}</td></tr>`;
             }
             
-            // Green line after Flight 1
             html += '<tr class="green-line"><td colspan="20"></td></tr>';
             
             // T-1 row
-            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
             for (let i = 0; i < holes.length; i++) {
                 const val = this.t1Row[i] || '_';
                 const displayVal = (val === '_' || val === '') ? '' : val;
                 const cellClass = (val && val !== '_') ? 'score-green' : 'score-invisible';
-                html += `<td class="${cellClass}">${displayVal}<\/td>`;
+                html += `<td class="${cellClass}">${displayVal}</td>`;
             }
-            html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+            html += '<td style="color:#4caf50;">-</td><\/tr>';
             
-            // Green line after T-1
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
-            
-            // Flight 2 players
-            for (const player of flight2Players) {
-                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
-                let playerTotal = 0;
-                for (const h of holes) {
-                    const score = this.getStoredScore(player, h);
-                    playerTotal += score;
-                    const isSaved = this.isHoleSaved(player.flight, h);
-                    const cellClass = isSaved ? 'score-green' : 'score-invisible';
-                    html += `<td class="${cellClass}">${score}<\/td>`;
-                }
-                html += `<td class="score-green">${playerTotal}<\/td><\/tr>`;
-            }
             
             // T-2 row
             html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
@@ -775,7 +751,6 @@ function gameApp() {
             }
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
-            // Green line after T-2
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // Strk row
@@ -935,6 +910,7 @@ function gameApp() {
         },
         
         refreshFromFirebase(data) {
+            console.log("refreshFromFirebase called");
             this.f1DataString = data.f1?.d || this.f1DataString;
             this.f2DataString = data.f2?.d || this.f2DataString;
             
@@ -966,6 +942,7 @@ function gameApp() {
         },
         
         async init() {
+            console.log("=== GAME INIT START ===");
             this.myDeviceId = SessionManager.getDeviceIdDisplay();
             document.getElementById("deviceTag").innerHTML = this.myDeviceId;
             this.loadDisplayPreference();
@@ -978,6 +955,7 @@ function gameApp() {
                     this.editableFlight = session.activeGame?.role === 'update1' ? 1 : 
                                         session.activeGame?.role === 'update2' ? 2 : 1;
                     this.canEdit = this.editableFlight === 1 || this.editableFlight === 2;
+                    console.log("Session loaded - gameId:", this.gameId, "editableFlight:", this.editableFlight);
                     resolve();
                 });
             });
@@ -988,15 +966,22 @@ function gameApp() {
                 return;
             }
             
-            const gameRef = db.collection('scheduledGames').doc(this.gameId);
+            const collection = this.gameMode === 'preview' ? 'previewSandboxes' : 'scheduledGames';
+            console.log("Loading from collection:", collection, "doc:", this.gameId);
+            
+            const gameRef = db.collection(collection).doc(this.gameId);
             const doc = await gameRef.get();
             if (!doc.exists) {
+                console.error("Document not found!");
                 this.syncStatus = 'Error: Game not found';
                 this.loading = false;
                 return;
             }
             
             const data = doc.data();
+            console.log("Document loaded - course:", data.course?.name);
+            console.log("Players count:", data.players?.length);
+            
             this.courseName = data.course?.name || 'Unknown Course';
             this.coursePar = data.course?.par || [];
             this.courseSi = data.course?.si || [];
@@ -1004,6 +989,9 @@ function gameApp() {
             this.startingHole = data.startingHole || 1;
             this.f1DataString = data.f1?.d || '';
             this.f2DataString = data.f2?.d || '';
+            
+            console.log("allPlayers after assignment:", this.allPlayers.length);
+            console.log("first player:", this.allPlayers[0]?.name);
             
             this.currentHole = this.startingHole;
             
@@ -1017,6 +1005,7 @@ function gameApp() {
             this.syncStatus = 'Synced';
             
             this.$nextTick(() => {
+                console.log("Rendering scorecard...");
                 this.renderScorecard();
             });
             
@@ -1026,6 +1015,7 @@ function gameApp() {
                     this.syncStatus = 'Synced';
                 }
             }, (error) => {
+                console.error("Snapshot error:", error);
                 this.syncStatus = `Sync error: ${error.message}`;
             });
         },
@@ -1042,11 +1032,11 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.15
+VERSION: 2.16
 KEY CHANGES:
-   - Completely rewritten renderScorecard() with proper table structure
-   - Fixed column alignment for Par, SI, player scores, T-1, T-2, Strk rows
-   - Added padding-top to container to fix LIVE bubble overlap
-   - Verified all 18 holes display correctly with shotgun start
-STATUS: Ready for testing
+   - Added debug logging to trace data loading
+   - Fixed player loading from Firestore
+   - Ensured allPlayers array is populated correctly
+   - Added console logs for each step of init()
+STATUS: Debug version - for testing data loading
 -->
