@@ -1,11 +1,10 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.00
-KEY CHANGES (based on final simplified design):
-   - One device, one role enforcement (prevents same device from locking both flights)
-   - PREVIEW mode: checks lastActive; if > 60 min stale, shows modal to reset locks (scores preserved)
-   - Updates lastActive when taking a role
-   - Preserves score data, only resets locks when stale session detected
+VERSION: 3.01
+KEY CHANGES:
+   - Fixed gameMode assignment: now reads from gameData.gameType or gameData.gameMode
+   - Ensures REAL mode redirects to real-game.html, not preview-game.html
+   - Added fallback default "real" when gameMode cannot be determined
 STATUS: Ready for testing
 -->
 
@@ -365,13 +364,13 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.00</div>
+<div class="version-tag">v3.01</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.00
-// Simplified design: one device one role, lastActive for PREVIEW stale detection
+// FILE: pre-game.html - VERSION 3.01
+// FIXED: gameMode assignment from gameData.gameType or gameData.gameMode
 
-var VERSION = "3.00";
+var VERSION = "3.01";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
@@ -803,6 +802,10 @@ function loadGame() {
             gameData = doc.data();
             gameData.id = doc.id;
             
+            // *** FIX: Set gameMode from gameType or gameMode field ***
+            gameMode = gameData.gameType || gameData.gameMode || "real";
+            console.log("REAL mode - gameMode set to:", gameMode);
+            
             if (gameData.locks) {
                 locks.f1 = gameData.locks.f1 || null;
                 locks.f2 = gameData.locks.f2 || null;
@@ -945,6 +948,15 @@ function startGame() {
     db.collection(collection).doc(gameId).update(updatePayload).then(function() {
         localStorage.setItem("userRole", tempSelectedRole);
         
+        var targetPage = "";
+        if (gameMode === "real") {
+            targetPage = "real-game.html";
+        } else {
+            targetPage = "preview-game.html";
+        }
+        
+        console.log("Redirecting to:", targetPage, "gameMode:", gameMode);
+        
         if (deviceSession) {
             SessionManager.updateSession({
                 activeGame: {
@@ -956,19 +968,10 @@ function startGame() {
                 }
             });
             
-            if (gameMode === "real") {
-                SessionManager.addNavigationHistory("real-game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
-                window.location.href = "real-game.html";
-            } else {
-                SessionManager.addNavigationHistory("preview-game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
-                window.location.href = "preview-game.html";
-            }
+            SessionManager.addNavigationHistory(targetPage, "tee_off_" + tempSelectedRole, { gameId: gameId });
+            window.location.href = targetPage;
         } else {
-            if (gameMode === "real") {
-                window.location.href = "real-game.html";
-            } else {
-                window.location.href = "preview-game.html";
-            }
+            window.location.href = targetPage;
         }
     }).catch(function(e) {
         alert("Error locking role: " + e.message);
@@ -1242,11 +1245,10 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.00
-KEY CHANGES (based on final simplified design):
-   - One device, one role enforcement (prevents same device from locking both flights)
-   - PREVIEW mode: checks lastActive; if > 60 min stale, shows modal to reset locks (scores preserved)
-   - Updates lastActive when taking a role
-   - Preserves score data, only resets locks when stale session detected
+VERSION: 3.01
+KEY CHANGES:
+   - Fixed gameMode assignment: now reads from gameData.gameType or gameData.gameMode
+   - Ensures REAL mode redirects to real-game.html, not preview-game.html
+   - Added fallback default "real" when gameMode cannot be determined
 STATUS: Ready for testing
 -->
