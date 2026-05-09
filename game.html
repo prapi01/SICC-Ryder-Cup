@@ -1,10 +1,11 @@
 <!--
 FILE: game.html
-VERSION: 2.05
+VERSION: 2.10
 KEY CHANGES:
-   - Fixed intra-flight bubble colors: tied matches now show GREEN "AS" (not grey)
-   - Grey bubbles now only used for cross-flight out-of-sync and unplayed holes
-   - All intra-flight bubbles light up (green/red/green-AS) after flight saves a hole
+   - Restored from v2.05 (working display)
+   - Added version tag to screen (top-right)
+   - No debug panels or logging
+   - Ready for save/load testing via Firestore console
 STATUS: Ready for testing
 -->
 
@@ -24,6 +25,19 @@ STATUS: Ready for testing
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
         .container { max-width: 550px; margin: 0 auto; }
+        
+        .version-tag {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
         
         .status-bubble {
             background: rgba(76,175,80,0.3);
@@ -223,6 +237,8 @@ STATUS: Ready for testing
     </div>
 </div>
 
+<div class="version-tag">v2.10</div>
+
 <script>
 const FIREBASE_CONFIG = {
     apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
@@ -240,9 +256,6 @@ const db = firebase.firestore();
 
 function gameApp() {
     return {
-        // ============================================================
-        // STATE
-        // ============================================================
         loading: true,
         gameId: null,
         gameMode: 'real',
@@ -280,10 +293,6 @@ function gameApp() {
         
         f1DataString: '',
         f2DataString: '',
-        
-        // ============================================================
-        // COMPUTED
-        // ============================================================
         
         get displayHolesList() {
             if (this.displayMode === 'natural') {
@@ -328,10 +337,6 @@ function gameApp() {
             return [...flight1A, ...flight1B, ...flight2A, ...flight2B];
         },
         
-        // ============================================================
-        // DISPLAY MODE
-        // ============================================================
-        
         setDisplayMode(mode) {
             this.displayMode = mode;
             localStorage.setItem('scorecardDisplay', mode);
@@ -347,19 +352,11 @@ function gameApp() {
             }
         },
         
-        // ============================================================
-        // HELPER
-        // ============================================================
-        
         getFlightOrderedPlayers(flight) {
             const teamAPlayers = this.allPlayers.filter(p => p.flight === flight && p.team === 'A').sort((a, b) => a.handicap - b.handicap);
             const teamBPlayers = this.allPlayers.filter(p => p.flight === flight && p.team === 'B').sort((a, b) => a.handicap - b.handicap);
             return [...teamAPlayers, ...teamBPlayers];
         },
-        
-        // ============================================================
-        // SCORE METHODS
-        // ============================================================
         
         getStoredScore(player, hole) {
             const flightData = player.flight === 1 ? this.flight1Data : this.flight2Data;
@@ -411,33 +408,27 @@ function gameApp() {
             return flightData[hole]?.saved || false;
         },
         
-        // ============================================================
-        // INTRA-FLIGHT BUBBLES
-        // ============================================================
-        
         getIntraFlightOpponents(player) {
             return this.allPlayers.filter(op => op.team !== player.team && op.flight === player.flight);
         },
         
         getIntraBubbleClass(player, opponent) {
             const result = this.calculateIntraMatchResult(player, opponent);
-            // FIX: Tied matches (result === 0) should show GREEN "AS", not grey
             if (result > 0) return 'bubble-green';
             if (result < 0) return 'bubble-red';
-            return 'bubble-green';  // Tie -> green "AS"
+            return 'bubble-green';
         },
         
         getIntraBubbleValue(player, opponent) {
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return result.toString();
             if (result < 0) return Math.abs(result).toString();
-            return 'AS';  // Tie
+            return 'AS';
         },
         
         calculateIntraMatchResult(playerA, playerB) {
             const flight = playerA.flight;
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
-            
             const handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
             const isPlayerAReceiving = (playerA.handicap > playerB.handicap);
             const strokeHoles = this.getStrokeHoles(handicapDiff);
@@ -476,7 +467,6 @@ function gameApp() {
                 
                 let netA = playerAScore;
                 let netB = playerBScore;
-                
                 if (isPlayerAReceiving) {
                     netA = playerAScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
                 } else {
@@ -486,13 +476,8 @@ function gameApp() {
                 if (netA < netB) playerAWon++;
                 else if (netB < netA) playerBWon++;
             }
-            
             return playerAWon - playerBWon;
         },
-        
-        // ============================================================
-        // CROSS-FLIGHT BUBBLES
-        // ============================================================
         
         getCrossFlightOpponents(player) {
             return this.allPlayers.filter(op => op.team !== player.team && op.flight !== player.flight);
@@ -505,27 +490,17 @@ function gameApp() {
             if (!match.isSynced) return 'bubble-grey';
             if (match.value > 0) return 'bubble-green';
             if (match.value < 0) return 'bubble-red';
-            return 'bubble-green';  // Tie -> green "AS" when synced
+            return 'bubble-green';
         },
         
         getCrossBubbleValue(player, opponent) {
             const key = `${player.name}_vs_${opponent.name}`;
             const match = this.crossMatchResults[key];
             if (!match) return 'AS';
-            if (!match.isSynced) {
-                // Show last synced value but grey
-                const absValue = Math.abs(match.value);
-                if (absValue === 0) return 'AS';
-                return absValue.toString();
-            }
             const absValue = Math.abs(match.value);
             if (absValue === 0) return 'AS';
             return absValue.toString();
         },
-        
-        // ============================================================
-        // MATCH CALCULATION HELPERS
-        // ============================================================
         
         getStrokeHoles(handicapDiff) {
             if (handicapDiff <= 0) return [];
@@ -546,10 +521,6 @@ function gameApp() {
             const strokeHoles = strokeHolesCache || this.getStrokeHoles(handicapDiff);
             return strokeHoles.includes(holeNumber) ? 1 : 0;
         },
-        
-        // ============================================================
-        // UPDATE CROSS MATCH RESULTS
-        // ============================================================
         
         updateCrossMatchResults() {
             let newLastSynced = 0;
@@ -634,7 +605,6 @@ function gameApp() {
                 
                 let netA = playerAScore;
                 let netB = playerBScore;
-                
                 if (isPlayerAReceiving) {
                     netA = playerAScore - this.getStrokesForHole(hole, handicapDiff, strokeHoles);
                 } else {
@@ -644,13 +614,8 @@ function gameApp() {
                 if (netA < netB) playerAWon++;
                 else if (netB < netA) playerBWon++;
             }
-            
             return playerAWon - playerBWon;
         },
-        
-        // ============================================================
-        // SCORECARD RENDERING (JavaScript)
-        // ============================================================
         
         renderScorecard() {
             const wrapper = document.getElementById('scorecardWrapper');
@@ -658,18 +623,12 @@ function gameApp() {
             
             const holes = this.displayHolesList;
             const players = this.scorecardPlayers;
-            
-            // Group players by flight
             const flight1Players = players.filter(p => p.flight === 1);
             const flight2Players = players.filter(p => p.flight === 2);
             
             let html = '<table class="scorecard-table">';
-            
-            // Header
             html += '<thead><tr><th>Hole</th>';
-            for (const h of holes) {
-                html += `<th>${h}</th>`;
-            }
+            for (const h of holes) html += `<th>${h}</th>`;
             html += '<th>Tot</th> </thead><tbody>';
             
             // Par row
@@ -704,7 +663,6 @@ function gameApp() {
                 html += `<td class="score-green">${playerTotal}<\/td><\/tr>`;
             }
             
-            // Green line after Flight 1
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // T-1 row
@@ -717,12 +675,11 @@ function gameApp() {
             }
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
-            // Green line after T-1
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // Flight 2 players
             for (const player of flight2Players) {
-                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
+                html += `</tr><td style="font-weight:600;">${player.label}<\/td>`;
                 let playerTotal = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
@@ -744,7 +701,6 @@ function gameApp() {
             }
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
-            // Green line after T-2
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // Strk row
@@ -760,10 +716,6 @@ function gameApp() {
             html += '</tbody></table>';
             wrapper.innerHTML = html;
         },
-        
-        // ============================================================
-        // FIREBASE OPERATIONS
-        // ============================================================
         
         async saveHole() {
             if (!this.canEdit) return;
@@ -869,10 +821,6 @@ function gameApp() {
             this.trTeamBGreen = true;
         },
         
-        // ============================================================
-        // NAVIGATION
-        // ============================================================
-        
         nextHole() {
             let next = this.currentHole + 1;
             if (next > 18) next = 1;
@@ -884,10 +832,6 @@ function gameApp() {
             if (prev < 1) prev = 18;
             this.currentHole = prev;
         },
-        
-        // ============================================================
-        // REFRESH FROM FIREBASE
-        // ============================================================
         
         refreshFromFirebase(data) {
             this.f1DataString = data.f1?.d || this.f1DataString;
@@ -919,10 +863,6 @@ function gameApp() {
                 this.renderScorecard();
             }
         },
-        
-        // ============================================================
-        // INITIALIZATION
-        // ============================================================
         
         async init() {
             this.loadDisplayPreference();
@@ -999,10 +939,11 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.05
+VERSION: 2.10
 KEY CHANGES:
-   - Fixed intra-flight bubble colors: tied matches now show GREEN "AS" (not grey)
-   - Grey bubbles now only used for cross-flight out-of-sync and unplayed holes
-   - All intra-flight bubbles light up (green/red/green-AS) after flight saves a hole
+   - Restored from v2.05 (working display)
+   - Added version tag to screen (top-right)
+   - No debug panels or logging
+   - Ready for save/load testing via Firestore console
 STATUS: Ready for testing
 -->
