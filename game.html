@@ -1,11 +1,11 @@
 <!--
 FILE: game.html
-VERSION: 2.11
+VERSION: 2.12
 KEY CHANGES:
-   - Restored hasAnySavedHoles() function (removed in v2.10)
-   - Intra-flight bubbles now grey at start of game (no saved holes)
-   - Intra-flight bubbles light up only after flight saves a hole
-   - Keeps all working save/load functionality from v2.10
+   - Fixed cross-flight bubble calculation (XB now update when both flights save)
+   - Out-of-sync detection: XB turn grey when one flight is ahead
+   - Added Back to Main Menu button with confirmation and lock release
+   - Cross-flight sync triggers on every refresh from Firebase
 STATUS: Ready for testing
 -->
 
@@ -37,6 +37,19 @@ STATUS: Ready for testing
             border-radius: 16px;
             font-family: monospace;
             z-index: 1000;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            z-index: 1000;
+            opacity: 0.4;
         }
         
         .status-bubble {
@@ -153,6 +166,13 @@ STATUS: Ready for testing
         .btn-save { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .btn-menu {
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+            width: 100%;
+            margin-top: 20px;
+        }
         .btn:active { transform: scale(0.98); }
         .btn:disabled { opacity: 0.4; cursor: not-allowed; }
         
@@ -230,6 +250,9 @@ STATUS: Ready for testing
             <div class="scorecard-wrapper" id="scorecardWrapper"></div>
         </div>
         
+        <!-- Back to Main Menu Button -->
+        <button class="btn btn-menu" @click="exitToMainMenu">← Back to Main Menu</button>
+        
         <div class="debug">
             <span x-text="syncStatus"></span>
             <span x-show="lastSyncedHole > 0"> | Last synced: Hole <span x-text="lastSyncedHole"></span></span>
@@ -237,7 +260,8 @@ STATUS: Ready for testing
     </div>
 </div>
 
-<div class="version-tag">v2.11</div>
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v2.12</div>
 
 <script>
 const FIREBASE_CONFIG = {
@@ -294,10 +318,7 @@ function gameApp() {
         f1DataString: '',
         f2DataString: '',
         
-        // ============================================================
-        // HELPER: Check if a flight has any saved holes
-        // ============================================================
-        
+        // Helper: Check if a flight has any saved holes
         hasAnySavedHoles(flight) {
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
             for (let h = 1; h <= 18; h++) {
@@ -306,9 +327,26 @@ function gameApp() {
             return false;
         },
         
-        // ============================================================
-        // COMPUTED
-        // ============================================================
+        // Helper: Get the highest hole where both flights have saved
+        calculateLastSyncedHole() {
+            let lastSynced = 0;
+            for (let h = 1; h <= 18; h++) {
+                const f1Saved = this.flight1Data[h]?.saved || false;
+                const f2Saved = this.flight2Data[h]?.saved || false;
+                if (f1Saved && f2Saved) {
+                    lastSynced = h;
+                } else {
+                    break;
+                }
+            }
+            return lastSynced;
+        },
+        
+        // Helper: Check if cross-flight is synced for current hole
+        isCrossFlightSynced() {
+            if (this.lastSyncedHole === 0) return false;
+            return this.lastSyncedHole >= this.currentHole;
+        },
         
         get displayHolesList() {
             if (this.displayMode === 'natural') {
@@ -424,23 +462,19 @@ function gameApp() {
             return flightData[hole]?.saved || false;
         },
         
-        // ============================================================
-        // INTRA-FLIGHT BUBBLES
-        // ============================================================
-        
+        // Intra-flight bubbles
         getIntraFlightOpponents(player) {
             return this.allPlayers.filter(op => op.team !== player.team && op.flight === player.flight);
         },
         
         getIntraBubbleClass(player, opponent) {
-            // If no saved holes in this flight, all bubbles are grey
             if (!this.hasAnySavedHoles(player.flight)) {
                 return 'bubble-grey';
             }
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return 'bubble-green';
             if (result < 0) return 'bubble-red';
-            return 'bubble-green';  // Tie -> green AS
+            return 'bubble-green';
         },
         
         getIntraBubbleValue(player, opponent) {
@@ -506,10 +540,7 @@ function gameApp() {
             return playerAWon - playerBWon;
         },
         
-        // ============================================================
-        // CROSS-FLIGHT BUBBLES
-        // ============================================================
-        
+        // Cross-flight bubbles
         getCrossFlightOpponents(player) {
             return this.allPlayers.filter(op => op.team !== player.team && op.flight !== player.flight);
         },
@@ -518,6 +549,7 @@ function gameApp() {
             const key = `${player.name}_vs_${opponent.name}`;
             const match = this.crossMatchResults[key];
             if (!match) return 'bubble-grey';
+            // Out of sync = grey
             if (!match.isSynced) return 'bubble-grey';
             if (match.value > 0) return 'bubble-green';
             if (match.value < 0) return 'bubble-red';
@@ -532,10 +564,6 @@ function gameApp() {
             if (absValue === 0) return 'AS';
             return absValue.toString();
         },
-        
-        // ============================================================
-        // MATCH CALCULATION HELPERS
-        // ============================================================
         
         getStrokeHoles(handicapDiff) {
             if (handicapDiff <= 0) return [];
@@ -557,22 +585,12 @@ function gameApp() {
             return strokeHoles.includes(holeNumber) ? 1 : 0;
         },
         
-        // ============================================================
-        // UPDATE CROSS MATCH RESULTS
-        // ============================================================
-        
+        // Update cross-flight match results
         updateCrossMatchResults() {
-            let newLastSynced = 0;
-            for (let h = 1; h <= 18; h++) {
-                const f1Saved = this.flight1Data[h]?.saved || false;
-                const f2Saved = this.flight2Data[h]?.saved || false;
-                if (f1Saved && f2Saved) {
-                    newLastSynced = h;
-                } else {
-                    break;
-                }
-            }
-            this.lastSyncedHole = newLastSynced;
+            // Calculate last synced hole
+            this.lastSyncedHole = this.calculateLastSyncedHole();
+            
+            console.log("updateCrossMatchResults - lastSyncedHole:", this.lastSyncedHole, "currentHole:", this.currentHole);
             
             const f1Players = this.allPlayers.filter(p => p.flight === 1);
             const f2Players = this.allPlayers.filter(p => p.flight === 2);
@@ -583,21 +601,28 @@ function gameApp() {
                     const key2 = `${p2.name}_vs_${p1.name}`;
                     
                     let result = 0;
+                    let isSynced = false;
+                    
                     if (this.lastSyncedHole > 0) {
+                        // Calculate result up to last synced hole
                         result = this.calculateCrossMatchResult(p1, p2, this.lastSyncedHole);
+                        // Synced if last synced hole is at least current hole
+                        isSynced = (this.lastSyncedHole >= this.currentHole);
                     }
                     
                     this.crossMatchResults[key1] = {
                         value: result,
-                        isSynced: (this.lastSyncedHole === this.currentHole)
+                        isSynced: isSynced
                     };
                     
                     this.crossMatchResults[key2] = {
                         value: -result,
-                        isSynced: (this.lastSyncedHole === this.currentHole)
+                        isSynced: isSynced
                     };
                 }
             }
+            
+            console.log("crossMatchResults updated, example:", this.crossMatchResults[`${f1Players[0]?.name}_vs_${f2Players[0]?.name}`]);
         },
         
         calculateCrossMatchResult(playerA, playerB, upToHole) {
@@ -653,12 +678,9 @@ function gameApp() {
                 if (netA < netB) playerAWon++;
                 else if (netB < netA) playerBWon++;
             }
+            
             return playerAWon - playerBWon;
         },
-        
-        // ============================================================
-        // SCORECARD RENDERING
-        // ============================================================
         
         renderScorecard() {
             const wrapper = document.getElementById('scorecardWrapper');
@@ -756,13 +778,9 @@ function gameApp() {
             }
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
-            html += '</tbody><tr>';
+            html += '</tbody></table>';
             wrapper.innerHTML = html;
         },
-        
-        // ============================================================
-        // FIREBASE OPERATIONS
-        // ============================================================
         
         async saveHole() {
             if (!this.canEdit) return;
@@ -872,12 +890,46 @@ function gameApp() {
             let next = this.currentHole + 1;
             if (next > 18) next = 1;
             this.currentHole = next;
+            // Re-evaluate cross-flight sync status on hole change
+            this.updateCrossMatchResults();
+            this.renderScorecard();
         },
         
         prevHole() {
             let prev = this.currentHole - 1;
             if (prev < 1) prev = 18;
             this.currentHole = prev;
+            this.updateCrossMatchResults();
+            this.renderScorecard();
+        },
+        
+        // Exit to main menu with confirmation and lock release
+        async exitToMainMenu() {
+            if (!confirm("Leave the game? Your current unsaved changes will be lost.")) {
+                return;
+            }
+            
+            // Release role lock if this device holds it
+            const flight = this.editableFlight;
+            const collection = 'scheduledGames';
+            const releasePayload = {};
+            
+            if (this.canEdit) {
+                releasePayload[`locks.f${flight}`] = null;
+                releasePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                
+                try {
+                    await db.collection(collection).doc(this.gameId).update(releasePayload);
+                    console.log(`Lock released for Flight ${flight}`);
+                } catch (error) {
+                    console.error("Error releasing lock:", error);
+                }
+            }
+            
+            // Clear session and go to index
+            sessionStorage.removeItem("currentGame");
+            localStorage.removeItem("userRole");
+            window.location.href = "index.html";
         },
         
         refreshFromFirebase(data) {
@@ -905,6 +957,7 @@ function gameApp() {
             }
             
             if (changed) {
+                console.log("Data changed, updating cross-flight results");
                 this.updateCrossMatchResults();
                 this.calculateTR();
                 this.renderScorecard();
@@ -912,6 +965,9 @@ function gameApp() {
         },
         
         async init() {
+            // Set device ID display
+            document.getElementById("deviceTag").innerHTML = SessionManager.getDeviceIdDisplay();
+            
             this.loadDisplayPreference();
             
             await new Promise((resolve) => {
@@ -986,11 +1042,11 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.11
+VERSION: 2.12
 KEY CHANGES:
-   - Restored hasAnySavedHoles() function (removed in v2.10)
-   - Intra-flight bubbles now grey at start of game (no saved holes)
-   - Intra-flight bubbles light up only after flight saves a hole
-   - Keeps all working save/load functionality from v2.10
+   - Fixed cross-flight bubble calculation (XB now update when both flights save)
+   - Out-of-sync detection: XB turn grey when one flight is ahead
+   - Added Back to Main Menu button with confirmation and lock release
+   - Cross-flight sync triggers on every refresh from Firebase
 STATUS: Ready for testing
 -->
