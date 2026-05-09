@@ -1,11 +1,10 @@
 <!--
 FILE: test-ui-module.html
-VERSION: 1.00
-PURPOSE: Standalone test for game-ui.js module
-          - No Firebase, no controllers
-          - Hardcoded test data
-          - Tests scorecard, player cards, bubbles, TR
-          - Play Order / Natural Order toggle
+VERSION: 1.01
+PURPOSE: Connector test for game-ui.js
+          - Tests exact same callback interface as real game
+          - Four scenarios: Start of Game, F1 Only, F2 Synced, F1 Ahead
+          - Hardcoded values (no logic) to verify UI rendering
 STATUS: Ready for testing
 -->
 
@@ -14,7 +13,7 @@ STATUS: Ready for testing
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>UI Module Test - SICC Ryder Cup</title>
+    <title>UI Module Test - Connector Test</title>
     
     <script src="js/game-ui.js"></script>
     
@@ -168,25 +167,46 @@ STATUS: Ready for testing
             font-weight: 600;
         }
         
+        .flight-toggle {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin: 16px 0;
+        }
+        .toggle-flight-btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 40px;
+            padding: 6px 20px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            color: #888;
+        }
+        .toggle-flight-btn.active {
+            background: #1a3a1a;
+            border-color: #4caf50;
+            color: #4caf50;
+        }
+        
         .loading { text-align: center; padding: 40px; color: #888; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="status-bubble">TEST MODE</div>
-    <div style="text-align:center; margin-bottom:8px;">UI Module Test - No Firebase</div>
+    <div class="status-bubble">CONNECTOR TEST</div>
+    <div style="text-align:center; margin-bottom:8px;">Testing game-ui.js callback interface</div>
+    
+    <!-- Flight Toggle for Viewer -->
+    <div class="flight-toggle">
+        <button class="toggle-flight-btn" id="flight1Btn">✈️ Flight 1</button>
+        <button class="toggle-flight-btn" id="flight2Btn">✈️ Flight 2</button>
+    </div>
     
     <div id="holeHeader" class="hole-header"></div>
     <div id="flightTab" class="flight-tab"></div>
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
-    
-    <div class="action-buttons">
-        <button class="btn btn-back" disabled>← Back</button>
-        <button class="btn btn-save">💾 Save (Demo)</button>
-        <button class="btn btn-next" disabled>Next →</button>
-    </div>
     
     <div class="scorecard-section">
         <div class="scorecard-header">
@@ -200,21 +220,22 @@ STATUS: Ready for testing
     </div>
     
     <div class="test-buttons">
-        <button class="test-btn" id="testStartBtn">🏁 Start of Game</button>
-        <button class="test-btn" id="testAfterHole1Btn">📌 After Hole 1 (Synced)</button>
-        <button class="test-btn" id="testAfter6HolesBtn">📊 After 6 Holes</button>
+        <button class="test-btn" id="testStartBtn">🏁 1. Start of Game</button>
+        <button class="test-btn" id="testF1OnlyBtn">✏️ 2. F1 Saves Only</button>
+        <button class="test-btn" id="testF2SyncedBtn">🔄 3. F2 Saves (Synced)</button>
+        <button class="test-btn" id="testF1AheadBtn">⏩ 4. F1 Saves Ahead (Out of Sync)</button>
     </div>
     
     <div class="debug" id="debug">
-        Click a test button to render
+        Click a test button above
     </div>
 </div>
 
-<div class="version-tag">v1.00</div>
+<div class="version-tag">v1.01</div>
 
 <script>
 // ============================================================
-// MOCK DATA
+// MOCK DATA (Static - Same for all tests)
 // ============================================================
 
 var MOCK_PLAYERS = [
@@ -236,20 +257,38 @@ var MOCK_COURSE = {
 
 var STARTING_HOLE = 10;
 
-// State
-var currentHole = STARTING_HOLE;
+// ============================================================
+// Global State (Updated by each test scenario)
+// ============================================================
+
+var currentScenarioData = {
+    // Scorecard data
+    flightScores: {},      // { flight_hole_playerName: score }
+    savedHoles: { 1: [], 2: [] },
+    
+    // Row data
+    t1Row: Array(18).fill('_'),
+    t2Row: Array(18).fill('_'),
+    strkRow: Array(18).fill('_'),
+    
+    // TR data
+    trTeamA: 9.5,
+    trTeamB: 9.5,
+    trTeamAGreen: true,
+    trTeamBGreen: true,
+    
+    // Current hole
+    currentHole: STARTING_HOLE,
+    
+    // Bubble data (for callbacks)
+    bubbleData: {}  // { playerName_opponentName: { class, value } }
+};
+
 var currentDisplayMode = "play";
-var flightScores = {};
-var savedHoles = { 1: [], 2: [] };
-var t1Row = Array(18).fill('_');
-var t2Row = Array(18).fill('_');
-var strkRow = Array(18).fill('_');
-var trPoints = { teamA: 9.5, teamB: 9.5 };
-var trTeamAGreen = true;
-var trTeamBGreen = true;
+var currentFlightTab = 1;  // 1 or 2
 
 // ============================================================
-// Helper Functions
+// Helper Functions (Same interface as real game)
 // ============================================================
 
 function getPlayOrder() {
@@ -267,28 +306,37 @@ function getDisplayHoles() {
     }
 }
 
+// ============================================================
+// Callback Functions (Same interface as real game)
+// ============================================================
+
 function getStoredScore(player, hole) {
     var key = player.flight + "_" + hole + "_" + player.name;
-    if (flightScores[key] !== undefined) {
-        return flightScores[key];
-    }
+    var val = currentScenarioData.flightScores[key];
+    if (val !== undefined) return val;
     return MOCK_COURSE.par[hole - 1];
 }
 
 function isHoleSaved(flight, hole) {
-    return savedHoles[flight] && savedHoles[flight].indexOf(hole) !== -1;
+    return currentScenarioData.savedHoles[flight] && currentScenarioData.savedHoles[flight].indexOf(hole) !== -1;
 }
 
 function getCurrentScore(player) {
-    return getStoredScore(player, currentHole);
+    return getStoredScore(player, currentScenarioData.currentHole);
 }
 
 function getBubbleClass(player, opponent) {
-    return 'bubble-green';
+    var key = player.name + "_vs_" + opponent.name;
+    var bubble = currentScenarioData.bubbleData[key];
+    if (bubble) return bubble.class;
+    return 'bubble-grey';
 }
 
 function getBubbleValue(player, opponent) {
-    return '1';
+    var key = player.name + "_vs_" + opponent.name;
+    var bubble = currentScenarioData.bubbleData[key];
+    if (bubble) return bubble.value;
+    return 'AS';
 }
 
 function getAllOpponents(player) {
@@ -302,28 +350,34 @@ function getAllOpponents(player) {
 // ============================================================
 
 function renderAll() {
-    var currentPar = MOCK_COURSE.par[currentHole - 1];
-    var currentSi = MOCK_COURSE.si[currentHole - 1];
-    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-    GameUI.updateFlightTab("flightTab", 1, true);
-    GameUI.updateTR("trDisplay", trPoints.teamA, trPoints.teamB, trTeamAGreen, trTeamBGreen);
+    var currentPar = MOCK_COURSE.par[currentScenarioData.currentHole - 1];
+    var currentSi = MOCK_COURSE.si[currentScenarioData.currentHole - 1];
+    GameUI.updateHoleHeader("holeHeader", currentScenarioData.currentHole, currentPar, currentSi);
     
-    var currentFlightPlayers = MOCK_PLAYERS.filter(function(p) { return p.flight === 1; });
-    currentFlightPlayers.sort(function(a, b) {
+    var canEdit = (currentFlightTab === 1);  // Flight 1 can edit in test
+    GameUI.updateFlightTab("flightTab", currentFlightTab, canEdit);
+    
+    GameUI.updateTR("playerCards", currentScenarioData.trTeamA, currentScenarioData.trTeamB, 
+                    currentScenarioData.trTeamAGreen, currentScenarioData.trTeamBGreen);
+    
+    // Get players for current flight tab
+    var currentPlayers = MOCK_PLAYERS.filter(function(p) { return p.flight === currentFlightTab; });
+    currentPlayers.sort(function(a, b) {
         if (a.team !== b.team) return a.team === "A" ? -1 : 1;
         return a.handicap - b.handicap;
     });
     
     GameUI.renderPlayerCards(
         "playerCards",
-        currentFlightPlayers,
+        currentPlayers,
         getAllOpponents,
         getBubbleClass,
         getBubbleValue,
         getCurrentScore,
-        true,
+        canEdit,
         function(playerName, flight, playerIdx, delta) {
-            console.log("Score change:", playerName, delta);
+            console.log("Score change demo:", playerName, delta);
+            alert("Demo: Score change would update Firebase in real game");
         }
     );
     
@@ -334,109 +388,257 @@ function renderAll() {
         MOCK_PLAYERS,
         getStoredScore,
         isHoleSaved,
-        t1Row,
-        t2Row,
-        strkRow,
+        currentScenarioData.t1Row,
+        currentScenarioData.t2Row,
+        currentScenarioData.strkRow,
         MOCK_COURSE.par,
         MOCK_COURSE.si
     );
 }
 
 // ============================================================
-// Test Scenarios
+// Helper to create bubble mapping
+// ============================================================
+
+function setBubbles(bubbleMap) {
+    var newBubbles = {};
+    for (var p1 = 0; p1 < MOCK_PLAYERS.length; p1++) {
+        for (var p2 = 0; p2 < MOCK_PLAYERS.length; p2++) {
+            if (MOCK_PLAYERS[p1].team !== MOCK_PLAYERS[p2].team) {
+                var key = MOCK_PLAYERS[p1].name + "_vs_" + MOCK_PLAYERS[p2].name;
+                var config = bubbleMap[key];
+                if (config) {
+                    newBubbles[key] = config;
+                }
+            }
+        }
+    }
+    currentScenarioData.bubbleData = newBubbles;
+}
+
+// ============================================================
+// Test Scenario 1: Start of Game
 // ============================================================
 
 function testStartOfGame() {
-    flightScores = {};
-    savedHoles = { 1: [], 2: [] };
-    t1Row = Array(18).fill('_');
-    t2Row = Array(18).fill('_');
-    strkRow = Array(18).fill('_');
-    trPoints = { teamA: 9.5, teamB: 9.5 };
-    trTeamAGreen = true;
-    trTeamBGreen = true;
-    currentHole = STARTING_HOLE;
+    // Reset all scores
+    currentScenarioData.flightScores = {};
+    currentScenarioData.savedHoles = { 1: [], 2: [] };
+    currentScenarioData.t1Row = Array(18).fill('_');
+    currentScenarioData.t2Row = Array(18).fill('_');
+    currentScenarioData.strkRow = Array(18).fill('_');
+    currentScenarioData.trTeamA = 9.5;
+    currentScenarioData.trTeamB = 9.5;
+    currentScenarioData.trTeamAGreen = true;
+    currentScenarioData.trTeamBGreen = true;
+    currentScenarioData.currentHole = STARTING_HOLE;
+    
+    // All bubbles grey AS
+    var allBubbles = {};
+    for (var i = 0; i < MOCK_PLAYERS.length; i++) {
+        for (var j = 0; j < MOCK_PLAYERS.length; j++) {
+            if (MOCK_PLAYERS[i].team !== MOCK_PLAYERS[j].team) {
+                var key = MOCK_PLAYERS[i].name + "_vs_" + MOCK_PLAYERS[j].name;
+                allBubbles[key] = { class: 'bubble-grey', value: 'AS' };
+            }
+        }
+    }
+    currentScenarioData.bubbleData = allBubbles;
+    
     renderAll();
-    document.getElementById("debug").innerHTML = "✅ Start of Game - No holes saved";
+    document.getElementById("debug").innerHTML = "✅ Scenario 1: Start of Game - All bubbles grey AS, rows invisible";
 }
 
-function testAfterHole1() {
+// ============================================================
+// Test Scenario 2: F1 Saves Only (F2 has not saved)
+// ============================================================
+
+function testF1Only() {
+    // Reset
+    testStartOfGame();
+    
     var hole10 = 10;
+    
+    // Set F1 scores for hole 10
     var f1Players = MOCK_PLAYERS.filter(function(p) { return p.flight === 1; });
-    flightScores["1_" + hole10 + "_" + f1Players[0].name] = 6;
-    flightScores["1_" + hole10 + "_" + f1Players[1].name] = 5;
-    flightScores["1_" + hole10 + "_" + f1Players[2].name] = 4;
-    flightScores["1_" + hole10 + "_" + f1Players[3].name] = 5;
+    currentScenarioData.flightScores["1_" + hole10 + "_" + f1Players[0].name] = 6;
+    currentScenarioData.flightScores["1_" + hole10 + "_" + f1Players[1].name] = 5;
+    currentScenarioData.flightScores["1_" + hole10 + "_" + f1Players[2].name] = 4;
+    currentScenarioData.flightScores["1_" + hole10 + "_" + f1Players[3].name] = 5;
     
+    // Mark hole 10 saved for Flight 1 only
+    currentScenarioData.savedHoles[1] = [hole10];
+    currentScenarioData.savedHoles[2] = [];
+    
+    // Update TR
+    currentScenarioData.trTeamA = 10.5;
+    currentScenarioData.trTeamB = 8.5;
+    currentScenarioData.trTeamAGreen = true;
+    currentScenarioData.trTeamBGreen = false;
+    
+    // Set bubbles: F1 intra = green/red, F1 cross = grey AS
+    var newBubbles = {};
+    for (var i = 0; i < MOCK_PLAYERS.length; i++) {
+        for (var j = 0; j < MOCK_PLAYERS.length; j++) {
+            if (MOCK_PLAYERS[i].team !== MOCK_PLAYERS[j].team) {
+                var key = MOCK_PLAYERS[i].name + "_vs_" + MOCK_PLAYERS[j].name;
+                var p1 = MOCK_PLAYERS[i];
+                var p2 = MOCK_PLAYERS[j];
+                
+                // F1 intra (same flight, different team)
+                if (p1.flight === 1 && p2.flight === 1 && p1.team !== p2.team) {
+                    newBubbles[key] = { class: 'bubble-green', value: '2' };
+                }
+                // F1 cross (different flight)
+                else if (p1.flight === 1 && p2.flight === 2) {
+                    newBubbles[key] = { class: 'bubble-grey', value: 'AS' };
+                }
+                // F2 intra/cross (still grey)
+                else if (p1.flight === 2) {
+                    newBubbles[key] = { class: 'bubble-grey', value: 'AS' };
+                }
+            }
+        }
+    }
+    currentScenarioData.bubbleData = newBubbles;
+    
+    currentScenarioData.currentHole = hole10 + 1;
+    if (currentScenarioData.currentHole > 18) currentScenarioData.currentHole = 1;
+    
+    renderAll();
+    document.getElementById("debug").innerHTML = "✅ Scenario 2: F1 Saves Only - F1-IB green/red, F1-XB grey AS";
+}
+
+// ============================================================
+// Test Scenario 3: F2 Saves (Both Flights Synced)
+// ============================================================
+
+function testF2Synced() {
+    // Start from F1 Only then add F2 save
+    testF1Only();
+    
+    var hole10 = 10;
+    
+    // Set F2 scores for hole 10
     var f2Players = MOCK_PLAYERS.filter(function(p) { return p.flight === 2; });
-    flightScores["2_" + hole10 + "_" + f2Players[0].name] = 5;
-    flightScores["2_" + hole10 + "_" + f2Players[1].name] = 5;
-    flightScores["2_" + hole10 + "_" + f2Players[2].name] = 5;
-    flightScores["2_" + hole10 + "_" + f2Players[3].name] = 5;
+    currentScenarioData.flightScores["2_" + hole10 + "_" + f2Players[0].name] = 5;
+    currentScenarioData.flightScores["2_" + hole10 + "_" + f2Players[1].name] = 5;
+    currentScenarioData.flightScores["2_" + hole10 + "_" + f2Players[2].name] = 4;
+    currentScenarioData.flightScores["2_" + hole10 + "_" + f2Players[3].name] = 6;
     
-    savedHoles[1].push(hole10);
-    savedHoles[2].push(hole10);
+    // Mark hole 10 saved for both flights
+    currentScenarioData.savedHoles[1] = [hole10];
+    currentScenarioData.savedHoles[2] = [hole10];
     
+    // Update TR
+    currentScenarioData.trTeamA = 11.5;
+    currentScenarioData.trTeamB = 7.5;
+    currentScenarioData.trTeamAGreen = true;
+    currentScenarioData.trTeamBGreen = false;
+    
+    // Set T-1, T-2, Strk rows for hole 10
     var playOrder = getPlayOrder();
     var holeIndex = playOrder.indexOf(hole10);
-    t1Row = Array(18).fill('_');
-    t2Row = Array(18).fill('_');
-    strkRow = Array(18).fill('_');
-    t1Row[holeIndex] = "A";
-    t2Row[holeIndex] = "B";
-    strkRow[holeIndex] = "A";
+    currentScenarioData.t1Row = Array(18).fill('_');
+    currentScenarioData.t2Row = Array(18).fill('_');
+    currentScenarioData.strkRow = Array(18).fill('_');
+    currentScenarioData.t1Row[holeIndex] = "A";
+    currentScenarioData.t2Row[holeIndex] = "B";
+    currentScenarioData.strkRow[holeIndex] = "A";
     
-    trPoints = { teamA: 10.5, teamB: 8.5 };
-    trTeamAGreen = true;
-    trTeamBGreen = false;
-    
-    currentHole = hole10 + 1;
-    if (currentHole > 18) currentHole = 1;
+    // Set bubbles: ALL bubbles green/red (synced)
+    var newBubbles = {};
+    for (var i = 0; i < MOCK_PLAYERS.length; i++) {
+        for (var j = 0; j < MOCK_PLAYERS.length; j++) {
+            if (MOCK_PLAYERS[i].team !== MOCK_PLAYERS[j].team) {
+                var key = MOCK_PLAYERS[i].name + "_vs_" + MOCK_PLAYERS[j].name;
+                var p1 = MOCK_PLAYERS[i];
+                var p2 = MOCK_PLAYERS[j];
+                
+                // All bubbles green (A winning) for simplicity
+                if (p1.team === 'A') {
+                    newBubbles[key] = { class: 'bubble-green', value: '2' };
+                } else {
+                    newBubbles[key] = { class: 'bubble-red', value: '2' };
+                }
+            }
+        }
+    }
+    currentScenarioData.bubbleData = newBubbles;
     
     renderAll();
-    document.getElementById("debug").innerHTML = "✅ After Hole 1 (Synced) - Scores saved";
+    document.getElementById("debug").innerHTML = "✅ Scenario 3: F2 Saves (Synced) - All bubbles green/red, rows visible";
 }
 
-function testAfter6Holes() {
-    var playOrder = getPlayOrder();
-    flightScores = {};
-    savedHoles = { 1: [], 2: [] };
+// ============================================================
+// Test Scenario 4: F1 Saves Ahead (Out of Sync)
+// ============================================================
+
+function testF1Ahead() {
+    // Start from Synced state (holes 10 saved by both)
+    testF2Synced();
     
-    for (var pos = 0; pos < 6; pos++) {
-        var actualHole = playOrder[pos];
-        var f1Players = MOCK_PLAYERS.filter(function(p) { return p.flight === 1; });
-        flightScores["1_" + actualHole + "_" + f1Players[0].name] = 4 + pos;
-        flightScores["1_" + actualHole + "_" + f1Players[1].name] = 4 + pos;
-        flightScores["1_" + actualHole + "_" + f1Players[2].name] = 4 + pos;
-        flightScores["1_" + actualHole + "_" + f1Players[3].name] = 4 + pos;
-        
-        var f2Players = MOCK_PLAYERS.filter(function(p) { return p.flight === 2; });
-        flightScores["2_" + actualHole + "_" + f2Players[0].name] = 4;
-        flightScores["2_" + actualHole + "_" + f2Players[1].name] = 4;
-        flightScores["2_" + actualHole + "_" + f2Players[2].name] = 4;
-        flightScores["2_" + actualHole + "_" + f2Players[3].name] = 4;
-        
-        savedHoles[1].push(actualHole);
-        savedHoles[2].push(actualHole);
+    var hole11 = 11;
+    
+    // F1 saves hole 11 (F2 has not saved it yet)
+    var f1Players = MOCK_PLAYERS.filter(function(p) { return p.flight === 1; });
+    currentScenarioData.flightScores["1_" + hole11 + "_" + f1Players[0].name] = 5;
+    currentScenarioData.flightScores["1_" + hole11 + "_" + f1Players[1].name] = 4;
+    currentScenarioData.flightScores["1_" + hole11 + "_" + f1Players[2].name] = 6;
+    currentScenarioData.flightScores["1_" + hole11 + "_" + f1Players[3].name] = 5;
+    
+    // Mark hole 11 saved for Flight 1 only
+    currentScenarioData.savedHoles[1] = [10, 11];
+    currentScenarioData.savedHoles[2] = [10];
+    
+    // Update TR
+    currentScenarioData.trTeamA = 12.5;
+    currentScenarioData.trTeamB = 7.5;
+    currentScenarioData.trTeamAGreen = true;
+    currentScenarioData.trTeamBGreen = false;
+    
+    // Current hole is 11
+    currentScenarioData.currentHole = hole11;
+    
+    // Update T-1/T-2/Strk rows - still showing hole 10 results (last synced)
+    // (No change from previous scenario)
+    
+    // Set bubbles: F1 intra = updated green/red, F1 cross = GREY (showing last synced value)
+    var newBubbles = {};
+    for (var i = 0; i < MOCK_PLAYERS.length; i++) {
+        for (var j = 0; j < MOCK_PLAYERS.length; j++) {
+            if (MOCK_PLAYERS[i].team !== MOCK_PLAYERS[j].team) {
+                var key = MOCK_PLAYERS[i].name + "_vs_" + MOCK_PLAYERS[j].name;
+                var p1 = MOCK_PLAYERS[i];
+                var p2 = MOCK_PLAYERS[j];
+                
+                // F1 intra (same flight, different team) - updated green
+                if (p1.flight === 1 && p2.flight === 1 && p1.team !== p2.team) {
+                    if (p1.team === 'A') {
+                        newBubbles[key] = { class: 'bubble-green', value: '3' };
+                    } else {
+                        newBubbles[key] = { class: 'bubble-red', value: '3' };
+                    }
+                }
+                // F1 cross (different flight) - GREY with last synced value (hole 10 result)
+                else if (p1.flight === 1 && p2.flight === 2) {
+                    newBubbles[key] = { class: 'bubble-grey', value: '2' };
+                }
+                // F2 bubbles (still showing hole 10 results, not yet updated)
+                else if (p1.flight === 2) {
+                    if (p1.team === 'A') {
+                        newBubbles[key] = { class: 'bubble-green', value: '2' };
+                    } else {
+                        newBubbles[key] = { class: 'bubble-red', value: '2' };
+                    }
+                }
+            }
+        }
     }
-    
-    t1Row = Array(18).fill('_');
-    t2Row = Array(18).fill('_');
-    strkRow = Array(18).fill('_');
-    for (var pos = 0; pos < 6; pos++) {
-        t1Row[pos] = "A";
-        t2Row[pos] = "B";
-        strkRow[pos] = "A";
-    }
-    
-    trPoints = { teamA: 11.5, teamB: 7.5 };
-    trTeamAGreen = true;
-    trTeamBGreen = false;
-    
-    currentHole = playOrder[6];
+    currentScenarioData.bubbleData = newBubbles;
     
     renderAll();
-    document.getElementById("debug").innerHTML = "✅ After 6 Holes - Team A leading";
+    document.getElementById("debug").innerHTML = "✅ Scenario 4: F1 Saves Ahead - F1-IB updated green/red, F1-XB grey with last value (2)";
 }
 
 // ============================================================
@@ -457,14 +659,27 @@ document.getElementById("naturalOrderBtn").addEventListener("click", function() 
     renderAll();
 });
 
-document.getElementById("testStartBtn").addEventListener("click", testStartOfGame);
-document.getElementById("testAfterHole1Btn").addEventListener("click", testAfterHole1);
-document.getElementById("testAfter6HolesBtn").addEventListener("click", testAfter6Holes);
-
-document.querySelector(".btn-save").addEventListener("click", function() {
-    alert("Save demo - In real app, this would save to Firebase");
+document.getElementById("flight1Btn").addEventListener("click", function() {
+    currentFlightTab = 1;
+    document.getElementById("flight1Btn").classList.add("active");
+    document.getElementById("flight2Btn").classList.remove("active");
+    renderAll();
 });
 
+document.getElementById("flight2Btn").addEventListener("click", function() {
+    currentFlightTab = 2;
+    document.getElementById("flight2Btn").classList.add("active");
+    document.getElementById("flight1Btn").classList.remove("active");
+    renderAll();
+});
+
+document.getElementById("testStartBtn").addEventListener("click", testStartOfGame);
+document.getElementById("testF1OnlyBtn").addEventListener("click", testF1Only);
+document.getElementById("testF2SyncedBtn").addEventListener("click", testF2Synced);
+document.getElementById("testF1AheadBtn").addEventListener("click", testF1Ahead);
+
+// Initialize
+document.getElementById("flight1Btn").classList.add("active");
 testStartOfGame();
 </script>
 
@@ -473,11 +688,10 @@ testStartOfGame();
 
 <!--
 FILE: test-ui-module.html
-VERSION: 1.00
-PURPOSE: Standalone test for game-ui.js module
-          - No Firebase, no controllers
-          - Hardcoded test data
-          - Tests scorecard, player cards, bubbles, TR
-          - Play Order / Natural Order toggle
+VERSION: 1.01
+PURPOSE: Connector test for game-ui.js
+          - Tests exact same callback interface as real game
+          - Four scenarios: Start of Game, F1 Only, F2 Synced, F1 Ahead
+          - Hardcoded values (no logic) to verify UI rendering
 STATUS: Ready for testing
 -->
