@@ -1,16 +1,16 @@
 <!--
 FILE: pre-game.html
-VERSION: 2.35
+VERSION: 2.36
 KEY CHANGES:
-   - Added game-data.js to calculator script tags (was missing, causing GameData not defined)
-   - Full set: game-data.js, game-match.js, game-team.js, game-stroke.js
-   - Allows proper console testing of calculators
-STATUS: Complete. Ready for testing.
+   - View Only role now redirects to view-game.html (read-only viewer)
+   - Fixed role lock: buttons properly disable when locked by another device
+   - Added debug logging for role lock state
+STATUS: Ready for testing
 -->
 
-<!-- FILE: pre-game.html - VERSION 2.35 -->
+<!-- FILE: pre-game.html - VERSION 2.36 -->
 <!-- Role selection and verification before game -->
-<!-- ADDED: game-data.js to calculator scripts for testing -->
+<!-- FIXED: Role locks, View Only redirects to view-game.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,12 +21,11 @@ STATUS: Complete. Ready for testing.
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     
-    <!-- DEBUG: Calculator scripts for testing - can be removed after testing -->
+    <!-- Calculator scripts (needed for future, not for role lock) -->
     <script src="js/game-data.js"></script>
     <script src="js/game-match.js"></script>
     <script src="js/game-team.js"></script>
     <script src="js/game-stroke.js"></script>
-    <!-- END DEBUG -->
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -368,13 +367,13 @@ STATUS: Complete. Ready for testing.
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.35</div>
+<div class="version-tag">v2.36</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.35
-// ADDED: game-data.js to calculator scripts
+// FILE: pre-game.html - VERSION 2.36
+// FIXED: Role locks, View Only redirects to view-game.html
 
-var VERSION = "2.35";
+var VERSION = "2.36";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -555,6 +554,8 @@ function toggleRole(role) {
     var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
     var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
     
+    console.log("toggleRole:", role, "isF1Locked:", isF1Locked, "isF2Locked:", isF2Locked);
+    
     if (role === "update1" && isF1Locked) {
         alert("Flight 1 update role is already locked by another device");
         return;
@@ -725,11 +726,7 @@ function startGame() {
         return;
     }
     
-    var now = Date.now();
-    var expiryTime = now + LOCK_DURATION_MS;
-    var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
-    var updatePayload = {};
-    
+    // View Only role goes to view-game.html (read-only)
     if (tempSelectedRole === "view") {
         localStorage.setItem("userRole", "view");
         if (deviceSession) {
@@ -739,14 +736,20 @@ function startGame() {
                     gameType: gameMode,
                     gameMode: gameMode,
                     role: "view",
-                    collection: collection
+                    collection: isPreviewSandbox ? "previewSandboxes" : "scheduledGames"
                 }
             });
-            SessionManager.addNavigationHistory("game.html", "tee_off_view", { gameId: gameId });
+            SessionManager.addNavigationHistory("view-game.html", "tee_off_view", { gameId: gameId });
         }
-        proceedToGame();
+        window.location.href = "view-game.html";
         return;
     }
+    
+    // Update roles go to game.html with lock
+    var now = Date.now();
+    var expiryTime = now + LOCK_DURATION_MS;
+    var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
+    var updatePayload = {};
     
     var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
     var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
@@ -801,7 +804,7 @@ function startGame() {
             SessionManager.addNavigationHistory("game.html", "tee_off_" + tempSelectedRole, { gameId: gameId });
         }
         
-        proceedToGame();
+        window.location.href = "game.html";
     }).catch(function(e) {
         alert("Error locking role: " + e.message);
     });
@@ -875,7 +878,6 @@ function render() {
         dateDisplay = '<div class="course-date">📅 Preview Session</div>';
     }
     
-    // Build starting hole display text
     var startingHoleText = "";
     if (startingHole === 1) {
         startingHoleText = "Hole 1";
@@ -908,6 +910,9 @@ function render() {
     var isF1LockedBySelf = isF1Locked && locks.f1.did === SessionManager.getDeviceIdDisplay();
     var isF2LockedBySelf = isF2Locked && locks.f2.did === SessionManager.getDeviceIdDisplay();
     
+    console.log("Render - isF1Locked:", isF1Locked, "isF2Locked:", isF2Locked);
+    console.log("Render - isF1LockedBySelf:", isF1LockedBySelf, "isF2LockedBySelf:", isF2LockedBySelf);
+    
     var update1Selected = (tempSelectedRole === "update1");
     var update2Selected = (tempSelectedRole === "update2");
     var viewSelected = (tempSelectedRole === "view");
@@ -920,6 +925,7 @@ function render() {
     if (update2Selected) update2Class += " role-btn-selected";
     if (viewSelected) viewClass += " role-btn-selected";
     
+    // Disable button if locked by another device
     var isUpdate1Disabled = isF1Locked && !isF1LockedBySelf;
     var isUpdate2Disabled = isF2Locked && !isF2LockedBySelf;
     
@@ -1028,10 +1034,10 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 2.35
+VERSION: 2.36
 KEY CHANGES:
-   - Added game-data.js to calculator script tags (was missing, causing GameData not defined)
-   - Full set: game-data.js, game-match.js, game-team.js, game-stroke.js
-   - Allows proper console testing of calculators
-STATUS: Complete. Ready for testing.
+   - View Only role now redirects to view-game.html (read-only viewer)
+   - Fixed role lock: buttons properly disable when locked by another device
+   - Added debug logging for role lock state
+STATUS: Ready for testing
 -->
