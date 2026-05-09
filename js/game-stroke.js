@@ -1,39 +1,29 @@
 /*
 FILE: js/game-stroke.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - Rewritten to process ALL 18 holes, stops at first 'F' in either flight
-   - Returns strkRow[18] as array of "A"/"B"/"0"
-   - Added calculatePoints() for TR aggregation
-   - Added formatRowString() for UI string generation
+   - Added getStrokeLeader() to determine who is leading after N holes
+   - Added calculateCumulativePoints() for real-time point tracking
+   - Added formatLeaderDisplay() for UI-ready formatting
+   - Preserved existing calculate() function for backward compatibility
    - Team aggregate NETT = Total Gross - Total Handicap (raw handicaps sum)
-STATUS: Complete. Ready for integration.
+STATUS: Ready for integration
 */
 
-// FILE: js/game-stroke.js - VERSION 1.02
+// FILE: js/game-stroke.js - VERSION 1.03
 // Game 3: Net Stroke (1 point)
 // Team aggregate NETT = Total Gross - Total Handicap
 // PROCESSES ALL 18 HOLES - stops at first 'F' in either flight
 
 var GameStroke = (function() {
     
-    // Helper to find player index in allPlayers array
-    function findPlayerIndex(playerName, allPlayers) {
-        for (var i = 0; i < allPlayers.length; i++) {
-            if (allPlayers[i].name === playerName) return i;
-        }
-        return -1;
-    }
-    
     // Helper to get a player's score for a specific hole from flight data
     function getPlayerScore(player, flightData, actualHole, flightPlayers) {
         var holeData = GameData.parseHoleData(flightData, actualHole);
         if (!holeData || !holeData.saved) return null;
         
-        var teamAPlayers = flightPlayers.filter(function(p) { return p.team === "A"; });
-        var teamBPlayers = flightPlayers.filter(function(p) { return p.team === "B"; });
-        teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
-        teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamAPlayers = flightPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayers = flightPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
         if (player.team === "A") {
             if (teamAPlayers[0] && teamAPlayers[0].name === player.name) return holeData.scores.a1;
@@ -129,7 +119,53 @@ var GameStroke = (function() {
         return strkRow;
     }
     
-    // Calculate final Game 3 points
+    // Get the current stroke leader after a specific number of holes
+    function getStrokeLeader(strkRow, upToHole) {
+        if (upToHole === 0 || upToHole > 18) {
+            return { leader: "0", pointsA: 0.5, pointsB: 0.5 };
+        }
+        
+        var leader = strkRow[upToHole - 1] || "0";
+        
+        if (leader === "A") {
+            return { leader: "A", pointsA: 1, pointsB: 0 };
+        } else if (leader === "B") {
+            return { leader: "B", pointsA: 0, pointsB: 1 };
+        } else {
+            return { leader: "0", pointsA: 0.5, pointsB: 0.5 };
+        }
+    }
+    
+    // Calculate cumulative points based on current leader
+    function calculateCumulativePoints(strkRow, upToHole) {
+        if (upToHole === 0) {
+            return { teamAPoints: 0.5, teamBPoints: 0.5 };
+        }
+        
+        if (upToHole < 18) {
+            // Game 3 points only awarded after 18 holes
+            return { teamAPoints: 0, teamBPoints: 0 };
+        }
+        
+        var finalLeader = strkRow[17] || "0";
+        
+        if (finalLeader === "A") {
+            return { teamAPoints: 1, teamBPoints: 0 };
+        } else if (finalLeader === "B") {
+            return { teamAPoints: 0, teamBPoints: 1 };
+        } else {
+            return { teamAPoints: 0.5, teamBPoints: 0.5 };
+        }
+    }
+    
+    // Format leader for UI display
+    function formatLeaderDisplay(leader) {
+        if (leader === "A") return "A";
+        if (leader === "B") return "B";
+        return "AS";
+    }
+    
+    // Calculate final Game 3 points (legacy, use calculateCumulativePoints instead)
     function calculatePoints(strkRow, maxSyncedHole) {
         if (maxSyncedHole === 0) {
             return { teamAPoints: 0.5, teamBPoints: 0.5 };
@@ -162,18 +198,21 @@ var GameStroke = (function() {
     return {
         calculate: calculate,
         calculatePoints: calculatePoints,
-        formatRowString: formatRowString
+        formatRowString: formatRowString,
+        getStrokeLeader: getStrokeLeader,
+        calculateCumulativePoints: calculateCumulativePoints,
+        formatLeaderDisplay: formatLeaderDisplay
     };
 })();
 
 /*
 FILE: js/game-stroke.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - Rewritten to process ALL 18 holes, stops at first 'F' in either flight
-   - Returns strkRow[18] as array of "A"/"B"/"0"
-   - Added calculatePoints() for TR aggregation
-   - Added formatRowString() for UI string generation
+   - Added getStrokeLeader() to determine who is leading after N holes
+   - Added calculateCumulativePoints() for real-time point tracking
+   - Added formatLeaderDisplay() for UI-ready formatting
+   - Preserved existing calculate() function for backward compatibility
    - Team aggregate NETT = Total Gross - Total Handicap (raw handicaps sum)
-STATUS: Complete. Ready for integration.
+STATUS: Ready for integration
 */
