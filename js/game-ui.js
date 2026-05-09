@@ -1,9 +1,10 @@
 /*
 FILE: js/game-ui.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - Added green line under SI row (separator between header and player rows)
-   - No other changes - pure rendering, no logic
+   - Added hyphen separator between player label and handicap (e.g., "JG - 0")
+   - Added green line after Flight 2 players (before T-2 row)
+   - Pure rendering, no logic, no Firebase
 STATUS: Ready for testing
 */
 
@@ -62,7 +63,7 @@ var GameUI = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -79,7 +80,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-1 row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        html += '<td><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var displayVal = (val === '_' || val === '') ? '' : val;
@@ -106,6 +107,9 @@ var GameUI = (function() {
             }
             html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
+        
+        // GREEN LINE after Flight 2 players (before T-2) - ADDED
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-2 row
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
@@ -163,7 +167,7 @@ var GameUI = (function() {
                     <div class="player-header">
                         <div>
                             <span class="player-name">${escapeHtml(player.name)}</span>
-                            <span class="player-handicap">${player.label} ${player.handicap}</span>
+                            <span class="player-handicap">${escapeHtml(player.label)} - ${player.handicap}</span>
                         </div>
                         <div class="score-control">
                             <button class="score-btn dec-btn" ${btnDisabled} data-delta="-1">-</button>
@@ -283,9 +287,10 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - Added green line under SI row (separator between header and player rows)
-   - No other changes - pure rendering, no logic
+   - Added hyphen separator between player label and handicap (e.g., "JG - 0")
+   - Added green line after Flight 2 players (before T-2 row)
+   - Pure rendering, no logic, no Firebase
 STATUS: Ready for testing
 */
