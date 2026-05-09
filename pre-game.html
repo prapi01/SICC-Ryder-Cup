@@ -1,11 +1,13 @@
 <!--
 FILE: pre-game.html
-VERSION: 2.38
+VERSION: 2.39
 KEY CHANGES:
-   - Separate unlock icons for Flight 1 and Flight 2
-   - Unlock shows modal with current lock holder's Device ID
-   - Confirm takeover overwrites lock (does not release both)
-   - Adds takeoverTimestamp to notify old device
+   - Added gameStarted flag to track if game has begun
+   - Reset only if !gameStarted AND (REAL today OR PREVIEW new session)
+   - Set gameStarted = true when user takes UPDATE role (F1 or F2)
+   - Preview modal: NEW = reset + gameStarted=false, CONTINUE = load existing
+   - Individual unlock icons per flight (already working)
+   - Takeover logic preserved
 STATUS: Ready for testing
 -->
 
@@ -199,7 +201,6 @@ STATUS: Ready for testing
             background: #111;
             border-radius: 20px;
             border: 1px solid #333;
-            position: relative;
         }
         .role-title { 
             font-size: 1rem; 
@@ -366,6 +367,16 @@ STATUS: Ready for testing
             color: #4caf50;
             border: 1px solid #4caf50;
         }
+        .modal-btn-new {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .modal-btn-continue {
+            background: #1a1a1a;
+            color: #ffaa44;
+            border: 1px solid #ffaa44;
+        }
     </style>
 </head>
 <body>
@@ -373,14 +384,13 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.38</div>
+<div class="version-tag">v2.39</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.38
-// SEPARATE UNLOCK: Flight 1 and Flight 2 have independent unlock icons
-// TAKEOVER: Shows current lock holder ID, confirms before overwriting
+// FILE: pre-game.html - VERSION 2.39
+// ADDED: gameStarted flag to prevent resets after game begins
 
-var VERSION = "2.38";
+var VERSION = "2.39";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -482,6 +492,7 @@ function rotateDataString(naturalData, startingHole) {
     return rotated.join('');
 }
 
+// Reset game data (scores, locks, flags)
 function resetGameData(callback) {
     if (!db || !gameId) {
         if (callback) callback(false);
@@ -503,11 +514,12 @@ function resetGameData(callback) {
         "locks.f2": null,
         "currentHoleF1": 1,
         "currentHoleF2": 1,
+        "gameStarted": false,  // Reset gameStarted flag
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
     db.collection(isPreviewSandbox ? "previewSandboxes" : "scheduledGames").doc(gameId).update(resetData).then(function() {
-        console.log("Game data reset to default - locks cleared");
+        console.log("Game data reset to default - locks cleared, gameStarted=false");
         locks.f1 = null;
         locks.f2 = null;
         tempSelectedRole = null;
@@ -643,21 +655,19 @@ function takeoverRole(flight) {
         sid: sessionId,
         at: now,
         ex: expiryTime,
-        takeoverAt: now  // Flag to notify old device
+        takeoverAt: now
     };
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
     db.collection(collection).doc(gameId).update(updatePayload).then(function() {
         console.log("Role takeover successful for Flight", flight);
         
-        // Update local locks
         if (flight === 1) {
             locks.f1 = updatePayload["locks.f1"];
         } else {
             locks.f2 = updatePayload["locks.f2"];
         }
         
-        // Auto-select the taken role
         tempSelectedRole = flight === 1 ? "update1" : "update2";
         
         render();
@@ -667,15 +677,16 @@ function takeoverRole(flight) {
     });
 }
 
-function showSessionModal(callback) {
+// Preview session modal (NEW vs CONTINUE)
+function showPreviewSessionModal(callback) {
     var modalHtml = `
-        <div class="modal-overlay" id="sessionModal">
+        <div class="modal-overlay" id="previewModal">
             <div class="modal">
-                <div class="modal-title">PREVIEW Session</div>
-                <div class="modal-message">Existing game data found. What would you like to do?</div>
-                <div class="modal-buttons">
-                    <button class="modal-btn modal-btn-reset" id="resetBtn">RESET (Start Over)</button>
-                    <button class="modal-btn modal-btn-continue" id="continueBtn">CONTINUE</button>
+                <div class="modal-title">🔍 PREVIEW SESSION</div>
+                <div class="modal-message">Existing game data found.</div>
+                <div class="modal-buttons" style="margin-top:20px;">
+                    <button class="modal-btn modal-btn-new" id="newSessionBtn">✨ NEW SESSION (Reset)</button>
+                    <button class="modal-btn modal-btn-continue" id="continueSessionBtn">📋 CONTINUE (Keep scores)</button>
                 </div>
             </div>
         </div>
@@ -683,20 +694,14 @@ function showSessionModal(callback) {
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    document.getElementById("resetBtn").addEventListener("click", function() {
-        document.getElementById("sessionModal").remove();
-        resetGameData(function(success) {
-            if (success) {
-                window.location.reload();
-            } else {
-                if (callback) callback();
-            }
-        });
+    document.getElementById("newSessionBtn").addEventListener("click", function() {
+        document.getElementById("previewModal").remove();
+        callback("new");
     });
     
-    document.getElementById("continueBtn").addEventListener("click", function() {
-        document.getElementById("sessionModal").remove();
-        if (callback) callback();
+    document.getElementById("continueSessionBtn").addEventListener("click", function() {
+        document.getElementById("previewModal").remove();
+        callback("continue");
     });
 }
 
@@ -728,8 +733,29 @@ function loadGame() {
                     locks.f2 = gameData.locks.f2 || null;
                 }
                 
-                startGameListener();
-                render();
+                // Check if we should show modal or just load
+                var hasData = hasExistingData();
+                var gameStartedFlag = gameData.gameStarted === true;
+                
+                console.log("PREVIEW mode - hasData:", hasData, "gameStarted:", gameStartedFlag);
+                
+                if (hasData && !gameStartedFlag) {
+                    // Existing data but game not started - ask user
+                    showPreviewSessionModal(function(choice) {
+                        if (choice === "new") {
+                            resetGameData(function() {
+                                startGameListener();
+                                render();
+                            });
+                        } else {
+                            startGameListener();
+                            render();
+                        }
+                    });
+                } else {
+                    startGameListener();
+                    render();
+                }
             } else {
                 alert("Preview session not found");
                 window.location.href = "index.html";
@@ -755,49 +781,35 @@ function loadGame() {
             
             var today = getTodayString();
             var isToday = (gameData.date === today);
+            var gameStartedFlag = gameData.gameStarted === true;
             
-            if (isToday) {
-                gameMode = "real";
-                
-                var hasLocks = (locks.f1 !== null || locks.f2 !== null);
-                var hasData = hasExistingData();
-                
-                console.log("REAL mode - hasLocks:", hasLocks, "hasData:", hasData);
-                
-                if (!hasLocks && hasData) {
-                    console.log("REAL mode - First device on game day, resetting...");
-                    resetGameData(function(success) {
-                        db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
-                            if (updatedDoc.exists) {
-                                gameData = updatedDoc.data();
-                                gameData.id = updatedDoc.id;
-                                if (gameData.locks) {
-                                    locks.f1 = gameData.locks.f1 || null;
-                                    locks.f2 = gameData.locks.f2 || null;
-                                }
+            console.log("REAL mode - isToday:", isToday, "gameStarted:", gameStartedFlag);
+            
+            if (isToday && !gameStartedFlag) {
+                // First access on game day (game not started) - RESET
+                console.log("REAL mode - First access on game day, resetting...");
+                resetGameData(function(success) {
+                    db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
+                        if (updatedDoc.exists) {
+                            gameData = updatedDoc.data();
+                            gameData.id = updatedDoc.id;
+                            if (gameData.locks) {
+                                locks.f1 = gameData.locks.f1 || null;
+                                locks.f2 = gameData.locks.f2 || null;
                             }
-                            startGameListener();
-                            render();
-                        }).catch(function() {
-                            startGameListener();
-                            render();
-                        });
-                    });
-                } else {
-                    console.log("REAL mode - Game in progress or clean, loading existing data");
-                    startGameListener();
-                    render();
-                }
-            } else {
-                gameMode = "preview";
-                if (hasExistingData()) {
-                    showSessionModal(function() {
+                        }
+                        startGameListener();
+                        render();
+                    }).catch(function() {
+                        startGameListener();
                         render();
                     });
-                } else {
-                    startGameListener();
-                    render();
-                }
+                });
+            } else {
+                // Game already started or not today - proceed normally
+                console.log("REAL mode - Game already started or not today, loading existing data");
+                startGameListener();
+                render();
             }
         } else {
             alert("Game not found");
@@ -834,7 +846,7 @@ function startGame() {
         return;
     }
     
-    // Update roles go to game.html with lock
+    // UPDATE roles - lock the role and set gameStarted = true
     var now = Date.now();
     var expiryTime = now + LOCK_DURATION_MS;
     var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
@@ -842,9 +854,6 @@ function startGame() {
     
     var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
     var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
-    
-    console.log("startGame - isF1Locked:", isF1Locked, "isF2Locked:", isF2Locked);
-    console.log("startGame - tempSelectedRole:", tempSelectedRole);
     
     if (tempSelectedRole === "update1" && isF1Locked) {
         alert("Flight 1 was locked by another device. Please refresh or take over the role.");
@@ -878,6 +887,8 @@ function startGame() {
         };
     }
     
+    // Set gameStarted = true when first UPDATE role is taken
+    updatePayload["gameStarted"] = true;
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
     db.collection(collection).doc(gameId).update(updatePayload).then(function() {
@@ -925,7 +936,7 @@ function render() {
     if (gameMode === "real") {
         modeBanner = '<div class="mode-banner mode-real">🏆 REAL GAME - Scores are LIVE and synced to all devices</div>';
     } else if (gameMode === "preview") {
-        modeBanner = '<div class="mode-banner mode-preview">🔍 PREVIEW MODE - Future game. Scores will NOT be saved.</div>';
+        modeBanner = '<div class="mode-banner mode-preview">🔍 PREVIEW MODE - Future game</div>';
     } else if (gameMode === "history") {
         modeBanner = '<div class="mode-banner mode-history">📜 HISTORY MODE - Read only. Past game results.</div>';
     }
@@ -969,9 +980,6 @@ function render() {
     var isF1LockedBySelf = isF1Locked && locks.f1.did === SessionManager.getDeviceIdDisplay();
     var isF2LockedBySelf = isF2Locked && locks.f2.did === SessionManager.getDeviceIdDisplay();
     
-    console.log("Render - isF1Locked:", isF1Locked, "isF2Locked:", isF2Locked);
-    console.log("Render - isF1LockedBySelf:", isF1LockedBySelf, "isF2LockedBySelf:", isF2LockedBySelf);
-    
     var update1Selected = (tempSelectedRole === "update1");
     var update2Selected = (tempSelectedRole === "update2");
     var viewSelected = (tempSelectedRole === "view");
@@ -984,7 +992,6 @@ function render() {
     if (update2Selected) update2Class += " role-btn-selected";
     if (viewSelected) viewClass += " role-btn-selected";
     
-    // Disable button if locked by another device
     var isUpdate1Disabled = isF1Locked && !isF1LockedBySelf;
     var isUpdate2Disabled = isF2Locked && !isF2LockedBySelf;
     
@@ -1000,7 +1007,7 @@ function render() {
     if (isF1Locked) {
         var lockHolder = locks.f1.did || 'Unknown';
         var unlockIcon = isF1LockedBySelf ? '' : '<span class="unlock-icon" onclick="showTakeoverModal(1)">⟲</span>';
-        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder}</span>${unlockIcon}</div>`;
+        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder.substring(0, 15)}...</span>${unlockIcon}</div>`;
     } else {
         flight1LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
     }
@@ -1008,7 +1015,7 @@ function render() {
     if (isF2Locked) {
         var lockHolder2 = locks.f2.did || 'Unknown';
         var unlockIcon2 = isF2LockedBySelf ? '' : '<span class="unlock-icon" onclick="showTakeoverModal(2)">⟲</span>';
-        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder2}</span>${unlockIcon2}</div>`;
+        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder2.substring(0, 15)}...</span>${unlockIcon2}</div>`;
     } else {
         flight2LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
     }
@@ -1124,11 +1131,13 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 2.38
+VERSION: 2.39
 KEY CHANGES:
-   - Separate unlock icons for Flight 1 and Flight 2
-   - Unlock shows modal with current lock holder's Device ID
-   - Confirm takeover overwrites lock (does not release both)
-   - Adds takeoverAt timestamp to notify old device
+   - Added gameStarted flag to track if game has begun
+   - Reset only if !gameStarted AND (REAL today OR PREVIEW new session)
+   - Set gameStarted = true when user takes UPDATE role (F1 or F2)
+   - Preview modal: NEW = reset + gameStarted=false, CONTINUE = load existing
+   - Individual unlock icons per flight (already working)
+   - Takeover logic preserved
 STATUS: Ready for testing
 -->
