@@ -1,21 +1,14 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.17
+VERSION: 1.18
 KEY CHANGES:
-   - Fixed player display sort order: Team A first, then Team B (instead of by Flight)
-   - Within each team, sort by Flight (1 then 2), then Handicap (lowest first)
-   - Display order now: T-A1, T-A2, T-A3, T-A4, T-B1, T-B2, T-B3, T-B4
-   - Load default players from Firebase playerInformation/defaultPlayers
-   - Fallback to hardcoded players if no default exists
-   - After successful NEW game creation, save current players as new default
-   - Edit mode does NOT save as default (preserves existing default)
-   - Added Team Game Format selector (Tournament/Relative) per VDN #008
-   - Team Game Format saved to Firestore game document
-   - Starting hole defaults to 1
-STATUS: Complete. Ready for testing.
+   - Added auto-delete for past games (date < today)
+   - Runs cleanup on page load, no confirmation
+   - Deletes scheduledGames documents with date older than today
+   - Does not affect previewSandboxes
+STATUS: Ready for testing
 -->
 
-<!-- FILE: setup-game.html - VERSION 1.17 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -192,13 +185,13 @@ STATUS: Complete. Ready for testing.
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.17</div>
+<div class="version-tag">v1.18</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.17 (JavaScript section)
-// FIXED: Player display sort order - Team A first, then Team B
+// FILE: setup-game.html - VERSION 1.18
+// ADDED: Auto-delete past games (date < today)
 
-var VERSION = "1.17";
+var VERSION = "1.18";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -229,11 +222,43 @@ try {
     console.warn(e);
 }
 
-// HARDCODED FALLBACK PLAYERS (only used if Firebase defaultPlayers not found)
-// Sorted: Team A first, then Team B, then by flight, then handicap
-var FALLBACK_PLAYERS = [
+// ============================================================
+// AUTO-DELETE PAST GAMES
+// ============================================================
+
+function deletePastGames() {
+    if (!firestoreReady) return;
+    
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var todayStr = today.toISOString().split('T')[0];
+    
+    console.log("Checking for past games to delete (date < " + todayStr + ")");
+    
+    db.collection("scheduledGames").where("date", "<", todayStr).get()
+        .then(function(snapshot) {
+            var deletePromises = [];
+            snapshot.forEach(function(doc) {
+                console.log("Deleting past game:", doc.id, "date:", doc.data().date);
+                deletePromises.push(db.collection("scheduledGames").doc(doc.id).delete());
+            });
+            return Promise.all(deletePromises);
+        })
+        .then(function() {
+            console.log("Past games cleanup complete");
+        })
+        .catch(function(e) {
+            console.warn("Error deleting past games:", e);
+        });
+}
+
+// ============================================================
+// DEFAULT PLAYERS
+// ============================================================
+
+var HARDCODED_FALLBACK_PLAYERS = [
     { name: "Ang C H", handicap: 1, team: "A", flight: 1 },
-    { name: "Kenneth Foo", handicap: 3, team: "A", flight: 1 },
+    { name: "Chenh Hoe", handicap: 10, team: "A", flight: 1 },
     { name: "C K", handicap: 8, team: "A", flight: 2 },
     { name: "Yip H M", handicap: 12, team: "A", flight: 2 },
     { name: "Jeff Goh", handicap: 0, team: "B", flight: 1 },
@@ -252,7 +277,6 @@ function generateLabel(name) {
     return label.toUpperCase();
 }
 
-// Generate default data string in NATURAL order (1-18)
 function generateDefaultDataNatural(parArray) {
     var result = "";
     for (var hole = 1; hole <= 18; hole++) {
@@ -263,7 +287,6 @@ function generateDefaultDataNatural(parArray) {
     return result;
 }
 
-// Rotate data string to start at startingHole
 function rotateDataString(naturalData, startingHole) {
     if (startingHole === 1) return naturalData;
     
@@ -299,11 +322,10 @@ var state = {
     teamGameFormat: "tournament"
 };
 
-// Load default players from Firebase
 function loadDefaultPlayers(callback) {
     if (!firestoreReady) {
-        console.warn("Firebase not ready, using fallback players");
-        state.players = FALLBACK_PLAYERS.map(function(p) {
+        console.warn("Firebase not ready, using fallback");
+        state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
             return {
                 name: p.name,
                 handicap: p.handicap,
@@ -331,8 +353,8 @@ function loadDefaultPlayers(callback) {
                 });
                 console.log("Loaded default players from Firebase");
             } else {
-                console.log("No default players found in Firebase, using fallback");
-                state.players = FALLBACK_PLAYERS.map(function(p) {
+                console.log("No default players found, using fallback");
+                state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
                     return {
                         name: p.name,
                         handicap: p.handicap,
@@ -346,7 +368,7 @@ function loadDefaultPlayers(callback) {
         })
         .catch(function(e) {
             console.warn("Error loading default players:", e);
-            state.players = FALLBACK_PLAYERS.map(function(p) {
+            state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
                 return {
                     name: p.name,
                     handicap: p.handicap,
@@ -359,14 +381,12 @@ function loadDefaultPlayers(callback) {
         });
 }
 
-// Save current players as new default after successful game creation
 function saveAsDefaultPlayers(players, callback) {
     if (!firestoreReady) {
         if (callback) callback(false);
         return;
     }
     
-    // Sort players before saving: Team A first, then Team B, then by flight, then handicap
     var playersToSave = [...players];
     playersToSave.sort(function(a, b) {
         if (a.team !== b.team) return a.team === "A" ? -1 : 1;
@@ -374,7 +394,6 @@ function saveAsDefaultPlayers(players, callback) {
         return a.handicap - b.handicap;
     });
     
-    // Remove label field before saving (only save name, handicap, team, flight)
     var playersForStorage = playersToSave.map(function(p) {
         return {
             name: p.name,
@@ -617,7 +636,6 @@ function commitGame() {
     };
     
     if (state.editingGameId) {
-        // EDIT MODE: Do NOT save as default players
         db.collection("scheduledGames").doc(state.editingGameId).update(gameData).then(function() {
             SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
             document.getElementById("successMsg").style.display = "block";
@@ -628,10 +646,8 @@ function commitGame() {
             alert("Error updating game: " + e.message);
         });
     } else {
-        // NEW GAME: Save to scheduledGames AND save as default players
         gameData.createdAt = new Date().toISOString();
         db.collection("scheduledGames").add(gameData).then(function(docRef) {
-            // After successful creation, save players as new default
             saveAsDefaultPlayers(state.players, function(saveSuccess) {
                 if (saveSuccess) {
                     console.log("Default players updated successfully");
@@ -658,21 +674,16 @@ function render() {
         courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
     }
     
-    // Sort players for display: Team A first, then Team B, then by flight, then handicap
     var displayPlayers = [...state.players];
     displayPlayers.sort(function(a, b) {
-        // Team A first, then Team B
         if (a.team !== b.team) return a.team === "A" ? -1 : 1;
-        // Within same team, sort by flight (1 then 2)
         if (a.flight !== b.flight) return a.flight - b.flight;
-        // Within same flight, sort by handicap (lowest first)
         return a.handicap - b.handicap;
     });
     
     var playersHtml = '';
     for (var idx = 0; idx < displayPlayers.length; idx++) {
         var p = displayPlayers[idx];
-        // Find original index for updating
         var originalIdx = state.players.findIndex(function(orig) { 
             return orig.name === p.name && orig.flight === p.flight && orig.team === p.team; 
         });
@@ -728,7 +739,6 @@ function render() {
     
     var shotgunSelectValue = state.startingHole;
     
-    // Team Game Format radio selection
     var tournamentSelected = (state.teamGameFormat === "tournament");
     var relativeSelected = (state.teamGameFormat === "relative");
     
@@ -824,7 +834,6 @@ function render() {
     
     document.getElementById("app").innerHTML = html;
     
-    // Date picker listener
     var datePicker = document.getElementById("datePicker");
     if (datePicker) {
         datePicker.addEventListener("change", function() {
@@ -832,7 +841,6 @@ function render() {
         });
     }
     
-    // Starting hole toggle listeners
     document.querySelectorAll(".hole-toggle-btn").forEach(function(btn) {
         btn.addEventListener("click", function(e) {
             if (e.target.tagName === 'SELECT') return;
@@ -849,7 +857,6 @@ function render() {
         });
     });
     
-    // Shotgun dropdown listener
     var shotgunSelect = document.getElementById("shotgunHoleSelect");
     if (shotgunSelect) {
         shotgunSelect.addEventListener("change", function() {
@@ -861,7 +868,6 @@ function render() {
         });
     }
     
-    // Team Game Format radio listeners
     document.querySelectorAll(".format-option").forEach(function(opt) {
         opt.addEventListener("click", function() {
             var format = this.dataset.format;
@@ -877,7 +883,6 @@ function render() {
         });
     });
     
-    // Player input listeners
     document.querySelectorAll(".player-name-input").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
@@ -942,6 +947,10 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
     deviceSession = session;
     displayDeviceId();
+    
+    // Auto-delete past games on load
+    deletePastGames();
+    
     loadEditMode(function() {
         loadCourses(function() {
             render();
@@ -954,17 +963,11 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.17
+VERSION: 1.18
 KEY CHANGES:
-   - Fixed player display sort order: Team A first, then Team B (instead of by Flight)
-   - Within each team, sort by Flight (1 then 2), then Handicap (lowest first)
-   - Display order now: T-A1, T-A2, T-A3, T-A4, T-B1, T-B2, T-B3, T-B4
-   - Load default players from Firebase playerInformation/defaultPlayers
-   - Fallback to hardcoded players if no default exists
-   - After successful NEW game creation, save current players as new default
-   - Edit mode does NOT save as default (preserves existing default)
-   - Added Team Game Format selector (Tournament/Relative) per VDN #008
-   - Team Game Format saved to Firestore game document
-   - Starting hole defaults to 1
-STATUS: Complete. Ready for testing.
+   - Added auto-delete for past games (date < today)
+   - Runs cleanup on page load, no confirmation
+   - Deletes scheduledGames documents with date older than today
+   - Does not affect previewSandboxes
+STATUS: Ready for testing
 -->
