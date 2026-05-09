@@ -1,13 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 1.01
+VERSION: 1.03
 KEY CHANGES:
-   - Integrated card submission module (js/card-submit.js)
-   - Submit button appears on last hole after save
-   - Tracks submission status for both flights
-   - Shows final results screen when both flights submit
-   - Prevents further edits after submission
-DEPENDS ON: js/session.js, js/game-ui.js, js/card-submit.js
+   - Uses GameUI display mode management (getDisplayMode, setDisplayMode, getDisplayHoles)
+   - Removed local display mode functions (delegated to GameUI)
+   - Toggle buttons now properly update active states via GameUI
+   - All display logic centralized in game-ui.js
+DEPENDS ON: js/game-ui.js v1.08 or higher
 STATUS: Ready for testing
 -->
 
@@ -207,7 +206,7 @@ STATUS: Ready for testing
         <div class="scorecard-header">
             <div class="scorecard-title">SCORECARD</div>
             <div class="view-toggle">
-                <button class="toggle-btn active" id="playOrderBtn">⛳ Play Order</button>
+                <button class="toggle-btn" id="playOrderBtn">⛳ Play Order</button>
                 <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
             </div>
         </div>
@@ -220,7 +219,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.01 REAL</div>
+<div class="version-tag">v1.03 REAL</div>
 
 <script>
 // ============================================================
@@ -250,7 +249,6 @@ var editableFlight = 1;
 var canEdit = true;
 var startingHole = 1;
 var currentHole = 1;
-var displayMode = "play";
 
 var courseName = "";
 var coursePar = [];
@@ -294,11 +292,7 @@ function getPlayOrder() {
 }
 
 function getDisplayHoles() {
-    if (displayMode === "natural") {
-        return [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
-    } else {
-        return getPlayOrder();
-    }
+    return GameUI.getDisplayHoles(startingHole, GameUI.getDisplayMode());
 }
 
 function getFlightOrderedPlayers(flight) {
@@ -565,9 +559,9 @@ function renderAll() {
         getBubbleClass,
         getBubbleValue,
         getCurrentScore,
-        canEdit && !isGameCompleteFlag && !submitted[`f${editableFlight}`],
+        canEdit && !isGameCompleteFlag && !submitted["f" + editableFlight],
         function(playerName, flight, playerIdx, delta) {
-            if (isGameCompleteFlag || submitted[`f${editableFlight}`]) return;
+            if (isGameCompleteFlag || submitted["f" + editableFlight]) return;
             var player = allPlayers[playerIdx];
             if (!player) return;
             var current = getCurrentScore(player);
@@ -594,7 +588,6 @@ function renderAll() {
         courseSi
     );
     
-    // Update next button text based on submission status
     updateNextButton();
 }
 
@@ -608,7 +601,7 @@ function updateNextButton() {
         return;
     }
     
-    if (submitted[`f${editableFlight}`]) {
+    if (submitted["f" + editableFlight]) {
         nextBtn.textContent = "✓ SUBMITTED";
         nextBtn.disabled = true;
         return;
@@ -635,12 +628,11 @@ function updateNextButton() {
 
 async function saveHole() {
     if (!canEdit) return;
-    if (isGameCompleteFlag || submitted[`f${editableFlight}`]) {
+    if (isGameCompleteFlag || submitted["f" + editableFlight]) {
         alert("Card already submitted. Cannot make changes.");
         return;
     }
     
-    // Check lock ownership
     var collection = 'scheduledGames';
     var doc = await db.collection(collection).doc(gameId).get();
     if (!doc.exists) return;
@@ -700,7 +692,6 @@ async function saveHole() {
             }
         }, 2000);
         
-        // After save, if this was the last hole, enable submit button appearance
         updateNextButton();
     } catch (error) {
         document.getElementById("debug").innerHTML = "Save error: " + error.message;
@@ -734,18 +725,15 @@ async function handleSubmitCard() {
     var isSaved = isHoleSaved(editableFlight, currentHole);
     
     if (!isLast || !isSaved) {
-        // Normal next hole behavior
         nextHole();
         return;
     }
     
-    // Show submit modal
     CardSubmit.showSubmitModal(async function(confirmed) {
         if (confirmed) {
             var success = await CardSubmit.submitCard(gameId, editableFlight, "scheduledGames");
             if (success) {
-                document.getElementById("debug").innerHTML = `Flight ${editableFlight} card submitted!`;
-                // Refresh data to get updated submission status
+                document.getElementById("debug").innerHTML = "Flight " + editableFlight + " card submitted!";
                 await refreshSubmissionStatus();
             } else {
                 alert("Error submitting card. Please try again.");
@@ -766,7 +754,6 @@ async function refreshSubmissionStatus() {
         isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
         
         if (isGameCompleteFlag) {
-            // Show final results
             CardSubmit.showFinalResults(trTeamA, trTeamB, trTeamAGreen, trTeamBGreen, courseName, allPlayers, function() {
                 window.location.href = "index.html";
             });
@@ -785,7 +772,6 @@ function nextHole() {
     var isSaved = isHoleSaved(editableFlight, currentHole);
     
     if (isLast && isSaved) {
-        // This is the submit card case - handled by button click
         return;
     }
     
@@ -860,7 +846,6 @@ function refreshFromFirebase(data) {
         }
     }
     
-    // Update submission status
     if (data.submitted) {
         submitted.f1 = data.submitted.f1 === true;
         submitted.f2 = data.submitted.f2 === true;
@@ -883,34 +868,13 @@ function refreshFromFirebase(data) {
 }
 
 // ============================================================
-// Display Mode
+// Display Mode (using GameUI)
 // ============================================================
 
 function setDisplayMode(mode) {
-    displayMode = mode;
-    localStorage.setItem("scorecardDisplay", mode);
-    renderAll();
-}
-
-function loadDisplayPreference() {
-    var saved = localStorage.getItem("scorecardDisplay");
-    if (saved === "natural" || saved === "play") {
-        displayMode = saved;
-    } else {
-        displayMode = "play";
-    }
-    
-    var playBtn = document.getElementById("playOrderBtn");
-    var naturalBtn = document.getElementById("naturalOrderBtn");
-    if (playBtn && naturalBtn) {
-        if (displayMode === "play") {
-            playBtn.classList.add("active");
-            naturalBtn.classList.remove("active");
-        } else {
-            playBtn.classList.remove("active");
-            naturalBtn.classList.add("active");
-        }
-    }
+    GameUI.setDisplayMode(mode, function() {
+        renderAll();
+    });
 }
 
 // ============================================================
@@ -920,8 +884,6 @@ function loadDisplayPreference() {
 async function init() {
     myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
-    
-    loadDisplayPreference();
     
     var session = await new Promise(function(resolve) {
         SessionManager.initSession("real-game.html", "index.html", resolve);
@@ -954,14 +916,15 @@ async function init() {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
     f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
     
-    // Load submission status
     if (data.submitted) {
         submitted.f1 = data.submitted.f1 === true;
         submitted.f2 = data.submitted.f2 === true;
     }
     isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
     
-    currentHole = startingHole;
+    // Get the starting hole in play order
+    var playOrder = getPlayOrder();
+    currentHole = playOrder[0];
     
     flight1Data = parseFlightData(f1DataString);
     flight2Data = parseFlightData(f2DataString);
@@ -969,9 +932,20 @@ async function init() {
     updateCrossMatchResults();
     calculateTR();
     
+    // Initialize display mode buttons via GameUI
+    GameUI.updateToggleButtons(GameUI.getDisplayMode());
+    
     renderAll();
     
-    // Set up real-time listener
+    // Set up toggle button handlers
+    document.getElementById("playOrderBtn").addEventListener("click", function() {
+        setDisplayMode("play");
+    });
+    
+    document.getElementById("naturalOrderBtn").addEventListener("click", function() {
+        setDisplayMode("natural");
+    });
+    
     unsubscribe = gameRef.onSnapshot(function(snapshot) {
         if (snapshot.exists) {
             refreshFromFirebase(snapshot.data());
@@ -990,14 +964,6 @@ document.getElementById("nextBtn").addEventListener("click", handleSubmitCard);
 document.getElementById("backBtn").addEventListener("click", prevHole);
 document.getElementById("menuBtn").addEventListener("click", exitToMainMenu);
 
-document.getElementById("playOrderBtn").addEventListener("click", function() {
-    setDisplayMode("play");
-});
-
-document.getElementById("naturalOrderBtn").addEventListener("click", function() {
-    setDisplayMode("natural");
-});
-
 // Start
 init();
 </script>
@@ -1007,13 +973,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 1.01
+VERSION: 1.03
 KEY CHANGES:
-   - Integrated card submission module (js/card-submit.js)
-   - Submit button appears on last hole after save
-   - Tracks submission status for both flights
-   - Shows final results screen when both flights submit
-   - Prevents further edits after submission
-DEPENDS ON: js/session.js, js/game-ui.js, js/card-submit.js
+   - Uses GameUI display mode management (getDisplayMode, setDisplayMode, getDisplayHoles)
+   - Removed local display mode functions (delegated to GameUI)
+   - Toggle buttons now properly update active states via GameUI
+   - All display logic centralized in game-ui.js
+DEPENDS ON: js/game-ui.js v1.08 or higher
 STATUS: Ready for testing
 -->
