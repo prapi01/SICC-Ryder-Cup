@@ -1,12 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 1.03
+VERSION: 1.04
 KEY CHANGES:
-   - Uses GameUI display mode management (getDisplayMode, setDisplayMode, getDisplayHoles)
-   - Removed local display mode functions (delegated to GameUI)
-   - Toggle buttons now properly update active states via GameUI
-   - All display logic centralized in game-ui.js
-DEPENDS ON: js/game-ui.js v1.08 or higher
+   - Updated onScoreChange callback to use player NAME instead of index (3 params)
+   - Now finds player by name in allPlayers array for correct mapping
+   - Compatible with game-ui.js v1.09
+   - Uses GameUI display mode management
+DEPENDS ON: js/game-ui.js v1.09 or higher
 STATUS: Ready for testing
 -->
 
@@ -219,7 +219,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.03 REAL</div>
+<div class="version-tag">v1.04 REAL</div>
 
 <script>
 // ============================================================
@@ -398,6 +398,15 @@ function getBubbleClass(player, opponent) {
     var key = player.name + "_vs_" + opponent.name;
     var match = crossMatchResults[key];
     if (!match) return 'bubble-grey';
+    
+    // Intra-flight (same flight) - always show result, never grey
+    if (player.flight === opponent.flight) {
+        if (match.value > 0) return 'bubble-green';
+        if (match.value < 0) return 'bubble-red';
+        return 'bubble-green';
+    }
+    
+    // Cross-flight (different flight) - grey if not synced
     if (!match.isSynced) return 'bubble-grey';
     if (match.value > 0) return 'bubble-green';
     if (match.value < 0) return 'bubble-red';
@@ -523,7 +532,84 @@ function updateCrossMatchResults() {
             newResults[key2] = { value: -result, isSynced: isSynced };
         }
     }
+    
+    // Also calculate intra-flight results for each flight
+    var flights = [1, 2];
+    for (var f = 0; f < flights.length; f++) {
+        var flightNum = flights[f];
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === flightNum; });
+        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; });
+        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; });
+        
+        for (var a = 0; a < teamA.length; a++) {
+            for (var b = 0; b < teamB.length; b++) {
+                var pA = teamA[a];
+                var pB = teamB[b];
+                var intraKey = pA.name + "_vs_" + pB.name;
+                var intraKey2 = pB.name + "_vs_" + pA.name;
+                
+                // Calculate intra-flight result based on saved holes
+                var intraResult = calculateIntraMatchResult(pA, pB);
+                newResults[intraKey] = { value: intraResult, isSynced: true };
+                newResults[intraKey2] = { value: -intraResult, isSynced: true };
+            }
+        }
+    }
+    
     crossMatchResults = newResults;
+}
+
+function calculateIntraMatchResult(playerA, playerB) {
+    var flight = playerA.flight;
+    var flightData = flight === 1 ? flight1Data : flight2Data;
+    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
+    var strokeHoles = getStrokeHoles(handicapDiff);
+    
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+    var teamAPlayers = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamBPlayers = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var playerAWon = 0;
+    var playerBWon = 0;
+    
+    for (var hole = 1; hole <= 18; hole++) {
+        var holeData = flightData[hole];
+        if (!holeData || !holeData.saved) continue;
+        
+        var playerAScore = null;
+        var playerBScore = null;
+        
+        if (playerA.team === 'A') {
+            if (teamAPlayers[0] && teamAPlayers[0].name === playerA.name) playerAScore = holeData.a1;
+            else if (teamAPlayers[1] && teamAPlayers[1].name === playerA.name) playerAScore = holeData.a2;
+        } else {
+            if (teamBPlayers[0] && teamBPlayers[0].name === playerA.name) playerAScore = holeData.b1;
+            else if (teamBPlayers[1] && teamBPlayers[1].name === playerA.name) playerAScore = holeData.b2;
+        }
+        
+        if (playerB.team === 'A') {
+            if (teamAPlayers[0] && teamAPlayers[0].name === playerB.name) playerBScore = holeData.a1;
+            else if (teamAPlayers[1] && teamAPlayers[1].name === playerB.name) playerBScore = holeData.a2;
+        } else {
+            if (teamBPlayers[0] && teamBPlayers[0].name === playerB.name) playerBScore = holeData.b1;
+            else if (teamBPlayers[1] && teamBPlayers[1].name === playerB.name) playerBScore = holeData.b2;
+        }
+        
+        if (playerAScore === null || playerBScore === null) continue;
+        
+        var netA = playerAScore;
+        var netB = playerBScore;
+        if (isPlayerAReceiving) {
+            netA = playerAScore - getStrokesForHole(hole, handicapDiff, strokeHoles);
+        } else {
+            netB = playerBScore - getStrokesForHole(hole, handicapDiff, strokeHoles);
+        }
+        
+        if (netA < netB) playerAWon++;
+        else if (netB < netA) playerBWon++;
+    }
+    return playerAWon - playerBWon;
 }
 
 // ============================================================
@@ -560,9 +646,17 @@ function renderAll() {
         getBubbleValue,
         getCurrentScore,
         canEdit && !isGameCompleteFlag && !submitted["f" + editableFlight],
-        function(playerName, flight, playerIdx, delta) {
+        // Updated callback: uses player NAME instead of index (3 params)
+        function(playerName, flight, delta) {
             if (isGameCompleteFlag || submitted["f" + editableFlight]) return;
-            var player = allPlayers[playerIdx];
+            // Find player by name and flight
+            var player = null;
+            for (var i = 0; i < allPlayers.length; i++) {
+                if (allPlayers[i].name === playerName && allPlayers[i].flight === flight) {
+                    player = allPlayers[i];
+                    break;
+                }
+            }
             if (!player) return;
             var current = getCurrentScore(player);
             var newScore = current + delta;
@@ -973,12 +1067,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 1.03
+VERSION: 1.04
 KEY CHANGES:
-   - Uses GameUI display mode management (getDisplayMode, setDisplayMode, getDisplayHoles)
-   - Removed local display mode functions (delegated to GameUI)
-   - Toggle buttons now properly update active states via GameUI
-   - All display logic centralized in game-ui.js
-DEPENDS ON: js/game-ui.js v1.08 or higher
+   - Updated onScoreChange callback to use player NAME instead of index (3 params)
+   - Now finds player by name in allPlayers array for correct mapping
+   - Added intra-flight match result calculation in updateCrossMatchResults
+   - Compatible with game-ui.js v1.09
+   - Uses GameUI display mode management
+DEPENDS ON: js/game-ui.js v1.09 or higher
 STATUS: Ready for testing
 -->
