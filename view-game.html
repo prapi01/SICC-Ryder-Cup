@@ -1,12 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 1.00
-PURPOSE: Read-only viewer for View Only role
-          - Shows both Flight 1 and Flight 2 bubbles via toggle
-          - No save/next/back buttons
-          - Real-time Firebase sync (reads only)
-          - Same scorecard as game.html
-          - Cannot modify any data
+VERSION: 1.01
+KEY CHANGES:
+   - Added Device ID display (top-left)
+   - Fixed lastSyncedHole calculation (was always 0)
+   - Cross-flight bubbles now calculate correctly
+   - Same logic as game.html for cross-flight sync
 STATUS: Ready for testing
 -->
 
@@ -49,6 +48,7 @@ STATUS: Ready for testing
             background: rgba(0,0,0,0.4);
             padding: 2px 8px;
             border-radius: 12px;
+            font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
         }
@@ -229,13 +229,11 @@ STATUS: Ready for testing
                     <div class="score-value" x-text="getCurrentScore(player)"></div>
                 </div>
                 <div class="bubbles">
-                    <!-- Intra-flight bubbles (same flight, opposite team) -->
                     <template x-for="opp in getIntraFlightOpponents(player)">
                         <div class="bubble" :class="getIntraBubbleClass(player, opp)">
                             vs <span x-text="opp.label"></span> <span x-text="getIntraBubbleValue(player, opp)"></span>
                         </div>
                     </template>
-                    <!-- Cross-flight bubbles (other flight, opposite team) -->
                     <template x-for="opp in getCrossFlightOpponents(player)">
                         <div class="bubble" :class="getCrossBubbleClass(player, opp)">
                             vs <span x-text="opp.label"></span> <span x-text="getCrossBubbleValue(player, opp)"></span>
@@ -245,7 +243,6 @@ STATUS: Ready for testing
             </div>
         </template>
         
-        <!-- Scorecard (same as game.html, read-only) -->
         <div class="scorecard-section">
             <div class="scorecard-header">
                 <div class="scorecard-title">SCORECARD</div>
@@ -257,7 +254,6 @@ STATUS: Ready for testing
             <div class="scorecard-wrapper" id="scorecardWrapper"></div>
         </div>
         
-        <!-- Back to Main Menu -->
         <button class="btn-menu" @click="goBack">← Back to Main Menu</button>
         
         <div class="debug">
@@ -268,7 +264,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.00</div>
+<div class="version-tag">v1.01</div>
 
 <script>
 const FIREBASE_CONFIG = {
@@ -287,7 +283,6 @@ const db = firebase.firestore();
 
 function viewerApp() {
     return {
-        // State
         loading: true,
         gameId: null,
         gameMode: 'real',
@@ -324,6 +319,21 @@ function viewerApp() {
         f1DataString: '',
         f2DataString: '',
         
+        // Helper: Calculate last synced hole (highest hole where both flights have saved)
+        calculateLastSyncedHole() {
+            let lastSynced = 0;
+            for (let h = 1; h <= 18; h++) {
+                const f1Saved = this.flight1Data[h]?.saved || false;
+                const f2Saved = this.flight2Data[h]?.saved || false;
+                if (f1Saved && f2Saved) {
+                    lastSynced = h;
+                } else {
+                    break;
+                }
+            }
+            return lastSynced;
+        },
+        
         // Helper: Check if a flight has any saved holes
         hasAnySavedHoles(flight) {
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
@@ -333,7 +343,6 @@ function viewerApp() {
             return false;
         },
         
-        // Computed
         get displayHolesList() {
             if (this.displayMode === 'natural') {
                 return [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
@@ -528,7 +537,6 @@ function viewerApp() {
             return absValue.toString();
         },
         
-        // Stroke calculation helpers
         getStrokeHoles(handicapDiff) {
             if (handicapDiff <= 0) return [];
             const holesWithSi = [];
@@ -549,19 +557,11 @@ function viewerApp() {
             return strokeHoles.includes(holeNumber) ? 1 : 0;
         },
         
-        // Cross match results update
         updateCrossMatchResults() {
-            let newLastSynced = 0;
-            for (let h = 1; h <= 18; h++) {
-                const f1Saved = this.flight1Data[h]?.saved || false;
-                const f2Saved = this.flight2Data[h]?.saved || false;
-                if (f1Saved && f2Saved) {
-                    newLastSynced = h;
-                } else {
-                    break;
-                }
-            }
-            this.lastSyncedHole = newLastSynced;
+            // Calculate last synced hole
+            this.lastSyncedHole = this.calculateLastSyncedHole();
+            
+            console.log("updateCrossMatchResults - lastSyncedHole:", this.lastSyncedHole);
             
             const f1Players = this.allPlayers.filter(p => p.flight === 1);
             const f2Players = this.allPlayers.filter(p => p.flight === 2);
@@ -578,12 +578,12 @@ function viewerApp() {
                     
                     this.crossMatchResults[key1] = {
                         value: result,
-                        isSynced: true  // Viewer always sees synced state
+                        isSynced: (this.lastSyncedHole >= this.currentHole && this.lastSyncedHole > 0)
                     };
                     
                     this.crossMatchResults[key2] = {
                         value: -result,
-                        isSynced: true
+                        isSynced: (this.lastSyncedHole >= this.currentHole && this.lastSyncedHole > 0)
                     };
                 }
             }
@@ -645,7 +645,6 @@ function viewerApp() {
             return playerAWon - playerBWon;
         },
         
-        // Scorecard rendering
         renderScorecard() {
             const wrapper = document.getElementById('scorecardWrapper');
             if (!wrapper) return;
@@ -746,7 +745,6 @@ function viewerApp() {
             wrapper.innerHTML = html;
         },
         
-        // TR calculation (simplified for viewer)
         calculateTR() {
             this.trTeamA = 9.5;
             this.trTeamB = 9.5;
@@ -754,7 +752,6 @@ function viewerApp() {
             this.trTeamBGreen = true;
         },
         
-        // Refresh from Firebase (read-only)
         refreshFromFirebase(data) {
             this.f1DataString = data.f1?.d || this.f1DataString;
             this.f2DataString = data.f2?.d || this.f2DataString;
@@ -774,8 +771,8 @@ function viewerApp() {
             }
             
             if (changed) {
-                // Update current hole based on highest saved hole in either flight
-                let highest = 1;
+                // Update current hole based on highest saved hole
+                let highest = this.startingHole;
                 for (let h = 1; h <= 18; h++) {
                     if (this.flight1Data[h]?.saved || this.flight2Data[h]?.saved) {
                         highest = h;
@@ -822,10 +819,10 @@ function viewerApp() {
         },
         
         async init() {
-            this.loadDisplayPreference();
-            
             // Set device ID display
             document.getElementById("deviceTag").innerHTML = SessionManager.getDeviceIdDisplay();
+            
+            this.loadDisplayPreference();
             
             await new Promise((resolve) => {
                 SessionManager.initSession('view-game.html', 'index.html', (session) => {
@@ -865,7 +862,7 @@ function viewerApp() {
             this.flight2Data = this.parseFlightData(this.f2DataString);
             
             // Find highest saved hole
-            let highest = 1;
+            let highest = this.startingHole;
             for (let h = 1; h <= 18; h++) {
                 if (this.flight1Data[h]?.saved || this.flight2Data[h]?.saved) {
                     highest = h;
@@ -905,14 +902,11 @@ function viewerApp() {
 
 <!--
 FILE: view-game.html
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - New file for View Only role
-   - Read-only - no save/next/back buttons
-   - Flight toggle (F1/F2) to see both perspectives
-   - Shows both intra and cross bubbles for selected flight
-   - Same scorecard as game.html
-   - Real-time Firebase sync (reads only)
-   - Does NOT write any data (prevents reset bug)
+   - Added Device ID display (top-left)
+   - Fixed lastSyncedHole calculation (was always 0)
+   - Cross-flight bubbles now calculate correctly
+   - Same logic as game.html for cross-flight sync
 STATUS: Ready for testing
 -->
