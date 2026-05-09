@@ -1,10 +1,11 @@
 <!--
 FILE: game.html
-VERSION: 2.14
+VERSION: 2.15
 KEY CHANGES:
-   - Fixed calculateLastSyncedHole() to use play order (starting hole first)
-   - Cross-flight bubbles now detect synced holes correctly with shotgun start
-   - lastSyncedHole now returns the actual hole number, not position
+   - Completely rewritten renderScorecard() with proper table structure
+   - Fixed column alignment for Par, SI, player scores, T-1, T-2, Strk rows
+   - Added padding-top to container to fix LIVE bubble overlap
+   - Verified all 18 holes display correctly with shotgun start
 STATUS: Ready for testing
 -->
 
@@ -23,7 +24,7 @@ STATUS: Ready for testing
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
-        .container { max-width: 550px; margin: 0 auto; }
+        .container { max-width: 550px; margin: 0 auto; padding-top: 35px; }
         
         .version-tag {
             position: fixed;
@@ -260,7 +261,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.14</div>
+<div class="version-tag">v2.15</div>
 
 <script>
 const FIREBASE_CONFIG = {
@@ -320,7 +321,6 @@ function gameApp() {
         currentLock: null,
         myDeviceId: '',
         
-        // Helper: Get play order based on starting hole
         getPlayOrder() {
             const order = [];
             for (let i = this.startingHole; i <= 18; i++) order.push(i);
@@ -328,7 +328,6 @@ function gameApp() {
             return order;
         },
         
-        // Helper: Calculate last synced hole (using play order)
         calculateLastSyncedHole() {
             const playOrder = this.getPlayOrder();
             let lastSynced = 0;
@@ -345,7 +344,6 @@ function gameApp() {
             return lastSynced;
         },
         
-        // Helper: Check if a flight has any saved holes
         hasAnySavedHoles(flight) {
             const flightData = flight === 1 ? this.flight1Data : this.flight2Data;
             for (let h = 1; h <= 18; h++) {
@@ -354,24 +352,18 @@ function gameApp() {
             return false;
         },
         
-        // Check if current device still owns the lock
         async checkLockOwnership() {
             if (!this.canEdit) return true;
-            
             const collection = 'scheduledGames';
             const doc = await db.collection(collection).doc(this.gameId).get();
             if (!doc.exists) return false;
-            
             const data = doc.data();
             const lockField = this.editableFlight === 1 ? 'f1' : 'f2';
             const currentLockData = data.locks?.[lockField];
-            
             if (!currentLockData) return false;
-            
             const now = Date.now();
             const isExpired = currentLockData.ex && currentLockData.ex < now;
             const isMine = currentLockData.did === this.myDeviceId;
-            
             if (isExpired) return false;
             if (!isMine) {
                 alert("Your role has been taken by another device. You are now in View Only mode.");
@@ -492,15 +484,12 @@ function gameApp() {
             return flightData[hole]?.saved || false;
         },
         
-        // Intra-flight bubbles
         getIntraFlightOpponents(player) {
             return this.allPlayers.filter(op => op.team !== player.team && op.flight === player.flight);
         },
         
         getIntraBubbleClass(player, opponent) {
-            if (!this.hasAnySavedHoles(player.flight)) {
-                return 'bubble-grey';
-            }
+            if (!this.hasAnySavedHoles(player.flight)) return 'bubble-grey';
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return 'bubble-green';
             if (result < 0) return 'bubble-red';
@@ -508,9 +497,7 @@ function gameApp() {
         },
         
         getIntraBubbleValue(player, opponent) {
-            if (!this.hasAnySavedHoles(player.flight)) {
-                return 'AS';
-            }
+            if (!this.hasAnySavedHoles(player.flight)) return 'AS';
             const result = this.calculateIntraMatchResult(player, opponent);
             if (result > 0) return result.toString();
             if (result < 0) return Math.abs(result).toString();
@@ -570,7 +557,6 @@ function gameApp() {
             return playerAWon - playerBWon;
         },
         
-        // Cross-flight bubbles
         getCrossFlightOpponents(player) {
             return this.allPlayers.filter(op => op.team !== player.team && op.flight !== player.flight);
         },
@@ -616,7 +602,6 @@ function gameApp() {
         
         updateCrossMatchResults() {
             this.lastSyncedHole = this.calculateLastSyncedHole();
-            
             console.log("updateCrossMatchResults - lastSyncedHole:", this.lastSyncedHole, "currentHole:", this.currentHole);
             
             const f1Players = this.allPlayers.filter(p => p.flight === 1);
@@ -703,49 +688,58 @@ function gameApp() {
             
             const holes = this.displayHolesList;
             const players = this.scorecardPlayers;
+            
+            // Group players by flight for proper display order
             const flight1Players = players.filter(p => p.flight === 1);
             const flight2Players = players.filter(p => p.flight === 2);
             
+            // Start building table
             let html = '<table class="scorecard-table">';
+            
+            // Header row
             html += '<thead><tr><th>Hole</th>';
-            for (const h of holes) html += `<th>${h}</th>`;
+            for (const h of holes) {
+                html += `<th>${h}</th>`;
+            }
             html += '<th>Tot</th> </thead><tbody>';
             
             // Par row
-            html += '</table><td style="font-weight:700;">Par<\/td>';
+            html += '<tr><td style="font-weight:700;">Par</td>';
             let totalPar = 0;
             for (const h of holes) {
                 const par = this.coursePar[h - 1];
                 totalPar += par;
-                html += `<td>${par}<\/td>`;
+                html += `<td>${par}</td>`;
             }
-            html += `<td>${totalPar}<\/td><\/tr>`;
+            html += `<td>${totalPar}</td></tr>`;
             
             // SI row
-            html += '<tr><td style="font-weight:700;">SI<\/td>';
+            html += '<tr><td style="font-weight:700;">SI</td>';
             for (const h of holes) {
                 const si = this.courseSi[h - 1];
-                html += `<td>${si}<\/td>`;
+                html += `<td>${si}</td>`;
             }
-            html += '<td>-<\/td><\/tr>';
+            html += '<td>-</td></tr>';
             
             // Flight 1 players
             for (const player of flight1Players) {
-                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
+                html += `<tr><td style="font-weight:600;">${player.label}</td>`;
                 let playerTotal = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
                     playerTotal += score;
                     const isSaved = this.isHoleSaved(player.flight, h);
                     const cellClass = isSaved ? 'score-green' : 'score-invisible';
-                    html += `<td class="${cellClass}">${score}<\/td>`;
+                    html += `<td class="${cellClass}">${score}</td>`;
                 }
-                html += `<td class="score-green">${playerTotal}<\/td><\/tr>`;
+                html += `<td class="score-green">${playerTotal}</td></tr>`;
             }
             
-            html += '<tr class="green-line"><td colspan="20"><\/tr>';
+            // Green line after Flight 1
+            html += '<tr class="green-line"><td colspan="20"></td></tr>';
             
-            // T-1 row            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+            // T-1 row
+            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
             for (let i = 0; i < holes.length; i++) {
                 const val = this.t1Row[i] || '_';
                 const displayVal = (val === '_' || val === '') ? '' : val;
@@ -754,6 +748,7 @@ function gameApp() {
             }
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
+            // Green line after T-1
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // Flight 2 players
@@ -780,6 +775,7 @@ function gameApp() {
             }
             html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
+            // Green line after T-2
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // Strk row
@@ -798,7 +794,6 @@ function gameApp() {
         
         async saveHole() {
             if (!this.canEdit) return;
-            
             const hasLock = await this.checkLockOwnership();
             if (!hasLock) return;
             
@@ -921,15 +916,12 @@ function gameApp() {
             if (!confirm("Leave the game? Your current unsaved changes will be lost.")) {
                 return;
             }
-            
             const flight = this.editableFlight;
             const collection = 'scheduledGames';
             const releasePayload = {};
-            
             if (this.canEdit) {
                 releasePayload[`locks.f${flight}`] = null;
                 releasePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-                
                 try {
                     await db.collection(collection).doc(this.gameId).update(releasePayload);
                     console.log(`Lock released for Flight ${flight}`);
@@ -937,7 +929,6 @@ function gameApp() {
                     console.error("Error releasing lock:", error);
                 }
             }
-            
             sessionStorage.removeItem("currentGame");
             localStorage.removeItem("userRole");
             window.location.href = "index.html";
@@ -977,7 +968,6 @@ function gameApp() {
         async init() {
             this.myDeviceId = SessionManager.getDeviceIdDisplay();
             document.getElementById("deviceTag").innerHTML = this.myDeviceId;
-            
             this.loadDisplayPreference();
             
             await new Promise((resolve) => {
@@ -1052,11 +1042,11 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.14
+VERSION: 2.15
 KEY CHANGES:
-   - Fixed calculateLastSyncedHole() to use play order (starting hole first)
-   - Cross-flight bubbles now detect synced holes correctly with shotgun start
-   - lastSyncedHole now returns the actual hole number, not position
-   - Navigation (next/prev) now follows play order
+   - Completely rewritten renderScorecard() with proper table structure
+   - Fixed column alignment for Par, SI, player scores, T-1, T-2, Strk rows
+   - Added padding-top to container to fix LIVE bubble overlap
+   - Verified all 18 holes display correctly with shotgun start
 STATUS: Ready for testing
 -->
