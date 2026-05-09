@@ -1,9 +1,9 @@
 /*
 FILE: js/game-ui.js
-VERSION: 1.06
-KEY CHANGES (based on v1.01 working baseline):
-   - ONLY change: TR font size set to 2rem, font-weight 800 (inline style)
-   - NO green line changes (reverted to v1.01 behavior)
+VERSION: 1.07
+KEY CHANGES (based on v1.06):
+   - ADDED: Green line after Flight 2 players (before T-2 row) - CORRECT POSITION
+   - TR font size: 2rem, font-weight 800 (from v1.06)
    - All other code identical to v1.01
 STATUS: Ready for testing
 */
@@ -63,7 +63,7 @@ var GameUI = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '</tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -107,6 +107,9 @@ var GameUI = (function() {
             }
             html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
+        
+        // ***** GREEN LINE AFTER FLIGHT 2 (BEFORE T-2) - ADDED CORRECTLY *****
+        html += '<tr class="green-line"><td colspan="20"> </td>';
         
         // T-2 row
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
@@ -289,10 +292,10 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 1.06
-KEY CHANGES (based on v1.01 working baseline):
-   - ONLY change: TR font size set to 2rem, font-weight 800 (inline style)
-   - NO green line changes (reverted to v1.01 behavior)
+VERSION: 1.07
+KEY CHANGES (based on v1.06):
+   - ADDED: Green line after Flight 2 players (before T-2 row) - CORRECT POSITION
+   - TR font size: 2rem, font-weight 800 (from v1.06)
    - All other code identical to v1.01
 STATUS: Ready for testing
 */
