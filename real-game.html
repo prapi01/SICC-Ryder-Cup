@@ -1,13 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 1.00
-PURPOSE: REAL mode game updater (scheduledGames collection)
-          - Uses game-ui.js for all rendering
-          - Firebase read/write with real-time sync
-          - One-device-one-role enforcement
-          - Updates lastActive on save
-          - Redirects to view-game.html if lock taken
-DEPENDS ON: js/session.js, js/game-ui.js
+VERSION: 1.01
+KEY CHANGES:
+   - Integrated card submission module (js/card-submit.js)
+   - Submit button appears on last hole after save
+   - Tracks submission status for both flights
+   - Shows final results screen when both flights submit
+   - Prevents further edits after submission
+DEPENDS ON: js/session.js, js/game-ui.js, js/card-submit.js
 STATUS: Ready for testing
 -->
 
@@ -22,6 +22,7 @@ STATUS: Ready for testing
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     <script src="js/game-ui.js"></script>
+    <script src="js/card-submit.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -219,7 +220,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.00 REAL</div>
+<div class="version-tag">v1.01 REAL</div>
 
 <script>
 // ============================================================
@@ -256,10 +257,10 @@ var coursePar = [];
 var courseSi = [];
 var allPlayers = [];
 
-var flight1Data = {};      // { hole: { saved, a1, a2, b1, b2 } }
+var flight1Data = {};
 var flight2Data = {};
-var localChanges = {};     // { flight_hole_playerName: score }
-var savedHoles = { 1: [], 2: [] };  // For UI callbacks
+var localChanges = {};
+var savedHoles = { 1: [], 2: [] };
 
 var t1Row = Array(18).fill('_');
 var t2Row = Array(18).fill('_');
@@ -276,6 +277,10 @@ var myDeviceShortName = "";
 var unsubscribe = null;
 var f1DataString = "";
 var f2DataString = "";
+
+// Submission tracking
+var submitted = { f1: false, f2: false };
+var isGameCompleteFlag = false;
 
 // ============================================================
 // Helper Functions
@@ -532,7 +537,6 @@ function updateCrossMatchResults() {
 // ============================================================
 
 function calculateTR() {
-    // Placeholder - real calculation will be implemented
     trTeamA = 9.5;
     trTeamB = 9.5;
     trTeamAGreen = true;
@@ -544,21 +548,16 @@ function calculateTR() {
 // ============================================================
 
 function renderAll() {
-    // Update hole header
     var currentPar = coursePar[currentHole - 1];
     var currentSi = courseSi[currentHole - 1];
     GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
     
-    // Update flight tab
-    GameUI.updateFlightTab("flightTab", editableFlight, canEdit);
+    GameUI.updateFlightTab("flightTab", editableFlight, canEdit && !isGameCompleteFlag);
     
-    // Update TR
     GameUI.updateTR("trDisplay", trTeamA, trTeamB, trTeamAGreen, trTeamBGreen);
     
-    // Get current flight players
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
     
-    // Render player cards
     GameUI.renderPlayerCards(
         "playerCards",
         currentPlayers,
@@ -566,8 +565,9 @@ function renderAll() {
         getBubbleClass,
         getBubbleValue,
         getCurrentScore,
-        canEdit,
+        canEdit && !isGameCompleteFlag && !submitted[`f${editableFlight}`],
         function(playerName, flight, playerIdx, delta) {
+            if (isGameCompleteFlag || submitted[`f${editableFlight}`]) return;
             var player = allPlayers[playerIdx];
             if (!player) return;
             var current = getCurrentScore(player);
@@ -580,7 +580,6 @@ function renderAll() {
         }
     );
     
-    // Render scorecard
     var holes = getDisplayHoles();
     GameUI.renderScorecard(
         "scorecardWrapper",
@@ -594,6 +593,40 @@ function renderAll() {
         coursePar,
         courseSi
     );
+    
+    // Update next button text based on submission status
+    updateNextButton();
+}
+
+function updateNextButton() {
+    var nextBtn = document.getElementById("nextBtn");
+    if (!nextBtn) return;
+    
+    if (isGameCompleteFlag) {
+        nextBtn.textContent = "✅ COMPLETE";
+        nextBtn.disabled = true;
+        return;
+    }
+    
+    if (submitted[`f${editableFlight}`]) {
+        nextBtn.textContent = "✓ SUBMITTED";
+        nextBtn.disabled = true;
+        return;
+    }
+    
+    var isLast = CardSubmit.isLastHole(currentHole, startingHole);
+    var isSaved = isHoleSaved(editableFlight, currentHole);
+    
+    if (isLast && isSaved) {
+        nextBtn.textContent = "📋 SUBMIT CARD";
+        nextBtn.disabled = false;
+    } else if (isLast && !isSaved) {
+        nextBtn.textContent = "📋 SUBMIT CARD";
+        nextBtn.disabled = true;
+    } else {
+        nextBtn.textContent = "Next →";
+        nextBtn.disabled = false;
+    }
 }
 
 // ============================================================
@@ -602,6 +635,10 @@ function renderAll() {
 
 async function saveHole() {
     if (!canEdit) return;
+    if (isGameCompleteFlag || submitted[`f${editableFlight}`]) {
+        alert("Card already submitted. Cannot make changes.");
+        return;
+    }
     
     // Check lock ownership
     var collection = 'scheduledGames';
@@ -662,6 +699,9 @@ async function saveHole() {
                 document.getElementById("debug").innerHTML = "";
             }
         }, 2000);
+        
+        // After save, if this was the last hole, enable submit button appearance
+        updateNextButton();
     } catch (error) {
         document.getElementById("debug").innerHTML = "Save error: " + error.message;
     }
@@ -686,10 +726,69 @@ function updateFlightDataString(oldString, holeNumber, scores) {
 }
 
 // ============================================================
+// Submit Card Handler
+// ============================================================
+
+async function handleSubmitCard() {
+    var isLast = CardSubmit.isLastHole(currentHole, startingHole);
+    var isSaved = isHoleSaved(editableFlight, currentHole);
+    
+    if (!isLast || !isSaved) {
+        // Normal next hole behavior
+        nextHole();
+        return;
+    }
+    
+    // Show submit modal
+    CardSubmit.showSubmitModal(async function(confirmed) {
+        if (confirmed) {
+            var success = await CardSubmit.submitCard(gameId, editableFlight, "scheduledGames");
+            if (success) {
+                document.getElementById("debug").innerHTML = `Flight ${editableFlight} card submitted!`;
+                // Refresh data to get updated submission status
+                await refreshSubmissionStatus();
+            } else {
+                alert("Error submitting card. Please try again.");
+            }
+        }
+    });
+}
+
+async function refreshSubmissionStatus() {
+    var doc = await db.collection("scheduledGames").doc(gameId).get();
+    if (doc.exists) {
+        var data = doc.data();
+        if (data.submitted) {
+            submitted.f1 = data.submitted.f1 === true;
+            submitted.f2 = data.submitted.f2 === true;
+        }
+        
+        isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
+        
+        if (isGameCompleteFlag) {
+            // Show final results
+            CardSubmit.showFinalResults(trTeamA, trTeamB, trTeamAGreen, trTeamBGreen, courseName, allPlayers, function() {
+                window.location.href = "index.html";
+            });
+        }
+        
+        renderAll();
+    }
+}
+
+// ============================================================
 // Navigation
 // ============================================================
 
 function nextHole() {
+    var isLast = CardSubmit.isLastHole(currentHole, startingHole);
+    var isSaved = isHoleSaved(editableFlight, currentHole);
+    
+    if (isLast && isSaved) {
+        // This is the submit card case - handled by button click
+        return;
+    }
+    
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     var nextIndex = (currentIndex + 1) % 18;
@@ -761,11 +860,25 @@ function refreshFromFirebase(data) {
         }
     }
     
+    // Update submission status
+    if (data.submitted) {
+        submitted.f1 = data.submitted.f1 === true;
+        submitted.f2 = data.submitted.f2 === true;
+    }
+    
+    isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
+    
     if (changed) {
         updateSavedHolesList();
         updateCrossMatchResults();
         calculateTR();
         renderAll();
+    }
+    
+    if (isGameCompleteFlag) {
+        CardSubmit.showFinalResults(trTeamA, trTeamB, trTeamAGreen, trTeamBGreen, courseName, allPlayers, function() {
+            window.location.href = "index.html";
+        });
     }
 }
 
@@ -805,7 +918,6 @@ function loadDisplayPreference() {
 // ============================================================
 
 async function init() {
-    // Set device name
     myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
     
@@ -842,6 +954,13 @@ async function init() {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
     f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
     
+    // Load submission status
+    if (data.submitted) {
+        submitted.f1 = data.submitted.f1 === true;
+        submitted.f2 = data.submitted.f2 === true;
+    }
+    isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
+    
     currentHole = startingHole;
     
     flight1Data = parseFlightData(f1DataString);
@@ -867,7 +986,7 @@ async function init() {
 // ============================================================
 
 document.getElementById("saveBtn").addEventListener("click", saveHole);
-document.getElementById("nextBtn").addEventListener("click", nextHole);
+document.getElementById("nextBtn").addEventListener("click", handleSubmitCard);
 document.getElementById("backBtn").addEventListener("click", prevHole);
 document.getElementById("menuBtn").addEventListener("click", exitToMainMenu);
 
@@ -888,13 +1007,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 1.00
-PURPOSE: REAL mode game updater (scheduledGames collection)
-          - Uses game-ui.js for all rendering
-          - Firebase read/write with real-time sync
-          - One-device-one-role enforcement
-          - Updates lastActive on save
-          - Redirects to view-game.html if lock taken
-DEPENDS ON: js/session.js, js/game-ui.js
+VERSION: 1.01
+KEY CHANGES:
+   - Integrated card submission module (js/card-submit.js)
+   - Submit button appears on last hole after save
+   - Tracks submission status for both flights
+   - Shows final results screen when both flights submit
+   - Prevents further edits after submission
+DEPENDS ON: js/session.js, js/game-ui.js, js/card-submit.js
 STATUS: Ready for testing
 -->
