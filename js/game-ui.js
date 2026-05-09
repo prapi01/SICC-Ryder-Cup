@@ -1,11 +1,10 @@
 /*
 FILE: js/game-ui.js
-VERSION: 1.03
-KEY CHANGES:
-   - Based on v1.01 (working baseline)
-   - Added ONE green line after Flight 2 players (before T-2 row)
-   - Added inline style to TR: font-size: 2rem (prominent title result)
-   - NO other changes - player handicap format unchanged, all logic preserved
+VERSION: 1.05
+KEY CHANGES (based on v1.01 working baseline):
+   - ADDED: TR font size set to 2rem, font-weight 800 (inline style)
+   - ADDED: Green line after Flight 2 players (before T-2 row)
+   - NO other changes - all rendering logic preserved from v1.01
 STATUS: Ready for testing
 */
 
@@ -34,7 +33,7 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead><table><th>Hole</th>';
+        html += '<thead><tr><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
@@ -81,7 +80,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-1 row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        html += '</table><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var displayVal = (val === '_' || val === '') ? '' : val;
@@ -109,7 +108,7 @@ var GameUI = (function() {
             html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        // ***** GREEN LINE added after Flight 2 (before T-2) *****
+        // ***** ADDED: Green line after Flight 2 (before T-2) *****
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-2 row
@@ -227,7 +226,7 @@ var GameUI = (function() {
         var teamAColorClass = teamAGreen ? 'team-score-green' : 'team-score-red';
         var teamBColorClass = teamBGreen ? 'team-score-green' : 'team-score-red';
         
-        // *** TR font size set to 2rem for prominence ***
+        // ***** ADDED: TR font size 2rem, font-weight 800 *****
         var html = '<div style="font-size: 2rem; font-weight: 800;">' +
                        '<span class="' + teamAColorClass + '">Team A ' + teamADisplay + '</span>' + 
                        ' - ' + 
@@ -293,11 +292,10 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 1.03
-KEY CHANGES:
-   - Based on v1.01 (working baseline)
-   - Added ONE green line after Flight 2 players (before T-2 row)
-   - Added inline style to TR: font-size: 2rem, font-weight: 800 (prominent title result)
-   - NO other changes - player handicap format unchanged, all logic preserved
+VERSION: 1.05
+KEY CHANGES (based on v1.01 working baseline):
+   - ADDED: TR font size set to 2rem, font-weight 800 (inline style)
+   - ADDED: Green line after Flight 2 players (before T-2 row)
+   - NO other changes - all rendering logic preserved from v1.01
 STATUS: Ready for testing
 */
