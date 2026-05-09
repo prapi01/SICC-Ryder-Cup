@@ -1,12 +1,13 @@
 <!--
 FILE: game.html
-VERSION: 2.16
+VERSION: 2.17
 KEY CHANGES:
-   - Added debug logging to trace data loading
-   - Fixed player loading from Firestore
-   - Ensured allPlayers array is populated correctly
-   - Added console logs for each step of init()
-STATUS: Debug version - for testing data loading
+   - Uses short device name from SessionManager.getShortNameOnly() for device tag
+   - Fixed scorecard rendering with proper table structure
+   - Cross-flight sync with play order support
+   - Shotgun start support
+   - Back to Main Menu with lock release
+STATUS: Ready for testing
 -->
 
 <!DOCTYPE html>
@@ -261,7 +262,7 @@ STATUS: Debug version - for testing data loading
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.16</div>
+<div class="version-tag">v2.17</div>
 
 <script>
 const FIREBASE_CONFIG = {
@@ -318,7 +319,7 @@ function gameApp() {
         f1DataString: '',
         f2DataString: '',
         
-        myDeviceId: '',
+        myShortName: '',
         
         getPlayOrder() {
             const order = [];
@@ -353,7 +354,7 @@ function gameApp() {
         
         async checkLockOwnership() {
             if (!this.canEdit) return true;
-            const collection = 'scheduledGames';
+            const collection = this.gameMode === 'preview' ? 'previewSandboxes' : 'scheduledGames';
             const doc = await db.collection(collection).doc(this.gameId).get();
             if (!doc.exists) return false;
             const data = doc.data();
@@ -362,7 +363,7 @@ function gameApp() {
             if (!currentLockData) return false;
             const now = Date.now();
             const isExpired = currentLockData.ex && currentLockData.ex < now;
-            const isMine = currentLockData.did === this.myDeviceId;
+            const isMine = currentLockData.did === SessionManager.getDeviceIdDisplay();
             if (isExpired) return false;
             if (!isMine) {
                 alert("Your role has been taken by another device. You are now in View Only mode.");
@@ -405,7 +406,6 @@ function gameApp() {
         },
         
         get scorecardPlayers() {
-            // Return all players sorted by flight then team then handicap
             const flight1A = this.allPlayers.filter(p => p.flight === 1 && p.team === 'A').sort((a, b) => a.handicap - b.handicap);
             const flight1B = this.allPlayers.filter(p => p.flight === 1 && p.team === 'B').sort((a, b) => a.handicap - b.handicap);
             const flight2A = this.allPlayers.filter(p => p.flight === 2 && p.team === 'A').sort((a, b) => a.handicap - b.handicap);
@@ -602,7 +602,6 @@ function gameApp() {
         
         updateCrossMatchResults() {
             this.lastSyncedHole = this.calculateLastSyncedHole();
-            console.log("updateCrossMatchResults - lastSyncedHole:", this.lastSyncedHole);
             
             const f1Players = this.allPlayers.filter(p => p.flight === 1);
             const f2Players = this.allPlayers.filter(p => p.flight === 2);
@@ -689,55 +688,53 @@ function gameApp() {
             const holes = this.displayHolesList;
             const players = this.scorecardPlayers;
             
-            console.log("renderScorecard - holes:", holes.length, "players:", players.length);
-            
             let html = '<table class="scorecard-table">';
             html += '<thead><tr><th>Hole</th>';
             for (const h of holes) html += `<th>${h}</th>`;
             html += '<th>Tot</th> </thead><tbody>';
             
             // Par row
-            html += '<tr><td style="font-weight:700;">Par</td>';
+            html += '<tr><td style="font-weight:700;">Par<\/td>';
             let totalPar = 0;
             for (const h of holes) {
                 const par = this.coursePar[h - 1];
                 totalPar += par;
-                html += `<td>${par}</td>`;
+                html += `<td>${par}<\/td>`;
             }
-            html += `<td>${totalPar}</td></tr>`;
+            html += `<td>${totalPar}<\/td><\/tr>`;
             
             // SI row
-            html += '<tr><td style="font-weight:700;">SI</td>';
+            html += '<tr><td style="font-weight:700;">SI<\/td>';
             for (const h of holes) {
-                html += `<td>${this.courseSi[h - 1]}</td>`;
+                html += `<td>${this.courseSi[h - 1]}<\/td>`;
             }
-            html += '<td>-</td></tr>';
+            html += '<td>-<\/td><\/tr>';
             
             // Player rows
             for (const player of players) {
-                html += `<tr><td style="font-weight:600;">${player.label}</td>`;
+                html += `<tr><td style="font-weight:600;">${player.label}<\/td>`;
                 let total = 0;
                 for (const h of holes) {
                     const score = this.getStoredScore(player, h);
                     total += score;
                     const isSaved = this.isHoleSaved(player.flight, h);
                     const cellClass = isSaved ? 'score-green' : 'score-invisible';
-                    html += `<td class="${cellClass}">${score}</td>`;
+                    html += `<td class="${cellClass}">${score}<\/td>`;
                 }
-                html += `<td class="score-green">${total}</td></tr>`;
+                html += `<td class="score-green">${total}<\/td><\/tr>`;
             }
             
-            html += '<tr class="green-line"><td colspan="20"></td></tr>';
+            html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
             // T-1 row
-            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
+            html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
             for (let i = 0; i < holes.length; i++) {
                 const val = this.t1Row[i] || '_';
                 const displayVal = (val === '_' || val === '') ? '' : val;
                 const cellClass = (val && val !== '_') ? 'score-green' : 'score-invisible';
-                html += `<td class="${cellClass}">${displayVal}</td>`;
+                html += `<td class="${cellClass}">${displayVal}<\/td>`;
             }
-            html += '<td style="color:#4caf50;">-</td><\/tr>';
+            html += '<td style="color:#4caf50;">-<\/td><\/tr>';
             
             html += '<tr class="green-line"><td colspan="20"><\/tr>';
             
@@ -797,7 +794,7 @@ function gameApp() {
                 a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score
             });
             
-            const collection = 'scheduledGames';
+            const collection = this.gameMode === 'preview' ? 'previewSandboxes' : 'scheduledGames';
             const updatePayload = {};
             updatePayload[`f${flight}.d`] = newDataString;
             updatePayload[`f${flight}.se`] = true;
@@ -892,7 +889,7 @@ function gameApp() {
                 return;
             }
             const flight = this.editableFlight;
-            const collection = 'scheduledGames';
+            const collection = this.gameMode === 'preview' ? 'previewSandboxes' : 'scheduledGames';
             const releasePayload = {};
             if (this.canEdit) {
                 releasePayload[`locks.f${flight}`] = null;
@@ -910,7 +907,6 @@ function gameApp() {
         },
         
         refreshFromFirebase(data) {
-            console.log("refreshFromFirebase called");
             this.f1DataString = data.f1?.d || this.f1DataString;
             this.f2DataString = data.f2?.d || this.f2DataString;
             
@@ -942,9 +938,10 @@ function gameApp() {
         },
         
         async init() {
-            console.log("=== GAME INIT START ===");
-            this.myDeviceId = SessionManager.getDeviceIdDisplay();
-            document.getElementById("deviceTag").innerHTML = this.myDeviceId;
+            // Get short device name and display
+            this.myShortName = await SessionManager.getShortNameOnly();
+            document.getElementById("deviceTag").innerHTML = "🖥️ " + this.myShortName;
+            
             this.loadDisplayPreference();
             
             await new Promise((resolve) => {
@@ -955,7 +952,6 @@ function gameApp() {
                     this.editableFlight = session.activeGame?.role === 'update1' ? 1 : 
                                         session.activeGame?.role === 'update2' ? 2 : 1;
                     this.canEdit = this.editableFlight === 1 || this.editableFlight === 2;
-                    console.log("Session loaded - gameId:", this.gameId, "editableFlight:", this.editableFlight);
                     resolve();
                 });
             });
@@ -967,21 +963,15 @@ function gameApp() {
             }
             
             const collection = this.gameMode === 'preview' ? 'previewSandboxes' : 'scheduledGames';
-            console.log("Loading from collection:", collection, "doc:", this.gameId);
-            
             const gameRef = db.collection(collection).doc(this.gameId);
             const doc = await gameRef.get();
             if (!doc.exists) {
-                console.error("Document not found!");
                 this.syncStatus = 'Error: Game not found';
                 this.loading = false;
                 return;
             }
             
             const data = doc.data();
-            console.log("Document loaded - course:", data.course?.name);
-            console.log("Players count:", data.players?.length);
-            
             this.courseName = data.course?.name || 'Unknown Course';
             this.coursePar = data.course?.par || [];
             this.courseSi = data.course?.si || [];
@@ -989,9 +979,6 @@ function gameApp() {
             this.startingHole = data.startingHole || 1;
             this.f1DataString = data.f1?.d || '';
             this.f2DataString = data.f2?.d || '';
-            
-            console.log("allPlayers after assignment:", this.allPlayers.length);
-            console.log("first player:", this.allPlayers[0]?.name);
             
             this.currentHole = this.startingHole;
             
@@ -1005,7 +992,6 @@ function gameApp() {
             this.syncStatus = 'Synced';
             
             this.$nextTick(() => {
-                console.log("Rendering scorecard...");
                 this.renderScorecard();
             });
             
@@ -1015,7 +1001,6 @@ function gameApp() {
                     this.syncStatus = 'Synced';
                 }
             }, (error) => {
-                console.error("Snapshot error:", error);
                 this.syncStatus = `Sync error: ${error.message}`;
             });
         },
@@ -1032,11 +1017,12 @@ function gameApp() {
 
 <!--
 FILE: game.html
-VERSION: 2.16
+VERSION: 2.17
 KEY CHANGES:
-   - Added debug logging to trace data loading
-   - Fixed player loading from Firestore
-   - Ensured allPlayers array is populated correctly
-   - Added console logs for each step of init()
-STATUS: Debug version - for testing data loading
+   - Uses short device name from SessionManager.getShortNameOnly() for device tag
+   - Fixed scorecard rendering with proper table structure
+   - Cross-flight sync with play order support
+   - Shotgun start support
+   - Back to Main Menu with lock release
+STATUS: Ready for testing
 -->
