@@ -1,16 +1,15 @@
 <!--
 FILE: pre-game.html
-VERSION: 2.36
+VERSION: 2.37
 KEY CHANGES:
-   - View Only role now redirects to view-game.html (read-only viewer)
-   - Fixed role lock: buttons properly disable when locked by another device
-   - Added debug logging for role lock state
+   - CRITICAL FIX: Reset only for FIRST device on game day (no locks exist)
+   - If locks exist, game is in progress - DO NOT reset
+   - Prevents scores from resetting when additional devices join
+   - Role locks: Buttons disable when locked by another device
+   - View Only redirects to view-game.html
 STATUS: Ready for testing
 -->
 
-<!-- FILE: pre-game.html - VERSION 2.36 -->
-<!-- Role selection and verification before game -->
-<!-- FIXED: Role locks, View Only redirects to view-game.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,7 +20,6 @@ STATUS: Ready for testing
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     
-    <!-- Calculator scripts (needed for future, not for role lock) -->
     <script src="js/game-data.js"></script>
     <script src="js/game-match.js"></script>
     <script src="js/game-team.js"></script>
@@ -367,13 +365,13 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.36</div>
+<div class="version-tag">v2.37</div>
 
 <script>
-// FILE: pre-game.html - VERSION 2.36
-// FIXED: Role locks, View Only redirects to view-game.html
+// FILE: pre-game.html - VERSION 2.37
+// FIXED: Reset only for first device (no locks), role locks working
 
-var VERSION = "2.36";
+var VERSION = "2.37";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 
@@ -535,7 +533,9 @@ function startGameListener() {
                 if (data.locks) {
                     locks.f1 = data.locks.f1 || null;
                     locks.f2 = data.locks.f2 || null;
+                    console.log("Locks updated:", locks);
                 }
+                // Re-render to update button states
                 render();
             }
         }, function(error) {
@@ -673,10 +673,17 @@ function loadGame() {
             
             if (isToday) {
                 gameMode = "real";
-                var hasAnyData = hasExistingData() || (locks.f1 !== null || locks.f2 !== null);
                 
-                if (hasAnyData) {
-                    console.log("REAL mode - Resetting game data for today's match");
+                // CRITICAL FIX: Only reset if NO locks exist AND there is existing data
+                // If locks exist, game has already started - DO NOT reset
+                var hasLocks = (locks.f1 !== null || locks.f2 !== null);
+                var hasData = hasExistingData();
+                
+                console.log("REAL mode - hasLocks:", hasLocks, "hasData:", hasData);
+                
+                if (!hasLocks && hasData) {
+                    // First device on game day with leftover data from previous day
+                    console.log("REAL mode - First device on game day, resetting...");
                     resetGameData(function(success) {
                         db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
                             if (updatedDoc.exists) {
@@ -695,7 +702,8 @@ function loadGame() {
                         });
                     });
                 } else {
-                    console.log("REAL mode - No existing data, proceeding normally");
+                    // Game in progress (locks exist) or no data - proceed normally
+                    console.log("REAL mode - Game in progress or clean, loading existing data");
                     startGameListener();
                     render();
                 }
@@ -753,6 +761,9 @@ function startGame() {
     
     var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
     var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
+    
+    console.log("startGame - isF1Locked:", isF1Locked, "isF2Locked:", isF2Locked);
+    console.log("startGame - tempSelectedRole:", tempSelectedRole);
     
     if (tempSelectedRole === "update1" && isF1Locked) {
         alert("Flight 1 was locked by another device. Please refresh and try again.");
@@ -830,17 +841,6 @@ function resetRoleLocks() {
             alert("Error resetting locks: " + e.message);
         });
     }
-}
-
-function proceedToGame() {
-    sessionStorage.setItem("currentGame", JSON.stringify({
-        id: gameData.id,
-        date: gameData.date,
-        course: gameData.course,
-        players: gameData.players,
-        mode: gameMode
-    }));
-    window.location.href = "game.html";
 }
 
 function goBack() {
@@ -1034,10 +1034,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 2.36
+VERSION: 2.37
 KEY CHANGES:
-   - View Only role now redirects to view-game.html (read-only viewer)
-   - Fixed role lock: buttons properly disable when locked by another device
-   - Added debug logging for role lock state
+   - CRITICAL FIX: Reset only for FIRST device on game day (no locks exist)
+   - If locks exist, game is in progress - DO NOT reset
+   - Prevents scores from resetting when additional devices join
+   - Role locks: Buttons disable when locked by another device
+   - View Only redirects to view-game.html
 STATUS: Ready for testing
 -->
