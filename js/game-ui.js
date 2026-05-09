@@ -1,13 +1,9 @@
 /*
 FILE: js/game-ui.js
-VERSION: 1.00
-PURPOSE: Shared UI rendering module for all game modes (REAL, PREVIEW, VIEW)
-          - Scorecard rendering
-          - Player cards with bubbles
-          - TR display
-          - Hole header
-          - Flight tab
-          - No Firebase, no data fetching, only rendering
+VERSION: 1.01
+KEY CHANGES:
+   - Added green line under SI row (separator between header and player rows)
+   - No other changes - pure rendering, no logic
 STATUS: Ready for testing
 */
 
@@ -15,18 +11,6 @@ var GameUI = (function() {
     
     // ============================================================
     // Scorecard Rendering
-    // ============================================================
-    // Parameters:
-    //   containerId: HTML element id to render into
-    //   holes: array of hole numbers in display order (e.g., [10,11,12,...] or [1,2,3,...])
-    //   players: array of player objects with properties: label, flight, team, handicap
-    //   getStoredScore: function(player, hole) returns score for that player on that hole
-    //   isHoleSaved: function(flight, hole) returns true if hole is saved for that flight
-    //   t1Row: array of 18 values ("A"/"B"/"0"/"_") for T-1 row
-    //   t2Row: array of 18 values for T-2 row
-    //   strkRow: array of 18 values for Strk row
-    //   coursePar: array of 18 par values
-    //   courseSi: array of 18 stroke index values
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
@@ -72,6 +56,9 @@ var GameUI = (function() {
         }
         html += '<td>-<\/td><\/tr>';
         
+        // GREEN LINE under SI row (separator)
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
@@ -88,7 +75,7 @@ var GameUI = (function() {
             html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        // Green line after Flight 1
+        // Green line after Flight 1 (before T-1)
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-1 row
@@ -101,7 +88,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        // Green line after T-1
+        // Green line after T-1 (before Flight 2)
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Flight 2 players
@@ -130,7 +117,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        // Green line after T-2
+        // Green line after T-2 (before Strk)
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Strk row
@@ -149,16 +136,6 @@ var GameUI = (function() {
     
     // ============================================================
     // Player Cards with Bubbles
-    // ============================================================
-    // Parameters:
-    //   containerId: HTML element id to render into
-    //   players: array of players for the current flight
-    //   opponents: function(player) returns array of opponents for that player
-    //   getBubbleClass: function(player, opponent) returns CSS class for bubble
-    //   getBubbleValue: function(player, opponent) returns text for bubble
-    //   getCurrentScore: function(player) returns current score for this player
-    //   canEdit: boolean - whether score buttons should be enabled
-    //   onScoreChange: function(playerName, flight, playerIdx, delta) - callback when + or - clicked
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -306,13 +283,9 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 1.00
-PURPOSE: Shared UI rendering module for all game modes (REAL, PREVIEW, VIEW)
-          - Scorecard rendering
-          - Player cards with bubbles
-          - TR display
-          - Hole header
-          - Flight tab
-          - No Firebase, no data fetching, only rendering
+VERSION: 1.01
+KEY CHANGES:
+   - Added green line under SI row (separator between header and player rows)
+   - No other changes - pure rendering, no logic
 STATUS: Ready for testing
 */
