@@ -1,10 +1,11 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
    - Fixed gameMode assignment: now reads from gameData.gameType or gameData.gameMode
    - Ensures REAL mode redirects to real-game.html, not preview-game.html
-   - Added fallback default "real" when gameMode cannot be determined
+   - Added hidden admin reset: tap device ID (top-left corner) 2 times to reset full game
+   - Reset confirmation modal prevents accidental reset
 STATUS: Ready for testing
 -->
 
@@ -61,6 +62,7 @@ STATUS: Ready for testing
             z-index: 1000;
             opacity: 0.4;
             letter-spacing: 0.5px;
+            cursor: pointer;
         }
         
         .header { text-align: center; margin-bottom: 24px; }
@@ -364,13 +366,14 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.01</div>
+<div class="version-tag">v3.02</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.01
+// FILE: pre-game.html - VERSION 3.02
 // FIXED: gameMode assignment from gameData.gameType or gameData.gameMode
+// ADDED: Hidden admin reset - tap device ID 2 times to reset full game
 
-var VERSION = "3.01";
+var VERSION = "3.02";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
@@ -417,10 +420,64 @@ var isPreviewSandbox = false;
 var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
 
+// Hidden reset: tap counter
+var tapCount = 0;
+var tapTimer = null;
+
 function displayDeviceId() {
     var shortName = SessionManager.getShortNameOnly();
     currentShortName = shortName;
-    document.getElementById("deviceTag").innerHTML = "🖥️ " + shortName;
+    var deviceTag = document.getElementById("deviceTag");
+    deviceTag.innerHTML = "🖥️ " + shortName;
+    
+    // Add tap listener for hidden reset
+    deviceTag.addEventListener("click", function() {
+        tapCount++;
+        if (tapTimer) clearTimeout(tapTimer);
+        tapTimer = setTimeout(function() {
+            if (tapCount >= 2) {
+                showAdminResetModal();
+            }
+            tapCount = 0;
+        }, 300);
+    });
+}
+
+function showAdminResetModal() {
+    var modalHtml = `
+        <div class="modal-overlay" id="adminResetModal">
+            <div class="modal">
+                <div class="modal-title">⚠️ ADMIN RESET</div>
+                <div class="modal-message">This will reset ALL game data:</div>
+                <div class="modal-message" style="font-size:0.7rem; margin-top:4px;">• All scores</div>
+                <div class="modal-message" style="font-size:0.7rem;">• All locks</div>
+                <div class="modal-message" style="font-size:0.7rem;">• Game started flag</div>
+                <div class="modal-message" style="margin-top:12px; color:#ffaa44;">This action cannot be undone.</div>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="adminResetCancelBtn">Cancel</button>
+                    <button class="modal-btn modal-btn-confirm" id="adminResetConfirmBtn">✓ Reset Game</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("adminResetCancelBtn").addEventListener("click", function() {
+        document.getElementById("adminResetModal").remove();
+    });
+    
+    document.getElementById("adminResetConfirmBtn").addEventListener("click", function() {
+        document.getElementById("adminResetModal").remove();
+        resetFullGame(function(success) {
+            if (success) {
+                alert("Game has been reset. Page will reload.");
+                window.location.reload();
+            } else {
+                alert("Reset failed. Please try again.");
+            }
+        });
+    });
 }
 
 function formatDisplayDate(dateStr) {
@@ -1245,10 +1302,11 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
    - Fixed gameMode assignment: now reads from gameData.gameType or gameData.gameMode
    - Ensures REAL mode redirects to real-game.html, not preview-game.html
-   - Added fallback default "real" when gameMode cannot be determined
+   - Added hidden admin reset: tap device ID (top-left corner) 2 times to reset full game
+   - Reset confirmation modal prevents accidental reset
 STATUS: Ready for testing
 -->
