@@ -1,12 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 2.10
+VERSION: 2.11
 KEY CHANGES:
-   - FIXED: saveResultsToFirestore now updates individual fields (nested dot notation)
-   - Results object now correctly persists to Firestore after each synced hole
-   - Incremental results writing works for all 3 games and TR
-   - Backward compatible with existing games
-DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
+   - FIXED: Next button now disabled until current hole is saved
+   - Also checks for unsaved local changes before enabling Next
+   - Preserves submission and last-hole behavior
+   - All other functionality unchanged
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
 STATUS: Ready for testing
 -->
 
@@ -223,7 +223,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.10 REAL</div>
+<div class="version-tag">v2.11 REAL</div>
 
 <script>
 // ============================================================
@@ -843,12 +843,14 @@ function updateNextButton() {
     var nextBtn = document.getElementById("nextBtn");
     if (!nextBtn) return;
     
+    // Game complete - disable Next
     if (isGameCompleteFlag) {
         nextBtn.textContent = "✅ COMPLETE";
         nextBtn.disabled = true;
         return;
     }
     
+    // Flight already submitted - disable Next
     if (submitted["f" + editableFlight]) {
         nextBtn.textContent = "✓ SUBMITTED";
         nextBtn.disabled = true;
@@ -858,15 +860,30 @@ function updateNextButton() {
     var isLast = CardSubmit.isLastHole(currentHole, startingHole);
     var isSaved = isHoleSaved(editableFlight, currentHole);
     
-    if (isLast && isSaved) {
-        nextBtn.textContent = "📋 SUBMIT CARD";
-        nextBtn.disabled = false;
-    } else if (isLast && !isSaved) {
-        nextBtn.textContent = "📋 SUBMIT CARD";
-        nextBtn.disabled = true;
+    // Check for unsaved local changes
+    var hasUnsavedChanges = false;
+    for (var key in localChanges) {
+        if (key.startsWith(editableFlight + "_" + currentHole + "_")) {
+            hasUnsavedChanges = true;
+            break;
+        }
+    }
+    
+    var isCurrentSaved = isSaved && !hasUnsavedChanges;
+    
+    if (isLast) {
+        // Last hole: show SUBMIT CARD button only if current hole is saved
+        if (isCurrentSaved) {
+            nextBtn.textContent = "📋 SUBMIT CARD";
+            nextBtn.disabled = false;
+        } else {
+            nextBtn.textContent = "📋 SUBMIT CARD";
+            nextBtn.disabled = true;
+        }
     } else {
+        // Non-last holes: Next enabled only if current hole is saved
         nextBtn.textContent = "Next →";
-        nextBtn.disabled = false;
+        nextBtn.disabled = !isCurrentSaved;
     }
 }
 
@@ -1000,7 +1017,27 @@ async function refreshSubmissionStatus() {
 function nextHole() {
     var isLast = CardSubmit.isLastHole(currentHole, startingHole);
     var isSaved = isHoleSaved(editableFlight, currentHole);
-    if (isLast && isSaved) return;
+    
+    // Check for unsaved local changes
+    var hasUnsavedChanges = false;
+    for (var key in localChanges) {
+        if (key.startsWith(editableFlight + "_" + currentHole + "_")) {
+            hasUnsavedChanges = true;
+            break;
+        }
+    }
+    
+    var isCurrentSaved = isSaved && !hasUnsavedChanges;
+    
+    if (isLast && isCurrentSaved) {
+        // Submit card case - handled by button click, not here
+        return;
+    }
+    
+    if (!isCurrentSaved) {
+        // Cannot move to next hole if current hole not saved
+        return;
+    }
     
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
@@ -1161,7 +1198,6 @@ async function init() {
             startingHole = data.startingHole || 1;
             teamGameFormat = data.teamGameFormat || "tournament";
             
-            // Load results from Firestore
             if (data.results) {
                 gameResults = data.results;
             } else {
@@ -1241,12 +1277,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.10
+VERSION: 2.11
 KEY CHANGES:
-   - FIXED: saveResultsToFirestore now updates individual fields (nested dot notation)
-   - Results object now correctly persists to Firestore after each synced hole
-   - Incremental results writing works for all 3 games and TR
-   - Backward compatible with existing games
-DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
+   - FIXED: Next button now disabled until current hole is saved
+   - Also checks for unsaved local changes before enabling Next
+   - Preserves submission and last-hole behavior
+   - All other functionality unchanged
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
 STATUS: Ready for testing
 -->
