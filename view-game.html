@@ -1,15 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - REFACTORED: Now uses GameData, GameMatch, GameTeam, GameStroke, GameUI
-   - Read-only viewer (no edit/save/next/back buttons)
-   - Single row header: SCORECARD + P/N button on left, Hole ◀ # ▶ navigation on right
-   - Compact hole navigation (small buttons, displays current hole number)
-   - Combined Flight toggle button below player cards
-   - Removed large hole header label
-   - Real-time sync via Firestore snapshot listener
-DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
+   - Now reads pre-computed results from Firestore (no recalculation)
+   - TR, T-1/T-2, Strk rows displayed directly from results object
+   - Match bubbles still use local calculation (IB/XB from Firestore sync)
+   - Faster performance and consistent with updater devices
+   - Ready for History mode (same results structure)
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
 -->
 
@@ -72,7 +70,9 @@ STATUS: Ready for testing
             color: #ffaa44;
         }
         
-        .hole-header { text-align: center; margin: 16px 0; display: none; }
+        .hole-header { text-align: center; margin: 16px 0; }
+        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
+        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
         
         .team-score-card {
             background: #111;
@@ -142,10 +142,6 @@ STATUS: Ready for testing
             align-items: center;
             gap: 6px;
         }
-        .nav-label {
-            font-size: 0.7rem;
-            color: #888;
-        }
         .nav-btn {
             background: #1a3a1a;
             border: 1px solid #4caf50;
@@ -165,19 +161,26 @@ STATUS: Ready for testing
             text-align: center;
         }
         
-        .flight-btn {
-            background: #1a3a1a;
+        .flight-container {
+            display: flex;
+            gap: 0;
             border: 1px solid #4caf50;
-            color: #4caf50;
-            padding: 10px 24px;
             border-radius: 40px;
-            font-size: 1rem;
+            overflow: hidden;
+        }
+        .flight-btn {
+            background: #1a1a1a;
+            color: #888;
+            border: none;
+            padding: 8px 20px;
+            font-size: 0.85rem;
             font-weight: 600;
             cursor: pointer;
-            margin: 20px auto;
-            display: block;
-            width: 200px;
-            text-align: center;
+            min-width: 90px;
+        }
+        .flight-btn.active {
+            background: #1a3a1a;
+            color: #4caf50;
         }
         
         .scorecard-wrapper { overflow-x: auto; }
@@ -233,7 +236,6 @@ STATUS: Ready for testing
                 <button class="pn-toggle" id="pnToggleBtn">P</button>
             </div>
             <div class="nav-group">
-                <span class="nav-label">Hole</span>
                 <button class="nav-btn" id="prevHoleBtn">◀</button>
                 <span class="hole-number-display" id="holeNumberDisplay">1</span>
                 <button class="nav-btn" id="nextHoleBtn">▶</button>
@@ -242,14 +244,18 @@ STATUS: Ready for testing
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
-    <button class="flight-btn" id="flightToggleBtn">✈️ Flight 1</button>
+    <div class="flight-container" id="flightContainer">
+        <button class="flight-btn active" id="flight1Btn">Flight 1</button>
+        <button class="flight-btn" id="flight2Btn">Flight 2</button>
+    </div>
+    
     <button class="btn-menu" id="menuBtn">← Back to Main Menu</button>
     
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.01 VIEWER</div>
+<div class="version-tag">v2.02 VIEWER</div>
 
 <script>
 // ============================================================
@@ -297,14 +303,13 @@ var trTeamAGreen = true;
 var trTeamBGreen = true;
 var lastSyncedHole = 0;
 
-var flight1Cumulative = new Array(18).fill(0);
-var flight2Cumulative = new Array(18).fill(0);
-
 var matchResults = {
     intraF1: {},
     intraF2: {},
     cross: {}
 };
+
+var gameResults = null;  // Pre-computed results from Firestore
 
 var myDeviceShortName = "";
 var unsubscribe = null;
@@ -322,6 +327,14 @@ function getPlayOrder() {
     return order;
 }
 
+function getHolePosition(holeNumber) {
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        if (playOrder[i] === holeNumber) return i;
+    }
+    return holeNumber - 1;
+}
+
 function getDisplayHoles() {
     return GameUI.getDisplayHoles(startingHole, GameUI.getDisplayMode());
 }
@@ -331,6 +344,32 @@ function getFlightOrderedPlayers(flight) {
     var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     return teamA.concat(teamB);
+}
+
+function parseFlightData(dataString) {
+    var result = {};
+    for (var pos = 0; pos < 18; pos++) {
+        var actualHole;
+        if (startingHole === 1) {
+            actualHole = pos + 1;
+        } else {
+            var playOrder = getPlayOrder();
+            actualHole = playOrder[pos];
+        }
+        
+        var startIdx = pos * 9;
+        var segment = dataString.substring(startIdx, startIdx + 9);
+        if (segment.length === 9) {
+            result[actualHole] = {
+                saved: segment[0] === 'T',
+                a1: parseInt(segment.substring(1, 3), 10),
+                a2: parseInt(segment.substring(3, 5), 10),
+                b1: parseInt(segment.substring(5, 7), 10),
+                b2: parseInt(segment.substring(7, 9), 10)
+            };
+        }
+    }
+    return result;
 }
 
 function updateSavedHolesList() {
@@ -359,7 +398,7 @@ function calculateLastSyncedHole() {
 }
 
 // ============================================================
-// Match Results using GameMatch
+// Match Results using GameMatch (for bubbles only)
 // ============================================================
 
 function updateMatchResults() {
@@ -388,134 +427,62 @@ function updateMatchResults() {
     } else {
         matchResults.cross = {};
     }
-    
-    updateTeamGame();
-    updateStrokeGame();
 }
 
 // ============================================================
-// Team Game using GameTeam
+// TR and Row Display from Results (NEW - reads pre-computed data)
 // ============================================================
 
-function updateTeamGame() {
-    try {
-        var teamGameFormat = "tournament";
-        var teamResults = GameTeam.calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat);
-        t1Row = teamResults.t1Row;
-        t2Row = teamResults.t2Row;
-        flight1Cumulative = teamResults.flight1Cumulative;
-        flight2Cumulative = teamResults.flight2Cumulative;
-    } catch (e) {
-        console.error("GameTeam calculation error:", e);
-    }
-}
-
-// ============================================================
-// Stroke Game using GameStroke
-// ============================================================
-
-function updateStrokeGame() {
-    try {
-        var strokeResults = GameStroke.calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole);
-        for (var i = 0; i < strokeResults.length; i++) {
-            strkRow[i] = strokeResults[i];
-        }
-    } catch (e) {
-        console.error("GameStroke calculation error:", e);
-    }
-}
-
-// ============================================================
-// TR Calculation
-// ============================================================
-
-function calculateGame1Points() {
-    if (lastSyncedHole === 0) {
-        return { teamAPoints: 8, teamBPoints: 8 };
+function updateDisplayFromResults() {
+    if (!gameResults) return;
+    
+    var position = getHolePosition(currentHole);
+    var computedUpTo = gameResults.computedUpToHole || 0;
+    
+    // If results are not available for this hole, use defaults
+    if (position >= computedUpTo) {
+        // Use default/placeholder values
+        trTeamA = 9.5;
+        trTeamB = 9.5;
+        trTeamAGreen = true;
+        trTeamBGreen = true;
+        
+        // T-1/T-2/Strk rows from current flight data (fallback)
+        // These will be updated when results are available
+        return;
     }
     
-    var teamAPoints = 0;
-    var teamBPoints = 0;
-    var matchCount = 0;
+    // Read TR from results
+    if (gameResults.tr) {
+        trTeamA = gameResults.tr.teamA[position] || 9.5;
+        trTeamB = gameResults.tr.teamB[position] || 9.5;
+        trTeamAGreen = gameResults.tr.teamAGreen[position] !== undefined ? gameResults.tr.teamAGreen[position] : true;
+        trTeamBGreen = gameResults.tr.teamBGreen[position] !== undefined ? gameResults.tr.teamBGreen[position] : true;
+    }
     
-    for (var key in matchResults.cross) {
-        if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
-            var firstPlayerName = key.split("_vs_")[0];
-            var firstPlayer = allPlayers.find(function(p) { return p.name === firstPlayerName; });
-            if (firstPlayer && firstPlayer.team === "A") {
-                var value = matchResults.cross[key];
-                if (value > 0) {
-                    teamAPoints += 1;
-                } else if (value < 0) {
-                    teamBPoints += 1;
-                } else {
-                    teamAPoints += 0.5;
-                    teamBPoints += 0.5;
-                }
-                matchCount++;
+    // Read T-1/T-2 rows from results (for display in scorecard)
+    if (gameResults.game2) {
+        // Build t1Row from flight1 leader
+        var flight1Leader = gameResults.game2.flight1.leader;
+        var flight2Leader = gameResults.game2.flight2.leader;
+        
+        for (var i = 0; i < 18; i++) {
+            if (flight1Leader && flight1Leader[i]) {
+                t1Row[i] = flight1Leader[i];
+            }
+            if (flight2Leader && flight2Leader[i]) {
+                t2Row[i] = flight2Leader[i];
             }
         }
     }
     
-    if (matchCount === 0) {
-        return { teamAPoints: 8, teamBPoints: 8 };
-    }
-    
-    return { teamAPoints: teamAPoints, teamBPoints: teamBPoints };
-}
-
-function getCurrentGame2Points() {
-    if (lastSyncedHole === 0) {
-        return { teamAPoints: 1, teamBPoints: 1 };
-    }
-    
-    var flight1Total = flight1Cumulative[lastSyncedHole - 1] || 0;
-    var flight2Total = flight2Cumulative[lastSyncedHole - 1] || 0;
-    
-    var flight1PointsA = (flight1Total > 0) ? 1 : (flight1Total < 0) ? 0 : 0.5;
-    var flight1PointsB = (flight1Total > 0) ? 0 : (flight1Total < 0) ? 1 : 0.5;
-    var flight2PointsA = (flight2Total > 0) ? 1 : (flight2Total < 0) ? 0 : 0.5;
-    var flight2PointsB = (flight2Total > 0) ? 0 : (flight2Total < 0) ? 1 : 0.5;
-    
-    return {
-        teamAPoints: flight1PointsA + flight2PointsA,
-        teamBPoints: flight1PointsB + flight2PointsB
-    };
-}
-
-function getCurrentGame3Points() {
-    if (lastSyncedHole === 0 || lastSyncedHole > 18) {
-        return { teamAPoints: 0.5, teamBPoints: 0.5 };
-    }
-    
-    var currentLeader = strkRow[lastSyncedHole - 1] || '0';
-    
-    if (currentLeader === 'A') {
-        return { teamAPoints: 1, teamBPoints: 0 };
-    } else if (currentLeader === 'B') {
-        return { teamAPoints: 0, teamBPoints: 1 };
-    } else {
-        return { teamAPoints: 0.5, teamBPoints: 0.5 };
-    }
-}
-
-function calculateTR() {
-    var game1Points = calculateGame1Points();
-    var game2Points = getCurrentGame2Points();
-    var game3Points = getCurrentGame3Points();
-    
-    trTeamA = game1Points.teamAPoints + game2Points.teamAPoints + game3Points.teamAPoints;
-    trTeamB = game1Points.teamBPoints + game2Points.teamBPoints + game3Points.teamBPoints;
-    
-    if (trTeamA > trTeamB) {
-        trTeamAGreen = true;
-        trTeamBGreen = false;
-    } else if (trTeamB > trTeamA) {
-        trTeamAGreen = false;
-        trTeamBGreen = true;
-    } else {
-        trTeamAGreen = true;
-        trTeamBGreen = true;
+    // Read Strk row from results
+    if (gameResults.game3 && gameResults.game3.leader) {
+        for (var i = 0; i < 18; i++) {
+            if (gameResults.game3.leader[i]) {
+                strkRow[i] = gameResults.game3.leader[i];
+            }
+        }
     }
 }
 
@@ -600,6 +567,21 @@ function getMatchValue(playerName, opponentName) {
 // ============================================================
 
 function renderAll() {
+    var currentPar = coursePar[currentHole - 1];
+    var currentSi = courseSi[currentHole - 1];
+    
+    // Create hole header
+    var holeHeaderDiv = document.querySelector('.hole-header');
+    if (!holeHeaderDiv) {
+        var newHeader = document.createElement('div');
+        newHeader.className = 'hole-header';
+        var courseNameDiv = document.getElementById('courseName');
+        courseNameDiv.parentNode.insertBefore(newHeader, courseNameDiv.nextSibling);
+    }
+    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    
+    // Update TR from results
+    updateDisplayFromResults();
     GameUI.updateTR("trDisplay", trTeamA, trTeamB, trTeamAGreen, trTeamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(selectedFlight);
@@ -637,15 +619,19 @@ function renderAll() {
 // ============================================================
 
 function goToPrevHole() {
-    if (currentHole > 1) {
-        currentHole--;
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex > 0) {
+        currentHole = playOrder[currentIndex - 1];
         renderAll();
     }
 }
 
 function goToNextHole() {
-    if (currentHole < 18) {
-        currentHole++;
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex < 17) {
+        currentHole = playOrder[currentIndex + 1];
         renderAll();
     }
 }
@@ -675,14 +661,10 @@ function toggleDisplayMode() {
 // Flight Toggle
 // ============================================================
 
-function toggleFlight() {
-    if (selectedFlight === 1) {
-        selectedFlight = 2;
-        document.getElementById("flightToggleBtn").innerText = "✈️ Flight 2";
-    } else {
-        selectedFlight = 1;
-        document.getElementById("flightToggleBtn").innerText = "✈️ Flight 1";
-    }
+function toggleFlight(flight) {
+    selectedFlight = flight;
+    document.getElementById("flight1Btn").classList.toggle("active", flight === 1);
+    document.getElementById("flight2Btn").classList.toggle("active", flight === 2);
     renderAll();
 }
 
@@ -693,6 +675,11 @@ function toggleFlight() {
 function refreshFromFirestore(data) {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : f1DataString;
     f2DataString = data.f2 && data.f2.d ? data.f2.d : f2DataString;
+    
+    // Load pre-computed results
+    if (data.results) {
+        gameResults = data.results;
+    }
     
     var newF1 = {};
     var newF2 = {};
@@ -717,7 +704,9 @@ function refreshFromFirestore(data) {
     if (changed) {
         updateSavedHolesList();
         updateMatchResults();
-        calculateTR();
+        renderAll();
+    } else {
+        // Still need to refresh display in case results changed
         renderAll();
     }
 }
@@ -762,6 +751,11 @@ async function init() {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
     f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
     
+    // Load pre-computed results
+    if (data.results) {
+        gameResults = data.results;
+    }
+    
     // Initialize GameData
     GameData.setCourse({ par: coursePar });
     GameData.setPlayers(allPlayers);
@@ -779,7 +773,7 @@ async function init() {
     
     updateSavedHolesList();
     updateMatchResults();
-    calculateTR();
+    updateDisplayFromResults();
     
     // Set initial display mode button
     updatePnButton();
@@ -790,7 +784,8 @@ async function init() {
     document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
     document.getElementById("prevHoleBtn").addEventListener("click", goToPrevHole);
     document.getElementById("nextHoleBtn").addEventListener("click", goToNextHole);
-    document.getElementById("flightToggleBtn").addEventListener("click", toggleFlight);
+    document.getElementById("flight1Btn").addEventListener("click", function() { toggleFlight(1); });
+    document.getElementById("flight2Btn").addEventListener("click", function() { toggleFlight(2); });
     document.getElementById("menuBtn").addEventListener("click", function() {
         window.location.href = "index.html";
     });
@@ -813,13 +808,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - Single row header: SCORECARD + P/N button on left, Hole ◀ # ▶ navigation on right
-   - Compact hole navigation (small buttons, displays current hole number)
-   - Combined Flight toggle button below player cards
-   - Removed large hole header label
-   - Real-time sync via Firestore snapshot listener
-DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
+   - Now reads pre-computed results from Firestore (no recalculation)
+   - TR, T-1/T-2, Strk rows displayed directly from results object
+   - Match bubbles still use local calculation (IB/XB from Firestore sync)
+   - Faster performance and consistent with updater devices
+   - Ready for History mode (same results structure)
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
 -->
