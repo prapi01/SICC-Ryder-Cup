@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 2.06
+VERSION: 2.07
 KEY CHANGES:
-   - FIXED: Restored GameData.loadGameFromSession() call to set internal gameId
-   - GameData.saveCurrentHole now works correctly
-   - INTEGRATED: game-team.js for T-1 and T-2 rows
-   - UPDATED: TR calculation includes Game 1 and Game 2 points
-   - HARDCODED: Game 3 (Stroke) gives 0.5 points to each team (placeholder)
+   - UPDATED: Game 2 TR now uses current leader points (not just after 18 holes)
+   - UPDATED: Game 3 TR now uses current leader points (not just after 18 holes)
+   - Game 2: 1 point to leading team per flight, 0.5 each if tied
+   - Game 3: 1 point to leading team in stroke play, 0.5 each if tied
+   - Total TR now correctly sums to 19 points max at any point in match
+   - Preserves all existing functionality (IB, XB, T-1, T-2, sync, save)
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-ui.js v2.00, js/card-submit.js
 STATUS: Ready for testing
 -->
@@ -223,7 +224,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.06 REAL</div>
+<div class="version-tag">v2.07 REAL</div>
 
 <script>
 // ============================================================
@@ -389,7 +390,7 @@ function updateTeamGame() {
 }
 
 // ============================================================
-// TR Calculation
+// TR Calculation (UPDATED: current leader points for Game 2 and Game 3)
 // ============================================================
 
 function calculateGame1Points() {
@@ -427,14 +428,61 @@ function calculateGame1Points() {
     return { teamAPoints: teamAPoints, teamBPoints: teamBPoints };
 }
 
-function calculateTR() {
-    var game1Points = calculateGame1Points();
-    var game2Points = GameTeam.calculatePoints(flight1Cumulative, flight2Cumulative, lastSyncedHole);
-    var game3Points = { teamAPoints: 0.5, teamBPoints: 0.5 };
+// NEW: Get current leader points for Game 2 (Team Game)
+function getCurrentGame2Points() {
+    // Before any holes, both flights tied → 1 point each (2 total)
+    if (lastSyncedHole === 0) {
+        return { teamAPoints: 1, teamBPoints: 1 };
+    }
     
+    var flight1Total = flight1Cumulative[lastSyncedHole - 1] || 0;
+    var flight2Total = flight2Cumulative[lastSyncedHole - 1] || 0;
+    
+    var flight1PointsA = (flight1Total > 0) ? 1 : (flight1Total < 0) ? 0 : 0.5;
+    var flight1PointsB = (flight1Total > 0) ? 0 : (flight1Total < 0) ? 1 : 0.5;
+    var flight2PointsA = (flight2Total > 0) ? 1 : (flight2Total < 0) ? 0 : 0.5;
+    var flight2PointsB = (flight2Total > 0) ? 0 : (flight2Total < 0) ? 1 : 0.5;
+    
+    return {
+        teamAPoints: flight1PointsA + flight2PointsA,
+        teamBPoints: flight1PointsB + flight2PointsB
+    };
+}
+
+// NEW: Get current leader points for Game 3 (Net Stroke)
+function getCurrentGame3Points() {
+    // Before any holes, tied → 0.5 each (1 total)
+    if (lastSyncedHole === 0) {
+        return { teamAPoints: 0.5, teamBPoints: 0.5 };
+    }
+    
+    // Get current stroke leader from strkRow
+    var currentLeader = strkRow[lastSyncedHole - 1] || '0';
+    
+    if (currentLeader === 'A') {
+        return { teamAPoints: 1, teamBPoints: 0 };
+    } else if (currentLeader === 'B') {
+        return { teamAPoints: 0, teamBPoints: 1 };
+    } else {
+        return { teamAPoints: 0.5, teamBPoints: 0.5 };
+    }
+}
+
+function calculateTR() {
+    // Game 1 points from Match Play
+    var game1Points = calculateGame1Points();
+    
+    // Game 2 points from Team Game (current leader)
+    var game2Points = getCurrentGame2Points();
+    
+    // Game 3 points from Net Stroke (current leader)
+    var game3Points = getCurrentGame3Points();
+    
+    // Total TR
     trTeamA = game1Points.teamAPoints + game2Points.teamAPoints + game3Points.teamAPoints;
     trTeamB = game1Points.teamBPoints + game2Points.teamBPoints + game3Points.teamBPoints;
     
+    // Set colors (green for winning or tied, red for losing)
     if (trTeamA > trTeamB) {
         trTeamAGreen = true;
         trTeamBGreen = false;
@@ -869,7 +917,7 @@ async function init() {
         return;
     }
     
-    // CRITICAL: Set up GameData callbacks and load game
+    // Set up GameData callbacks and load game
     GameData.setCallbacks(onGameDataChanged, function(error) {
         document.getElementById("debug").innerHTML = "GameData error: " + error;
     });
@@ -928,6 +976,11 @@ async function init() {
                 if (f2Hole) flight2Data[h] = f2Hole;
             }
             
+            // Initialize strkRow with placeholder (will be updated by GameStroke later)
+            for (var i = 0; i < 18; i++) {
+                strkRow[i] = '0';
+            }
+            
             var playOrder = getPlayOrder();
             currentHole = playOrder[0];
             
@@ -975,13 +1028,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.06
+VERSION: 2.07
 KEY CHANGES:
-   - FIXED: Restored GameData.loadGameFromSession() call to set internal gameId
-   - GameData.saveCurrentHole now works correctly
-   - INTEGRATED: game-team.js for T-1 and T-2 rows
-   - UPDATED: TR calculation includes Game 1 and Game 2 points
-   - HARDCODED: Game 3 (Stroke) gives 0.5 points to each team (placeholder)
-DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-ui.js v2.00, js/card-submit.js
+   - UPDATED: Game 2 TR now uses current leader points (not just after 18 holes)
+   - UPDATED: Game 3 TR now uses current leader points (not just after 18 holes)
+   - Game 2: 1 point to leading team per flight, 0.5 each if tied
+   - Game 3: 1 point to leading team in stroke play, 0.5 each if tied
+   - Total TR now correctly sums to 19 points max at any point in match
+   - Preserves all existing functionality (IB, XB, T-1, T-2, sync, save)
+   - Strk row still placeholder (0) - ready for game-stroke integration
+DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-ui.js v2.01, js/card-submit.js
 STATUS: Ready for testing
 -->
