@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - ADDED: Firestore snapshot listener for real-time cross-device sync
-   - FIXED: F2 now sees F1 scores immediately without needing to save
-   - FIXED: F1 now sees F2 scores immediately after F2 saves
-   - Preserves all GameData and GameMatch integration
+   - FIXED: Added GameData.setCourse() and GameData.setPlayers() to initialize data strings
+   - FIXED: Save button now works because f1DataString/f2DataString are properly initialized
+   - Firestore snapshot listener for real-time cross-device sync
+   - Uses GameData and GameMatch for all data management and calculations
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-ui.js, js/card-submit.js
 STATUS: Ready for testing
 -->
@@ -221,7 +221,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.02 REAL</div>
+<div class="version-tag">v2.03 REAL</div>
 
 <script>
 // ============================================================
@@ -725,7 +725,6 @@ function refreshFromFirestore(data) {
     if (JSON.stringify(newF1) !== JSON.stringify(flight1Data)) {
         flight1Data = newF1;
         changed = true;
-        // Clear local changes for Flight 1
         for (var key in localChanges) {
             if (key.startsWith("1_")) delete localChanges[key];
         }
@@ -733,7 +732,6 @@ function refreshFromFirestore(data) {
     if (JSON.stringify(newF2) !== JSON.stringify(flight2Data)) {
         flight2Data = newF2;
         changed = true;
-        // Clear local changes for Flight 2
         for (var key in localChanges) {
             if (key.startsWith("2_")) delete localChanges[key];
         }
@@ -803,6 +801,11 @@ async function init() {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
     f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
     
+    // CRITICAL FIX: Initialize GameData with course and players
+    // This creates the default data strings (all F, scores = par)
+    GameData.setCourse({ par: coursePar });
+    GameData.setPlayers(allPlayers);
+    
     if (data.submitted) {
         submitted.f1 = data.submitted.f1 === true;
         submitted.f2 = data.submitted.f2 === true;
@@ -862,12 +865,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - ADDED: Firestore snapshot listener for real-time cross-device sync
-   - FIXED: F2 now sees F1 scores immediately without needing to save
-   - FIXED: F1 now sees F2 scores immediately after F2 saves
-   - Preserves all GameData and GameMatch integration
+   - FIXED: Added GameData.setCourse() and GameData.setPlayers() to initialize data strings
+   - FIXED: Save button now works because f1DataString/f2DataString are properly initialized
+   - Firestore snapshot listener for real-time cross-device sync
+   - Uses GameData and GameMatch for all data management and calculations
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-ui.js, js/card-submit.js
 STATUS: Ready for testing
 -->
