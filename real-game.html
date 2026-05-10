@@ -1,13 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 2.09
+VERSION: 2.10
 KEY CHANGES:
-   - ADDED: Incremental results writing to Firestore
-   - Results object stored in game document for future Viewer and History modes
-   - After each save, only the current hole's results are computed and stored
-   - Results include Game 1, Game 2, Game 3, and TR for each hole position
-   - Supports shotgun start (results stored by play order position, not hole number)
-   - Backward compatible with existing games (results initialized on first save)
+   - FIXED: saveResultsToFirestore now updates individual fields (nested dot notation)
+   - Results object now correctly persists to Firestore after each synced hole
+   - Incremental results writing works for all 3 games and TR
+   - Backward compatible with existing games
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
 STATUS: Ready for testing
 -->
@@ -225,7 +223,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.09 REAL</div>
+<div class="version-tag">v2.10 REAL</div>
 
 <script>
 // ============================================================
@@ -285,7 +283,7 @@ var matchResults = {
     cross: {}
 };
 
-var gameResults = null;  // NEW: Stores pre-computed results from Firestore
+var gameResults = null;
 
 var myDeviceShortName = "";
 var unsubscribe = null;
@@ -417,7 +415,7 @@ function updateStrokeGame() {
 }
 
 // ============================================================
-// TR Calculation (UPDATED: uses gameResults if available)
+// TR Calculation
 // ============================================================
 
 function calculateGame1Points() {
@@ -425,7 +423,6 @@ function calculateGame1Points() {
         return { teamAPoints: 8, teamBPoints: 8 };
     }
     
-    // Use pre-computed results if available
     if (gameResults && gameResults.game1 && gameResults.computedUpToHole >= lastSyncedHole) {
         var pos = getHolePosition(lastSyncedHole);
         return {
@@ -434,7 +431,6 @@ function calculateGame1Points() {
         };
     }
     
-    // Fallback to calculation
     var teamAPoints = 0;
     var teamBPoints = 0;
     var matchCount = 0;
@@ -460,7 +456,6 @@ function calculateGame1Points() {
 function getCurrentGame2Points() {
     if (lastSyncedHole === 0) return { teamAPoints: 1, teamBPoints: 1 };
     
-    // Use pre-computed results if available
     if (gameResults && gameResults.game2 && gameResults.computedUpToHole >= lastSyncedHole) {
         var pos = getHolePosition(lastSyncedHole);
         return {
@@ -469,7 +464,6 @@ function getCurrentGame2Points() {
         };
     }
     
-    // Fallback to calculation
     var flight1Total = flight1Cumulative[lastSyncedHole - 1] || 0;
     var flight2Total = flight2Cumulative[lastSyncedHole - 1] || 0;
     
@@ -487,7 +481,6 @@ function getCurrentGame2Points() {
 function getCurrentGame3Points() {
     if (lastSyncedHole === 0 || lastSyncedHole > 18) return { teamAPoints: 0.5, teamBPoints: 0.5 };
     
-    // Use pre-computed results if available
     if (gameResults && gameResults.game3 && gameResults.computedUpToHole >= lastSyncedHole) {
         var pos = getHolePosition(lastSyncedHole);
         return {
@@ -496,7 +489,6 @@ function getCurrentGame3Points() {
         };
     }
     
-    // Fallback to calculation
     var currentLeader = strkRow[lastSyncedHole - 1] || '0';
     if (currentLeader === 'A') return { teamAPoints: 1, teamBPoints: 0 };
     if (currentLeader === 'B') return { teamAPoints: 0, teamBPoints: 1 };
@@ -524,7 +516,7 @@ function calculateTR() {
 }
 
 // ============================================================
-// Incremental Results Writing (NEW)
+// Results Calculation and Storage
 // ============================================================
 
 function initializeEmptyResults() {
@@ -562,25 +554,20 @@ function initializeEmptyResults() {
 function calculateHoleResults(holeNumber) {
     var position = getHolePosition(holeNumber);
     
-    // Get current scores for this hole
     var f1Hole = flight1Data[holeNumber];
     var f2Hole = flight2Data[holeNumber];
     
-    // If either flight hasn't saved this hole, cannot compute
     if (!f1Hole || !f1Hole.saved || !f2Hole || !f2Hole.saved) {
         return null;
     }
     
-    // Calculate Game 2 cumulative after this hole
     var teamResults = GameTeam.calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat);
     var flight1Total = teamResults.flight1Cumulative[position];
     var flight2Total = teamResults.flight2Cumulative[position];
     
-    // Calculate Game 3 cumulative after this hole
     var strokeResults = GameStroke.calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole);
     var strokeLeader = strokeResults[position];
     
-    // Calculate Game 1 points after this hole
     var tempMatchResults = GameMatch.calculateCrossFlight(f1DataString, f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
     var game1PointsA = 0;
     var game1PointsB = 0;
@@ -600,11 +587,9 @@ function calculateHoleResults(holeNumber) {
         }
     }
     
-    // Calculate Game 2 flight leaders
     var flight1Leader = (flight1Total > 0) ? "A" : (flight1Total < 0) ? "B" : "AS";
     var flight2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     
-    // Calculate Game 2 points
     var flight1PointsA = (flight1Total > 0) ? 1 : (flight1Total < 0) ? 0 : 0.5;
     var flight1PointsB = (flight1Total > 0) ? 0 : (flight1Total < 0) ? 1 : 0.5;
     var flight2PointsA = (flight2Total > 0) ? 1 : (flight2Total < 0) ? 0 : 0.5;
@@ -612,11 +597,9 @@ function calculateHoleResults(holeNumber) {
     var game2PointsA = flight1PointsA + flight2PointsA;
     var game2PointsB = flight1PointsB + flight2PointsB;
     
-    // Calculate Game 3 points
     var game3PointsA = (strokeLeader === "A") ? 1 : (strokeLeader === "B") ? 0 : 0.5;
     var game3PointsB = (strokeLeader === "A") ? 0 : (strokeLeader === "B") ? 1 : 0.5;
     
-    // Calculate TR
     var trA = game1PointsA + game2PointsA + game3PointsA;
     var trB = game1PointsB + game2PointsB + game3PointsB;
     var trAGreen = (trA > trB);
@@ -644,53 +627,65 @@ function calculateHoleResults(holeNumber) {
 
 async function saveResultsToFirestore(holeNumber) {
     var resultsData = calculateHoleResults(holeNumber);
-    if (!resultsData) return;
+    if (!resultsData) {
+        console.log('No results data for hole', holeNumber);
+        return;
+    }
     
     var position = resultsData.position;
     
-    // Initialize gameResults if not exists
-    if (!gameResults) {
-        gameResults = initializeEmptyResults();
+    var updatePayload = {};
+    
+    updatePayload["results.game1.pointsA." + position] = resultsData.game1PointsA;
+    updatePayload["results.game1.pointsB." + position] = resultsData.game1PointsB;
+    updatePayload["results.game2.flight1.leader." + position] = resultsData.game2Flight1Leader;
+    updatePayload["results.game2.flight2.leader." + position] = resultsData.game2Flight2Leader;
+    updatePayload["results.game2.flight1.cumulativePoints." + position] = resultsData.game2Flight1Total;
+    updatePayload["results.game2.flight2.cumulativePoints." + position] = resultsData.game2Flight2Total;
+    updatePayload["results.game2.pointsA." + position] = resultsData.game2PointsA;
+    updatePayload["results.game2.pointsB." + position] = resultsData.game2PointsB;
+    updatePayload["results.game3.leader." + position] = resultsData.game3Leader;
+    updatePayload["results.game3.pointsA." + position] = resultsData.game3PointsA;
+    updatePayload["results.game3.pointsB." + position] = resultsData.game3PointsB;
+    updatePayload["results.tr.teamA." + position] = resultsData.trA;
+    updatePayload["results.tr.teamB." + position] = resultsData.trB;
+    updatePayload["results.tr.teamAGreen." + position] = resultsData.trAGreen;
+    updatePayload["results.tr.teamBGreen." + position] = resultsData.trBGreen;
+    
+    if (position + 1 > (gameResults?.computedUpToHole || 0)) {
+        updatePayload["results.computedUpToHole"] = position + 1;
     }
+    updatePayload["results.lastComputedAt"] = new Date().toISOString();
     
-    // Update game1 points
-    gameResults.game1.pointsA[position] = resultsData.game1PointsA;
-    gameResults.game1.pointsB[position] = resultsData.game1PointsB;
-    
-    // Update game2
-    gameResults.game2.flight1.leader[position] = resultsData.game2Flight1Leader;
-    gameResults.game2.flight2.leader[position] = resultsData.game2Flight2Leader;
-    gameResults.game2.flight1.cumulativePoints[position] = resultsData.game2Flight1Total;
-    gameResults.game2.flight2.cumulativePoints[position] = resultsData.game2Flight2Total;
-    gameResults.game2.pointsA[position] = resultsData.game2PointsA;
-    gameResults.game2.pointsB[position] = resultsData.game2PointsB;
-    
-    // Update game3
-    gameResults.game3.leader[position] = resultsData.game3Leader;
-    gameResults.game3.pointsA[position] = resultsData.game3PointsA;
-    gameResults.game3.pointsB[position] = resultsData.game3PointsB;
-    
-    // Update TR
-    gameResults.tr.teamA[position] = resultsData.trA;
-    gameResults.tr.teamB[position] = resultsData.trB;
-    gameResults.tr.teamAGreen[position] = resultsData.trAGreen;
-    gameResults.tr.teamBGreen[position] = resultsData.trBGreen;
-    
-    // Update computed metadata
-    if (position + 1 > gameResults.computedUpToHole) {
-        gameResults.computedUpToHole = position + 1;
-    }
-    gameResults.lastComputedAt = new Date().toISOString();
-    
-    // Save to Firestore
     try {
-        await db.collection("scheduledGames").doc(gameId).update({
-            "results": gameResults,
-            "updatedAt": firebase.firestore.FieldValue.serverTimestamp()
-        });
-        console.log("Results saved for hole", holeNumber, "position", position);
+        await db.collection("scheduledGames").doc(gameId).update(updatePayload);
+        console.log('Results saved for hole', holeNumber, 'position', position);
+        
+        if (!gameResults) {
+            gameResults = initializeEmptyResults();
+        }
+        gameResults.game1.pointsA[position] = resultsData.game1PointsA;
+        gameResults.game1.pointsB[position] = resultsData.game1PointsB;
+        gameResults.game2.flight1.leader[position] = resultsData.game2Flight1Leader;
+        gameResults.game2.flight2.leader[position] = resultsData.game2Flight2Leader;
+        gameResults.game2.flight1.cumulativePoints[position] = resultsData.game2Flight1Total;
+        gameResults.game2.flight2.cumulativePoints[position] = resultsData.game2Flight2Total;
+        gameResults.game2.pointsA[position] = resultsData.game2PointsA;
+        gameResults.game2.pointsB[position] = resultsData.game2PointsB;
+        gameResults.game3.leader[position] = resultsData.game3Leader;
+        gameResults.game3.pointsA[position] = resultsData.game3PointsA;
+        gameResults.game3.pointsB[position] = resultsData.game3PointsB;
+        gameResults.tr.teamA[position] = resultsData.trA;
+        gameResults.tr.teamB[position] = resultsData.trB;
+        gameResults.tr.teamAGreen[position] = resultsData.trAGreen;
+        gameResults.tr.teamBGreen[position] = resultsData.trBGreen;
+        if (position + 1 > gameResults.computedUpToHole) {
+            gameResults.computedUpToHole = position + 1;
+        }
+        gameResults.lastComputedAt = updatePayload["results.lastComputedAt"];
+        
     } catch (error) {
-        console.error("Error saving results:", error);
+        console.error('Error saving results:', error);
     }
 }
 
@@ -923,7 +918,7 @@ async function saveHole() {
                     }
                 }, 2000);
                 
-                // NEW: Save results to Firestore after successful save
+                // Save results to Firestore
                 saveResultsToFirestore(currentHole);
                 
                 updateNextButton();
@@ -1059,7 +1054,6 @@ function refreshFromFirestore(data) {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : f1DataString;
     f2DataString = data.f2 && data.f2.d ? data.f2.d : f2DataString;
     
-    // Load results from Firestore
     if (data.results) {
         gameResults = data.results;
     }
@@ -1167,7 +1161,7 @@ async function init() {
             startingHole = data.startingHole || 1;
             teamGameFormat = data.teamGameFormat || "tournament";
             
-            // Load existing results
+            // Load results from Firestore
             if (data.results) {
                 gameResults = data.results;
             } else {
@@ -1247,14 +1241,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.09
+VERSION: 2.10
 KEY CHANGES:
-   - ADDED: Incremental results writing to Firestore
-   - Results object stored in game document for future Viewer and History modes
-   - After each save, only the current hole's results are computed and stored
-   - Results include Game 1, Game 2, Game 3, and TR for each hole position
-   - Supports shotgun start (results stored by play order position, not hole number)
-   - Backward compatible with existing games (results initialized on first save)
+   - FIXED: saveResultsToFirestore now updates individual fields (nested dot notation)
+   - Results object now correctly persists to Firestore after each synced hole
+   - Incremental results writing works for all 3 games and TR
+   - Backward compatible with existing games
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
 STATUS: Ready for testing
 -->
