@@ -1,13 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
    - REFACTORED: Now uses GameData, GameMatch, GameTeam, GameStroke, GameUI
    - Read-only viewer (no edit/save/next/back buttons)
-   - Flight toggle (F1/F2) to view both flights
+   - Single row header: SCORECARD + P/N button on left, Hole ◀ # ▶ navigation on right
+   - Compact hole navigation (small buttons, displays current hole number)
+   - Combined Flight toggle button below player cards
+   - Removed large hole header label
    - Real-time sync via Firestore snapshot listener
-   - All display handled by game-ui.js
-   - Compatible with all calculator modules v2.00
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
 -->
@@ -71,31 +72,7 @@ STATUS: Ready for testing
             color: #ffaa44;
         }
         
-        .hole-header { text-align: center; margin: 16px 0; }
-        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
-        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
-        
-        .flight-toggle {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            margin: 16px 0;
-        }
-        .toggle-flight-btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 40px;
-            padding: 8px 24px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-            color: #888;
-        }
-        .toggle-flight-btn.active {
-            background: #1a3a1a;
-            border-color: #4caf50;
-            color: #4caf50;
-        }
+        .hole-header { text-align: center; margin: 16px 0; display: none; }
         
         .team-score-card {
             background: #111;
@@ -138,24 +115,69 @@ STATUS: Ready for testing
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
-            flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
         }
-        .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
-        .view-toggle { display: flex; gap: 4px; }
-        .toggle-btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 20px;
-            padding: 4px 12px;
-            font-size: 0.65rem;
+        .scorecard-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4caf50;
+            border-left: 2px solid #4caf50;
+            padding-left: 10px;
+        }
+        .pn-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 700;
             cursor: pointer;
+            text-align: center;
+            line-height: 1;
+        }
+        .nav-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .nav-label {
+            font-size: 0.7rem;
             color: #888;
         }
-        .toggle-btn.active {
+        .nav-btn {
             background: #1a3a1a;
-            border-color: #4caf50;
+            border: 1px solid #4caf50;
             color: #4caf50;
+            width: 32px;
+            height: 32px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .hole-number-display {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4caf50;
+            min-width: 45px;
+            text-align: center;
+        }
+        
+        .flight-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 20px auto;
+            display: block;
+            width: 200px;
+            text-align: center;
         }
         
         .scorecard-wrapper { overflow-x: auto; }
@@ -201,34 +223,33 @@ STATUS: Ready for testing
     <div class="status-bubble" id="statusBubble">VIEWER</div>
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
-    <div class="flight-toggle">
-        <button class="toggle-flight-btn active" id="flight1Btn">✈️ Flight 1</button>
-        <button class="toggle-flight-btn" id="flight2Btn">✈️ Flight 2</button>
-    </div>
-    
-    <div id="holeHeader" class="hole-header"></div>
-    <div id="flightTab" class="flight-tab"></div>
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
     
     <div class="scorecard-section">
-        <div class="scorecard-header">
-            <div class="scorecard-title">SCORECARD</div>
-            <div class="view-toggle">
-                <button class="toggle-btn" id="playOrderBtn">⛳ Play Order</button>
-                <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
+        <div class="scorecard-header" id="scorecardHeader">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="scorecard-title">SCORECARD</span>
+                <button class="pn-toggle" id="pnToggleBtn">P</button>
+            </div>
+            <div class="nav-group">
+                <span class="nav-label">Hole</span>
+                <button class="nav-btn" id="prevHoleBtn">◀</button>
+                <span class="hole-number-display" id="holeNumberDisplay">1</span>
+                <button class="nav-btn" id="nextHoleBtn">▶</button>
             </div>
         </div>
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
-    <button class="btn btn-menu" id="menuBtn">← Back to Main Menu</button>
+    <button class="flight-btn" id="flightToggleBtn">✈️ Flight 1</button>
+    <button class="btn-menu" id="menuBtn">← Back to Main Menu</button>
     
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.00 VIEWER</div>
+<div class="version-tag">v2.01 VIEWER</div>
 
 <script>
 // ============================================================
@@ -310,10 +331,6 @@ function getFlightOrderedPlayers(flight) {
     var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     return teamA.concat(teamB);
-}
-
-function parseFlightDataToString() {
-    // f1DataString and f2DataString are already strings from GameData
 }
 
 function updateSavedHolesList() {
@@ -583,10 +600,6 @@ function getMatchValue(playerName, opponentName) {
 // ============================================================
 
 function renderAll() {
-    var currentPar = coursePar[currentHole - 1];
-    var currentSi = courseSi[currentHole - 1];
-    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-    GameUI.updateFlightTab("flightTab", selectedFlight, false);
     GameUI.updateTR("trDisplay", trTeamA, trTeamB, trTeamAGreen, trTeamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(selectedFlight);
@@ -615,6 +628,62 @@ function renderAll() {
         coursePar,
         courseSi
     );
+    
+    document.getElementById("holeNumberDisplay").innerText = currentHole;
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+
+function goToPrevHole() {
+    if (currentHole > 1) {
+        currentHole--;
+        renderAll();
+    }
+}
+
+function goToNextHole() {
+    if (currentHole < 18) {
+        currentHole++;
+        renderAll();
+    }
+}
+
+// ============================================================
+// Display Mode
+// ============================================================
+
+function updatePnButton() {
+    var pnBtn = document.getElementById("pnToggleBtn");
+    if (pnBtn) {
+        var mode = GameUI.getDisplayMode();
+        pnBtn.innerText = mode === "play" ? "P" : "N";
+    }
+}
+
+function toggleDisplayMode() {
+    var currentMode = GameUI.getDisplayMode();
+    var newMode = currentMode === "play" ? "natural" : "play";
+    GameUI.setDisplayMode(newMode, function() {
+        updatePnButton();
+        renderAll();
+    });
+}
+
+// ============================================================
+// Flight Toggle
+// ============================================================
+
+function toggleFlight() {
+    if (selectedFlight === 1) {
+        selectedFlight = 2;
+        document.getElementById("flightToggleBtn").innerText = "✈️ Flight 2";
+    } else {
+        selectedFlight = 1;
+        document.getElementById("flightToggleBtn").innerText = "✈️ Flight 1";
+    }
+    renderAll();
 }
 
 // ============================================================
@@ -651,16 +720,6 @@ function refreshFromFirestore(data) {
         calculateTR();
         renderAll();
     }
-}
-
-// ============================================================
-// Display Mode
-// ============================================================
-
-function setDisplayMode(mode) {
-    GameUI.setDisplayMode(mode, function() {
-        renderAll();
-    });
 }
 
 // ============================================================
@@ -722,29 +781,18 @@ async function init() {
     updateMatchResults();
     calculateTR();
     
-    GameUI.updateToggleButtons(GameUI.getDisplayMode());
+    // Set initial display mode button
+    updatePnButton();
+    
     renderAll();
     
-    // Set up toggle button handlers
-    document.getElementById("playOrderBtn").addEventListener("click", function() {
-        setDisplayMode("play");
-    });
-    document.getElementById("naturalOrderBtn").addEventListener("click", function() {
-        setDisplayMode("natural");
-    });
-    
-    // Flight toggle
-    document.getElementById("flight1Btn").addEventListener("click", function() {
-        selectedFlight = 1;
-        document.getElementById("flight1Btn").classList.add("active");
-        document.getElementById("flight2Btn").classList.remove("active");
-        renderAll();
-    });
-    document.getElementById("flight2Btn").addEventListener("click", function() {
-        selectedFlight = 2;
-        document.getElementById("flight2Btn").classList.add("active");
-        document.getElementById("flight1Btn").classList.remove("active");
-        renderAll();
+    // Set up event listeners
+    document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
+    document.getElementById("prevHoleBtn").addEventListener("click", goToPrevHole);
+    document.getElementById("nextHoleBtn").addEventListener("click", goToNextHole);
+    document.getElementById("flightToggleBtn").addEventListener("click", toggleFlight);
+    document.getElementById("menuBtn").addEventListener("click", function() {
+        window.location.href = "index.html";
     });
     
     // Set up Firestore snapshot listener for real-time sync
@@ -757,14 +805,6 @@ async function init() {
     });
 }
 
-// ============================================================
-// Event Listeners
-// ============================================================
-
-document.getElementById("menuBtn").addEventListener("click", function() {
-    window.location.href = "index.html";
-});
-
 init();
 </script>
 
@@ -773,14 +813,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
-   - REFACTORED: Now uses GameData, GameMatch, GameTeam, GameStroke, GameUI
-   - Read-only viewer (no edit/save/next/back buttons)
-   - Flight toggle (F1/F2) to view both flights
+   - Single row header: SCORECARD + P/N button on left, Hole ◀ # ▶ navigation on right
+   - Compact hole navigation (small buttons, displays current hole number)
+   - Combined Flight toggle button below player cards
+   - Removed large hole header label
    - Real-time sync via Firestore snapshot listener
-   - All display handled by game-ui.js
-   - Compatible with all calculator modules v2.00
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
 -->
