@@ -1,70 +1,15 @@
 /*
 FILE: js/game-ui.js
-VERSION: 1.09
+VERSION: 2.01
 KEY CHANGES:
-   - FIXED: Event listeners now use player NAME instead of player index for lookup
-   - This ensures correct player identification when currentPlayers order differs from allPlayers
-   - All other display logic preserved from v1.08
-   - TR font size: 2rem, font-weight 800
-   - Green line after Flight 2 (before T-2)
+   - FIXED: T-1, T-2, Strk rows now show "AS" for tied synced holes
+   - Unsynced holes (not played by both flights) are invisible (black text on black)
+   - Preserves all existing display logic
+DEPENDS ON: None (pure display)
 STATUS: Ready for testing
 */
 
 var GameUI = (function() {
-    
-    // ============================================================
-    // Display Mode Management
-    // ============================================================
-    
-    var currentDisplayMode = "play";
-    
-    function getDisplayMode() {
-        var saved = localStorage.getItem("scorecardDisplay");
-        if (saved === "natural" || saved === "play") {
-            currentDisplayMode = saved;
-        } else {
-            currentDisplayMode = "play";
-        }
-        return currentDisplayMode;
-    }
-    
-    function updateToggleButtons(mode) {
-        var playBtn = document.getElementById('playOrderBtn');
-        var naturalBtn = document.getElementById('naturalOrderBtn');
-        if (playBtn && naturalBtn) {
-            if (mode === 'play') {
-                playBtn.classList.add('active');
-                naturalBtn.classList.remove('active');
-            } else {
-                playBtn.classList.remove('active');
-                naturalBtn.classList.add('active');
-            }
-        }
-    }
-    
-    function setDisplayMode(mode, onModeChanged) {
-        if (mode !== "play" && mode !== "natural") return;
-        currentDisplayMode = mode;
-        localStorage.setItem("scorecardDisplay", mode);
-        updateToggleButtons(mode);
-        if (onModeChanged && typeof onModeChanged === 'function') {
-            onModeChanged(mode);
-        }
-    }
-    
-    function getDisplayHoles(startingHole, preference) {
-        var useNatural = (preference === "natural");
-        if (useNatural) {
-            var natural = [];
-            for (var i = 1; i <= 18; i++) natural.push(i);
-            return natural;
-        } else {
-            var playOrder = [];
-            for (var i = startingHole; i <= 18; i++) playOrder.push(i);
-            for (var i = 1; i < startingHole; i++) playOrder.push(i);
-            return playOrder;
-        }
-    }
     
     // ============================================================
     // Scorecard Rendering
@@ -135,12 +80,33 @@ var GameUI = (function() {
         // Green line after Flight 1 (before T-1)
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row
+        // T-1 row (with AS for tied synced holes)
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
-            var displayVal = (val === '_' || val === '') ? '' : val;
-            var cellClass = (val && val !== '_') ? 'score-green' : 'score-invisible';
+            var holeNum = holes[i];
+            var isSynced = (savedHoles && savedHoles[1] && savedHoles[2]) ? 
+                (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1) : false;
+            
+            var displayVal = '';
+            var cellClass = 'score-invisible';
+            
+            if (val === '0' || val === 0) {
+                if (isSynced) {
+                    displayVal = 'AS';
+                    cellClass = 'score-green';
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
+            } else if (val === 'A' || val === 'B') {
+                displayVal = val;
+                cellClass = 'score-green';
+            } else if (val && val !== '_') {
+                displayVal = val;
+                cellClass = 'score-green';
+            }
+            
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
@@ -167,12 +133,33 @@ var GameUI = (function() {
         // GREEN LINE AFTER FLIGHT 2 (BEFORE T-2)
         html += '<tr class="green-line"><td colspan="20"> </td>';
         
-        // T-2 row
+        // T-2 row (with AS for tied synced holes)
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
-            var displayVal = (val === '_' || val === '') ? '' : val;
-            var cellClass = (val && val !== '_') ? 'score-green' : 'score-invisible';
+            var holeNum = holes[i];
+            var isSynced = (savedHoles && savedHoles[1] && savedHoles[2]) ? 
+                (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1) : false;
+            
+            var displayVal = '';
+            var cellClass = 'score-invisible';
+            
+            if (val === '0' || val === 0) {
+                if (isSynced) {
+                    displayVal = 'AS';
+                    cellClass = 'score-green';
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
+            } else if (val === 'A' || val === 'B') {
+                displayVal = val;
+                cellClass = 'score-green';
+            } else if (val && val !== '_') {
+                displayVal = val;
+                cellClass = 'score-green';
+            }
+            
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
@@ -180,12 +167,33 @@ var GameUI = (function() {
         // Green line after T-2 (before Strk)
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row
-        html += '</tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        // Strk row (with AS for tied synced holes)
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
-            var displayVal = (val === '_' || val === '') ? '' : val;
-            var cellClass = (val && val !== '_') ? 'score-green' : 'score-invisible';
+            var holeNum = holes[i];
+            var isSynced = (savedHoles && savedHoles[1] && savedHoles[2]) ? 
+                (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1) : false;
+            
+            var displayVal = '';
+            var cellClass = 'score-invisible';
+            
+            if (val === '0' || val === 0) {
+                if (isSynced) {
+                    displayVal = 'AS';
+                    cellClass = 'score-green';
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
+            } else if (val === 'A' || val === 'B') {
+                displayVal = val;
+                cellClass = 'score-green';
+            } else if (val && val !== '_') {
+                displayVal = val;
+                cellClass = 'score-green';
+            }
+            
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
@@ -249,7 +257,6 @@ var GameUI = (function() {
                 var decBtn = card.querySelector('.dec-btn');
                 var incBtn = card.querySelector('.inc-btn');
                 
-                // Use player NAME instead of index for lookup
                 if (decBtn) {
                     decBtn.addEventListener('click', (function(pName, pFlight) {
                         return function() {
@@ -282,7 +289,6 @@ var GameUI = (function() {
         var teamAColorClass = teamAGreen ? 'team-score-green' : 'team-score-red';
         var teamBColorClass = teamBGreen ? 'team-score-green' : 'team-score-red';
         
-        // TR font size 2rem, font-weight 800
         var html = '<div style="font-size: 2rem; font-weight: 800;">' +
                        '<span class="' + teamAColorClass + '">Team A ' + teamADisplay + '</span>' + 
                        ' - ' + 
@@ -319,6 +325,60 @@ var GameUI = (function() {
     }
     
     // ============================================================
+    // Display Mode Management
+    // ============================================================
+    
+    var currentDisplayMode = "play";
+    
+    function getDisplayMode() {
+        var saved = localStorage.getItem("scorecardDisplay");
+        if (saved === "natural" || saved === "play") {
+            currentDisplayMode = saved;
+        } else {
+            currentDisplayMode = "play";
+        }
+        return currentDisplayMode;
+    }
+    
+    function updateToggleButtons(mode) {
+        var playBtn = document.getElementById('playOrderBtn');
+        var naturalBtn = document.getElementById('naturalOrderBtn');
+        if (playBtn && naturalBtn) {
+            if (mode === 'play') {
+                playBtn.classList.add('active');
+                naturalBtn.classList.remove('active');
+            } else {
+                playBtn.classList.remove('active');
+                naturalBtn.classList.add('active');
+            }
+        }
+    }
+    
+    function setDisplayMode(mode, onModeChanged) {
+        if (mode !== "play" && mode !== "natural") return;
+        currentDisplayMode = mode;
+        localStorage.setItem("scorecardDisplay", mode);
+        updateToggleButtons(mode);
+        if (onModeChanged && typeof onModeChanged === 'function') {
+            onModeChanged(mode);
+        }
+    }
+    
+    function getDisplayHoles(startingHole, preference) {
+        var useNatural = (preference === "natural");
+        if (useNatural) {
+            var natural = [];
+            for (var i = 1; i <= 18; i++) natural.push(i);
+            return natural;
+        } else {
+            var playOrder = [];
+            for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+            for (var i = 1; i < startingHole; i++) playOrder.push(i);
+            return playOrder;
+        }
+    }
+    
+    // ============================================================
     // Helper
     // ============================================================
     
@@ -337,14 +397,11 @@ var GameUI = (function() {
     // ============================================================
     
     return {
-        // Core rendering functions
         renderScorecard: renderScorecard,
         renderPlayerCards: renderPlayerCards,
         updateTR: updateTR,
         updateHoleHeader: updateHoleHeader,
         updateFlightTab: updateFlightTab,
-        
-        // Display mode management
         getDisplayMode: getDisplayMode,
         setDisplayMode: setDisplayMode,
         updateToggleButtons: updateToggleButtons,
@@ -355,13 +412,11 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 1.09
+VERSION: 2.01
 KEY CHANGES:
-   - FIXED: Event listeners now use player NAME instead of player index for lookup
-   - This ensures correct player identification when currentPlayers order differs from allPlayers
-   - Removed data-player-idx attribute (no longer needed)
-   - All other display logic preserved from v1.08
-   - TR font size: 2rem, font-weight 800
-   - Green line after Flight 2 (before T-2)
+   - FIXED: T-1, T-2, Strk rows now show "AS" for tied synced holes
+   - Unsynced holes (not played by both flights) are invisible (black text on black)
+   - Preserves all existing display logic
+DEPENDS ON: None (pure display)
 STATUS: Ready for testing
 */
