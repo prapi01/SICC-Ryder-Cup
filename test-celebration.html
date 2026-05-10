@@ -1,0 +1,242 @@
+<!--
+FILE: test-celebration.html
+PURPOSE: Test celebration screen with your image
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Celebration Screen</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; font-family: system-ui, sans-serif; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        
+        .test-buttons {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 20px;
+        }
+        .test-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        /* Celebration Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+        .celebration-modal {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
+            border-radius: 48px;
+            padding: 32px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            border: 3px solid #ffaa44;
+            box-shadow: 0 0 50px rgba(255,170,68,0.4);
+            animation: bounceIn 0.6s ease-out;
+        }
+        .celebration-image-container {
+            margin-bottom: 16px;
+        }
+        .celebration-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 24px;
+            object-fit: cover;
+        }
+        .celebration-emoji {
+            font-size: 3rem;
+            margin-bottom: 8px;
+        }
+        .celebration-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 16px;
+        }
+        .celebration-beer {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: #4caf50;
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+            animation: bounce 0.5s ease 2;
+        }
+        .celebration-winner {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 60px;
+        }
+        .winner-a { background: rgba(76,175,80,0.2); color: #4caf50; }
+        .winner-b { background: rgba(76,175,80,0.2); color: #4caf50; }
+        .winner-tie { background: rgba(255,170,68,0.2); color: #ffaa44; }
+        .celebration-score {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 24px;
+        }
+        .celebration-players {
+            background: rgba(0,0,0,0.5);
+            border-radius: 24px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        .celebration-players-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 12px;
+        }
+        .celebration-players-list {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+        }
+        .winning-player {
+            background: #1a3a1a;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #4caf50;
+        }
+        .celebration-btn {
+            background: #1a3a1a;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            padding: 14px 28px;
+            border-radius: 60px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+        }
+        .celebration-btn:hover {
+            background: #2a4a2a;
+            transform: scale(1.02);
+        }
+        
+        .confetti {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            top: -10px;
+            border-radius: 2px;
+            animation: fall linear forwards;
+            z-index: 3001;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); }
+            70% { transform: scale(0.95); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes fall {
+            to { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+<div class="test-buttons">
+    <button class="test-btn" onclick="showCelebration('A', 11.5, 7.5)">🏆 Team A Wins (11.5 - 7.5)</button>
+    <button class="test-btn" onclick="showCelebration('B', 7.5, 11.5)">🏆 Team B Wins (7.5 - 11.5)</button>
+    <button class="test-btn" onclick="showCelebration('Tie', 9.5, 9.5)">🤝 Tie Game (9.5 - 9.5)</button>
+</div>
+
+<script>
+function launchConfetti() {
+    for (var i = 0; i < 150; i++) {
+        var confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.left = Math.random() * 100 + '%';
+        confetti.style.animationDelay = Math.random() * 3 + 's';
+        confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+        confetti.style.backgroundColor = ['#4caf50', '#ffaa44', '#4caf50', '#ffffff'][Math.floor(Math.random() * 4)];
+        document.body.appendChild(confetti);
+        setTimeout(function(c) { c.remove(); }, 4000);
+    }
+}
+
+function showCelebration(winner, teamAScore, teamBScore) {
+    var winnerText = winner === "A" ? "TEAM A WINS!" : (winner === "B" ? "TEAM B WINS!" : "TIE GAME!");
+    var winnerClass = winner === "A" ? "winner-a" : (winner === "B" ? "winner-b" : "winner-tie");
+    
+    var teamADisplay = teamAScore % 1 === 0 ? teamAScore : teamAScore.toFixed(1);
+    var teamBDisplay = teamBScore % 1 === 0 ? teamBScore : teamBScore.toFixed(1);
+    
+    var celebrationImage = "/images/celebration/Celebration%20001.jpg";
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="celebrationModal">
+            <div class="celebration-modal">
+                <div class="celebration-image-container">
+                    <img src="${celebrationImage}" class="celebration-image" alt="Celebration" onerror="this.style.display='none'">
+                </div>
+                <div class="celebration-title">MATCH COMPLETE!</div>
+                <div class="celebration-beer">🍺 BEER TIME! 🍺</div>
+                <div class="celebration-winner ${winnerClass}">
+                    ${winnerText}
+                </div>
+                <div class="celebration-score">
+                    Team A ${teamADisplay} - ${teamBDisplay} Team B
+                </div>
+                <div class="celebration-players">
+                    <div class="celebration-players-title">🏅 ${winner === 'A' ? 'TEAM A' : (winner === 'B' ? 'TEAM B' : 'BOTH TEAMS')} 🏅</div>
+                    <div class="celebration-players-list">
+                        ${winner === 'A' ? '<span class="winning-player">Ang C H</span><span class="winning-player">Chenh Hoe</span><span class="winning-player">C K</span><span class="winning-player">Yip H M</span>' : 
+                          (winner === 'B' ? '<span class="winning-player">Jeff Goh</span><span class="winning-player">Ong C B</span><span class="winning-player">Piti</span><span class="winning-player">James Ong</span>' :
+                          '<span class="winning-player">Great Match!</span>')}
+                    </div>
+                </div>
+                <button class="celebration-btn" id="celebrationCloseBtn">🏠 Return to Main Menu</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    launchConfetti();
+    
+    document.getElementById("celebrationCloseBtn").addEventListener("click", function() {
+        document.getElementById("celebrationModal").remove();
+    });
+}
+</script>
+</body>
+</html>
