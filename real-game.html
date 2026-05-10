@@ -1,9 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - FIXED: Added GameData.setCourse() and GameData.setPlayers() to initialize data strings
-   - FIXED: Save button now works because f1DataString/f2DataString are properly initialized
+   - FIXED: Now properly calls GameData.loadGameFromSession() to initialize internal state
+   - GameData.saveCurrentHole now has correct gameId for Firestore operations
+   - Save button now works correctly
    - Firestore snapshot listener for real-time cross-device sync
    - Uses GameData and GameMatch for all data management and calculations
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-ui.js, js/card-submit.js
@@ -221,7 +222,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.03 REAL</div>
+<div class="version-tag">v2.04 REAL</div>
 
 <script>
 // ============================================================
@@ -756,6 +757,21 @@ function setDisplayMode(mode) {
 }
 
 // ============================================================
+// Data Change Listener
+// ============================================================
+
+function onGameDataChanged() {
+    // Refresh from GameData when internal data changes
+    var flight1 = GameData.getFlightData(1);
+    var flight2 = GameData.getFlightData(2);
+    if (flight1.data !== f1DataString || flight2.data !== f2DataString) {
+        f1DataString = flight1.data;
+        f2DataString = flight2.data;
+        refreshFromFirestore({ f1: { d: f1DataString }, f2: { d: f2DataString }, submitted: submitted });
+    }
+}
+
+// ============================================================
 // Initialization
 // ============================================================
 
@@ -778,73 +794,95 @@ async function init() {
     }
     canEdit = (editableFlight === 1 || editableFlight === 2);
     
-    gameId = session.activeGame ? session.activeGame.gameId : null;
-    if (!gameId) {
-        document.getElementById("debug").innerHTML = "Error: No game ID";
-        return;
-    }
-    
-    // Load initial game data
-    var doc = await db.collection("scheduledGames").doc(gameId).get();
-    if (!doc.exists) {
-        document.getElementById("debug").innerHTML = "Error: Game not found";
-        return;
-    }
-    
-    var data = doc.data();
-    courseName = data.course ? data.course.name : "Unknown Course";
-    document.getElementById("courseName").innerHTML = courseName;
-    coursePar = data.course ? data.course.par : [];
-    courseSi = data.course ? data.course.si : [];
-    allPlayers = data.players || [];
-    startingHole = data.startingHole || 1;
-    f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
-    f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
-    
-    // CRITICAL FIX: Initialize GameData with course and players
-    // This creates the default data strings (all F, scores = par)
-    GameData.setCourse({ par: coursePar });
-    GameData.setPlayers(allPlayers);
-    
-    if (data.submitted) {
-        submitted.f1 = data.submitted.f1 === true;
-        submitted.f2 = data.submitted.f2 === true;
-    }
-    isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
-    
-    // Parse initial data
-    for (var h = 1; h <= 18; h++) {
-        var f1Hole = GameData.parseHoleData(f1DataString, h);
-        var f2Hole = GameData.parseHoleData(f2DataString, h);
-        if (f1Hole) flight1Data[h] = f1Hole;
-        if (f2Hole) flight2Data[h] = f2Hole;
-    }
-    
-    var playOrder = getPlayOrder();
-    currentHole = playOrder[0];
-    
-    updateSavedHolesList();
-    updateMatchResults();
-    calculateTR();
-    
-    GameUI.updateToggleButtons(GameUI.getDisplayMode());
-    renderAll();
-    
-    // Set up toggle button handlers
-    document.getElementById("playOrderBtn").addEventListener("click", function() {
-        setDisplayMode("play");
-    });
-    document.getElementById("naturalOrderBtn").addEventListener("click", function() {
-        setDisplayMode("natural");
+    // Set up GameData callbacks
+    GameData.setCallbacks(onGameDataChanged, function(error) {
+        document.getElementById("debug").innerHTML = "Error: " + error;
     });
     
-    // Set up Firestore snapshot listener for real-time sync
-    unsubscribe = db.collection("scheduledGames").doc(gameId).onSnapshot(function(snapshot) {
-        if (snapshot.exists) {
-            refreshFromFirestore(snapshot.data());
+    // Load game through GameData to initialize internal state
+    GameData.loadGameFromSession(session, function(success) {
+        if (!success) {
+            document.getElementById("debug").innerHTML = "Failed to load game";
+            return;
         }
-    }, function(error) {
-        document.getElementById("debug").innerHTML = "Sync error: " + error.message;
+        
+        var metadata = GameData.getGameMetadata();
+        gameId = metadata.gameId;
+        
+        // Now load the full game data from Firestore for display
+        db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+            if (!doc.exists) {
+                document.getElementById("debug").innerHTML = "Error: Game not found";
+                return;
+            }
+            
+            var data = doc.data();
+            courseName = data.course ? data.course.name : "Unknown Course";
+            document.getElementById("courseName").innerHTML = courseName;
+            coursePar = data.course ? data.course.par : [];
+            courseSi = data.course ? data.course.si : [];
+            allPlayers = data.players || [];
+            startingHole = data.startingHole || 1;
+            
+            // Initialize GameData with course and players (creates default data strings)
+            GameData.setCourse({ par: coursePar });
+            GameData.setPlayers(allPlayers);
+            
+            // Get the data strings from GameData (they may have been loaded or are defaults)
+            var flight1 = GameData.getFlightData(1);
+            var flight2 = GameData.getFlightData(2);
+            f1DataString = flight1.data;
+            f2DataString = flight2.data;
+            
+            // If Firestore has existing data, use it instead of defaults
+            if (data.f1 && data.f1.d && data.f1.d !== f1DataString) {
+                f1DataString = data.f1.d;
+            }
+            if (data.f2 && data.f2.d && data.f2.d !== f2DataString) {
+                f2DataString = data.f2.d;
+            }
+            
+            if (data.submitted) {
+                submitted.f1 = data.submitted.f1 === true;
+                submitted.f2 = data.submitted.f2 === true;
+            }
+            isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
+            
+            // Parse initial data
+            for (var h = 1; h <= 18; h++) {
+                var f1Hole = GameData.parseHoleData(f1DataString, h);
+                var f2Hole = GameData.parseHoleData(f2DataString, h);
+                if (f1Hole) flight1Data[h] = f1Hole;
+                if (f2Hole) flight2Data[h] = f2Hole;
+            }
+            
+            var playOrder = getPlayOrder();
+            currentHole = playOrder[0];
+            
+            updateSavedHolesList();
+            updateMatchResults();
+            calculateTR();
+            
+            GameUI.updateToggleButtons(GameUI.getDisplayMode());
+            renderAll();
+            
+            // Set up toggle button handlers
+            document.getElementById("playOrderBtn").addEventListener("click", function() {
+                setDisplayMode("play");
+            });
+            document.getElementById("naturalOrderBtn").addEventListener("click", function() {
+                setDisplayMode("natural");
+            });
+            
+            // Set up Firestore snapshot listener for real-time sync
+            unsubscribe = db.collection("scheduledGames").doc(gameId).onSnapshot(function(snapshot) {
+                if (snapshot.exists) {
+                    refreshFromFirestore(snapshot.data());
+                }
+            }, function(error) {
+                document.getElementById("debug").innerHTML = "Sync error: " + error.message;
+            });
+        });
     });
 }
 
@@ -865,10 +903,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - FIXED: Added GameData.setCourse() and GameData.setPlayers() to initialize data strings
-   - FIXED: Save button now works because f1DataString/f2DataString are properly initialized
+   - FIXED: Now properly calls GameData.loadGameFromSession() to initialize internal state
+   - GameData.saveCurrentHole now has correct gameId for Firestore operations
+   - Save button now works correctly
    - Firestore snapshot listener for real-time cross-device sync
    - Uses GameData and GameMatch for all data management and calculations
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-ui.js, js/card-submit.js
