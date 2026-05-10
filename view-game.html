@@ -1,12 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - Now reads pre-computed results from Firestore (no recalculation)
-   - TR, T-1/T-2, Strk rows displayed directly from results object
-   - Match bubbles still use local calculation (IB/XB from Firestore sync)
-   - Faster performance and consistent with updater devices
-   - Ready for History mode (same results structure)
+   - Navigation now restricted to holes with computed results
+   - Cannot navigate beyond computedUpToHole
+   - Initial hole set to highest synced hole (or starting hole)
+   - Disabled navigation buttons when at limits
+   - Grey out buttons when cannot navigate further
+   - All display from pre-computed results
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
 -->
@@ -153,6 +154,12 @@ STATUS: Ready for testing
             cursor: pointer;
             font-weight: bold;
         }
+        .nav-btn:disabled {
+            background: #2a2a2a;
+            color: #555;
+            border: 1px solid #444;
+            cursor: not-allowed;
+        }
         .hole-number-display {
             font-size: 0.9rem;
             font-weight: 600;
@@ -255,7 +262,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.02 VIEWER</div>
+<div class="version-tag">v2.03 VIEWER</div>
 
 <script>
 // ============================================================
@@ -309,7 +316,8 @@ var matchResults = {
     cross: {}
 };
 
-var gameResults = null;  // Pre-computed results from Firestore
+var gameResults = null;
+var maxAllowedPosition = 0;  // Highest hole position with results
 
 var myDeviceShortName = "";
 var unsubscribe = null;
@@ -333,6 +341,11 @@ function getHolePosition(holeNumber) {
         if (playOrder[i] === holeNumber) return i;
     }
     return holeNumber - 1;
+}
+
+function getHoleAtPosition(position) {
+    var playOrder = getPlayOrder();
+    return playOrder[position];
 }
 
 function getDisplayHoles() {
@@ -430,7 +443,7 @@ function updateMatchResults() {
 }
 
 // ============================================================
-// TR and Row Display from Results (NEW - reads pre-computed data)
+// TR and Row Display from Results
 // ============================================================
 
 function updateDisplayFromResults() {
@@ -439,16 +452,12 @@ function updateDisplayFromResults() {
     var position = getHolePosition(currentHole);
     var computedUpTo = gameResults.computedUpToHole || 0;
     
-    // If results are not available for this hole, use defaults
+    // If no results available, use defaults
     if (position >= computedUpTo) {
-        // Use default/placeholder values
         trTeamA = 9.5;
         trTeamB = 9.5;
         trTeamAGreen = true;
         trTeamBGreen = true;
-        
-        // T-1/T-2/Strk rows from current flight data (fallback)
-        // These will be updated when results are available
         return;
     }
     
@@ -460,9 +469,8 @@ function updateDisplayFromResults() {
         trTeamBGreen = gameResults.tr.teamBGreen[position] !== undefined ? gameResults.tr.teamBGreen[position] : true;
     }
     
-    // Read T-1/T-2 rows from results (for display in scorecard)
+    // Read T-1/T-2 rows from results
     if (gameResults.game2) {
-        // Build t1Row from flight1 leader
         var flight1Leader = gameResults.game2.flight1.leader;
         var flight2Leader = gameResults.game2.flight2.leader;
         
@@ -563,76 +571,52 @@ function getMatchValue(playerName, opponentName) {
 }
 
 // ============================================================
-// Full Render
+// Navigation with restrictions
 // ============================================================
 
-function renderAll() {
-    var currentPar = coursePar[currentHole - 1];
-    var currentSi = courseSi[currentHole - 1];
+function updateNavButtons() {
+    var prevBtn = document.getElementById("prevHoleBtn");
+    var nextBtn = document.getElementById("nextHoleBtn");
+    if (!prevBtn || !nextBtn) return;
     
-    // Create hole header
-    var holeHeaderDiv = document.querySelector('.hole-header');
-    if (!holeHeaderDiv) {
-        var newHeader = document.createElement('div');
-        newHeader.className = 'hole-header';
-        var courseNameDiv = document.getElementById('courseName');
-        courseNameDiv.parentNode.insertBefore(newHeader, courseNameDiv.nextSibling);
-    }
-    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    var maxAllowedHole = getHoleAtPosition(maxAllowedPosition);
     
-    // Update TR from results
-    updateDisplayFromResults();
-    GameUI.updateTR("trDisplay", trTeamA, trTeamB, trTeamAGreen, trTeamBGreen);
-    
-    var currentPlayers = getFlightOrderedPlayers(selectedFlight);
-    
-    GameUI.renderPlayerCards(
-        "playerCards",
-        currentPlayers,
-        getAllOpponents,
-        getBubbleClass,
-        getBubbleValue,
-        getCurrentScore,
-        false,
-        null
-    );
-    
-    var holes = getDisplayHoles();
-    GameUI.renderScorecard(
-        "scorecardWrapper",
-        holes,
-        allPlayers,
-        getStoredScore,
-        isHoleSaved,
-        t1Row,
-        t2Row,
-        strkRow,
-        coursePar,
-        courseSi
-    );
-    
-    document.getElementById("holeNumberDisplay").innerText = currentHole;
+    prevBtn.disabled = (currentIndex === 0);
+    nextBtn.disabled = (currentHole >= maxAllowedHole);
 }
-
-// ============================================================
-// Navigation
-// ============================================================
 
 function goToPrevHole() {
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
+    
     if (currentIndex > 0) {
-        currentHole = playOrder[currentIndex - 1];
-        renderAll();
+        var prevHole = playOrder[currentIndex - 1];
+        var prevPosition = getHolePosition(prevHole);
+        if (prevPosition <= maxAllowedPosition) {
+            currentHole = prevHole;
+            updateDisplayFromResults();
+            renderAll();
+            updateNavButtons();
+        }
     }
 }
 
 function goToNextHole() {
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
-    if (currentIndex < 17) {
-        currentHole = playOrder[currentIndex + 1];
-        renderAll();
+    var maxAllowedHole = getHoleAtPosition(maxAllowedPosition);
+    
+    if (currentIndex < 17 && currentHole < maxAllowedHole) {
+        var nextHole = playOrder[currentIndex + 1];
+        var nextPosition = getHolePosition(nextHole);
+        if (nextPosition <= maxAllowedPosition) {
+            currentHole = nextHole;
+            updateDisplayFromResults();
+            renderAll();
+            updateNavButtons();
+        }
     }
 }
 
@@ -669,6 +653,57 @@ function toggleFlight(flight) {
 }
 
 // ============================================================
+// Full Render
+// ============================================================
+
+function renderAll() {
+    var currentPar = coursePar[currentHole - 1];
+    var currentSi = courseSi[currentHole - 1];
+    
+    // Create hole header
+    var holeHeaderDiv = document.querySelector('.hole-header');
+    if (!holeHeaderDiv) {
+        var newHeader = document.createElement('div');
+        newHeader.className = 'hole-header';
+        var courseNameDiv = document.getElementById('courseName');
+        courseNameDiv.parentNode.insertBefore(newHeader, courseNameDiv.nextSibling);
+    }
+    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    
+    GameUI.updateTR("trDisplay", trTeamA, trTeamB, trTeamAGreen, trTeamBGreen);
+    
+    var currentPlayers = getFlightOrderedPlayers(selectedFlight);
+    
+    GameUI.renderPlayerCards(
+        "playerCards",
+        currentPlayers,
+        getAllOpponents,
+        getBubbleClass,
+        getBubbleValue,
+        getCurrentScore,
+        false,
+        null
+    );
+    
+    var holes = getDisplayHoles();
+    GameUI.renderScorecard(
+        "scorecardWrapper",
+        holes,
+        allPlayers,
+        getStoredScore,
+        isHoleSaved,
+        t1Row,
+        t2Row,
+        strkRow,
+        coursePar,
+        courseSi
+    );
+    
+    document.getElementById("holeNumberDisplay").innerText = currentHole;
+    updateNavButtons();
+}
+
+// ============================================================
 // Refresh from Firestore Snapshot
 // ============================================================
 
@@ -679,6 +714,8 @@ function refreshFromFirestore(data) {
     // Load pre-computed results
     if (data.results) {
         gameResults = data.results;
+        maxAllowedPosition = (gameResults.computedUpToHole || 0) - 1;
+        if (maxAllowedPosition < 0) maxAllowedPosition = -1;
     }
     
     var newF1 = {};
@@ -704,9 +741,11 @@ function refreshFromFirestore(data) {
     if (changed) {
         updateSavedHolesList();
         updateMatchResults();
+        updateDisplayFromResults();
         renderAll();
     } else {
         // Still need to refresh display in case results changed
+        updateDisplayFromResults();
         renderAll();
     }
 }
@@ -754,6 +793,8 @@ async function init() {
     // Load pre-computed results
     if (data.results) {
         gameResults = data.results;
+        maxAllowedPosition = (gameResults.computedUpToHole || 0) - 1;
+        if (maxAllowedPosition < 0) maxAllowedPosition = -1;
     }
     
     // Initialize GameData
@@ -769,7 +810,13 @@ async function init() {
     }
     
     var playOrder = getPlayOrder();
-    currentHole = playOrder[0];
+    
+    // Set initial hole to the highest available hole with results
+    if (maxAllowedPosition >= 0) {
+        currentHole = getHoleAtPosition(maxAllowedPosition);
+    } else {
+        currentHole = playOrder[0];
+    }
     
     updateSavedHolesList();
     updateMatchResults();
@@ -808,13 +855,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - Now reads pre-computed results from Firestore (no recalculation)
-   - TR, T-1/T-2, Strk rows displayed directly from results object
-   - Match bubbles still use local calculation (IB/XB from Firestore sync)
-   - Faster performance and consistent with updater devices
-   - Ready for History mode (same results structure)
+   - Navigation now restricted to holes with computed results
+   - Cannot navigate beyond computedUpToHole
+   - Initial hole set to highest synced hole (or starting hole)
+   - Disabled navigation buttons when at limits
+   - Grey out buttons when cannot navigate further
+   - All display from pre-computed results
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
 -->
