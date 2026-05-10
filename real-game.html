@@ -1,13 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 1.05
+VERSION: 2.00
 KEY CHANGES:
-   - Fixed bubble order: intra-flight (same flight) shown first, then cross-flight
-   - Intra-flight bubbles stay GREY until hole is saved (only show result after SAVE)
-   - Updated getBubbleClass to check isHoleSavedForFlight before showing intra-flight results
-   - Compatible with game-ui.js v1.09
-   - Uses GameUI display mode management
-DEPENDS ON: js/game-ui.js v1.09 or higher
+   - REFACTOR: Removed inline calculation functions
+   - Now uses GameMatch.calculateIntraFlight() and GameMatch.calculateCrossFlight()
+   - Match results stored in matchResults object instead of crossMatchResults array
+   - updateMatchResults() replaces updateCrossMatchResults()
+   - Compatible with game-match.js v2.00
+   - Preserves all working UI behavior (bubbles, saves, sync)
+DEPENDS ON: js/game-match.js v2.00, js/game-ui.js v1.09, js/card-submit.js
 STATUS: Ready for testing
 -->
 
@@ -21,6 +22,8 @@ STATUS: Ready for testing
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/game-data.js"></script>
+    <script src="js/game-match.js"></script>
     <script src="js/game-ui.js"></script>
     <script src="js/card-submit.js"></script>
     
@@ -220,7 +223,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.05 REAL</div>
+<div class="version-tag">v2.00 REAL</div>
 
 <script>
 // ============================================================
@@ -270,7 +273,12 @@ var trTeamAGreen = true;
 var trTeamBGreen = true;
 var lastSyncedHole = 0;
 
-var crossMatchResults = {};
+// NEW: Store match results from GameMatch
+var matchResults = {
+    intraF1: {},      // Flight 1 intra-flight results
+    intraF2: {},      // Flight 2 intra-flight results
+    cross: {}         // Cross-flight results
+};
 
 var myDeviceShortName = "";
 var unsubscribe = null;
@@ -355,6 +363,57 @@ function calculateLastSyncedHole() {
 }
 
 // ============================================================
+// Match Results using GameMatch (REFACTORED)
+// ============================================================
+
+function updateMatchResults() {
+    lastSyncedHole = calculateLastSyncedHole();
+    
+    var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+    var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
+    
+    // Get max saved hole for each flight (for intra-flight calculations)
+    var flight1MaxHole = savedHoles[1].length > 0 ? Math.max.apply(null, savedHoles[1]) : 0;
+    var flight2MaxHole = savedHoles[2].length > 0 ? Math.max.apply(null, savedHoles[2]) : 0;
+    
+    // Calculate intra-flight results
+    if (flight1MaxHole > 0) {
+        matchResults.intraF1 = GameMatch.calculateIntraFlight(1, flight1Players, f1DataString, courseSi, startingHole, flight1MaxHole, coursePar);
+    } else {
+        matchResults.intraF1 = {};
+    }
+    
+    if (flight2MaxHole > 0) {
+        matchResults.intraF2 = GameMatch.calculateIntraFlight(2, flight2Players, f2DataString, courseSi, startingHole, flight2MaxHole, coursePar);
+    } else {
+        matchResults.intraF2 = {};
+    }
+    
+    // Calculate cross-flight results (only up to synced holes)
+    if (lastSyncedHole > 0) {
+        matchResults.cross = GameMatch.calculateCrossFlight(f1DataString, f2DataString, allPlayers, courseSi, startingHole, lastSyncedHole, coursePar);
+    } else {
+        matchResults.cross = {};
+    }
+}
+
+function getMatchValue(playerName, opponentName) {
+    // Check intra-flight first
+    var intraKey = playerName + "_vs_" + opponentName;
+    if (matchResults.intraF1[intraKey] !== undefined) {
+        return matchResults.intraF1[intraKey];
+    }
+    if (matchResults.intraF2[intraKey] !== undefined) {
+        return matchResults.intraF2[intraKey];
+    }
+    // Then cross-flight
+    if (matchResults.cross[intraKey] !== undefined) {
+        return matchResults.cross[intraKey];
+    }
+    return 0;
+}
+
+// ============================================================
 // Callback Functions for GameUI
 // ============================================================
 
@@ -407,9 +466,7 @@ function getAllOpponents(player) {
 }
 
 function getBubbleClass(player, opponent) {
-    var key = player.name + "_vs_" + opponent.name;
-    var match = crossMatchResults[key];
-    if (!match) return 'bubble-grey';
+    var matchValue = getMatchValue(player.name, opponent.name);
     
     // Intra-flight (same flight)
     if (player.flight === opponent.flight) {
@@ -417,215 +474,26 @@ function getBubbleClass(player, opponent) {
         var isHoleSavedForFlight = savedHoles[player.flight] && savedHoles[player.flight].indexOf(currentHole) !== -1;
         if (!isHoleSavedForFlight) return 'bubble-grey';
         
-        if (match.value > 0) return 'bubble-green';
-        if (match.value < 0) return 'bubble-red';
+        if (matchValue > 0) return 'bubble-green';
+        if (matchValue < 0) return 'bubble-red';
         return 'bubble-green';
     }
     
     // Cross-flight (different flight)
-    if (!match.isSynced) return 'bubble-grey';
-    if (match.value > 0) return 'bubble-green';
-    if (match.value < 0) return 'bubble-red';
+    // Check if synced (both flights have saved current hole)
+    var isSynced = (lastSyncedHole >= currentHole);
+    if (!isSynced) return 'bubble-grey';
+    
+    if (matchValue > 0) return 'bubble-green';
+    if (matchValue < 0) return 'bubble-red';
     return 'bubble-green';
 }
 
 function getBubbleValue(player, opponent) {
-    var key = player.name + "_vs_" + opponent.name;
-    var match = crossMatchResults[key];
-    if (!match) return 'AS';
-    var absValue = Math.abs(match.value);
+    var matchValue = getMatchValue(player.name, opponent.name);
+    var absValue = Math.abs(matchValue);
     if (absValue === 0) return 'AS';
     return absValue.toString();
-}
-
-// ============================================================
-// Cross-Flight Calculations
-// ============================================================
-
-function getStrokeHoles(handicapDiff) {
-    if (handicapDiff <= 0) return [];
-    var holesWithSi = [];
-    for (var i = 0; i < 18; i++) {
-        holesWithSi.push({ hole: i + 1, si: courseSi[i] });
-    }
-    holesWithSi.sort(function(a, b) { return a.si - b.si; });
-    var strokeHoles = [];
-    for (var i = 0; i < handicapDiff && i < 18; i++) {
-        strokeHoles.push(holesWithSi[i].hole);
-    }
-    return strokeHoles;
-}
-
-function getStrokesForHole(holeNumber, handicapDiff, strokeHolesCache) {
-    if (handicapDiff <= 0) return 0;
-    var strokeHoles = strokeHolesCache || getStrokeHoles(handicapDiff);
-    for (var i = 0; i < strokeHoles.length; i++) {
-        if (strokeHoles[i] === holeNumber) return 1;
-    }
-    return 0;
-}
-
-function calculateCrossMatchResult(playerA, playerB, upToHole) {
-    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
-    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
-    var strokeHoles = getStrokeHoles(handicapDiff);
-    
-    var f1Players = allPlayers.filter(function(p) { return p.flight === 1; });
-    var f1TeamA = f1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var f1TeamB = f1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var f2Players = allPlayers.filter(function(p) { return p.flight === 2; });
-    var f2TeamA = f2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var f2TeamB = f2Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var playerAWon = 0;
-    var playerBWon = 0;
-    
-    for (var hole = 1; hole <= upToHole; hole++) {
-        var f1Hole = flight1Data[hole];
-        var f2Hole = flight2Data[hole];
-        if (!f1Hole || !f1Hole.saved || !f2Hole || !f2Hole.saved) continue;
-        
-        var playerAScore = null;
-        var playerBScore = null;
-        
-        if (playerA.team === 'A') {
-            if (f1TeamA[0] && f1TeamA[0].name === playerA.name) playerAScore = f1Hole.a1;
-            else if (f1TeamA[1] && f1TeamA[1].name === playerA.name) playerAScore = f1Hole.a2;
-        } else {
-            if (f1TeamB[0] && f1TeamB[0].name === playerA.name) playerAScore = f1Hole.b1;
-            else if (f1TeamB[1] && f1TeamB[1].name === playerA.name) playerAScore = f1Hole.b2;
-        }
-        
-        if (playerB.team === 'A') {
-            if (f2TeamA[0] && f2TeamA[0].name === playerB.name) playerBScore = f2Hole.a1;
-            else if (f2TeamA[1] && f2TeamA[1].name === playerB.name) playerBScore = f2Hole.a2;
-        } else {
-            if (f2TeamB[0] && f2TeamB[0].name === playerB.name) playerBScore = f2Hole.b1;
-            else if (f2TeamB[1] && f2TeamB[1].name === playerB.name) playerBScore = f2Hole.b2;
-        }
-        
-        if (playerAScore === null || playerBScore === null) continue;
-        
-        var netA = playerAScore;
-        var netB = playerBScore;
-        if (isPlayerAReceiving) {
-            netA = playerAScore - getStrokesForHole(hole, handicapDiff, strokeHoles);
-        } else {
-            netB = playerBScore - getStrokesForHole(hole, handicapDiff, strokeHoles);
-        }
-        
-        if (netA < netB) playerAWon++;
-        else if (netB < netA) playerBWon++;
-    }
-    
-    return playerAWon - playerBWon;
-}
-
-function updateCrossMatchResults() {
-    lastSyncedHole = calculateLastSyncedHole();
-    
-    var f1Players = allPlayers.filter(function(p) { return p.flight === 1; });
-    var f2Players = allPlayers.filter(function(p) { return p.flight === 2; });
-    
-    var newResults = {};
-    for (var i = 0; i < f1Players.length; i++) {
-        for (var j = 0; j < f2Players.length; j++) {
-            var p1 = f1Players[i];
-            var p2 = f2Players[j];
-            var key1 = p1.name + "_vs_" + p2.name;
-            var key2 = p2.name + "_vs_" + p1.name;
-            
-            var result = 0;
-            var isSynced = false;
-            
-            if (lastSyncedHole > 0) {
-                result = calculateCrossMatchResult(p1, p2, lastSyncedHole);
-                isSynced = (lastSyncedHole >= currentHole);
-            }
-            
-            newResults[key1] = { value: result, isSynced: isSynced };
-            newResults[key2] = { value: -result, isSynced: isSynced };
-        }
-    }
-    
-    // Also calculate intra-flight results for each flight
-    var flights = [1, 2];
-    for (var f = 0; f < flights.length; f++) {
-        var flightNum = flights[f];
-        var flightPlayers = allPlayers.filter(function(p) { return p.flight === flightNum; });
-        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; });
-        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; });
-        
-        for (var a = 0; a < teamA.length; a++) {
-            for (var b = 0; b < teamB.length; b++) {
-                var pA = teamA[a];
-                var pB = teamB[b];
-                var intraKey = pA.name + "_vs_" + pB.name;
-                var intraKey2 = pB.name + "_vs_" + pA.name;
-                
-                // Calculate intra-flight result based on saved holes
-                var intraResult = calculateIntraMatchResult(pA, pB);
-                newResults[intraKey] = { value: intraResult, isSynced: true };
-                newResults[intraKey2] = { value: -intraResult, isSynced: true };
-            }
-        }
-    }
-    
-    crossMatchResults = newResults;
-}
-
-function calculateIntraMatchResult(playerA, playerB) {
-    var flight = playerA.flight;
-    var flightData = flight === 1 ? flight1Data : flight2Data;
-    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
-    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
-    var strokeHoles = getStrokeHoles(handicapDiff);
-    
-    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
-    var teamAPlayers = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamBPlayers = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var playerAWon = 0;
-    var playerBWon = 0;
-    
-    for (var hole = 1; hole <= 18; hole++) {
-        var holeData = flightData[hole];
-        if (!holeData || !holeData.saved) continue;
-        
-        var playerAScore = null;
-        var playerBScore = null;
-        
-        if (playerA.team === 'A') {
-            if (teamAPlayers[0] && teamAPlayers[0].name === playerA.name) playerAScore = holeData.a1;
-            else if (teamAPlayers[1] && teamAPlayers[1].name === playerA.name) playerAScore = holeData.a2;
-        } else {
-            if (teamBPlayers[0] && teamBPlayers[0].name === playerA.name) playerAScore = holeData.b1;
-            else if (teamBPlayers[1] && teamBPlayers[1].name === playerA.name) playerAScore = holeData.b2;
-        }
-        
-        if (playerB.team === 'A') {
-            if (teamAPlayers[0] && teamAPlayers[0].name === playerB.name) playerBScore = holeData.a1;
-            else if (teamAPlayers[1] && teamAPlayers[1].name === playerB.name) playerBScore = holeData.a2;
-        } else {
-            if (teamBPlayers[0] && teamBPlayers[0].name === playerB.name) playerBScore = holeData.b1;
-            else if (teamBPlayers[1] && teamBPlayers[1].name === playerB.name) playerBScore = holeData.b2;
-        }
-        
-        if (playerAScore === null || playerBScore === null) continue;
-        
-        var netA = playerAScore;
-        var netB = playerBScore;
-        if (isPlayerAReceiving) {
-            netA = playerAScore - getStrokesForHole(hole, handicapDiff, strokeHoles);
-        } else {
-            netB = playerBScore - getStrokesForHole(hole, handicapDiff, strokeHoles);
-        }
-        
-        if (netA < netB) playerAWon++;
-        else if (netB < netA) playerBWon++;
-    }
-    return playerAWon - playerBWon;
 }
 
 // ============================================================
@@ -662,10 +530,8 @@ function renderAll() {
         getBubbleValue,
         getCurrentScore,
         canEdit && !isGameCompleteFlag && !submitted["f" + editableFlight],
-        // Updated callback: uses player NAME instead of index (3 params)
         function(playerName, flight, delta) {
             if (isGameCompleteFlag || submitted["f" + editableFlight]) return;
-            // Find player by name and flight
             var player = null;
             for (var i = 0; i < allPlayers.length; i++) {
                 if (allPlayers[i].name === playerName && allPlayers[i].flight === flight) {
@@ -889,7 +755,7 @@ function nextHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     var nextIndex = (currentIndex + 1) % 18;
     currentHole = playOrder[nextIndex];
-    updateCrossMatchResults();
+    updateMatchResults();
     renderAll();
 }
 
@@ -898,7 +764,7 @@ function prevHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     var prevIndex = (currentIndex - 1 + 18) % 18;
     currentHole = playOrder[prevIndex];
-    updateCrossMatchResults();
+    updateMatchResults();
     renderAll();
 }
 
@@ -965,7 +831,7 @@ function refreshFromFirebase(data) {
     
     if (changed) {
         updateSavedHolesList();
-        updateCrossMatchResults();
+        updateMatchResults();
         calculateTR();
         renderAll();
     }
@@ -1039,7 +905,7 @@ async function init() {
     flight1Data = parseFlightData(f1DataString);
     flight2Data = parseFlightData(f2DataString);
     updateSavedHolesList();
-    updateCrossMatchResults();
+    updateMatchResults();
     calculateTR();
     
     // Initialize display mode buttons via GameUI
@@ -1083,13 +949,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 1.05
+VERSION: 2.00
 KEY CHANGES:
-   - Fixed bubble order: intra-flight (same flight) shown first, then cross-flight
-   - Intra-flight bubbles stay GREY until hole is saved (only show result after SAVE)
-   - Updated getBubbleClass to check isHoleSavedForFlight before showing intra-flight results
-   - Compatible with game-ui.js v1.09
-   - Uses GameUI display mode management
-DEPENDS ON: js/game-ui.js v1.09 or higher
+   - REFACTOR: Removed inline calculation functions
+   - Now uses GameMatch.calculateIntraFlight() and GameMatch.calculateCrossFlight()
+   - Match results stored in matchResults object instead of crossMatchResults array
+   - updateMatchResults() replaces updateCrossMatchResults()
+   - Compatible with game-match.js v2.00
+   - Preserves all working UI behavior (bubbles, saves, sync)
+DEPENDS ON: js/game-match.js v2.00, js/game-ui.js v1.09, js/card-submit.js
 STATUS: Ready for testing
 -->
