@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - FIXED: editableFlight now correctly reads from session role (update1/update2)
-   - Now uses GameData v2.00 for all Firebase data management
-   - Uses GameMatch for all match calculations
-   - Compatible with game-data.js v2.00 and game-match.js v2.00
+   - ADDED: Firestore snapshot listener for real-time cross-device sync
+   - FIXED: F2 now sees F1 scores immediately without needing to save
+   - FIXED: F1 now sees F2 scores immediately after F2 saves
+   - Preserves all GameData and GameMatch integration
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-ui.js, js/card-submit.js
 STATUS: Ready for testing
 -->
@@ -221,7 +221,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.01 REAL</div>
+<div class="version-tag">v2.02 REAL</div>
 
 <script>
 // ============================================================
@@ -590,7 +590,6 @@ async function saveHole() {
                     }
                 }, 2000);
                 updateNextButton();
-                GameData.forceRefresh();
             } else {
                 document.getElementById("debug").innerHTML = "Save failed";
             }
@@ -696,19 +695,24 @@ async function exitToMainMenu() {
 }
 
 // ============================================================
-// Refresh from GameData
+// Refresh from Firestore Snapshot (REAL-TIME SYNC)
 // ============================================================
 
-function refreshFromGameData() {
-    var flight1 = GameData.getFlightData(1);
-    var flight2 = GameData.getFlightData(2);
+function refreshFromFirestore(data) {
+    // Update data strings from snapshot
+    f1DataString = data.f1 && data.f1.d ? data.f1.d : f1DataString;
+    f2DataString = data.f2 && data.f2.d ? data.f2.d : f2DataString;
     
-    f1DataString = flight1.data;
-    f2DataString = flight2.data;
+    // Update submission status
+    if (data.submitted) {
+        submitted.f1 = data.submitted.f1 === true;
+        submitted.f2 = data.submitted.f2 === true;
+    }
+    isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
     
+    // Parse fresh data
     var newF1 = {};
     var newF2 = {};
-    
     for (var h = 1; h <= 18; h++) {
         var f1Hole = GameData.parseHoleData(f1DataString, h);
         var f2Hole = GameData.parseHoleData(f2DataString, h);
@@ -721,6 +725,7 @@ function refreshFromGameData() {
     if (JSON.stringify(newF1) !== JSON.stringify(flight1Data)) {
         flight1Data = newF1;
         changed = true;
+        // Clear local changes for Flight 1
         for (var key in localChanges) {
             if (key.startsWith("1_")) delete localChanges[key];
         }
@@ -728,6 +733,7 @@ function refreshFromGameData() {
     if (JSON.stringify(newF2) !== JSON.stringify(flight2Data)) {
         flight2Data = newF2;
         changed = true;
+        // Clear local changes for Flight 2
         for (var key in localChanges) {
             if (key.startsWith("2_")) delete localChanges[key];
         }
@@ -752,14 +758,6 @@ function setDisplayMode(mode) {
 }
 
 // ============================================================
-// Data Change Listener
-// ============================================================
-
-function onGameDataChanged() {
-    refreshFromGameData();
-}
-
-// ============================================================
 // Initialization
 // ============================================================
 
@@ -771,77 +769,79 @@ async function init() {
         SessionManager.initSession("real-game.html", "index.html", resolve);
     });
     
-    // FIXED: Read editableFlight from session role
+    // Read editableFlight from session role
     var sessionRole = session.activeGame ? session.activeGame.role : null;
     if (sessionRole === "update1") {
         editableFlight = 1;
     } else if (sessionRole === "update2") {
         editableFlight = 2;
     } else {
-        editableFlight = 1;  // Default to Flight 1 if not specified
+        editableFlight = 1;
     }
     canEdit = (editableFlight === 1 || editableFlight === 2);
     
-    GameData.setCallbacks(onGameDataChanged, function(error) {
-        document.getElementById("debug").innerHTML = "Error: " + error;
+    gameId = session.activeGame ? session.activeGame.gameId : null;
+    if (!gameId) {
+        document.getElementById("debug").innerHTML = "Error: No game ID";
+        return;
+    }
+    
+    // Load initial game data
+    var doc = await db.collection("scheduledGames").doc(gameId).get();
+    if (!doc.exists) {
+        document.getElementById("debug").innerHTML = "Error: Game not found";
+        return;
+    }
+    
+    var data = doc.data();
+    courseName = data.course ? data.course.name : "Unknown Course";
+    document.getElementById("courseName").innerHTML = courseName;
+    coursePar = data.course ? data.course.par : [];
+    courseSi = data.course ? data.course.si : [];
+    allPlayers = data.players || [];
+    startingHole = data.startingHole || 1;
+    f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
+    f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
+    
+    if (data.submitted) {
+        submitted.f1 = data.submitted.f1 === true;
+        submitted.f2 = data.submitted.f2 === true;
+    }
+    isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
+    
+    // Parse initial data
+    for (var h = 1; h <= 18; h++) {
+        var f1Hole = GameData.parseHoleData(f1DataString, h);
+        var f2Hole = GameData.parseHoleData(f2DataString, h);
+        if (f1Hole) flight1Data[h] = f1Hole;
+        if (f2Hole) flight2Data[h] = f2Hole;
+    }
+    
+    var playOrder = getPlayOrder();
+    currentHole = playOrder[0];
+    
+    updateSavedHolesList();
+    updateMatchResults();
+    calculateTR();
+    
+    GameUI.updateToggleButtons(GameUI.getDisplayMode());
+    renderAll();
+    
+    // Set up toggle button handlers
+    document.getElementById("playOrderBtn").addEventListener("click", function() {
+        setDisplayMode("play");
+    });
+    document.getElementById("naturalOrderBtn").addEventListener("click", function() {
+        setDisplayMode("natural");
     });
     
-    GameData.loadGameFromSession(session, function(success) {
-        if (!success) {
-            document.getElementById("debug").innerHTML = "Failed to load game";
-            return;
+    // Set up Firestore snapshot listener for real-time sync
+    unsubscribe = db.collection("scheduledGames").doc(gameId).onSnapshot(function(snapshot) {
+        if (snapshot.exists) {
+            refreshFromFirestore(snapshot.data());
         }
-        
-        var metadata = GameData.getGameMetadata();
-        gameId = metadata.gameId;
-        
-        var gameDoc = null;
-        db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
-            if (doc.exists) {
-                var data = doc.data();
-                courseName = data.course ? data.course.name : "Unknown Course";
-                document.getElementById("courseName").innerHTML = courseName;
-                coursePar = data.course ? data.course.par : [];
-                courseSi = data.course ? data.course.si : [];
-                allPlayers = data.players || [];
-                startingHole = data.startingHole || 1;
-                
-                if (data.submitted) {
-                    submitted.f1 = data.submitted.f1 === true;
-                    submitted.f2 = data.submitted.f2 === true;
-                }
-                isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
-                
-                var flight1 = GameData.getFlightData(1);
-                var flight2 = GameData.getFlightData(2);
-                f1DataString = flight1.data;
-                f2DataString = flight2.data;
-                
-                for (var h = 1; h <= 18; h++) {
-                    var f1Hole = GameData.parseHoleData(f1DataString, h);
-                    var f2Hole = GameData.parseHoleData(f2DataString, h);
-                    if (f1Hole) flight1Data[h] = f1Hole;
-                    if (f2Hole) flight2Data[h] = f2Hole;
-                }
-                
-                var playOrder = getPlayOrder();
-                currentHole = playOrder[0];
-                
-                updateSavedHolesList();
-                updateMatchResults();
-                calculateTR();
-                
-                GameUI.updateToggleButtons(GameUI.getDisplayMode());
-                renderAll();
-                
-                document.getElementById("playOrderBtn").addEventListener("click", function() {
-                    setDisplayMode("play");
-                });
-                document.getElementById("naturalOrderBtn").addEventListener("click", function() {
-                    setDisplayMode("natural");
-                });
-            }
-        });
+    }, function(error) {
+        document.getElementById("debug").innerHTML = "Sync error: " + error.message;
     });
 }
 
@@ -862,12 +862,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - FIXED: editableFlight now correctly reads from session role (update1/update2)
-   - Now uses GameData v2.00 for all Firebase data management
-   - Uses GameMatch for all match calculations
-   - Compatible with game-data.js v2.00 and game-match.js v2.00
+   - ADDED: Firestore snapshot listener for real-time cross-device sync
+   - FIXED: F2 now sees F1 scores immediately without needing to save
+   - FIXED: F1 now sees F2 scores immediately after F2 saves
+   - Preserves all GameData and GameMatch integration
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-ui.js, js/card-submit.js
 STATUS: Ready for testing
 -->
