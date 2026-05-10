@@ -1,11 +1,11 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.18
+VERSION: 1.19
 KEY CHANGES:
-   - Added auto-delete for past games (date < today)
-   - Runs cleanup on page load, no confirmation
-   - Deletes scheduledGames documents with date older than today
-   - Does not affect previewSandboxes
+   - Added initialization of 'results' object for pre-computed game results
+   - Results object stores match play, team game, stroke game, and TR data
+   - Supports future Viewer and History modes (read from results, no recalculation)
+   - Backward compatible with existing games (results field will be added to new games only)
 STATUS: Ready for testing
 -->
 
@@ -185,13 +185,13 @@ STATUS: Ready for testing
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.18</div>
+<div class="version-tag">v1.19</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.18
-// ADDED: Auto-delete past games (date < today)
+// FILE: setup-game.html - VERSION 1.19
+// ADDED: results object initialization for pre-computed game results
 
-var VERSION = "1.18";
+var VERSION = "1.19";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -300,6 +300,49 @@ function rotateDataString(naturalData, startingHole) {
     for (var i = 0; i < startingHole - 1; i++) rotated.push(blocks[i]);
     
     return rotated.join('');
+}
+
+function initializeEmptyResults() {
+    // Create empty results object for new games
+    // This will be stored in Firestore for future Viewer and History modes
+    
+    var emptyResults = {
+        version: 1,
+        game1: {
+            matches: {},
+            pointsA: new Array(18).fill(8),
+            pointsB: new Array(18).fill(8)
+        },
+        game2: {
+            flight1: {
+                leader: new Array(18).fill("AS"),
+                cumulativePoints: new Array(18).fill(0)
+            },
+            flight2: {
+                leader: new Array(18).fill("AS"),
+                cumulativePoints: new Array(18).fill(0)
+            },
+            pointsA: new Array(18).fill(1),
+            pointsB: new Array(18).fill(1)
+        },
+        game3: {
+            leader: new Array(18).fill("AS"),
+            nettA: new Array(18).fill(0),
+            nettB: new Array(18).fill(0),
+            pointsA: new Array(18).fill(0.5),
+            pointsB: new Array(18).fill(0.5)
+        },
+        tr: {
+            teamA: new Array(18).fill(9.5),
+            teamB: new Array(18).fill(9.5),
+            teamAGreen: new Array(18).fill(true),
+            teamBGreen: new Array(18).fill(true)
+        },
+        computedUpToHole: 0,
+        lastComputedAt: null
+    };
+    
+    return emptyResults;
 }
 
 function displayDeviceId() {
@@ -597,6 +640,9 @@ function commitGame() {
     var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
     var rotatedData = rotateDataString(naturalData, state.startingHole);
     
+    // Initialize empty results for this game
+    var emptyResults = initializeEmptyResults();
+    
     var gameData = {
         date: selectedDate,
         course: state.selectedCourseData,
@@ -632,7 +678,11 @@ function commitGame() {
         },
         
         currentHoleF1: 1,
-        currentHoleF2: 1
+        currentHoleF2: 1,
+        
+        // NEW: Results object for pre-computed game data
+        // Supports future Viewer and History modes
+        results: emptyResults
     };
     
     if (state.editingGameId) {
@@ -963,11 +1013,11 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.18
+VERSION: 1.19
 KEY CHANGES:
-   - Added auto-delete for past games (date < today)
-   - Runs cleanup on page load, no confirmation
-   - Deletes scheduledGames documents with date older than today
-   - Does not affect previewSandboxes
+   - Added initialization of 'results' object for pre-computed game results
+   - Results object stores match play, team game, stroke game, and TR data
+   - Supports future Viewer and History modes (read from results, no recalculation)
+   - Backward compatible with existing games (results field will be added to new games only)
 STATUS: Ready for testing
 -->
