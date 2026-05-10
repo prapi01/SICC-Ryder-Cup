@@ -1,12 +1,9 @@
 <!--
 FILE: real-game.html
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
+   - FIXED: editableFlight now correctly reads from session role (update1/update2)
    - Now uses GameData v2.00 for all Firebase data management
-   - Removed duplicate data parsing functions
-   - Removed duplicate Firebase loading logic
-   - Uses GameData.getFlightData() for F1/F2 strings
-   - Uses GameData.parseHoleData() for score access
    - Uses GameMatch for all match calculations
    - Compatible with game-data.js v2.00 and game-match.js v2.00
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-ui.js, js/card-submit.js
@@ -224,7 +221,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.00 REAL</div>
+<div class="version-tag">v2.01 REAL</div>
 
 <script>
 // ============================================================
@@ -774,6 +771,17 @@ async function init() {
         SessionManager.initSession("real-game.html", "index.html", resolve);
     });
     
+    // FIXED: Read editableFlight from session role
+    var sessionRole = session.activeGame ? session.activeGame.role : null;
+    if (sessionRole === "update1") {
+        editableFlight = 1;
+    } else if (sessionRole === "update2") {
+        editableFlight = 2;
+    } else {
+        editableFlight = 1;  // Default to Flight 1 if not specified
+    }
+    canEdit = (editableFlight === 1 || editableFlight === 2);
+    
     GameData.setCallbacks(onGameDataChanged, function(error) {
         document.getElementById("debug").innerHTML = "Error: " + error;
     });
@@ -786,7 +794,6 @@ async function init() {
         
         var metadata = GameData.getGameMetadata();
         gameId = metadata.gameId;
-        editableFlight = 1;
         
         var gameDoc = null;
         db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
@@ -855,13 +862,10 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
+   - FIXED: editableFlight now correctly reads from session role (update1/update2)
    - Now uses GameData v2.00 for all Firebase data management
-   - Removed duplicate data parsing functions
-   - Removed duplicate Firebase loading logic
-   - Uses GameData.getFlightData() for F1/F2 strings
-   - Uses GameData.parseHoleData() for score access
    - Uses GameMatch for all match calculations
    - Compatible with game-data.js v2.00 and game-match.js v2.00
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-ui.js, js/card-submit.js
