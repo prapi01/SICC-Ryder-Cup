@@ -1,12 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 2.05
+VERSION: 2.06
 KEY CHANGES:
+   - FIXED: Restored GameData.loadGameFromSession() call to set internal gameId
+   - GameData.saveCurrentHole now works correctly
    - INTEGRATED: game-team.js for T-1 and T-2 rows
-   - UPDATED: TR calculation now includes Game 1 and Game 2 points
+   - UPDATED: TR calculation includes Game 1 and Game 2 points
    - HARDCODED: Game 3 (Stroke) gives 0.5 points to each team (placeholder)
-   - T-1 and T-2 rows now show real cumulative flight points
-   - Preserves all existing functionality (IB, XB, sync, save)
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-ui.js v2.00, js/card-submit.js
 STATUS: Ready for testing
 -->
@@ -223,7 +223,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.05 REAL</div>
+<div class="version-tag">v2.06 REAL</div>
 
 <script>
 // ============================================================
@@ -253,7 +253,7 @@ var editableFlight = 1;
 var canEdit = true;
 var startingHole = 1;
 var currentHole = 1;
-var teamGameFormat = "tournament";  // NEW: from Firestore
+var teamGameFormat = "tournament";
 
 var courseName = "";
 var coursePar = [];
@@ -274,7 +274,6 @@ var trTeamAGreen = true;
 var trTeamBGreen = true;
 var lastSyncedHole = 0;
 
-// NEW: Flight cumulative points for Game 2
 var flight1Cumulative = new Array(18).fill(0);
 var flight2Cumulative = new Array(18).fill(0);
 
@@ -370,12 +369,11 @@ function updateMatchResults() {
         matchResults.cross = {};
     }
     
-    // Update Team Game results
     updateTeamGame();
 }
 
 // ============================================================
-// Team Game using GameTeam (NEW)
+// Team Game using GameTeam
 // ============================================================
 
 function updateTeamGame() {
@@ -387,16 +385,14 @@ function updateTeamGame() {
         flight2Cumulative = teamResults.flight2Cumulative;
     } catch (e) {
         console.error("GameTeam calculation error:", e);
-        // Keep existing values on error
     }
 }
 
 // ============================================================
-// TR Calculation (UPDATED with Game 1 and Game 2)
+// TR Calculation
 // ============================================================
 
 function calculateGame1Points() {
-    // Default when no holes synced
     if (lastSyncedHole === 0) {
         return { teamAPoints: 8, teamBPoints: 8 };
     }
@@ -405,11 +401,8 @@ function calculateGame1Points() {
     var teamBPoints = 0;
     var matchCount = 0;
     
-    // Count matches from cross results (16 matches)
     for (var key in matchResults.cross) {
-        // Only count each match once (A vs B perspective, not B vs A)
         if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
-            // Check if this is A vs B (not B vs A) by checking if first player is from Team A
             var firstPlayerName = key.split("_vs_")[0];
             var firstPlayer = allPlayers.find(function(p) { return p.name === firstPlayerName; });
             if (firstPlayer && firstPlayer.team === "A") {
@@ -427,7 +420,6 @@ function calculateGame1Points() {
         }
     }
     
-    // If no matches counted (shouldn't happen), return default
     if (matchCount === 0) {
         return { teamAPoints: 8, teamBPoints: 8 };
     }
@@ -436,20 +428,13 @@ function calculateGame1Points() {
 }
 
 function calculateTR() {
-    // Game 1 points from Match Play
     var game1Points = calculateGame1Points();
-    
-    // Game 2 points from Team Game (only awarded after 18 holes, but we show current leader)
     var game2Points = GameTeam.calculatePoints(flight1Cumulative, flight2Cumulative, lastSyncedHole);
-    
-    // Game 3 points - HARDCODED for now (both get 0.5)
     var game3Points = { teamAPoints: 0.5, teamBPoints: 0.5 };
     
-    // Total TR
     trTeamA = game1Points.teamAPoints + game2Points.teamAPoints + game3Points.teamAPoints;
     trTeamB = game1Points.teamBPoints + game2Points.teamBPoints + game3Points.teamBPoints;
     
-    // Set colors (green for winning or tied, red for losing)
     if (trTeamA > trTeamB) {
         trTeamAGreen = true;
         trTeamBGreen = false;
@@ -538,6 +523,20 @@ function getMatchValue(playerName, opponentName) {
     if (matchResults.intraF2[intraKey] !== undefined) return matchResults.intraF2[intraKey];
     if (matchResults.cross[intraKey] !== undefined) return matchResults.cross[intraKey];
     return 0;
+}
+
+// ============================================================
+// Data Change Listener
+// ============================================================
+
+function onGameDataChanged() {
+    var flight1 = GameData.getFlightData(1);
+    var flight2 = GameData.getFlightData(2);
+    if (flight1.data !== f1DataString || flight2.data !== f2DataString) {
+        f1DataString = flight1.data;
+        f2DataString = flight2.data;
+        refreshFromFirestore({ f1: { d: f1DataString }, f2: { d: f2DataString }, submitted: submitted });
+    }
 }
 
 // ============================================================
@@ -784,22 +783,19 @@ async function exitToMainMenu() {
 }
 
 // ============================================================
-// Refresh from Firestore Snapshot (REAL-TIME SYNC)
+// Refresh from Firestore Snapshot
 // ============================================================
 
 function refreshFromFirestore(data) {
-    // Update data strings from snapshot
     f1DataString = data.f1 && data.f1.d ? data.f1.d : f1DataString;
     f2DataString = data.f2 && data.f2.d ? data.f2.d : f2DataString;
     
-    // Update submission status
     if (data.submitted) {
         submitted.f1 = data.submitted.f1 === true;
         submitted.f2 = data.submitted.f2 === true;
     }
     isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
     
-    // Parse fresh data
     var newF1 = {};
     var newF2 = {};
     for (var h = 1; h <= 18; h++) {
@@ -873,67 +869,92 @@ async function init() {
         return;
     }
     
-    // Load initial game data
-    var doc = await db.collection("scheduledGames").doc(gameId).get();
-    if (!doc.exists) {
-        document.getElementById("debug").innerHTML = "Error: Game not found";
-        return;
-    }
-    
-    var data = doc.data();
-    courseName = data.course ? data.course.name : "Unknown Course";
-    document.getElementById("courseName").innerHTML = courseName;
-    coursePar = data.course ? data.course.par : [];
-    courseSi = data.course ? data.course.si : [];
-    allPlayers = data.players || [];
-    startingHole = data.startingHole || 1;
-    teamGameFormat = data.teamGameFormat || "tournament";  // NEW: load team game format
-    f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
-    f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
-    
-    // Initialize GameData with course and players
-    GameData.setCourse({ par: coursePar });
-    GameData.setPlayers(allPlayers);
-    
-    if (data.submitted) {
-        submitted.f1 = data.submitted.f1 === true;
-        submitted.f2 = data.submitted.f2 === true;
-    }
-    isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
-    
-    // Parse initial data
-    for (var h = 1; h <= 18; h++) {
-        var f1Hole = GameData.parseHoleData(f1DataString, h);
-        var f2Hole = GameData.parseHoleData(f2DataString, h);
-        if (f1Hole) flight1Data[h] = f1Hole;
-        if (f2Hole) flight2Data[h] = f2Hole;
-    }
-    
-    var playOrder = getPlayOrder();
-    currentHole = playOrder[0];
-    
-    updateSavedHolesList();
-    updateMatchResults();  // This also calls updateTeamGame()
-    calculateTR();
-    
-    GameUI.updateToggleButtons(GameUI.getDisplayMode());
-    renderAll();
-    
-    // Set up toggle button handlers
-    document.getElementById("playOrderBtn").addEventListener("click", function() {
-        setDisplayMode("play");
-    });
-    document.getElementById("naturalOrderBtn").addEventListener("click", function() {
-        setDisplayMode("natural");
+    // CRITICAL: Set up GameData callbacks and load game
+    GameData.setCallbacks(onGameDataChanged, function(error) {
+        document.getElementById("debug").innerHTML = "GameData error: " + error;
     });
     
-    // Set up Firestore snapshot listener for real-time sync
-    unsubscribe = db.collection("scheduledGames").doc(gameId).onSnapshot(function(snapshot) {
-        if (snapshot.exists) {
-            refreshFromFirestore(snapshot.data());
+    GameData.loadGameFromSession(session, function(success) {
+        if (!success) {
+            document.getElementById("debug").innerHTML = "Failed to load game via GameData";
+            return;
         }
-    }, function(error) {
-        document.getElementById("debug").innerHTML = "Sync error: " + error.message;
+        
+        // Now load full game data from Firestore for display
+        db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+            if (!doc.exists) {
+                document.getElementById("debug").innerHTML = "Error: Game not found";
+                return;
+            }
+            
+            var data = doc.data();
+            courseName = data.course ? data.course.name : "Unknown Course";
+            document.getElementById("courseName").innerHTML = courseName;
+            coursePar = data.course ? data.course.par : [];
+            courseSi = data.course ? data.course.si : [];
+            allPlayers = data.players || [];
+            startingHole = data.startingHole || 1;
+            teamGameFormat = data.teamGameFormat || "tournament";
+            
+            // Initialize GameData with course and players
+            GameData.setCourse({ par: coursePar });
+            GameData.setPlayers(allPlayers);
+            
+            // Get data strings from GameData (they may have been loaded)
+            var flight1 = GameData.getFlightData(1);
+            var flight2 = GameData.getFlightData(2);
+            f1DataString = flight1.data;
+            f2DataString = flight2.data;
+            
+            // If Firestore has existing data, use it
+            if (data.f1 && data.f1.d && data.f1.d !== f1DataString) {
+                f1DataString = data.f1.d;
+            }
+            if (data.f2 && data.f2.d && data.f2.d !== f2DataString) {
+                f2DataString = data.f2.d;
+            }
+            
+            if (data.submitted) {
+                submitted.f1 = data.submitted.f1 === true;
+                submitted.f2 = data.submitted.f2 === true;
+            }
+            isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
+            
+            // Parse initial data
+            for (var h = 1; h <= 18; h++) {
+                var f1Hole = GameData.parseHoleData(f1DataString, h);
+                var f2Hole = GameData.parseHoleData(f2DataString, h);
+                if (f1Hole) flight1Data[h] = f1Hole;
+                if (f2Hole) flight2Data[h] = f2Hole;
+            }
+            
+            var playOrder = getPlayOrder();
+            currentHole = playOrder[0];
+            
+            updateSavedHolesList();
+            updateMatchResults();
+            calculateTR();
+            
+            GameUI.updateToggleButtons(GameUI.getDisplayMode());
+            renderAll();
+            
+            // Set up toggle button handlers
+            document.getElementById("playOrderBtn").addEventListener("click", function() {
+                setDisplayMode("play");
+            });
+            document.getElementById("naturalOrderBtn").addEventListener("click", function() {
+                setDisplayMode("natural");
+            });
+            
+            // Set up Firestore snapshot listener
+            unsubscribe = db.collection("scheduledGames").doc(gameId).onSnapshot(function(snapshot) {
+                if (snapshot.exists) {
+                    refreshFromFirestore(snapshot.data());
+                }
+            }, function(error) {
+                document.getElementById("debug").innerHTML = "Sync error: " + error.message;
+            });
+        });
     });
 }
 
@@ -954,13 +975,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.05
+VERSION: 2.06
 KEY CHANGES:
+   - FIXED: Restored GameData.loadGameFromSession() call to set internal gameId
+   - GameData.saveCurrentHole now works correctly
    - INTEGRATED: game-team.js for T-1 and T-2 rows
-   - UPDATED: TR calculation now includes Game 1 and Game 2 points
+   - UPDATED: TR calculation includes Game 1 and Game 2 points
    - HARDCODED: Game 3 (Stroke) gives 0.5 points to each team (placeholder)
-   - T-1 and T-2 rows now show real cumulative flight points
-   - Preserves all existing functionality (IB, XB, sync, save)
 DEPENDS ON: js/game-data.js v2.00, js/game-match.js v2.00, js/game-team.js v2.00, js/game-ui.js v2.00, js/card-submit.js
 STATUS: Ready for testing
 -->
