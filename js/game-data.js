@@ -1,17 +1,17 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
-   - Added teamGameFormat field (tournament/relative) per VDN #008
-   - Added getTeamGameFormat() getter
-   - Loads teamGameFormat from Firestore document on load and refresh
-   - Defaults to "tournament" for existing games (backward compatible)
-STATUS: Complete. Ready for integration.
+   - ADDED: resetFullGame(gameId, startingHole, coursePar, callback) function
+   - Resets all scores, flags, locks, and results object
+   - Can be called from pre-game.html for admin reset or first-touch reset
+   - Maintains backward compatibility with existing functions
+STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.00
+// FILE: js/game-data.js - VERSION 2.01
 // String-based data manager for SICC Ryder Cup
-// ADDED: teamGameFormat support (tournament/relative)
+// ADDED: resetFullGame() for complete game reset
 
 var GameData = (function() {
     
@@ -22,7 +22,7 @@ var GameData = (function() {
     var currentPlayers = [];
     var startingHole = 1;
     var isPreviewSandbox = false;
-    var teamGameFormat = "tournament";  // NEW: "tournament" or "relative"
+    var teamGameFormat = "tournament";
     
     var flight1Data = {
         data: "",
@@ -135,6 +135,21 @@ var GameData = (function() {
         return result;
     }
     
+    function rotateDataString(naturalData, startingHoleVal) {
+        if (startingHoleVal === 1) return naturalData;
+        
+        var blocks = [];
+        for (var i = 0; i < 18; i++) {
+            blocks.push(naturalData.substr(i * 9, 9));
+        }
+        
+        var rotated = [];
+        for (var i = startingHoleVal - 1; i < 18; i++) rotated.push(blocks[i]);
+        for (var i = 0; i < startingHoleVal - 1; i++) rotated.push(blocks[i]);
+        
+        return rotated.join('');
+    }
+    
     // ============================================================
     // Parse hole data from string
     // ============================================================
@@ -185,6 +200,101 @@ var GameData = (function() {
         var newData = existingData.substr(0, startIndex) + newHoleSegment + existingData.substr(startIndex + 9);
         
         return newData;
+    }
+    
+    // ============================================================
+    // Initialize empty results object
+    // ============================================================
+    
+    function initializeEmptyResults() {
+        return {
+            version: 1,
+            game1: {
+                matches: {},
+                pointsA: new Array(18).fill(8),
+                pointsB: new Array(18).fill(8)
+            },
+            game2: {
+                flight1: {
+                    leader: new Array(18).fill("AS"),
+                    cumulativePoints: new Array(18).fill(0)
+                },
+                flight2: {
+                    leader: new Array(18).fill("AS"),
+                    cumulativePoints: new Array(18).fill(0)
+                },
+                pointsA: new Array(18).fill(1),
+                pointsB: new Array(18).fill(1)
+            },
+            game3: {
+                leader: new Array(18).fill("AS"),
+                nettA: new Array(18).fill(0),
+                nettB: new Array(18).fill(0),
+                pointsA: new Array(18).fill(0.5),
+                pointsB: new Array(18).fill(0.5)
+            },
+            tr: {
+                teamA: new Array(18).fill(9.5),
+                teamB: new Array(18).fill(9.5),
+                teamAGreen: new Array(18).fill(true),
+                teamBGreen: new Array(18).fill(true)
+            },
+            computedUpToHole: 0,
+            lastComputedAt: null
+        };
+    }
+    
+    // ============================================================
+    // RESET FULL GAME (NEW)
+    // ============================================================
+    
+    function resetFullGame(gameIdParam, startingHoleParam, courseParArray, callback) {
+        if (!gameIdParam) {
+            console.error("resetFullGame: No gameId provided");
+            if (callback) callback(false);
+            return;
+        }
+        
+        var naturalData = generateDefaultData(courseParArray);
+        var rotatedData = rotateDataString(naturalData, startingHoleParam);
+        var freshResults = initializeEmptyResults();
+        
+        var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
+        
+        var resetData = {
+            "f1.d": rotatedData,
+            "f1.se": false,
+            "f1.x": false,
+            "f2.d": rotatedData,
+            "f2.se": false,
+            "f2.x": false,
+            "locks.f1": null,
+            "locks.f2": null,
+            "currentHoleF1": 1,
+            "currentHoleF2": 1,
+            "gameStarted": false,
+            "results": freshResults,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        firebase.firestore().collection(collection).doc(gameIdParam).update(resetData)
+            .then(function() {
+                console.log("Full game reset completed - scores, locks, and results cleared");
+                // Also reset local cache
+                flight1Data.data = rotatedData;
+                flight1Data.saveEvent = false;
+                flight1Data.crossEvent = false;
+                flight2Data.data = rotatedData;
+                flight2Data.saveEvent = false;
+                flight2Data.crossEvent = false;
+                locks.f1 = null;
+                locks.f2 = null;
+                if (callback) callback(true);
+            })
+            .catch(function(e) {
+                console.error("Full reset error:", e);
+                if (callback) callback(false);
+            });
     }
     
     // ============================================================
@@ -366,7 +476,6 @@ var GameData = (function() {
                         startingHole = 1;
                     }
                     
-                    // NEW: Read teamGameFormat
                     if (data.teamGameFormat) {
                         teamGameFormat = data.teamGameFormat;
                     } else {
@@ -394,7 +503,6 @@ var GameData = (function() {
         gameMode = activeGame.gameMode || activeGame.gameType || "real";
         editableFlight = null;
         
-        // Check if this is a preview sandbox
         isPreviewSandbox = (activeGame.collection === "previewSandboxes");
         
         var userRole = session.userRole || activeGame.role;
@@ -426,7 +534,6 @@ var GameData = (function() {
                         startingHole = 1;
                     }
                     
-                    // NEW: Read teamGameFormat
                     if (data.teamGameFormat) {
                         teamGameFormat = data.teamGameFormat;
                     } else {
@@ -438,7 +545,6 @@ var GameData = (function() {
                         flight1Data.saveEvent = data.f1.se || false;
                         flight1Data.crossEvent = data.f1.x || false;
                     } else if (data.flight1) {
-                        // Fallback for old structure
                         flight1Data.data = data.flight1.data || generateDefaultData(currentCourse ? currentCourse.par : null);
                         flight1Data.saveEvent = data.flight1.saveEvent || false;
                         flight1Data.crossEvent = data.flight1.crossEvent || false;
@@ -499,17 +605,20 @@ var GameData = (function() {
         getDisplayHoleOrder: getDisplayHoleOrder,
         getNaturalOrderMapping: getNaturalOrderMapping,
         getHoleAtStoragePosition: getHoleAtStoragePosition,
-        getStorageIndexForHole: getStorageIndexForHole
+        getStorageIndexForHole: getStorageIndexForHole,
+        // NEW: Reset function
+        resetFullGame: resetFullGame,
+        initializeEmptyResults: initializeEmptyResults
     };
 })();
 
 /*
 FILE: js/game-data.js
-VERSION: 2.00 (Refactor)
+VERSION: 2.01
 KEY CHANGES:
-   - Added teamGameFormat field (tournament/relative) per VDN #008
-   - Added getTeamGameFormat() getter
-   - Loads teamGameFormat from Firestore document on load and refresh
-   - Defaults to "tournament" for existing games (backward compatible)
-STATUS: Complete. Ready for integration.
+   - ADDED: resetFullGame(gameId, startingHole, coursePar, callback) function
+   - Resets all scores, flags, locks, and results object
+   - Can be called from pre-game.html for admin reset or first-touch reset
+   - Maintains backward compatibility with existing functions
+STATUS: Ready for integration
 */
