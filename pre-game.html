@@ -1,11 +1,11 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.02
+VERSION: 3.03
 KEY CHANGES:
-   - Fixed gameMode assignment: now reads from gameData.gameType or gameData.gameMode
-   - Ensures REAL mode redirects to real-game.html, not preview-game.html
-   - Added hidden admin reset: tap device ID (top-left corner) 2 times to reset full game
-   - Reset confirmation modal prevents accidental reset
+   - Now calls GameData.resetFullGame() for admin reset and first-touch reset
+   - Removed duplicate reset logic (now delegated to game-data.js)
+   - Hidden admin reset (tap device ID 2 times) works with new results schema
+   - Minimal changes to preserve stability
 STATUS: Ready for testing
 -->
 
@@ -61,7 +61,6 @@ STATUS: Ready for testing
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
-            letter-spacing: 0.5px;
             cursor: pointer;
         }
         
@@ -131,7 +130,7 @@ STATUS: Ready for testing
             align-items: center;
         }
         .flight-header h3 { 
-            font-size: 1rem; 
+            font-size: 22px; 
             font-weight: 700; 
             color: #4caf50; 
             letter-spacing: 2px;
@@ -162,7 +161,7 @@ STATUS: Ready for testing
             padding: 16px;
         }
         .team-title {
-            font-size: 1rem;
+            font-size: 22px;
             font-weight: 700;
             text-align: center;
             padding-bottom: 8px;
@@ -178,11 +177,16 @@ STATUS: Ready for testing
             align-items: baseline;
             padding: 10px 0;
             border-bottom: 1px solid rgba(255,255,255,0.05);
+            margin-bottom: 12px;
         }
         .player-row:last-child { border-bottom: none; }
-        .player-name { font-size: 0.9rem; font-weight: 500; color: #fff; }
+        .player-name { 
+            font-size: 20px; 
+            font-weight: 600; 
+            color: #fff; 
+        }
         .player-handicap { 
-            font-size: 0.8rem; 
+            font-size: 16px; 
             font-weight: 600; 
             background: rgba(76,175,80,0.2);
             padding: 2px 8px;
@@ -366,17 +370,16 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.02</div>
+<div class="version-tag">v3.03</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.02
-// FIXED: gameMode assignment from gameData.gameType or gameData.gameMode
-// ADDED: Hidden admin reset - tap device ID 2 times to reset full game
+// FILE: pre-game.html - VERSION 3.03
+// UPDATED: Now calls GameData.resetFullGame() for admin reset
 
-var VERSION = "3.02";
+var VERSION = "3.03";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
-var STALE_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes
+var STALE_THRESHOLD_MS = 60 * 60 * 1000;
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -420,17 +423,15 @@ var isPreviewSandbox = false;
 var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
 
-// Hidden reset: tap counter
-var tapCount = 0;
-var tapTimer = null;
-
 function displayDeviceId() {
     var shortName = SessionManager.getShortNameOnly();
     currentShortName = shortName;
     var deviceTag = document.getElementById("deviceTag");
     deviceTag.innerHTML = "🖥️ " + shortName;
     
-    // Add tap listener for hidden reset
+    // Hidden admin reset - tap device ID 2 times
+    var tapCount = 0;
+    var tapTimer = null;
     deviceTag.addEventListener("click", function() {
         tapCount++;
         if (tapTimer) clearTimeout(tapTimer);
@@ -452,6 +453,7 @@ function showAdminResetModal() {
                 <div class="modal-message" style="font-size:0.7rem; margin-top:4px;">• All scores</div>
                 <div class="modal-message" style="font-size:0.7rem;">• All locks</div>
                 <div class="modal-message" style="font-size:0.7rem;">• Game started flag</div>
+                <div class="modal-message" style="font-size:0.7rem;">• Pre-computed results</div>
                 <div class="modal-message" style="margin-top:12px; color:#ffaa44;">This action cannot be undone.</div>
                 <div class="modal-buttons">
                     <button class="modal-btn modal-btn-cancel" id="adminResetCancelBtn">Cancel</button>
@@ -469,7 +471,12 @@ function showAdminResetModal() {
     
     document.getElementById("adminResetConfirmBtn").addEventListener("click", function() {
         document.getElementById("adminResetModal").remove();
-        resetFullGame(function(success) {
+        
+        // Use GameData.resetFullGame() for complete reset
+        var startingHoleVal = gameData.startingHole || 1;
+        var coursePar = gameData.course.par;
+        
+        GameData.resetFullGame(gameId, startingHoleVal, coursePar, function(success) {
             if (success) {
                 alert("Game has been reset. Page will reload.");
                 window.location.reload();
@@ -516,8 +523,8 @@ function generateDefaultDataNatural(parArray) {
     return result;
 }
 
-function rotateDataString(naturalData, startingHole) {
-    if (startingHole === 1) return naturalData;
+function rotateDataString(naturalData, startingHoleVal) {
+    if (startingHoleVal === 1) return naturalData;
     
     var blocks = [];
     for (var i = 0; i < 18; i++) {
@@ -525,8 +532,8 @@ function rotateDataString(naturalData, startingHole) {
     }
     
     var rotated = [];
-    for (var i = startingHole - 1; i < 18; i++) rotated.push(blocks[i]);
-    for (var i = 0; i < startingHole - 1; i++) rotated.push(blocks[i]);
+    for (var i = startingHoleVal - 1; i < 18; i++) rotated.push(blocks[i]);
+    for (var i = 0; i < startingHoleVal - 1; i++) rotated.push(blocks[i]);
     
     return rotated.join('');
 }
@@ -552,44 +559,6 @@ function resetLocksOnly(callback) {
         if (callback) callback(true);
     }).catch(function(e) {
         console.error("Reset locks error:", e);
-        if (callback) callback(false);
-    });
-}
-
-// Full reset (scores + locks) for NEW PREVIEW session or REAL first touch
-function resetFullGame(callback) {
-    if (!db || !gameId) {
-        if (callback) callback(false);
-        return;
-    }
-    
-    var startingHole = gameData.startingHole || 1;
-    var naturalData = generateDefaultDataNatural(gameData.course.par);
-    var rotatedData = rotateDataString(naturalData, startingHole);
-    
-    var resetData = {
-        "f1.d": rotatedData,
-        "f1.se": false,
-        "f1.x": false,
-        "f2.d": rotatedData,
-        "f2.se": false,
-        "f2.x": false,
-        "locks.f1": null,
-        "locks.f2": null,
-        "currentHoleF1": 1,
-        "currentHoleF2": 1,
-        "gameStarted": false,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-    
-    db.collection(isPreviewSandbox ? "previewSandboxes" : "scheduledGames").doc(gameId).update(resetData).then(function() {
-        console.log("Full game reset - scores and locks cleared");
-        locks.f1 = null;
-        locks.f2 = null;
-        tempSelectedRole = null;
-        if (callback) callback(true);
-    }).catch(function(e) {
-        console.error("Full reset error:", e);
         if (callback) callback(false);
     });
 }
@@ -626,7 +595,6 @@ function canTakeRole(role) {
     var now = Date.now();
     var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
     
-    // Check if this device already has a valid lock on the OTHER flight
     if (role === "update1") {
         var otherLockValid = locks.f2 && locks.f2.ex && locks.f2.ex > now;
         var otherLockIsMe = otherLockValid && locks.f2.did === myDeviceIdFull;
@@ -660,7 +628,6 @@ function toggleRole(role) {
     var isF1LockedByMe = isF1Locked && locks.f1.did === myDeviceIdFull;
     var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
     
-    // Check if trying to take a role that is locked by another device
     if (role === "update1" && isF1Locked && !isF1LockedByMe) {
         showTakeoverModal(1);
         return;
@@ -670,7 +637,6 @@ function toggleRole(role) {
         return;
     }
     
-    // Check one-device-one-role rule
     if (!canTakeRole(role)) return;
     
     tempSelectedRole = role;
@@ -812,7 +778,6 @@ function loadGame() {
                     locks.f2 = gameData.locks.f2 || null;
                 }
                 
-                // Check for stale session (lastActive > 60 min)
                 var lastActive = gameData.lastActive;
                 var now = Date.now();
                 var isStale = false;
@@ -825,7 +790,6 @@ function loadGame() {
                 }
                 
                 if (isStale && hasAnyScores()) {
-                    // Show modal to reset locks (keep scores)
                     showStaleSessionModal(function(confirmed) {
                         if (confirmed) {
                             resetLocksOnly(function() {
@@ -859,7 +823,6 @@ function loadGame() {
             gameData = doc.data();
             gameData.id = doc.id;
             
-            // *** FIX: Set gameMode from gameType or gameMode field ***
             gameMode = gameData.gameType || gameData.gameMode || "real";
             console.log("REAL mode - gameMode set to:", gameMode);
             
@@ -876,7 +839,9 @@ function loadGame() {
             
             if (isToday && !gameStartedFlag) {
                 console.log("REAL mode - First access on game day, resetting...");
-                resetFullGame(function(success) {
+                var startingHoleVal = gameData.startingHole || 1;
+                var coursePar = gameData.course.par;
+                GameData.resetFullGame(gameId, startingHoleVal, coursePar, function(success) {
                     db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
                         if (updatedDoc.exists) {
                             gameData = updatedDoc.data();
@@ -944,7 +909,6 @@ function startGame() {
     var isF1LockedByMe = isF1Locked && locks.f1.did === myDeviceIdFull;
     var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
     
-    // Check if trying to take a role already locked by another device
     if (tempSelectedRole === "update1" && isF1Locked && !isF1LockedByMe) {
         alert("Flight 1 was locked by another device. Please take over the role.");
         tempSelectedRole = null;
@@ -958,7 +922,6 @@ function startGame() {
         return;
     }
     
-    // One device one role check
     if (tempSelectedRole === "update1") {
         var otherLockValid = locks.f2 && locks.f2.ex && locks.f2.ex > now;
         var otherLockIsMe = otherLockValid && locks.f2.did === myDeviceIdFull;
@@ -1103,12 +1066,10 @@ function render() {
     var isF1LockedByMe = isF1Locked && locks.f1.did === myDeviceIdFull;
     var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
     
-    // Determine button states
     var update1Selected = (tempSelectedRole === "update1");
     var update2Selected = (tempSelectedRole === "update2");
     var viewSelected = (tempSelectedRole === "view");
     
-    // Flight 1 button
     var update1Class = "role-btn";
     var update1Text = "✏️ UPDATE FLIGHT 1";
     if (update1Selected) {
@@ -1125,7 +1086,6 @@ function render() {
         update1Text = "🔓 UPDATE FLIGHT 1";
     }
     
-    // Flight 2 button
     var update2Class = "role-btn";
     var update2Text = "✏️ UPDATE FLIGHT 2";
     if (update2Selected) {
@@ -1142,7 +1102,6 @@ function render() {
         update2Text = "🔓 UPDATE FLIGHT 2";
     }
     
-    // View button
     var viewClass = "role-btn role-btn-view";
     var viewText = "👁️ VIEW ONLY";
     if (viewSelected) {
@@ -1150,7 +1109,6 @@ function render() {
         viewText = "✓ VIEW ONLY";
     }
     
-    // Also check if device already has a role (disables the other update button)
     var deviceHasFlight1 = isF1Locked && isF1LockedByMe;
     var deviceHasFlight2 = isF2Locked && isF2LockedByMe;
     
@@ -1189,7 +1147,6 @@ function render() {
         roleStatusClass = "role-status-warning";
     }
     
-    // Flight lock info for headers
     var flight1LockInfo = '';
     var flight2LockInfo = '';
     
@@ -1283,7 +1240,6 @@ function escapeHtml(str) {
     });
 }
 
-// Make functions available globally
 window.toggleRole = toggleRole;
 window.startGame = startGame;
 window.goBack = goBack;
@@ -1302,11 +1258,11 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.02
+VERSION: 3.03
 KEY CHANGES:
-   - Fixed gameMode assignment: now reads from gameData.gameType or gameData.gameMode
-   - Ensures REAL mode redirects to real-game.html, not preview-game.html
-   - Added hidden admin reset: tap device ID (top-left corner) 2 times to reset full game
-   - Reset confirmation modal prevents accidental reset
+   - Now calls GameData.resetFullGame() for admin reset and first-touch reset
+   - Removed duplicate reset logic (now delegated to game-data.js)
+   - Hidden admin reset (tap device ID 2 times) works with new results schema
+   - Minimal changes to preserve stability
 STATUS: Ready for testing
 -->
