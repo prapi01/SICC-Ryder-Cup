@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 2.11
+VERSION: 2.12
 KEY CHANGES:
-   - FIXED: Next button now disabled until current hole is saved
-   - Also checks for unsaved local changes before enabling Next
-   - Preserves submission and last-hole behavior
-   - All other functionality unchanged
+   - FIXED: Next button now turns grey when disabled
+   - Added btn-next and btn-next-inactive CSS classes
+   - Disabled button shows grey background with low opacity text
+   - Preserves all button behavior (disabled/enabled based on save status)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
 STATUS: Ready for testing
 -->
@@ -171,7 +171,9 @@ STATUS: Ready for testing
         .btn { flex: 1; padding: 12px; border-radius: 40px; font-weight: 600; text-align: center; cursor: pointer; border: none; }
         .btn-save { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-next-inactive { background: #2a2a2a; color: #555; border: 1px solid #444; cursor: not-allowed; }
         .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .btn-back:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
         .btn-menu {
             width: 100%;
             padding: 14px;
@@ -223,7 +225,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.11 REAL</div>
+<div class="version-tag">v2.12 REAL</div>
 
 <script>
 // ============================================================
@@ -847,6 +849,8 @@ function updateNextButton() {
     if (isGameCompleteFlag) {
         nextBtn.textContent = "✅ COMPLETE";
         nextBtn.disabled = true;
+        nextBtn.classList.add("btn-next-inactive");
+        nextBtn.classList.remove("btn-next");
         return;
     }
     
@@ -854,6 +858,8 @@ function updateNextButton() {
     if (submitted["f" + editableFlight]) {
         nextBtn.textContent = "✓ SUBMITTED";
         nextBtn.disabled = true;
+        nextBtn.classList.add("btn-next-inactive");
+        nextBtn.classList.remove("btn-next");
         return;
     }
     
@@ -876,14 +882,26 @@ function updateNextButton() {
         if (isCurrentSaved) {
             nextBtn.textContent = "📋 SUBMIT CARD";
             nextBtn.disabled = false;
+            nextBtn.classList.add("btn-next");
+            nextBtn.classList.remove("btn-next-inactive");
         } else {
             nextBtn.textContent = "📋 SUBMIT CARD";
             nextBtn.disabled = true;
+            nextBtn.classList.add("btn-next-inactive");
+            nextBtn.classList.remove("btn-next");
         }
     } else {
         // Non-last holes: Next enabled only if current hole is saved
         nextBtn.textContent = "Next →";
-        nextBtn.disabled = !isCurrentSaved;
+        if (isCurrentSaved) {
+            nextBtn.disabled = false;
+            nextBtn.classList.add("btn-next");
+            nextBtn.classList.remove("btn-next-inactive");
+        } else {
+            nextBtn.disabled = true;
+            nextBtn.classList.add("btn-next-inactive");
+            nextBtn.classList.remove("btn-next");
+        }
     }
 }
 
@@ -1277,12 +1295,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.11
+VERSION: 2.12
 KEY CHANGES:
-   - FIXED: Next button now disabled until current hole is saved
-   - Also checks for unsaved local changes before enabling Next
-   - Preserves submission and last-hole behavior
-   - All other functionality unchanged
+   - FIXED: Next button now turns grey when disabled
+   - Added btn-next and btn-next-inactive CSS classes
+   - Disabled button shows grey background with low opacity text
+   - Preserves all button behavior (disabled/enabled based on save status)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
 STATUS: Ready for testing
 -->
