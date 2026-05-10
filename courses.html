@@ -1,13 +1,14 @@
-<!-- FILE: courses.html - VERSION 1.28 -->
+<!-- FILE: courses.html - VERSION 1.29 -->
 <!-- Course Management for SICC Ryder Cup App -->
 <!-- Add, edit, delete courses with Par and Stroke Index for 18 holes -->
+<!-- FIXED: SI column now displays correctly in confirmation table -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <title>Course Management - SICC Ryder Cup</title>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     <style>
@@ -72,7 +73,7 @@
         .input-block select { background: #1a1a1a; border: 1px solid #4caf50; border-radius: 30px; padding: 12px 20px; color: #fff; font-size: 1.2rem; text-align: center; width: 100px; }
         
         .confirm-table-wrapper { overflow-x: auto; }
-        .confirm-table { width: 100%; border-collapse: collapse; font-size: 1.1rem; }
+        .confirm-table { width: 100%; border-collapse: collapse; font-size: 1rem; }
         .confirm-table th, .confirm-table td { padding: 12px 6px; text-align: center; border: 1px solid #333; }
         .confirm-table th { background: #1a3a1a; color: #4caf50; font-weight: 700; font-size: 0.9rem; }
         .confirm-table .hole-number { font-weight: 800; background: #1a1a1a; font-size: 1rem; color: #4caf50; }
@@ -91,12 +92,13 @@
     <div class="loading">Loading courses...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.28</div>
+<div class="version-tag">v1.29</div>
 
 <script>
-// FILE: courses.html - VERSION 1.28
+// FILE: courses.html - VERSION 1.29
+// FIXED: SI column now displays correctly in confirmation table
 
-var VERSION = "1.28";
+var VERSION = "1.29";
 var CACHE_KEY = "courses_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -425,7 +427,7 @@ function renderConfirm() {
                         ${parOptions.replace(`value="${parVal}"`, `value="${parVal}" selected`)}
                     </select>
                 </td>
-                <tr>
+                <td>
                     <select class="confirm-select" onchange="updateConfirmSi(${i}, this.value)">
                         ${siOptions.replace(`value="${siVal}"`, `value="${siVal}" selected`)}
                     </select>
@@ -560,3 +562,6 @@ SessionManager.initSession("courses.html", "admin.html", function(session) {
 </script>
 </body>
 </html>
+
+<!-- FILE: courses.html - VERSION 1.29 -->
+<!-- FIXED: SI column now displays correctly in confirmation table -->
