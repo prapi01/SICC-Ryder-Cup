@@ -1,15 +1,16 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
+   - Added scroll indicator when table is wider than screen
    - Fixed column widths for better mobile display
-   - Player column now has fixed width (sticky on horizontal scroll)
-   - Reduced all column widths
-   - Better horizontal scroll experience
-   - Change Anchor button with dropdown for multiple anchor candidates
-   - Confirm & Save button (replaces separate Save button)
+   - Player column with fixed width
+   - Change Anchor dropdown for multiple anchor candidates
+   - Confirm & Save button
+   - Recalculation on anchor change
+   - Integration with history-record.js
 DEPENDS ON: Firebase Firestore, history-record.js
-STATUS: Ready for testing
+STATUS: Ready for integration
 */
 
 var HandicapAdjustment = (function() {
@@ -186,6 +187,27 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
+    // Add scroll indicator if needed
+    // ============================================================
+    
+    function addScrollIndicator(container) {
+        var tableWrapper = container.querySelector('div[style*="overflow-x: auto"]');
+        if (!tableWrapper) return;
+        
+        // Check if scroll is needed
+        if (tableWrapper.scrollWidth > tableWrapper.clientWidth + 5) {
+            var hint = document.createElement('div');
+            hint.style.cssText = 'text-align: center; font-size: 0.65rem; color: #888; margin-top: 6px;';
+            hint.innerHTML = '← Swipe to see more →';
+            tableWrapper.parentNode.insertBefore(hint, tableWrapper.nextSibling);
+            
+            setTimeout(function() {
+                if (hint && hint.remove) hint.remove();
+            }, 3000);
+        }
+    }
+    
+    // ============================================================
     // Display Table with narrower columns
     // ============================================================
     
@@ -195,41 +217,41 @@ var HandicapAdjustment = (function() {
         var newAnchorName = calculationResult.newAnchorName;
         
         // Fixed column widths
-        var tableHtml = '<div style="overflow-x: auto; margin: 20px 0;">';
-        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 480px;">';
+        var tableHtml = '<div style="overflow-x: auto; margin: 16px 0; -webkit-overflow-scrolling: touch;">';
+        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.75rem; min-width: 460px;">';
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
         
         if (hasNewAnchor) {
-            tableHtml += '<th style="padding:8px 6px; text-align:left; width:100px;">Player</th>';
-            tableHtml += '<th style="padding:8px 6px; text-align:center; width:60px;">Cur<br>Hcp</th>';
-            tableHtml += '<th style="padding:8px 6px; text-align:center; width:60px;">Anc<br>Adj</th>';
-            tableHtml += '<th style="padding:8px 6px; text-align:center; width:60px;">Perf<br>Adj</th>';
-            tableHtml += '<th style="padding:8px 6px; text-align:center; width:60px;">Raw<br>New</th>';
-            tableHtml += '<th style="padding:8px 6px; text-align:center; width:70px;">New<br>Anc</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:left; width:90px;">Player</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Cur</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Anc</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Perf</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Raw</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:center; width:55px;">New</th>';
         } else {
-            tableHtml += '<th style="padding:8px 6px; text-align:left; width:100px;">Player</th>';
-            tableHtml += '<th style="padding:8px 6px; text-align:center; width:60px;">Cur<br>Hcp</th>';
-            tableHtml += '<th style="padding:8px 6px; text-align:center; width:60px;">Anc<br>Adj</th>';
-            tableHtml += '<th style="padding:8px 6px; text-align:center; width:60px;">Perf<br>Adj</th>';
-            tableHtml += '<th style="padding:8px 6px; text-align:center; width:70px;">New<br>Hcp</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:left; width:90px;">Player</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Cur</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Anc</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Perf</th>';
+            tableHtml += '<th style="padding:6px 4px; text-align:center; width:55px;">New</th>';
         }
-        tableHtml += '</tr></thead><tbody>';
+        tableHtml += '<tr></thead><tbody>';
         
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
             var isNewAnchor = hasNewAnchor && p.newAnchor === 0;
             
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
-            tableHtml += `<td style="padding:8px 6px; text-align:left;">${escapeHtml(p.name)}</td>`;
-            tableHtml += `<td style="padding:8px 6px; text-align:center;">${p.currentHcp}</td>`;
-            tableHtml += `<td style="padding:8px 6px; text-align:center; color: ${p.anchorAdj >= 0 ? '#4caf50' : '#ff6b6b'}; font-weight:600;">${p.anchorAdj >= 0 ? '+' + p.anchorAdj : p.anchorAdj}</td>`;
-            tableHtml += `<td style="padding:8px 6px; text-align:center; color: ${p.perfAdj > 0 ? '#4caf50' : (p.perfAdj < 0 ? '#ff6b6b' : '#888')}; font-weight:600;">${p.perfAdj > 0 ? '+' + p.perfAdj : (p.perfAdj < 0 ? p.perfAdj : '0')}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:left;">${escapeHtml(p.name)}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center;">${p.currentHcp}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${p.anchorAdj >= 0 ? '#4caf50' : '#ff6b6b'}; font-weight:600;">${p.anchorAdj >= 0 ? '+' + p.anchorAdj : p.anchorAdj}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${p.perfAdj > 0 ? '#4caf50' : (p.perfAdj < 0 ? '#ff6b6b' : '#888')}; font-weight:600;">${p.perfAdj > 0 ? '+' + p.perfAdj : (p.perfAdj < 0 ? p.perfAdj : '0')}</td>`;
             
             if (hasNewAnchor) {
-                tableHtml += `<td style="padding:8px 6px; text-align:center; color: ${p.rawNew > 0 ? '#4caf50' : (p.rawNew < 0 ? '#ff6b6b' : '#888')}; font-weight:600;">${p.rawNew > 0 ? '+' + p.rawNew : p.rawNew}</td>`;
-                tableHtml += `<td style="padding:8px 6px; text-align:center; ${isNewAnchor ? 'color: #ffaa44; font-weight: 800;' : 'color: #4caf50; font-weight: 600;'}">${p.newAnchor}</td>`;
+                tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${p.rawNew > 0 ? '#4caf50' : (p.rawNew < 0 ? '#ff6b6b' : '#888')}; font-weight:600;">${p.rawNew > 0 ? '+' + p.rawNew : p.rawNew}</td>`;
+                tableHtml += `<td style="padding:6px 4px; text-align:center; ${isNewAnchor ? 'color: #ffaa44; font-weight: 800;' : 'color: #4caf50; font-weight: 600;'}">${p.newAnchor}</td>`;
             } else {
-                tableHtml += `<td style="padding:8px 6px; text-align:center; color:#4caf50; font-weight:700;">${p.newHcp}</td>`;
+                tableHtml += `<td style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700;">${p.newHcp}</td>`;
             }
             tableHtml += '</tr>';
         }
@@ -242,42 +264,41 @@ var HandicapAdjustment = (function() {
             var optionsHtml = '';
             for (var i = 0; i < anchorCandidates.length; i++) {
                 var selected = (anchorCandidates[i].name === anchorName) ? 'selected' : '';
-                optionsHtml += `<option value="${anchorCandidates[i].name}" ${selected}>${anchorCandidates[i].name} (Hcp ${anchorCandidates[i].handicap})</option>`;
+                optionsHtml += `<option value="${anchorCandidates[i].name}" ${selected}>${anchorCandidates[i].name} (${anchorCandidates[i].handicap})</option>`;
             }
             anchorSelectorHtml = `
-                <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 16px;">
-                    <span style="color: #888;">Current Anchor:</span>
-                    <select id="anchorSelect" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; padding: 8px 16px; border-radius: 30px; font-size: 0.9rem; font-weight: 600;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+                    <span style="color: #888; font-size:0.8rem;">Anchor:</span>
+                    <select id="anchorSelect" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; padding: 6px 12px; border-radius: 30px; font-size: 0.8rem; font-weight: 600;">
                         ${optionsHtml}
                     </select>
-                    <span id="anchorChangeNote" style="font-size: 0.7rem; color: #ffaa44;"></span>
                 </div>
             `;
         } else {
             anchorSelectorHtml = `
-                <div style="text-align: center; margin-bottom: 16px;">
-                    <span style="color: #4caf50;">Anchor: ${escapeHtml(anchorName)} (Hcp ${anchorPlayer.handicap})</span>
+                <div style="text-align: center; margin-bottom: 12px;">
+                    <span style="color: #4caf50; font-size:0.8rem;">Anchor: ${escapeHtml(anchorName)} (${anchorPlayer.handicap})</span>
                 </div>
             `;
         }
         
         var messageHtml = '';
-        if (hasNewAnchor) {
-            messageHtml = `<div style="font-size:0.9rem; color:#ffaa44; text-align:center; margin-bottom:16px;">🎉 Congratulations! ${escapeHtml(newAnchorName)} is the NEW ANCHOR! 🎉</div>`;
+        if (hasNewAnchor && newAnchorName) {
+            messageHtml = `<div style="font-size:0.85rem; color:#ffaa44; text-align:center; margin-bottom:12px;">🎉 ${escapeHtml(newAnchorName)} is the NEW ANCHOR! 🎉</div>`;
         }
         
         var modalHtml = `
             <div class="modal-overlay" id="hcpAdjustModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10000;">
-                <div style="background:#1a1a1a; border-radius:32px; padding:20px; max-width:95%; width:auto; border:2px solid #4caf50;">
-                    <div style="font-size:1.5rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:8px;">🏌️ HANDICAP ADJUSTMENT</div>
+                <div style="background:#1a1a1a; border-radius:28px; padding:16px; max-width:95%; width:auto; border:2px solid #4caf50;">
+                    <div style="font-size:1.3rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:4px;">🏌️ HANDICAP ADJUSTMENT</div>
                     ${messageHtml}
                     ${anchorSelectorHtml}
                     ${tableHtml}
-                    <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; justify-content:center;">
-                        <button id="reviewGameBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:10px 16px; border-radius:40px; font-size:0.8rem; font-weight:600; cursor:pointer;">🔍 Review Game</button>
-                        <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:10px 16px; border-radius:40px; font-size:0.8rem; font-weight:600; cursor:pointer;">🎉 Celebration</button>
-                        <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:10px 16px; border-radius:40px; font-size:0.8rem; font-weight:600; cursor:pointer;">🏠 Main Menu</button>
-                        <button id="confirmSaveBtn" style="background:#ffaa44; border:none; color:#1a3a1a; padding:10px 20px; border-radius:40px; font-size:0.9rem; font-weight:800; cursor:pointer;">✓ Confirm & Save</button>
+                    <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; justify-content:center;">
+                        <button id="reviewGameBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🔍 Review</button>
+                        <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🎉 Celebrate</button>
+                        <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏠 Menu</button>
+                        <button id="confirmSaveBtn" style="background:#ffaa44; border:none; color:#1a3a1a; padding:8px 18px; border-radius:30px; font-size:0.8rem; font-weight:800; cursor:pointer;">✓ Confirm</button>
                     </div>
                 </div>
             </div>
@@ -287,6 +308,10 @@ var HandicapAdjustment = (function() {
         if (existingModal) existingModal.remove();
         
         document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Add scroll indicator
+        var modalDiv = document.querySelector('#hcpAdjustModal > div');
+        if (modalDiv) addScrollIndicator(modalDiv);
         
         // Store current calculation result for recalc on anchor change
         currentTableData = calculationResult;
@@ -313,8 +338,8 @@ var HandicapAdjustment = (function() {
         });
         
         document.getElementById('celebrationBtn').addEventListener('click', function() {
-            // Replay celebration (will be handled by parent)
             if (window.replayCelebration) window.replayCelebration();
+            else alert('Celebration would replay here');
         });
         
         document.getElementById('mainMenuBtn').addEventListener('click', function() {
@@ -351,7 +376,6 @@ var HandicapAdjustment = (function() {
                     console.error("Error saving handicap data:", err);
                     alert("Error saving handicap data. Please try again.");
                 } else {
-                    // Update player profiles
                     updatePlayerProfiles(handicapData.players);
                 }
             });
@@ -467,15 +491,15 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - Fixed column widths for better mobile display
-   - Player column with fixed width
-   - Reduced all column widths (60-70px)
+   - Added scroll indicator when table is wider than screen
+   - Even narrower column widths (50-55px)
+   - Better mobile touch scrolling
    - Change Anchor dropdown for multiple anchor candidates
    - Confirm & Save button
    - Recalculation on anchor change
    - Integration with history-record.js
 DEPENDS ON: Firebase Firestore, history-record.js
-STATUS: Ready for testing
+STATUS: Ready for integration
 */
