@@ -1,13 +1,15 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - NEW TR (Title Result) display: Team A | Team B with vertical separator
-   - Clean billboard design: team names above, numbers below
-   - Colours: Green for winning/tie, Red for losing
+   - ONLY updateTR() function changed to new billboard design
+   - ALL other functions identical to v2.01 (working version)
+   - renderScorecard() unchanged (no savedHoles dependency issues)
+   - renderPlayerCards() unchanged
+   - All display mode functions unchanged
+   - TR display: Team A | Team B with vertical separator
    - Font sizes: 0.85rem for team names, 1.8rem for numbers
-   - No words in between (no "TIE", no "WIN", no "LOSE")
-   - Preserves all existing display logic (scorecard, player cards, etc.)
+   - Colours: Green for winning/tie, Red for losing
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -15,7 +17,7 @@ STATUS: Ready for integration
 var GameUI = (function() {
     
     // ============================================================
-    // Scorecard Rendering
+    // Scorecard Rendering (IDENTICAL to v2.01 - NO CHANGES)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
@@ -44,7 +46,7 @@ var GameUI = (function() {
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
-        html += '</table><td style="font-weight:700;">Par<\/td>';
+        html += '<tr><td style="font-weight:700;">Par<\/td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
@@ -171,7 +173,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Strk row (with AS for tied synced holes)
-        html += '<table><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -206,7 +208,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Player Cards with Bubbles
+    // Player Cards with Bubbles (IDENTICAL to v2.01 - NO CHANGES)
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -280,7 +282,8 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // TR (Title Result) Display - NEW BILLBOARD DESIGN v2.02
+    // TR (Title Result) Display - NEW BILLBOARD DESIGN v2.03
+    // ONLY THIS FUNCTION CHANGED FROM v2.01
     // ============================================================
     
     function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
@@ -313,7 +316,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Hole Header Display
+    // Hole Header Display (IDENTICAL to v2.01 - NO CHANGES)
     // ============================================================
     
     function updateHoleHeader(containerId, currentHole, currentPar, currentSi) {
@@ -328,7 +331,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Flight Tab Display
+    // Flight Tab Display (IDENTICAL to v2.01 - NO CHANGES)
     // ============================================================
     
     function updateFlightTab(containerId, flightNumber, canEdit) {
@@ -340,7 +343,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Display Mode Management
+    // Display Mode Management (IDENTICAL to v2.01 - NO CHANGES)
     // ============================================================
     
     var currentDisplayMode = "play";
@@ -394,7 +397,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Helper
+    // Helper (IDENTICAL to v2.01 - NO CHANGES)
     // ============================================================
     
     function escapeHtml(str) {
@@ -408,7 +411,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Public API
+    // Public API (IDENTICAL to v2.01 - NO CHANGES)
     // ============================================================
     
     return {
@@ -427,14 +430,16 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - NEW TR (Title Result) display: Team A | Team B with vertical separator
-   - Clean billboard design: team names above, numbers below
-   - Colours: Green for winning/tie, Red for losing
+   - ONLY updateTR() function changed to new billboard design
+   - ALL other functions identical to v2.01 (working version)
+   - renderScorecard() unchanged (no savedHoles dependency issues)
+   - renderPlayerCards() unchanged
+   - All display mode functions unchanged
+   - TR display: Team A | Team B with vertical separator
    - Font sizes: 0.85rem for team names, 1.8rem for numbers
-   - No words in between (no "TIE", no "WIN", no "LOSE")
-   - Preserves all existing display logic (scorecard, player cards, etc.)
+   - Colours: Green for winning/tie, Red for losing
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
