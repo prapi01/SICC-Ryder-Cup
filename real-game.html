@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 2.17
+VERSION: 2.18
 KEY CHANGES:
-   - Reduced TR font size from 2rem to 1.5rem (prevents spillover)
-   - Save button now shows current hole number (e.g., "💾 SAVE H3")
-   - Back button shows hole number on hover (optional visual)
-   - All previous fixes preserved (results saving, back button disable, etc.)
+   - ADDED: Fallback to read gameId from sessionStorage if session.activeGame.gameId is null
+   - This ensures the game loads even when session activeGame is not properly set
+   - All other functionality identical to v2.17
+   - No changes to game-ui.js (remains at v2.01)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -284,7 +284,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.17 REAL</div>
+<div class="version-tag">v2.18 REAL</div>
 
 <script>
 // ============================================================
@@ -1440,7 +1440,13 @@ async function init() {
     }
     canEdit = (editableFlight === 1 || editableFlight === 2);
     
+    // FIX: Get gameId - fallback to sessionStorage if activeGame.gameId is null
     gameId = session.activeGame ? session.activeGame.gameId : null;
+    if (!gameId) {
+        gameId = sessionStorage.getItem('currentGameId');
+        console.log('real-game: using fallback gameId from sessionStorage:', gameId);
+    }
+    
     if (!gameId) {
         document.getElementById("debug").innerHTML = "Error: No game ID";
         return;
@@ -1575,12 +1581,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.17
+VERSION: 2.18
 KEY CHANGES:
-   - Reduced TR font size from 2rem to 1.5rem (prevents spillover)
-   - Save button now shows current hole number (e.g., "💾 SAVE H3")
-   - Back button shows hole number on hover (optional visual)
-   - All previous fixes preserved (results saving, back button disable, etc.)
+   - ADDED: Fallback to read gameId from sessionStorage if session.activeGame.gameId is null
+   - This ensures the game loads even when session activeGame is not properly set
+   - All other functionality identical to v2.17
+   - No changes to game-ui.js (remains at v2.01)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
