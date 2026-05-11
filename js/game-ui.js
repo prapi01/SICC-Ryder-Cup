@@ -1,12 +1,15 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - FIXED: T-1, T-2, Strk rows now show "AS" for tied synced holes
-   - Unsynced holes (not played by both flights) are invisible (black text on black)
-   - Preserves all existing display logic
+   - NEW TR (Title Result) display: Team A | Team B with vertical separator
+   - Clean billboard design: team names above, numbers below
+   - Colours: Green for winning/tie, Red for losing
+   - Font sizes: 0.85rem for team names, 1.8rem for numbers
+   - No words in between (no "TIE", no "WIN", no "LOSE")
+   - Preserves all existing display logic (scorecard, player cards, etc.)
 DEPENDS ON: None (pure display)
-STATUS: Ready for testing
+STATUS: Ready for integration
 */
 
 var GameUI = (function() {
@@ -41,7 +44,7 @@ var GameUI = (function() {
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
-        html += '<tr><td style="font-weight:700;">Par<\/td>';
+        html += '</table><td style="font-weight:700;">Par<\/td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
@@ -168,7 +171,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Strk row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        html += '<table><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -277,7 +280,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // TR (Title Result) Display
+    // TR (Title Result) Display - NEW BILLBOARD DESIGN v2.02
     // ============================================================
     
     function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
@@ -286,14 +289,26 @@ var GameUI = (function() {
         
         var teamADisplay = teamAPoints % 1 === 0 ? teamAPoints : teamAPoints.toFixed(1);
         var teamBDisplay = teamBPoints % 1 === 0 ? teamBPoints : teamBPoints.toFixed(1);
-        var teamAColorClass = teamAGreen ? 'team-score-green' : 'team-score-red';
-        var teamBColorClass = teamBGreen ? 'team-score-green' : 'team-score-red';
+        var teamAColor = teamAGreen ? '#4caf50' : '#ff6b6b';
+        var teamBColor = teamBGreen ? '#4caf50' : '#ff6b6b';
+        var separatorColor = '#888';
         
-        var html = '<div style="font-size: 2rem; font-weight: 800;">' +
-                       '<span class="' + teamAColorClass + '">Team A ' + teamADisplay + '</span>' + 
-                       ' - ' + 
-                       '<span class="' + teamBColorClass + '">' + teamBDisplay + ' Team B</span>' +
-                   '</div>';
+        var html = `
+            <div style="text-align: center; font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;">
+                <div style="display: flex; justify-content: center; align-items: center; gap: 16px;">
+                    <div style="text-align: center; min-width: 100px;">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamAColor}; letter-spacing: 1px;">TEAM A</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamAColor}; line-height: 1.2;">${teamADisplay}</div>
+                    </div>
+                    <div style="font-size: 1.5rem; font-weight: 400; color: ${separatorColor};">│</div>
+                    <div style="text-align: center; min-width: 100px;">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamBColor}; letter-spacing: 1px;">TEAM B</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamBColor}; line-height: 1.2;">${teamBDisplay}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
         container.innerHTML = html;
     }
     
@@ -412,11 +427,14 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - FIXED: T-1, T-2, Strk rows now show "AS" for tied synced holes
-   - Unsynced holes (not played by both flights) are invisible (black text on black)
-   - Preserves all existing display logic
+   - NEW TR (Title Result) display: Team A | Team B with vertical separator
+   - Clean billboard design: team names above, numbers below
+   - Colours: Green for winning/tie, Red for losing
+   - Font sizes: 0.85rem for team names, 1.8rem for numbers
+   - No words in between (no "TIE", no "WIN", no "LOSE")
+   - Preserves all existing display logic (scorecard, player cards, etc.)
 DEPENDS ON: None (pure display)
-STATUS: Ready for testing
+STATUS: Ready for integration
 */
