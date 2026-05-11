@@ -1,12 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - Navigation now restricted to holes with computed results
-   - Cannot navigate beyond computedUpToHole
-   - Initial hole set to highest synced hole (or starting hole)
-   - Disabled navigation buttons when at limits
-   - Grey out buttons when cannot navigate further
+   - Fixed Flight toggle button position (now in SCORECARD row, between P/N and hole navigation)
+   - Fixed navigation arrows (prev/next hole now working correctly)
+   - Reduced Flight button size
+   - Proper button alignment in single row
    - All display from pre-computed results
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
@@ -117,6 +116,12 @@ STATUS: Ready for testing
             align-items: center;
             margin-bottom: 10px;
             gap: 8px;
+            flex-wrap: wrap;
+        }
+        .scorecard-left-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         .scorecard-title {
             font-size: 0.9rem;
@@ -129,14 +134,25 @@ STATUS: Ready for testing
             background: #1a3a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
-            width: 32px;
-            height: 32px;
+            width: 36px;
+            height: 36px;
             border-radius: 6px;
             font-size: 0.9rem;
             font-weight: 700;
             cursor: pointer;
             text-align: center;
             line-height: 1;
+        }
+        .flight-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-width: 90px;
         }
         .nav-group {
             display: flex;
@@ -147,10 +163,10 @@ STATUS: Ready for testing
             background: #1a3a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
-            width: 32px;
-            height: 32px;
+            width: 36px;
+            height: 36px;
             border-radius: 20px;
-            font-size: 0.9rem;
+            font-size: 1rem;
             cursor: pointer;
             font-weight: bold;
         }
@@ -166,28 +182,6 @@ STATUS: Ready for testing
             color: #4caf50;
             min-width: 45px;
             text-align: center;
-        }
-        
-        .flight-container {
-            display: flex;
-            gap: 0;
-            border: 1px solid #4caf50;
-            border-radius: 40px;
-            overflow: hidden;
-        }
-        .flight-btn {
-            background: #1a1a1a;
-            color: #888;
-            border: none;
-            padding: 8px 20px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            cursor: pointer;
-            min-width: 90px;
-        }
-        .flight-btn.active {
-            background: #1a3a1a;
-            color: #4caf50;
         }
         
         .scorecard-wrapper { overflow-x: auto; }
@@ -233,14 +227,16 @@ STATUS: Ready for testing
     <div class="status-bubble" id="statusBubble">VIEWER</div>
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
+    <div id="holeHeader" class="hole-header"></div>
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
     
     <div class="scorecard-section">
         <div class="scorecard-header" id="scorecardHeader">
-            <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="scorecard-left-group">
                 <span class="scorecard-title">SCORECARD</span>
                 <button class="pn-toggle" id="pnToggleBtn">P</button>
+                <button class="flight-toggle" id="flightToggleBtn">✈️ Flight 1</button>
             </div>
             <div class="nav-group">
                 <button class="nav-btn" id="prevHoleBtn">◀</button>
@@ -251,18 +247,13 @@ STATUS: Ready for testing
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
-    <div class="flight-container" id="flightContainer">
-        <button class="flight-btn active" id="flight1Btn">Flight 1</button>
-        <button class="flight-btn" id="flight2Btn">Flight 2</button>
-    </div>
-    
     <button class="btn-menu" id="menuBtn">← Back to Main Menu</button>
     
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.03 VIEWER</div>
+<div class="version-tag">v2.04 VIEWER</div>
 
 <script>
 // ============================================================
@@ -317,7 +308,7 @@ var matchResults = {
 };
 
 var gameResults = null;
-var maxAllowedPosition = 0;  // Highest hole position with results
+var maxAllowedPosition = 0;
 
 var myDeviceShortName = "";
 var unsubscribe = null;
@@ -359,32 +350,6 @@ function getFlightOrderedPlayers(flight) {
     return teamA.concat(teamB);
 }
 
-function parseFlightData(dataString) {
-    var result = {};
-    for (var pos = 0; pos < 18; pos++) {
-        var actualHole;
-        if (startingHole === 1) {
-            actualHole = pos + 1;
-        } else {
-            var playOrder = getPlayOrder();
-            actualHole = playOrder[pos];
-        }
-        
-        var startIdx = pos * 9;
-        var segment = dataString.substring(startIdx, startIdx + 9);
-        if (segment.length === 9) {
-            result[actualHole] = {
-                saved: segment[0] === 'T',
-                a1: parseInt(segment.substring(1, 3), 10),
-                a2: parseInt(segment.substring(3, 5), 10),
-                b1: parseInt(segment.substring(5, 7), 10),
-                b2: parseInt(segment.substring(7, 9), 10)
-            };
-        }
-    }
-    return result;
-}
-
 function updateSavedHolesList() {
     savedHoles[1] = [];
     savedHoles[2] = [];
@@ -411,7 +376,7 @@ function calculateLastSyncedHole() {
 }
 
 // ============================================================
-// Match Results using GameMatch (for bubbles only)
+// Match Results using GameMatch
 // ============================================================
 
 function updateMatchResults() {
@@ -452,7 +417,6 @@ function updateDisplayFromResults() {
     var position = getHolePosition(currentHole);
     var computedUpTo = gameResults.computedUpToHole || 0;
     
-    // If no results available, use defaults
     if (position >= computedUpTo) {
         trTeamA = 9.5;
         trTeamB = 9.5;
@@ -461,7 +425,6 @@ function updateDisplayFromResults() {
         return;
     }
     
-    // Read TR from results
     if (gameResults.tr) {
         trTeamA = gameResults.tr.teamA[position] || 9.5;
         trTeamB = gameResults.tr.teamB[position] || 9.5;
@@ -469,27 +432,19 @@ function updateDisplayFromResults() {
         trTeamBGreen = gameResults.tr.teamBGreen[position] !== undefined ? gameResults.tr.teamBGreen[position] : true;
     }
     
-    // Read T-1/T-2 rows from results
     if (gameResults.game2) {
         var flight1Leader = gameResults.game2.flight1.leader;
         var flight2Leader = gameResults.game2.flight2.leader;
         
         for (var i = 0; i < 18; i++) {
-            if (flight1Leader && flight1Leader[i]) {
-                t1Row[i] = flight1Leader[i];
-            }
-            if (flight2Leader && flight2Leader[i]) {
-                t2Row[i] = flight2Leader[i];
-            }
+            if (flight1Leader && flight1Leader[i]) t1Row[i] = flight1Leader[i];
+            if (flight2Leader && flight2Leader[i]) t2Row[i] = flight2Leader[i];
         }
     }
     
-    // Read Strk row from results
     if (gameResults.game3 && gameResults.game3.leader) {
         for (var i = 0; i < 18; i++) {
-            if (gameResults.game3.leader[i]) {
-                strkRow[i] = gameResults.game3.leader[i];
-            }
+            if (gameResults.game3.leader[i]) strkRow[i] = gameResults.game3.leader[i];
         }
     }
 }
@@ -571,7 +526,7 @@ function getMatchValue(playerName, opponentName) {
 }
 
 // ============================================================
-// Navigation with restrictions
+// Navigation
 // ============================================================
 
 function updateNavButtons() {
@@ -596,9 +551,16 @@ function goToPrevHole() {
         var prevPosition = getHolePosition(prevHole);
         if (prevPosition <= maxAllowedPosition) {
             currentHole = prevHole;
+            var holeDisplay = document.getElementById("holeNumberDisplay");
+            if (holeDisplay) holeDisplay.innerText = currentHole;
             updateDisplayFromResults();
             renderAll();
             updateNavButtons();
+            
+            // Update hole header
+            var currentPar = coursePar[currentHole - 1];
+            var currentSi = courseSi[currentHole - 1];
+            GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
         }
     }
 }
@@ -613,9 +575,16 @@ function goToNextHole() {
         var nextPosition = getHolePosition(nextHole);
         if (nextPosition <= maxAllowedPosition) {
             currentHole = nextHole;
+            var holeDisplay = document.getElementById("holeNumberDisplay");
+            if (holeDisplay) holeDisplay.innerText = currentHole;
             updateDisplayFromResults();
             renderAll();
             updateNavButtons();
+            
+            // Update hole header
+            var currentPar = coursePar[currentHole - 1];
+            var currentSi = courseSi[currentHole - 1];
+            GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
         }
     }
 }
@@ -645,10 +614,14 @@ function toggleDisplayMode() {
 // Flight Toggle
 // ============================================================
 
-function toggleFlight(flight) {
-    selectedFlight = flight;
-    document.getElementById("flight1Btn").classList.toggle("active", flight === 1);
-    document.getElementById("flight2Btn").classList.toggle("active", flight === 2);
+function toggleFlight() {
+    if (selectedFlight === 1) {
+        selectedFlight = 2;
+        document.getElementById("flightToggleBtn").innerText = "✈️ Flight 2";
+    } else {
+        selectedFlight = 1;
+        document.getElementById("flightToggleBtn").innerText = "✈️ Flight 1";
+    }
     renderAll();
 }
 
@@ -657,19 +630,6 @@ function toggleFlight(flight) {
 // ============================================================
 
 function renderAll() {
-    var currentPar = coursePar[currentHole - 1];
-    var currentSi = courseSi[currentHole - 1];
-    
-    // Create hole header
-    var holeHeaderDiv = document.querySelector('.hole-header');
-    if (!holeHeaderDiv) {
-        var newHeader = document.createElement('div');
-        newHeader.className = 'hole-header';
-        var courseNameDiv = document.getElementById('courseName');
-        courseNameDiv.parentNode.insertBefore(newHeader, courseNameDiv.nextSibling);
-    }
-    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-    
     GameUI.updateTR("trDisplay", trTeamA, trTeamB, trTeamAGreen, trTeamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(selectedFlight);
@@ -699,8 +659,10 @@ function renderAll() {
         courseSi
     );
     
-    document.getElementById("holeNumberDisplay").innerText = currentHole;
-    updateNavButtons();
+    // Update hole header
+    var currentPar = coursePar[currentHole - 1];
+    var currentSi = courseSi[currentHole - 1];
+    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
 }
 
 // ============================================================
@@ -711,7 +673,6 @@ function refreshFromFirestore(data) {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : f1DataString;
     f2DataString = data.f2 && data.f2.d ? data.f2.d : f2DataString;
     
-    // Load pre-computed results
     if (data.results) {
         gameResults = data.results;
         maxAllowedPosition = (gameResults.computedUpToHole || 0) - 1;
@@ -743,10 +704,11 @@ function refreshFromFirestore(data) {
         updateMatchResults();
         updateDisplayFromResults();
         renderAll();
+        updateNavButtons();
     } else {
-        // Still need to refresh display in case results changed
         updateDisplayFromResults();
         renderAll();
+        updateNavButtons();
     }
 }
 
@@ -790,18 +752,15 @@ async function init() {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : "";
     f2DataString = data.f2 && data.f2.d ? data.f2.d : "";
     
-    // Load pre-computed results
     if (data.results) {
         gameResults = data.results;
         maxAllowedPosition = (gameResults.computedUpToHole || 0) - 1;
         if (maxAllowedPosition < 0) maxAllowedPosition = -1;
     }
     
-    // Initialize GameData
     GameData.setCourse({ par: coursePar });
     GameData.setPlayers(allPlayers);
     
-    // Parse initial data
     for (var h = 1; h <= 18; h++) {
         var f1Hole = GameData.parseHoleData(f1DataString, h);
         var f2Hole = GameData.parseHoleData(f2DataString, h);
@@ -811,7 +770,6 @@ async function init() {
     
     var playOrder = getPlayOrder();
     
-    // Set initial hole to the highest available hole with results
     if (maxAllowedPosition >= 0) {
         currentHole = getHoleAtPosition(maxAllowedPosition);
     } else {
@@ -822,22 +780,18 @@ async function init() {
     updateMatchResults();
     updateDisplayFromResults();
     
-    // Set initial display mode button
     updatePnButton();
-    
     renderAll();
+    updateNavButtons();
     
-    // Set up event listeners
     document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
     document.getElementById("prevHoleBtn").addEventListener("click", goToPrevHole);
     document.getElementById("nextHoleBtn").addEventListener("click", goToNextHole);
-    document.getElementById("flight1Btn").addEventListener("click", function() { toggleFlight(1); });
-    document.getElementById("flight2Btn").addEventListener("click", function() { toggleFlight(2); });
+    document.getElementById("flightToggleBtn").addEventListener("click", toggleFlight);
     document.getElementById("menuBtn").addEventListener("click", function() {
         window.location.href = "index.html";
     });
     
-    // Set up Firestore snapshot listener for real-time sync
     unsubscribe = db.collection(collection).doc(gameId).onSnapshot(function(snapshot) {
         if (snapshot.exists) {
             refreshFromFirestore(snapshot.data());
@@ -855,13 +809,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - Navigation now restricted to holes with computed results
-   - Cannot navigate beyond computedUpToHole
-   - Initial hole set to highest synced hole (or starting hole)
-   - Disabled navigation buttons when at limits
-   - Grey out buttons when cannot navigate further
+   - Fixed Flight toggle button position (now in SCORECARD row, between P/N and hole navigation)
+   - Fixed navigation arrows (prev/next hole now working correctly)
+   - Reduced Flight button size
+   - Proper button alignment in single row
    - All display from pre-computed results
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
