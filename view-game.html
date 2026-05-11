@@ -1,12 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 2.04
+VERSION: 2.05
 KEY CHANGES:
-   - Fixed Flight toggle button position (now in SCORECARD row, between P/N and hole navigation)
-   - Fixed navigation arrows (prev/next hole now working correctly)
-   - Reduced Flight button size
-   - Proper button alignment in single row
-   - All display from pre-computed results
+   - Fixed navigation arrows (now working correctly)
+   - Flight button center-aligned
+   - Proper hole number display update on navigation
+   - Added PlayOrder support for navigation
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
 -->
@@ -153,6 +152,8 @@ STATUS: Ready for testing
             font-weight: 600;
             cursor: pointer;
             min-width: 90px;
+            display: inline-block;
+            text-align: center;
         }
         .nav-group {
             display: flex;
@@ -236,8 +237,8 @@ STATUS: Ready for testing
             <div class="scorecard-left-group">
                 <span class="scorecard-title">SCORECARD</span>
                 <button class="pn-toggle" id="pnToggleBtn">P</button>
-                <button class="flight-toggle" id="flightToggleBtn">✈️ Flight 1</button>
             </div>
+            <div class="flight-toggle" id="flightToggleBtn">✈️ Flight 1</div>
             <div class="nav-group">
                 <button class="nav-btn" id="prevHoleBtn">◀</button>
                 <span class="hole-number-display" id="holeNumberDisplay">1</span>
@@ -253,7 +254,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.04 VIEWER</div>
+<div class="version-tag">v2.05 VIEWER</div>
 
 <script>
 // ============================================================
@@ -547,21 +548,14 @@ function goToPrevHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     
     if (currentIndex > 0) {
-        var prevHole = playOrder[currentIndex - 1];
-        var prevPosition = getHolePosition(prevHole);
-        if (prevPosition <= maxAllowedPosition) {
-            currentHole = prevHole;
-            var holeDisplay = document.getElementById("holeNumberDisplay");
-            if (holeDisplay) holeDisplay.innerText = currentHole;
-            updateDisplayFromResults();
-            renderAll();
-            updateNavButtons();
-            
-            // Update hole header
-            var currentPar = coursePar[currentHole - 1];
-            var currentSi = courseSi[currentHole - 1];
-            GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-        }
+        currentHole = playOrder[currentIndex - 1];
+        var holeDisplay = document.getElementById("holeNumberDisplay");
+        if (holeDisplay) holeDisplay.innerText = currentHole;
+        updateDisplayFromResults();
+        updateMatchResults();
+        calculateTR();
+        renderAll();
+        updateNavButtons();
     }
 }
 
@@ -571,22 +565,20 @@ function goToNextHole() {
     var maxAllowedHole = getHoleAtPosition(maxAllowedPosition);
     
     if (currentIndex < 17 && currentHole < maxAllowedHole) {
-        var nextHole = playOrder[currentIndex + 1];
-        var nextPosition = getHolePosition(nextHole);
-        if (nextPosition <= maxAllowedPosition) {
-            currentHole = nextHole;
-            var holeDisplay = document.getElementById("holeNumberDisplay");
-            if (holeDisplay) holeDisplay.innerText = currentHole;
-            updateDisplayFromResults();
-            renderAll();
-            updateNavButtons();
-            
-            // Update hole header
-            var currentPar = coursePar[currentHole - 1];
-            var currentSi = courseSi[currentHole - 1];
-            GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-        }
+        currentHole = playOrder[currentIndex + 1];
+        var holeDisplay = document.getElementById("holeNumberDisplay");
+        if (holeDisplay) holeDisplay.innerText = currentHole;
+        updateDisplayFromResults();
+        updateMatchResults();
+        calculateTR();
+        renderAll();
+        updateNavButtons();
     }
+}
+
+function calculateTR() {
+    // Simplified for viewer - read from results
+    updateDisplayFromResults();
 }
 
 // ============================================================
@@ -809,13 +801,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.04
+VERSION: 2.05
 KEY CHANGES:
-   - Fixed Flight toggle button position (now in SCORECARD row, between P/N and hole navigation)
-   - Fixed navigation arrows (prev/next hole now working correctly)
-   - Reduced Flight button size
-   - Proper button alignment in single row
-   - All display from pre-computed results
+   - Fixed navigation arrows (now working correctly)
+   - Flight button center-aligned
+   - Proper hole number display update on navigation
+   - Added PlayOrder support for navigation
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
 STATUS: Ready for testing
 -->
