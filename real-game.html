@@ -1,12 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 2.15
+VERSION: 2.16
 KEY CHANGES:
-   - PHASE 1: Creates pending archive record in historyGames when both flights sign
-   - PHASE 2: Calls HandicapAdjustment.init() after celebration
-   - Passes archiveId to handicap adjustment module
-   - Stores handicap data to complete the archive record
-   - Full integration with history-record.js and hcp-adjust.js
+   - FIXED: saveResultsToFirestore now only called when both flights have saved the hole
+   - Results are saved from refreshFromFirestore when a hole becomes synced
+   - This ensures computedUpToHole increments correctly
+   - Back button now disabled on starting hole
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -177,6 +176,7 @@ STATUS: Ready for testing
         .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .btn-next-inactive { background: #2a2a2a; color: #555; border: 1px solid #444; cursor: not-allowed; }
         .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .btn-back:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
         .btn-menu {
             width: 100%;
             padding: 14px;
@@ -284,7 +284,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.15 REAL</div>
+<div class="version-tag">v2.16 REAL</div>
 
 <script>
 // ============================================================
@@ -763,29 +763,22 @@ function createPendingArchiveRecord(callback) {
         return;
     }
     
-    // Get the complete game data
-    var gameDataSnapshot = null;
-    
     db.collection("scheduledGames").doc(gameId).get()
         .then(function(doc) {
             if (!doc.exists) {
                 throw new Error("Game not found");
             }
-            gameDataSnapshot = doc.data();
+            var gameDataSnapshot = doc.data();
             
-            // Prepare final scores
             var finalScores = {
                 teamA: trTeamA,
-                teamB: trTeamB
-            };
+                teamB: trTeamB            };
             
-            // Prepare signatures
             var signaturesData = {
                 f1: { signed: signatures.f1, signedAt: null, captainName: null },
                 f2: { signed: signatures.f2, signedAt: null, captainName: null }
             };
             
-            // Build results object for archive
             var archiveResults = {
                 version: gameResults?.version || 1,
                 game1: {
@@ -898,11 +891,8 @@ function showSignCardModal() {
             else signatures.f2 = true;
             
             if (SignCard.isGameCompleted(signatures)) {
-                // Both signed - create archive and show celebration
                 createPendingArchiveRecord(function(err, archiveId) {
-                    if (err) {
-                        console.error("Failed to create archive record:", err);
-                    }
+                    if (err) console.error("Failed to create archive record:", err);
                     showCelebrationAndHandicap();
                 });
             } else {
@@ -923,9 +913,7 @@ function checkBothSignedAndCelebrate() {
             if (sigs.f1?.signed && sigs.f2?.signed) {
                 SignCard.hideWaitingScreen();
                 createPendingArchiveRecord(function(err, archiveId) {
-                    if (err) {
-                        console.error("Failed to create archive record:", err);
-                    }
+                    if (err) console.error("Failed to create archive record:", err);
                     showCelebrationAndHandicap();
                 });
             }
@@ -940,21 +928,16 @@ function showCelebrationAndHandicap() {
         teamB: allPlayers.filter(function(p) { return p.team === "B"; })
     };
     
-    // Build data for handicap adjustment
     var matchPoints = buildMatchResultsForHandicap();
     
-    // Store celebration replay function
     window.replayCelebration = function() {
         SignCard.showCelebrationScreen(winner, trTeamA, trTeamB, winningPlayers, gameId, function() {});
     };
     
-    // Show celebration screen first
     SignCard.showCelebrationScreen(winner, trTeamA, trTeamB, winningPlayers, gameId, function() {
-        // After celebration, show handicap adjustment
         if (currentArchiveId) {
             HandicapAdjustment.init(gameId, currentArchiveId, winningPlayers, matchPoints, {});
         } else {
-            // Create archive first if not already created
             createPendingArchiveRecord(function(err, archiveId) {
                 if (err) {
                     console.error("Failed to create archive record:", err);
@@ -1115,6 +1098,7 @@ function renderAll() {
     );
     
     updateNextButton();
+    updateBackButton();
 }
 
 function updateNextButton() {
@@ -1183,6 +1167,15 @@ function updateNextButton() {
     }
 }
 
+function updateBackButton() {
+    var backBtn = document.getElementById("backBtn");
+    if (!backBtn) return;
+    
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    backBtn.disabled = (currentIndex === 0);
+}
+
 // ============================================================
 // Save Hole using GameData
 // ============================================================
@@ -1231,7 +1224,6 @@ async function saveHole() {
                     }
                 }, 2000);
                 
-                saveResultsToFirestore(currentHole);
                 updateNextButton();
             } else {
                 document.getElementById("debug").innerHTML = "Save failed";
@@ -1298,7 +1290,11 @@ function nextHole() {
 function prevHole() {
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
-    var prevIndex = (currentIndex - 1 + 18) % 18;
+    
+    // Don't go before the starting hole
+    if (currentIndex <= 0) return;
+    
+    var prevIndex = currentIndex - 1;
     currentHole = playOrder[prevIndex];
     updateMatchResults();
     calculateTR();
@@ -1354,12 +1350,11 @@ function refreshFromFirestore(data) {
     
     isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
     
+    // Check if both signed but celebration not shown yet
     if (signatures.f1 && signatures.f2 && !isGameCompleteFlag) {
         isGameCompleteFlag = true;
         createPendingArchiveRecord(function(err, archiveId) {
-            if (err) {
-                console.error("Failed to create archive record:", err);
-            }
+            if (err) console.error("Failed to create archive record:", err);
             showCelebrationAndHandicap();
         });
         return;
@@ -1388,6 +1383,14 @@ function refreshFromFirestore(data) {
         changed = true;
         for (var key in localChanges) {
             if (key.startsWith("2_")) delete localChanges[key];
+        }
+    }
+    
+    // When both flights have saved the same hole, save results
+    var newLastSynced = calculateLastSyncedHole();
+    if (newLastSynced > lastSyncedHole) {
+        for (var h = lastSyncedHole + 1; h <= newLastSynced; h++) {
+            saveResultsToFirestore(h);
         }
     }
     
@@ -1566,13 +1569,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.15
+VERSION: 2.16
 KEY CHANGES:
-   - PHASE 1: Creates pending archive record in historyGames when both flights sign
-   - PHASE 2: Calls HandicapAdjustment.init() after celebration
-   - Passes archiveId to handicap adjustment module
-   - Stores handicap data to complete the archive record
-   - Full integration with history-record.js and hcp-adjust.js
+   - FIXED: saveResultsToFirestore now only called when both flights have saved the hole
+   - Results are saved from refreshFromFirestore when a hole becomes synced
+   - This ensures computedUpToHole increments correctly
+   - Back button now disabled on starting hole
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
