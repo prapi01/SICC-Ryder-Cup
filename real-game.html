@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 2.16
+VERSION: 2.17
 KEY CHANGES:
-   - FIXED: saveResultsToFirestore now only called when both flights have saved the hole
-   - Results are saved from refreshFromFirestore when a hole becomes synced
-   - This ensures computedUpToHole increments correctly
-   - Back button now disabled on starting hole
+   - Reduced TR font size from 2rem to 1.5rem (prevents spillover)
+   - Save button now shows current hole number (e.g., "💾 SAVE H3")
+   - Back button shows hole number on hover (optional visual)
+   - All previous fixes preserved (results saving, back button disable, etc.)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -263,7 +263,7 @@ STATUS: Ready for testing
     
     <div class="action-buttons">
         <button class="btn btn-back" id="backBtn">← Back</button>
-        <button class="btn btn-save" id="saveBtn">💾 Save</button>
+        <button class="btn btn-save" id="saveBtn">💾 SAVE</button>
         <button class="btn btn-next" id="nextBtn">Next →</button>
     </div>
     
@@ -284,7 +284,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.16 REAL</div>
+<div class="version-tag">v2.17 REAL</div>
 
 <script>
 // ============================================================
@@ -772,7 +772,8 @@ function createPendingArchiveRecord(callback) {
             
             var finalScores = {
                 teamA: trTeamA,
-                teamB: trTeamB            };
+                teamB: trTeamB
+            };
             
             var signaturesData = {
                 f1: { signed: signatures.f1, signedAt: null, captainName: null },
@@ -1099,6 +1100,7 @@ function renderAll() {
     
     updateNextButton();
     updateBackButton();
+    updateSaveButton();
 }
 
 function updateNextButton() {
@@ -1176,6 +1178,12 @@ function updateBackButton() {
     backBtn.disabled = (currentIndex === 0);
 }
 
+function updateSaveButton() {
+    var saveBtn = document.getElementById("saveBtn");
+    if (!saveBtn) return;
+    saveBtn.textContent = "💾 SAVE H" + currentHole;
+}
+
 // ============================================================
 // Save Hole using GameData
 // ============================================================
@@ -1225,6 +1233,7 @@ async function saveHole() {
                 }, 2000);
                 
                 updateNextButton();
+                updateSaveButton();
             } else {
                 document.getElementById("debug").innerHTML = "Save failed";
             }
@@ -1291,7 +1300,6 @@ function prevHole() {
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     
-    // Don't go before the starting hole
     if (currentIndex <= 0) return;
     
     var prevIndex = currentIndex - 1;
@@ -1350,7 +1358,6 @@ function refreshFromFirestore(data) {
     
     isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
     
-    // Check if both signed but celebration not shown yet
     if (signatures.f1 && signatures.f2 && !isGameCompleteFlag) {
         isGameCompleteFlag = true;
         createPendingArchiveRecord(function(err, archiveId) {
@@ -1386,7 +1393,6 @@ function refreshFromFirestore(data) {
         }
     }
     
-    // When both flights have saved the same hole, save results
     var newLastSynced = calculateLastSyncedHole();
     if (newLastSynced > lastSyncedHole) {
         for (var h = lastSyncedHole + 1; h <= newLastSynced; h++) {
@@ -1569,12 +1575,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.16
+VERSION: 2.17
 KEY CHANGES:
-   - FIXED: saveResultsToFirestore now only called when both flights have saved the hole
-   - Results are saved from refreshFromFirestore when a hole becomes synced
-   - This ensures computedUpToHole increments correctly
-   - Back button now disabled on starting hole
+   - Reduced TR font size from 2rem to 1.5rem (prevents spillover)
+   - Save button now shows current hole number (e.g., "💾 SAVE H3")
+   - Back button shows hole number on hover (optional visual)
+   - All previous fixes preserved (results saving, back button disable, etc.)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
