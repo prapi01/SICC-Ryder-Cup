@@ -1,0 +1,425 @@
+/*
+FILE: js/hcp-adjust.js
+VERSION: 2.00
+PURPOSE: Handicap Adjustment module for post-match handicap updates
+          - Anchor Adjustment (18-hole match vs anchor player)
+          - Performance Adjustment (based on Game 1 match play results)
+          - Zero-rise adjustment if any Raw New handicap becomes negative
+          - Displays table with horizontal scroll for mobile
+          - Green/Red colors for positive/negative adjustments
+          - Gold color for new anchor
+DEPENDS ON: Firebase Firestore
+STATUS: Ready for testing
+*/
+
+var HandicapAdjustment = (function() {
+    
+    var currentGameId = null;
+    var allPlayers = [];
+    var anchorPlayer = null;
+    var gameData = null;
+    
+    // ============================================================
+    // Core Calculation Functions
+    // ============================================================
+    
+    // Calculate anchor adjustment for a player vs anchor
+    function calculateAnchorAdjustment(player, anchor, holeResults) {
+        // holeResults should contain net score per hole for both players
+        // This function counts holes won/lost over 18 holes
+        var playerWon = 0;
+        var anchorWon = 0;
+        
+        for (var hole = 1; hole <= 18; hole++) {
+            var playerNet = holeResults[hole]?.playerNet;
+            var anchorNet = holeResults[hole]?.anchorNet;
+            
+            if (playerNet !== undefined && anchorNet !== undefined) {
+                if (playerNet < anchorNet) playerWon++;
+                else if (anchorNet < playerNet) anchorWon++;
+            }
+        }
+        
+        var netWon = playerWon - anchorWon;
+        // Each 2 holes difference = 1 stroke adjustment
+        return Math.floor(netWon / 2);
+    }
+    
+    // Calculate performance adjustment from Game 1 match play results
+    function calculatePerformanceAdjustment(playerName, matchResults) {
+        // matchResults should contain points earned by this player in Game 1
+        // For a player, they have 4 matches (vs each opponent on other team)
+        var totalPoints = 0;
+        
+        // Find all matches involving this player
+        for (var key in matchResults) {
+            if (key.indexOf(playerName + "_vs_") === 0) {
+                var value = matchResults[key];
+                if (value > 0) totalPoints += 1;
+                else if (value < 0) totalPoints += 0;
+                else totalPoints += 0.5;
+            }
+        }
+        
+        if (totalPoints >= 3.5) return -1;  // Handicap DOWN
+        if (totalPoints <= 0.5) return 1;   // Handicap UP
+        return 0;
+    }
+    
+    // Get anchor player (lowest handicap, or user selected if tie)
+    function determineAnchor(players, callback) {
+        var lowestHcp = Math.min.apply(null, players.map(function(p) { return p.handicap; }));
+        var candidates = players.filter(function(p) { return p.handicap === lowestHcp; });
+        
+        if (candidates.length === 1) {
+            callback(candidates[0]);
+        } else {
+            // Multiple players with same lowest handicap - show selection modal
+            showAnchorSelectionModal(candidates, callback);
+        }
+    }
+    
+    function showAnchorSelectionModal(candidates, callback) {
+        var buttonsHtml = candidates.map(function(c) {
+            return `<button class="anchor-select-btn" data-name="${c.name}">${c.name} (${c.label}) - Hcp ${c.handicap}</button>`;
+        }).join('');
+        
+        var modalHtml = `
+            <div class="modal-overlay" id="anchorSelectModal">
+                <div class="anchor-select-modal">
+                    <div class="anchor-select-title">🏌️ SELECT ANCHOR</div>
+                    <div class="anchor-select-message">Multiple players have the lowest handicap.<br>Who is the anchor for today's match?</div>
+                    <div class="anchor-select-buttons">
+                        ${buttonsHtml}
+                    </div>
+                    <button class="anchor-select-cancel" id="anchorCancelBtn">Cancel</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        candidates.forEach(function(c) {
+            var btn = document.querySelector(`.anchor-select-btn[data-name="${c.name}"]`);
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    document.getElementById('anchorSelectModal').remove();
+                    callback(c);
+                });
+            }
+        });
+        
+        document.getElementById('anchorCancelBtn').addEventListener('click', function() {
+            document.getElementById('anchorSelectModal').remove();
+            callback(null);
+        });
+        
+        addAnchorSelectStyles();
+    }
+    
+    function addAnchorSelectStyles() {
+        if (document.getElementById('anchor-select-styles')) return;
+        
+        var styles = `
+            <style id="anchor-select-styles">
+                .anchor-select-modal {
+                    background: #1a1a1a;
+                    border-radius: 32px;
+                    padding: 28px;
+                    max-width: 350px;
+                    width: 90%;
+                    text-align: center;
+                    border: 2px solid #4caf50;
+                }
+                .anchor-select-title {
+                    font-size: 1.5rem;
+                    font-weight: 800;
+                    color: #4caf50;
+                    margin-bottom: 16px;
+                }
+                .anchor-select-message {
+                    font-size: 0.9rem;
+                    color: #ccc;
+                    margin-bottom: 20px;
+                }
+                .anchor-select-buttons {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                    margin-bottom: 16px;
+                }
+                .anchor-select-btn {
+                    background: #1a3a1a;
+                    border: 1px solid #4caf50;
+                    color: #4caf50;
+                    padding: 12px;
+                    border-radius: 40px;
+                    font-size: 0.9rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                }
+                .anchor-select-cancel {
+                    background: #1a1a1a;
+                    border: 1px solid #333;
+                    color: #888;
+                    padding: 10px;
+                    border-radius: 40px;
+                    font-size: 0.85rem;
+                    cursor: pointer;
+                    width: 100%;
+                }
+            </style>
+        `;
+        document.head.insertAdjacentHTML('beforeend', styles);
+    }
+    
+    // ============================================================
+    // Table Display Functions
+    // ============================================================
+    
+    function showAdjustmentTable(playersWithAdjustments, needsZeroRise, zeroRiseAmount, newAnchorName) {
+        var hasNewAnchor = needsZeroRise && zeroRiseAmount > 0;
+        
+        // Build table HTML with horizontal scroll wrapper
+        var tableHtml = '<div style="overflow-x: auto; margin: 20px 0;">';
+        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.9rem; min-width: 550px;">';
+        tableHtml += '<thead><tr style="background:#1a3a1a;">';
+        
+        if (hasNewAnchor) {
+            tableHtml += '<th style="padding:12px; text-align:left;">Player</th>';
+            tableHtml += '<th style="padding:12px; text-align:center;">Current<br>Hcp</th>';
+            tableHtml += '<th style="padding:12px; text-align:center;">Anchor<br>Adj</th>';
+            tableHtml += '<th style="padding:12px; text-align:center;">Perfm<br>Adj</th>';
+            tableHtml += '<th style="padding:12px; text-align:center;">Raw<br>New</th>';
+            tableHtml += '<th style="padding:12px; text-align:center;">New<br>Anchor</th>';
+        } else {
+            tableHtml += '<th style="padding:12px; text-align:left;">Player</th>';
+            tableHtml += '<th style="padding:12px; text-align:center;">Current<br>Hcp</th>';
+            tableHtml += '<th style="padding:12px; text-align:center;">Anchor<br>Adj</th>';
+            tableHtml += '<th style="padding:12px; text-align:center;">Perfm<br>Adj</th>';
+            tableHtml += '<th style="padding:12px; text-align:center;">New<br>Hcp</th>';
+        }
+        tableHtml += '</tr></thead><tbody>';
+        
+        for (var i = 0; i < playersWithAdjustments.length; i++) {
+            var p = playersWithAdjustments[i];
+            var isNewAnchor = hasNewAnchor && p.newAnchor === 0;
+            
+            tableHtml += '<tr style="border-bottom:1px solid #333;">';
+            tableHtml += `<td style="padding:10px; text-align:left;">${escapeHtml(p.name)}</td>`;
+            tableHtml += `<td style="padding:10px; text-align:center;">${p.currentHcp}</td>`;
+            tableHtml += `<td style="padding:10px; text-align:center; color: ${p.anchorAdj >= 0 ? '#4caf50' : '#ff6b6b'}; font-weight:600;">${p.anchorAdj >= 0 ? '+' + p.anchorAdj : p.anchorAdj}</td>`;
+            tableHtml += `<td style="padding:10px; text-align:center; color: ${p.perfAdj > 0 ? '#4caf50' : (p.perfAdj < 0 ? '#ff6b6b' : '#888')}; font-weight:600;">${p.perfAdj > 0 ? '+' + p.perfAdj : (p.perfAdj < 0 ? p.perfAdj : '0')}</td>`;
+            
+            if (hasNewAnchor) {
+                tableHtml += `<td style="padding:10px; text-align:center; color: ${p.rawNew > 0 ? '#4caf50' : (p.rawNew < 0 ? '#ff6b6b' : '#888')}; font-weight:600;">${p.rawNew > 0 ? '+' + p.rawNew : p.rawNew}</td>`;
+                tableHtml += `<td style="padding:10px; text-align:center; ${isNewAnchor ? 'color: #ffaa44; font-weight: 800; font-size:1.1rem;' : 'color: #4caf50; font-weight: 600;'}">${p.newAnchor}</td>`;
+            } else {
+                tableHtml += `<td style="padding:10px; text-align:center; color:#4caf50; font-weight:700;">${p.newHcp}</td>`;
+            }
+            tableHtml += '</tr>';
+        }
+        
+        tableHtml += '</tbody></table></div>';
+        
+        // Build modal
+        var messageHtml = '';
+        if (hasNewAnchor) {
+            messageHtml = `<div style="font-size:1rem; color:#ffaa44; text-align:center; margin-bottom:20px;">🎉 Congratulations! ${escapeHtml(newAnchorName)} is the NEW ANCHOR! 🎉</div>`;
+        } else {
+            messageHtml = `<div style="font-size:0.8rem; color:#888; text-align:center; margin-bottom:20px;">&nbsp;</div>`;
+        }
+        
+        var modalHtml = `
+            <div class="modal-overlay" id="hcpAdjustModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10000;">
+                <div style="background:#1a1a1a; border-radius:32px; padding:28px; max-width:95%; width:auto; border:2px solid #4caf50;">
+                    <div style="font-size:2rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:8px;">🏌️ HANDICAP ADJUSTMENT</div>
+                    ${messageHtml}
+                    ${tableHtml}
+                    <div style="display:flex; gap:12px; margin-top:20px;">
+                        <button id="hcpSaveBtn" style="flex:2; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:14px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer;">✓ Save Changes</button>
+                        <button id="hcpSkipBtn" style="flex:1; background:#1a1a1a; border:1px solid #333; color:#888; padding:14px; border-radius:40px; font-size:1rem; font-weight:600; cursor:pointer;">Skip</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        document.getElementById("hcpSaveBtn").addEventListener("click", function() {
+            saveHandicaps(playersWithAdjustments, hasNewAnchor);
+        });
+        
+        document.getElementById("hcpSkipBtn").addEventListener("click", function() {
+            document.getElementById("hcpAdjustModal").remove();
+            window.location.href = "index.html";
+        });
+    }
+    
+    async function saveHandicaps(playersWithAdjustments, hasNewAnchor) {
+        try {
+            // Get current defaultPlayers
+            var doc = await firebase.firestore().collection('playerInformation').doc('defaultPlayers').get();
+            var currentPlayers = [];
+            
+            if (doc.exists && doc.data().players) {
+                currentPlayers = doc.data().players;
+            } else {
+                console.warn('No defaultPlayers found');
+                closeModalAndExit();
+                return;
+            }
+            
+            // Update handicaps
+            for (var i = 0; i < currentPlayers.length; i++) {
+                for (var j = 0; j < playersWithAdjustments.length; j++) {
+                    if (currentPlayers[i].name === playersWithAdjustments[j].name) {
+                        var newHcp = hasNewAnchor ? playersWithAdjustments[j].newAnchor : playersWithAdjustments[j].newHcp;
+                        currentPlayers[i].handicap = newHcp;
+                        console.log(`Updated ${playersWithAdjustments[j].name}: ${playersWithAdjustments[j].currentHcp} → ${newHcp}`);
+                    }
+                }
+            }
+            
+            // Save back to Firestore
+            await firebase.firestore().collection('playerInformation').doc('defaultPlayers').set({
+                players: currentPlayers,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            
+            console.log('Handicaps saved successfully');
+            showSuccessMessage();
+            
+            setTimeout(function() {
+                closeModalAndExit();
+            }, 1500);
+            
+        } catch (error) {
+            console.error('Error saving handicaps:', error);
+            showErrorMessage();
+        }
+    }
+    
+    function showSuccessMessage() {
+        var successDiv = document.createElement('div');
+        successDiv.className = 'hcp-success-message';
+        successDiv.innerHTML = '✓ Handicaps updated successfully!';
+        successDiv.style.cssText = 'margin-top:16px; padding:10px; background:#1a3a1a; color:#4caf50; border-radius:30px; font-weight:600; text-align:center;';
+        var modal = document.querySelector('#hcpAdjustModal > div');
+        if (modal) modal.appendChild(successDiv);
+        setTimeout(function() { if (successDiv && successDiv.remove) successDiv.remove(); }, 2000);
+    }
+    
+    function showErrorMessage() {
+        var errorDiv = document.createElement('div');
+        errorDiv.className = 'hcp-error-message';
+        errorDiv.innerHTML = '⚠️ Error saving handicaps. Please try again.';
+        errorDiv.style.cssText = 'margin-top:16px; padding:10px; background:#3a1a1a; color:#ff6b6b; border-radius:30px; font-weight:600; text-align:center;';
+        var modal = document.querySelector('#hcpAdjustModal > div');
+        if (modal) modal.appendChild(errorDiv);
+        setTimeout(function() { if (errorDiv && errorDiv.remove) errorDiv.remove(); }, 3000);
+    }
+    
+    function closeModalAndExit() {
+        var modal = document.getElementById('hcpAdjustModal');
+        if (modal) modal.remove();
+        window.location.href = 'index.html';
+    }
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
+    // ============================================================
+    // Main Entry Point
+    // ============================================================
+    
+    async function init(gameId, winningPlayers, matchResults, holeResults) {
+        currentGameId = gameId;
+        allPlayers = winningPlayers.teamA.concat(winningPlayers.teamB);
+        
+        // Sort by current handicap
+        allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        // Determine anchor
+        determineAnchor(allPlayers, function(anchor) {
+            if (!anchor) {
+                // User cancelled - go to main menu
+                window.location.href = "index.html";
+                return;
+            }
+            anchorPlayer = anchor;
+            
+            // Calculate adjustments for each player
+            var playersWithAdjustments = [];
+            var rawNewList = [];
+            
+            for (var i = 0; i < allPlayers.length; i++) {
+                var player = allPlayers[i];
+                var anchorAdj = calculateAnchorAdjustment(player, anchorPlayer, holeResults);
+                var perfAdj = calculatePerformanceAdjustment(player.name, matchResults);
+                var rawNew = player.handicap + perfAdj + anchorAdj;
+                
+                playersWithAdjustments.push({
+                    name: player.name,
+                    label: player.label,
+                    currentHcp: player.handicap,
+                    anchorAdj: anchorAdj,
+                    perfAdj: perfAdj,
+                    rawNew: rawNew
+                });
+                rawNewList.push(rawNew);
+            }
+            
+            // Check if any raw new is negative
+            var lowestRaw = Math.min.apply(null, rawNewList);
+            var needsZeroRise = (lowestRaw < 0);
+            var zeroRiseAmount = needsZeroRise ? -lowestRaw : 0;
+            var newAnchorName = null;
+            
+            if (needsZeroRise) {
+                // Apply zero-rise
+                for (var i = 0; i < playersWithAdjustments.length; i++) {
+                    playersWithAdjustments[i].newAnchor = playersWithAdjustments[i].rawNew + zeroRiseAmount;
+                }
+                // Sort by new anchor handicap
+                playersWithAdjustments.sort(function(a, b) { return a.newAnchor - b.newAnchor; });
+                var newAnchorPlayer = playersWithAdjustments.find(function(p) { return p.newAnchor === 0; });
+                newAnchorName = newAnchorPlayer ? newAnchorPlayer.name : null;
+            } else {
+                // No zero-rise needed
+                for (var i = 0; i < playersWithAdjustments.length; i++) {
+                    playersWithAdjustments[i].newHcp = playersWithAdjustments[i].rawNew;
+                }
+                playersWithAdjustments.sort(function(a, b) { return a.newHcp - b.newHcp; });
+            }
+            
+            // Display the table
+            showAdjustmentTable(playersWithAdjustments, needsZeroRise, zeroRiseAmount, newAnchorName);
+        });
+    }
+    
+    return {
+        init: init
+    };
+})();
+
+/*
+FILE: js/hcp-adjust.js
+VERSION: 2.00
+KEY CHANGES:
+   - Complete rewrite with full handicap adjustment logic
+   - Anchor Adjustment (18-hole match vs anchor)
+   - Performance Adjustment (based on Game 1 results)
+   - Zero-rise adjustment if needed
+   - Horizontal scroll for mobile compatibility
+   - Green/Red colors for adjustments
+   - Gold color for new anchor
+STATUS: Ready for testing
+*/
