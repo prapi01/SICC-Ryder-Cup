@@ -1,14 +1,14 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.00
+VERSION: 2.01
 PURPOSE: Handicap Adjustment module for post-match handicap updates
-          - Anchor Adjustment (18-hole match vs anchor player)
-          - Performance Adjustment (based on Game 1 match play results)
+          - Anchor Adjustment (18-hole match vs anchor player) - counts total holes won/lost
+          - Performance Adjustment (based on Game 1 match play results - 4 matches per player)
           - Zero-rise adjustment if any Raw New handicap becomes negative
           - Displays table with horizontal scroll for mobile
           - Green/Red colors for positive/negative adjustments
           - Gold color for new anchor
-DEPENDS ON: Firebase Firestore
+DEPENDS ON: Firebase Firestore, game-match.js, game-stroke.js
 STATUS: Ready for testing
 */
 
@@ -17,56 +17,123 @@ var HandicapAdjustment = (function() {
     var currentGameId = null;
     var allPlayers = [];
     var anchorPlayer = null;
-    var gameData = null;
+    var matchPointsData = null;
+    var holeNetResults = null;
+    var courseSi = null;
+    var coursePar = null;
+    var startingHole = null;
+    var flight1Data = null;
+    var flight2Data = null;
     
     // ============================================================
-    // Core Calculation Functions
+    // Helper: Get player's score for a specific hole
     // ============================================================
     
-    // Calculate anchor adjustment for a player vs anchor
-    function calculateAnchorAdjustment(player, anchor, holeResults) {
-        // holeResults should contain net score per hole for both players
-        // This function counts holes won/lost over 18 holes
+    function getPlayerScore(player, holeNumber, flight1DataStr, flight2DataStr) {
+        var flightDataStr = player.flight === 1 ? flight1DataStr : flight2DataStr;
+        var holeData = GameData.parseHoleData(flightDataStr, holeNumber);
+        if (!holeData || !holeData.saved) return null;
+        
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        if (player.team === 'A') {
+            if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
+            if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
+        } else {
+            if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
+            if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
+        }
+        return null;
+    }
+    
+    // ============================================================
+    // Get stroke holes for handicap difference
+    // ============================================================
+    
+    function getStrokeHoles(handicapDiff) {
+        if (handicapDiff <= 0) return [];
+        var holesWithSi = [];
+        for (var i = 0; i < 18; i++) {
+            holesWithSi.push({ hole: i + 1, si: courseSi[i] });
+        }
+        holesWithSi.sort(function(a, b) { return a.si - b.si; });
+        var strokeHoles = [];
+        for (var i = 0; i < handicapDiff && i < 18; i++) {
+            strokeHoles.push(holesWithSi[i].hole);
+        }
+        return strokeHoles;
+    }
+    
+    function getStrokesForHole(holeNumber, handicapDiff) {
+        if (handicapDiff <= 0) return 0;
+        var strokeHoles = getStrokeHoles(handicapDiff);
+        for (var i = 0; i < strokeHoles.length; i++) {
+            if (strokeHoles[i] === holeNumber) return 1;
+        }
+        return 0;
+    }
+    
+    // ============================================================
+    // Calculate net score for a player on a hole (with handicap)
+    // ============================================================
+    
+    function getNetScore(player, grossScore, holeNumber, opponentHandicap) {
+        var handicapDiff = Math.abs(player.handicap - opponentHandicap);
+        var isPlayerReceiving = (player.handicap > opponentHandicap);
+        var strokes = isPlayerReceiving ? getStrokesForHole(holeNumber, handicapDiff) : 0;
+        return grossScore - strokes;
+    }
+    
+    // ============================================================
+    // Calculate Anchor Adjustment (18-hole match vs anchor)
+    // ============================================================
+    
+    function calculateAnchorAdjustment(player, anchor, flight1DataStr, flight2DataStr) {
         var playerWon = 0;
         var anchorWon = 0;
         
         for (var hole = 1; hole <= 18; hole++) {
-            var playerNet = holeResults[hole]?.playerNet;
-            var anchorNet = holeResults[hole]?.anchorNet;
+            var playerGross = getPlayerScore(player, hole, flight1DataStr, flight2DataStr);
+            var anchorGross = getPlayerScore(anchor, hole, flight1DataStr, flight2DataStr);
             
-            if (playerNet !== undefined && anchorNet !== undefined) {
-                if (playerNet < anchorNet) playerWon++;
-                else if (anchorNet < playerNet) anchorWon++;
+            if (playerGross === null || anchorGross === null) continue;
+            
+            var playerNet = getNetScore(player, playerGross, hole, anchor.handicap);
+            var anchorNet = getNetScore(anchor, anchorGross, hole, player.handicap);
+            
+            if (playerNet < anchorNet) {
+                playerWon++;
+            } else if (anchorNet < playerNet) {
+                anchorWon++;
             }
         }
         
         var netWon = playerWon - anchorWon;
         // Each 2 holes difference = 1 stroke adjustment
-        return Math.floor(netWon / 2);
+        var adjustment = Math.floor(Math.abs(netWon) / 2);
+        return netWon >= 0 ? -adjustment : adjustment;
     }
     
-    // Calculate performance adjustment from Game 1 match play results
-    function calculatePerformanceAdjustment(playerName, matchResults) {
-        // matchResults should contain points earned by this player in Game 1
-        // For a player, they have 4 matches (vs each opponent on other team)
-        var totalPoints = 0;
+    // ============================================================
+    // Calculate Performance Adjustment (from Game 1 match results)
+    // ============================================================
+    
+    function calculatePerformanceAdjustment(playerName) {
+        if (!matchPointsData || !matchPointsData[playerName]) return 0;
         
-        // Find all matches involving this player
-        for (var key in matchResults) {
-            if (key.indexOf(playerName + "_vs_") === 0) {
-                var value = matchResults[key];
-                if (value > 0) totalPoints += 1;
-                else if (value < 0) totalPoints += 0;
-                else totalPoints += 0.5;
-            }
-        }
+        var totalPoints = matchPointsData[playerName].total || 0;
         
-        if (totalPoints >= 3.5) return -1;  // Handicap DOWN
-        if (totalPoints <= 0.5) return 1;   // Handicap UP
+        if (totalPoints >= 3.5) return -1;  // Handicap DOWN (better performance)
+        if (totalPoints <= 0.5) return 1;   // Handicap UP (worse performance)
         return 0;
     }
     
+    // ============================================================
     // Get anchor player (lowest handicap, or user selected if tie)
+    // ============================================================
+    
     function determineAnchor(players, callback) {
         var lowestHcp = Math.min.apply(null, players.map(function(p) { return p.handicap; }));
         var candidates = players.filter(function(p) { return p.handicap === lowestHcp; });
@@ -74,7 +141,6 @@ var HandicapAdjustment = (function() {
         if (candidates.length === 1) {
             callback(candidates[0]);
         } else {
-            // Multiple players with same lowest handicap - show selection modal
             showAnchorSelectionModal(candidates, callback);
         }
     }
@@ -180,7 +246,6 @@ var HandicapAdjustment = (function() {
     function showAdjustmentTable(playersWithAdjustments, needsZeroRise, zeroRiseAmount, newAnchorName) {
         var hasNewAnchor = needsZeroRise && zeroRiseAmount > 0;
         
-        // Build table HTML with horizontal scroll wrapper
         var tableHtml = '<div style="overflow-x: auto; margin: 20px 0;">';
         tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.9rem; min-width: 550px;">';
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
@@ -222,7 +287,6 @@ var HandicapAdjustment = (function() {
         
         tableHtml += '</tbody></table></div>';
         
-        // Build modal
         var messageHtml = '';
         if (hasNewAnchor) {
             messageHtml = `<div style="font-size:1rem; color:#ffaa44; text-align:center; margin-bottom:20px;">🎉 Congratulations! ${escapeHtml(newAnchorName)} is the NEW ANCHOR! 🎉</div>`;
@@ -258,7 +322,6 @@ var HandicapAdjustment = (function() {
     
     async function saveHandicaps(playersWithAdjustments, hasNewAnchor) {
         try {
-            // Get current defaultPlayers
             var doc = await firebase.firestore().collection('playerInformation').doc('defaultPlayers').get();
             var currentPlayers = [];
             
@@ -270,7 +333,6 @@ var HandicapAdjustment = (function() {
                 return;
             }
             
-            // Update handicaps
             for (var i = 0; i < currentPlayers.length; i++) {
                 for (var j = 0; j < playersWithAdjustments.length; j++) {
                     if (currentPlayers[i].name === playersWithAdjustments[j].name) {
@@ -281,7 +343,6 @@ var HandicapAdjustment = (function() {
                 }
             }
             
-            // Save back to Firestore
             await firebase.firestore().collection('playerInformation').doc('defaultPlayers').set({
                 players: currentPlayers,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -337,71 +398,109 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
+    // Load game data from Firestore
+    // ============================================================
+    
+    async function loadGameData(gameId, callback) {
+        var doc = await firebase.firestore().collection("scheduledGames").doc(gameId).get();
+        if (!doc.exists) {
+            console.error("Game not found");
+            callback(null);
+            return;
+        }
+        
+        var data = doc.data();
+        courseSi = data.course ? data.course.si : [];
+        coursePar = data.course ? data.course.par : [];
+        startingHole = data.startingHole || 1;
+        flight1Data = data.f1 && data.f1.d ? data.f1.d : "";
+        flight2Data = data.f2 && data.f2.d ? data.f2.d : "";
+        
+        callback(data);
+    }
+    
+    // ============================================================
     // Main Entry Point
     // ============================================================
     
-    async function init(gameId, winningPlayers, matchResults, holeResults) {
+    async function init(gameId, winningPlayers, matchPoints, holeResults) {
         currentGameId = gameId;
         allPlayers = winningPlayers.teamA.concat(winningPlayers.teamB);
+        matchPointsData = matchPoints;
         
         // Sort by current handicap
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // Determine anchor
-        determineAnchor(allPlayers, function(anchor) {
-            if (!anchor) {
-                // User cancelled - go to main menu
+        // Load course data from Firestore
+        loadGameData(gameId, function(gameData) {
+            if (!gameData) {
                 window.location.href = "index.html";
                 return;
             }
-            anchorPlayer = anchor;
             
-            // Calculate adjustments for each player
-            var playersWithAdjustments = [];
-            var rawNewList = [];
-            
-            for (var i = 0; i < allPlayers.length; i++) {
-                var player = allPlayers[i];
-                var anchorAdj = calculateAnchorAdjustment(player, anchorPlayer, holeResults);
-                var perfAdj = calculatePerformanceAdjustment(player.name, matchResults);
-                var rawNew = player.handicap + perfAdj + anchorAdj;
+            // Determine anchor
+            determineAnchor(allPlayers, function(anchor) {
+                if (!anchor) {
+                    window.location.href = "index.html";
+                    return;
+                }
+                anchorPlayer = anchor;
                 
-                playersWithAdjustments.push({
-                    name: player.name,
-                    label: player.label,
-                    currentHcp: player.handicap,
-                    anchorAdj: anchorAdj,
-                    perfAdj: perfAdj,
-                    rawNew: rawNew
-                });
-                rawNewList.push(rawNew);
-            }
-            
-            // Check if any raw new is negative
-            var lowestRaw = Math.min.apply(null, rawNewList);
-            var needsZeroRise = (lowestRaw < 0);
-            var zeroRiseAmount = needsZeroRise ? -lowestRaw : 0;
-            var newAnchorName = null;
-            
-            if (needsZeroRise) {
-                // Apply zero-rise
-                for (var i = 0; i < playersWithAdjustments.length; i++) {
-                    playersWithAdjustments[i].newAnchor = playersWithAdjustments[i].rawNew + zeroRiseAmount;
+                // Calculate adjustments for each player
+                var playersWithAdjustments = [];
+                var rawNewList = [];
+                
+                for (var i = 0; i < allPlayers.length; i++) {
+                    var player = allPlayers[i];
+                    
+                    // Anchor Adjustment (vs anchor player)
+                    var anchorAdj = 0;
+                    if (player.name !== anchor.name) {
+                        anchorAdj = calculateAnchorAdjustment(player, anchor, flight1Data, flight2Data);
+                    }
+                    
+                    // Performance Adjustment (from Game 1)
+                    var perfAdj = calculatePerformanceAdjustment(player.name);
+                    
+                    var rawNew = player.handicap + perfAdj + anchorAdj;
+                    
+                    playersWithAdjustments.push({
+                        name: player.name,
+                        label: player.label,
+                        currentHcp: player.handicap,
+                        anchorAdj: anchorAdj,
+                        perfAdj: perfAdj,
+                        rawNew: rawNew
+                    });
+                    rawNewList.push(rawNew);
                 }
-                // Sort by new anchor handicap
-                playersWithAdjustments.sort(function(a, b) { return a.newAnchor - b.newAnchor; });
-                var newAnchorPlayer = playersWithAdjustments.find(function(p) { return p.newAnchor === 0; });
-                newAnchorName = newAnchorPlayer ? newAnchorPlayer.name : null;
-            } else {
-                // No zero-rise needed
-                for (var i = 0; i < playersWithAdjustments.length; i++) {
-                    playersWithAdjustments[i].newHcp = playersWithAdjustments[i].rawNew;
+                
+                // Check if any raw new is negative
+                var lowestRaw = Math.min.apply(null, rawNewList);
+                var needsZeroRise = (lowestRaw < 0);
+                var zeroRiseAmount = needsZeroRise ? -lowestRaw : 0;
+                var newAnchorName = null;
+                
+                if (needsZeroRise) {
+                    // Apply zero-rise
+                    for (var i = 0; i < playersWithAdjustments.length; i++) {
+                        playersWithAdjustments[i].newAnchor = playersWithAdjustments[i].rawNew + zeroRiseAmount;
+                    }
+                    // Sort by new anchor handicap
+                    playersWithAdjustments.sort(function(a, b) { return a.newAnchor - b.newAnchor; });
+                    var newAnchorPlayer = playersWithAdjustments.find(function(p) { return p.newAnchor === 0; });
+                    newAnchorName = newAnchorPlayer ? newAnchorPlayer.name : null;
+                } else {
+                    // No zero-rise needed
+                    for (var i = 0; i < playersWithAdjustments.length; i++) {
+                        playersWithAdjustments[i].newHcp = playersWithAdjustments[i].rawNew;
+                    }
+                    playersWithAdjustments.sort(function(a, b) { return a.newHcp - b.newHcp; });
                 }
-                playersWithAdjustments.sort(function(a, b) { return a.newHcp - b.newHcp; });
-            }
-            
-            // Display the table
-            showAdjustmentTable(playersWithAdjustments, needsZeroRise, zeroRiseAmount, newAnchorName);
+                
+                // Display the table
+                showAdjustmentTable(playersWithAdjustments, needsZeroRise, zeroRiseAmount, newAnchorName);
+            });
         });
     }
     
@@ -412,14 +511,15 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
    - Complete rewrite with full handicap adjustment logic
-   - Anchor Adjustment (18-hole match vs anchor)
-   - Performance Adjustment (based on Game 1 results)
+   - Anchor Adjustment (18-hole match vs anchor) - counts total holes won/lost
+   - Performance Adjustment (based on Game 1 results - 4 matches per player)
    - Zero-rise adjustment if needed
    - Horizontal scroll for mobile compatibility
    - Green/Red colors for adjustments
    - Gold color for new anchor
+   - Loads course data from Firestore for handicap calculations
 STATUS: Ready for testing
 */
