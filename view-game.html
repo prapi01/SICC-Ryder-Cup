@@ -1,12 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 2.05
+VERSION: 2.06
 KEY CHANGES:
-   - Fixed navigation arrows (now working correctly)
-   - Flight button center-aligned
-   - Proper hole number display update on navigation
-   - Added PlayOrder support for navigation
-DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
+   - FIXED: TR now reads from gameResults.tr (pre-computed values) instead of local recalculation
+   - FIXED: T-1, T-2, Strk rows now read from gameResults (game2.flight1.leader, game2.flight2.leader, game3.leader)
+   - Removed local TR calculation logic (now relies entirely on Firestore results object)
+   - Preserves all existing navigation (arrows working, flight toggle)
+   - Uses GameUI v2.02 for TR display (billboard design with vertical separator)
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.02
 STATUS: Ready for testing
 -->
 
@@ -254,7 +255,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.05 VIEWER</div>
+<div class="version-tag">v2.06 VIEWER</div>
 
 <script>
 // ============================================================
@@ -377,7 +378,7 @@ function calculateLastSyncedHole() {
 }
 
 // ============================================================
-// Match Results using GameMatch
+// Match Results using GameMatch (for bubbles only)
 // ============================================================
 
 function updateMatchResults() {
@@ -409,7 +410,7 @@ function updateMatchResults() {
 }
 
 // ============================================================
-// TR and Row Display from Results
+// TR and Row Display from Results (THE FIX - v2.06)
 // ============================================================
 
 function updateDisplayFromResults() {
@@ -418,21 +419,23 @@ function updateDisplayFromResults() {
     var position = getHolePosition(currentHole);
     var computedUpTo = gameResults.computedUpToHole || 0;
     
+    // If we're beyond computed results, show default tie
     if (position >= computedUpTo) {
         trTeamA = 9.5;
         trTeamB = 9.5;
         trTeamAGreen = true;
         trTeamBGreen = true;
-        return;
+    } else {
+        // READ from pre-computed results (THE FIX)
+        if (gameResults.tr) {
+            trTeamA = gameResults.tr.teamA[position] !== undefined ? gameResults.tr.teamA[position] : 9.5;
+            trTeamB = gameResults.tr.teamB[position] !== undefined ? gameResults.tr.teamB[position] : 9.5;
+            trTeamAGreen = gameResults.tr.teamAGreen[position] !== undefined ? gameResults.tr.teamAGreen[position] : true;
+            trTeamBGreen = gameResults.tr.teamBGreen[position] !== undefined ? gameResults.tr.teamBGreen[position] : true;
+        }
     }
     
-    if (gameResults.tr) {
-        trTeamA = gameResults.tr.teamA[position] || 9.5;
-        trTeamB = gameResults.tr.teamB[position] || 9.5;
-        trTeamAGreen = gameResults.tr.teamAGreen[position] !== undefined ? gameResults.tr.teamAGreen[position] : true;
-        trTeamBGreen = gameResults.tr.teamBGreen[position] !== undefined ? gameResults.tr.teamBGreen[position] : true;
-    }
-    
+    // Read T-1, T-2, Strk from results for consistency
     if (gameResults.game2) {
         var flight1Leader = gameResults.game2.flight1.leader;
         var flight2Leader = gameResults.game2.flight2.leader;
@@ -448,6 +451,11 @@ function updateDisplayFromResults() {
             if (gameResults.game3.leader[i]) strkRow[i] = gameResults.game3.leader[i];
         }
     }
+}
+
+// calculateTR now just calls updateDisplayFromResults() (no local calculation)
+function calculateTR() {
+    updateDisplayFromResults();
 }
 
 // ============================================================
@@ -574,11 +582,6 @@ function goToNextHole() {
         renderAll();
         updateNavButtons();
     }
-}
-
-function calculateTR() {
-    // Simplified for viewer - read from results
-    updateDisplayFromResults();
 }
 
 // ============================================================
@@ -801,12 +804,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.05
+VERSION: 2.06
 KEY CHANGES:
-   - Fixed navigation arrows (now working correctly)
-   - Flight button center-aligned
-   - Proper hole number display update on navigation
-   - Added PlayOrder support for navigation
-DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01
+   - FIXED: TR now reads from gameResults.tr (pre-computed values) instead of local recalculation
+   - FIXED: T-1, T-2, Strk rows now read from gameResults (game2.flight1.leader, game2.flight2.leader, game3.leader)
+   - Removed local TR calculation logic (now relies entirely on Firestore results object)
+   - Preserves all existing navigation (arrows working, flight toggle)
+   - Uses GameUI v2.02 for TR display (billboard design with vertical separator)
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.02
 STATUS: Ready for testing
 -->
