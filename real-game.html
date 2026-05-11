@@ -1,12 +1,16 @@
 <!--
 FILE: real-game.html
-VERSION: 2.12
+VERSION: 2.13
 KEY CHANGES:
-   - FIXED: Next button now turns grey when disabled
-   - Added btn-next and btn-next-inactive CSS classes
-   - Disabled button shows grey background with low opacity text
-   - Preserves all button behavior (disabled/enabled based on save status)
-DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
+   - INTEGRATED: Sign Card module (js/sign-card.js)
+   - INTEGRATED: Handicap Adjustment module (js/hcp-adjust.js)
+   - After final hole saved, Next button becomes "✍️ SIGN CARD"
+   - Sign card modal with captain name input
+   - Waiting screen after signing (shows spinner, waiting for other flight)
+   - Celebration screen when both flights sign (confetti, image, BEER TIME)
+   - Handicap adjustment for winning team after celebration
+   - Added signatures tracking in Firestore
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
 
@@ -26,6 +30,8 @@ STATUS: Ready for testing
     <script src="js/game-stroke.js"></script>
     <script src="js/game-ui.js"></script>
     <script src="js/card-submit.js"></script>
+    <script src="js/sign-card.js"></script>
+    <script src="js/hcp-adjust.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -173,7 +179,6 @@ STATUS: Ready for testing
         .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .btn-next-inactive { background: #2a2a2a; color: #555; border: 1px solid #444; cursor: not-allowed; }
         .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
-        .btn-back:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
         .btn-menu {
             width: 100%;
             padding: 14px;
@@ -189,6 +194,63 @@ STATUS: Ready for testing
         
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
+        
+        /* Sign Card Modal Styles */
+        .sign-modal {
+            background: #1a1a1a;
+            border-radius: 32px;
+            padding: 28px;
+            max-width: 380px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        .sign-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #4caf50;
+            margin-bottom: 16px;
+        }
+        .sign-message {
+            font-size: 0.9rem;
+            color: #ccc;
+            margin-bottom: 20px;
+        }
+        .sign-input {
+            width: 100%;
+            padding: 12px;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 30px;
+            color: #fff;
+            font-size: 1rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .sign-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        .sign-btn-confirm {
+            flex: 2;
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .sign-btn-cancel {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -225,7 +287,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.12 REAL</div>
+<div class="version-tag">v2.13 REAL</div>
 
 <script>
 // ============================================================
@@ -293,7 +355,9 @@ var f1DataString = "";
 var f2DataString = "";
 
 var submitted = { f1: false, f2: false };
+var signatures = { f1: false, f2: false };
 var isGameCompleteFlag = false;
+var isSignedFlag = false;
 
 // ============================================================
 // Helper Functions
@@ -692,6 +756,82 @@ async function saveResultsToFirestore(holeNumber) {
 }
 
 // ============================================================
+// Sign Card Functions
+// ============================================================
+
+function showSignCardModal() {
+    var modalHtml = `
+        <div class="modal-overlay" id="signModal">
+            <div class="sign-modal">
+                <div class="sign-title">✍️ SIGN SCORECARD</div>
+                <div class="sign-message">Confirm that all scores are correct.</div>
+                <input type="text" id="captainName" class="sign-input" placeholder="Captain name (optional)">
+                <div class="sign-buttons">
+                    <button class="sign-btn-cancel" id="signCancelBtn">Cancel</button>
+                    <button class="sign-btn-confirm" id="signConfirmBtn">✓ Sign Card</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("signCancelBtn").addEventListener("click", function() {
+        document.getElementById("signModal").remove();
+    });
+    
+    document.getElementById("signConfirmBtn").addEventListener("click", async function() {
+        var captainName = document.getElementById("captainName").value.trim();
+        document.getElementById("signModal").remove();
+        
+        var collection = "scheduledGames";
+        var success = await SignCard.submitSignature(gameId, editableFlight, captainName, collection);
+        
+        if (success) {
+            // Update local state
+            if (editableFlight === 1) signatures.f1 = true;
+            else signatures.f2 = true;
+            
+            // Check if both signed
+            if (SignCard.isGameCompleted(signatures)) {
+                // Show celebration screen
+                var winner = SignCard.getWinner(trTeamA, trTeamB);
+                var winningPlayers = {
+                    teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
+                    teamB: allPlayers.filter(function(p) { return p.team === "B"; })
+                };
+                SignCard.showCelebrationScreen(winner, trTeamA, trTeamB, winningPlayers, gameId, function() {
+                    window.location.href = "index.html";
+                });
+            } else {
+                // Show waiting screen
+                SignCard.showWaitingScreen(editableFlight, function() {
+                    // Check again after waiting
+                    db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+                        if (doc.exists && doc.data().signatures) {
+                            var sigs = doc.data().signatures;
+                            if (sigs.f1?.signed && sigs.f2?.signed) {
+                                SignCard.hideWaitingScreen();
+                                var winner = SignCard.getWinner(trTeamA, trTeamB);
+                                var winningPlayers = {
+                                    teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
+                                    teamB: allPlayers.filter(function(p) { return p.team === "B"; })
+                                };
+                                SignCard.showCelebrationScreen(winner, trTeamA, trTeamB, winningPlayers, gameId, function() {
+                                    window.location.href = "index.html";
+                                });
+                            }
+                        }
+                    });
+                });
+            }
+        } else {
+            alert("Error signing card. Please try again.");
+        }
+    });
+}
+
+// ============================================================
 // Callback Functions for GameUI
 // ============================================================
 
@@ -854,9 +994,16 @@ function updateNextButton() {
         return;
     }
     
-    // Flight already submitted - disable Next
-    if (submitted["f" + editableFlight]) {
-        nextBtn.textContent = "✓ SUBMITTED";
+    // Check if already signed
+    if (editableFlight === 1 && signatures.f1) {
+        nextBtn.textContent = "✓ SIGNED";
+        nextBtn.disabled = true;
+        nextBtn.classList.add("btn-next-inactive");
+        nextBtn.classList.remove("btn-next");
+        return;
+    }
+    if (editableFlight === 2 && signatures.f2) {
+        nextBtn.textContent = "✓ SIGNED";
         nextBtn.disabled = true;
         nextBtn.classList.add("btn-next-inactive");
         nextBtn.classList.remove("btn-next");
@@ -878,20 +1025,20 @@ function updateNextButton() {
     var isCurrentSaved = isSaved && !hasUnsavedChanges;
     
     if (isLast) {
-        // Last hole: show SUBMIT CARD button only if current hole is saved
+        // Last hole: show SIGN CARD button
         if (isCurrentSaved) {
-            nextBtn.textContent = "📋 SUBMIT CARD";
+            nextBtn.textContent = "✍️ SIGN CARD";
             nextBtn.disabled = false;
             nextBtn.classList.add("btn-next");
             nextBtn.classList.remove("btn-next-inactive");
         } else {
-            nextBtn.textContent = "📋 SUBMIT CARD";
+            nextBtn.textContent = "✍️ SIGN CARD";
             nextBtn.disabled = true;
             nextBtn.classList.add("btn-next-inactive");
             nextBtn.classList.remove("btn-next");
         }
     } else {
-        // Non-last holes: Next enabled only if current hole is saved
+        // Non-last holes
         nextBtn.textContent = "Next →";
         if (isCurrentSaved) {
             nextBtn.disabled = false;
@@ -985,10 +1132,10 @@ function updateFlightDataString(oldString, holeNumber, scores) {
 }
 
 // ============================================================
-// Submit Card Handler
+// Submit Card Handler (legacy - replaced by Sign Card)
 // ============================================================
 
-async function handleSubmitCard() {
+async function handleNextOrSign() {
     var isLast = CardSubmit.isLastHole(currentHole, startingHole);
     var isSaved = isHoleSaved(editableFlight, currentHole);
     
@@ -997,17 +1144,13 @@ async function handleSubmitCard() {
         return;
     }
     
-    CardSubmit.showSubmitModal(async function(confirmed) {
-        if (confirmed) {
-            var success = await CardSubmit.submitCard(gameId, editableFlight, "scheduledGames");
-            if (success) {
-                document.getElementById("debug").innerHTML = "Flight " + editableFlight + " card submitted!";
-                await refreshSubmissionStatus();
-            } else {
-                alert("Error submitting card. Please try again.");
-            }
-        }
-    });
+    // Check if already signed
+    if ((editableFlight === 1 && signatures.f1) || (editableFlight === 2 && signatures.f2)) {
+        return;
+    }
+    
+    // Show sign card modal
+    showSignCardModal();
 }
 
 async function refreshSubmissionStatus() {
@@ -1018,12 +1161,26 @@ async function refreshSubmissionStatus() {
             submitted.f1 = data.submitted.f1 === true;
             submitted.f2 = data.submitted.f2 === true;
         }
+        if (data.signatures) {
+            signatures.f1 = data.signatures.f1?.signed === true;
+            signatures.f2 = data.signatures.f2?.signed === true;
+        }
         isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
-        if (isGameCompleteFlag) {
-            CardSubmit.showFinalResults(trTeamA, trTeamB, trTeamAGreen, trTeamBGreen, courseName, allPlayers, function() {
+        
+        // Check if both signed but celebration not shown yet
+        if (signatures.f1 && signatures.f2 && !isGameCompleteFlag) {
+            isGameCompleteFlag = true;
+            var winner = SignCard.getWinner(trTeamA, trTeamB);
+            var winningPlayers = {
+                teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
+                teamB: allPlayers.filter(function(p) { return p.team === "B"; })
+            };
+            SignCard.hideWaitingScreen();
+            SignCard.showCelebrationScreen(winner, trTeamA, trTeamB, winningPlayers, gameId, function() {
                 window.location.href = "index.html";
             });
         }
+        
         renderAll();
     }
 }
@@ -1048,12 +1205,11 @@ function nextHole() {
     var isCurrentSaved = isSaved && !hasUnsavedChanges;
     
     if (isLast && isCurrentSaved) {
-        // Submit card case - handled by button click, not here
+        // Sign card case - handled by button
         return;
     }
     
     if (!isCurrentSaved) {
-        // Cannot move to next hole if current hole not saved
         return;
     }
     
@@ -1117,7 +1273,28 @@ function refreshFromFirestore(data) {
         submitted.f1 = data.submitted.f1 === true;
         submitted.f2 = data.submitted.f2 === true;
     }
+    
+    if (data.signatures) {
+        signatures.f1 = data.signatures.f1?.signed === true;
+        signatures.f2 = data.signatures.f2?.signed === true;
+    }
+    
     isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
+    
+    // Check if both signed but celebration not shown yet
+    if (signatures.f1 && signatures.f2 && !isGameCompleteFlag) {
+        isGameCompleteFlag = true;
+        var winner = SignCard.getWinner(trTeamA, trTeamB);
+        var winningPlayers = {
+            teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
+            teamB: allPlayers.filter(function(p) { return p.team === "B"; })
+        };
+        SignCard.hideWaitingScreen();
+        SignCard.showCelebrationScreen(winner, trTeamA, trTeamB, winningPlayers, gameId, function() {
+            window.location.href = "index.html";
+        });
+        return;
+    }
     
     var newF1 = {};
     var newF2 = {};
@@ -1222,6 +1399,11 @@ async function init() {
                 gameResults = initializeEmptyResults();
             }
             
+            if (data.signatures) {
+                signatures.f1 = data.signatures.f1?.signed === true;
+                signatures.f2 = data.signatures.f2?.signed === true;
+            }
+            
             GameData.setCourse({ par: coursePar });
             GameData.setPlayers(allPlayers);
             
@@ -1267,6 +1449,9 @@ async function init() {
                 setDisplayMode("natural");
             });
             
+            // Next button now triggers sign card on last hole
+            document.getElementById("nextBtn").addEventListener("click", handleNextOrSign);
+            
             unsubscribe = db.collection("scheduledGames").doc(gameId).onSnapshot(function(snapshot) {
                 if (snapshot.exists) {
                     refreshFromFirestore(snapshot.data());
@@ -1283,7 +1468,6 @@ async function init() {
 // ============================================================
 
 document.getElementById("saveBtn").addEventListener("click", saveHole);
-document.getElementById("nextBtn").addEventListener("click", handleSubmitCard);
 document.getElementById("backBtn").addEventListener("click", prevHole);
 document.getElementById("menuBtn").addEventListener("click", exitToMainMenu);
 
@@ -1295,12 +1479,16 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.12
+VERSION: 2.13
 KEY CHANGES:
-   - FIXED: Next button now turns grey when disabled
-   - Added btn-next and btn-next-inactive CSS classes
-   - Disabled button shows grey background with low opacity text
-   - Preserves all button behavior (disabled/enabled based on save status)
-DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js
+   - INTEGRATED: Sign Card module (js/sign-card.js)
+   - INTEGRATED: Handicap Adjustment module (js/hcp-adjust.js)
+   - After final hole saved, Next button becomes "✍️ SIGN CARD"
+   - Sign card modal with captain name input
+   - Waiting screen after signing (shows spinner, waiting for other flight)
+   - Celebration screen when both flights sign (confetti, image, BEER TIME)
+   - Handicap adjustment for winning team after celebration
+   - Added signatures tracking in Firestore
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
