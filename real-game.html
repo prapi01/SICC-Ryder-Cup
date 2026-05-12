@@ -1,11 +1,20 @@
 <!--
 FILE: real-game.html
-VERSION: 2.23
+VERSION: 2.24
 KEY CHANGES:
-   - FIXED: calculateTR() now reads directly from gameResults.tr (pre-computed values)
-   - REMOVED: Local calculation functions for Game 1 and Game 3 (calculateGame1Points, getCurrentGame3Points)
-   - TR now matches the saved results from Firestore, ensuring consistency with view-game.html
-   - All other functionality identical to v2.22 (Game Complete button, simplified sign modal, etc.)
+   - FIXED: Match bubbles now show correct hole when navigating BACK
+            updateMatchResults() accepts upToHole parameter
+            prevHole() and nextHole() pass currentHole to updateMatchResults()
+   
+   - FIXED: Cascade recalculation when editing previous holes
+            saveResultsToFirestore() now loops from changed hole position to 17
+            Recalculates and saves ALL subsequent holes up to first unsaved hole
+            Ensures FB results object always reflects correct cumulative state
+   
+   - FIXED: TR color on tie (9.5-9.5)
+            calculateTR() now forces both teams to GREEN when scores are equal
+   
+   - All other functionality identical to v2.23 (Game Complete button, simplified sign modal, etc.)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -283,7 +292,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.23 REAL</div>
+<div class="version-tag">v2.24 REAL</div>
 
 <script>
 // ============================================================
@@ -380,6 +389,11 @@ function getHolePosition(holeNumber) {
     return holeNumber - 1;
 }
 
+function getHoleAtStoragePosition(position) {
+    var playOrder = getPlayOrder();
+    return playOrder[position];
+}
+
 function getFlightOrderedPlayers(flight) {
     var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
     var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -413,15 +427,19 @@ function calculateLastSyncedHole() {
 }
 
 // ============================================================
-// Match Results using GameMatch
+// Match Results using GameMatch - FIXED: Accepts upToHole parameter
 // ============================================================
 
-function updateMatchResults() {
+function updateMatchResults(upToHole) {
     lastSyncedHole = calculateLastSyncedHole();
+    
+    // Use the passed upToHole parameter if provided, otherwise use lastSyncedHole
+    var maxHole = (upToHole !== undefined) ? upToHole : lastSyncedHole;
     
     var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
     var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
     
+    // For intra-flight, we still use the actual saved holes (not limited by view)
     var flight1MaxHole = savedHoles[1].length > 0 ? Math.max.apply(null, savedHoles[1]) : 0;
     var flight2MaxHole = savedHoles[2].length > 0 ? Math.max.apply(null, savedHoles[2]) : 0;
     
@@ -437,8 +455,9 @@ function updateMatchResults() {
         matchResults.intraF2 = {};
     }
     
-    if (lastSyncedHole > 0) {
-        matchResults.cross = GameMatch.calculateCrossFlight(f1DataString, f2DataString, allPlayers, courseSi, startingHole, lastSyncedHole, coursePar);
+    // For cross-flight, use the maxHole (limited by current view for navigation)
+    if (maxHole > 0) {
+        matchResults.cross = GameMatch.calculateCrossFlight(f1DataString, f2DataString, allPlayers, courseSi, startingHole, maxHole, coursePar);
     } else {
         matchResults.cross = {};
     }
@@ -479,7 +498,7 @@ function updateStrokeGame() {
 }
 
 // ============================================================
-// TR Calculation - FIXED: Read from pre-computed results
+// TR Calculation - FIXED: Tie color fix
 // ============================================================
 
 function calculateTR() {
@@ -507,10 +526,16 @@ function calculateTR() {
         trTeamAGreen = gameResults.tr.teamAGreen[position];
         trTeamBGreen = gameResults.tr.teamBGreen[position];
     }
+    
+    // FIXED: Force both teams to GREEN when scores are equal
+    if (trTeamA === trTeamB) {
+        trTeamAGreen = true;
+        trTeamBGreen = true;
+    }
 }
 
 // ============================================================
-// Results Calculation and Storage
+// Results Calculation and Storage - FIXED: Cascade recalculation
 // ============================================================
 
 function initializeEmptyResults() {
@@ -619,15 +644,11 @@ function calculateHoleResults(holeNumber) {
     };
 }
 
-async function saveResultsToFirestore(holeNumber) {
-    var resultsData = calculateHoleResults(holeNumber);
-    if (!resultsData) {
-        console.log('No results data for hole', holeNumber);
-        return;
-    }
+// Helper function to save a single hole's results (used by cascade)
+function saveSingleHoleResults(holeNumber, resultsData) {
+    if (!resultsData) return Promise.resolve(false);
     
     var position = resultsData.position;
-    
     var updatePayload = {};
     
     updatePayload["results.game1.pointsA." + position] = resultsData.game1PointsA;
@@ -651,10 +672,8 @@ async function saveResultsToFirestore(holeNumber) {
     }
     updatePayload["results.lastComputedAt"] = new Date().toISOString();
     
-    try {
-        await db.collection("scheduledGames").doc(gameId).update(updatePayload);
-        console.log('Results saved for hole', holeNumber, 'position', position);
-        
+    return db.collection("scheduledGames").doc(gameId).update(updatePayload).then(function() {
+        // Update local gameResults object
         if (!gameResults) {
             gameResults = initializeEmptyResults();
         }
@@ -677,9 +696,42 @@ async function saveResultsToFirestore(holeNumber) {
             gameResults.computedUpToHole = position + 1;
         }
         gameResults.lastComputedAt = updatePayload["results.lastComputedAt"];
+        return true;
+    });
+}
+
+// Main save function with CASCADE recalculation
+async function saveResultsToFirestore(holeNumber) {
+    // First, recalculate and save the current hole
+    var resultsData = calculateHoleResults(holeNumber);
+    if (!resultsData) {
+        console.log('No results data for hole', holeNumber);
+        return;
+    }
+    
+    await saveSingleHoleResults(holeNumber, resultsData);
+    
+    // CASCADE: Recalculate and save all subsequent holes
+    var startPosition = getHolePosition(holeNumber);
+    
+    for (var pos = startPosition + 1; pos <= 17; pos++) {
+        var holeToRecalc = getHoleAtStoragePosition(pos);
         
-    } catch (error) {
-        console.error('Error saving results:', error);
+        // Check if this hole is saved by both flights
+        var f1Saved = flight1Data[holeToRecalc] && flight1Data[holeToRecalc].saved;
+        var f2Saved = flight2Data[holeToRecalc] && flight2Data[holeToRecalc].saved;
+        
+        if (f1Saved && f2Saved) {
+            var cascadeResults = calculateHoleResults(holeToRecalc);
+            if (cascadeResults) {
+                await saveSingleHoleResults(holeToRecalc, cascadeResults);
+                console.log('Cascade: Recalculated hole', holeToRecalc);
+            }
+        } else {
+            // Stop cascade at first hole not saved by both flights
+            console.log('Cascade stopped at hole', holeToRecalc, '(not saved by both flights)');
+            break;
+        }
     }
 }
 
@@ -1170,7 +1222,7 @@ async function saveHole() {
     var scores = { a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score };
     
     try {
-        await GameData.saveCurrentHole(currentHole, scores, coursePar, function(success) {
+        await GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
             if (success) {
                 for (var key in localChanges) {
                     if (key.startsWith(flight + "_" + currentHole + "_")) {
@@ -1178,6 +1230,10 @@ async function saveHole() {
                     }
                 }
                 document.getElementById("debug").innerHTML = "Saved!";
+                
+                // After successful save, run cascade recalculation of results
+                await saveResultsToFirestore(currentHole);
+                
                 setTimeout(function() {
                     if (document.getElementById("debug").innerHTML === "Saved!") {
                         document.getElementById("debug").innerHTML = "";
@@ -1214,7 +1270,7 @@ function updateFlightDataString(oldString, holeNumber, scores) {
 }
 
 // ============================================================
-// Navigation
+// Navigation - FIXED: Pass currentHole to updateMatchResults
 // ============================================================
 
 function nextHole() {
@@ -1251,7 +1307,9 @@ function nextHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     var nextIndex = (currentIndex + 1) % 18;
     currentHole = playOrder[nextIndex];
-    updateMatchResults();
+    
+    // FIXED: Pass currentHole to updateMatchResults for correct bubble display
+    updateMatchResults(currentHole);
     calculateTR();
     renderAll();
 }
@@ -1264,7 +1322,9 @@ function prevHole() {
     
     var prevIndex = currentIndex - 1;
     currentHole = playOrder[prevIndex];
-    updateMatchResults();
+    
+    // FIXED: Pass currentHole to updateMatchResults for correct bubble display
+    updateMatchResults(currentHole);
     calculateTR();
     renderAll();
 }
@@ -1371,7 +1431,7 @@ function refreshFromFirestore(data) {
     
     if (changed) {
         updateSavedHolesList();
-        updateMatchResults();
+        updateMatchResults(currentHole);
         calculateTR();
         renderAll();
     } else {
@@ -1492,7 +1552,7 @@ async function init() {
             currentHole = playOrder[0];
             
             updateSavedHolesList();
-            updateMatchResults();
+            updateMatchResults(currentHole);
             calculateTR();
             
             GameUI.updateToggleButtons(GameUI.getDisplayMode());
@@ -1559,12 +1619,21 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.23
+VERSION: 2.24
 KEY CHANGES:
-   - FIXED: calculateTR() now reads directly from gameResults.tr (pre-computed values)
-   - REMOVED: Local calculation functions for Game 1 and Game 3 (calculateGame1Points, getCurrentGame3Points)
-   - TR now matches the saved results from Firestore, ensuring consistency with view-game.html
-   - All other functionality identical to v2.22 (Game Complete button, simplified sign modal, etc.)
+   - FIXED: Match bubbles now show correct hole when navigating BACK
+            updateMatchResults() accepts upToHole parameter
+            prevHole() and nextHole() pass currentHole to updateMatchResults()
+   
+   - FIXED: Cascade recalculation when editing previous holes
+            saveResultsToFirestore() now loops from changed hole position to 17
+            Recalculates and saves ALL subsequent holes up to first unsaved hole
+            Ensures FB results object always reflects correct cumulative state
+   
+   - FIXED: TR color on tie (9.5-9.5)
+            calculateTR() now forces both teams to GREEN when scores are equal
+   
+   - All other functionality identical to v2.23 (Game Complete button, simplified sign modal, etc.)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
