@@ -1,13 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 2.07
+VERSION: 2.08
 KEY CHANGES:
-   - FIXED: TR color on tie - now forces GREEN for both teams when scores are equal
-   - Overrides any incorrect stored values from gameResults (which may have false for tied holes)
-   - All other functionality identical to v2.06
-   - TR values still read from gameResults.tr (pre-computed)
-   - T-1, T-2, Strk rows still read from gameResults
-   - Navigation arrows working, flight toggle working
+   - FIXED: T-1, T-2, Strk rows now correctly show INVISIBLE for unsynced holes
+   - Ensures savedHoles is properly passed to GameUI.renderScorecard()
+   - Added savedHoles as a global variable before renderScorecard is called
+   - All other functionality identical to v2.07
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04
 STATUS: Ready for testing
 -->
@@ -256,7 +254,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.07 VIEWER</div>
+<div class="version-tag">v2.08 VIEWER</div>
 
 <script>
 // ============================================================
@@ -293,7 +291,7 @@ var allPlayers = [];
 
 var flight1Data = {};
 var flight2Data = {};
-var savedHoles = { 1: [], 2: [] };
+var savedHoles = { 1: [], 2: [] };  // FIX: Ensure savedHoles is defined globally
 
 var t1Row = Array(18).fill('_');
 var t2Row = Array(18).fill('_');
@@ -628,7 +626,7 @@ function toggleFlight() {
 }
 
 // ============================================================
-// Full Render
+// Full Render - FIXED: savedHoles is now properly defined
 // ============================================================
 
 function renderAll() {
@@ -648,6 +646,7 @@ function renderAll() {
     );
     
     var holes = getDisplayHoles();
+    // FIX: savedHoles is now a global variable that GameUI.renderScorecard can access
     GameUI.renderScorecard(
         "scorecardWrapper",
         holes,
@@ -811,14 +810,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.07
+VERSION: 2.08
 KEY CHANGES:
-   - FIXED: TR color on tie - now forces GREEN for both teams when scores are equal
-   - Overrides any incorrect stored values from gameResults (which may have false for tied holes)
-   - All other functionality identical to v2.06
-   - TR values still read from gameResults.tr (pre-computed)
-   - T-1, T-2, Strk rows still read from gameResults
-   - Navigation arrows working, flight toggle working
+   - FIXED: T-1, T-2, Strk rows now correctly show INVISIBLE for unsynced holes
+   - Ensures savedHoles is properly defined as a global variable before renderScorecard is called
+   - Added savedHoles declaration at the top of Game State section
+   - All other functionality identical to v2.07
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04
 STATUS: Ready for testing
 -->
