@@ -1,6 +1,7 @@
-<!-- FILE: index.html - VERSION 2.25 -->
+<!-- FILE: index.html - VERSION 2.26 -->
 <!-- Landing page for SICC Ryder Cup App -->
-<!-- ADDED: Named PREVIEW sessions with modal -->
+<!-- ADDED: Reduced empty space at top - moved screen up by 2 lines -->
+<!-- CHANGES: header margin-bottom 30px→16px, golf-icon margin-bottom 16px→8px -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,14 +13,14 @@
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
+        body {
             background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
-            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif; 
-            color: #ffffff; 
-            min-height: 100vh; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
+            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             padding: 20px;
         }
         .container { max-width: 420px; width: 100%; }
@@ -39,26 +40,26 @@
             letter-spacing: 0.5px;
         }
         
-        .version-tag { 
-            position: fixed; 
-            top: 8px; 
-            right: 8px; 
-            font-size: 0.65rem; 
-            color: #4caf50; 
-            background: rgba(0,0,0,0.6); 
-            padding: 2px 10px; 
+        .version-tag {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
             border-radius: 16px;
             font-family: monospace;
             z-index: 1000;
             opacity: 0.8;
         }
         
-        .header { text-align: center; margin-bottom: 30px; }
-        .golf-icon { font-size: 4rem; margin-bottom: 16px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)); }
+        .header { text-align: center; margin-bottom: 16px; }
+        .golf-icon { font-size: 4rem; margin-bottom: 8px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)); }
         .title { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%); background-clip: text; -webkit-background-clip: text; color: transparent; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .subtitle { font-size: 0.75rem; color: #888; margin-top: 4px; letter-spacing: 1px; }
         
-        .ngb { 
+        .ngb {
             background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
             border: 2px solid #4caf50;
             border-radius: 32px;
@@ -264,13 +265,13 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.25</div>
+<div class="version-tag">v2.26</div>
 
 <script>
-// FILE: index.html - VERSION 2.25
-// ADDED: Named PREVIEW sessions with selection modal
+// FILE: index.html - VERSION 2.26
+// CHANGES: Reduced top empty space (header margin 30px→16px, golf-icon margin 16px→8px)
 
-var APP_VERSION = "2.25";
+var APP_VERSION = "2.26";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -299,7 +300,7 @@ try {
     db = firebase.firestore();
     firestoreReady = true;
     console.log("Firebase ready - v" + APP_VERSION);
-} catch(e) { 
+} catch(e) {
     console.warn(e);
 }
 
@@ -731,8 +732,8 @@ function createNewPreviewSession(gameId, gameDate, sessionName) {
 function proceedToPreview(gameId, gameDate, sandboxId, sessionName) {
     var targetPage = "pre-game.html";
     
-    SessionManager.addNavigationHistory(targetPage, "click_preview", { 
-        gameId: gameId, 
+    SessionManager.addNavigationHistory(targetPage, "click_preview", {
+        gameId: gameId,
         gameType: "preview",
         sandboxId: sandboxId,
         sessionName: sessionName
@@ -956,3 +957,14 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 </script>
 </body>
 </html>
+<!--
+FILE: index.html
+VERSION: 2.26
+KEY CHANGES:
+   - Reduced top empty space on mobile view
+   - header margin-bottom: 30px → 16px
+   - golf-icon margin-bottom: 16px → 8px
+   - Moves screen up by approximately 2 lines
+DEPENDS ON: js/session.js
+STATUS: Ready for deployment
+-->
