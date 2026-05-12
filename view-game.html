@@ -1,12 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 2.09
+VERSION: 2.10
 KEY CHANGES:
+   - ADDED: Session fallback to sessionStorage when activeGame.gameId is null
    - FIXED: T-1, T-2, Strk rows now show INVISIBLE for holes beyond computedUpToHole
-   - Previously showed "AS" for unplayed holes because results had "AS" for those positions
-   - Now explicitly sets those rows to '_' (invisible) for positions >= computedUpToHole
-   - All other functionality identical to v2.07 (working session, navigation, TR colors)
-   - No changes to session logic or gameId loading
+   - Based on v2.07 (working session loading) with two minimal fixes
+   - No structural changes that could break loading
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04
 STATUS: Ready for testing
 -->
@@ -255,7 +254,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.09 VIEWER</div>
+<div class="version-tag">v2.10 VIEWER</div>
 
 <script>
 // ============================================================
@@ -410,7 +409,7 @@ function updateMatchResults() {
 }
 
 // ============================================================
-// TR and Row Display from Results (with color fix for tie)
+// TR and Row Display from Results (with fix for unplayed holes)
 // ============================================================
 
 function updateDisplayFromResults() {
@@ -441,36 +440,32 @@ function updateDisplayFromResults() {
         trTeamBGreen = true;
     }
     
-    // Read T-1, T-2, Strk from results for consistency
-    // FIX: For positions beyond computedUpTo, set to '_' (invisible)
+    // Read T-1, T-2, Strk from results
     if (gameResults.game2) {
         var flight1Leader = gameResults.game2.flight1.leader;
         var flight2Leader = gameResults.game2.flight2.leader;
         
         for (var i = 0; i < 18; i++) {
-            if (i >= computedUpTo) {
-                // Beyond computed holes - set to invisible
-                t1Row[i] = '_';
-                t2Row[i] = '_';
-            } else {
-                if (flight1Leader && flight1Leader[i]) t1Row[i] = flight1Leader[i];
-                if (flight2Leader && flight2Leader[i]) t2Row[i] = flight2Leader[i];
-            }
+            if (flight1Leader && flight1Leader[i]) t1Row[i] = flight1Leader[i];
+            if (flight2Leader && flight2Leader[i]) t2Row[i] = flight2Leader[i];
         }
     }
     
     if (gameResults.game3 && gameResults.game3.leader) {
         for (var i = 0; i < 18; i++) {
-            if (i >= computedUpTo) {
-                strkRow[i] = '_';
-            } else {
-                if (gameResults.game3.leader[i]) strkRow[i] = gameResults.game3.leader[i];
-            }
+            if (gameResults.game3.leader[i]) strkRow[i] = gameResults.game3.leader[i];
         }
+    }
+    
+    // FIX: For holes beyond computedUpToHole, set rows to '_' (invisible)
+    for (var i = computedUpTo; i < 18; i++) {
+        t1Row[i] = '_';
+        t2Row[i] = '_';
+        strkRow[i] = '_';
     }
 }
 
-// calculateTR now just calls updateDisplayFromResults() (no local calculation)
+// calculateTR now just calls updateDisplayFromResults()
 function calculateTR() {
     updateDisplayFromResults();
 }
@@ -736,7 +731,12 @@ async function init() {
         SessionManager.initSession("view-game.html", "index.html", resolve);
     });
     
+    // FIX: Fallback to sessionStorage if activeGame.gameId is null
     gameId = session.activeGame ? session.activeGame.gameId : null;
+    if (!gameId) {
+        gameId = sessionStorage.getItem('currentGameId');
+        console.log('view-game: using fallback gameId from sessionStorage:', gameId);
+    }
     
     if (!gameId) {
         document.getElementById("debug").innerHTML = "Error: No game ID";
@@ -821,13 +821,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.09
+VERSION: 2.10
 KEY CHANGES:
+   - ADDED: Session fallback to sessionStorage when activeGame.gameId is null
    - FIXED: T-1, T-2, Strk rows now show INVISIBLE for holes beyond computedUpToHole
-   - Previously showed "AS" for unplayed holes because results had "AS" for those positions
-   - Now explicitly sets those rows to '_' (invisible) for positions >= computedUpToHole
-   - All other functionality identical to v2.07 (working session, navigation, TR colors)
-   - No changes to session logic or gameId loading
+   - Based on v2.07 (working session loading) with two minimal fixes
+   - No structural changes that could break loading
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04
 STATUS: Ready for testing
 -->
