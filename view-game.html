@@ -1,11 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 2.08
+VERSION: 2.09
 KEY CHANGES:
-   - FIXED: T-1, T-2, Strk rows now correctly show INVISIBLE for unsynced holes
-   - Ensures savedHoles is properly passed to GameUI.renderScorecard()
-   - Added savedHoles as a global variable before renderScorecard is called
-   - All other functionality identical to v2.07
+   - FIXED: T-1, T-2, Strk rows now show INVISIBLE for holes beyond computedUpToHole
+   - Previously showed "AS" for unplayed holes because results had "AS" for those positions
+   - Now explicitly sets those rows to '_' (invisible) for positions >= computedUpToHole
+   - All other functionality identical to v2.07 (working session, navigation, TR colors)
+   - No changes to session logic or gameId loading
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04
 STATUS: Ready for testing
 -->
@@ -254,7 +255,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.08 VIEWER</div>
+<div class="version-tag">v2.09 VIEWER</div>
 
 <script>
 // ============================================================
@@ -291,7 +292,7 @@ var allPlayers = [];
 
 var flight1Data = {};
 var flight2Data = {};
-var savedHoles = { 1: [], 2: [] };  // FIX: Ensure savedHoles is defined globally
+var savedHoles = { 1: [], 2: [] };
 
 var t1Row = Array(18).fill('_');
 var t2Row = Array(18).fill('_');
@@ -441,19 +442,30 @@ function updateDisplayFromResults() {
     }
     
     // Read T-1, T-2, Strk from results for consistency
+    // FIX: For positions beyond computedUpTo, set to '_' (invisible)
     if (gameResults.game2) {
         var flight1Leader = gameResults.game2.flight1.leader;
         var flight2Leader = gameResults.game2.flight2.leader;
         
         for (var i = 0; i < 18; i++) {
-            if (flight1Leader && flight1Leader[i]) t1Row[i] = flight1Leader[i];
-            if (flight2Leader && flight2Leader[i]) t2Row[i] = flight2Leader[i];
+            if (i >= computedUpTo) {
+                // Beyond computed holes - set to invisible
+                t1Row[i] = '_';
+                t2Row[i] = '_';
+            } else {
+                if (flight1Leader && flight1Leader[i]) t1Row[i] = flight1Leader[i];
+                if (flight2Leader && flight2Leader[i]) t2Row[i] = flight2Leader[i];
+            }
         }
     }
     
     if (gameResults.game3 && gameResults.game3.leader) {
         for (var i = 0; i < 18; i++) {
-            if (gameResults.game3.leader[i]) strkRow[i] = gameResults.game3.leader[i];
+            if (i >= computedUpTo) {
+                strkRow[i] = '_';
+            } else {
+                if (gameResults.game3.leader[i]) strkRow[i] = gameResults.game3.leader[i];
+            }
         }
     }
 }
@@ -626,7 +638,7 @@ function toggleFlight() {
 }
 
 // ============================================================
-// Full Render - FIXED: savedHoles is now properly defined
+// Full Render
 // ============================================================
 
 function renderAll() {
@@ -646,7 +658,6 @@ function renderAll() {
     );
     
     var holes = getDisplayHoles();
-    // FIX: savedHoles is now a global variable that GameUI.renderScorecard can access
     GameUI.renderScorecard(
         "scorecardWrapper",
         holes,
@@ -810,12 +821,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.08
+VERSION: 2.09
 KEY CHANGES:
-   - FIXED: T-1, T-2, Strk rows now correctly show INVISIBLE for unsynced holes
-   - Ensures savedHoles is properly defined as a global variable before renderScorecard is called
-   - Added savedHoles declaration at the top of Game State section
-   - All other functionality identical to v2.07
+   - FIXED: T-1, T-2, Strk rows now show INVISIBLE for holes beyond computedUpToHole
+   - Previously showed "AS" for unplayed holes because results had "AS" for those positions
+   - Now explicitly sets those rows to '_' (invisible) for positions >= computedUpToHole
+   - All other functionality identical to v2.07 (working session, navigation, TR colors)
+   - No changes to session logic or gameId loading
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04
 STATUS: Ready for testing
 -->
