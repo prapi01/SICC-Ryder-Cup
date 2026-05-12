@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 2.19
+VERSION: 2.22
 KEY CHANGES:
-   - FIXED: calculateGame1Points() replaced with working manual sum logic
-   - Previously returned 0-0, now correctly calculates points from matchResults.cross
-   - Same logic validated by console test (12-4 after 6 holes)
-   - All other functionality identical to v2.18
-DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
+   - FIXED: Game Complete button instead of auto-celebration when both flights sign
+   - FIXED: Simplified sign card modal - removed captain name input, added Back button
+   - Sign modal now has: "← BACK" (closes modal) and "✓ SIGN CARD" (prominent green button)
+   - Celebration screen now only appears when user clicks "SEE RESULTS" button
+   - All other functionality identical to v2.19 (working calculation, session fallback, etc.)
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
 
@@ -193,6 +194,7 @@ STATUS: Ready for testing
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
+        /* Simplified Sign Modal - No captain name */
         .sign-modal {
             background: #1a1a1a;
             border-radius: 32px;
@@ -211,18 +213,7 @@ STATUS: Ready for testing
         .sign-message {
             font-size: 0.9rem;
             color: #ccc;
-            margin-bottom: 20px;
-        }
-        .sign-input {
-            width: 100%;
-            padding: 12px;
-            background: #0a0a0a;
-            border: 1px solid #333;
-            border-radius: 30px;
-            color: #fff;
-            font-size: 1rem;
-            margin-bottom: 20px;
-            text-align: center;
+            margin-bottom: 24px;
         }
         .sign-buttons {
             display: flex;
@@ -233,20 +224,29 @@ STATUS: Ready for testing
             background: #1a3a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
-            padding: 12px;
+            padding: 14px;
             border-radius: 40px;
             font-weight: 700;
+            font-size: 1rem;
             cursor: pointer;
         }
-        .sign-btn-cancel {
+        .sign-btn-back {
             flex: 1;
             background: #1a1a1a;
             border: 1px solid #333;
             color: #888;
-            padding: 12px;
+            padding: 14px;
             border-radius: 40px;
             font-weight: 600;
             cursor: pointer;
+        }
+        
+        /* Game Complete Button */
+        .btn-game-complete {
+            background: #ffaa44;
+            color: #1a3a1a;
+            border: none;
+            font-weight: 800;
         }
     </style>
 </head>
@@ -284,7 +284,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.19 REAL</div>
+<div class="version-tag">v2.22 REAL</div>
 
 <script>
 // ============================================================
@@ -356,6 +356,7 @@ var submitted = { f1: false, f2: false };
 var signatures = { f1: false, f2: false };
 var isGameCompleteFlag = false;
 var pendingArchiveCreated = false;
+var celebrationTriggered = false;
 
 // ============================================================
 // Helper Functions
@@ -482,13 +483,11 @@ function updateStrokeGame() {
 // TR Calculation
 // ============================================================
 
-// FIXED: calculateGame1Points - now uses working manual sum logic
 function calculateGame1Points() {
     if (lastSyncedHole === 0) {
         return { teamAPoints: 8, teamBPoints: 8 };
     }
     
-    // Use pre-computed results if available
     if (gameResults && gameResults.game1 && gameResults.computedUpToHole >= lastSyncedHole) {
         var pos = getHolePosition(lastSyncedHole);
         return {
@@ -497,7 +496,6 @@ function calculateGame1Points() {
         };
     }
     
-    // Manual sum from matchResults.cross (validated working logic)
     var teamAPoints = 0;
     var teamBPoints = 0;
     var matchCount = 0;
@@ -522,7 +520,6 @@ function calculateGame1Points() {
         }
     }
     
-    // If no matches processed, return default tie
     if (matchCount === 0) {
         return { teamAPoints: 8, teamBPoints: 8 };
     }
@@ -869,19 +866,18 @@ function buildMatchResultsForHandicap() {
 }
 
 // ============================================================
-// Sign Card Functions
+// Sign Card Functions - SIMPLIFIED (no captain name)
 // ============================================================
 
 function showSignCardModal() {
     var modalHtml = `
-        <div class="modal-overlay" id="signModal">
+        <div class="modal-overlay" id="signModal" style="z-index: 3000;">
             <div class="sign-modal">
                 <div class="sign-title">✍️ SIGN SCORECARD</div>
-                <div class="sign-message">Confirm that all scores are correct.</div>
-                <input type="text" id="captainName" class="sign-input" placeholder="Captain name (optional)">
+                <div class="sign-message">Confirm that all scores are correct before signing.</div>
                 <div class="sign-buttons">
-                    <button class="sign-btn-cancel" id="signCancelBtn">Cancel</button>
-                    <button class="sign-btn-confirm" id="signConfirmBtn">✓ Sign Card</button>
+                    <button class="sign-btn-back" id="signBackBtn">← BACK</button>
+                    <button class="sign-btn-confirm" id="signConfirmBtn">✓ SIGN CARD</button>
                 </div>
             </div>
         </div>
@@ -889,27 +885,31 @@ function showSignCardModal() {
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    document.getElementById("signCancelBtn").addEventListener("click", function() {
+    document.getElementById("signBackBtn").addEventListener("click", function() {
         document.getElementById("signModal").remove();
     });
     
     document.getElementById("signConfirmBtn").addEventListener("click", async function() {
-        var captainName = document.getElementById("captainName").value.trim();
         document.getElementById("signModal").remove();
         
         var collection = "scheduledGames";
-        var success = await SignCard.submitSignature(gameId, editableFlight, captainName, collection);
+        var success = await SignCard.submitSignature(gameId, editableFlight, null, collection);
         
         if (success) {
             if (editableFlight === 1) signatures.f1 = true;
             else signatures.f2 = true;
             
+            // Check if both flights have signed
             if (SignCard.isGameCompleted(signatures)) {
+                // Both signed - create archive record and show Game Complete button
                 createPendingArchiveRecord(function(err, archiveId) {
                     if (err) console.error("Failed to create archive record:", err);
-                    showCelebrationAndHandicap();
+                    isGameCompleteFlag = true;
+                    celebrationTriggered = false;
+                    renderAll();
                 });
             } else {
+                // Only one flight signed - show waiting screen
                 SignCard.showWaitingScreen(editableFlight, function() {
                     checkBothSignedAndCelebrate();
                 });
@@ -928,7 +928,9 @@ function checkBothSignedAndCelebrate() {
                 SignCard.hideWaitingScreen();
                 createPendingArchiveRecord(function(err, archiveId) {
                     if (err) console.error("Failed to create archive record:", err);
-                    showCelebrationAndHandicap();
+                    isGameCompleteFlag = true;
+                    celebrationTriggered = false;
+                    renderAll();
                 });
             }
         }
@@ -936,6 +938,9 @@ function checkBothSignedAndCelebrate() {
 }
 
 function showCelebrationAndHandicap() {
+    if (celebrationTriggered) return;
+    celebrationTriggered = true;
+    
     var winner = SignCard.getWinner(trTeamA, trTeamB);
     var winningPlayers = {
         teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
@@ -1098,6 +1103,8 @@ function renderAll() {
     );
     
     var holes = getDisplayHoles();
+    // Make savedHoles available globally for GameUI
+    window.savedHoles = savedHoles;
     GameUI.renderScorecard(
         "scorecardWrapper",
         holes,
@@ -1120,7 +1127,19 @@ function updateNextButton() {
     var nextBtn = document.getElementById("nextBtn");
     if (!nextBtn) return;
     
-    if (isGameCompleteFlag) {
+    // Game complete - show "SEE RESULTS" button instead of Next
+    if (isGameCompleteFlag && !celebrationTriggered) {
+        nextBtn.textContent = "🏆 SEE RESULTS";
+        nextBtn.disabled = false;
+        nextBtn.classList.add("btn-game-complete");
+        nextBtn.classList.remove("btn-next", "btn-next-inactive");
+        return;
+    }
+    
+    // Remove game complete styling if not in that state
+    nextBtn.classList.remove("btn-game-complete");
+    
+    if (isGameCompleteFlag && celebrationTriggered) {
         nextBtn.textContent = "✅ COMPLETE";
         nextBtn.disabled = true;
         nextBtn.classList.add("btn-next-inactive");
@@ -1279,6 +1298,12 @@ function updateFlightDataString(oldString, holeNumber, scores) {
 // ============================================================
 
 function nextHole() {
+    // Handle Game Complete button click
+    if (isGameCompleteFlag && !celebrationTriggered) {
+        showCelebrationAndHandicap();
+        return;
+    }
+    
     var isLast = CardSubmit.isLastHole(currentHole, startingHole);
     var isSaved = isHoleSaved(editableFlight, currentHole);
     
@@ -1293,6 +1318,8 @@ function nextHole() {
     var isCurrentSaved = isSaved && !hasUnsavedChanges;
     
     if (isLast && isCurrentSaved) {
+        // Show sign modal
+        showSignCardModal();
         return;
     }
     
@@ -1369,13 +1396,22 @@ function refreshFromFirestore(data) {
         signatures.f2 = data.signatures.f2?.signed === true;
     }
     
+    var bothSigned = signatures.f1 && signatures.f2;
+    var wasComplete = isGameCompleteFlag;
+    
     isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
     
-    if (signatures.f1 && signatures.f2 && !isGameCompleteFlag) {
+    // If both signed but celebration not triggered, show Game Complete button
+    if (bothSigned && !celebrationTriggered && !wasComplete) {
         isGameCompleteFlag = true;
+        renderAll();
+    }
+    
+    if (signatures.f1 && signatures.f2 && !wasComplete && celebrationTriggered === false) {
         createPendingArchiveRecord(function(err, archiveId) {
             if (err) console.error("Failed to create archive record:", err);
-            showCelebrationAndHandicap();
+            isGameCompleteFlag = true;
+            renderAll();
         });
         return;
     }
@@ -1418,6 +1454,9 @@ function refreshFromFirestore(data) {
         updateMatchResults();
         calculateTR();
         renderAll();
+    } else {
+        calculateTR();
+        renderAll();
     }
 }
 
@@ -1453,7 +1492,7 @@ async function init() {
     }
     canEdit = (editableFlight === 1 || editableFlight === 2);
     
-    // FIX: Get gameId - fallback to sessionStorage if activeGame.gameId is null
+    // Get gameId - fallback to sessionStorage if activeGame.gameId is null
     gameId = session.activeGame ? session.activeGame.gameId : null;
     if (!gameId) {
         gameId = sessionStorage.getItem('currentGameId');
@@ -1547,6 +1586,12 @@ async function init() {
             });
             
             document.getElementById("nextBtn").addEventListener("click", function() {
+                // Handle Game Complete button click
+                if (isGameCompleteFlag && !celebrationTriggered) {
+                    showCelebrationAndHandicap();
+                    return;
+                }
+                
                 var isLast = CardSubmit.isLastHole(currentHole, startingHole);
                 var isSaved = isHoleSaved(editableFlight, currentHole);
                 
@@ -1594,12 +1639,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.19
+VERSION: 2.22
 KEY CHANGES:
-   - FIXED: calculateGame1Points() replaced with working manual sum logic
-   - Previously returned 0-0, now correctly calculates points from matchResults.cross
-   - Same logic validated by console test (12-4 after 6 holes)
-   - All other functionality identical to v2.18
-DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.01, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
+   - FIXED: Game Complete button instead of auto-celebration when both flights sign
+   - FIXED: Simplified sign card modal - removed captain name input, added Back button
+   - Sign modal now has: "← BACK" (closes modal) and "✓ SIGN CARD" (prominent green button)
+   - Celebration screen now only appears when user clicks "SEE RESULTS" button
+   - All other functionality identical to v2.19 (working calculation, session fallback, etc.)
+DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
