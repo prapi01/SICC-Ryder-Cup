@@ -1,18 +1,23 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.01
+VERSION: 2.04
 KEY CHANGES:
-   - FIXED: T-1, T-2, Strk rows now show "AS" for tied synced holes
-   - Unsynced holes (not played by both flights) are invisible (black text on black)
-   - Preserves all existing display logic
+   - ONLY updateTR() function changed to new billboard design
+   - ALL other functions IDENTICAL to v2.01 (fully working)
+   - renderScorecard() unchanged (no savedHoles dependency issues)
+   - renderPlayerCards() unchanged
+   - All display mode functions unchanged
+   - TR display: Team A | Team B with vertical separator
+   - Font sizes: 0.85rem for team names, 1.8rem for numbers
+   - Colours: Green for winning/tie, Red for losing
 DEPENDS ON: None (pure display)
-STATUS: Ready for testing
+STATUS: Ready for integration
 */
 
 var GameUI = (function() {
     
     // ============================================================
-    // Scorecard Rendering
+    // Scorecard Rendering (IDENTICAL to v2.01 - FULLY WORKING)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
@@ -203,7 +208,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Player Cards with Bubbles
+    // Player Cards with Bubbles (IDENTICAL to v2.01)
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -277,7 +282,8 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // TR (Title Result) Display
+    // TR (Title Result) Display - NEW BILLBOARD DESIGN v2.04
+    // ONLY THIS FUNCTION CHANGED FROM v2.01
     // ============================================================
     
     function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
@@ -286,19 +292,31 @@ var GameUI = (function() {
         
         var teamADisplay = teamAPoints % 1 === 0 ? teamAPoints : teamAPoints.toFixed(1);
         var teamBDisplay = teamBPoints % 1 === 0 ? teamBPoints : teamBPoints.toFixed(1);
-        var teamAColorClass = teamAGreen ? 'team-score-green' : 'team-score-red';
-        var teamBColorClass = teamBGreen ? 'team-score-green' : 'team-score-red';
+        var teamAColor = teamAGreen ? '#4caf50' : '#ff6b6b';
+        var teamBColor = teamBGreen ? '#4caf50' : '#ff6b6b';
+        var separatorColor = '#888';
         
-        var html = '<div style="font-size: 2rem; font-weight: 800;">' +
-                       '<span class="' + teamAColorClass + '">Team A ' + teamADisplay + '</span>' + 
-                       ' - ' + 
-                       '<span class="' + teamBColorClass + '">' + teamBDisplay + ' Team B</span>' +
-                   '</div>';
+        var html = `
+            <div style="text-align: center; font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;">
+                <div style="display: flex; justify-content: center; align-items: center; gap: 16px;">
+                    <div style="text-align: center; min-width: 100px;">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamAColor}; letter-spacing: 1px;">TEAM A</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamAColor}; line-height: 1.2;">${teamADisplay}</div>
+                    </div>
+                    <div style="font-size: 1.5rem; font-weight: 400; color: ${separatorColor};">│</div>
+                    <div style="text-align: center; min-width: 100px;">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamBColor}; letter-spacing: 1px;">TEAM B</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamBColor}; line-height: 1.2;">${teamBDisplay}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
         container.innerHTML = html;
     }
     
     // ============================================================
-    // Hole Header Display
+    // Hole Header Display (IDENTICAL to v2.01)
     // ============================================================
     
     function updateHoleHeader(containerId, currentHole, currentPar, currentSi) {
@@ -313,7 +331,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Flight Tab Display
+    // Flight Tab Display (IDENTICAL to v2.01)
     // ============================================================
     
     function updateFlightTab(containerId, flightNumber, canEdit) {
@@ -325,7 +343,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Display Mode Management
+    // Display Mode Management (IDENTICAL to v2.01)
     // ============================================================
     
     var currentDisplayMode = "play";
@@ -379,7 +397,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Helper
+    // Helper (IDENTICAL to v2.01)
     // ============================================================
     
     function escapeHtml(str) {
@@ -393,7 +411,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Public API
+    // Public API (IDENTICAL to v2.01)
     // ============================================================
     
     return {
@@ -412,11 +430,16 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.01
+VERSION: 2.04
 KEY CHANGES:
-   - FIXED: T-1, T-2, Strk rows now show "AS" for tied synced holes
-   - Unsynced holes (not played by both flights) are invisible (black text on black)
-   - Preserves all existing display logic
+   - ONLY updateTR() function changed to new billboard design
+   - ALL other functions IDENTICAL to v2.01 (fully working)
+   - renderScorecard() unchanged (no savedHoles dependency issues)
+   - renderPlayerCards() unchanged
+   - All display mode functions unchanged
+   - TR display: Team A | Team B with vertical separator
+   - Font sizes: 0.85rem for team names, 1.8rem for numbers
+   - Colours: Green for winning/tie, Red for losing
 DEPENDS ON: None (pure display)
-STATUS: Ready for testing
+STATUS: Ready for integration
 */
