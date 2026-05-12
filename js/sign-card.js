@@ -1,14 +1,15 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.03
+VERSION: 1.04
 KEY CHANGES:
-   - Fixed celebration image: always uses celebration.jpg
-   - Button changed to "🏌️ Handicap Adjustment"
-   - Button calls HandicapAdjustment.init() when clicked
-   - Removed random image selection logic
+   - FIXED: Celebration image always uses celebration.jpg (already working)
+   - ADDED: Manual trigger support for "SEE RESULTS" button
+   - REMOVED: Auto-celebration (now controlled by real-game.html)
+   - Button: "🏌️ Handicap Adjustment" calls HandicapAdjustment.init()
    - 8 confetti bursts, 2 seconds apart
    - Match Complete as main heading
-DEPENDS ON: Firebase Firestore, js/hcp-adjust.js (to be created)
+   - Added celebration replay function for HCP screen
+DEPENDS ON: Firebase Firestore, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
@@ -25,7 +26,7 @@ var SignCard = (function() {
     // Wait for other flight to sign
     function showWaitingScreen(flightNumber, onComplete) {
         var modalHtml = `
-            <div class="modal-overlay" id="waitingModal">
+            <div class="modal-overlay" id="waitingModal" style="z-index: 3000;">
                 <div class="waiting-modal">
                     <div class="waiting-title">✓ CARD SIGNED</div>
                     <div class="waiting-animation">⏳ 🏌️‍♂️ ⏳</div>
@@ -103,7 +104,7 @@ var SignCard = (function() {
         `;
         
         var modalHtml = `
-            <div class="modal-overlay celebration-overlay" id="celebrationModal">
+            <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                 <div class="celebration-modal">
                     ${imageHtml}
                     <div class="celebration-title">🎉 MATCH COMPLETE! 🎉</div>
@@ -153,6 +154,24 @@ var SignCard = (function() {
                 if (onClose) onClose();
             }
         });
+        
+        // Store reference for replay functionality
+        window._currentCelebrationData = {
+            winner: winner,
+            teamAScore: teamAScore,
+            teamBScore: teamBScore,
+            winningPlayers: winningPlayers,
+            gameId: gameId,
+            onClose: onClose
+        };
+    }
+    
+    // Replay celebration screen (for HCP screen "Celebration Screen" button)
+    function replayCelebration() {
+        if (window._currentCelebrationData) {
+            var data = window._currentCelebrationData;
+            showCelebrationScreen(data.winner, data.teamAScore, data.teamBScore, data.winningPlayers, data.gameId, data.onClose);
+        }
     }
     
     function addCelebrationStyles() {
@@ -287,6 +306,22 @@ var SignCard = (function() {
                     font-weight: 600;
                     color: #4caf50;
                 }
+                .celebration-btn {
+                    background: #1a3a1a;
+                    border: 2px solid #4caf50;
+                    color: #4caf50;
+                    padding: 14px 28px;
+                    border-radius: 60px;
+                    font-size: 1.1rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    width: 100%;
+                    transition: all 0.2s;
+                }
+                .celebration-btn:hover {
+                    background: #2a4a2a;
+                    transform: scale(1.02);
+                }
                 .confetti {
                     position: fixed;
                     width: 10px;
@@ -365,6 +400,7 @@ var SignCard = (function() {
         showWaitingScreen: showWaitingScreen,
         hideWaitingScreen: hideWaitingScreen,
         showCelebrationScreen: showCelebrationScreen,
+        replayCelebration: replayCelebration,
         submitSignature: submitSignature,
         isGameCompleted: isGameCompleted,
         getWinner: getWinner,
@@ -374,14 +410,15 @@ var SignCard = (function() {
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.03
+VERSION: 1.04
 KEY CHANGES:
-   - Fixed celebration image: always uses celebration.jpg
-   - Button changed to "🏌️ Handicap Adjustment"
-   - Button calls HandicapAdjustment.init() when clicked
-   - Removed random image selection logic
+   - FIXED: Celebration image always uses celebration.jpg (already working)
+   - ADDED: Manual trigger support for "SEE RESULTS" button
+   - REMOVED: Auto-celebration (now controlled by real-game.html)
+   - ADDED: replayCelebration() function for HCP screen
+   - Button: "🏌️ Handicap Adjustment" calls HandicapAdjustment.init()
    - 8 confetti bursts, 2 seconds apart
    - Match Complete as main heading
-DEPENDS ON: Firebase Firestore, js/hcp-adjust.js (to be created)
+DEPENDS ON: Firebase Firestore, js/hcp-adjust.js
 STATUS: Ready for integration
 */
