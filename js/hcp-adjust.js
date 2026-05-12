@@ -1,15 +1,15 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - Added scroll indicator when table is wider than screen
-   - Fixed column widths for better mobile display
-   - Player column with fixed width
-   - Change Anchor dropdown for multiple anchor candidates
-   - Confirm & Save button
-   - Recalculation on anchor change
-   - Integration with history-record.js
-DEPENDS ON: Firebase Firestore, history-record.js
+   - ADDED: Four buttons on main screen: Back to Scorecard, Celebration Screen, Main Menu, Exit
+   - ADDED: View-only mode for non-updaters (no confirm button)
+   - ADDED: Multi-anchor selection - first updater picks anchor, confirms
+   - ADDED: Once confirmed, all devices see confirmed table (read-only)
+   - ADDED: Back to Scorecard returns to read-only scorecard with return button
+   - ADDED: Celebration Screen replays celebration and returns to this screen
+   - Maintains scroll indicator for wide tables
+DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js
 STATUS: Ready for integration
 */
 
@@ -29,6 +29,8 @@ var HandicapAdjustment = (function() {
     var currentTableData = null;
     var needsZeroRiseFlag = false;
     var zeroRiseAmountValue = 0;
+    var isConfirmed = false;  // Track if anchor has been confirmed
+    var isViewOnly = false;   // True for non-updater devices
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -194,7 +196,6 @@ var HandicapAdjustment = (function() {
         var tableWrapper = container.querySelector('div[style*="overflow-x: auto"]');
         if (!tableWrapper) return;
         
-        // Check if scroll is needed
         if (tableWrapper.scrollWidth > tableWrapper.clientWidth + 5) {
             var hint = document.createElement('div');
             hint.style.cssText = 'text-align: center; font-size: 0.65rem; color: #888; margin-top: 6px;';
@@ -208,10 +209,10 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table with narrower columns
+    // Display Table with 4 buttons
     // ============================================================
     
-    function showAdjustmentTable(calculationResult, anchorName) {
+    function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
         var newAnchorName = calculationResult.newAnchorName;
@@ -235,7 +236,7 @@ var HandicapAdjustment = (function() {
             tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Perf</th>';
             tableHtml += '<th style="padding:6px 4px; text-align:center; width:55px;">New</th>';
         }
-        tableHtml += '<tr></thead><tbody>';
+        tableHtml += '</tr></thead><tbody>';
         
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
@@ -258,9 +259,9 @@ var HandicapAdjustment = (function() {
         
         tableHtml += '</tbody></table></div>';
         
-        // Build anchor selector dropdown
+        // Build anchor selector dropdown (only if not confirmed and not read-only)
         var anchorSelectorHtml = '';
-        if (anchorCandidates.length > 1) {
+        if (!isConfirmed && !isReadOnly && anchorCandidates.length > 1) {
             var optionsHtml = '';
             for (var i = 0; i < anchorCandidates.length; i++) {
                 var selected = (anchorCandidates[i].name === anchorName) ? 'selected' : '';
@@ -268,23 +269,35 @@ var HandicapAdjustment = (function() {
             }
             anchorSelectorHtml = `
                 <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
-                    <span style="color: #888; font-size:0.8rem;">Anchor:</span>
+                    <span style="color: #888; font-size:0.8rem;">Select Anchor:</span>
                     <select id="anchorSelect" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; padding: 6px 12px; border-radius: 30px; font-size: 0.8rem; font-weight: 600;">
                         ${optionsHtml}
                     </select>
                 </div>
             `;
-        } else {
+        } else if (anchorCandidates.length === 1) {
             anchorSelectorHtml = `
                 <div style="text-align: center; margin-bottom: 12px;">
                     <span style="color: #4caf50; font-size:0.8rem;">Anchor: ${escapeHtml(anchorName)} (${anchorPlayer.handicap})</span>
                 </div>
             `;
+        } else if (isConfirmed || isReadOnly) {
+            anchorSelectorHtml = `
+                <div style="text-align: center; margin-bottom: 12px;">
+                    <span style="color: #4caf50; font-size:0.8rem;">✓ Confirmed Anchor: ${escapeHtml(anchorName)}</span>
+                </div>
+            `;
         }
         
         var messageHtml = '';
-        if (hasNewAnchor && newAnchorName) {
-            messageHtml = `<div style="font-size:0.85rem; color:#ffaa44; text-align:center; margin-bottom:12px;">🎉 ${escapeHtml(newAnchorName)} is the NEW ANCHOR! 🎉</div>`;
+        if (hasNewAnchor && newAnchorName && !isConfirmed) {
+            messageHtml = `<div style="font-size:0.85rem; color:#ffaa44; text-align:center; margin-bottom:12px;">🎉 ${escapeHtml(newAnchorName)} will be the NEW ANCHOR! 🎉</div>`;
+        }
+        
+        // Four buttons
+        var confirmButtonHtml = '';
+        if (!isReadOnly && !isConfirmed) {
+            confirmButtonHtml = `<button id="confirmSaveBtn" style="background:#ffaa44; border:none; color:#1a3a1a; padding:8px 18px; border-radius:30px; font-size:0.8rem; font-weight:800; cursor:pointer;">✓ Confirm & Save</button>`;
         }
         
         var modalHtml = `
@@ -295,10 +308,11 @@ var HandicapAdjustment = (function() {
                     ${anchorSelectorHtml}
                     ${tableHtml}
                     <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; justify-content:center;">
-                        <button id="reviewGameBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🔍 Review</button>
-                        <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🎉 Celebrate</button>
-                        <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏠 Menu</button>
-                        <button id="confirmSaveBtn" style="background:#ffaa44; border:none; color:#1a3a1a; padding:8px 18px; border-radius:30px; font-size:0.8rem; font-weight:800; cursor:pointer;">✓ Confirm</button>
+                        <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏌️ Back to Scorecard</button>
+                        <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🎉 Celebration Screen</button>
+                        <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏠 Main Menu</button>
+                        <button id="exitBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🚪 Exit</button>
+                        ${confirmButtonHtml}
                     </div>
                 </div>
             </div>
@@ -327,28 +341,53 @@ var HandicapAdjustment = (function() {
                     var newCalculation = calculateAllAdjustments(anchorPlayer);
                     currentTableData = newCalculation;
                     document.getElementById('hcpAdjustModal').remove();
-                    showAdjustmentTable(newCalculation, anchorPlayer.name);
+                    showAdjustmentTable(newCalculation, anchorPlayer.name, isReadOnly);
                 }
             });
         }
         
         // Button handlers
-        document.getElementById('reviewGameBtn').addEventListener('click', function() {
-            window.location.href = 'view-game.html';
+        document.getElementById('backToScorecardBtn').addEventListener('click', function() {
+            document.getElementById('hcpAdjustModal').remove();
+            showReadOnlyScorecard();
         });
         
         document.getElementById('celebrationBtn').addEventListener('click', function() {
-            if (window.replayCelebration) window.replayCelebration();
-            else alert('Celebration would replay here');
+            document.getElementById('hcpAdjustModal').remove();
+            if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
+                SignCard.replayCelebration();
+                // Re-show this screen after celebration closes
+                var checkInterval = setInterval(function() {
+                    if (!document.getElementById('celebrationModal')) {
+                        clearInterval(checkInterval);
+                        showAdjustmentTable(currentTableData, anchorPlayer.name, isReadOnly);
+                    }
+                }, 500);
+            } else {
+                alert('Celebration screen not available');
+            }
         });
         
         document.getElementById('mainMenuBtn').addEventListener('click', function() {
             window.location.href = 'index.html';
         });
         
-        document.getElementById('confirmSaveBtn').addEventListener('click', function() {
-            confirmAndSave();
+        document.getElementById('exitBtn').addEventListener('click', function() {
+            window.location.href = 'index.html';
         });
+        
+        var confirmBtn = document.getElementById('confirmSaveBtn');
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', function() {
+                confirmAndSave();
+            });
+        }
+    }
+    
+    function showReadOnlyScorecard() {
+        // Open view-game.html in same tab to see read-only scorecard
+        // User can navigate back using back button
+        window.location.href = 'view-game.html';
     }
     
     function confirmAndSave() {
@@ -456,11 +495,12 @@ var HandicapAdjustment = (function() {
     // Main Entry Point
     // ============================================================
     
-    function init(gameId, archiveId, winningPlayers, matchPoints, holeResults) {
+    function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
         currentGameId = gameId;
         currentArchiveId = archiveId;
         allPlayers = winningPlayers.teamA.concat(winningPlayers.teamB);
         matchPointsData = matchPoints;
+        isViewOnly = isViewOnlyMode || false;
         
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
@@ -480,7 +520,7 @@ var HandicapAdjustment = (function() {
             
             // Calculate and display table
             var calculationResult = calculateAllAdjustments(anchorPlayer);
-            showAdjustmentTable(calculationResult, anchorPlayer.name);
+            showAdjustmentTable(calculationResult, anchorPlayer.name, isViewOnly);
         });
     }
     
@@ -491,15 +531,15 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - Added scroll indicator when table is wider than screen
-   - Even narrower column widths (50-55px)
-   - Better mobile touch scrolling
-   - Change Anchor dropdown for multiple anchor candidates
-   - Confirm & Save button
-   - Recalculation on anchor change
-   - Integration with history-record.js
-DEPENDS ON: Firebase Firestore, history-record.js
+   - ADDED: Four buttons on main screen: Back to Scorecard, Celebration Screen, Main Menu, Exit
+   - ADDED: View-only mode for non-updaters (no confirm button)
+   - ADDED: Multi-anchor selection - first updater picks anchor, confirms
+   - ADDED: Once confirmed, all devices see confirmed table (read-only)
+   - ADDED: Back to Scorecard returns to read-only scorecard with return button
+   - ADDED: Celebration Screen replays celebration and returns to this screen
+   - Maintains scroll indicator for wide tables
+DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js
 STATUS: Ready for integration
 */
