@@ -1,14 +1,12 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.04
+VERSION: 1.05
 KEY CHANGES:
-   - FIXED: Celebration image always uses celebration.jpg (already working)
-   - ADDED: Manual trigger support for "SEE RESULTS" button
-   - REMOVED: Auto-celebration (now controlled by real-game.html)
-   - Button: "🏌️ Handicap Adjustment" calls HandicapAdjustment.init()
-   - 8 confetti bursts, 2 seconds apart
-   - Match Complete as main heading
-   - Added celebration replay function for HCP screen
+   - Celebration image path uses Capital C: /images/celebration/Celebration.jpg
+   - Added proper modal cleanup to prevent stacking
+   - replayCelebration() now removes existing modals before showing new one
+   - celebration screen styling refined to match new modal designs
+   - Handicap Adjustment button style updated
 DEPENDS ON: Firebase Firestore, js/hcp-adjust.js
 STATUS: Ready for integration
 */
@@ -16,20 +14,26 @@ STATUS: Ready for integration
 var SignCard = (function() {
     
     // ============================================================
-    // Fixed celebration image - always uses celebration.jpg
+    // Fixed celebration image - uses Celebration.jpg (Capital C)
     // ============================================================
     
     function getCelebrationImage() {
         return "/images/celebration/Celebration.jpg";
     }
     
-    // Wait for other flight to sign
+    // ============================================================
+    // Waiting Screen (legacy - kept for compatibility)
+    // ============================================================
+    
     function showWaitingScreen(flightNumber, onComplete) {
+        // Remove any existing waiting modal first
+        var existingModal = document.getElementById('waitingModal');
+        if (existingModal) existingModal.remove();
+        
         var modalHtml = `
             <div class="modal-overlay" id="waitingModal" style="z-index: 3000;">
-                <div class="waiting-modal">
-                    <div class="waiting-title">✓ CARD SIGNED</div>
-                    <div class="waiting-animation">⏳ 🏌️‍♂️ ⏳</div>
+                <div class="waiting-modal-container">
+                    <div class="waiting-title">⌛ CARD SIGNED</div>
                     <div class="waiting-message">Waiting for Flight ${flightNumber === 1 ? 2 : 1}...</div>
                     <div class="waiting-submessage">The match will complete when both cards are signed.</div>
                     <div class="waiting-spinner"></div>
@@ -46,6 +50,10 @@ var SignCard = (function() {
         var modal = document.getElementById('waitingModal');
         if (modal) modal.remove();
     }
+    
+    // ============================================================
+    // Confetti - 8 bursts, 2 seconds apart
+    // ============================================================
     
     function launchConfetti() {
         var repeatCount = 0;
@@ -72,7 +80,15 @@ var SignCard = (function() {
         burst();
     }
     
+    // ============================================================
+    // Celebration Screen
+    // ============================================================
+    
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
+        // Remove any existing celebration modal
+        var existingModal = document.getElementById('celebrationModal');
+        if (existingModal) existingModal.remove();
+        
         var winnerText = "";
         var winnerClass = "";
         
@@ -107,7 +123,7 @@ var SignCard = (function() {
             <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                 <div class="celebration-modal">
                     ${imageHtml}
-                    <div class="celebration-title">🎉 MATCH COMPLETE! 🎉</div>
+                    <div class="celebration-title">🏆 MATCH COMPLETE! 🏆</div>
                     <div class="celebration-beer">🍺 BEER TIME! 🍺</div>
                     <div class="celebration-winner ${winnerClass}">
                         ${winnerText}
@@ -121,7 +137,7 @@ var SignCard = (function() {
                             ${playersHtml || (winner === 'Tie' ? '<span class="winning-player">Great Match!</span>' : '')}
                         </div>
                     </div>
-                    <button class="celebration-btn" id="handicapAdjustBtn">🏌️ Handicap Adjustment</button>
+                    <button class="celebration-btn" id="handicapAdjustBtn">🏌️ HANDICAP ADJUSTMENT</button>
                 </div>
             </div>
         `;
@@ -131,14 +147,16 @@ var SignCard = (function() {
         // Style the Handicap Adjustment button
         var hcpBtn = document.getElementById('handicapAdjustBtn');
         if (hcpBtn) {
-            hcpBtn.style.fontSize = '1.2rem';
-            hcpBtn.style.padding = '16px 28px';
+            hcpBtn.style.fontSize = '1rem';
+            hcpBtn.style.padding = '14px 28px';
             hcpBtn.style.background = '#ffaa44';
             hcpBtn.style.color = '#1a3a1a';
             hcpBtn.style.border = 'none';
             hcpBtn.style.fontWeight = '800';
             hcpBtn.style.letterSpacing = '1px';
+            hcpBtn.style.borderRadius = '40px';
             hcpBtn.style.cursor = 'pointer';
+            hcpBtn.style.width = '100%';
         }
         
         addCelebrationStyles();
@@ -146,7 +164,6 @@ var SignCard = (function() {
         
         document.getElementById("handicapAdjustBtn").addEventListener("click", function() {
             document.getElementById("celebrationModal").remove();
-            // Call HandicapAdjustment module if available
             if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
                 HandicapAdjustment.init(gameId, winningPlayers);
             } else {
@@ -168,17 +185,26 @@ var SignCard = (function() {
     
     // Replay celebration screen (for HCP screen "Celebration Screen" button)
     function replayCelebration() {
+        // Remove any existing celebration modal
+        var existingModal = document.getElementById('celebrationModal');
+        if (existingModal) existingModal.remove();
+        
         if (window._currentCelebrationData) {
             var data = window._currentCelebrationData;
             showCelebrationScreen(data.winner, data.teamAScore, data.teamBScore, data.winningPlayers, data.gameId, data.onClose);
         }
     }
     
+    // ============================================================
+    // Styles
+    // ============================================================
+    
     function addCelebrationStyles() {
         if (document.getElementById('sign-card-styles')) return;
         
         var styles = `
             <style id="sign-card-styles">
+                /* Modal Overlay */
                 .modal-overlay {
                     position: fixed;
                     top: 0;
@@ -191,45 +217,43 @@ var SignCard = (function() {
                     justify-content: center;
                     z-index: 3000;
                 }
-                .waiting-modal {
+                
+                /* Waiting Modal */
+                .waiting-modal-container {
                     background: #1a1a1a;
-                    border-radius: 32px;
-                    padding: 40px;
-                    max-width: 380px;
+                    border-radius: 28px;
+                    padding: 32px;
+                    max-width: 360px;
                     width: 90%;
                     text-align: center;
                     border: 2px solid #4caf50;
-                    box-shadow: 0 0 30px rgba(76,175,80,0.3);
                 }
                 .waiting-title {
-                    font-size: 1.8rem;
-                    font-weight: 800;
+                    font-size: 1.3rem;
+                    font-weight: 700;
                     color: #4caf50;
-                    margin-bottom: 24px;
-                }
-                .waiting-animation {
-                    font-size: 3rem;
-                    margin: 20px 0;
-                    animation: pulse 1.5s infinite;
+                    margin-bottom: 20px;
                 }
                 .waiting-message {
-                    font-size: 1.2rem;
+                    font-size: 0.95rem;
                     color: #ffaa44;
-                    margin-bottom: 12px;
+                    margin-bottom: 8px;
                 }
                 .waiting-submessage {
-                    font-size: 0.8rem;
+                    font-size: 0.75rem;
                     color: #888;
                 }
                 .waiting-spinner {
-                    width: 40px;
-                    height: 40px;
-                    border: 3px solid #333;
+                    width: 32px;
+                    height: 32px;
+                    border: 2px solid #333;
                     border-top-color: #4caf50;
                     border-radius: 50%;
-                    margin: 20px auto 0;
+                    margin: 24px auto 0;
                     animation: spin 1s linear infinite;
                 }
+                
+                /* Celebration Modal */
                 .celebration-modal {
                     background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
                     border-radius: 48px;
@@ -322,6 +346,8 @@ var SignCard = (function() {
                     background: #2a4a2a;
                     transform: scale(1.02);
                 }
+                
+                /* Confetti */
                 .confetti {
                     position: fixed;
                     width: 10px;
@@ -331,10 +357,8 @@ var SignCard = (function() {
                     animation: fall linear forwards;
                     z-index: 3001;
                 }
-                @keyframes pulse {
-                    0%, 100% { transform: scale(1); }
-                    50% { transform: scale(1.1); }
-                }
+                
+                /* Animations */
                 @keyframes spin {
                     to { transform: rotate(360deg); }
                 }
@@ -356,6 +380,10 @@ var SignCard = (function() {
         document.head.insertAdjacentHTML('beforeend', styles);
     }
     
+    // ============================================================
+    // Helpers
+    // ============================================================
+    
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -365,6 +393,10 @@ var SignCard = (function() {
             return m;
         });
     }
+    
+    // ============================================================
+    // Signature Submission
+    // ============================================================
     
     async function submitSignature(gameId, flight, captainName, collection) {
         var updatePayload = {};
@@ -396,6 +428,10 @@ var SignCard = (function() {
         return "Tie";
     }
     
+    // ============================================================
+    // Public API
+    // ============================================================
+    
     return {
         showWaitingScreen: showWaitingScreen,
         hideWaitingScreen: hideWaitingScreen,
@@ -410,15 +446,13 @@ var SignCard = (function() {
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.04
+VERSION: 1.05
 KEY CHANGES:
-   - FIXED: Celebration image always uses celebration.jpg (already working)
-   - ADDED: Manual trigger support for "SEE RESULTS" button
-   - REMOVED: Auto-celebration (now controlled by real-game.html)
-   - ADDED: replayCelebration() function for HCP screen
-   - Button: "🏌️ Handicap Adjustment" calls HandicapAdjustment.init()
-   - 8 confetti bursts, 2 seconds apart
-   - Match Complete as main heading
+   - Celebration image path uses Capital C: /images/celebration/Celebration.jpg
+   - Added proper modal cleanup to prevent stacking
+   - replayCelebration() now removes existing modals before showing new one
+   - celebration screen styling refined to match new modal designs
+   - Handicap Adjustment button style updated
 DEPENDS ON: Firebase Firestore, js/hcp-adjust.js
 STATUS: Ready for integration
 */
