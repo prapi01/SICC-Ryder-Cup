@@ -1,13 +1,14 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.05
+VERSION: 1.06
 KEY CHANGES:
-   - Celebration image path uses Capital C: /images/celebration/Celebration.jpg
+   - FIXED: Handicap Adjustment button now properly calls HandicapAdjustment.init() with archiveId
+   - FIXED: Celebration screen now properly passes winningPlayers and matchPoints to HCP module
    - Added proper modal cleanup to prevent stacking
    - replayCelebration() now removes existing modals before showing new one
    - celebration screen styling refined to match new modal designs
    - Handicap Adjustment button style updated
-DEPENDS ON: Firebase Firestore, js/hcp-adjust.js
+DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/history-record.js
 STATUS: Ready for integration
 */
 
@@ -81,6 +82,53 @@ var SignCard = (function() {
     }
     
     // ============================================================
+    // Helper: Get or create archive record for handicap adjustment
+    // ============================================================
+    
+    function ensureArchiveRecord(gameId, callback) {
+        // First check if an archive record already exists
+        if (typeof HistoryRecord !== 'undefined' && HistoryRecord.getArchivedGameByOriginalId) {
+            HistoryRecord.getArchivedGameByOriginalId(gameId, function(err, result) {
+                if (!err && result && result.id) {
+                    // Archive exists
+                    callback(null, result.id);
+                } else {
+                    // Create new pending record
+                    if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
+                        // Need to fetch game data first
+                        firebase.firestore().collection('scheduledGames').doc(gameId).get()
+                            .then(function(doc) {
+                                if (doc.exists) {
+                                    var gameData = doc.data();
+                                    var results = gameData.results || {};
+                                    var finalScores = {
+                                        teamA: results.tr?.teamA?.[17] || 9.5,
+                                        teamB: results.tr?.teamB?.[17] || 9.5
+                                    };
+                                    var signatures = gameData.signatures || {};
+                                    
+                                    HistoryRecord.createPendingRecord(gameId, gameData, results, finalScores, signatures, function(err, archiveId) {
+                                        if (err) callback(err, null);
+                                        else callback(null, archiveId);
+                                    });
+                                } else {
+                                    callback(new Error("Game not found"), null);
+                                }
+                            })
+                            .catch(function(err) {
+                                callback(err, null);
+                            });
+                    } else {
+                        callback(new Error("HistoryRecord not available"), null);
+                    }
+                }
+            });
+        } else {
+            callback(new Error("HistoryRecord not available"), null);
+        }
+    }
+    
+    // ============================================================
     // Celebration Screen
     // ============================================================
     
@@ -118,6 +166,16 @@ var SignCard = (function() {
                 <img src="${celebrationImage}" class="celebration-image" alt="Celebration" onerror="this.style.display='none'">
             </div>
         `;
+        
+        // Store data for replay and HCP
+        var celebrationData = {
+            winner: winner,
+            teamAScore: teamAScore,
+            teamBScore: teamBScore,
+            winningPlayers: winningPlayers,
+            gameId: gameId,
+            onClose: onClose
+        };
         
         var modalHtml = `
             <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
@@ -162,25 +220,53 @@ var SignCard = (function() {
         addCelebrationStyles();
         launchConfetti();
         
+        // FIXED: Handicap Adjustment button now properly gets archiveId
         document.getElementById("handicapAdjustBtn").addEventListener("click", function() {
             document.getElementById("celebrationModal").remove();
-            if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
-                HandicapAdjustment.init(gameId, winningPlayers);
-            } else {
-                console.log("HandicapAdjustment module not loaded yet");
-                if (onClose) onClose();
-            }
+            
+            // Ensure we have an archive record before opening HCP
+            ensureArchiveRecord(gameId, function(err, archiveId) {
+                if (err) {
+                    console.error("Failed to get archive record:", err);
+                    // Fallback: try to open HCP without archiveId
+                    if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
+                        HandicapAdjustment.init(gameId, null, celebrationData.winningPlayers, {}, {}, true);
+                    }
+                } else {
+                    // Build match points from cross results if available
+                    var matchPoints = {};
+                    if (typeof window !== 'undefined' && window.GameLoader) {
+                        var cache = window.GameLoader.getLocalCache();
+                        if (cache && cache.matchResults && cache.matchResults.cross) {
+                            for (var key in cache.matchResults.cross) {
+                                if (key.indexOf('_vs_') !== -1) {
+                                    var parts = key.split('_vs_');
+                                    var playerA = parts[0];
+                                    var playerB = parts[1];
+                                    var value = cache.matchResults.cross[key];
+                                    if (!matchPoints[playerA]) matchPoints[playerA] = { total: 0 };
+                                    if (value > 0) matchPoints[playerA].total += 1;
+                                    else if (value === 0) matchPoints[playerA].total += 0.5;
+                                    if (!matchPoints[playerB]) matchPoints[playerB] = { total: 0 };
+                                    if (value < 0) matchPoints[playerB].total += 1;
+                                    else if (value === 0) matchPoints[playerB].total += 0.5;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
+                        HandicapAdjustment.init(gameId, archiveId, celebrationData.winningPlayers, matchPoints, {}, false);
+                    } else {
+                        console.log("HandicapAdjustment module not loaded yet");
+                        if (celebrationData.onClose) celebrationData.onClose();
+                    }
+                }
+            });
         });
         
         // Store reference for replay functionality
-        window._currentCelebrationData = {
-            winner: winner,
-            teamAScore: teamAScore,
-            teamBScore: teamBScore,
-            winningPlayers: winningPlayers,
-            gameId: gameId,
-            onClose: onClose
-        };
+        window._currentCelebrationData = celebrationData;
     }
     
     // Replay celebration screen (for HCP screen "Celebration Screen" button)
@@ -440,19 +526,22 @@ var SignCard = (function() {
         submitSignature: submitSignature,
         isGameCompleted: isGameCompleted,
         getWinner: getWinner,
-        launchConfetti: launchConfetti
+        launchConfetti: launchConfetti,
+        ensureArchiveRecord: ensureArchiveRecord
     };
 })();
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.05
+VERSION: 1.06
 KEY CHANGES:
-   - Celebration image path uses Capital C: /images/celebration/Celebration.jpg
+   - FIXED: Handicap Adjustment button now properly calls HandicapAdjustment.init() with archiveId
+   - FIXED: Celebration screen now properly passes winningPlayers and matchPoints to HCP module
+   - Added ensureArchiveRecord() helper to get or create archive record
    - Added proper modal cleanup to prevent stacking
    - replayCelebration() now removes existing modals before showing new one
    - celebration screen styling refined to match new modal designs
    - Handicap Adjustment button style updated
-DEPENDS ON: Firebase Firestore, js/hcp-adjust.js
+DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/history-record.js
 STATUS: Ready for integration
 */
