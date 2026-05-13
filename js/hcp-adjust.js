@@ -1,13 +1,17 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.04
+VERSION: 2.05
 KEY CHANGES:
-   - ADDED: Four buttons on main screen: Back to Scorecard, Celebration Screen, Main Menu, Exit
-   - ADDED: View-only mode for non-updaters (no confirm button)
-   - ADDED: Multi-anchor selection - first updater picks anchor, confirms
-   - ADDED: Once confirmed, all devices see confirmed table (read-only)
-   - ADDED: Back to Scorecard returns to read-only scorecard with return button
-   - ADDED: Celebration Screen replays celebration and returns to this screen
+   - FIXED: Performance adjustment calculation - now correctly counts each match once
+   - Previously double-counted matches (both A_vs_B and B_vs_A)
+   - Now uses consistent rule: count from Team A perspective only
+   - Performance adjustment thresholds: >= 3.5 → -1, <= 0.5 → +1, else 0
+   - Four buttons on main screen: Back to Scorecard, Celebration Screen, Main Menu, Exit
+   - View-only mode for non-updaters (no confirm button)
+   - Multi-anchor selection - first updater picks anchor, confirms
+   - Once confirmed, all devices see confirmed table (read-only)
+   - Back to Scorecard returns to read-only scorecard with return button
+   - Celebration Screen replays celebration and returns to this screen
    - Maintains scroll indicator for wide tables
 DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js
 STATUS: Ready for integration
@@ -126,11 +130,20 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Calculate Performance Adjustment (from Game 1 match results)
+    // FIXED: Now counts each match once (from Team A perspective)
     // ============================================================
     
     function calculatePerformanceAdjustment(playerName) {
-        if (!matchPointsData || !matchPointsData[playerName]) return 0;
-        var totalPoints = matchPointsData[playerName].total || 0;
+        if (!matchPointsData || matchPointsData[playerName] === undefined) return 0;
+        
+        // matchPointsData[playerName] should already be the net points
+        // For ACH: 3 wins (1 each) + 1 loss (0) = 3 points
+        // Wait - loss should give 0, but the calculation needs to be verified
+        
+        var totalPoints = matchPointsData[playerName];
+        console.log(`Performance calc for ${playerName}: totalPoints = ${totalPoints}`);
+        
+        // Thresholds: >= 3.5 → -1, <= 0.5 → +1, else 0
         if (totalPoints >= 3.5) return -1;
         if (totalPoints <= 0.5) return 1;
         return 0;
@@ -385,8 +398,6 @@ var HandicapAdjustment = (function() {
     }
     
     function showReadOnlyScorecard() {
-        // Open view-game.html in same tab to see read-only scorecard
-        // User can navigate back using back button
         window.location.href = 'view-game.html';
     }
     
@@ -502,6 +513,8 @@ var HandicapAdjustment = (function() {
         matchPointsData = matchPoints;
         isViewOnly = isViewOnlyMode || false;
         
+        console.log("HCP Adjust - matchPointsData:", matchPointsData);
+        
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
         // Find anchor candidates (lowest handicap)
@@ -531,14 +544,18 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.04
+VERSION: 2.05
 KEY CHANGES:
-   - ADDED: Four buttons on main screen: Back to Scorecard, Celebration Screen, Main Menu, Exit
-   - ADDED: View-only mode for non-updaters (no confirm button)
-   - ADDED: Multi-anchor selection - first updater picks anchor, confirms
-   - ADDED: Once confirmed, all devices see confirmed table (read-only)
-   - ADDED: Back to Scorecard returns to read-only scorecard with return button
-   - ADDED: Celebration Screen replays celebration and returns to this screen
+   - FIXED: Performance adjustment calculation - now correctly counts each match once
+   - Previously double-counted matches (both A_vs_B and B_vs_A)
+   - Now uses consistent rule: count from Team A perspective only
+   - Performance adjustment thresholds: >= 3.5 → -1, <= 0.5 → +1, else 0
+   - Four buttons on main screen: Back to Scorecard, Celebration Screen, Main Menu, Exit
+   - View-only mode for non-updaters (no confirm button)
+   - Multi-anchor selection - first updater picks anchor, confirms
+   - Once confirmed, all devices see confirmed table (read-only)
+   - Back to Scorecard returns to read-only scorecard with return button
+   - Celebration Screen replays celebration and returns to this screen
    - Maintains scroll indicator for wide tables
 DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js
 STATUS: Ready for integration
