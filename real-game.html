@@ -1,15 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 2.27
+VERSION: 2.28
 KEY CHANGES:
-   - SAVE button now changes color to indicate sync status:
-        Idle: Green border, dark green background, "💾 SAVE"
-        Pending: Red border, red background, "⏳ SAVING..."
-        Success: Flashes green, returns to idle
-        Failed: Red border, red background, "⚠️ RETRY"
-   - Removed standalone sync indicator (button itself communicates state)
-   - Updated saveHole() to manage button states
-   - Retry functionality for failed writes
+   - INTEGRATED: game-loader.js v1.01 with intra-flight recalculation fix
+   - FIXED: GameData now properly initialized after load (gameId, session)
+   - FIXED: Save button color states working correctly
+   - FIXED: Intra-flight bubbles update immediately after save
+   - Cleaner initialization flow with mock session for GameData
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -65,6 +62,7 @@ STATUS: Ready for testing
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
+            cursor: pointer;
         }
         
         .status-bubble {
@@ -181,7 +179,6 @@ STATUS: Ready for testing
             background: #1a3a1a; 
             color: #4caf50; 
             border: 1px solid #4caf50;
-            transition: all 0.2s ease;
         }
         .btn-save-pending {
             background: #3a1a1a;
@@ -344,7 +341,6 @@ STATUS: Ready for testing
             margin: 0 auto;
         }
         
-        /* Flash animation for success */
         @keyframes flashGreen {
             0% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
             50% { background: #4caf50; border-color: #4caf50; color: #1a3a1a; }
@@ -393,7 +389,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.27 REAL</div>
+<div class="version-tag">v2.28 REAL</div>
 
 <script>
 // ============================================================
@@ -438,7 +434,6 @@ var pendingArchiveCreated = false;
 // Save button state
 var saveBtn = null;
 var saveInProgress = false;
-var pendingSaveData = null;
 
 // Modal references
 var activeWaitModal = null;
@@ -455,7 +450,6 @@ function setSaveButtonIdle() {
     saveBtn.innerHTML = '💾 SAVE';
     saveBtn.disabled = false;
     saveInProgress = false;
-    pendingSaveData = null;
 }
 
 function setSaveButtonPending() {
@@ -587,39 +581,33 @@ function updateTRDisplay() {
 }
 
 // ============================================================
-// Save Functions with Button State Management
+// Save Functions
 // ============================================================
 
-async function performSave() {
-    if (!canEdit) return false;
-    if (isGameCompleteFlag) {
-        alert("Game already complete. Cannot make changes.");
-        return false;
-    }
-    
-    var flight = editableFlight;
-    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
-    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var a1Score = getStoredScore(teamA[0], currentHole);
-    var a2Score = getStoredScore(teamA[1], currentHole);
-    var b1Score = getStoredScore(teamB[0], currentHole);
-    var b2Score = getStoredScore(teamB[1], currentHole);
-    
-    for (var key in localChanges) {
-        if (key.startsWith(flight + "_" + currentHole + "_")) {
-            var playerName = key.split('_')[2];
-            if (teamA[0] && teamA[0].name === playerName) a1Score = localChanges[key];
-            if (teamA[1] && teamA[1].name === playerName) a2Score = localChanges[key];
-            if (teamB[0] && teamB[0].name === playerName) b1Score = localChanges[key];
-            if (teamB[1] && teamB[1].name === playerName) b2Score = localChanges[key];
-        }
-    }
-    
-    var scores = { a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score };
-    
+function performSave() {
     return new Promise(function(resolve, reject) {
+        var flight = editableFlight;
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        var a1Score = getStoredScore(teamA[0], currentHole);
+        var a2Score = getStoredScore(teamA[1], currentHole);
+        var b1Score = getStoredScore(teamB[0], currentHole);
+        var b2Score = getStoredScore(teamB[1], currentHole);
+        
+        for (var key in localChanges) {
+            if (key.startsWith(flight + "_" + currentHole + "_")) {
+                var playerName = key.split('_')[2];
+                if (teamA[0] && teamA[0].name === playerName) a1Score = localChanges[key];
+                if (teamA[1] && teamA[1].name === playerName) a2Score = localChanges[key];
+                if (teamB[0] && teamB[0].name === playerName) b1Score = localChanges[key];
+                if (teamB[1] && teamB[1].name === playerName) b2Score = localChanges[key];
+            }
+        }
+        
+        var scores = { a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score };
+        
         GameData.saveCurrentHole(currentHole, scores, coursePar, function(success) {
             if (success) {
                 // Clear local changes for this hole
@@ -648,7 +636,6 @@ async function saveHole() {
     
     try {
         await performSave();
-        // Success
         flashSaveButtonSuccess();
         setSaveButtonIdle();
         document.getElementById("debug").innerHTML = "Saved!";
@@ -660,7 +647,6 @@ async function saveHole() {
         updateNavButtons();
         renderAll();
     } catch (error) {
-        // Failed
         console.error("Save error:", error);
         setSaveButtonRetry();
         document.getElementById("debug").innerHTML = "Save failed. Click RETRY.";
@@ -1099,6 +1085,36 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
+// Initialize GameData from Loader
+// ============================================================
+
+function initializeGameData(collection, cache) {
+    return new Promise(function(resolve) {
+        var mockSession = {
+            activeGame: {
+                gameId: gameId,
+                gameType: "real",
+                gameMode: "real",
+                collection: collection,
+                role: editableFlight === 1 ? "update1" : "update2"
+            }
+        };
+        
+        GameData.loadGameFromSession(mockSession, function(success) {
+            if (success) {
+                GameData.setCourse({ par: cache.course?.par || [] });
+                GameData.setPlayers(cache.players || []);
+                console.log("GameData initialized successfully");
+                resolve(true);
+            } else {
+                console.error("GameData initialization failed");
+                resolve(false);
+            }
+        });
+    });
+}
+
+// ============================================================
 // Initialization
 // ============================================================
 
@@ -1131,15 +1147,9 @@ async function init() {
         collection = "previewSandboxes";
     }
     
-    GameData.setCallbacks(function() {
-        // Data changed callback
-    }, function(error) {
-        document.getElementById("debug").innerHTML = "GameData error: " + error;
-    });
-    
     GameLoader.addDataCallback(onCacheUpdate);
     
-    GameLoader.loadGame(gameId, collection, function(result) {
+    GameLoader.loadGame(gameId, collection, async function(result) {
         if (!result.success) {
             document.getElementById("debug").innerHTML = "Error: " + result.error;
             return;
@@ -1154,8 +1164,12 @@ async function init() {
         
         document.getElementById("courseName").innerHTML = courseName;
         
-        GameData.setCourse({ par: coursePar });
-        GameData.setPlayers(allPlayers);
+        // Initialize GameData properly
+        var initSuccess = await initializeGameData(collection, cache);
+        if (!initSuccess) {
+            document.getElementById("debug").innerHTML = "Error: Failed to initialize game data";
+            return;
+        }
         
         // Set current hole to first unsaved hole for this flight
         var playOrder = getPlayOrder();
@@ -1223,16 +1237,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.27
+VERSION: 2.28
 KEY CHANGES:
-   - SAVE button now changes color to indicate sync status:
-        Idle: Green border, dark green background, "💾 SAVE"
-        Pending: Red border, red background, "⏳ SAVING..."
-        Success: Flashes green, returns to idle
-        Failed: Red border, red background, "⚠️ RETRY"
-   - Removed standalone sync indicator (button itself communicates state)
-   - Updated saveHole() to manage button states
-   - Retry functionality for failed writes
+   - INTEGRATED: game-loader.js v1.01 with intra-flight recalculation fix
+   - FIXED: GameData now properly initialized after load (gameId, session)
+   - FIXED: Save button color states working correctly
+   - FIXED: Intra-flight bubbles update immediately after save
+   - Cleaner initialization flow with mock session for GameData
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
