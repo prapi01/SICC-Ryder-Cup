@@ -1,10 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 2.31
+VERSION: 2.32
 KEY CHANGES:
-   - FIXED: SAVE button now displays hole number (e.g., "💾 SAVE H3")
-   - Updated updateSaveButton() to include currentHole in button text
-   - All other functionality identical to v2.30
+   - FIXED: Waiting screen now transitions to Game Complete when both flights sign
+   - FIXED: Snapshot listener detects both signatures and calls showGameCompleteScreen()
+   - FIXED: pendingArchiveCreated flag set immediately to prevent duplicate archive records
+   - FIXED: SAVE button shows hole number (e.g., "💾 SAVE H3")
+   - Celebration and Handicap flow now properly triggered from Game Complete screen
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -387,7 +389,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.31 REAL</div>
+<div class="version-tag">v2.32 REAL</div>
 
 <script>
 // ============================================================
@@ -972,14 +974,19 @@ function showSignCardModal() {
             if (editableFlight === 1) cache.signatures.f1 = true;
             else cache.signatures.f2 = true;
             
-            if (SignCard.isGameCompleted(cache.signatures)) {
-                createPendingArchiveRecord(function(err, archiveId) {
-                    if (err) console.error("Failed to create archive record:", err);
-                    isGameCompleteFlag = true;
-                    celebrationTriggered = false;
-                    showGameCompleteScreen();
-                    renderAll();
-                });
+            // Check if both flights have now signed
+            if (cache.signatures.f1 && cache.signatures.f2) {
+                // Both signed - create archive and show Game Complete
+                if (!pendingArchiveCreated) {
+                    pendingArchiveCreated = true;
+                    createPendingArchiveRecord(function(err, archiveId) {
+                        if (err) console.error("Failed to create archive record:", err);
+                        isGameCompleteFlag = true;
+                        celebrationTriggered = false;
+                        showGameCompleteScreen();
+                        renderAll();
+                    });
+                }
             } else {
                 showWaitingScreen();
             }
@@ -1249,6 +1256,20 @@ function onCacheUpdate(cache) {
     allPlayers = cache.players;
     startingHole = cache.startingHole;
     
+    // Check if both signatures are now true and game not already complete
+    if (cache.signatures.f1 && cache.signatures.f2 && !isGameCompleteFlag && !celebrationTriggered) {
+        console.log("Both signatures detected - showing Game Complete screen");
+        if (!pendingArchiveCreated) {
+            pendingArchiveCreated = true;
+            createPendingArchiveRecord(function(err, archiveId) {
+                if (err) console.error("Failed to create archive record:", err);
+                isGameCompleteFlag = true;
+                showGameCompleteScreen();
+                renderAll();
+            });
+        }
+    }
+    
     renderAll();
 }
 
@@ -1405,11 +1426,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.31
+VERSION: 2.32
 KEY CHANGES:
-   - FIXED: SAVE button now displays hole number (e.g., "💾 SAVE H3")
-   - Updated updateSaveButtonText() function and called in navigation and render
-   - All other functionality identical to v2.30
+   - FIXED: Waiting screen now transitions to Game Complete when both flights sign
+   - FIXED: Snapshot listener detects both signatures and calls showGameCompleteScreen()
+   - FIXED: pendingArchiveCreated flag set immediately to prevent duplicate archive records
+   - FIXED: SAVE button shows hole number (e.g., "💾 SAVE H3")
+   - Celebration and Handicap flow now properly triggered from Game Complete screen
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
