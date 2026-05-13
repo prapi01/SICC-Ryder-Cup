@@ -1,11 +1,12 @@
 /*
 FILE: js/history-record.js
-VERSION: 1.00
-PURPOSE: History Record Manager for SICC Ryder Cup
-          - Create archive records when games complete (pending_handicap status)
-          - Update records with handicap adjustment data (completed status)
-          - Retrieve archived games for "View Previous Games" feature
-          - Clean separation from game logic
+VERSION: 1.01
+KEY CHANGES:
+   - FIXED: Duplicate archive records - now checks if record exists before creating
+   - Added checkExisting flag to prevent multiple records for same originalGameId
+   - createPendingRecord() now queries existing records first
+   - If record exists, returns existing ID instead of creating new one
+   - Maintains backward compatibility with existing callers
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
@@ -15,7 +16,36 @@ var HistoryRecord = (function() {
     var COLLECTION = "historyGames";
     
     // ============================================================
+    // Check if archive record already exists for a game
+    // ============================================================
+    
+    function getExistingRecord(gameId, callback) {
+        if (!gameId) {
+            if (callback) callback("No game ID provided", null);
+            return;
+        }
+        
+        firebase.firestore().collection(COLLECTION)
+            .where("originalGameId", "==", gameId)
+            .limit(1)
+            .get()
+            .then(function(snapshot) {
+                if (snapshot.empty) {
+                    callback(null, null);
+                } else {
+                    var doc = snapshot.docs[0];
+                    callback(null, { id: doc.id, data: doc.data() });
+                }
+            })
+            .catch(function(err) {
+                console.error("Error checking existing record:", err);
+                callback(err, null);
+            });
+    }
+    
+    // ============================================================
     // Create initial archive record (without handicap adjustment)
+    // WITH duplicate prevention - checks existing first
     // ============================================================
     
     function createPendingRecord(gameId, gameData, results, finalScores, signatures, callback) {
@@ -25,113 +55,132 @@ var HistoryRecord = (function() {
             return;
         }
         
-        // Determine winner based on final scores
-        var winner = "Tie";
-        var winnerText = "Tie Game!";
-        if (finalScores.teamA > finalScores.teamB) {
-            winner = "A";
-            winnerText = "Team A Wins!";
-        } else if (finalScores.teamB > finalScores.teamA) {
-            winner = "B";
-            winnerText = "Team B Wins!";
-        }
-        
-        // Build archive data (without handicap adjustment)
-        var archiveData = {
-            originalGameId: gameId,
-            completedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            status: "pending_handicap",
+        // FIRST: Check if an archive record already exists for this game
+        getExistingRecord(gameId, function(err, existing) {
+            if (err) {
+                console.error("Error checking existing record:", err);
+                if (callback) callback(err, null);
+                return;
+            }
             
-            gameInfo: {
-                date: gameData.date,
-                course: {
-                    name: gameData.course.name,
-                    id: gameData.course.id,
-                    par: gameData.course.par,
-                    si: gameData.course.si
-                },
-                startingHole: gameData.startingHole || 1,
-                teamGameFormat: gameData.teamGameFormat || "tournament"
-            },
+            if (existing && existing.id) {
+                // Archive already exists - return the existing ID
+                console.log("Archive record already exists for game:", gameId, "ID:", existing.id);
+                if (callback) callback(null, existing.id);
+                return;
+            }
             
-            players: gameData.players.map(function(p) {
-                return {
-                    name: p.name,
-                    label: p.label,
-                    handicap: p.handicap,
-                    team: p.team,
-                    flight: p.flight
-                };
-            }),
+            // No existing record - proceed with creation
+            console.log("No existing archive record found. Creating new one for game:", gameId);
             
-            finalResults: {
-                teamAScore: finalScores.teamA,
-                teamBScore: finalScores.teamB,
-                winner: winner,
-                winnerText: winnerText
-            },
+            // Determine winner based on final scores
+            var winner = "Tie";
+            var winnerText = "Tie Game!";
+            if (finalScores.teamA > finalScores.teamB) {
+                winner = "A";
+                winnerText = "Team A Wins!";
+            } else if (finalScores.teamB > finalScores.teamA) {
+                winner = "B";
+                winnerText = "Team B Wins!";
+            }
             
-            results: {
-                version: results.version || 1,
-                game1: {
-                    pointsA: results.game1?.pointsA || new Array(18).fill(8),
-                    pointsB: results.game1?.pointsB || new Array(18).fill(8)
-                },
-                game2: {
-                    flight1: {
-                        leader: results.game2?.flight1?.leader || new Array(18).fill("AS"),
-                        cumulativePoints: results.game2?.flight1?.cumulativePoints || new Array(18).fill(0)
+            // Build archive data (without handicap adjustment)
+            var archiveData = {
+                originalGameId: gameId,
+                completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                status: "pending_handicap",
+                
+                gameInfo: {
+                    date: gameData.date,
+                    course: {
+                        name: gameData.course.name,
+                        id: gameData.course.id,
+                        par: gameData.course.par,
+                        si: gameData.course.si
                     },
-                    flight2: {
-                        leader: results.game2?.flight2?.leader || new Array(18).fill("AS"),
-                        cumulativePoints: results.game2?.flight2?.cumulativePoints || new Array(18).fill(0)
+                    startingHole: gameData.startingHole || 1,
+                    teamGameFormat: gameData.teamGameFormat || "tournament"
+                },
+                
+                players: gameData.players.map(function(p) {
+                    return {
+                        name: p.name,
+                        label: p.label,
+                        handicap: p.handicap,
+                        team: p.team,
+                        flight: p.flight
+                    };
+                }),
+                
+                finalResults: {
+                    teamAScore: finalScores.teamA,
+                    teamBScore: finalScores.teamB,
+                    winner: winner,
+                    winnerText: winnerText
+                },
+                
+                results: {
+                    version: results.version || 1,
+                    game1: {
+                        pointsA: results.game1?.pointsA || new Array(18).fill(8),
+                        pointsB: results.game1?.pointsB || new Array(18).fill(8)
+                    },
+                    game2: {
+                        flight1: {
+                            leader: results.game2?.flight1?.leader || new Array(18).fill("AS"),
+                            cumulativePoints: results.game2?.flight1?.cumulativePoints || new Array(18).fill(0)
+                        },
+                        flight2: {
+                            leader: results.game2?.flight2?.leader || new Array(18).fill("AS"),
+                            cumulativePoints: results.game2?.flight2?.cumulativePoints || new Array(18).fill(0)
+                        }
+                    },
+                    game3: {
+                        leader: results.game3?.leader || new Array(18).fill("AS"),
+                        nettA: results.game3?.nettA || new Array(18).fill(0),
+                        nettB: results.game3?.nettB || new Array(18).fill(0)
+                    },
+                    tr: {
+                        teamA: results.tr?.teamA || new Array(18).fill(9.5),
+                        teamB: results.tr?.teamB || new Array(18).fill(9.5),
+                        teamAGreen: results.tr?.teamAGreen || new Array(18).fill(true),
+                        teamBGreen: results.tr?.teamBGreen || new Array(18).fill(true)
+                    },
+                    computedUpToHole: results.computedUpToHole || 0
+                },
+                
+                signatures: {
+                    f1: {
+                        signed: signatures.f1?.signed === true,
+                        signedAt: signatures.f1?.signedAt || null,
+                        captainName: signatures.f1?.captainName || null
+                    },
+                    f2: {
+                        signed: signatures.f2?.signed === true,
+                        signedAt: signatures.f2?.signedAt || null,
+                        captainName: signatures.f2?.captainName || null
                     }
                 },
-                game3: {
-                    leader: results.game3?.leader || new Array(18).fill("AS"),
-                    nettA: results.game3?.nettA || new Array(18).fill(0),
-                    nettB: results.game3?.nettB || new Array(18).fill(0)
-                },
-                tr: {
-                    teamA: results.tr?.teamA || new Array(18).fill(9.5),
-                    teamB: results.tr?.teamB || new Array(18).fill(9.5),
-                    teamAGreen: results.tr?.teamAGreen || new Array(18).fill(true),
-                    teamBGreen: results.tr?.teamBGreen || new Array(18).fill(true)
-                },
-                computedUpToHole: results.computedUpToHole || 0
-            },
+                
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
             
-            signatures: {
-                f1: {
-                    signed: signatures.f1?.signed === true,
-                    signedAt: signatures.f1?.signedAt || null,
-                    captainName: signatures.f1?.captainName || null
-                },
-                f2: {
-                    signed: signatures.f2?.signed === true,
-                    signedAt: signatures.f2?.signedAt || null,
-                    captainName: signatures.f2?.captainName || null
-                }
-            },
-            
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        
-        try {
-            var docRef = firebase.firestore().collection(COLLECTION).doc();
-            archiveData.archiveId = docRef.id;
-            
-            docRef.set(archiveData).then(function() {
-                console.log("Pending archive record created:", docRef.id);
-                if (callback) callback(null, docRef.id);
-            }).catch(function(err) {
-                console.error("Error creating archive record:", err);
+            try {
+                var docRef = firebase.firestore().collection(COLLECTION).doc();
+                archiveData.archiveId = docRef.id;
+                
+                docRef.set(archiveData).then(function() {
+                    console.log("Pending archive record created:", docRef.id);
+                    if (callback) callback(null, docRef.id);
+                }).catch(function(err) {
+                    console.error("Error creating archive record:", err);
+                    if (callback) callback(err, null);
+                });
+            } catch (err) {
+                console.error("Exception creating archive record:", err);
                 if (callback) callback(err, null);
-            });
-        } catch (err) {
-            console.error("Exception creating archive record:", err);
-            if (callback) callback(err, null);
-        }
+            }
+        });
     }
     
     // ============================================================
@@ -255,24 +304,48 @@ var HistoryRecord = (function() {
             });
     }
     
+    // ============================================================
+    // Delete archive record (for cleanup)
+    // ============================================================
+    
+    function deleteArchiveRecord(archiveId, callback) {
+        if (!archiveId) {
+            if (callback) callback("No archive ID provided");
+            return;
+        }
+        
+        firebase.firestore().collection(COLLECTION).doc(archiveId).delete()
+            .then(function() {
+                console.log("Archive record deleted:", archiveId);
+                if (callback) callback(null);
+            })
+            .catch(function(err) {
+                console.error("Error deleting archive record:", err);
+                if (callback) callback(err);
+            });
+    }
+    
     return {
         createPendingRecord: createPendingRecord,
         updateWithHandicap: updateWithHandicap,
         getArchivedGame: getArchivedGame,
         getArchivedGames: getArchivedGames,
-        getArchivedGameByOriginalId: getArchivedGameByOriginalId
+        getArchivedGameByOriginalId: getArchivedGameByOriginalId,
+        getExistingRecord: getExistingRecord,
+        deleteArchiveRecord: deleteArchiveRecord
     };
 })();
 
 /*
 FILE: js/history-record.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - Initial release
-   - Creates pending archive records (without handicap adjustment)
-   - Updates records with handicap adjustment data
-   - Retrieves archived games for history view
-   - Clean separation from game logic
+   - FIXED: Duplicate archive records - now checks if record exists before creating
+   - Added checkExisting flag to prevent multiple records for same originalGameId
+   - createPendingRecord() now queries existing records first
+   - If record exists, returns existing ID instead of creating new one
+   - Added deleteArchiveRecord() for cleanup
+   - Maintains backward compatibility with existing callers
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
