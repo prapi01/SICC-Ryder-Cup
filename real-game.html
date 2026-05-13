@@ -1,11 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 2.29
+VERSION: 2.30
 KEY CHANGES:
-   - FIXED: saveResultsToFirestore() now called after successful hole save
-   - This triggers result recalculation and updates computedUpToHole
-   - Ensures TR, Game 1, Game 2, Game 3 points are correctly stored in Firestore
-   - Cascade recalculation now works properly for subsequent holes
+   - FIXED: teamGameFormat now properly accessible in calculateHoleResults() scope
+   - FIXED: saveResultsToFirestore() automatically called after successful save
+   - Added global variable references to ensure all calculation functions have required scope
+   - Results now calculate and save automatically when second flight saves a hole
+   - All other functionality identical to v2.29 (save button states, modals, etc.)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -388,7 +389,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.29 REAL</div>
+<div class="version-tag">v2.30 REAL</div>
 
 <script>
 // ============================================================
@@ -419,6 +420,7 @@ var canEdit = true;
 var currentHole = 1;
 var localChanges = {};
 var startingHole = 1;
+var teamGameFormat = "tournament";  // Global scope - accessible everywhere
 
 var courseName = "";
 var coursePar = [];
@@ -580,7 +582,7 @@ function updateTRDisplay() {
 }
 
 // ============================================================
-// Results Calculation and Storage (copied from earlier working version)
+// Results Calculation and Storage
 // ============================================================
 
 function initializeEmptyResults() {
@@ -780,7 +782,7 @@ function performSave() {
                     }
                 }
                 
-                // FIXED: Call saveResultsToFirestore to update results in Firestore
+                // Call saveResultsToFirestore to update results in Firestore
                 await saveResultsToFirestore(currentHole);
                 
                 resolve(true);
@@ -936,7 +938,7 @@ function updateNavButtons() {
 }
 
 // ============================================================
-// Modal Functions
+// Modal Functions (same as v2.29)
 // ============================================================
 
 function showSignCardModal() {
@@ -1329,6 +1331,11 @@ async function init() {
         allPlayers = cache.players || [];
         startingHole = cache.startingHole;
         
+        // Ensure teamGameFormat is set from cache
+        if (cache.teamGameFormat) {
+            teamGameFormat = cache.teamGameFormat;
+        }
+        
         document.getElementById("courseName").innerHTML = courseName;
         
         // Initialize GameData properly
@@ -1404,12 +1411,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.29
+VERSION: 2.30
 KEY CHANGES:
-   - FIXED: saveResultsToFirestore() now called after successful hole save
-   - This triggers result recalculation and updates computedUpToHole
-   - Ensures TR, Game 1, Game 2, Game 3 points are correctly stored in Firestore
-   - Cascade recalculation now works properly for subsequent holes
+   - FIXED: teamGameFormat now properly accessible in calculateHoleResults() scope
+   - FIXED: saveResultsToFirestore() automatically called after successful save
+   - Added global variable references to ensure all calculation functions have required scope
+   - Results now calculate and save automatically when second flight saves a hole
+   - All other functionality identical to v2.29 (save button states, modals, etc.)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
