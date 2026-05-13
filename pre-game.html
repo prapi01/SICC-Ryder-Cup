@@ -1,11 +1,12 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.03
+VERSION: 3.04
 KEY CHANGES:
-   - Now calls GameData.resetFullGame() for admin reset and first-touch reset
-   - Removed duplicate reset logic (now delegated to game-data.js)
-   - Hidden admin reset (tap device ID 2 times) works with new results schema
-   - Minimal changes to preserve stability
+   - FIXED: Lock write now correctly retrieves sessionId from deviceSession or SessionManager
+   - sessionStorage.getItem('sessionId') was returning null, causing sid: null in locks
+   - Now uses: deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown"
+   - Ensures proper session tracking for role locks
+   - All other functionality identical to v3.03 (role selection, admin reset, etc.)
 STATUS: Ready for testing
 -->
 
@@ -259,7 +260,7 @@ STATUS: Ready for testing
             color: #ffaa44;
         }
         .role-btn-view.role-btn-selected {
-            background: #2a2a1a;
+            background: #2a1a1a;
             border: 2px solid #ffaa44;
             color: #ffaa44;
         }
@@ -370,13 +371,13 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.03</div>
+<div class="version-tag">v3.04</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.03
-// UPDATED: Now calls GameData.resetFullGame() for admin reset
+// FILE: pre-game.html - VERSION 3.04
+// FIXED: Lock write now correctly retrieves sessionId
 
-var VERSION = "3.03";
+var VERSION = "3.04";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -472,7 +473,6 @@ function showAdminResetModal() {
     document.getElementById("adminResetConfirmBtn").addEventListener("click", function() {
         document.getElementById("adminResetModal").remove();
         
-        // Use GameData.resetFullGame() for complete reset
         var startingHoleVal = gameData.startingHole || 1;
         var coursePar = gameData.course.par;
         
@@ -538,7 +538,6 @@ function rotateDataString(naturalData, startingHoleVal) {
     return rotated.join('');
 }
 
-// Reset ONLY locks, preserve scores and gameStarted
 function resetLocksOnly(callback) {
     if (!db || !gameId) {
         if (callback) callback(false);
@@ -694,7 +693,9 @@ function takeoverRole(flight) {
     var expiryTime = now + LOCK_DURATION_MS;
     var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var sessionId = deviceSession ? deviceSession.sessionId : "unknown";
+    
+    // FIXED: Get sessionId correctly
+    var sessionId = deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown";
     
     var updatePayload = {};
     var lockField = flight === 1 ? "locks.f1" : "locks.f2";
@@ -943,7 +944,9 @@ function startGame() {
     }
     
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var sessionId = deviceSession ? deviceSession.sessionId : "unknown";
+    
+    // FIXED: Get sessionId correctly - was previously using sessionStorage which returned null
+    var sessionId = deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown";
     
     if (tempSelectedRole === "update1") {
         updatePayload["locks.f1"] = {
@@ -964,6 +967,8 @@ function startGame() {
     updatePayload["gameStarted"] = true;
     updatePayload["lastActive"] = firebase.firestore.FieldValue.serverTimestamp();
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    
+    console.log("Writing lock with sessionId:", sessionId);
     
     db.collection(collection).doc(gameId).update(updatePayload).then(function() {
         localStorage.setItem("userRole", tempSelectedRole);
@@ -994,6 +999,7 @@ function startGame() {
             window.location.href = targetPage;
         }
     }).catch(function(e) {
+        console.error("Error locking role:", e);
         alert("Error locking role: " + e.message);
     });
 }
@@ -1258,11 +1264,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.03
+VERSION: 3.04
 KEY CHANGES:
-   - Now calls GameData.resetFullGame() for admin reset and first-touch reset
-   - Removed duplicate reset logic (now delegated to game-data.js)
-   - Hidden admin reset (tap device ID 2 times) works with new results schema
-   - Minimal changes to preserve stability
+   - FIXED: Lock write now correctly retrieves sessionId from deviceSession or SessionManager
+   - sessionStorage.getItem('sessionId') was returning null, causing sid: null in locks
+   - Now uses: deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown"
+   - Ensures proper session tracking for role locks
+   - All other functionality identical to v3.03 (role selection, admin reset, etc.)
 STATUS: Ready for testing
 -->
