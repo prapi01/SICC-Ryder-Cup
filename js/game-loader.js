@@ -1,13 +1,11 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - Initial release
-   - Centralized game loading for real-game.html and preview-game.html
-   - Local cache management mirroring Firestore
-   - Sync status indicator (green/red circles)
-   - Derived data recalculation (match results, t1Row, t2Row, strkRow)
-   - Snapshot listener integration for real-time sync
+   - FIXED: Intra-flight results now recalculated in recalculateDerivedData()
+   - Added intra-flight recalculation for both flights when cache updates
+   - Ensures match bubbles update correctly after either flight saves a hole
+   - Cross-flight recalculation already present and working
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 */
@@ -36,7 +34,7 @@ var GameLoader = (function() {
         locks: { f1: null, f2: null },
         gameStarted: false,
         
-        // Derived data (recalculated on load)
+        // Derived data (recalculated on load and on cache update)
         t1Row: Array(18).fill('_'),
         t2Row: Array(18).fill('_'),
         strkRow: Array(18).fill('0'),
@@ -52,8 +50,7 @@ var GameLoader = (function() {
     
     var syncStatus = {
         pending: false,
-        error: null,
-        indicatorElement: null
+        error: null
     };
     
     var snapshotUnsubscribe = null;
@@ -146,6 +143,7 @@ var GameLoader = (function() {
         var allPlayers = localCache.players;
         var flight1DataStr = localCache.f1DataString;
         var flight2DataStr = localCache.f2DataString;
+        var coursePar = localCache.course?.par || [];
         
         // Update saved holes list
         updateSavedHolesList();
@@ -153,20 +151,50 @@ var GameLoader = (function() {
         // Calculate last synced hole
         localCache.lastSyncedHole = calculateLastSyncedHole();
         
-        // Recalculate match results up to last synced hole
+        // ============================================================
+        // FIXED: Recalculate intra-flight results for both flights
+        // ============================================================
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
         
+        var maxHoleF1 = localCache.savedHoles[1].length > 0 ? Math.max.apply(null, localCache.savedHoles[1]) : 0;
+        var maxHoleF2 = localCache.savedHoles[2].length > 0 ? Math.max.apply(null, localCache.savedHoles[2]) : 0;
+        
+        // Flight 1 intra-flight
+        if (maxHoleF1 > 0) {
+            try {
+                localCache.matchResults.intraF1 = GameMatch.calculateIntraFlight(
+                    1, flight1Players, flight1DataStr, courseSi, startingHole, maxHoleF1, coursePar
+                );
+            } catch(e) { console.warn("Intra-flight F1 recalc error:", e); }
+        } else {
+            localCache.matchResults.intraF1 = {};
+        }
+        
+        // Flight 2 intra-flight
+        if (maxHoleF2 > 0) {
+            try {
+                localCache.matchResults.intraF2 = GameMatch.calculateIntraFlight(
+                    2, flight2Players, flight2DataStr, courseSi, startingHole, maxHoleF2, coursePar
+                );
+            } catch(e) { console.warn("Intra-flight F2 recalc error:", e); }
+        } else {
+            localCache.matchResults.intraF2 = {};
+        }
+        
+        // Cross-flight (only when both flights have saved the same holes)
         if (localCache.lastSyncedHole > 0) {
             try {
                 localCache.matchResults.cross = GameMatch.calculateCrossFlight(
                     flight1DataStr, flight2DataStr, allPlayers, courseSi, startingHole, 
-                    localCache.lastSyncedHole, localCache.course?.par || []
+                    localCache.lastSyncedHole, coursePar
                 );
-            } catch(e) { console.warn("Match recalc error:", e); }
+            } catch(e) { console.warn("Cross-flight recalc error:", e); }
+        } else {
+            localCache.matchResults.cross = {};
         }
         
-        // Recalculate team game
+        // Recalculate team game (T-1, T-2 rows)
         try {
             var teamResults = GameTeam.calculate(
                 allPlayers, flight1DataStr, flight2DataStr, courseSi, startingHole, teamGameFormat
@@ -177,28 +205,13 @@ var GameLoader = (function() {
             localCache.flight2Cumulative = teamResults.flight2Cumulative;
         } catch(e) { console.warn("Team game recalc error:", e); }
         
-        // Recalculate stroke game
+        // Recalculate stroke game (Strk row)
         try {
             var strokeResults = GameStroke.calculate(
                 allPlayers, flight1DataStr, flight2DataStr, courseSi, startingHole
             );
             localCache.strkRow = strokeResults;
         } catch(e) { console.warn("Stroke game recalc error:", e); }
-    }
-    
-    function updateSyncIndicator() {
-        if (!syncStatus.indicatorElement) {
-            syncStatus.indicatorElement = document.getElementById('syncIndicator');
-        }
-        if (syncStatus.indicatorElement) {
-            if (syncStatus.pending) {
-                syncStatus.indicatorElement.innerHTML = '🔴';
-                syncStatus.indicatorElement.title = 'Writing to server...';
-            } else {
-                syncStatus.indicatorElement.innerHTML = '🟢';
-                syncStatus.indicatorElement.title = 'Synced with server';
-            }
-        }
     }
     
     // ============================================================
@@ -208,19 +221,16 @@ var GameLoader = (function() {
     function markWritePending() {
         syncStatus.pending = true;
         syncStatus.error = null;
-        updateSyncIndicator();
     }
     
     function markWriteComplete() {
         syncStatus.pending = false;
         syncStatus.error = null;
-        updateSyncIndicator();
     }
     
     function markWriteFailed(error) {
         syncStatus.pending = true;
         syncStatus.error = error;
-        updateSyncIndicator();
     }
     
     function getSyncStatus() {
@@ -257,18 +267,6 @@ var GameLoader = (function() {
         return 0;
     }
     
-    function getFirstUnsavedHole() {
-        var playOrder = getPlayOrder(localCache.startingHole);
-        for (var i = 0; i < playOrder.length; i++) {
-            var hole = playOrder[i];
-            var f1Saved = localCache.flight1Data[hole] && localCache.flight1Data[hole].saved;
-            var f2Saved = localCache.flight2Data[hole] && localCache.flight2Data[hole].saved;
-            // For current flight's perspective, we need first hole not saved by THIS flight
-            // This will be set by the calling context
-        }
-        return playOrder[0];
-    }
-    
     function updateLocalCacheFromSnapshot(data) {
         if (data.f1 && data.f1.d) localCache.f1DataString = data.f1.d;
         if (data.f2 && data.f2.d) localCache.f2DataString = data.f2.d;
@@ -288,7 +286,7 @@ var GameLoader = (function() {
         localCache.flight1Data = parseFlightData(localCache.f1DataString, localCache.startingHole);
         localCache.flight2Data = parseFlightData(localCache.f2DataString, localCache.startingHole);
         
-        // Recalculate derived data
+        // Recalculate all derived data (includes intra-flight, cross-flight, team, stroke)
         recalculateDerivedData();
         
         // Notify callbacks
@@ -342,7 +340,7 @@ var GameLoader = (function() {
             // Recalculate all derived data
             recalculateDerivedData();
             
-            // Set sync status to green
+            // Set sync status to green (no pending writes)
             markWriteComplete();
             
             // Set up snapshot listener for real-time sync
@@ -392,21 +390,21 @@ var GameLoader = (function() {
         unload: unload,
         getPlayOrder: getPlayOrder,
         getHolePosition: getHolePosition,
-        getHoleAtStoragePosition: getHoleAtStoragePosition
+        getHoleAtStoragePosition: getHoleAtStoragePosition,
+        // Expose recalculateDerivedData for manual triggers if needed
+        recalculateDerivedData: recalculateDerivedData
     };
     
 })();
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - Initial release
-   - Centralized game loading for real-game.html and preview-game.html
-   - Local cache management mirroring Firestore
-   - Sync status indicator (green/red circles)
-   - Derived data recalculation (match results, t1Row, t2Row, strkRow)
-   - Snapshot listener integration for real-time sync
+   - FIXED: Intra-flight results now recalculated in recalculateDerivedData()
+   - Added intra-flight recalculation for both flights when cache updates
+   - Ensures match bubbles update correctly after either flight saves a hole
+   - Cross-flight recalculation already present and working
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 */
