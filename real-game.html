@@ -1,12 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 2.28
+VERSION: 2.29
 KEY CHANGES:
-   - INTEGRATED: game-loader.js v1.01 with intra-flight recalculation fix
-   - FIXED: GameData now properly initialized after load (gameId, session)
-   - FIXED: Save button color states working correctly
-   - FIXED: Intra-flight bubbles update immediately after save
-   - Cleaner initialization flow with mock session for GameData
+   - FIXED: saveResultsToFirestore() now called after successful hole save
+   - This triggers result recalculation and updates computedUpToHole
+   - Ensures TR, Game 1, Game 2, Game 3 points are correctly stored in Firestore
+   - Cascade recalculation now works properly for subsequent holes
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -389,7 +388,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.28 REAL</div>
+<div class="version-tag">v2.29 REAL</div>
 
 <script>
 // ============================================================
@@ -581,6 +580,170 @@ function updateTRDisplay() {
 }
 
 // ============================================================
+// Results Calculation and Storage (copied from earlier working version)
+// ============================================================
+
+function initializeEmptyResults() {
+    return {
+        version: 1,
+        game1: {
+            matches: {},
+            pointsA: new Array(18).fill(8),
+            pointsB: new Array(18).fill(8)
+        },
+        game2: {
+            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
+            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
+            pointsA: new Array(18).fill(1),
+            pointsB: new Array(18).fill(1)
+        },
+        game3: {
+            leader: new Array(18).fill("AS"),
+            nettA: new Array(18).fill(0),
+            nettB: new Array(18).fill(0),
+            pointsA: new Array(18).fill(0.5),
+            pointsB: new Array(18).fill(0.5)
+        },
+        tr: {
+            teamA: new Array(18).fill(9.5),
+            teamB: new Array(18).fill(9.5),
+            teamAGreen: new Array(18).fill(true),
+            teamBGreen: new Array(18).fill(true)
+        },
+        computedUpToHole: 0,
+        lastComputedAt: null
+    };
+}
+
+function calculateHoleResults(holeNumber) {
+    var cache = GameLoader.getLocalCache();
+    var position = getHolePosition(holeNumber);
+    
+    var f1Hole = cache.flight1Data[holeNumber];
+    var f2Hole = cache.flight2Data[holeNumber];
+    
+    if (!f1Hole || !f1Hole.saved || !f2Hole || !f2Hole.saved) {
+        return null;
+    }
+    
+    // Get team results for this position
+    var teamResults = GameTeam.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, teamGameFormat);
+    var flight1Total = teamResults.flight1Cumulative[position];
+    var flight2Total = teamResults.flight2Cumulative[position];
+    
+    // Get stroke results
+    var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole);
+    var strokeLeader = strokeResults[position];
+    
+    // Calculate Game 1 points (cross-flight)
+    var tempMatchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
+    var game1PointsA = 0;
+    var game1PointsB = 0;
+    var matchCount = 0;
+    
+    for (var key in tempMatchResults) {
+        if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
+            var firstPlayerName = key.split("_vs_")[0];
+            var firstPlayer = allPlayers.find(function(p) { return p.name === firstPlayerName; });
+            if (firstPlayer && firstPlayer.team === "A") {
+                var value = tempMatchResults[key];
+                if (value > 0) game1PointsA += 1;
+                else if (value < 0) game1PointsB += 1;
+                else { game1PointsA += 0.5; game1PointsB += 0.5; }
+                matchCount++;
+            }
+        }
+    }
+    
+    // Game 2 points
+    var flight1PointsA = (flight1Total > 0) ? 1 : (flight1Total < 0) ? 0 : 0.5;
+    var flight1PointsB = (flight1Total > 0) ? 0 : (flight1Total < 0) ? 1 : 0.5;
+    var flight2PointsA = (flight2Total > 0) ? 1 : (flight2Total < 0) ? 0 : 0.5;
+    var flight2PointsB = (flight2Total > 0) ? 0 : (flight2Total < 0) ? 1 : 0.5;
+    var game2PointsA = flight1PointsA + flight2PointsA;
+    var game2PointsB = flight1PointsB + flight2PointsB;
+    
+    // Game 3 points
+    var game3PointsA = (strokeLeader === "A") ? 1 : (strokeLeader === "B") ? 0 : 0.5;
+    var game3PointsB = (strokeLeader === "A") ? 0 : (strokeLeader === "B") ? 1 : 0.5;
+    
+    // TR
+    var trA = game1PointsA + game2PointsA + game3PointsA;
+    var trB = game1PointsB + game2PointsB + game3PointsB;
+    var trAGreen = (trA > trB);
+    var trBGreen = (trB > trA);
+    
+    return {
+        position: position,
+        game1PointsA: game1PointsA,
+        game1PointsB: game1PointsB,
+        game2PointsA: game2PointsA,
+        game2PointsB: game2PointsB,
+        game3PointsA: game3PointsA,
+        game3PointsB: game3PointsB,
+        trA: trA,
+        trB: trB,
+        trAGreen: trAGreen,
+        trBGreen: trBGreen
+    };
+}
+
+async function saveResultsToFirestore(holeNumber) {
+    var resultsData = calculateHoleResults(holeNumber);
+    if (!resultsData) {
+        console.log('No results data for hole', holeNumber);
+        return;
+    }
+    
+    var position = resultsData.position;
+    var updatePayload = {};
+    
+    updatePayload["results.game1.pointsA." + position] = resultsData.game1PointsA;
+    updatePayload["results.game1.pointsB." + position] = resultsData.game1PointsB;
+    updatePayload["results.game2.pointsA." + position] = resultsData.game2PointsA;
+    updatePayload["results.game2.pointsB." + position] = resultsData.game2PointsB;
+    updatePayload["results.game3.pointsA." + position] = resultsData.game3PointsA;
+    updatePayload["results.game3.pointsB." + position] = resultsData.game3PointsB;
+    updatePayload["results.tr.teamA." + position] = resultsData.trA;
+    updatePayload["results.tr.teamB." + position] = resultsData.trB;
+    updatePayload["results.tr.teamAGreen." + position] = resultsData.trAGreen;
+    updatePayload["results.tr.teamBGreen." + position] = resultsData.trBGreen;
+    
+    if (position + 1 > (GameLoader.getLocalCache().results?.computedUpToHole || 0)) {
+        updatePayload["results.computedUpToHole"] = position + 1;
+    }
+    updatePayload["results.lastComputedAt"] = new Date().toISOString();
+    
+    try {
+        await db.collection("scheduledGames").doc(gameId).update(updatePayload);
+        console.log('Results saved for hole', holeNumber, 'position', position);
+        
+        // Update local cache results
+        var cache = GameLoader.getLocalCache();
+        if (!cache.results) {
+            cache.results = initializeEmptyResults();
+        }
+        cache.results.game1.pointsA[position] = resultsData.game1PointsA;
+        cache.results.game1.pointsB[position] = resultsData.game1PointsB;
+        cache.results.game2.pointsA[position] = resultsData.game2PointsA;
+        cache.results.game2.pointsB[position] = resultsData.game2PointsB;
+        cache.results.game3.pointsA[position] = resultsData.game3PointsA;
+        cache.results.game3.pointsB[position] = resultsData.game3PointsB;
+        cache.results.tr.teamA[position] = resultsData.trA;
+        cache.results.tr.teamB[position] = resultsData.trB;
+        cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
+        cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
+        if (position + 1 > cache.results.computedUpToHole) {
+            cache.results.computedUpToHole = position + 1;
+        }
+        cache.results.lastComputedAt = updatePayload["results.lastComputedAt"];
+        
+    } catch (error) {
+        console.error('Error saving results:', error);
+    }
+}
+
+// ============================================================
 // Save Functions
 // ============================================================
 
@@ -608,7 +771,7 @@ function performSave() {
         
         var scores = { a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score };
         
-        GameData.saveCurrentHole(currentHole, scores, coursePar, function(success) {
+        GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
             if (success) {
                 // Clear local changes for this hole
                 for (var key in localChanges) {
@@ -616,6 +779,10 @@ function performSave() {
                         delete localChanges[key];
                     }
                 }
+                
+                // FIXED: Call saveResultsToFirestore to update results in Firestore
+                await saveResultsToFirestore(currentHole);
+                
                 resolve(true);
             } else {
                 reject(new Error("Save failed"));
@@ -1237,13 +1404,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.28
+VERSION: 2.29
 KEY CHANGES:
-   - INTEGRATED: game-loader.js v1.01 with intra-flight recalculation fix
-   - FIXED: GameData now properly initialized after load (gameId, session)
-   - FIXED: Save button color states working correctly
-   - FIXED: Intra-flight bubbles update immediately after save
-   - Cleaner initialization flow with mock session for GameData
+   - FIXED: saveResultsToFirestore() now called after successful hole save
+   - This triggers result recalculation and updates computedUpToHole
+   - Ensures TR, Game 1, Game 2, Game 3 points are correctly stored in Firestore
+   - Cascade recalculation now works properly for subsequent holes
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
