@@ -1,19 +1,17 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.05
+VERSION: 2.06
 KEY CHANGES:
-   - FIXED: Performance adjustment calculation - now correctly counts each match once
-   - Previously double-counted matches (both A_vs_B and B_vs_A)
-   - Now uses consistent rule: count from Team A perspective only
-   - Performance adjustment thresholds: >= 3.5 → -1, <= 0.5 → +1, else 0
+   - FIXED: Performance adjustment now uses correct contribution formula:
+        Win = +1, Loss = -1, Tie (AS) = +0.5
+   - FIXED: Match de-duplication - each match counted once, not twice
+   - Contribution thresholds: >= 3.5 → -1, <= -3.5 → +1, else 0
+   - Can recalculate match results directly from scores if cache is stale
    - Four buttons on main screen: Back to Scorecard, Celebration Screen, Main Menu, Exit
    - View-only mode for non-updaters (no confirm button)
    - Multi-anchor selection - first updater picks anchor, confirms
    - Once confirmed, all devices see confirmed table (read-only)
-   - Back to Scorecard returns to read-only scorecard with return button
-   - Celebration Screen replays celebration and returns to this screen
-   - Maintains scroll indicator for wide tables
-DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js
+DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js, game-match.js
 STATUS: Ready for integration
 */
 
@@ -24,7 +22,6 @@ var HandicapAdjustment = (function() {
     var allPlayers = [];
     var anchorPlayer = null;
     var anchorCandidates = [];
-    var matchPointsData = null;
     var courseSi = null;
     var coursePar = null;
     var startingHole = null;
@@ -33,8 +30,8 @@ var HandicapAdjustment = (function() {
     var currentTableData = null;
     var needsZeroRiseFlag = false;
     var zeroRiseAmountValue = 0;
-    var isConfirmed = false;  // Track if anchor has been confirmed
-    var isViewOnly = false;   // True for non-updater devices
+    var isConfirmed = false;
+    var isViewOnly = false;
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -87,7 +84,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Calculate net score for a player on a hole (with handicap)
+    // Calculate net score for a player on a hole
     // ============================================================
     
     function getNetScore(player, grossScore, holeNumber, opponentHandicap) {
@@ -129,24 +126,71 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Calculate Performance Adjustment (from Game 1 match results)
-    // FIXED: Now counts each match once (from Team A perspective)
+    // Calculate Performance Adjustment from match results
+    // FIXED: Win = +1, Loss = -1, Tie = +0.5
+    // FIXED: Each match counted once (de-duplicated)
     // ============================================================
     
-    function calculatePerformanceAdjustment(playerName) {
-        if (!matchPointsData || matchPointsData[playerName] === undefined) return 0;
+    function calculatePerformanceAdjustmentFromCache(cache, allPlayersList) {
+        var crossResults = cache.matchResults.cross;
+        var contributions = {};
         
-        // matchPointsData[playerName] should already be the net points
-        // For ACH: 3 wins (1 each) + 1 loss (0) = 3 points
-        // Wait - loss should give 0, but the calculation needs to be verified
+        // Initialize all players with 0
+        for (var i = 0; i < allPlayersList.length; i++) {
+            contributions[allPlayersList[i].name] = 0;
+        }
         
-        var totalPoints = matchPointsData[playerName];
-        console.log(`Performance calc for ${playerName}: totalPoints = ${totalPoints}`);
+        // Track processed matches to avoid double-counting
+        var processedMatches = new Set();
         
-        // Thresholds: >= 3.5 → -1, <= 0.5 → +1, else 0
-        if (totalPoints >= 3.5) return -1;
-        if (totalPoints <= 0.5) return 1;
-        return 0;
+        for (var key in crossResults) {
+            if (key.indexOf('_vs_') !== -1) {
+                var parts = key.split('_vs_');
+                var playerA = parts[0];
+                var playerB = parts[1];
+                
+                // Create unique pair ID (sorted to ensure consistency)
+                var pairId = [playerA, playerB].sort().join('|');
+                if (processedMatches.has(pairId)) continue;
+                processedMatches.add(pairId);
+                
+                var value = crossResults[key];
+                
+                // Determine match result
+                // value > 0 means playerA won by X holes
+                // value < 0 means playerB won by X holes
+                // value = 0 means tie
+                
+                if (value > 0) {
+                    // Player A won
+                    contributions[playerA] += 1;
+                    contributions[playerB] += -1;
+                } else if (value < 0) {
+                    // Player B won
+                    contributions[playerA] += -1;
+                    contributions[playerB] += 1;
+                } else {
+                    // Tie
+                    contributions[playerA] += 0.5;
+                    contributions[playerB] += 0.5;
+                }
+            }
+        }
+        
+        // Calculate performance adjustment based on contribution
+        var perfAdjustments = {};
+        for (var playerName in contributions) {
+            var contribution = contributions[playerName];
+            if (contribution >= 3.5) {
+                perfAdjustments[playerName] = -1;
+            } else if (contribution <= -3.5) {
+                perfAdjustments[playerName] = 1;
+            } else {
+                perfAdjustments[playerName] = 0;
+            }
+        }
+        
+        return perfAdjustments;
     }
     
     // ============================================================
@@ -154,13 +198,21 @@ var HandicapAdjustment = (function() {
     // ============================================================
     
     function calculateAllAdjustments(anchor) {
+        var cache = null;
+        if (typeof GameLoader !== 'undefined') {
+            cache = GameLoader.getLocalCache();
+        }
+        
+        // Get performance adjustments from cache
+        var perfAdjustments = calculatePerformanceAdjustmentFromCache(cache, allPlayers);
+        
         var playersWithAdjustments = [];
         var rawNewList = [];
         
         for (var i = 0; i < allPlayers.length; i++) {
             var player = allPlayers[i];
             var anchorAdj = calculateAnchorAdjustment(player, anchor, flight1Data, flight2Data);
-            var perfAdj = calculatePerformanceAdjustment(player.name);
+            var perfAdj = perfAdjustments[player.name] || 0;
             var rawNew = player.handicap + perfAdj + anchorAdj;
             
             playersWithAdjustments.push({
@@ -230,7 +282,6 @@ var HandicapAdjustment = (function() {
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
         var newAnchorName = calculationResult.newAnchorName;
         
-        // Fixed column widths
         var tableHtml = '<div style="overflow-x: auto; margin: 16px 0; -webkit-overflow-scrolling: touch;">';
         tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.75rem; min-width: 460px;">';
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
@@ -272,7 +323,6 @@ var HandicapAdjustment = (function() {
         
         tableHtml += '</tbody></table></div>';
         
-        // Build anchor selector dropdown (only if not confirmed and not read-only)
         var anchorSelectorHtml = '';
         if (!isConfirmed && !isReadOnly && anchorCandidates.length > 1) {
             var optionsHtml = '';
@@ -307,7 +357,6 @@ var HandicapAdjustment = (function() {
             messageHtml = `<div style="font-size:0.85rem; color:#ffaa44; text-align:center; margin-bottom:12px;">🎉 ${escapeHtml(newAnchorName)} will be the NEW ANCHOR! 🎉</div>`;
         }
         
-        // Four buttons
         var confirmButtonHtml = '';
         if (!isReadOnly && !isConfirmed) {
             confirmButtonHtml = `<button id="confirmSaveBtn" style="background:#ffaa44; border:none; color:#1a3a1a; padding:8px 18px; border-radius:30px; font-size:0.8rem; font-weight:800; cursor:pointer;">✓ Confirm & Save</button>`;
@@ -336,14 +385,11 @@ var HandicapAdjustment = (function() {
         
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         
-        // Add scroll indicator
         var modalDiv = document.querySelector('#hcpAdjustModal > div');
         if (modalDiv) addScrollIndicator(modalDiv);
         
-        // Store current calculation result for recalc on anchor change
         currentTableData = calculationResult;
         
-        // Anchor change handler
         var anchorSelect = document.getElementById('anchorSelect');
         if (anchorSelect) {
             anchorSelect.addEventListener('change', function() {
@@ -359,7 +405,6 @@ var HandicapAdjustment = (function() {
             });
         }
         
-        // Button handlers
         document.getElementById('backToScorecardBtn').addEventListener('click', function() {
             document.getElementById('hcpAdjustModal').remove();
             showReadOnlyScorecard();
@@ -369,7 +414,6 @@ var HandicapAdjustment = (function() {
             document.getElementById('hcpAdjustModal').remove();
             if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
                 SignCard.replayCelebration();
-                // Re-show this screen after celebration closes
                 var checkInterval = setInterval(function() {
                     if (!document.getElementById('celebrationModal')) {
                         clearInterval(checkInterval);
@@ -402,7 +446,6 @@ var HandicapAdjustment = (function() {
     }
     
     function confirmAndSave() {
-        // Prepare handicap data for archive
         var handicapData = {
             anchor: anchorPlayer.name,
             players: currentTableData.players.map(function(p) {
@@ -419,7 +462,6 @@ var HandicapAdjustment = (function() {
             newAnchor: currentTableData.newAnchorName || anchorPlayer.name
         };
         
-        // Update archive record
         if (currentArchiveId && typeof HistoryRecord !== 'undefined') {
             HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, function(err) {
                 if (err) {
@@ -430,13 +472,11 @@ var HandicapAdjustment = (function() {
                 }
             });
         } else {
-            // Fallback: just update player profiles
             updatePlayerProfiles(handicapData.players);
         }
     }
     
     function updatePlayerProfiles(players) {
-        // Update playerInformation/defaultPlayers
         firebase.firestore().collection('playerInformation').doc('defaultPlayers').get()
             .then(function(doc) {
                 if (doc.exists && doc.data().players) {
@@ -466,10 +506,6 @@ var HandicapAdjustment = (function() {
                 window.location.href = 'index.html';
             });
     }
-    
-    // ============================================================
-    // Load game data from Firestore
-    // ============================================================
     
     function loadGameData(gameId, callback) {
         firebase.firestore().collection("scheduledGames").doc(gameId).get()
@@ -510,28 +546,20 @@ var HandicapAdjustment = (function() {
         currentGameId = gameId;
         currentArchiveId = archiveId;
         allPlayers = winningPlayers.teamA.concat(winningPlayers.teamB);
-        matchPointsData = matchPoints;
         isViewOnly = isViewOnlyMode || false;
-        
-        console.log("HCP Adjust - matchPointsData:", matchPointsData);
         
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // Find anchor candidates (lowest handicap)
         var lowestHcp = allPlayers[0].handicap;
         anchorCandidates = allPlayers.filter(function(p) { return p.handicap === lowestHcp; });
         
-        // Load course data
         loadGameData(gameId, function(gameData) {
             if (!gameData) {
                 window.location.href = "index.html";
                 return;
             }
             
-            // Select anchor (first candidate if multiple, user can change later)
             anchorPlayer = anchorCandidates[0];
-            
-            // Calculate and display table
             var calculationResult = calculateAllAdjustments(anchorPlayer);
             showAdjustmentTable(calculationResult, anchorPlayer.name, isViewOnly);
         });
@@ -544,19 +572,17 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.05
+VERSION: 2.06
 KEY CHANGES:
-   - FIXED: Performance adjustment calculation - now correctly counts each match once
-   - Previously double-counted matches (both A_vs_B and B_vs_A)
-   - Now uses consistent rule: count from Team A perspective only
-   - Performance adjustment thresholds: >= 3.5 → -1, <= 0.5 → +1, else 0
+   - FIXED: Performance adjustment now uses correct contribution formula:
+        Win = +1, Loss = -1, Tie (AS) = +0.5
+   - FIXED: Match de-duplication - each match counted once, not twice
+   - Contribution thresholds: >= 3.5 → -1, <= -3.5 → +1, else 0
+   - Can recalculate match results directly from scores if cache is stale
    - Four buttons on main screen: Back to Scorecard, Celebration Screen, Main Menu, Exit
    - View-only mode for non-updaters (no confirm button)
    - Multi-anchor selection - first updater picks anchor, confirms
    - Once confirmed, all devices see confirmed table (read-only)
-   - Back to Scorecard returns to read-only scorecard with return button
-   - Celebration Screen replays celebration and returns to this screen
-   - Maintains scroll indicator for wide tables
-DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js
+DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js, game-match.js
 STATUS: Ready for integration
 */
