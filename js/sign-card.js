@@ -20,7 +20,7 @@ var SignCard = (function() {
     // ============================================================
     
     function getCelebrationImage() {
-        return "/images/celebration/celebration.jpg";
+        return "/images/celebration/Celebration.jpg";
     }
     
     // Wait for other flight to sign
