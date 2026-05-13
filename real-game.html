@@ -1,12 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 2.30
+VERSION: 2.31
 KEY CHANGES:
-   - FIXED: teamGameFormat now properly accessible in calculateHoleResults() scope
-   - FIXED: saveResultsToFirestore() automatically called after successful save
-   - Added global variable references to ensure all calculation functions have required scope
-   - Results now calculate and save automatically when second flight saves a hole
-   - All other functionality identical to v2.29 (save button states, modals, etc.)
+   - FIXED: SAVE button now displays hole number (e.g., "💾 SAVE H3")
+   - Updated updateSaveButton() to include currentHole in button text
+   - All other functionality identical to v2.30
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -389,7 +387,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.30 REAL</div>
+<div class="version-tag">v2.31 REAL</div>
 
 <script>
 // ============================================================
@@ -420,7 +418,7 @@ var canEdit = true;
 var currentHole = 1;
 var localChanges = {};
 var startingHole = 1;
-var teamGameFormat = "tournament";  // Global scope - accessible everywhere
+var teamGameFormat = "tournament";
 
 var courseName = "";
 var coursePar = [];
@@ -448,7 +446,7 @@ function setSaveButtonIdle() {
     if (!saveBtn) return;
     saveBtn.classList.remove('btn-save-pending', 'btn-save-retry');
     saveBtn.classList.add('btn-save');
-    saveBtn.innerHTML = '💾 SAVE';
+    updateSaveButtonText();
     saveBtn.disabled = false;
     saveInProgress = false;
 }
@@ -476,7 +474,14 @@ function flashSaveButtonSuccess() {
     saveBtn.classList.add('btn-save-flash');
     setTimeout(function() {
         saveBtn.classList.remove('btn-save-flash');
+        updateSaveButtonText();
     }, 500);
+}
+
+function updateSaveButtonText() {
+    if (!saveBtn) return;
+    if (!saveBtn.classList.contains('btn-save')) return;
+    saveBtn.innerHTML = '💾 SAVE H' + currentHole;
 }
 
 // ============================================================
@@ -628,16 +633,13 @@ function calculateHoleResults(holeNumber) {
         return null;
     }
     
-    // Get team results for this position
     var teamResults = GameTeam.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, teamGameFormat);
     var flight1Total = teamResults.flight1Cumulative[position];
     var flight2Total = teamResults.flight2Cumulative[position];
     
-    // Get stroke results
     var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole);
     var strokeLeader = strokeResults[position];
     
-    // Calculate Game 1 points (cross-flight)
     var tempMatchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
     var game1PointsA = 0;
     var game1PointsB = 0;
@@ -657,7 +659,6 @@ function calculateHoleResults(holeNumber) {
         }
     }
     
-    // Game 2 points
     var flight1PointsA = (flight1Total > 0) ? 1 : (flight1Total < 0) ? 0 : 0.5;
     var flight1PointsB = (flight1Total > 0) ? 0 : (flight1Total < 0) ? 1 : 0.5;
     var flight2PointsA = (flight2Total > 0) ? 1 : (flight2Total < 0) ? 0 : 0.5;
@@ -665,11 +666,9 @@ function calculateHoleResults(holeNumber) {
     var game2PointsA = flight1PointsA + flight2PointsA;
     var game2PointsB = flight1PointsB + flight2PointsB;
     
-    // Game 3 points
     var game3PointsA = (strokeLeader === "A") ? 1 : (strokeLeader === "B") ? 0 : 0.5;
     var game3PointsB = (strokeLeader === "A") ? 0 : (strokeLeader === "B") ? 1 : 0.5;
     
-    // TR
     var trA = game1PointsA + game2PointsA + game3PointsA;
     var trB = game1PointsB + game2PointsB + game3PointsB;
     var trAGreen = (trA > trB);
@@ -720,7 +719,6 @@ async function saveResultsToFirestore(holeNumber) {
         await db.collection("scheduledGames").doc(gameId).update(updatePayload);
         console.log('Results saved for hole', holeNumber, 'position', position);
         
-        // Update local cache results
         var cache = GameLoader.getLocalCache();
         if (!cache.results) {
             cache.results = initializeEmptyResults();
@@ -775,16 +773,12 @@ function performSave() {
         
         GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
             if (success) {
-                // Clear local changes for this hole
                 for (var key in localChanges) {
                     if (key.startsWith(flight + "_" + currentHole + "_")) {
                         delete localChanges[key];
                     }
                 }
-                
-                // Call saveResultsToFirestore to update results in Firestore
                 await saveResultsToFirestore(currentHole);
-                
                 resolve(true);
             } else {
                 reject(new Error("Save failed"));
@@ -864,6 +858,7 @@ function nextHole() {
     var nextIndex = (currentIndex + 1) % 18;
     currentHole = playOrder[nextIndex];
     
+    updateSaveButtonText();
     renderAll();
 }
 
@@ -876,6 +871,7 @@ function prevHole() {
     var prevIndex = currentIndex - 1;
     currentHole = playOrder[prevIndex];
     
+    updateSaveButtonText();
     renderAll();
 }
 
@@ -937,8 +933,12 @@ function updateNavButtons() {
     }
 }
 
+function updateSaveButton() {
+    updateSaveButtonText();
+}
+
 // ============================================================
-// Modal Functions (same as v2.29)
+// Modal Functions
 // ============================================================
 
 function showSignCardModal() {
@@ -1206,6 +1206,7 @@ function renderAll() {
     );
     
     updateNavButtons();
+    updateSaveButtonText();
 }
 
 // ============================================================
@@ -1239,7 +1240,6 @@ async function exitToMainMenu() {
 // ============================================================
 
 function onCacheUpdate(cache) {
-    // Update local variables from cache
     if (cache.course) {
         courseName = cache.course.name;
         coursePar = cache.course.par;
@@ -1249,7 +1249,6 @@ function onCacheUpdate(cache) {
     allPlayers = cache.players;
     startingHole = cache.startingHole;
     
-    // Update UI
     renderAll();
 }
 
@@ -1331,21 +1330,18 @@ async function init() {
         allPlayers = cache.players || [];
         startingHole = cache.startingHole;
         
-        // Ensure teamGameFormat is set from cache
         if (cache.teamGameFormat) {
             teamGameFormat = cache.teamGameFormat;
         }
         
         document.getElementById("courseName").innerHTML = courseName;
         
-        // Initialize GameData properly
         var initSuccess = await initializeGameData(collection, cache);
         if (!initSuccess) {
             document.getElementById("debug").innerHTML = "Error: Failed to initialize game data";
             return;
         }
         
-        // Set current hole to first unsaved hole for this flight
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
             var hole = playOrder[i];
@@ -1358,7 +1354,6 @@ async function init() {
         renderAll();
         setSaveButtonIdle();
         
-        // Set up event listeners
         document.getElementById("playOrderBtn").addEventListener("click", function() {
             GameUI.setDisplayMode("play", function() { renderAll(); });
         });
@@ -1399,7 +1394,6 @@ async function init() {
         });
     });
     
-    // Initialize UI display mode
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
@@ -1411,13 +1405,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.30
+VERSION: 2.31
 KEY CHANGES:
-   - FIXED: teamGameFormat now properly accessible in calculateHoleResults() scope
-   - FIXED: saveResultsToFirestore() automatically called after successful save
-   - Added global variable references to ensure all calculation functions have required scope
-   - Results now calculate and save automatically when second flight saves a hole
-   - All other functionality identical to v2.29 (save button states, modals, etc.)
+   - FIXED: SAVE button now displays hole number (e.g., "💾 SAVE H3")
+   - Updated updateSaveButtonText() function and called in navigation and render
+   - All other functionality identical to v2.30
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
