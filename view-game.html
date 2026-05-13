@@ -1,13 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 2.11
+VERSION: 2.12
 KEY CHANGES:
-   - ADDED: Celebration screen support for completed games (read-only)
-   - ADDED: Handicap Adjustment table access (read-only, no confirm)
-   - When game is complete, shows "🏆 VIEW RESULTS" button instead of navigation
-   - Clicking button shows celebration screen with HCP Adjust option
-   - HCP Adjust screen shows read-only table with 4 buttons (Back to Scorecard, Celebration, Main Menu, Exit)
-   - All other functionality identical to v2.10
+   - FIXED: Hole number display between navigation arrows now updates correctly
+   - Added holeNumberDisplay update in goToPrevHole(), goToNextHole(), and init()
+   - Ensures consistency between hole header, scorecard, and navigation display
+   - All other functionality identical to v2.11 (celebration, HCP adjust, etc.)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04, js/sign-card.js v1.04, js/hcp-adjust.js v2.04
 STATUS: Ready for testing
 -->
@@ -272,7 +270,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.11 VIEWER</div>
+<div class="version-tag">v2.12 VIEWER</div>
 
 <script>
 // ============================================================
@@ -577,14 +575,20 @@ function updateNavButtons() {
     nextBtn.disabled = (currentHole >= maxAllowedHole);
 }
 
+function updateHoleNumberDisplay() {
+    var holeDisplay = document.getElementById("holeNumberDisplay");
+    if (holeDisplay) {
+        holeDisplay.innerText = currentHole;
+    }
+}
+
 function goToPrevHole() {
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     
     if (currentIndex > 0) {
         currentHole = playOrder[currentIndex - 1];
-        var holeDisplay = document.getElementById("holeNumberDisplay");
-        if (holeDisplay) holeDisplay.innerText = currentHole;
+        updateHoleNumberDisplay();
         updateDisplayFromResults();
         updateMatchResults();
         calculateTR();
@@ -600,8 +604,7 @@ function goToNextHole() {
     
     if (currentIndex < 17 && currentHole < maxAllowedHole) {
         currentHole = playOrder[currentIndex + 1];
-        var holeDisplay = document.getElementById("holeNumberDisplay");
-        if (holeDisplay) holeDisplay.innerText = currentHole;
+        updateHoleNumberDisplay();
         updateDisplayFromResults();
         updateMatchResults();
         calculateTR();
@@ -747,7 +750,6 @@ function refreshFromFirestore(data) {
         var bothSigned = data.signatures.f1?.signed === true && data.signatures.f2?.signed === true;
         if (bothSigned && !isGameComplete) {
             isGameComplete = true;
-            // Try to get archive ID
             if (typeof HistoryRecord !== 'undefined') {
                 HistoryRecord.getArchivedGameByOriginalId(gameId, function(err, result) {
                     if (!err && result && result.id) {
@@ -873,6 +875,9 @@ async function init() {
         currentHole = playOrder[0];
     }
     
+    // FIXED: Update hole number display on initialization
+    updateHoleNumberDisplay();
+    
     updateSavedHolesList();
     updateMatchResults();
     updateDisplayFromResults();
@@ -907,14 +912,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 2.11
+VERSION: 2.12
 KEY CHANGES:
-   - ADDED: Celebration screen support for completed games (read-only)
-   - ADDED: Handicap Adjustment table access (read-only, no confirm)
-   - When game is complete, shows "🏆 VIEW RESULTS" button instead of navigation
-   - Clicking button shows celebration screen with HCP Adjust option
-   - HCP Adjust screen shows read-only table with 4 buttons (Back to Scorecard, Celebration, Main Menu, Exit)
-   - All other functionality identical to v2.10
+   - FIXED: Hole number display between navigation arrows now updates correctly
+   - Added holeNumberDisplay update in goToPrevHole(), goToNextHole(), and init()
+   - Ensures consistency between hole header, scorecard, and navigation display
+   - All other functionality identical to v2.11 (celebration, HCP adjust, etc.)
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04, js/sign-card.js v1.04, js/hcp-adjust.js v2.04
 STATUS: Ready for testing
 -->
