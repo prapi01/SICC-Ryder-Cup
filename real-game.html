@@ -1,20 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 2.24
+VERSION: 2.25
 KEY CHANGES:
-   - FIXED: Match bubbles now show correct hole when navigating BACK
-            updateMatchResults() accepts upToHole parameter
-            prevHole() and nextHole() pass currentHole to updateMatchResults()
-   
-   - FIXED: Cascade recalculation when editing previous holes
-            saveResultsToFirestore() now loops from changed hole position to 17
-            Recalculates and saves ALL subsequent holes up to first unsaved hole
-            Ensures FB results object always reflects correct cumulative state
-   
-   - FIXED: TR color on tie (9.5-9.5)
-            calculateTR() now forces both teams to GREEN when scores are equal
-   
-   - All other functionality identical to v2.23 (Game Complete button, simplified sign modal, etc.)
+   - FIXED: Sign Card modal now has ✍️ emoji and centered design
+   - FIXED: Waiting screen redesigned with ⌛ emoji and spinner
+   - FIXED: Game Complete screen with centered square "SEE RESULTS" button
+   - All modals now properly centered with green border consistent with UI
+   - Modal overlay CSS fixed for proper centering
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
@@ -202,59 +194,142 @@ STATUS: Ready for testing
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Simplified Sign Modal - No captain name */
-        .sign-modal {
+        /* Modal Overlay - Centered */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+        
+        /* Sign Modal Styles */
+        .sign-modal-container {
             background: #1a1a1a;
-            border-radius: 32px;
+            border-radius: 28px;
             padding: 28px;
-            max-width: 380px;
+            max-width: 360px;
             width: 90%;
             text-align: center;
             border: 2px solid #4caf50;
         }
-        .sign-title {
+        .sign-modal-title {
             font-size: 1.5rem;
-            font-weight: 800;
+            font-weight: 700;
             color: #4caf50;
             margin-bottom: 16px;
         }
-        .sign-message {
+        .sign-modal-message {
             font-size: 0.9rem;
             color: #ccc;
             margin-bottom: 24px;
         }
-        .sign-buttons {
+        .sign-modal-buttons {
             display: flex;
             gap: 12px;
-        }
-        .sign-btn-confirm {
-            flex: 2;
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            padding: 14px;
-            border-radius: 40px;
-            font-weight: 700;
-            font-size: 1rem;
-            cursor: pointer;
         }
         .sign-btn-back {
             flex: 1;
             background: #1a1a1a;
             border: 1px solid #333;
             color: #888;
-            padding: 14px;
+            padding: 12px;
             border-radius: 40px;
             font-weight: 600;
             cursor: pointer;
         }
+        .sign-btn-confirm {
+            flex: 1;
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 700;
+            cursor: pointer;
+        }
         
-        /* Game Complete Button */
-        .btn-game-complete {
+        /* Waiting Screen Styles */
+        .waiting-modal-container {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        .waiting-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 20px;
+        }
+        .waiting-message {
+            font-size: 0.95rem;
+            color: #ffaa44;
+            margin-bottom: 8px;
+        }
+        .waiting-submessage {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        .waiting-spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid #333;
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            margin: 24px auto 0;
+            animation: spin 1s linear infinite;
+        }
+        
+        /* Game Complete Styles */
+        .complete-modal-container {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        .complete-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 12px;
+        }
+        .complete-emojis {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+        }
+        .complete-message {
+            font-size: 0.85rem;
+            color: #ccc;
+            margin-bottom: 28px;
+        }
+        .complete-btn {
             background: #ffaa44;
             color: #1a3a1a;
             border: none;
+            width: 180px;
+            height: 56px;
+            border-radius: 12px;
+            font-size: 1rem;
             font-weight: 800;
+            cursor: pointer;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -292,7 +367,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.24 REAL</div>
+<div class="version-tag">v2.25 REAL</div>
 
 <script>
 // ============================================================
@@ -366,6 +441,10 @@ var isGameCompleteFlag = false;
 var pendingArchiveCreated = false;
 var celebrationTriggered = false;
 
+// Modal references
+var activeWaitModal = null;
+var activeCompleteModal = null;
+
 // ============================================================
 // Helper Functions
 // ============================================================
@@ -427,19 +506,17 @@ function calculateLastSyncedHole() {
 }
 
 // ============================================================
-// Match Results using GameMatch - FIXED: Accepts upToHole parameter
+// Match Results using GameMatch
 // ============================================================
 
 function updateMatchResults(upToHole) {
     lastSyncedHole = calculateLastSyncedHole();
     
-    // Use the passed upToHole parameter if provided, otherwise use lastSyncedHole
     var maxHole = (upToHole !== undefined) ? upToHole : lastSyncedHole;
     
     var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
     var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
     
-    // For intra-flight, we still use the actual saved holes (not limited by view)
     var flight1MaxHole = savedHoles[1].length > 0 ? Math.max.apply(null, savedHoles[1]) : 0;
     var flight2MaxHole = savedHoles[2].length > 0 ? Math.max.apply(null, savedHoles[2]) : 0;
     
@@ -455,7 +532,6 @@ function updateMatchResults(upToHole) {
         matchResults.intraF2 = {};
     }
     
-    // For cross-flight, use the maxHole (limited by current view for navigation)
     if (maxHole > 0) {
         matchResults.cross = GameMatch.calculateCrossFlight(f1DataString, f2DataString, allPlayers, courseSi, startingHole, maxHole, coursePar);
     } else {
@@ -465,10 +541,6 @@ function updateMatchResults(upToHole) {
     updateTeamGame();
     updateStrokeGame();
 }
-
-// ============================================================
-// Team Game using GameTeam
-// ============================================================
 
 function updateTeamGame() {
     try {
@@ -482,10 +554,6 @@ function updateTeamGame() {
     }
 }
 
-// ============================================================
-// Stroke Game using GameStroke
-// ============================================================
-
 function updateStrokeGame() {
     try {
         var strokeResults = GameStroke.calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole);
@@ -496,10 +564,6 @@ function updateStrokeGame() {
         console.error("GameStroke calculation error:", e);
     }
 }
-
-// ============================================================
-// TR Calculation - FIXED: Tie color fix
-// ============================================================
 
 function calculateTR() {
     if (!gameResults) {
@@ -513,30 +577,23 @@ function calculateTR() {
     var position = getHolePosition(currentHole);
     var computedUpTo = gameResults.computedUpToHole || 0;
     
-    // If we're beyond computed results, show default tie
     if (position >= computedUpTo) {
         trTeamA = 9.5;
         trTeamB = 9.5;
         trTeamAGreen = true;
         trTeamBGreen = true;
     } else {
-        // READ from pre-computed results (saved by saveResultsToFirestore)
         trTeamA = gameResults.tr.teamA[position];
         trTeamB = gameResults.tr.teamB[position];
         trTeamAGreen = gameResults.tr.teamAGreen[position];
         trTeamBGreen = gameResults.tr.teamBGreen[position];
     }
     
-    // FIXED: Force both teams to GREEN when scores are equal
     if (trTeamA === trTeamB) {
         trTeamAGreen = true;
         trTeamBGreen = true;
     }
 }
-
-// ============================================================
-// Results Calculation and Storage - FIXED: Cascade recalculation
-// ============================================================
 
 function initializeEmptyResults() {
     return {
@@ -644,7 +701,6 @@ function calculateHoleResults(holeNumber) {
     };
 }
 
-// Helper function to save a single hole's results (used by cascade)
 function saveSingleHoleResults(holeNumber, resultsData) {
     if (!resultsData) return Promise.resolve(false);
     
@@ -673,7 +729,6 @@ function saveSingleHoleResults(holeNumber, resultsData) {
     updatePayload["results.lastComputedAt"] = new Date().toISOString();
     
     return db.collection("scheduledGames").doc(gameId).update(updatePayload).then(function() {
-        // Update local gameResults object
         if (!gameResults) {
             gameResults = initializeEmptyResults();
         }
@@ -700,9 +755,7 @@ function saveSingleHoleResults(holeNumber, resultsData) {
     });
 }
 
-// Main save function with CASCADE recalculation
 async function saveResultsToFirestore(holeNumber) {
-    // First, recalculate and save the current hole
     var resultsData = calculateHoleResults(holeNumber);
     if (!resultsData) {
         console.log('No results data for hole', holeNumber);
@@ -711,13 +764,11 @@ async function saveResultsToFirestore(holeNumber) {
     
     await saveSingleHoleResults(holeNumber, resultsData);
     
-    // CASCADE: Recalculate and save all subsequent holes
     var startPosition = getHolePosition(holeNumber);
     
     for (var pos = startPosition + 1; pos <= 17; pos++) {
         var holeToRecalc = getHoleAtStoragePosition(pos);
         
-        // Check if this hole is saved by both flights
         var f1Saved = flight1Data[holeToRecalc] && flight1Data[holeToRecalc].saved;
         var f2Saved = flight2Data[holeToRecalc] && flight2Data[holeToRecalc].saved;
         
@@ -728,15 +779,14 @@ async function saveResultsToFirestore(holeNumber) {
                 console.log('Cascade: Recalculated hole', holeToRecalc);
             }
         } else {
-            // Stop cascade at first hole not saved by both flights
-            console.log('Cascade stopped at hole', holeToRecalc, '(not saved by both flights)');
+            console.log('Cascade stopped at hole', holeToRecalc);
             break;
         }
     }
 }
 
 // ============================================================
-// Archive Record Creation (Phase 1)
+// Archive Record Creation
 // ============================================================
 
 function createPendingArchiveRecord(callback) {
@@ -810,10 +860,6 @@ function createPendingArchiveRecord(callback) {
         });
 }
 
-// ============================================================
-// Build Data for Handicap Adjustment
-// ============================================================
-
 function buildMatchResultsForHandicap() {
     var playerPoints = {};
     
@@ -838,18 +884,18 @@ function buildMatchResultsForHandicap() {
 }
 
 // ============================================================
-// Sign Card Functions - SIMPLIFIED (no captain name)
+// Modal Functions - NEW DESIGNS
 // ============================================================
 
 function showSignCardModal() {
     var modalHtml = `
-        <div class="modal-overlay" id="signModal" style="z-index: 3000;">
-            <div class="sign-modal">
-                <div class="sign-title">✍️ SIGN SCORECARD</div>
-                <div class="sign-message">Confirm that all scores are correct before signing.</div>
-                <div class="sign-buttons">
-                    <button class="sign-btn-back" id="signBackBtn">← BACK</button>
-                    <button class="sign-btn-confirm" id="signConfirmBtn">✓ SIGN CARD</button>
+        <div class="modal-overlay" id="signModalNew">
+            <div class="sign-modal-container">
+                <div class="sign-modal-title">✍️ SIGN SCORECARD</div>
+                <div class="sign-modal-message">Confirm that all scores are correct before signing.</div>
+                <div class="sign-modal-buttons">
+                    <button class="sign-btn-back" id="signBackBtnNew">← BACK</button>
+                    <button class="sign-btn-confirm" id="signConfirmBtnNew">✓ SIGN CARD</button>
                 </div>
             </div>
         </div>
@@ -857,12 +903,12 @@ function showSignCardModal() {
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    document.getElementById("signBackBtn").addEventListener("click", function() {
-        document.getElementById("signModal").remove();
+    document.getElementById("signBackBtnNew").addEventListener("click", function() {
+        document.getElementById("signModalNew").remove();
     });
     
-    document.getElementById("signConfirmBtn").addEventListener("click", async function() {
-        document.getElementById("signModal").remove();
+    document.getElementById("signConfirmBtnNew").addEventListener("click", async function() {
+        document.getElementById("signModalNew").remove();
         
         var collection = "scheduledGames";
         var success = await SignCard.submitSignature(gameId, editableFlight, null, collection);
@@ -871,24 +917,79 @@ function showSignCardModal() {
             if (editableFlight === 1) signatures.f1 = true;
             else signatures.f2 = true;
             
-            // Check if both flights have signed
             if (SignCard.isGameCompleted(signatures)) {
-                // Both signed - create archive record and show Game Complete button
                 createPendingArchiveRecord(function(err, archiveId) {
                     if (err) console.error("Failed to create archive record:", err);
                     isGameCompleteFlag = true;
                     celebrationTriggered = false;
-                    renderAll();
+                    showGameCompleteScreen();
                 });
             } else {
-                // Only one flight signed - show waiting screen
-                SignCard.showWaitingScreen(editableFlight, function() {
-                    checkBothSignedAndCelebrate();
-                });
+                showWaitingScreen();
             }
         } else {
             alert("Error signing card. Please try again.");
         }
+    });
+}
+
+function showWaitingScreen() {
+    // Remove any existing waiting modal
+    if (activeWaitModal) {
+        activeWaitModal.remove();
+        activeWaitModal = null;
+    }
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="waitingModalNew">
+            <div class="waiting-modal-container">
+                <div class="waiting-title">⌛ CARD SIGNED</div>
+                <div class="waiting-message">Waiting for ${editableFlight === 1 ? 'Flight 2' : 'Flight 1'}...</div>
+                <div class="waiting-submessage">The match will complete when both cards are signed.</div>
+                <div class="waiting-spinner"></div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    activeWaitModal = document.getElementById("waitingModalNew");
+}
+
+function hideWaitingScreen() {
+    if (activeWaitModal) {
+        activeWaitModal.remove();
+        activeWaitModal = null;
+    }
+}
+
+function showGameCompleteScreen() {
+    // Remove waiting screen if present
+    hideWaitingScreen();
+    
+    // Remove any existing complete modal
+    if (activeCompleteModal) {
+        activeCompleteModal.remove();
+        activeCompleteModal = null;
+    }
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="completeModalNew">
+            <div class="complete-modal-container">
+                <div class="complete-title">🏆 GAME COMPLETE</div>
+                <div class="complete-emojis">🍺 🏆 🍺</div>
+                <div class="complete-message">Both cards have been signed!</div>
+                <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    activeCompleteModal = document.getElementById("completeModalNew");
+    
+    document.getElementById("seeResultsBtnNew").addEventListener("click", function() {
+        activeCompleteModal.remove();
+        activeCompleteModal = null;
+        showCelebrationAndHandicap();
     });
 }
 
@@ -897,12 +998,12 @@ function checkBothSignedAndCelebrate() {
         if (doc.exists && doc.data().signatures) {
             var sigs = doc.data().signatures;
             if (sigs.f1?.signed && sigs.f2?.signed) {
-                SignCard.hideWaitingScreen();
+                hideWaitingScreen();
                 createPendingArchiveRecord(function(err, archiveId) {
                     if (err) console.error("Failed to create archive record:", err);
                     isGameCompleteFlag = true;
                     celebrationTriggered = false;
-                    renderAll();
+                    showGameCompleteScreen();
                 });
             }
         }
@@ -1019,10 +1120,6 @@ function getMatchValue(playerName, opponentName) {
     return 0;
 }
 
-// ============================================================
-// Data Change Listener
-// ============================================================
-
 function onGameDataChanged() {
     var flight1 = GameData.getFlightData(1);
     var flight2 = GameData.getFlightData(2);
@@ -1032,10 +1129,6 @@ function onGameDataChanged() {
         refreshFromFirestore({ f1: { d: f1DataString }, f2: { d: f2DataString }, submitted: submitted });
     }
 }
-
-// ============================================================
-// Full Render
-// ============================================================
 
 function renderAll() {
     var currentPar = coursePar[currentHole - 1];
@@ -1075,7 +1168,6 @@ function renderAll() {
     );
     
     var holes = getDisplayHoles();
-    // Make savedHoles available globally for GameUI
     window.savedHoles = savedHoles;
     GameUI.renderScorecard(
         "scorecardWrapper",
@@ -1099,7 +1191,6 @@ function updateNextButton() {
     var nextBtn = document.getElementById("nextBtn");
     if (!nextBtn) return;
     
-    // Game complete - show "SEE RESULTS" button instead of Next
     if (isGameCompleteFlag && !celebrationTriggered) {
         nextBtn.textContent = "🏆 SEE RESULTS";
         nextBtn.disabled = false;
@@ -1108,7 +1199,6 @@ function updateNextButton() {
         return;
     }
     
-    // Remove game complete styling if not in that state
     nextBtn.classList.remove("btn-game-complete");
     
     if (isGameCompleteFlag && celebrationTriggered) {
@@ -1188,10 +1278,6 @@ function updateSaveButton() {
     saveBtn.textContent = "💾 SAVE H" + currentHole;
 }
 
-// ============================================================
-// Save Hole using GameData
-// ============================================================
-
 async function saveHole() {
     if (!canEdit) return;
     if (isGameCompleteFlag || submitted["f" + editableFlight]) {
@@ -1231,7 +1317,6 @@ async function saveHole() {
                 }
                 document.getElementById("debug").innerHTML = "Saved!";
                 
-                // After successful save, run cascade recalculation of results
                 await saveResultsToFirestore(currentHole);
                 
                 setTimeout(function() {
@@ -1269,12 +1354,7 @@ function updateFlightDataString(oldString, holeNumber, scores) {
     return oldString.substring(0, startIdx) + newSegment + oldString.substring(startIdx + 9);
 }
 
-// ============================================================
-// Navigation - FIXED: Pass currentHole to updateMatchResults
-// ============================================================
-
 function nextHole() {
-    // Handle Game Complete button click
     if (isGameCompleteFlag && !celebrationTriggered) {
         showCelebrationAndHandicap();
         return;
@@ -1294,7 +1374,6 @@ function nextHole() {
     var isCurrentSaved = isSaved && !hasUnsavedChanges;
     
     if (isLast && isCurrentSaved) {
-        // Show sign modal
         showSignCardModal();
         return;
     }
@@ -1308,7 +1387,6 @@ function nextHole() {
     var nextIndex = (currentIndex + 1) % 18;
     currentHole = playOrder[nextIndex];
     
-    // FIXED: Pass currentHole to updateMatchResults for correct bubble display
     updateMatchResults(currentHole);
     calculateTR();
     renderAll();
@@ -1323,15 +1401,10 @@ function prevHole() {
     var prevIndex = currentIndex - 1;
     currentHole = playOrder[prevIndex];
     
-    // FIXED: Pass currentHole to updateMatchResults for correct bubble display
     updateMatchResults(currentHole);
     calculateTR();
     renderAll();
 }
-
-// ============================================================
-// Exit to Main Menu
-// ============================================================
 
 async function exitToMainMenu() {
     if (!confirm("Leave the game? Your current unsaved changes will be lost.")) {
@@ -1354,10 +1427,6 @@ async function exitToMainMenu() {
     window.location.href = "index.html";
 }
 
-// ============================================================
-// Refresh from Firestore Snapshot
-// ============================================================
-
 function refreshFromFirestore(data) {
     f1DataString = data.f1 && data.f1.d ? data.f1.d : f1DataString;
     f2DataString = data.f2 && data.f2.d ? data.f2.d : f2DataString;
@@ -1372,8 +1441,24 @@ function refreshFromFirestore(data) {
     }
     
     if (data.signatures) {
+        var oldF1Signed = signatures.f1;
+        var oldF2Signed = signatures.f2;
+        
         signatures.f1 = data.signatures.f1?.signed === true;
         signatures.f2 = data.signatures.f2?.signed === true;
+        
+        // If both just became signed, show game complete screen
+        if (!oldF1Signed && !oldF2Signed && signatures.f1 && signatures.f2) {
+            hideWaitingScreen();
+            createPendingArchiveRecord(function(err, archiveId) {
+                if (err) console.error("Failed to create archive record:", err);
+                isGameCompleteFlag = true;
+                celebrationTriggered = false;
+                showGameCompleteScreen();
+                renderAll();
+            });
+            return;
+        }
     }
     
     var bothSigned = signatures.f1 && signatures.f2;
@@ -1381,7 +1466,6 @@ function refreshFromFirestore(data) {
     
     isGameCompleteFlag = CardSubmit.isGameComplete(submitted);
     
-    // If both signed but celebration not triggered, show Game Complete button
     if (bothSigned && !celebrationTriggered && !wasComplete) {
         isGameCompleteFlag = true;
         renderAll();
@@ -1440,19 +1524,11 @@ function refreshFromFirestore(data) {
     }
 }
 
-// ============================================================
-// Display Mode
-// ============================================================
-
 function setDisplayMode(mode) {
     GameUI.setDisplayMode(mode, function() {
         renderAll();
     });
 }
-
-// ============================================================
-// Initialization
-// ============================================================
 
 async function init() {
     myDeviceShortName = await SessionManager.getShortNameOnly();
@@ -1472,7 +1548,6 @@ async function init() {
     }
     canEdit = (editableFlight === 1 || editableFlight === 2);
     
-    // Get gameId - fallback to sessionStorage if activeGame.gameId is null
     gameId = session.activeGame ? session.activeGame.gameId : null;
     if (!gameId) {
         gameId = sessionStorage.getItem('currentGameId');
@@ -1566,7 +1641,6 @@ async function init() {
             });
             
             document.getElementById("nextBtn").addEventListener("click", function() {
-                // Handle Game Complete button click
                 if (isGameCompleteFlag && !celebrationTriggered) {
                     showCelebrationAndHandicap();
                     return;
@@ -1603,10 +1677,6 @@ async function init() {
     });
 }
 
-// ============================================================
-// Event Listeners
-// ============================================================
-
 document.getElementById("saveBtn").addEventListener("click", saveHole);
 document.getElementById("backBtn").addEventListener("click", prevHole);
 document.getElementById("menuBtn").addEventListener("click", exitToMainMenu);
@@ -1619,21 +1689,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.24
+VERSION: 2.25
 KEY CHANGES:
-   - FIXED: Match bubbles now show correct hole when navigating BACK
-            updateMatchResults() accepts upToHole parameter
-            prevHole() and nextHole() pass currentHole to updateMatchResults()
-   
-   - FIXED: Cascade recalculation when editing previous holes
-            saveResultsToFirestore() now loops from changed hole position to 17
-            Recalculates and saves ALL subsequent holes up to first unsaved hole
-            Ensures FB results object always reflects correct cumulative state
-   
-   - FIXED: TR color on tie (9.5-9.5)
-            calculateTR() now forces both teams to GREEN when scores are equal
-   
-   - All other functionality identical to v2.23 (Game Complete button, simplified sign modal, etc.)
+   - FIXED: Sign Card modal now has ✍️ emoji and centered design
+   - FIXED: Waiting screen redesigned with ⌛ emoji and spinner
+   - FIXED: Game Complete screen with centered square "SEE RESULTS" button
+   - All modals now properly centered with green border consistent with UI
+   - Modal overlay CSS fixed for proper centering
 DEPENDS ON: js/game-data.js v2.01, js/game-match.js v2.00, js/game-team.js v2.00, js/game-stroke.js v2.00, js/game-ui.js v2.04, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for testing
 -->
