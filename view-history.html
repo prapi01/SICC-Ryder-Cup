@@ -1,22 +1,15 @@
 <!--
 FILE: view-history.html
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - ADDED: Flight toggle button (✈️ Flight 1 / ✈️ Flight 2)
-   - ADDED: selectedFlight state variable
-   - ADDED: toggleFlight() function to switch between flights
-   - UPDATED: renderAll() now shows selected flight's players
-   - UPDATED: Player cards now show correct flight when toggled
-   - FIXED: Missing history-record.js script include (v1.01)
-   - All other functionality identical to v1.01
-   - History viewer for completed games
-   - Lists all completed games from historyGames collection
-   - Decodes encoded holeData string (594 chars) for display
-   - No calculations - pure decode and display
-   - Hole navigation with play order based on starting hole
-   - Scorecard display with all rows (F1, F2, T-1, T-2, Strk)
-   - Match bubbles display for each player
-   - TR display with correct colors
+   - REFACTORED: Scorecard header now matches view-game.html layout exactly
+   - MOVED: Flight toggle button into scorecard header row
+   - MOVED: Hole navigation (◀ ## ▶) into scorecard header row
+   - REMOVED: Separate flight toggle row above player cards
+   - REMOVED: Separate navigation row below player cards
+   - UI now consistent with view-game.html gold standard
+   - Layout: SCORECARD | P/N | Flight 1/2 | ◀ ## ▶ on single row
+   - All other functionality identical to v1.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -75,25 +68,6 @@ STATUS: Ready for integration
             border-radius: 20px;
             font-size: 0.7rem;
             margin-bottom: 16px;
-        }
-        
-        .flight-toggle {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            border-radius: 40px;
-            padding: 10px;
-            text-align: center;
-            margin: 16px 0;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .flight-toggle:active {
-            transform: scale(0.98);
-        }
-        .flight-toggle-text {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #4caf50;
         }
         
         .game-selector {
@@ -190,41 +164,60 @@ STATUS: Ready for integration
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
+            gap: 8px;
             flex-wrap: wrap;
+        }
+        .scorecard-left-group {
+            display: flex;
+            align-items: center;
             gap: 10px;
         }
-        .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
-        .view-toggle { display: flex; gap: 4px; }
-        .toggle-btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 20px;
-            padding: 4px 12px;
-            font-size: 0.65rem;
-            cursor: pointer;
-            color: #888;
-        }
-        .toggle-btn.active {
-            background: #1a3a1a;
-            border-color: #4caf50;
+        .scorecard-title {
+            font-size: 0.9rem;
+            font-weight: 600;
             color: #4caf50;
+            border-left: 2px solid #4caf50;
+            padding-left: 10px;
         }
-        
+        .pn-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+            line-height: 1;
+        }
+        .flight-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-width: 90px;
+            display: inline-block;
+            text-align: center;
+        }
         .nav-group {
             display: flex;
             align-items: center;
-            gap: 12px;
-            justify-content: center;
-            margin: 20px 0;
+            gap: 6px;
         }
         .nav-btn {
             background: #1a3a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
-            width: 44px;
-            height: 44px;
-            border-radius: 30px;
-            font-size: 1.2rem;
+            width: 36px;
+            height: 36px;
+            border-radius: 20px;
+            font-size: 1rem;
             cursor: pointer;
             font-weight: bold;
         }
@@ -235,10 +228,10 @@ STATUS: Ready for integration
             cursor: not-allowed;
         }
         .hole-number-display {
-            font-size: 1.2rem;
-            font-weight: 700;
+            font-size: 0.9rem;
+            font-weight: 600;
             color: #4caf50;
-            min-width: 50px;
+            min-width: 45px;
             text-align: center;
         }
         
@@ -290,24 +283,20 @@ STATUS: Ready for integration
     <div id="gameViewer" style="display:none;">
         <div style="text-align:center; margin-bottom:8px;" id="courseName"></div>
         <div id="holeHeader" class="hole-header"></div>
-        <div id="flightToggle" class="flight-toggle">
-            <span class="flight-toggle-text" id="flightToggleText">✈️ Flight 1</span>
-        </div>
         <div id="trDisplay" class="team-score-card"></div>
         <div id="playerCards" class="player-cards"></div>
         
-        <div class="nav-group">
-            <button class="nav-btn" id="prevHoleBtn">◀</button>
-            <span class="hole-number-display" id="holeNumberDisplay">1</span>
-            <button class="nav-btn" id="nextHoleBtn">▶</button>
-        </div>
-        
         <div class="scorecard-section">
-            <div class="scorecard-header">
-                <div class="scorecard-title">SCORECARD</div>
-                <div class="view-toggle">
-                    <button class="toggle-btn" id="playOrderBtn">⛳ Play Order</button>
-                    <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
+            <div class="scorecard-header" id="scorecardHeader">
+                <div class="scorecard-left-group">
+                    <span class="scorecard-title">SCORECARD</span>
+                    <button class="pn-toggle" id="pnToggleBtn">P</button>
+                </div>
+                <button class="flight-toggle" id="flightToggleBtn">✈️ Flight 1</button>
+                <div class="nav-group">
+                    <button class="nav-btn" id="prevHoleBtn">◀</button>
+                    <span class="hole-number-display" id="holeNumberDisplay">1</span>
+                    <button class="nav-btn" id="nextHoleBtn">▶</button>
                 </div>
             </div>
             <div class="scorecard-wrapper" id="scorecardWrapper"></div>
@@ -318,7 +307,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.02</div>
+<div class="version-tag">v1.03</div>
 
 <script>
 // ============================================================
@@ -555,15 +544,75 @@ function getTRForHole(holeNumber) {
     };
 }
 
+// ============================================================
+// UI Toggle Functions
+// ============================================================
+
+function updatePnButton() {
+    var pnBtn = document.getElementById("pnToggleBtn");
+    if (pnBtn) {
+        pnBtn.innerText = currentDisplayMode === "play" ? "P" : "N";
+    }
+}
+
+function toggleDisplayMode() {
+    var newMode = currentDisplayMode === "play" ? "natural" : "play";
+    setDisplayMode(newMode);
+}
+
+function setDisplayMode(mode) {
+    currentDisplayMode = mode;
+    updatePnButton();
+    renderAll();
+}
+
 function toggleFlight() {
     if (selectedFlight === 1) {
         selectedFlight = 2;
-        document.getElementById("flightToggleText").innerHTML = "✈️ Flight 2";
+        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 2";
     } else {
         selectedFlight = 1;
-        document.getElementById("flightToggleText").innerHTML = "✈️ Flight 1";
+        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
     }
     renderAll();
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+
+function goToPrevHole() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex > 0) {
+        currentHole = playOrder[currentIndex - 1];
+        document.getElementById("holeNumberDisplay").innerText = currentHole;
+        renderAll();
+        updateNavButtons();
+    }
+}
+
+function goToNextHole() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex < 17) {
+        currentHole = playOrder[currentIndex + 1];
+        document.getElementById("holeNumberDisplay").innerText = currentHole;
+        renderAll();
+        updateNavButtons();
+    }
+}
+
+function updateNavButtons() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    var prevBtn = document.getElementById("prevHoleBtn");
+    var nextBtn = document.getElementById("nextHoleBtn");
+    if (prevBtn) prevBtn.disabled = (currentIndex === 0);
+    if (nextBtn) nextBtn.disabled = (currentIndex === 17);
 }
 
 // ============================================================
@@ -627,60 +676,7 @@ function renderAll() {
         courseCache?.si || []
     );
     
-    // Update hole number display
-    document.getElementById("holeNumberDisplay").innerText = currentHole;
-    
-    // Update nav buttons
-    var playOrder = getPlayOrder(startingHole);
-    var currentIndex = playOrder.indexOf(currentHole);
-    var prevBtn = document.getElementById("prevHoleBtn");
-    var nextBtn = document.getElementById("nextHoleBtn");
-    if (prevBtn) prevBtn.disabled = (currentIndex === 0);
-    if (nextBtn) nextBtn.disabled = (currentIndex === 17);
-}
-
-// ============================================================
-// Navigation
-// ============================================================
-
-function goToPrevHole() {
-    var startingHole = courseCache?.startingHole || 1;
-    var playOrder = getPlayOrder(startingHole);
-    var currentIndex = playOrder.indexOf(currentHole);
-    if (currentIndex > 0) {
-        currentHole = playOrder[currentIndex - 1];
-        renderAll();
-    }
-}
-
-function goToNextHole() {
-    var startingHole = courseCache?.startingHole || 1;
-    var playOrder = getPlayOrder(startingHole);
-    var currentIndex = playOrder.indexOf(currentHole);
-    if (currentIndex < 17) {
-        currentHole = playOrder[currentIndex + 1];
-        renderAll();
-    }
-}
-
-// ============================================================
-// Display Mode Toggle
-// ============================================================
-
-function setDisplayMode(mode) {
-    currentDisplayMode = mode;
-    var playBtn = document.getElementById("playOrderBtn");
-    var naturalBtn = document.getElementById("naturalOrderBtn");
-    if (playBtn && naturalBtn) {
-        if (mode === "play") {
-            playBtn.classList.add("active");
-            naturalBtn.classList.remove("active");
-        } else {
-            playBtn.classList.remove("active");
-            naturalBtn.classList.add("active");
-        }
-    }
-    renderAll();
+    updateNavButtons();
 }
 
 // ============================================================
@@ -763,18 +759,20 @@ function loadGame(gameId) {
         var startingHole = courseCache?.startingHole || 1;
         var playOrder = getPlayOrder(startingHole);
         currentHole = playOrder[0];
+        document.getElementById("holeNumberDisplay").innerText = currentHole;
         
         // Reset flight to 1
         selectedFlight = 1;
-        document.getElementById("flightToggleText").innerHTML = "✈️ Flight 1";
+        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
         
         // Update UI
         document.getElementById("courseName").innerHTML = courseCache?.name || "Unknown Course";
         document.getElementById("gameViewer").style.display = "block";
         container.style.display = "none";
         
-        // Initialize display mode buttons
-        setDisplayMode("play");
+        // Initialize display mode
+        currentDisplayMode = "play";
+        updatePnButton();
         
         renderAll();
     });
@@ -825,9 +823,8 @@ async function init() {
     document.getElementById("menuBtn").addEventListener("click", goBackToMenu);
     document.getElementById("prevHoleBtn").addEventListener("click", goToPrevHole);
     document.getElementById("nextHoleBtn").addEventListener("click", goToNextHole);
-    document.getElementById("playOrderBtn").addEventListener("click", function() { setDisplayMode("play"); });
-    document.getElementById("naturalOrderBtn").addEventListener("click", function() { setDisplayMode("natural"); });
-    document.getElementById("flightToggle").addEventListener("click", toggleFlight);
+    document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
+    document.getElementById("flightToggleBtn").addEventListener("click", toggleFlight);
     
     // Add back button to game selector (simple)
     var backBtn = document.createElement("button");
@@ -846,23 +843,16 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - ADDED: Flight toggle button (✈️ Flight 1 / ✈️ Flight 2)
-   - ADDED: selectedFlight state variable
-   - ADDED: toggleFlight() function to switch between flights
-   - UPDATED: renderAll() now shows selected flight's players
-   - UPDATED: Player cards now show correct flight when toggled
-   - FIXED: Missing history-record.js script include (v1.01)
-   - All other functionality identical to v1.01
-   - History viewer for completed games
-   - Lists all completed games from historyGames collection
-   - Decodes encoded holeData string (594 chars) for display
-   - No calculations - pure decode and display
-   - Hole navigation with play order based on starting hole
-   - Scorecard display with all rows (F1, F2, T-1, T-2, Strk)
-   - Match bubbles display for each player
-   - TR display with correct colors
+   - REFACTORED: Scorecard header now matches view-game.html layout exactly
+   - MOVED: Flight toggle button into scorecard header row
+   - MOVED: Hole navigation (◀ ## ▶) into scorecard header row
+   - REMOVED: Separate flight toggle row above player cards
+   - REMOVED: Separate navigation row below player cards
+   - UI now consistent with view-game.html gold standard
+   - Layout: SCORECARD | P/N | Flight 1/2 | ◀ ## ▶ on single row
+   - All other functionality identical to v1.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
