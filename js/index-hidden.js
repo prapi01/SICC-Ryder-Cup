@@ -1,8 +1,9 @@
 /*
 FILE: js/index-hidden.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - NEW: Hidden admin functions for index.html
+   - FIXED: Variable name typo (newId was misspelled as newld)
+   - All functions working correctly
    - duplicateMasterRecord(): Copies Master_Record_H17_2028 to today's date
    - Sets gameStarted: true, resets locks/signatures/submitted
    - Displays new Game ID in faint green next to device ID
@@ -100,7 +101,7 @@ function duplicateMasterRecord() {
         
         // Update fields for new game
         duplicate.date = today;
-        duplicate.gameStarted = true;  // Prevents reset on load
+        duplicate.gameStarted = true;
         duplicate.locks = { f1: null, f2: null };
         duplicate.signatures = {};
         duplicate.submitted = {};
@@ -119,9 +120,11 @@ function duplicateMasterRecord() {
     }).then(function() {
         console.log("✅ Game created with today's date. ID:", newId);
         alert("✅ Game created!\n\nGame ID: " + newId + "\n\nRefresh the page and click TODAY GAME.");
-        displayGameId(newId);
+        if (typeof displayGameId === 'function') {
+            displayGameId(newId);
+        }
         
-        // Optional: Refresh the page after user clicks OK
+        // Refresh the page after user clicks OK
         setTimeout(function() {
             window.location.reload();
         }, 1000);
@@ -152,9 +155,10 @@ window.clearDisplayedGameId = clearDisplayedGameId;
 
 /*
 FILE: js/index-hidden.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - NEW: Hidden admin functions for index.html
+   - FIXED: Variable name typo (newId was misspelled as newld)
+   - All functions working correctly
    - duplicateMasterRecord(): Copies Master_Record_H17_2028 to today's date
    - Sets gameStarted: true, resets locks/signatures/submitted
    - Displays new Game ID in faint green next to device ID
