@@ -1,13 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
-   - UPDATED: Now reads flattened arrays from history-record.js v2.01
-   - Player score access: f1Scores[(holeIndex * 4) + playerIndex]
-   - Match result access: matchResults[(holeIndex * 16) + matchIndex]
-   - TR values: trTeamA[holeIndex], trTeamB[holeIndex]
-   - Display rows: t1Row[holeIndex], t2Row[holeIndex], strkRow[holeIndex]
-   - All UI functionality preserved (flight toggle, hole navigation, P/N toggle)
+   - ADDED: Game ID displayed in faint green next to device tag
+   - Format: "🖥️ DEV-XX | Game: {historyRecordId}"
+   - Also shows originalGameId when viewing a game
+   - All other functionality identical to v3.01
+   - Reads flattened arrays from history-record.js v2.01+
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -55,6 +54,7 @@ STATUS: Ready for integration
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
+            letter-spacing: 0.5px;
         }
         
         .game-selector {
@@ -434,8 +434,8 @@ STATUS: Ready for integration
     </div>
 </div>
 
-<div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.01</div>
+<div class="device-tag" id="deviceTag">🖥️ ---</div>
+<div class="version-tag">v3.02</div>
 
 <script>
 // ============================================================
@@ -464,12 +464,32 @@ var currentGameData = null;
 var currentGameId = null;
 var allPlayersCache = null;
 var courseCache = null;
-var holeDataCache = null;  // Contains flattened arrays from history record
+var holeDataCache = null;
 
 // Scorecard state
 var currentHole = 1;
 var currentDisplayMode = "play";
 var selectedFlight = 1;
+
+// ============================================================
+// Display Game ID in device tag
+// ============================================================
+
+function displayGameId(gameId) {
+    var deviceTag = document.getElementById("deviceTag");
+    if (deviceTag) {
+        var shortName = SessionManager.getShortNameOnly();
+        deviceTag.innerHTML = `🖥️ ${shortName} | <span style="color: #4caf50; opacity: 0.7;">Game: ${gameId}</span>`;
+    }
+}
+
+function displayOriginalGameId(originalGameId) {
+    var deviceTag = document.getElementById("deviceTag");
+    if (deviceTag) {
+        var shortName = SessionManager.getShortNameOnly();
+        deviceTag.innerHTML = `🖥️ ${shortName} | <span style="color: #4caf50; opacity: 0.7;">Game: ${originalGameId}</span>`;
+    }
+}
 
 // ============================================================
 // Helper Functions
@@ -521,8 +541,6 @@ function getFlightOrderedPlayers(flight) {
     return teamA.concat(teamB);
 }
 
-// Get player score from flattened arrays
-// holeIndex: 0-17, playerIndex: 0-3 (A1, A2, B1, B2 in handicap order)
 function getPlayerScoreFromFlattened(player, holeNumber) {
     if (!holeDataCache) return "-";
     
@@ -548,14 +566,11 @@ function getPlayerScoreFromFlattened(player, holeNumber) {
     return scores[arrayIndex] || "-";
 }
 
-// Get match value from flattened arrays
-// holeIndex: 0-17, matchIndex: 0-15 (A1,B1; A1,B2; A2,B1; A2,B2; A3,B3; etc.)
 function getMatchValueFromFlattened(player, opponent, holeNumber) {
     if (!holeDataCache) return 0;
     
     var holeIndex = holeNumber - 1;
     
-    // Find match index
     var teamAPlayers = allPlayersCache.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = allPlayersCache.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
@@ -663,7 +678,7 @@ function updateTRDisplay(containerId, teamA, teamB, teamAGreen, teamBGreen) {
 function getFinalTRFromHoleData() {
     if (!holeDataCache) return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
     
-    var lastIndex = 17; // Hole 18 is index 17 (0-based)
+    var lastIndex = 17;
     return {
         teamA: holeDataCache.trTeamA[lastIndex],
         teamB: holeDataCache.trTeamB[lastIndex],
@@ -781,13 +796,11 @@ function renderScorecardPage() {
         null
     );
     
-    // Build display rows for scorecard from stored arrays
     var t1Row = new Array(18).fill('_');
     var t2Row = new Array(18).fill('_');
     var strkRow = new Array(18).fill('_');
     
     for (var pos = 0; pos < 18; pos++) {
-        // Convert "S" back to "AS" for display
         t1Row[pos] = (holeDataCache.t1Row[pos] === "S") ? "AS" : holeDataCache.t1Row[pos];
         t2Row[pos] = (holeDataCache.t2Row[pos] === "S") ? "AS" : holeDataCache.t2Row[pos];
         strkRow[pos] = (holeDataCache.strkRow[pos] === "S") ? "AS" : holeDataCache.strkRow[pos];
@@ -799,7 +812,7 @@ function renderScorecardPage() {
         holes,
         allPlayersCache,
         getStoredScore,
-        function(flight, hole) { return true; }, // All holes saved
+        function(flight, hole) { return true; },
         t1Row,
         t2Row,
         strkRow,
@@ -905,6 +918,10 @@ function goBackToGameList() {
     courseCache = null;
     holeDataCache = null;
     
+    // Reset device tag to just device name
+    var shortName = SessionManager.getShortNameOnly();
+    document.getElementById("deviceTag").innerHTML = `🖥️ ${shortName}`;
+    
     document.getElementById("hcpPage").style.display = "none";
     document.getElementById("scorecardPage").style.display = "none";
     document.getElementById("gameSelector").style.display = "block";
@@ -970,7 +987,6 @@ function loadGame(gameId) {
             return;
         }
         
-        // Check if this is the new JSON format (version 3, schema json_v1)
         if (gameData.version !== 3 || gameData.schema !== "json_v1") {
             container.innerHTML = '<div class="empty-message">This game uses an old format. Please complete a new game with the latest version.</div>';
             return;
@@ -986,6 +1002,9 @@ function loadGame(gameId) {
             container.innerHTML = '<div class="empty-message">Invalid or missing hole data for this game.</div>';
             return;
         }
+        
+        // Display the history record ID and original game ID
+        displayGameId(gameId);
         
         document.getElementById("scorecardCourseName").innerHTML = courseCache?.name || "Unknown Course";
         var gameDateRaw = gameData.gameInfo?.date || "";
@@ -1011,7 +1030,7 @@ function escapeHtml(str) {
 
 async function init() {
     var shortName = await SessionManager.getShortNameOnly();
-    document.getElementById("deviceTag").innerHTML = "🖥️ " + shortName;
+    document.getElementById("deviceTag").innerHTML = `🖥️ ${shortName}`;
     
     SessionManager.initSession("view-history.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1036,14 +1055,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
-   - UPDATED: Now reads flattened arrays from history-record.js v2.01
-   - Player score access: f1Scores[(holeIndex * 4) + playerIndex]
-   - Match result access: matchResults[(holeIndex * 16) + matchIndex]
-   - TR values: trTeamA[holeIndex], trTeamB[holeIndex]
-   - Display rows: t1Row[holeIndex], t2Row[holeIndex], strkRow[holeIndex]
-   - All UI functionality preserved (flight toggle, hole navigation, P/N toggle)
+   - ADDED: Game ID displayed in faint green next to device tag
+   - Format: "🖥️ DEV-XX | Game: {historyRecordId}"
+   - Also shows originalGameId when viewing a game
+   - All other functionality identical to v3.01
+   - Reads flattened arrays from history-record.js v2.01+
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/game-ui.js
 STATUS: Ready for integration
 -->
