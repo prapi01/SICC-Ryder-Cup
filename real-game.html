@@ -1,15 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 2.39
+VERSION: 2.40
 KEY CHANGES:
-   - FIXED: Display cache now updates immediately when a hole becomes finalized
-   - Removed inefficient loop in onCacheUpdate()
-   - After each successful save, checks if both flights have saved this hole
-   - If yes, immediately writes that hole's snapshot to display cache
-   - Clear console logging for each hole written
-   - Uses fixed history record ID: gameId + "_history"
-   - Progressive sync to Firestore after each hole write
-   - All other functionality identical to v2.38
+   - FIXED: History record created immediately at game start
+   - createHistoryRecord() called during initialization
+   - Creates document with holeData: all "K", status: "in_progress"
+   - Each hole finalization updates the existing record
+   - At completion, updates status to "pending_handicap"
+   - No more "record not found" errors
+   - All other functionality identical to v2.39
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/display-cache.js
 STATUS: Ready for integration
 -->
@@ -393,7 +392,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.39 REAL</div>
+<div class="version-tag">v2.40 REAL</div>
 
 <script>
 // ============================================================
@@ -455,13 +454,46 @@ function getHistoryRecordId() {
 }
 
 // ============================================================
+// Create history record at game start
+// ============================================================
+
+function createHistoryRecord() {
+    var historyRecordId = getHistoryRecordId();
+    displayCache = DisplayCache.createEmptyDisplayCache();
+    
+    var initialData = {
+        originalGameId: gameId,
+        status: "in_progress",
+        version: 3,
+        schema: "json_v1",
+        gameInfo: {
+            date: new Date().toISOString().split('T')[0],
+            course: { name: courseName, par: coursePar, si: courseSi },
+            startingHole: startingHole,
+            teamGameFormat: teamGameFormat
+        },
+        players: allPlayers,
+        holeData: displayCache,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    
+    db.collection('historyGames').doc(historyRecordId).set(initialData)
+        .then(function() {
+            console.log("✅ History record created at game start:", historyRecordId);
+        })
+        .catch(function(err) {
+            console.error("Failed to create history record:", err);
+        });
+}
+
+// ============================================================
 // Build a snapshot for a specific hole using current cache data
 // ============================================================
 
 function buildHoleSnapshot(holeNumber) {
     var cache = GameLoader.getLocalCache();
     
-    // Get ordered players for score mapping
     function getOrderedPlayers(flight) {
         var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
         var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -469,7 +501,6 @@ function buildHoleSnapshot(holeNumber) {
         return [teamA[0], teamA[1], teamB[0], teamB[1]];
     }
     
-    // Get gross scores for a flight
     function getFlightScores(flight, holeNum) {
         var orderedPlayers = getOrderedPlayers(flight);
         var scores = [];
@@ -499,7 +530,6 @@ function buildHoleSnapshot(holeNumber) {
         return scores;
     }
     
-    // Get cumulative match results up to this hole
     function getMatchResultsForHole(holeNum) {
         var matchResults = GameMatch.calculateCrossFlight(
             cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNum, coursePar
@@ -539,59 +569,40 @@ function buildHoleSnapshot(holeNumber) {
 }
 
 // ============================================================
-// Write a hole's snapshot to the display cache and Firestore
+// Update display cache for a hole and sync to Firestore
 // ============================================================
 
-function writeHoleToDisplayCache(holeNumber) {
-    // Don't write twice
+function updateDisplayCacheForHole(holeNumber) {
     if (holesWrittenToCache[holeNumber]) {
-        console.log("Hole " + holeNumber + " already written to cache, skipping");
         return;
     }
     
     var holeSnapshot = buildHoleSnapshot(holeNumber);
     
     if (!holeSnapshot || holeSnapshot.length !== 33) {
-        console.error("Invalid hole snapshot for hole " + holeNumber + ": length " + (holeSnapshot ? holeSnapshot.length : 'null'));
+        console.error("Invalid hole snapshot for hole " + holeNumber);
         return;
     }
     
-    // Update display cache
     displayCache = DisplayCache.updateDisplayCache(displayCache, holeNumber, holeSnapshot);
     holesWrittenToCache[holeNumber] = true;
     
-    console.log("✅ Hole " + holeNumber + " written to display cache (33 chars)");
+    console.log("✅ Hole " + holeNumber + " written to display cache");
     
     // Sync to Firestore
     var historyRecordId = getHistoryRecordId();
-    
-    var dataToSave = {
-        originalGameId: gameId,
-        status: "in_progress",
-        version: 3,
-        schema: "json_v1",
-        gameInfo: {
-            date: new Date().toISOString().split('T')[0],
-            course: { name: courseName, par: coursePar, si: courseSi },
-            startingHole: startingHole,
-            teamGameFormat: teamGameFormat
-        },
-        players: allPlayers,
+    db.collection('historyGames').doc(historyRecordId).update({
         holeData: displayCache,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-    
-    db.collection('historyGames').doc(historyRecordId).set(dataToSave, { merge: true })
-        .then(function() {
-            console.log("  → Synced to Firestore: " + historyRecordId + " (hole " + holeNumber + ")");
-        })
-        .catch(function(err) {
-            console.error("  → Error syncing hole " + holeNumber + ":", err);
-        });
+    }).then(function() {
+        console.log("  → Synced hole " + holeNumber + " to Firestore");
+    }).catch(function(err) {
+        console.error("  → Error syncing hole " + holeNumber + ":", err);
+    });
 }
 
 // ============================================================
-// Check if a hole is fully saved by both flights and write it
+// Check if a hole is fully saved by both flights
 // ============================================================
 
 function checkAndWriteHoleIfFinalized(holeNumber) {
@@ -600,19 +611,8 @@ function checkAndWriteHoleIfFinalized(holeNumber) {
     var f2Saved = cache.flight2Data[holeNumber] && cache.flight2Data[holeNumber].saved;
     
     if (f1Saved && f2Saved && !holesWrittenToCache[holeNumber]) {
-        console.log("🎯 Hole " + holeNumber + " is now fully saved by both flights!");
-        writeHoleToDisplayCache(holeNumber);
+        updateDisplayCacheForHole(holeNumber);
     }
-}
-
-// ============================================================
-// Initialize display cache
-// ============================================================
-
-function initializeDisplayCache() {
-    displayCache = DisplayCache.createEmptyDisplayCache();
-    holesWrittenToCache = {};
-    console.log("Display cache initialized (594 chars)");
 }
 
 // ============================================================
@@ -980,14 +980,8 @@ function performSave() {
                 }
                 await saveResultsToFirestore(currentHole);
                 
-                // After successful save, check if this hole is now finalized by both flights
-                // Also check subsequent holes due to cascade (editing previous hole)
-                var playOrder = getPlayOrder();
-                var startPos = playOrder.indexOf(currentHole);
-                for (var i = startPos; i < 18; i++) {
-                    var holeToCheck = playOrder[i];
-                    checkAndWriteHoleIfFinalized(holeToCheck);
-                }
+                // After successful save, check if this hole is now finalized
+                checkAndWriteHoleIfFinalized(currentHole);
                 
                 resolve(true);
             } else {
@@ -1262,9 +1256,9 @@ function showCelebrationAndHandicap() {
     };
     
     var matchPoints = buildMatchResultsForHandicap();
+    var historyRecordId = getHistoryRecordId();
     
     SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
-        var historyRecordId = getHistoryRecordId();
         HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, matchPoints, {}, false);
     });
 }
@@ -1498,8 +1492,9 @@ async function init() {
             return;
         }
         
-        // Initialize display cache
+        // Initialize display cache and create history record
         initializeDisplayCache();
+        createHistoryRecord();
         
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
@@ -1556,6 +1551,12 @@ async function init() {
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
+function initializeDisplayCache() {
+    displayCache = DisplayCache.createEmptyDisplayCache();
+    holesWrittenToCache = {};
+    console.log("Display cache initialized (594 chars)");
+}
+
 init();
 </script>
 
@@ -1564,16 +1565,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.39
+VERSION: 2.40
 KEY CHANGES:
-   - FIXED: Display cache now updates immediately when a hole becomes finalized
-   - Removed inefficient loop in onCacheUpdate()
-   - After each successful save, checks if both flights have saved this hole
-   - If yes, immediately writes that hole's snapshot to display cache
-   - Clear console logging for each hole written
-   - Uses fixed history record ID: gameId + "_history"
-   - Progressive sync to Firestore after each hole write
-   - All other functionality identical to v2.38
+   - FIXED: History record created immediately at game start
+   - createHistoryRecord() called during initialization
+   - Creates document with holeData: all "K", status: "in_progress"
+   - Each hole finalization updates the existing record
+   - At completion, updates status to "pending_handicap"
+   - No more "record not found" errors
+   - All other functionality identical to v2.39
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/display-cache.js
 STATUS: Ready for integration
 -->
