@@ -1,8 +1,10 @@
 /*
 FILE: js/index-hidden.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - FIXED: Variable name typo (newId was misspelled as newld)
+   - FIXED: newId variable scope - moved declaration outside promise chain
+   - FIXED: Error when showing alert after game creation
+   - duplicateMasterRecord() now correctly displays the new Game ID
    - All functions working correctly
    - duplicateMasterRecord(): Copies Master_Record_H17_2028 to today's date
    - Sets gameStarted: true, resets locks/signatures/submitted
@@ -83,7 +85,8 @@ function duplicateMasterRecord() {
         return;
     }
     
-    // Reference to Master Record
+    var newId;  // Declared OUTSIDE the promise so it's accessible in the .then() chain
+    
     var masterRef = db.collection("scheduledGames").doc("Master_Record_H17_2028");
     
     masterRef.get().then(function(doc) {
@@ -94,9 +97,8 @@ function duplicateMasterRecord() {
         
         var original = doc.data();
         var today = new Date().toISOString().split('T')[0];
-        var newId = 'Game_H17_' + today.replace(/-/g, '') + '_' + Date.now();
+        newId = 'Game_H17_' + today.replace(/-/g, '') + '_' + Date.now();
         
-        // Create duplicate with correct settings
         var duplicate = JSON.parse(JSON.stringify(original));
         
         // Update fields for new game
@@ -123,7 +125,6 @@ function duplicateMasterRecord() {
         if (typeof displayGameId === 'function') {
             displayGameId(newId);
         }
-        
         // Refresh the page after user clicks OK
         setTimeout(function() {
             window.location.reload();
@@ -155,9 +156,11 @@ window.clearDisplayedGameId = clearDisplayedGameId;
 
 /*
 FILE: js/index-hidden.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - FIXED: Variable name typo (newId was misspelled as newld)
+   - FIXED: newId variable scope - moved declaration outside promise chain
+   - FIXED: Error when showing alert after game creation
+   - duplicateMasterRecord() now correctly displays the new Game ID
    - All functions working correctly
    - duplicateMasterRecord(): Copies Master_Record_H17_2028 to today's date
    - Sets gameStarted: true, resets locks/signatures/submitted
