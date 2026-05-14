@@ -1,13 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 2.35
+VERSION: 2.36
 KEY CHANGES:
-   - FIXED: showCelebrationAndHandicap() now properly waits for archive record creation
-   - FIXED: currentArchiveId is now captured before showing HCP adjustment
-   - FIXED: Both flights now get the same archive ID for handicap adjustment
-   - Added ensureArchiveRecord() helper to prevent duplicate archive creation
-   - All other functionality identical to v2.34
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/encoding.js
+   - UPDATED: createPendingArchiveRecord() now passes raw data for JSON array storage
+   - REMOVED: No encoding preparation (flight1DataObj, flight2DataObj, matchResults passed directly)
+   - Works with history-record.js v2.00 JSON format
+   - All other functionality identical to v2.35
+DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
 
@@ -31,7 +30,6 @@ STATUS: Ready for integration
     <script src="js/sign-card.js"></script>
     <script src="js/history-record.js"></script>
     <script src="js/hcp-adjust.js"></script>
-    <script src="js/encoding.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -390,7 +388,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.35 REAL</div>
+<div class="version-tag">v2.36 REAL</div>
 
 <script>
 // ============================================================
@@ -1135,7 +1133,7 @@ function createPendingArchiveRecord(callback) {
                 computedUpToHole: cache.results?.computedUpToHole || 0
             };
             
-            // Prepare flight1DataObj and flight2DataObj for encoding
+            // Prepare flight1DataObj and flight2DataObj for the history record
             var flight1DataObj = {};
             var flight2DataObj = {};
             for (var h = 1; h <= 18; h++) {
@@ -1144,7 +1142,7 @@ function createPendingArchiveRecord(callback) {
             }
             
             // matchResults is already in cache.matchResults.cross
-            var matchResults = cache.matchResults.cross || {};
+            var matchResultsObj = cache.matchResults.cross || {};
             
             HistoryRecord.createPendingRecord(
                 gameId, 
@@ -1154,7 +1152,7 @@ function createPendingArchiveRecord(callback) {
                 signaturesData,
                 flight1DataObj,
                 flight2DataObj,
-                matchResults,
+                matchResultsObj,
                 function(err, archiveId) {
                     if (err) {
                         console.error("Error creating archive record:", err);
@@ -1523,13 +1521,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.35
+VERSION: 2.36
 KEY CHANGES:
-   - FIXED: showCelebrationAndHandicap() now properly waits for archive record creation
-   - FIXED: currentArchiveId is now captured before showing HCP adjustment
-   - FIXED: Both flights now get the same archive ID for handicap adjustment
-   - Added ensureArchiveAndShow() helper to prevent duplicate archive creation
-   - All other functionality identical to v2.34
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/encoding.js
+   - UPDATED: createPendingArchiveRecord() now passes raw data for JSON array storage
+   - REMOVED: No encoding preparation (flight1DataObj, flight2DataObj, matchResults passed directly)
+   - Works with history-record.js v2.00 JSON format
+   - All other functionality identical to v2.35
+DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
