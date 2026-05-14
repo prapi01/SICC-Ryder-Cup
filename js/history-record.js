@@ -1,13 +1,16 @@
 /*
 FILE: js/history-record.js
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
-   - REMOVED: All encoding functions (encoding.js no longer required)
-   - NEW: Stores hole data as simple JSON arrays instead of encoded string
-   - NEW: buildHoleDataObject() creates structured object with all hole data
-   - NEW: f1Scores, f2Scores, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow
-   - No encoding/decoding bugs - pure JavaScript arrays
-   - Backward compatible: old records without holeData object will show error
+   - FIXED: Flattened all nested arrays to work with Firestore (no arrays inside arrays)
+   - f1Scores: 72 numbers (18 holes × 4 players) in a single array
+   - f2Scores: 72 numbers (18 holes × 4 players) in a single array
+   - matchResults: 288 numbers (18 holes × 16 matches) in a single array
+   - trTeamA, trTeamB: 18 numbers each
+   - teamAGreen, teamBGreen: 18 booleans each
+   - t1Row, t2Row, strkRow: 18 strings each
+   - Updated buildHoleDataObject() to flatten arrays
+   - Updated accessor comments for proper indexing
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
@@ -45,7 +48,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Build hole data object from cache
+    // Build hole data object (FLATTENED for Firestore)
     // ============================================================
     
     function buildHoleDataObject(flight1Data, flight2Data, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow, allPlayers, startingHole) {
@@ -61,15 +64,14 @@ var HistoryRecord = (function() {
         var f1OrderedPlayers = getOrderedPlayers(1);
         var f2OrderedPlayers = getOrderedPlayers(2);
         
-        // Initialize arrays
-        var f1Scores = [];
-        var f2Scores = [];
-        var matchResultsArray = [];
+        // Flattened arrays
+        var f1Scores = [];     // 72 numbers: holeIndex * 4 + playerIndex
+        var f2Scores = [];     // 72 numbers: holeIndex * 4 + playerIndex
+        var matchResultsArray = [];  // 288 numbers: holeIndex * 16 + matchIndex
         
-        // Process holes in natural order (1-18) for simplicity
+        // Process holes in natural order (1-18)
         for (var hole = 1; hole <= 18; hole++) {
-            // Flight 1 scores
-            var f1HoleScores = [];
+            // Flight 1 scores - 4 players per hole
             for (var i = 0; i < f1OrderedPlayers.length; i++) {
                 var player = f1OrderedPlayers[i];
                 var score = 0;
@@ -79,12 +81,10 @@ var HistoryRecord = (function() {
                     else if (i === 2) score = flight1Data[hole].scores.b1;
                     else if (i === 3) score = flight1Data[hole].scores.b2;
                 }
-                f1HoleScores.push(score);
+                f1Scores.push(score);
             }
-            f1Scores.push(f1HoleScores);
             
-            // Flight 2 scores
-            var f2HoleScores = [];
+            // Flight 2 scores - 4 players per hole
             for (var i = 0; i < f2OrderedPlayers.length; i++) {
                 var player = f2OrderedPlayers[i];
                 var score = 0;
@@ -94,12 +94,10 @@ var HistoryRecord = (function() {
                     else if (i === 2) score = flight2Data[hole].scores.b1;
                     else if (i === 3) score = flight2Data[hole].scores.b2;
                 }
-                f2HoleScores.push(score);
+                f2Scores.push(score);
             }
-            f2Scores.push(f2HoleScores);
             
-            // Match results for this hole (16 values)
-            var holeMatchResults = [];
+            // Match results for this hole (16 matches)
             var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
             var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
             
@@ -107,13 +105,12 @@ var HistoryRecord = (function() {
                 for (var b = 0; b < teamBPlayers.length; b++) {
                     var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
                     var value = matchResults[key] || 0;
-                    holeMatchResults.push(value);
+                    matchResultsArray.push(value);
                 }
             }
-            matchResultsArray.push(holeMatchResults);
         }
         
-        // Build display rows arrays (convert "AS" to "S" for storage, but keep original for viewer)
+        // Build display rows arrays (convert "AS" to "S" for storage)
         var t1RowArray = [];
         var t2RowArray = [];
         var strkRowArray = [];
@@ -125,21 +122,22 @@ var HistoryRecord = (function() {
         }
         
         return {
-            f1Scores: f1Scores,           // 18 x 4 array
-            f2Scores: f2Scores,           // 18 x 4 array
-            matchResults: matchResultsArray,  // 18 x 16 array
-            trTeamA: trTeamA,             // array of 18 numbers
-            trTeamB: trTeamB,             // array of 18 numbers
-            teamAGreen: teamAGreen,       // array of 18 booleans
-            teamBGreen: teamBGreen,       // array of 18 booleans
-            t1Row: t1RowArray,            // array of 18 strings ("A", "B", "S")
-            t2Row: t2RowArray,            // array of 18 strings
-            strkRow: strkRowArray         // array of 18 strings
+            // All arrays are flat (no nested arrays) for Firestore compatibility
+            f1Scores: f1Scores,           // 72 numbers: [hole1_p1, hole1_p2, hole1_p3, hole1_p4, hole2_p1, ...]
+            f2Scores: f2Scores,           // 72 numbers
+            matchResults: matchResultsArray,  // 288 numbers: [hole1_match1, hole1_match2, ..., hole2_match1, ...]
+            trTeamA: trTeamA,             // 18 numbers
+            trTeamB: trTeamB,             // 18 numbers
+            teamAGreen: teamAGreen,       // 18 booleans
+            teamBGreen: teamBGreen,       // 18 booleans
+            t1Row: t1RowArray,            // 18 strings ("A", "B", "S")
+            t2Row: t2RowArray,            // 18 strings
+            strkRow: strkRowArray         // 18 strings
         };
     }
     
     // ============================================================
-    // Create pending archive record (NO ENCODING)
+    // Create pending archive record (FLATTENED DATA)
     // ============================================================
     
     function createPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataObj, flight2DataObj, matchResults, callback) {
@@ -187,7 +185,7 @@ var HistoryRecord = (function() {
             var t2Row = results.game2?.flight2?.leader || new Array(18).fill("AS");
             var strkRow = results.game3?.leader || new Array(18).fill("AS");
             
-            // Build hole data object (NO ENCODING)
+            // Build hole data object (FLATTENED - no nested arrays)
             var holeDataObject = {};
             try {
                 holeDataObject = buildHoleDataObject(
@@ -198,7 +196,7 @@ var HistoryRecord = (function() {
                     t1Row, t2Row, strkRow,
                     allPlayers, startingHole
                 );
-                console.log("Hole data object built successfully");
+                console.log("Hole data object built successfully (flattened)");
             } catch(e) {
                 console.error("Error building hole data object:", e);
             }
@@ -253,7 +251,7 @@ var HistoryRecord = (function() {
                     }
                 },
                 
-                // NEW: Simple JSON arrays - NO ENCODING
+                // FLATTENED holeData - no nested arrays
                 holeData: holeDataObject,
                 
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -264,7 +262,7 @@ var HistoryRecord = (function() {
                 archiveData.archiveId = docRef.id;
                 
                 docRef.set(archiveData).then(function() {
-                    console.log("Pending archive record created (JSON format):", docRef.id);
+                    console.log("Pending archive record created (flattened JSON format):", docRef.id);
                     if (callback) callback(null, docRef.id);
                 }).catch(function(err) {
                     console.error("Error creating archive record:", err);
@@ -440,14 +438,17 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
-   - REMOVED: All encoding functions (encoding.js no longer required)
-   - NEW: Stores hole data as simple JSON arrays instead of encoded string
-   - NEW: buildHoleDataObject() creates structured object with all hole data
-   - NEW: f1Scores, f2Scores, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow
-   - No encoding/decoding bugs - pure JavaScript arrays
-   - Backward compatible: old records without holeData object will show error
+   - FIXED: Flattened all nested arrays to work with Firestore (no arrays inside arrays)
+   - f1Scores: 72 numbers (18 holes × 4 players) in a single array
+   - f2Scores: 72 numbers (18 holes × 4 players) in a single array
+   - matchResults: 288 numbers (18 holes × 16 matches) in a single array
+   - trTeamA, trTeamB: 18 numbers each
+   - teamAGreen, teamBGreen: 18 booleans each
+   - t1Row, t2Row, strkRow: 18 strings each
+   - Updated buildHoleDataObject() to flatten arrays
+   - Updated accessor comments for proper indexing
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
