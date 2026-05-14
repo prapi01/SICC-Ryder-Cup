@@ -1,14 +1,13 @@
 <!--
 FILE: view-history.html
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - NEW: TR display now framed in a card (background #0a0a0a, border, border-radius, padding)
-   - REMOVED: Anchor card entirely
-   - NEW: Anchor player's Cur value displayed in gold bold (#ffaa44, font-weight: 800)
-   - NEW: Anchor player's New value displayed in gold bold (#ffaa44, font-weight: 800)
+   - REMOVED: Status bubble ("📜 HISTORY") from top of page
+   - All other functionality identical to v2.03
+   - TR display framed in a card (background #0a0a0a, border, border-radius, padding)
+   - Anchor player's Cur and New values in gold bold (#ffaa44, font-weight: 800)
    - Non-anchor players: Cur normal (white), New green (#4caf50)
    - Layout: Course Name > Date > FINAL RESULT > TR Card > Table > Buttons
-   - All other functionality identical to v2.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -57,16 +56,6 @@ STATUS: Ready for integration
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
-        }
-        
-        .status-bubble {
-            background: rgba(76,175,80,0.3);
-            border: 1px solid #4caf50;
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            margin-bottom: 16px;
         }
         
         .game-selector {
@@ -399,8 +388,6 @@ STATUS: Ready for integration
 <body>
 
 <div class="container">
-    <div class="status-bubble" id="statusBubble">📜 HISTORY</div>
-    
     <!-- Game Selection Screen -->
     <div id="gameSelector" class="game-selector">
         <div class="loading">Loading completed games...</div>
@@ -468,7 +455,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.03</div>
+<div class="version-tag">v2.04</div>
 
 <script>
 // ============================================================
@@ -1138,15 +1125,14 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - NEW: TR display now framed in a card (background #0a0a0a, border, border-radius, padding)
-   - REMOVED: Anchor card entirely
-   - NEW: Anchor player's Cur value displayed in gold bold (#ffaa44, font-weight: 800)
-   - NEW: Anchor player's New value displayed in gold bold (#ffaa44, font-weight: 800)
+   - REMOVED: Status bubble ("📜 HISTORY") from top of page
+   - All other functionality identical to v2.03
+   - TR display framed in a card (background #0a0a0a, border, border-radius, padding)
+   - Anchor player's Cur and New values in gold bold (#ffaa44, font-weight: 800)
    - Non-anchor players: Cur normal (white), New green (#4caf50)
    - Layout: Course Name > Date > FINAL RESULT > TR Card > Table > Buttons
-   - All other functionality identical to v2.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
