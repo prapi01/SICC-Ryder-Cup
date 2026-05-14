@@ -1,14 +1,14 @@
 <!--
 FILE: view-history.html
-VERSION: 2.01
+VERSION: 2.03
 KEY CHANGES:
-   - REMOVED: "HANDICAP ADJUSTMENT" title text
-   - NEW: Course name as main title (large, bold)
-   - NEW: Date as subtitle below course name
-   - NEW: "FINAL RESULT" as major section header above TR
-   - Layout: Course Name > Date > FINAL RESULT > TR > Anchor Card > Table > Buttons
-   - TR color scheme: Green for winning/tie, Red for losing
-   - All other functionality identical to v2.00
+   - NEW: TR display now framed in a card (background #0a0a0a, border, border-radius, padding)
+   - REMOVED: Anchor card entirely
+   - NEW: Anchor player's Cur value displayed in gold bold (#ffaa44, font-weight: 800)
+   - NEW: Anchor player's New value displayed in gold bold (#ffaa44, font-weight: 800)
+   - Non-anchor players: Cur normal (white), New green (#4caf50)
+   - Layout: Course Name > Date > FINAL RESULT > TR Card > Table > Buttons
+   - All other functionality identical to v2.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -160,26 +160,13 @@ STATUS: Ready for integration
             padding-top: 20px;
         }
         
-        .tr-container {
-            margin: 0 0 20px 0;
-        }
-        
-        .anchor-info {
+        /* TR Card - Framed like anchor card */
+        .tr-card {
             background: #0a0a0a;
             border-radius: 16px;
             padding: 12px;
             margin-bottom: 20px;
-            text-align: center;
             border: 1px solid #333;
-        }
-        .anchor-label {
-            font-size: 0.7rem;
-            color: #888;
-        }
-        .anchor-name {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: #4caf50;
         }
         
         .hcp-table {
@@ -397,6 +384,16 @@ STATUS: Ready for integration
         
         .loading { text-align: center; padding: 40px; color: #888; }
         .empty-message { text-align: center; padding: 40px; color: #888; }
+        
+        /* Gold bold for anchor values */
+        .gold-bold {
+            color: #ffaa44;
+            font-weight: 800;
+        }
+        .new-normal {
+            color: #4caf50;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -421,11 +418,10 @@ STATUS: Ready for integration
             <!-- FINAL RESULT Section -->
             <div class="final-result-title">FINAL RESULT</div>
             
-            <!-- TR Display -->
-            <div class="tr-container" id="hcpTrDisplay"></div>
-            
-            <!-- Anchor Card -->
-            <div id="hcpAnchorInfo" class="anchor-info"></div>
+            <!-- TR Card - Framed -->
+            <div class="tr-card" id="trCardContainer">
+                <div id="hcpTrDisplay"></div>
+            </div>
             
             <!-- HCP Table -->
             <div id="hcpTableContainer"></div>
@@ -472,7 +468,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.01</div>
+<div class="version-tag">v2.03</div>
 
 <script>
 // ============================================================
@@ -501,7 +497,6 @@ var currentGameData = null;
 var currentGameId = null;
 var allPlayersCache = null;
 var courseCache = null;
-var finalScores = { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
 
 // Scorecard state
 var currentHole = 1;
@@ -784,13 +779,7 @@ function renderHCPPage() {
         var players = hcpData.players || [];
         var anchor = hcpData.anchor || "Unknown";
         
-        // Anchor info
-        document.getElementById("hcpAnchorInfo").innerHTML = `
-            <div class="anchor-label">Anchor</div>
-            <div class="anchor-name">${escapeHtml(anchor)}</div>
-        `;
-        
-        // Table
+        // Build table with anchor highlighting
         var tableHtml = '<table class="hcp-table"><thead><tr>';
         tableHtml += '<th>Player</th><th>Cur</th><th>Anc</th><th>Perf</th><th>New</th>';
         tableHtml += '</tr></thead><tbody>';
@@ -800,13 +789,30 @@ function renderHCPPage() {
             var anchorAdj = p.anchorAdj || 0;
             var perfAdj = p.perfAdj || 0;
             var newHcp = p.newHcp || (p.currentHcp + anchorAdj + perfAdj);
+            var isAnchor = (p.name === anchor);
+            
+            // Cur column: gold bold if anchor, normal otherwise
+            var curClass = isAnchor ? 'gold-bold' : '';
+            var curStyle = isAnchor ? 'class="gold-bold"' : '';
+            
+            // Anc column color
+            var ancColor = anchorAdj >= 0 ? '#4caf50' : '#ff6b6b';
+            var ancSign = anchorAdj >= 0 ? '+' + anchorAdj : anchorAdj;
+            
+            // Perf column color
+            var perfColor = perfAdj > 0 ? '#4caf50' : (perfAdj < 0 ? '#ff6b6b' : '#888');
+            var perfSign = perfAdj > 0 ? '+' + perfAdj : perfAdj;
+            
+            // New column: gold bold if anchor, green otherwise
+            var newClass = isAnchor ? 'gold-bold' : 'new-normal';
+            var newStyle = isAnchor ? 'class="gold-bold"' : 'class="new-normal"';
             
             tableHtml += '<tr>';
             tableHtml += '<td style="text-align:left;">' + escapeHtml(p.name) + '</td>';
-            tableHtml += '<td>' + p.currentHcp + '</td>';
-            tableHtml += '<td style="color:' + (anchorAdj >= 0 ? '#4caf50' : '#ff6b6b') + ';">' + (anchorAdj >= 0 ? '+' + anchorAdj : anchorAdj) + '</td>';
-            tableHtml += '<td style="color:' + (perfAdj > 0 ? '#4caf50' : (perfAdj < 0 ? '#ff6b6b' : '#888')) + ';">' + (perfAdj > 0 ? '+' + perfAdj : perfAdj) + '</td>';
-            tableHtml += '<td style="color:#4caf50; font-weight:700;">' + newHcp + '</td>';
+            tableHtml += `<td ${curStyle}>${p.currentHcp}</td>`;
+            tableHtml += `<td style="color:${ancColor};">${ancSign}</td>`;
+            tableHtml += `<td style="color:${perfColor};">${perfSign}</td>`;
+            tableHtml += `<td ${newStyle}>${newHcp}</td>`;
             tableHtml += '</tr>';
         }
         tableHtml += '</tbody></table>';
@@ -829,8 +835,7 @@ function renderHCPPage() {
             document.getElementById("hcpNewAnchorInfo").innerHTML = '';
         }
     } else {
-        document.getElementById("hcpAnchorInfo").innerHTML = '<div class="anchor-label">No handicap adjustment data available</div>';
-        document.getElementById("hcpTableContainer").innerHTML = '';
+        document.getElementById("hcpTableContainer").innerHTML = '<div class="zero-info">No handicap adjustment data available</div>';
         document.getElementById("hcpZeroInfo").innerHTML = '';
         document.getElementById("hcpNewAnchorInfo").innerHTML = '';
     }
@@ -1133,15 +1138,15 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 2.01
+VERSION: 2.03
 KEY CHANGES:
-   - REMOVED: "HANDICAP ADJUSTMENT" title text
-   - NEW: Course name as main title (large, bold)
-   - NEW: Date as subtitle below course name
-   - NEW: "FINAL RESULT" as major section header above TR
-   - Layout: Course Name > Date > FINAL RESULT > TR > Anchor Card > Table > Buttons
-   - TR color scheme: Green for winning/tie, Red for losing
-   - All other functionality identical to v2.00
+   - NEW: TR display now framed in a card (background #0a0a0a, border, border-radius, padding)
+   - REMOVED: Anchor card entirely
+   - NEW: Anchor player's Cur value displayed in gold bold (#ffaa44, font-weight: 800)
+   - NEW: Anchor player's New value displayed in gold bold (#ffaa44, font-weight: 800)
+   - Non-anchor players: Cur normal (white), New green (#4caf50)
+   - Layout: Course Name > Date > FINAL RESULT > TR Card > Table > Buttons
+   - All other functionality identical to v2.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
