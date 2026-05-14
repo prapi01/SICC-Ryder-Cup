@@ -1,15 +1,14 @@
 /*
 FILE: js/history-record.js
-VERSION: 1.03
+VERSION: 2.00
 KEY CHANGES:
-   - ADDED: Validation and padding for all encoded segments in buildHoleDataString()
-   - ADDED: ensureLength() helper to pad short strings to expected length
-   - ADDED: Console warnings when padding occurs for debugging
-   - ADDED: Final validation that holeDataString length is exactly 594 characters
-   - ADDED: Error logging if length mismatch
-   - Prevents malformed history records from being saved
-   - All other functionality identical to v1.02
-DEPENDS ON: Firebase Firestore, encoding.js
+   - REMOVED: All encoding functions (encoding.js no longer required)
+   - NEW: Stores hole data as simple JSON arrays instead of encoded string
+   - NEW: buildHoleDataObject() creates structured object with all hole data
+   - NEW: f1Scores, f2Scores, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow
+   - No encoding/decoding bugs - pure JavaScript arrays
+   - Backward compatible: old records without holeData object will show error
+DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
@@ -18,7 +17,7 @@ var HistoryRecord = (function() {
     var COLLECTION = "historyGames";
     
     // ============================================================
-    // Helper: Get or create short device name
+    // Helper: Check if record already exists
     // ============================================================
     
     function getExistingRecord(gameId, callback) {
@@ -46,166 +45,101 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Helper: Ensure string has exact length (pad with K if too short)
+    // Build hole data object from cache
     // ============================================================
     
-    function ensureLength(str, expectedLen, segmentName) {
-        if (str.length === expectedLen) {
-            return str;
-        }
-        console.warn(`⚠️ ${segmentName} length mismatch: got ${str.length}, expected ${expectedLen}. Padding with K.`);
-        while (str.length < expectedLen) {
-            str += "K";
-        }
-        return str.substring(0, expectedLen);
-    }
-    
-    // ============================================================
-    // ENCODING FUNCTIONS FOR HOLE DATA STRING
-    // ============================================================
-    
-    function encodeFlightScores(flightData, holeNumber, coursePar, allPlayers) {
-        // Get 4 players in order: A1, A2, B1, B2 (sorted by handicap)
-        var flightPlayers = allPlayers.filter(function(p) { return p.flight === flightData.flight; });
-        var teamA = flightPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var teamB = flightPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var orderedPlayers = [teamA[0], teamA[1], teamB[0], teamB[1]];
+    function buildHoleDataObject(flight1Data, flight2Data, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow, allPlayers, startingHole) {
         
-        var par = coursePar[holeNumber - 1];
-        var result = "";
+        // Get ordered players for score mapping
+        function getOrderedPlayers(flight) {
+            var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+            var teamA = flightPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamB = flightPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            return [teamA[0], teamA[1], teamB[0], teamB[1]];
+        }
         
-        for (var i = 0; i < orderedPlayers.length; i++) {
-            var player = orderedPlayers[i];
-            var grossScore = 0;
-            
-            // Get score from flight data
-            if (flightData.flight === 1) {
-                var f1Hole = flightData.holeData[holeNumber];
-                if (f1Hole && f1Hole.saved) {
-                    if (i === 0) grossScore = f1Hole.scores.a1;
-                    else if (i === 1) grossScore = f1Hole.scores.a2;
-                    else if (i === 2) grossScore = f1Hole.scores.b1;
-                    else if (i === 3) grossScore = f1Hole.scores.b2;
+        var f1OrderedPlayers = getOrderedPlayers(1);
+        var f2OrderedPlayers = getOrderedPlayers(2);
+        
+        // Initialize arrays
+        var f1Scores = [];
+        var f2Scores = [];
+        var matchResultsArray = [];
+        
+        // Process holes in natural order (1-18) for simplicity
+        for (var hole = 1; hole <= 18; hole++) {
+            // Flight 1 scores
+            var f1HoleScores = [];
+            for (var i = 0; i < f1OrderedPlayers.length; i++) {
+                var player = f1OrderedPlayers[i];
+                var score = 0;
+                if (flight1Data[hole] && flight1Data[hole].saved) {
+                    if (i === 0) score = flight1Data[hole].scores.a1;
+                    else if (i === 1) score = flight1Data[hole].scores.a2;
+                    else if (i === 2) score = flight1Data[hole].scores.b1;
+                    else if (i === 3) score = flight1Data[hole].scores.b2;
                 }
-            } else {
-                var f2Hole = flightData.holeData[holeNumber];
-                if (f2Hole && f2Hole.saved) {
-                    if (i === 0) grossScore = f2Hole.scores.a1;
-                    else if (i === 1) grossScore = f2Hole.scores.a2;
-                    else if (i === 2) grossScore = f2Hole.scores.b1;
-                    else if (i === 3) grossScore = f2Hole.scores.b2;
+                f1HoleScores.push(score);
+            }
+            f1Scores.push(f1HoleScores);
+            
+            // Flight 2 scores
+            var f2HoleScores = [];
+            for (var i = 0; i < f2OrderedPlayers.length; i++) {
+                var player = f2OrderedPlayers[i];
+                var score = 0;
+                if (flight2Data[hole] && flight2Data[hole].saved) {
+                    if (i === 0) score = flight2Data[hole].scores.a1;
+                    else if (i === 1) score = flight2Data[hole].scores.a2;
+                    else if (i === 2) score = flight2Data[hole].scores.b1;
+                    else if (i === 3) score = flight2Data[hole].scores.b2;
+                }
+                f2HoleScores.push(score);
+            }
+            f2Scores.push(f2HoleScores);
+            
+            // Match results for this hole (16 values)
+            var holeMatchResults = [];
+            var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            for (var a = 0; a < teamAPlayers.length; a++) {
+                for (var b = 0; b < teamBPlayers.length; b++) {
+                    var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
+                    var value = matchResults[key] || 0;
+                    holeMatchResults.push(value);
                 }
             }
-            
-            // If no score saved, use par
-            if (grossScore === 0) grossScore = par;
-            
-            var relativeToPar = grossScore - par;
-            result += Encoding.encodeScore(relativeToPar);
+            matchResultsArray.push(holeMatchResults);
         }
         
-        return ensureLength(result, 4, `Flight ${flightData.flight} scores hole ${holeNumber}`);
-    }
-    
-    function encodeMatchBubbles(matchResults, holeNumber) {
-        // matchResults is an object mapping "PlayerA_vs_PlayerB" to net holes won
-        // We need 16 values in consistent order
-        var allPlayers = window._allPlayersForEncoding || [];
-        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        
-        var result = "";
-        
-        for (var a = 0; a < teamAPlayers.length; a++) {
-            for (var b = 0; b < teamBPlayers.length; b++) {
-                var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
-                var value = matchResults[key] || 0;
-                // Clamp to -10 to +15 range
-                if (value > 15) value = 15;
-                if (value < -10) value = -10;
-                result += Encoding.encodeMatchResult(value);
-            }
-        }
-        
-        return ensureLength(result, 16, `Match bubbles hole ${holeNumber}`);
-    }
-    
-    function encodeTRData(trTeamA, trTeamB, teamAGreen, teamBGreen, position) {
-        // trTeamA and trTeamB are arrays of 18 values
-        var valueA = trTeamA[position];
-        var valueB = trTeamB[position];
-        var encodedA = Encoding.encodeTR(valueA);
-        var encodedB = Encoding.encodeTR(valueB);
-        var colors = Encoding.encodeTRColor(teamAGreen[position], teamBGreen[position]);
-        var result = encodedA + encodedB + colors;
-        return ensureLength(result, 6, `TR data position ${position}`);
-    }
-    
-    function encodeDisplayRows(t1Row, t2Row, strkRow, position) {
-        var t1 = Encoding.encodeDisplayRow(t1Row[position]);
-        var t2 = Encoding.encodeDisplayRow(t2Row[position]);
-        var strk = Encoding.encodeDisplayRow(strkRow[position]);
-        var result = t1 + t2 + strk;
-        return ensureLength(result, 3, `Display rows position ${position}`);
-    }
-    
-    function buildHoleDataString(flight1Data, flight2Data, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow, coursePar, allPlayers, startingHole) {
-        // Store allPlayers globally for encodeMatchBubbles
-        window._allPlayersForEncoding = allPlayers;
-        
-        var holeDataString = "";
-        
-        // Process holes in play order
-        var playOrder = [];
-        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
-        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        // Build display rows arrays (convert "AS" to "S" for storage, but keep original for viewer)
+        var t1RowArray = [];
+        var t2RowArray = [];
+        var strkRowArray = [];
         
         for (var pos = 0; pos < 18; pos++) {
-            var holeNumber = playOrder[pos];
-            
-            // Flight 1 scores (4 chars)
-            var f1Scores = encodeFlightScores({ flight: 1, holeData: flight1Data }, holeNumber, coursePar, allPlayers);
-            
-            // Flight 2 scores (4 chars)
-            var f2Scores = encodeFlightScores({ flight: 2, holeData: flight2Data }, holeNumber, coursePar, allPlayers);
-            
-            // Match bubbles (16 chars)
-            var matchBubbles = encodeMatchBubbles(matchResults, holeNumber);
-            
-            // TR data (2 + 2 + 2 = 6 chars)
-            var trData = encodeTRData(trTeamA, trTeamB, teamAGreen, teamBGreen, pos);
-            
-            // Display rows (3 chars)
-            var displayRows = encodeDisplayRows(t1Row, t2Row, strkRow, pos);
-            
-            // Total per hole: 4 + 4 + 16 + 6 + 3 = 33 chars
-            holeDataString += f1Scores + f2Scores + matchBubbles + trData + displayRows;
+            t1RowArray.push(t1Row[pos] === "AS" ? "S" : t1Row[pos]);
+            t2RowArray.push(t2Row[pos] === "AS" ? "S" : t2Row[pos]);
+            strkRowArray.push(strkRow[pos] === "AS" ? "S" : strkRow[pos]);
         }
         
-        window._allPlayersForEncoding = null;
-        
-        // Final validation
-        if (holeDataString.length !== 594) {
-            console.error("❌ buildHoleDataString: Invalid holeDataString length:", holeDataString.length, "expected 594");
-            console.error("   This indicates missing data for some holes. Padding will be applied.");
-            
-            // Pad or truncate to 594
-            while (holeDataString.length < 594) {
-                holeDataString += "K";
-            }
-            if (holeDataString.length > 594) {
-                holeDataString = holeDataString.substring(0, 594);
-            }
-            console.log("   After padding, length:", holeDataString.length);
-        } else {
-            console.log("✅ buildHoleDataString: Valid holeDataString length: 594");
-        }
-        
-        return holeDataString;
+        return {
+            f1Scores: f1Scores,           // 18 x 4 array
+            f2Scores: f2Scores,           // 18 x 4 array
+            matchResults: matchResultsArray,  // 18 x 16 array
+            trTeamA: trTeamA,             // array of 18 numbers
+            trTeamB: trTeamB,             // array of 18 numbers
+            teamAGreen: teamAGreen,       // array of 18 booleans
+            teamBGreen: teamBGreen,       // array of 18 booleans
+            t1Row: t1RowArray,            // array of 18 strings ("A", "B", "S")
+            t2Row: t2RowArray,            // array of 18 strings
+            strkRow: strkRowArray         // array of 18 strings
+        };
     }
     
     // ============================================================
-    // Create pending archive record (WITH encoded holeData)
+    // Create pending archive record (NO ENCODING)
     // ============================================================
     
     function createPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataObj, flight2DataObj, matchResults, callback) {
@@ -215,7 +149,7 @@ var HistoryRecord = (function() {
             return;
         }
         
-        // FIRST: Check if an archive record already exists for this game
+        // Check if an archive record already exists
         getExistingRecord(gameId, function(err, existing) {
             if (err) {
                 console.error("Error checking existing record:", err);
@@ -231,7 +165,7 @@ var HistoryRecord = (function() {
             
             console.log("No existing archive record found. Creating new one for game:", gameId);
             
-            // Determine winner based on final scores
+            // Determine winner
             var winner = "Tie";
             var winnerText = "Tie Game!";
             if (finalScores.teamA > finalScores.teamB) {
@@ -242,40 +176,40 @@ var HistoryRecord = (function() {
                 winnerText = "Team B Wins!";
             }
             
-            // Build encoded holeData string
+            // Get data for hole data object
             var allPlayers = gameData.players || [];
-            var coursePar = gameData.course?.par || [];
             var startingHole = gameData.startingHole || 1;
-            var t1Row = results.game2?.flight1?.leader || new Array(18).fill("AS");
-            var t2Row = results.game2?.flight2?.leader || new Array(18).fill("AS");
-            var strkRow = results.game3?.leader || new Array(18).fill("AS");
             var trTeamA = results.tr?.teamA || new Array(18).fill(9.5);
             var trTeamB = results.tr?.teamB || new Array(18).fill(9.5);
             var teamAGreen = results.tr?.teamAGreen || new Array(18).fill(true);
             var teamBGreen = results.tr?.teamBGreen || new Array(18).fill(true);
+            var t1Row = results.game2?.flight1?.leader || new Array(18).fill("AS");
+            var t2Row = results.game2?.flight2?.leader || new Array(18).fill("AS");
+            var strkRow = results.game3?.leader || new Array(18).fill("AS");
             
-            var holeDataString = "";
+            // Build hole data object (NO ENCODING)
+            var holeDataObject = {};
             try {
-                holeDataString = buildHoleDataString(
-                    flight1DataObj || {}, flight2DataObj || {},
+                holeDataObject = buildHoleDataObject(
+                    flight1DataObj || {},
+                    flight2DataObj || {},
                     matchResults || {},
                     trTeamA, trTeamB, teamAGreen, teamBGreen,
                     t1Row, t2Row, strkRow,
-                    coursePar, allPlayers, startingHole
+                    allPlayers, startingHole
                 );
+                console.log("Hole data object built successfully");
             } catch(e) {
-                console.error("Error building holeDataString:", e);
-                holeDataString = "";
+                console.error("Error building hole data object:", e);
             }
             
-            // Build archive data (WITH encoded holeData)
+            // Build archive data
             var archiveData = {
                 originalGameId: gameId,
                 completedAt: firebase.firestore.FieldValue.serverTimestamp(),
                 status: "pending_handicap",
-                version: 2,
-                schema: "encoded_v1",
-                holeData: holeDataString,
+                version: 3,
+                schema: "json_v1",
                 
                 gameInfo: {
                     date: gameData.date,
@@ -319,6 +253,9 @@ var HistoryRecord = (function() {
                     }
                 },
                 
+                // NEW: Simple JSON arrays - NO ENCODING
+                holeData: holeDataObject,
+                
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
             
@@ -327,7 +264,7 @@ var HistoryRecord = (function() {
                 archiveData.archiveId = docRef.id;
                 
                 docRef.set(archiveData).then(function() {
-                    console.log("Pending archive record created with encoded holeData:", docRef.id);
+                    console.log("Pending archive record created (JSON format):", docRef.id);
                     if (callback) callback(null, docRef.id);
                 }).catch(function(err) {
                     console.error("Error creating archive record:", err);
@@ -341,7 +278,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Update archive record with handicap adjustment data
+    // Update archive record with handicap adjustment
     // ============================================================
     
     function updateWithHandicap(archiveId, handicapData, callback) {
@@ -376,7 +313,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Get archived game by ID (for viewing)
+    // Get archived game by ID
     // ============================================================
     
     function getArchivedGame(archiveId, callback) {
@@ -400,7 +337,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Get list of archived games (for history view)
+    // Get list of archived games
     // ============================================================
     
     function getArchivedGames(limit, callback) {
@@ -423,7 +360,7 @@ var HistoryRecord = (function() {
                         teamAScore: data.finalResults?.teamAScore,
                         teamBScore: data.finalResults?.teamBScore,
                         completedAt: data.completedAt,
-                        holeData: data.holeData,
+                        hasHoleData: !!data.holeData,
                         version: data.version
                     });
                 });
@@ -436,7 +373,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Get a single archived game by original game ID
+    // Get archived game by original game ID
     // ============================================================
     
     function getArchivedGameByOriginalId(originalGameId, callback) {
@@ -464,7 +401,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Delete archive record (for cleanup)
+    // Delete archive record
     // ============================================================
     
     function deleteArchiveRecord(archiveId, callback) {
@@ -496,22 +433,21 @@ var HistoryRecord = (function() {
         getArchivedGameByOriginalId: getArchivedGameByOriginalId,
         getExistingRecord: getExistingRecord,
         deleteArchiveRecord: deleteArchiveRecord,
-        buildHoleDataString: buildHoleDataString  // Exposed for testing
+        buildHoleDataObject: buildHoleDataObject
     };
     
 })();
 
 /*
 FILE: js/history-record.js
-VERSION: 1.03
+VERSION: 2.00
 KEY CHANGES:
-   - ADDED: Validation and padding for all encoded segments in buildHoleDataString()
-   - ADDED: ensureLength() helper to pad short strings to expected length
-   - ADDED: Console warnings when padding occurs for debugging
-   - ADDED: Final validation that holeDataString length is exactly 594 characters
-   - ADDED: Error logging if length mismatch
-   - Prevents malformed history records from being saved
-   - All other functionality identical to v1.02
-DEPENDS ON: Firebase Firestore, encoding.js
+   - REMOVED: All encoding functions (encoding.js no longer required)
+   - NEW: Stores hole data as simple JSON arrays instead of encoded string
+   - NEW: buildHoleDataObject() creates structured object with all hole data
+   - NEW: f1Scores, f2Scores, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow
+   - No encoding/decoding bugs - pure JavaScript arrays
+   - Backward compatible: old records without holeData object will show error
+DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
