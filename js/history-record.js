@@ -1,16 +1,13 @@
 /*
 FILE: js/history-record.js
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - FIXED: Flattened all nested arrays to work with Firestore (no arrays inside arrays)
-   - f1Scores: 72 numbers (18 holes × 4 players) in a single array
-   - f2Scores: 72 numbers (18 holes × 4 players) in a single array
-   - matchResults: 288 numbers (18 holes × 16 matches) in a single array
-   - trTeamA, trTeamB: 18 numbers each
-   - teamAGreen, teamBGreen: 18 booleans each
-   - t1Row, t2Row, strkRow: 18 strings each
-   - Updated buildHoleDataObject() to flatten arrays
-   - Updated accessor comments for proper indexing
+   - FIXED: Implemented upsert logic to prevent duplicate records
+   - NEW: upsertPendingRecord() - creates or updates record based on originalGameId
+   - If record exists (from F1 signing), update it with F2 data
+   - If no record exists, create new one
+   - Prevents duplicate history records in all scenarios
+   - All data flattened for Firestore compatibility
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
@@ -65,15 +62,14 @@ var HistoryRecord = (function() {
         var f2OrderedPlayers = getOrderedPlayers(2);
         
         // Flattened arrays
-        var f1Scores = [];     // 72 numbers: holeIndex * 4 + playerIndex
-        var f2Scores = [];     // 72 numbers: holeIndex * 4 + playerIndex
-        var matchResultsArray = [];  // 288 numbers: holeIndex * 16 + matchIndex
+        var f1Scores = [];
+        var f2Scores = [];
+        var matchResultsArray = [];
         
         // Process holes in natural order (1-18)
         for (var hole = 1; hole <= 18; hole++) {
             // Flight 1 scores - 4 players per hole
             for (var i = 0; i < f1OrderedPlayers.length; i++) {
-                var player = f1OrderedPlayers[i];
                 var score = 0;
                 if (flight1Data[hole] && flight1Data[hole].saved) {
                     if (i === 0) score = flight1Data[hole].scores.a1;
@@ -86,7 +82,6 @@ var HistoryRecord = (function() {
             
             // Flight 2 scores - 4 players per hole
             for (var i = 0; i < f2OrderedPlayers.length; i++) {
-                var player = f2OrderedPlayers[i];
                 var score = 0;
                 if (flight2Data[hole] && flight2Data[hole].saved) {
                     if (i === 0) score = flight2Data[hole].scores.a1;
@@ -122,32 +117,31 @@ var HistoryRecord = (function() {
         }
         
         return {
-            // All arrays are flat (no nested arrays) for Firestore compatibility
-            f1Scores: f1Scores,           // 72 numbers: [hole1_p1, hole1_p2, hole1_p3, hole1_p4, hole2_p1, ...]
-            f2Scores: f2Scores,           // 72 numbers
-            matchResults: matchResultsArray,  // 288 numbers: [hole1_match1, hole1_match2, ..., hole2_match1, ...]
-            trTeamA: trTeamA,             // 18 numbers
-            trTeamB: trTeamB,             // 18 numbers
-            teamAGreen: teamAGreen,       // 18 booleans
-            teamBGreen: teamBGreen,       // 18 booleans
-            t1Row: t1RowArray,            // 18 strings ("A", "B", "S")
-            t2Row: t2RowArray,            // 18 strings
-            strkRow: strkRowArray         // 18 strings
+            f1Scores: f1Scores,
+            f2Scores: f2Scores,
+            matchResults: matchResultsArray,
+            trTeamA: trTeamA,
+            trTeamB: trTeamB,
+            teamAGreen: teamAGreen,
+            teamBGreen: teamBGreen,
+            t1Row: t1RowArray,
+            t2Row: t2RowArray,
+            strkRow: strkRowArray
         };
     }
     
     // ============================================================
-    // Create pending archive record (FLATTENED DATA)
+    // Upsert pending archive record (CREATE OR UPDATE)
     // ============================================================
     
-    function createPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataObj, flight2DataObj, matchResults, callback) {
+    function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataObj, flight2DataObj, matchResults, callback) {
         if (!gameId || !gameData) {
             var err = new Error("Missing required data for archive record");
             if (callback) callback(err, null);
             return;
         }
         
-        // Check if an archive record already exists
+        // First, check if a record already exists for this game
         getExistingRecord(gameId, function(err, existing) {
             if (err) {
                 console.error("Error checking existing record:", err);
@@ -156,121 +150,181 @@ var HistoryRecord = (function() {
             }
             
             if (existing && existing.id) {
-                console.log("Archive record already exists for game:", gameId, "ID:", existing.id);
-                if (callback) callback(null, existing.id);
-                return;
-            }
-            
-            console.log("No existing archive record found. Creating new one for game:", gameId);
-            
-            // Determine winner
-            var winner = "Tie";
-            var winnerText = "Tie Game!";
-            if (finalScores.teamA > finalScores.teamB) {
-                winner = "A";
-                winnerText = "Team A Wins!";
-            } else if (finalScores.teamB > finalScores.teamA) {
-                winner = "B";
-                winnerText = "Team B Wins!";
-            }
-            
-            // Get data for hole data object
-            var allPlayers = gameData.players || [];
-            var startingHole = gameData.startingHole || 1;
-            var trTeamA = results.tr?.teamA || new Array(18).fill(9.5);
-            var trTeamB = results.tr?.teamB || new Array(18).fill(9.5);
-            var teamAGreen = results.tr?.teamAGreen || new Array(18).fill(true);
-            var teamBGreen = results.tr?.teamBGreen || new Array(18).fill(true);
-            var t1Row = results.game2?.flight1?.leader || new Array(18).fill("AS");
-            var t2Row = results.game2?.flight2?.leader || new Array(18).fill("AS");
-            var strkRow = results.game3?.leader || new Array(18).fill("AS");
-            
-            // Build hole data object (FLATTENED - no nested arrays)
-            var holeDataObject = {};
-            try {
-                holeDataObject = buildHoleDataObject(
-                    flight1DataObj || {},
-                    flight2DataObj || {},
-                    matchResults || {},
-                    trTeamA, trTeamB, teamAGreen, teamBGreen,
-                    t1Row, t2Row, strkRow,
-                    allPlayers, startingHole
-                );
-                console.log("Hole data object built successfully (flattened)");
-            } catch(e) {
-                console.error("Error building hole data object:", e);
-            }
-            
-            // Build archive data
-            var archiveData = {
-                originalGameId: gameId,
-                completedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                status: "pending_handicap",
-                version: 3,
-                schema: "json_v1",
+                // Record exists - UPDATE IT
+                console.log("Found existing archive record for game:", gameId, "ID:", existing.id);
                 
-                gameInfo: {
-                    date: gameData.date,
-                    course: {
-                        name: gameData.course.name,
-                        id: gameData.course.id,
-                        par: gameData.course.par,
-                        si: gameData.course.si
+                // Get data for hole data object (may already have some data)
+                var allPlayers = gameData.players || [];
+                var startingHole = gameData.startingHole || 1;
+                var trTeamA = results.tr?.teamA || existing.data?.holeData?.trTeamA || new Array(18).fill(9.5);
+                var trTeamB = results.tr?.teamB || existing.data?.holeData?.trTeamB || new Array(18).fill(9.5);
+                var teamAGreen = results.tr?.teamAGreen || existing.data?.holeData?.teamAGreen || new Array(18).fill(true);
+                var teamBGreen = results.tr?.teamBGreen || existing.data?.holeData?.teamBGreen || new Array(18).fill(true);
+                var t1Row = results.game2?.flight1?.leader || existing.data?.holeData?.t1Row || new Array(18).fill("S");
+                var t2Row = results.game2?.flight2?.leader || existing.data?.holeData?.t2Row || new Array(18).fill("S");
+                var strkRow = results.game3?.leader || existing.data?.holeData?.strkRow || new Array(18).fill("S");
+                
+                // Build hole data object
+                var holeDataObject = {};
+                try {
+                    holeDataObject = buildHoleDataObject(
+                        flight1DataObj || {},
+                        flight2DataObj || {},
+                        matchResults || {},
+                        trTeamA, trTeamB, teamAGreen, teamBGreen,
+                        t1Row, t2Row, strkRow,
+                        allPlayers, startingHole
+                    );
+                } catch(e) {
+                    console.error("Error building hole data object:", e);
+                }
+                
+                // Update existing record
+                var updateData = {
+                    status: "pending_handicap",
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    finalResults: {
+                        teamAScore: finalScores.teamA,
+                        teamBScore: finalScores.teamB,
+                        winner: finalScores.teamA > finalScores.teamB ? "A" : (finalScores.teamB > finalScores.teamA ? "B" : "Tie"),
+                        winnerText: finalScores.teamA > finalScores.teamB ? "Team A Wins!" : (finalScores.teamB > finalScores.teamA ? "Team B Wins!" : "Tie Game!")
                     },
-                    startingHole: gameData.startingHole || 1,
-                    teamGameFormat: gameData.teamGameFormat || "tournament"
-                },
-                
-                players: gameData.players.map(function(p) {
-                    return {
-                        name: p.name,
-                        label: p.label,
-                        handicap: p.handicap,
-                        team: p.team,
-                        flight: p.flight
-                    };
-                }),
-                
-                finalResults: {
-                    teamAScore: finalScores.teamA,
-                    teamBScore: finalScores.teamB,
-                    winner: winner,
-                    winnerText: winnerText
-                },
-                
-                signatures: {
-                    f1: {
-                        signed: signatures.f1?.signed === true,
-                        signedAt: signatures.f1?.signedAt || null,
-                        captainName: signatures.f1?.captainName || null
-                    },
-                    f2: {
-                        signed: signatures.f2?.signed === true,
-                        signedAt: signatures.f2?.signedAt || null,
-                        captainName: signatures.f2?.captainName || null
+                    holeData: holeDataObject,
+                    signatures: {
+                        f1: {
+                            signed: signatures.f1?.signed === true,
+                            signedAt: signatures.f1?.signedAt || null,
+                            captainName: signatures.f1?.captainName || null
+                        },
+                        f2: {
+                            signed: signatures.f2?.signed === true,
+                            signedAt: signatures.f2?.signedAt || null,
+                            captainName: signatures.f2?.captainName || null
+                        }
                     }
-                },
+                };
                 
-                // FLATTENED holeData - no nested arrays
-                holeData: holeDataObject,
+                firebase.firestore().collection(COLLECTION).doc(existing.id).update(updateData)
+                    .then(function() {
+                        console.log("Archive record updated:", existing.id);
+                        if (callback) callback(null, existing.id);
+                    })
+                    .catch(function(err) {
+                        console.error("Error updating archive record:", err);
+                        if (callback) callback(err, null);
+                    });
                 
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            
-            try {
-                var docRef = firebase.firestore().collection(COLLECTION).doc();
-                archiveData.archiveId = docRef.id;
+            } else {
+                // No record exists - CREATE NEW
+                console.log("No existing archive record found. Creating new one for game:", gameId);
                 
-                docRef.set(archiveData).then(function() {
-                    console.log("Pending archive record created (flattened JSON format):", docRef.id);
-                    if (callback) callback(null, docRef.id);
-                }).catch(function(err) {
-                    console.error("Error creating archive record:", err);
+                // Determine winner
+                var winner = "Tie";
+                var winnerText = "Tie Game!";
+                if (finalScores.teamA > finalScores.teamB) {
+                    winner = "A";
+                    winnerText = "Team A Wins!";
+                } else if (finalScores.teamB > finalScores.teamA) {
+                    winner = "B";
+                    winnerText = "Team B Wins!";
+                }
+                
+                // Get data for hole data object
+                var allPlayers = gameData.players || [];
+                var startingHole = gameData.startingHole || 1;
+                var trTeamA = results.tr?.teamA || new Array(18).fill(9.5);
+                var trTeamB = results.tr?.teamB || new Array(18).fill(9.5);
+                var teamAGreen = results.tr?.teamAGreen || new Array(18).fill(true);
+                var teamBGreen = results.tr?.teamBGreen || new Array(18).fill(true);
+                var t1Row = results.game2?.flight1?.leader || new Array(18).fill("AS");
+                var t2Row = results.game2?.flight2?.leader || new Array(18).fill("AS");
+                var strkRow = results.game3?.leader || new Array(18).fill("AS");
+                
+                // Build hole data object
+                var holeDataObject = {};
+                try {
+                    holeDataObject = buildHoleDataObject(
+                        flight1DataObj || {},
+                        flight2DataObj || {},
+                        matchResults || {},
+                        trTeamA, trTeamB, teamAGreen, teamBGreen,
+                        t1Row, t2Row, strkRow,
+                        allPlayers, startingHole
+                    );
+                } catch(e) {
+                    console.error("Error building hole data object:", e);
+                }
+                
+                // Create new archive data
+                var archiveData = {
+                    originalGameId: gameId,
+                    completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    status: "pending_handicap",
+                    version: 3,
+                    schema: "json_v1",
+                    
+                    gameInfo: {
+                        date: gameData.date,
+                        course: {
+                            name: gameData.course.name,
+                            id: gameData.course.id,
+                            par: gameData.course.par,
+                            si: gameData.course.si
+                        },
+                        startingHole: gameData.startingHole || 1,
+                        teamGameFormat: gameData.teamGameFormat || "tournament"
+                    },
+                    
+                    players: gameData.players.map(function(p) {
+                        return {
+                            name: p.name,
+                            label: p.label,
+                            handicap: p.handicap,
+                            team: p.team,
+                            flight: p.flight
+                        };
+                    }),
+                    
+                    finalResults: {
+                        teamAScore: finalScores.teamA,
+                        teamBScore: finalScores.teamB,
+                        winner: winner,
+                        winnerText: winnerText
+                    },
+                    
+                    signatures: {
+                        f1: {
+                            signed: signatures.f1?.signed === true,
+                            signedAt: signatures.f1?.signedAt || null,
+                            captainName: signatures.f1?.captainName || null
+                        },
+                        f2: {
+                            signed: signatures.f2?.signed === true,
+                            signedAt: signatures.f2?.signedAt || null,
+                            captainName: signatures.f2?.captainName || null
+                        }
+                    },
+                    
+                    holeData: holeDataObject,
+                    
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                try {
+                    var docRef = firebase.firestore().collection(COLLECTION).doc();
+                    archiveData.archiveId = docRef.id;
+                    
+                    docRef.set(archiveData).then(function() {
+                        console.log("New archive record created:", docRef.id);
+                        if (callback) callback(null, docRef.id);
+                    }).catch(function(err) {
+                        console.error("Error creating archive record:", err);
+                        if (callback) callback(err, null);
+                    });
+                } catch (err) {
+                    console.error("Exception creating archive record:", err);
                     if (callback) callback(err, null);
-                });
-            } catch (err) {
-                console.error("Exception creating archive record:", err);
-                if (callback) callback(err, null);
+                }
             }
         });
     }
@@ -308,6 +362,14 @@ var HistoryRecord = (function() {
                 console.error("Error updating archive record:", err);
                 if (callback) callback(err);
             });
+    }
+    
+    // ============================================================
+    // Legacy wrapper for createPendingRecord (calls upsert)
+    // ============================================================
+    
+    function createPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataObj, flight2DataObj, matchResults, callback) {
+        upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataObj, flight2DataObj, matchResults, callback);
     }
     
     // ============================================================
@@ -425,6 +487,7 @@ var HistoryRecord = (function() {
     
     return {
         createPendingRecord: createPendingRecord,
+        upsertPendingRecord: upsertPendingRecord,
         updateWithHandicap: updateWithHandicap,
         getArchivedGame: getArchivedGame,
         getArchivedGames: getArchivedGames,
@@ -438,17 +501,14 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - FIXED: Flattened all nested arrays to work with Firestore (no arrays inside arrays)
-   - f1Scores: 72 numbers (18 holes × 4 players) in a single array
-   - f2Scores: 72 numbers (18 holes × 4 players) in a single array
-   - matchResults: 288 numbers (18 holes × 16 matches) in a single array
-   - trTeamA, trTeamB: 18 numbers each
-   - teamAGreen, teamBGreen: 18 booleans each
-   - t1Row, t2Row, strkRow: 18 strings each
-   - Updated buildHoleDataObject() to flatten arrays
-   - Updated accessor comments for proper indexing
+   - FIXED: Implemented upsert logic to prevent duplicate records
+   - NEW: upsertPendingRecord() - creates or updates record based on originalGameId
+   - If record exists (from F1 signing), update it with F2 data
+   - If no record exists, create new one
+   - Prevents duplicate history records in all scenarios
+   - All data flattened for Firestore compatibility
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
