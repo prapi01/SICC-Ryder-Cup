@@ -1,17 +1,15 @@
 <!--
 FILE: view-history.html
-VERSION: 1.05
+VERSION: 2.00
 KEY CHANGES:
-   - ADDED: Handicap Adjustment button below scorecard (right side)
-   - ADDED: Read-only handicap adjustment modal
-   - ADDED: Modal displays anchor, player table, zero-rise info, new anchor
-   - ADDED: [ Back ] button in modal to return to scorecard
-   - UI Layout: Two rows below scorecard:
-        Row 1: [← Back to Game List] [🏌️ HANDICAP ADJUSTMENT →]
-        Row 2: [← Back to Main Menu]
-   - FIXED: Scorecard displays scores correctly (green)
-   - UI layout matches view-game.html gold standard
-   - Layout: SCORECARD | P/N | Flight 1/2 | ◀ ## ▶ on single row
+   - COMPLETE RESTRUCTURE: HCP page is now the landing page after game selection
+   - NEW: HCP page shows TR display (Team A vs Team B with colors)
+   - NEW: HCP page shows handicap adjustment table
+   - NEW: HCP page has [Back] (to game list) and [Scorecard] buttons
+   - NEW: Scorecard page has single [Back] button to return to HCP page
+   - REMOVED: Back to Main Menu and Back to Game List from scorecard page
+   - TR color scheme: Green for winning/tie, Red for losing
+   - All existing functionality preserved (flight toggle, hole navigation, P/N toggle)
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -121,6 +119,130 @@ STATUS: Ready for integration
         .game-result {
             font-size: 0.7rem;
             color: #ffaa44;
+            margin-top: 4px;
+        }
+        
+        /* HCP Page Styles */
+        .hcp-page {
+            background: #111;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+        .hcp-title {
+            text-align: center;
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: #4caf50;
+            margin-bottom: 4px;
+        }
+        .hcp-subtitle {
+            text-align: center;
+            font-size: 0.75rem;
+            color: #888;
+            margin-bottom: 20px;
+        }
+        
+        .tr-container {
+            margin: 20px 0;
+        }
+        
+        .anchor-info {
+            background: #0a0a0a;
+            border-radius: 16px;
+            padding: 12px;
+            margin-bottom: 16px;
+            text-align: center;
+            border: 1px solid #333;
+        }
+        .anchor-label {
+            font-size: 0.7rem;
+            color: #888;
+        }
+        .anchor-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        
+        .hcp-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.7rem;
+            margin-bottom: 16px;
+        }
+        .hcp-table th, .hcp-table td {
+            padding: 8px 4px;
+            text-align: center;
+            border-bottom: 1px solid #333;
+        }
+        .hcp-table th {
+            color: #4caf50;
+            font-weight: 600;
+        }
+        
+        .zero-info {
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 10px;
+            margin-bottom: 16px;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #ffaa44;
+        }
+        
+        .action-buttons-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .btn-half {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+        .btn-back {
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+        }
+        .btn-scorecard {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .btn-menu-full {
+            width: 100%;
+            padding: 14px;
+            border-radius: 40px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+            margin-top: 20px;
+        }
+        
+        /* Scorecard Page Styles */
+        .game-info-header {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .game-course-name {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        .game-date-display {
+            font-size: 0.8rem;
+            color: #888;
             margin-top: 4px;
         }
         
@@ -257,151 +379,6 @@ STATUS: Ready for integration
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
         
-        /* Button styles */
-        .action-buttons-row {
-            display: flex;
-            gap: 12px;
-            margin: 20px 0 12px 0;
-        }
-        .btn-half {
-            flex: 1;
-            padding: 12px;
-            border-radius: 40px;
-            font-weight: 600;
-            text-align: center;
-            cursor: pointer;
-            border: none;
-            transition: all 0.2s ease;
-        }
-        .btn-game-list {
-            background: #1a1a1a;
-            color: #ccc;
-            border: 1px solid #333;
-        }
-        .btn-hcp {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        .btn-menu-full {
-            width: 100%;
-            padding: 14px;
-            border-radius: 40px;
-            font-weight: 600;
-            text-align: center;
-            cursor: pointer;
-            background: #1a1a1a;
-            color: #ccc;
-            border: 1px solid #333;
-            margin-top: 0;
-        }
-        .btn-menu {
-            width: 100%;
-            padding: 14px;
-            border-radius: 40px;
-            font-weight: 600;
-            text-align: center;
-            cursor: pointer;
-            background: #1a1a1a;
-            color: #ccc;
-            border: 1px solid #333;
-            margin-top: 20px;
-        }
-        
-        /* Modal Styles */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.95);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 3000;
-        }
-        .hcp-modal {
-            background: #1a1a1a;
-            border-radius: 28px;
-            padding: 24px;
-            max-width: 500px;
-            width: 90%;
-            max-height: 85vh;
-            overflow-y: auto;
-            border: 2px solid #4caf50;
-        }
-        .hcp-modal-title {
-            font-size: 1.3rem;
-            font-weight: 800;
-            color: #4caf50;
-            text-align: center;
-            margin-bottom: 8px;
-        }
-        .hcp-modal-subtitle {
-            font-size: 0.8rem;
-            color: #ffaa44;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .hcp-anchor-info {
-            background: #0a0a0a;
-            border-radius: 16px;
-            padding: 12px;
-            margin-bottom: 16px;
-            text-align: center;
-            border: 1px solid #333;
-        }
-        .hcp-anchor-label {
-            font-size: 0.7rem;
-            color: #888;
-        }
-        .hcp-anchor-name {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: #4caf50;
-        }
-        .hcp-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.7rem;
-            margin-bottom: 16px;
-        }
-        .hcp-table th, .hcp-table td {
-            padding: 8px 4px;
-            text-align: center;
-            border-bottom: 1px solid #333;
-        }
-        .hcp-table th {
-            color: #4caf50;
-            font-weight: 600;
-        }
-        .hcp-zero-info {
-            background: #0a0a0a;
-            border-radius: 12px;
-            padding: 10px;
-            margin-bottom: 16px;
-            text-align: center;
-            font-size: 0.75rem;
-            color: #ffaa44;
-        }
-        .hcp-modal-buttons {
-            display: flex;
-            justify-content: center;
-            margin-top: 20px;
-        }
-        .hcp-back-btn {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            padding: 12px 24px;
-            border-radius: 40px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            min-width: 120px;
-        }
-        
         .loading { text-align: center; padding: 40px; color: #888; }
         .empty-message { text-align: center; padding: 40px; color: #888; }
     </style>
@@ -410,12 +387,40 @@ STATUS: Ready for integration
 
 <div class="container">
     <div class="status-bubble" id="statusBubble">📜 HISTORY</div>
+    
+    <!-- Game Selection Screen -->
     <div id="gameSelector" class="game-selector">
         <div class="loading">Loading completed games...</div>
     </div>
     
-    <div id="gameViewer" style="display:none;">
-        <div style="text-align:center; margin-bottom:8px;" id="courseName"></div>
+    <!-- HCP Page (shown after game selection) -->
+    <div id="hcpPage" style="display:none;">
+        <div class="hcp-page">
+            <div class="hcp-title">🏌️ HANDICAP ADJUSTMENT</div>
+            <div class="hcp-subtitle" id="hcpSubtitle"></div>
+            
+            <div class="tr-container" id="hcpTrDisplay"></div>
+            
+            <div id="hcpAnchorInfo" class="anchor-info"></div>
+            
+            <div id="hcpTableContainer"></div>
+            <div id="hcpZeroInfo"></div>
+            <div id="hcpNewAnchorInfo"></div>
+            
+            <div class="action-buttons-row">
+                <button class="btn-half btn-back" id="hcpBackToGameListBtn">← Back</button>
+                <button class="btn-half btn-scorecard" id="hcpToScorecardBtn">Scorecard →</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scorecard Page -->
+    <div id="scorecardPage" style="display:none;">
+        <div class="game-info-header">
+            <div class="game-course-name" id="scorecardCourseName"></div>
+            <div class="game-date-display" id="scorecardGameDate"></div>
+        </div>
+        
         <div id="holeHeader" class="hole-header"></div>
         <div id="trDisplay" class="team-score-card"></div>
         <div id="playerCards" class="player-cards"></div>
@@ -436,19 +441,12 @@ STATUS: Ready for integration
             <div class="scorecard-wrapper" id="scorecardWrapper"></div>
         </div>
         
-        <!-- Action Buttons Row 1: Two buttons side by side -->
-        <div class="action-buttons-row">
-            <button class="btn-half btn-game-list" id="backToGameListBtn">← Back to Game List</button>
-            <button class="btn-half btn-hcp" id="viewHcpBtn">🏌️ HANDICAP ADJUSTMENT →</button>
-        </div>
-        
-        <!-- Row 2: Back to Main Menu full width -->
-        <button class="btn-menu-full" id="menuBtn">← Back to Main Menu</button>
+        <button class="btn-menu-full" id="scorecardBackBtn">← Back</button>
     </div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.05</div>
+<div class="version-tag">v2.00</div>
 
 <script>
 // ============================================================
@@ -473,18 +471,35 @@ var db = firebase.firestore();
 // Global State
 // ============================================================
 
-var currentGame = null;
 var currentGameData = null;
+var currentGameId = null;
+var allPlayersCache = null;
+var courseCache = null;
+var finalScores = { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+
+// Scorecard state
 var currentHole = 1;
 var currentDisplayMode = "play";
 var selectedFlight = 1;
 var holeDataCache = null;
-var allPlayersCache = null;
-var courseCache = null;
 
 // ============================================================
 // Helper Functions
 // ============================================================
+
+function formatDisplayDate(dateString) {
+    if (!dateString) return "";
+    var parts = dateString.split('-');
+    if (parts.length === 3) {
+        var day = parts[2];
+        var month = parts[1];
+        var year = parts[0];
+        var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        var monthIndex = parseInt(month) - 1;
+        return day + ' ' + monthNames[monthIndex] + ' ' + year;
+    }
+    return dateString;
+}
 
 function getPlayOrder(startingHole) {
     var order = [];
@@ -575,10 +590,10 @@ function decodeHoleData(holeDataString, holeNumber, startingHole, coursePar) {
 }
 
 function getPlayerScore(player, holeNumber) {
-    if (!holeDataCache || !currentGame) return "-";
+    if (!holeDataCache || !currentGameData) return "-";
     
     var startingHole = courseCache?.startingHole || 1;
-    var holeData = decodeHoleData(currentGame.holeData, holeNumber, startingHole, courseCache?.par || []);
+    var holeData = decodeHoleData(currentGameData.holeData, holeNumber, startingHole, courseCache?.par || []);
     if (!holeData) return "-";
     
     var flightScores = (player.flight === 1) ? holeData.f1Scores : holeData.f2Scores;
@@ -598,10 +613,10 @@ function getPlayerScore(player, holeNumber) {
 }
 
 function getMatchValue(player, opponent) {
-    if (!holeDataCache || !currentGame) return 0;
+    if (!holeDataCache || !currentGameData) return 0;
     
     var startingHole = courseCache?.startingHole || 1;
-    var holeData = decodeHoleData(currentGame.holeData, currentHole, startingHole, courseCache?.par || []);
+    var holeData = decodeHoleData(currentGameData.holeData, currentHole, startingHole, courseCache?.par || []);
     if (!holeData) return 0;
     
     var teamAPlayers = allPlayersCache.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -660,12 +675,53 @@ function getStoredScore(player, hole) {
     return getPlayerScore(player, hole);
 }
 
-function getTRForHole(holeNumber) {
-    if (!holeDataCache || !currentGame) return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+// ============================================================
+// TR Display Function (using GameUI)
+// ============================================================
+
+function updateTRDisplay(containerId, teamA, teamB, teamAGreen, teamBGreen) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    
+    var teamADisplay = teamA % 1 === 0 ? teamA : teamA.toFixed(1);
+    var teamBDisplay = teamB % 1 === 0 ? teamB : teamB.toFixed(1);
+    var teamAColor = teamAGreen ? '#4caf50' : '#ff6b6b';
+    var teamBColor = teamBGreen ? '#4caf50' : '#ff6b6b';
+    var separatorColor = '#888';
+    
+    var html = `
+        <div style="text-align: center; font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;">
+            <div style="display: flex; justify-content: center; align-items: center; gap: 16px;">
+                <div style="text-align: center; min-width: 100px;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: ${teamAColor}; letter-spacing: 1px;">TEAM A</div>
+                    <div style="font-size: 1.8rem; font-weight: 800; color: ${teamAColor}; line-height: 1.2;">${teamADisplay}</div>
+                </div>
+                <div style="font-size: 1.5rem; font-weight: 400; color: ${separatorColor};">│</div>
+                <div style="text-align: center; min-width: 100px;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: ${teamBColor}; letter-spacing: 1px;">TEAM B</div>
+                    <div style="font-size: 1.8rem; font-weight: 800; color: ${teamBColor}; line-height: 1.2;">${teamBDisplay}</div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// ============================================================
+// Get Final TR from Hole 18
+// ============================================================
+
+function getFinalTRFromHoleData() {
+    if (!currentGameData || !currentGameData.holeData) {
+        return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+    }
     
     var startingHole = courseCache?.startingHole || 1;
-    var holeData = decodeHoleData(currentGame.holeData, holeNumber, startingHole, courseCache?.par || []);
-    if (!holeData) return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+    var holeData = decodeHoleData(currentGameData.holeData, 18, startingHole, courseCache?.par || []);
+    if (!holeData) {
+        return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+    }
     
     return {
         teamA: holeData.trA,
@@ -676,158 +732,85 @@ function getTRForHole(holeNumber) {
 }
 
 // ============================================================
-// Handicap Adjustment Modal (Read-Only)
+// Render HCP Page
 // ============================================================
 
-function showHandicapModal() {
-    if (!currentGameData || !currentGameData.handicapAdjustment) {
-        alert("No handicap adjustment data available for this game.");
-        return;
-    }
+function renderHCPPage() {
+    if (!currentGameData) return;
     
+    var courseName = courseCache?.name || "Unknown Course";
+    var gameDateRaw = currentGameData.gameInfo?.date || "";
+    var gameDateFormatted = formatDisplayDate(gameDateRaw);
+    document.getElementById("hcpSubtitle").innerHTML = `${escapeHtml(courseName)} | ${gameDateFormatted}`;
+    
+    // Get final TR from hole 18
+    var tr = getFinalTRFromHoleData();
+    updateTRDisplay("hcpTrDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+    
+    // Handicap Adjustment Data
     var hcpData = currentGameData.handicapAdjustment;
-    var players = hcpData.players || [];
-    var anchor = hcpData.anchor || "Unknown";
-    var needsZeroRise = hcpData.needsZeroRise || false;
-    var zeroRiseAmount = hcpData.zeroRiseAmount || 0;
-    var newAnchor = hcpData.newAnchor || anchor;
-    
-    var tableHtml = '<table class="hcp-table"><thead><tr>';
-    tableHtml += '<th>Player</th><th>Cur</th><th>Anc</th><th>Perf</th><th>New</th>';
-    tableHtml += '</tr></thead><tbody>';
-    
-    for (var i = 0; i < players.length; i++) {
-        var p = players[i];
-        var anchorAdj = p.anchorAdj || 0;
-        var perfAdj = p.perfAdj || 0;
-        var newHcp = p.newHcp || (p.currentHcp + anchorAdj + perfAdj);
+    if (hcpData) {
+        var players = hcpData.players || [];
+        var anchor = hcpData.anchor || "Unknown";
         
-        tableHtml += '<tr>';
-        tableHtml += '<td style="text-align:left;">' + escapeHtml(p.name) + '</td>';
-        tableHtml += '<td>' + p.currentHcp + '</td>';
-        tableHtml += '<td style="color:' + (anchorAdj >= 0 ? '#4caf50' : '#ff6b6b') + ';">' + (anchorAdj >= 0 ? '+' + anchorAdj : anchorAdj) + '</td>';
-        tableHtml += '<td style="color:' + (perfAdj > 0 ? '#4caf50' : (perfAdj < 0 ? '#ff6b6b' : '#888')) + ';">' + (perfAdj > 0 ? '+' + perfAdj : perfAdj) + '</td>';
-        tableHtml += '<td style="color:#4caf50; font-weight:700;">' + newHcp + '</td>';
-        tableHtml += '</tr>';
-    }
-    tableHtml += '</tbody></table>';
-    
-    var zeroRiseHtml = '';
-    if (needsZeroRise && zeroRiseAmount > 0) {
-        zeroRiseHtml = '<div class="hcp-zero-info">📊 Zero-rise applied: +' + zeroRiseAmount + ' to all players</div>';
-    }
-    
-    var newAnchorHtml = '';
-    if (newAnchor !== anchor) {
-        newAnchorHtml = '<div class="hcp-zero-info">🏆 New Anchor: <strong>' + escapeHtml(newAnchor) + '</strong></div>';
-    }
-    
-    var modalHtml = `
-        <div class="modal-overlay" id="hcpModal">
-            <div class="hcp-modal">
-                <div class="hcp-modal-title">🏌️ HANDICAP ADJUSTMENT</div>
-                <div class="hcp-modal-subtitle">READ ONLY</div>
-                
-                <div class="hcp-anchor-info">
-                    <div class="hcp-anchor-label">Anchor</div>
-                    <div class="hcp-anchor-name">${escapeHtml(anchor)}</div>
-                </div>
-                
-                ${tableHtml}
-                ${zeroRiseHtml}
-                ${newAnchorHtml}
-                
-                <div class="hcp-modal-buttons">
-                    <button class="hcp-back-btn" id="hcpBackBtn">← Back</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    document.getElementById("hcpBackBtn").addEventListener("click", function() {
-        document.getElementById("hcpModal").remove();
-    });
-}
-
-// ============================================================
-// UI Toggle Functions
-// ============================================================
-
-function updatePnButton() {
-    var pnBtn = document.getElementById("pnToggleBtn");
-    if (pnBtn) {
-        pnBtn.innerText = currentDisplayMode === "play" ? "P" : "N";
-    }
-}
-
-function toggleDisplayMode() {
-    var newMode = currentDisplayMode === "play" ? "natural" : "play";
-    setDisplayMode(newMode);
-}
-
-function setDisplayMode(mode) {
-    currentDisplayMode = mode;
-    updatePnButton();
-    renderAll();
-}
-
-function toggleFlight() {
-    if (selectedFlight === 1) {
-        selectedFlight = 2;
-        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 2";
+        // Anchor info
+        document.getElementById("hcpAnchorInfo").innerHTML = `
+            <div class="anchor-label">Anchor</div>
+            <div class="anchor-name">${escapeHtml(anchor)}</div>
+        `;
+        
+        // Table
+        var tableHtml = '<table class="hcp-table"><thead><tr>';
+        tableHtml += '<th>Player</th><th>Cur</th><th>Anc</th><th>Perf</th><th>New</th>';
+        tableHtml += '<tr></thead><tbody>';
+        
+        for (var i = 0; i < players.length; i++) {
+            var p = players[i];
+            var anchorAdj = p.anchorAdj || 0;
+            var perfAdj = p.perfAdj || 0;
+            var newHcp = p.newHcp || (p.currentHcp + anchorAdj + perfAdj);
+            
+            tableHtml += '<tr>';
+            tableHtml += '<td style="text-align:left;">' + escapeHtml(p.name) + '</td>';
+            tableHtml += '<td>' + p.currentHcp + '</td>';
+            tableHtml += '<td style="color:' + (anchorAdj >= 0 ? '#4caf50' : '#ff6b6b') + ';">' + (anchorAdj >= 0 ? '+' + anchorAdj : anchorAdj) + '</td>';
+            tableHtml += '<td style="color:' + (perfAdj > 0 ? '#4caf50' : (perfAdj < 0 ? '#ff6b6b' : '#888')) + ';">' + (perfAdj > 0 ? '+' + perfAdj : perfAdj) + '</td>';
+            tableHtml += '<td style="color:#4caf50; font-weight:700;">' + newHcp + '</td>';
+            tableHtml += '</tr>';
+        }
+        tableHtml += '</tbody></table>';
+        document.getElementById("hcpTableContainer").innerHTML = tableHtml;
+        
+        // Zero-rise info
+        var needsZeroRise = hcpData.needsZeroRise || false;
+        var zeroRiseAmount = hcpData.zeroRiseAmount || 0;
+        if (needsZeroRise && zeroRiseAmount > 0) {
+            document.getElementById("hcpZeroInfo").innerHTML = '<div class="zero-info">📊 Zero-rise applied: +' + zeroRiseAmount + ' to all players</div>';
+        } else {
+            document.getElementById("hcpZeroInfo").innerHTML = '';
+        }
+        
+        // New anchor info
+        var newAnchor = hcpData.newAnchor || anchor;
+        if (newAnchor !== anchor) {
+            document.getElementById("hcpNewAnchorInfo").innerHTML = '<div class="zero-info">🏆 New Anchor: <strong>' + escapeHtml(newAnchor) + '</strong></div>';
+        } else {
+            document.getElementById("hcpNewAnchorInfo").innerHTML = '';
+        }
     } else {
-        selectedFlight = 1;
-        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
-    }
-    renderAll();
-}
-
-// ============================================================
-// Navigation
-// ============================================================
-
-function goToPrevHole() {
-    var startingHole = courseCache?.startingHole || 1;
-    var playOrder = getPlayOrder(startingHole);
-    var currentIndex = playOrder.indexOf(currentHole);
-    if (currentIndex > 0) {
-        currentHole = playOrder[currentIndex - 1];
-        document.getElementById("holeNumberDisplay").innerText = currentHole;
-        renderAll();
-        updateNavButtons();
+        document.getElementById("hcpAnchorInfo").innerHTML = '<div class="anchor-label">No handicap adjustment data available</div>';
+        document.getElementById("hcpTableContainer").innerHTML = '';
+        document.getElementById("hcpZeroInfo").innerHTML = '';
+        document.getElementById("hcpNewAnchorInfo").innerHTML = '';
     }
 }
 
-function goToNextHole() {
-    var startingHole = courseCache?.startingHole || 1;
-    var playOrder = getPlayOrder(startingHole);
-    var currentIndex = playOrder.indexOf(currentHole);
-    if (currentIndex < 17) {
-        currentHole = playOrder[currentIndex + 1];
-        document.getElementById("holeNumberDisplay").innerText = currentHole;
-        renderAll();
-        updateNavButtons();
-    }
-}
-
-function updateNavButtons() {
-    var startingHole = courseCache?.startingHole || 1;
-    var playOrder = getPlayOrder(startingHole);
-    var currentIndex = playOrder.indexOf(currentHole);
-    var prevBtn = document.getElementById("prevHoleBtn");
-    var nextBtn = document.getElementById("nextHoleBtn");
-    if (prevBtn) prevBtn.disabled = (currentIndex === 0);
-    if (nextBtn) nextBtn.disabled = (currentIndex === 17);
-}
-
 // ============================================================
-// Render Functions
+// Scorecard Render Functions
 // ============================================================
 
-function renderAll() {
-    if (!currentGame || !holeDataCache) return;
+function renderScorecardPage() {
+    if (!currentGameData || !holeDataCache) return;
     
     window.savedHoles = { 
         1: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18], 
@@ -835,12 +818,12 @@ function renderAll() {
     };
     
     var startingHole = courseCache?.startingHole || 1;
-    var holeData = decodeHoleData(currentGame.holeData, currentHole, startingHole, courseCache?.par || []);
+    var holeData = decodeHoleData(currentGameData.holeData, currentHole, startingHole, courseCache?.par || []);
     if (!holeData) return;
     
     var currentPar = (courseCache?.par || [])[currentHole - 1] || 4;
     var currentSi = (courseCache?.si || [])[currentHole - 1] || 1;
-    var tr = getTRForHole(currentHole);
+    var tr = getFinalTRFromHoleData();
     
     GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
@@ -862,7 +845,7 @@ function renderAll() {
     var strkRow = new Array(18).fill('_');
     
     for (var hole = 1; hole <= 18; hole++) {
-        var holeInfo = decodeHoleData(currentGame.holeData, hole, startingHole, courseCache?.par || []);
+        var holeInfo = decodeHoleData(currentGameData.holeData, hole, startingHole, courseCache?.par || []);
         if (holeInfo) {
             var pos = getHolePosition(hole, startingHole);
             t1Row[pos] = holeInfo.t1Row;
@@ -886,6 +869,108 @@ function renderAll() {
     );
     
     updateNavButtons();
+}
+
+function updatePnButton() {
+    var pnBtn = document.getElementById("pnToggleBtn");
+    if (pnBtn) {
+        pnBtn.innerText = currentDisplayMode === "play" ? "P" : "N";
+    }
+}
+
+function setDisplayMode(mode) {
+    currentDisplayMode = mode;
+    updatePnButton();
+    renderScorecardPage();
+}
+
+function toggleDisplayMode() {
+    var newMode = currentDisplayMode === "play" ? "natural" : "play";
+    setDisplayMode(newMode);
+}
+
+function toggleFlight() {
+    if (selectedFlight === 1) {
+        selectedFlight = 2;
+        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 2";
+    } else {
+        selectedFlight = 1;
+        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
+    }
+    renderScorecardPage();
+}
+
+function goToPrevHole() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex > 0) {
+        currentHole = playOrder[currentIndex - 1];
+        document.getElementById("holeNumberDisplay").innerText = currentHole;
+        renderScorecardPage();
+        updateNavButtons();
+    }
+}
+
+function goToNextHole() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex < 17) {
+        currentHole = playOrder[currentIndex + 1];
+        document.getElementById("holeNumberDisplay").innerText = currentHole;
+        renderScorecardPage();
+        updateNavButtons();
+    }
+}
+
+function updateNavButtons() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    var prevBtn = document.getElementById("prevHoleBtn");
+    var nextBtn = document.getElementById("nextHoleBtn");
+    if (prevBtn) prevBtn.disabled = (currentIndex === 0);
+    if (nextBtn) nextBtn.disabled = (currentIndex === 17);
+}
+
+// ============================================================
+// Navigation Functions
+// ============================================================
+
+function showHCPPage() {
+    document.getElementById("gameSelector").style.display = "none";
+    document.getElementById("hcpPage").style.display = "block";
+    document.getElementById("scorecardPage").style.display = "none";
+    renderHCPPage();
+}
+
+function showScorecardPage() {
+    document.getElementById("gameSelector").style.display = "none";
+    document.getElementById("hcpPage").style.display = "none";
+    document.getElementById("scorecardPage").style.display = "block";
+    
+    // Reset scorecard state
+    currentHole = 1;
+    currentDisplayMode = "play";
+    selectedFlight = 1;
+    updatePnButton();
+    document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
+    
+    renderScorecardPage();
+}
+
+function goBackToGameList() {
+    currentGameData = null;
+    currentGameId = null;
+    allPlayersCache = null;
+    courseCache = null;
+    holeDataCache = null;
+    
+    document.getElementById("hcpPage").style.display = "none";
+    document.getElementById("scorecardPage").style.display = "none";
+    document.getElementById("gameSelector").style.display = "block";
+    loadGameList();
 }
 
 // ============================================================
@@ -948,7 +1033,7 @@ function loadGame(gameId) {
         }
         
         currentGameData = gameData;
-        currentGame = gameData;
+        currentGameId = gameId;
         allPlayersCache = gameData.players || [];
         courseCache = gameData.gameInfo?.course || {};
         if (courseCache && !courseCache.si) {
@@ -963,42 +1048,14 @@ function loadGame(gameId) {
         
         holeDataCache = gameData.holeData;
         
-        var startingHole = courseCache?.startingHole || 1;
-        var playOrder = getPlayOrder(startingHole);
-        currentHole = playOrder[0];
-        document.getElementById("holeNumberDisplay").innerText = currentHole;
+        // Set scorecard header info
+        document.getElementById("scorecardCourseName").innerHTML = courseCache?.name || "Unknown Course";
+        var gameDateRaw = gameData.gameInfo?.date || "";
+        document.getElementById("scorecardGameDate").innerHTML = formatDisplayDate(gameDateRaw);
         
-        selectedFlight = 1;
-        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
-        
-        document.getElementById("courseName").innerHTML = courseCache?.name || "Unknown Course";
-        document.getElementById("gameViewer").style.display = "block";
-        container.style.display = "none";
-        
-        currentDisplayMode = "play";
-        updatePnButton();
-        
-        renderAll();
+        // Show HCP page first
+        showHCPPage();
     });
-}
-
-function goBackToGameList() {
-    currentGame = null;
-    currentGameData = null;
-    holeDataCache = null;
-    allPlayersCache = null;
-    courseCache = null;
-    currentHole = 1;
-    selectedFlight = 1;
-    
-    document.getElementById("gameViewer").style.display = "none";
-    var selector = document.getElementById("gameSelector");
-    selector.style.display = "block";
-    loadGameList();
-}
-
-function goBackToMenu() {
-    window.location.href = "index.html";
 }
 
 function escapeHtml(str) {
@@ -1025,13 +1082,16 @@ async function init() {
     
     loadGameList();
     
-    document.getElementById("menuBtn").addEventListener("click", goBackToMenu);
+    // HCP page buttons
+    document.getElementById("hcpBackToGameListBtn").addEventListener("click", goBackToGameList);
+    document.getElementById("hcpToScorecardBtn").addEventListener("click", showScorecardPage);
+    
+    // Scorecard page buttons
+    document.getElementById("scorecardBackBtn").addEventListener("click", showHCPPage);
     document.getElementById("prevHoleBtn").addEventListener("click", goToPrevHole);
     document.getElementById("nextHoleBtn").addEventListener("click", goToNextHole);
     document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
     document.getElementById("flightToggleBtn").addEventListener("click", toggleFlight);
-    document.getElementById("backToGameListBtn").addEventListener("click", goBackToGameList);
-    document.getElementById("viewHcpBtn").addEventListener("click", showHandicapModal);
 }
 
 init();
@@ -1042,18 +1102,16 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 1.05
+VERSION: 2.00
 KEY CHANGES:
-   - ADDED: Handicap Adjustment button below scorecard (right side)
-   - ADDED: Read-only handicap adjustment modal
-   - ADDED: Modal displays anchor, player table, zero-rise info, new anchor
-   - ADDED: [ Back ] button in modal to return to scorecard
-   - UI Layout: Two rows below scorecard:
-        Row 1: [← Back to Game List] [🏌️ HANDICAP ADJUSTMENT →]
-        Row 2: [← Back to Main Menu]
-   - FIXED: Scorecard displays scores correctly (green)
-   - UI layout matches view-game.html gold standard
-   - Layout: SCORECARD | P/N | Flight 1/2 | ◀ ## ▶ on single row
+   - COMPLETE RESTRUCTURE: HCP page is now the landing page after game selection
+   - NEW: HCP page shows TR display (Team A vs Team B with colors)
+   - NEW: HCP page shows handicap adjustment table
+   - NEW: HCP page has [Back] (to game list) and [Scorecard] buttons
+   - NEW: Scorecard page has single [Back] button to return to HCP page
+   - REMOVED: Back to Main Menu and Back to Game List from scorecard page
+   - TR color scheme: Green for winning/tie, Red for losing
+   - All existing functionality preserved (flight toggle, hole navigation, P/N toggle)
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
