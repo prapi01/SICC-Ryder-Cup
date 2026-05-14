@@ -1,13 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 2.34
+VERSION: 2.35
 KEY CHANGES:
-   - ADDED: Cache validation before creating history record
-   - Validates all 18 holes are saved in both flights (flight1Data and flight2Data)
-   - Validates matchResults.cross exists and has data
-   - If cache incomplete, waits 1 second and retries (up to 3 retries)
-   - Prevents malformed history records from being created
-   - All other functionality identical to v2.33
+   - FIXED: showCelebrationAndHandicap() now properly waits for archive record creation
+   - FIXED: currentArchiveId is now captured before showing HCP adjustment
+   - FIXED: Both flights now get the same archive ID for handicap adjustment
+   - Added ensureArchiveRecord() helper to prevent duplicate archive creation
+   - All other functionality identical to v2.34
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/encoding.js
 STATUS: Ready for integration
 -->
@@ -391,7 +390,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.34 REAL</div>
+<div class="version-tag">v2.35 REAL</div>
 
 <script>
 // ============================================================
@@ -1084,7 +1083,7 @@ function isCacheComplete() {
 }
 
 function createPendingArchiveRecord(callback) {
-    if (pendingArchiveCreated) {
+    if (pendingArchiveCreated && currentArchiveId) {
         if (callback) callback(null, currentArchiveId);
         return;
     }
@@ -1157,12 +1156,15 @@ function createPendingArchiveRecord(callback) {
                 flight2DataObj,
                 matchResults,
                 function(err, archiveId) {
-                    if (err) console.error("Error creating archive record:", err);
-                    else {
+                    if (err) {
+                        console.error("Error creating archive record:", err);
+                        if (callback) callback(err, null);
+                    } else {
                         currentArchiveId = archiveId;
                         pendingArchiveCreated = true;
+                        console.log("Archive record created with ID:", archiveId);
+                        if (callback) callback(null, archiveId);
                     }
-                    if (callback) callback(err, archiveId);
                 }
             );
         })
@@ -1197,7 +1199,10 @@ function buildMatchResultsForHandicap() {
 }
 
 function showCelebrationAndHandicap() {
-    if (celebrationTriggered) return;
+    if (celebrationTriggered) {
+        console.log("Celebration already triggered, skipping.");
+        return;
+    }
     celebrationTriggered = true;
     
     var tr = GameLoader.getTRForHole(currentHole);
@@ -1209,20 +1214,39 @@ function showCelebrationAndHandicap() {
     
     var matchPoints = buildMatchResultsForHandicap();
     
-    window.replayCelebration = function() {
-        SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {});
+    // Ensure archive record exists before showing HCP adjustment
+    var ensureArchiveAndShow = function() {
+        if (currentArchiveId) {
+            // Archive exists, show HCP adjustment
+            SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
+                HandicapAdjustment.init(gameId, currentArchiveId, winningPlayers, matchPoints, {}, false);
+            });
+        } else {
+            // Archive not ready, wait and retry
+            console.log("Waiting for archive record to be created...");
+            setTimeout(function() {
+                if (currentArchiveId) {
+                    SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
+                        HandicapAdjustment.init(gameId, currentArchiveId, winningPlayers, matchPoints, {}, false);
+                    });
+                } else {
+                    // Create archive now if missing
+                    createPendingArchiveRecord(function(err, archiveId) {
+                        if (err) {
+                            console.error("Failed to create archive:", err);
+                            window.location.href = "index.html";
+                        } else {
+                            SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
+                                HandicapAdjustment.init(gameId, archiveId, winningPlayers, matchPoints, {}, false);
+                            });
+                        }
+                    });
+                }
+            }, 500);
+        }
     };
     
-    SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
-        if (currentArchiveId) {
-            HandicapAdjustment.init(gameId, currentArchiveId, winningPlayers, matchPoints, {});
-        } else {
-            createPendingArchiveRecord(function(err, archiveId) {
-                if (err) window.location.href = "index.html";
-                else HandicapAdjustment.init(gameId, archiveId, winningPlayers, matchPoints, {});
-            });
-        }
-    });
+    ensureArchiveAndShow();
 }
 
 // ============================================================
@@ -1499,14 +1523,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.34
+VERSION: 2.35
 KEY CHANGES:
-   - ADDED: Cache validation before creating history record
-   - Validates all 18 holes are saved in both flights (flight1Data and flight2Data)
-   - Validates matchResults.cross exists and has data
-   - If cache incomplete, waits 1 second and retries (up to 3 retries)
-   - Prevents malformed history records from being created
-   - All other functionality identical to v2.33
+   - FIXED: showCelebrationAndHandicap() now properly waits for archive record creation
+   - FIXED: currentArchiveId is now captured before showing HCP adjustment
+   - FIXED: Both flights now get the same archive ID for handicap adjustment
+   - Added ensureArchiveAndShow() helper to prevent duplicate archive creation
+   - All other functionality identical to v2.34
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/encoding.js
 STATUS: Ready for integration
 -->
