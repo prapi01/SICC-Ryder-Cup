@@ -1,15 +1,13 @@
 /*
 FILE: js/encoding.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - NEW: Unified encoding system for history records
-   - SCORE_MAP: A=-10 to Z=+15 with K=0
-   - TR_MAP: A=0 to T=19 (0.5 increments via * suffix)
-   - Functions: encodeScore, decodeScore, encodeTR, decodeTR
-   - Functions: encodeMatchResult, decodeMatchResult
-   - Functions: encodeTRColor, decodeTRColor
-   - Functions: encodeDisplayRow, decodeDisplayRow
-   - NO validation - caller must provide valid values
+   - FIXED: encodeTR() now validates input and defaults to 0 for invalid values
+   - FIXED: encodeTR() clamps values to valid range 0-19
+   - FIXED: decodeTR() now validates input and defaults to 9.5 for invalid values
+   - ADDED: Console warnings for debugging invalid TR values
+   - Prevents corrupted TR values from being saved to history records
+   - All other functionality identical to v1.00
 DEPENDS ON: None (pure mapping)
 STATUS: Ready for integration
 */
@@ -65,16 +63,57 @@ var Encoding = (function() {
     // ============================================================
     
     function encodeTR(value) {
+        // Validate input
+        if (typeof value !== 'number' || isNaN(value)) {
+            console.warn('Invalid TR value:', value, 'defaulting to 0');
+            return "A";  // A = 0
+        }
+        
         var isHalf = (value % 1 !== 0);
         var intPart = Math.floor(value);
+        
+        // Clamp to valid range 0-19
+        if (intPart < 0) {
+            console.warn('TR value below 0:', value, 'clamping to 0');
+            intPart = 0;
+        }
+        if (intPart > 19) {
+            console.warn('TR value above 19:', value, 'clamping to 19');
+            intPart = 19;
+        }
+        
         var letter = TR_INT_TO_LETTER[intPart.toString()];
+        if (!letter) {
+            console.warn('Invalid TR int part:', intPart, 'defaulting to A');
+            return "A";
+        }
+        
         return isHalf ? letter + "*" : letter;
     }
     
     function decodeTR(encoded) {
+        // Handle invalid input
+        if (!encoded || typeof encoded !== 'string' || encoded.length === 0) {
+            console.warn('Invalid TR encoded string:', encoded, 'defaulting to 9.5');
+            return 9.5;
+        }
+        
+        // Check if it has suffix
         var hasSuffix = encoded.indexOf("*") !== -1;
         var letter = hasSuffix ? encoded.charAt(0) : encoded;
+        
+        // Handle multi-character invalid strings (e.g., "OF")
+        if (letter.length !== 1) {
+            console.warn('Invalid TR encoded string (multi-char):', encoded, 'defaulting to 9.5');
+            return 9.5;
+        }
+        
         var intValue = LETTER_TO_TR_INT[letter];
+        if (intValue === undefined) {
+            console.warn('Unknown TR letter:', letter, 'defaulting to 9.5');
+            return 9.5;
+        }
+        
         return hasSuffix ? intValue + 0.5 : intValue;
     }
     
@@ -83,6 +122,9 @@ var Encoding = (function() {
     // ============================================================
     
     function encodeMatchResult(value) {
+        // Clamp to valid range -10 to 15
+        if (value > 15) value = 15;
+        if (value < -10) value = -10;
         return SCORE_TO_LETTER[value.toString()];
     }
     
@@ -107,6 +149,9 @@ var Encoding = (function() {
     }
     
     function decodeTRColor(colorStr) {
+        if (!colorStr || colorStr.length !== 2) {
+            return { teamAGreen: true, teamBGreen: true };
+        }
         return {
             teamAGreen: colorStr[0] === "G",
             teamBGreen: colorStr[1] === "G"
@@ -150,16 +195,14 @@ var Encoding = (function() {
 
 /*
 FILE: js/encoding.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - NEW: Unified encoding system for history records
-   - SCORE_MAP: A=-10 to Z=+15 with K=0
-   - TR_MAP: A=0 to T=19 (0.5 increments via * suffix)
-   - Functions: encodeScore, decodeScore, encodeTR, decodeTR
-   - Functions: encodeMatchResult, decodeMatchResult
-   - Functions: encodeTRColor, decodeTRColor
-   - Functions: encodeDisplayRow, decodeDisplayRow
-   - NO validation - caller must provide valid values
+   - FIXED: encodeTR() now validates input and defaults to 0 for invalid values
+   - FIXED: encodeTR() clamps values to valid range 0-19
+   - FIXED: decodeTR() now validates input and defaults to 9.5 for invalid values
+   - ADDED: Console warnings for debugging invalid TR values
+   - Prevents corrupted TR values from being saved to history records
+   - All other functionality identical to v1.00
 DEPENDS ON: None (pure mapping)
 STATUS: Ready for integration
 */
