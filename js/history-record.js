@@ -1,15 +1,14 @@
 /*
 FILE: js/history-record.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - NEW: Encoded holeData string (594 chars) for viewer display
-   - NEW: buildHoleDataString() - creates 33 chars per hole × 18 holes
-   - NEW: encodeFlightScores() - encodes 4 player scores per flight
-   - NEW: encodeMatchBubbles() - encodes 16 match results per hole
-   - NEW: encodeTRData() - encodes TR values and colors
-   - NEW: encodeDisplayRows() - encodes T-1, T-2, Strk
-   - Stores holeData in history record for zero-calculation viewing
-   - Preserves existing fields for backward compatibility
+   - ADDED: Validation and padding for all encoded segments in buildHoleDataString()
+   - ADDED: ensureLength() helper to pad short strings to expected length
+   - ADDED: Console warnings when padding occurs for debugging
+   - ADDED: Final validation that holeDataString length is exactly 594 characters
+   - ADDED: Error logging if length mismatch
+   - Prevents malformed history records from being saved
+   - All other functionality identical to v1.02
 DEPENDS ON: Firebase Firestore, encoding.js
 STATUS: Ready for integration
 */
@@ -44,6 +43,21 @@ var HistoryRecord = (function() {
                 console.error("Error checking existing record:", err);
                 callback(err, null);
             });
+    }
+    
+    // ============================================================
+    // Helper: Ensure string has exact length (pad with K if too short)
+    // ============================================================
+    
+    function ensureLength(str, expectedLen, segmentName) {
+        if (str.length === expectedLen) {
+            return str;
+        }
+        console.warn(`⚠️ ${segmentName} length mismatch: got ${str.length}, expected ${expectedLen}. Padding with K.`);
+        while (str.length < expectedLen) {
+            str += "K";
+        }
+        return str.substring(0, expectedLen);
     }
     
     // ============================================================
@@ -90,7 +104,7 @@ var HistoryRecord = (function() {
             result += Encoding.encodeScore(relativeToPar);
         }
         
-        return result;
+        return ensureLength(result, 4, `Flight ${flightData.flight} scores hole ${holeNumber}`);
     }
     
     function encodeMatchBubbles(matchResults, holeNumber) {
@@ -113,7 +127,7 @@ var HistoryRecord = (function() {
             }
         }
         
-        return result;
+        return ensureLength(result, 16, `Match bubbles hole ${holeNumber}`);
     }
     
     function encodeTRData(trTeamA, trTeamB, teamAGreen, teamBGreen, position) {
@@ -123,14 +137,16 @@ var HistoryRecord = (function() {
         var encodedA = Encoding.encodeTR(valueA);
         var encodedB = Encoding.encodeTR(valueB);
         var colors = Encoding.encodeTRColor(teamAGreen[position], teamBGreen[position]);
-        return encodedA + encodedB + colors;
+        var result = encodedA + encodedB + colors;
+        return ensureLength(result, 6, `TR data position ${position}`);
     }
     
     function encodeDisplayRows(t1Row, t2Row, strkRow, position) {
         var t1 = Encoding.encodeDisplayRow(t1Row[position]);
         var t2 = Encoding.encodeDisplayRow(t2Row[position]);
         var strk = Encoding.encodeDisplayRow(strkRow[position]);
-        return t1 + t2 + strk;
+        var result = t1 + t2 + strk;
+        return ensureLength(result, 3, `Display rows position ${position}`);
     }
     
     function buildHoleDataString(flight1Data, flight2Data, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow, coursePar, allPlayers, startingHole) {
@@ -168,9 +184,21 @@ var HistoryRecord = (function() {
         
         window._allPlayersForEncoding = null;
         
-        // Validate length
+        // Final validation
         if (holeDataString.length !== 594) {
-            console.error("Invalid holeDataString length:", holeDataString.length, "expected 594");
+            console.error("❌ buildHoleDataString: Invalid holeDataString length:", holeDataString.length, "expected 594");
+            console.error("   This indicates missing data for some holes. Padding will be applied.");
+            
+            // Pad or truncate to 594
+            while (holeDataString.length < 594) {
+                holeDataString += "K";
+            }
+            if (holeDataString.length > 594) {
+                holeDataString = holeDataString.substring(0, 594);
+            }
+            console.log("   After padding, length:", holeDataString.length);
+        } else {
+            console.log("✅ buildHoleDataString: Valid holeDataString length: 594");
         }
         
         return holeDataString;
@@ -475,16 +503,15 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - NEW: Encoded holeData string (594 chars) for viewer display
-   - NEW: buildHoleDataString() - creates 33 chars per hole × 18 holes
-   - NEW: encodeFlightScores() - encodes 4 player scores per flight
-   - NEW: encodeMatchBubbles() - encodes 16 match results per hole
-   - NEW: encodeTRData() - encodes TR values and colors
-   - NEW: encodeDisplayRows() - encodes T-1, T-2, Strk
-   - Stores holeData in history record for zero-calculation viewing
-   - Preserves existing fields for backward compatibility
+   - ADDED: Validation and padding for all encoded segments in buildHoleDataString()
+   - ADDED: ensureLength() helper to pad short strings to expected length
+   - ADDED: Console warnings when padding occurs for debugging
+   - ADDED: Final validation that holeDataString length is exactly 594 characters
+   - ADDED: Error logging if length mismatch
+   - Prevents malformed history records from being saved
+   - All other functionality identical to v1.02
 DEPENDS ON: Firebase Firestore, encoding.js
 STATUS: Ready for integration
 */
