@@ -1,14 +1,17 @@
 <!--
 FILE: view-history.html
-VERSION: 1.04
+VERSION: 1.05
 KEY CHANGES:
-   - FIXED: Scorecard now displays scores correctly (green, visible)
-   - ADDED: window.savedHoles set to all 18 holes for both flights
-   - This tells GameUI.renderScorecard() that all holes are saved
-   - Scores now show in green instead of invisible (#000)
+   - ADDED: Handicap Adjustment button below scorecard (right side)
+   - ADDED: Read-only handicap adjustment modal
+   - ADDED: Modal displays anchor, player table, zero-rise info, new anchor
+   - ADDED: [ Back ] button in modal to return to scorecard
+   - UI Layout: Two rows below scorecard:
+        Row 1: [← Back to Game List] [🏌️ HANDICAP ADJUSTMENT →]
+        Row 2: [← Back to Main Menu]
+   - FIXED: Scorecard displays scores correctly (green)
    - UI layout matches view-game.html gold standard
    - Layout: SCORECARD | P/N | Flight 1/2 | ◀ ## ▶ on single row
-   - All other functionality identical to v1.03
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -254,6 +257,44 @@ STATUS: Ready for integration
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
         
+        /* Button styles */
+        .action-buttons-row {
+            display: flex;
+            gap: 12px;
+            margin: 20px 0 12px 0;
+        }
+        .btn-half {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+        .btn-game-list {
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+        }
+        .btn-hcp {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .btn-menu-full {
+            width: 100%;
+            padding: 14px;
+            border-radius: 40px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+            margin-top: 0;
+        }
         .btn-menu {
             width: 100%;
             padding: 14px;
@@ -265,6 +306,100 @@ STATUS: Ready for integration
             color: #ccc;
             border: 1px solid #333;
             margin-top: 20px;
+        }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+        .hcp-modal {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            border: 2px solid #4caf50;
+        }
+        .hcp-modal-title {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: #4caf50;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .hcp-modal-subtitle {
+            font-size: 0.8rem;
+            color: #ffaa44;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .hcp-anchor-info {
+            background: #0a0a0a;
+            border-radius: 16px;
+            padding: 12px;
+            margin-bottom: 16px;
+            text-align: center;
+            border: 1px solid #333;
+        }
+        .hcp-anchor-label {
+            font-size: 0.7rem;
+            color: #888;
+        }
+        .hcp-anchor-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        .hcp-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.7rem;
+            margin-bottom: 16px;
+        }
+        .hcp-table th, .hcp-table td {
+            padding: 8px 4px;
+            text-align: center;
+            border-bottom: 1px solid #333;
+        }
+        .hcp-table th {
+            color: #4caf50;
+            font-weight: 600;
+        }
+        .hcp-zero-info {
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 10px;
+            margin-bottom: 16px;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #ffaa44;
+        }
+        .hcp-modal-buttons {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .hcp-back-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-width: 120px;
         }
         
         .loading { text-align: center; padding: 40px; color: #888; }
@@ -300,13 +435,20 @@ STATUS: Ready for integration
             </div>
             <div class="scorecard-wrapper" id="scorecardWrapper"></div>
         </div>
+        
+        <!-- Action Buttons Row 1: Two buttons side by side -->
+        <div class="action-buttons-row">
+            <button class="btn-half btn-game-list" id="backToGameListBtn">← Back to Game List</button>
+            <button class="btn-half btn-hcp" id="viewHcpBtn">🏌️ HANDICAP ADJUSTMENT →</button>
+        </div>
+        
+        <!-- Row 2: Back to Main Menu full width -->
+        <button class="btn-menu-full" id="menuBtn">← Back to Main Menu</button>
     </div>
-    
-    <button class="btn-menu" id="menuBtn">← Back to Main Menu</button>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.04</div>
+<div class="version-tag">v1.05</div>
 
 <script>
 // ============================================================
@@ -332,13 +474,13 @@ var db = firebase.firestore();
 // ============================================================
 
 var currentGame = null;
+var currentGameData = null;
 var currentHole = 1;
 var currentDisplayMode = "play";
 var selectedFlight = 1;
 var holeDataCache = null;
 var allPlayersCache = null;
 var courseCache = null;
-var trCache = null;
 
 // ============================================================
 // Helper Functions
@@ -370,7 +512,6 @@ function getHolePosition(holeNumber, startingHole) {
 }
 
 function decodeHoleData(holeDataString, holeNumber, startingHole, coursePar) {
-    // holeDataString is 594 chars: 33 per hole in PLAY ORDER
     var playOrder = getPlayOrder(startingHole);
     var storagePos = -1;
     for (var i = 0; i < playOrder.length; i++) {
@@ -387,7 +528,6 @@ function decodeHoleData(holeDataString, holeNumber, startingHole, coursePar) {
     
     if (holeSegment.length !== 33) return null;
     
-    // Parse the 33 characters
     var f1ScoresEncoded = holeSegment.substring(0, 4);
     var f2ScoresEncoded = holeSegment.substring(4, 8);
     var matchBubblesEncoded = holeSegment.substring(8, 24);
@@ -396,7 +536,6 @@ function decodeHoleData(holeDataString, holeNumber, startingHole, coursePar) {
     var trColors = holeSegment.substring(28, 30);
     var displayRows = holeSegment.substring(30, 33);
     
-    // Decode flight scores
     var f1Scores = [];
     var f2Scores = [];
     for (var i = 0; i < 4; i++) {
@@ -407,7 +546,6 @@ function decodeHoleData(holeDataString, holeNumber, startingHole, coursePar) {
         f2Scores.push(par + f2Value);
     }
     
-    // Decode match bubbles (16 matches, in order: A1 vs B1, A1 vs B2, A2 vs B1, A2 vs B2, A3 vs B3...)
     var matchValues = [];
     for (var i = 0; i < 16; i++) {
         var encoded = matchBubblesEncoded[i];
@@ -415,12 +553,9 @@ function decodeHoleData(holeDataString, holeNumber, startingHole, coursePar) {
         matchValues.push(value);
     }
     
-    // Decode TR
     var trA = Encoding.decodeTR(trAEncoded);
     var trB = Encoding.decodeTR(trBEncoded);
     var colors = Encoding.decodeTRColor(trColors);
-    
-    // Decode display rows
     var t1Row = Encoding.decodeDisplayRow(displayRows[0]);
     var t2Row = Encoding.decodeDisplayRow(displayRows[1]);
     var strkRow = Encoding.decodeDisplayRow(displayRows[2]);
@@ -448,7 +583,6 @@ function getPlayerScore(player, holeNumber) {
     
     var flightScores = (player.flight === 1) ? holeData.f1Scores : holeData.f2Scores;
     
-    // Get ordered players for this flight to map index
     var flightPlayers = allPlayersCache.filter(function(p) { return p.flight === player.flight; });
     var teamA = flightPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flightPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -470,7 +604,6 @@ function getMatchValue(player, opponent) {
     var holeData = decodeHoleData(currentGame.holeData, currentHole, startingHole, courseCache?.par || []);
     if (!holeData) return 0;
     
-    // Find match index: all Team A players vs all Team B players in handicap order
     var teamAPlayers = allPlayersCache.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = allPlayersCache.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
@@ -520,7 +653,6 @@ function getFlightOrderedPlayers(flight) {
 }
 
 function isHoleSaved(flight, hole) {
-    // In history viewer, all holes are saved (game is complete)
     return true;
 }
 
@@ -541,6 +673,82 @@ function getTRForHole(holeNumber) {
         teamAGreen: holeData.teamAGreen,
         teamBGreen: holeData.teamBGreen
     };
+}
+
+// ============================================================
+// Handicap Adjustment Modal (Read-Only)
+// ============================================================
+
+function showHandicapModal() {
+    if (!currentGameData || !currentGameData.handicapAdjustment) {
+        alert("No handicap adjustment data available for this game.");
+        return;
+    }
+    
+    var hcpData = currentGameData.handicapAdjustment;
+    var players = hcpData.players || [];
+    var anchor = hcpData.anchor || "Unknown";
+    var needsZeroRise = hcpData.needsZeroRise || false;
+    var zeroRiseAmount = hcpData.zeroRiseAmount || 0;
+    var newAnchor = hcpData.newAnchor || anchor;
+    
+    var tableHtml = '<table class="hcp-table"><thead><tr>';
+    tableHtml += '<th>Player</th><th>Cur</th><th>Anc</th><th>Perf</th><th>New</th>';
+    tableHtml += '</tr></thead><tbody>';
+    
+    for (var i = 0; i < players.length; i++) {
+        var p = players[i];
+        var anchorAdj = p.anchorAdj || 0;
+        var perfAdj = p.perfAdj || 0;
+        var newHcp = p.newHcp || (p.currentHcp + anchorAdj + perfAdj);
+        
+        tableHtml += '<tr>';
+        tableHtml += '<td style="text-align:left;">' + escapeHtml(p.name) + '</td>';
+        tableHtml += '<td>' + p.currentHcp + '</td>';
+        tableHtml += '<td style="color:' + (anchorAdj >= 0 ? '#4caf50' : '#ff6b6b') + ';">' + (anchorAdj >= 0 ? '+' + anchorAdj : anchorAdj) + '</td>';
+        tableHtml += '<td style="color:' + (perfAdj > 0 ? '#4caf50' : (perfAdj < 0 ? '#ff6b6b' : '#888')) + ';">' + (perfAdj > 0 ? '+' + perfAdj : perfAdj) + '</td>';
+        tableHtml += '<td style="color:#4caf50; font-weight:700;">' + newHcp + '</td>';
+        tableHtml += '</tr>';
+    }
+    tableHtml += '</tbody></table>';
+    
+    var zeroRiseHtml = '';
+    if (needsZeroRise && zeroRiseAmount > 0) {
+        zeroRiseHtml = '<div class="hcp-zero-info">📊 Zero-rise applied: +' + zeroRiseAmount + ' to all players</div>';
+    }
+    
+    var newAnchorHtml = '';
+    if (newAnchor !== anchor) {
+        newAnchorHtml = '<div class="hcp-zero-info">🏆 New Anchor: <strong>' + escapeHtml(newAnchor) + '</strong></div>';
+    }
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="hcpModal">
+            <div class="hcp-modal">
+                <div class="hcp-modal-title">🏌️ HANDICAP ADJUSTMENT</div>
+                <div class="hcp-modal-subtitle">READ ONLY</div>
+                
+                <div class="hcp-anchor-info">
+                    <div class="hcp-anchor-label">Anchor</div>
+                    <div class="hcp-anchor-name">${escapeHtml(anchor)}</div>
+                </div>
+                
+                ${tableHtml}
+                ${zeroRiseHtml}
+                ${newAnchorHtml}
+                
+                <div class="hcp-modal-buttons">
+                    <button class="hcp-back-btn" id="hcpBackBtn">← Back</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("hcpBackBtn").addEventListener("click", function() {
+        document.getElementById("hcpModal").remove();
+    });
 }
 
 // ============================================================
@@ -621,8 +829,6 @@ function updateNavButtons() {
 function renderAll() {
     if (!currentGame || !holeDataCache) return;
     
-    // CRITICAL FIX: Set window.savedHoles to all 18 holes for both flights
-    // This tells GameUI.renderScorecard() to display scores in green
     window.savedHoles = { 
         1: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18], 
         2: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18] 
@@ -639,7 +845,6 @@ function renderAll() {
     GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
-    // Render players for selected flight
     var currentPlayers = getFlightOrderedPlayers(selectedFlight);
     GameUI.renderPlayerCards(
         "playerCards",
@@ -652,12 +857,10 @@ function renderAll() {
         null
     );
     
-    // Build display rows for scorecard
     var t1Row = new Array(18).fill('_');
     var t2Row = new Array(18).fill('_');
     var strkRow = new Array(18).fill('_');
     
-    // Fill rows from holeData for all holes
     for (var hole = 1; hole <= 18; hole++) {
         var holeInfo = decodeHoleData(currentGame.holeData, hole, startingHole, courseCache?.par || []);
         if (holeInfo) {
@@ -724,7 +927,6 @@ function loadGameList() {
         
         container.innerHTML = html;
         
-        // Attach click handlers
         var items = document.querySelectorAll('.game-item');
         for (var i = 0; i < items.length; i++) {
             items[i].addEventListener('click', function() {
@@ -745,6 +947,7 @@ function loadGame(gameId) {
             return;
         }
         
+        currentGameData = gameData;
         currentGame = gameData;
         allPlayersCache = gameData.players || [];
         courseCache = gameData.gameInfo?.course || {};
@@ -753,7 +956,6 @@ function loadGame(gameId) {
             for (var i = 0; i < 18; i++) courseCache.si.push(i + 1);
         }
         
-        // Validate holeData exists
         if (!gameData.holeData || gameData.holeData.length !== 594) {
             container.innerHTML = '<div class="empty-message">Invalid or missing hole data for this game.</div>';
             return;
@@ -761,22 +963,18 @@ function loadGame(gameId) {
         
         holeDataCache = gameData.holeData;
         
-        // Set starting hole for display order
         var startingHole = courseCache?.startingHole || 1;
         var playOrder = getPlayOrder(startingHole);
         currentHole = playOrder[0];
         document.getElementById("holeNumberDisplay").innerText = currentHole;
         
-        // Reset flight to 1
         selectedFlight = 1;
         document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
         
-        // Update UI
         document.getElementById("courseName").innerHTML = courseCache?.name || "Unknown Course";
         document.getElementById("gameViewer").style.display = "block";
         container.style.display = "none";
         
-        // Initialize display mode
         currentDisplayMode = "play";
         updatePnButton();
         
@@ -786,6 +984,7 @@ function loadGame(gameId) {
 
 function goBackToGameList() {
     currentGame = null;
+    currentGameData = null;
     holeDataCache = null;
     allPlayersCache = null;
     courseCache = null;
@@ -831,14 +1030,8 @@ async function init() {
     document.getElementById("nextHoleBtn").addEventListener("click", goToNextHole);
     document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
     document.getElementById("flightToggleBtn").addEventListener("click", toggleFlight);
-    
-    // Add back button to game selector (simple)
-    var backBtn = document.createElement("button");
-    backBtn.className = "btn-menu";
-    backBtn.innerHTML = "← Back to Game List";
-    backBtn.style.marginTop = "10px";
-    backBtn.addEventListener("click", goBackToGameList);
-    document.getElementById("gameViewer").appendChild(backBtn);
+    document.getElementById("backToGameListBtn").addEventListener("click", goBackToGameList);
+    document.getElementById("viewHcpBtn").addEventListener("click", showHandicapModal);
 }
 
 init();
@@ -849,15 +1042,18 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 1.04
+VERSION: 1.05
 KEY CHANGES:
-   - FIXED: Scorecard now displays scores correctly (green, visible)
-   - ADDED: window.savedHoles set to all 18 holes for both flights
-   - This tells GameUI.renderScorecard() that all holes are saved
-   - Scores now show in green instead of invisible (#000)
+   - ADDED: Handicap Adjustment button below scorecard (right side)
+   - ADDED: Read-only handicap adjustment modal
+   - ADDED: Modal displays anchor, player table, zero-rise info, new anchor
+   - ADDED: [ Back ] button in modal to return to scorecard
+   - UI Layout: Two rows below scorecard:
+        Row 1: [← Back to Game List] [🏌️ HANDICAP ADJUSTMENT →]
+        Row 2: [← Back to Main Menu]
+   - FIXED: Scorecard displays scores correctly (green)
    - UI layout matches view-game.html gold standard
    - Layout: SCORECARD | P/N | Flight 1/2 | ◀ ## ▶ on single row
-   - All other functionality identical to v1.03
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
