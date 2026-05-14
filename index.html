@@ -1,15 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 2.28
+VERSION: 2.29
 KEY CHANGES:
-   - UPDATED: Footer text to "© 2026 Piti Pramotedham - piti@pramotedham.com"
-   - ADDED: Hidden admin function on double-click golf flag icon (⛳)
-   - ADDED: Script reference to js/index-hidden.js for hidden functions
-   - ADDED: Displays current Game ID in faint green next to device tag
-   - All other functionality identical to v2.27
-   - Reduced top empty space on mobile view
-   - header margin-bottom: 30px → 16px
-   - golf-icon margin-bottom: 16px → 8px
+   - FIXED: Hidden admin double-click event listener now attaches correctly
+   - Moved event listener code inside loadAndRender() after HTML is rendered
+   - Added safety check for duplicateMasterRecord function existence
+   - Added console log for debugging
+   - Updated footer text to "© 2026 Piti Pramotedham - piti@pramotedham.com"
+   - All other functionality identical to v2.28
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -286,13 +284,13 @@ STATUS: Ready for deployment
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.28</div>
+<div class="version-tag">v2.29</div>
 
 <script>
-// FILE: index.html - VERSION 2.28
-// CHANGES: Updated footer, added hidden admin function, Game ID display
+// FILE: index.html - VERSION 2.29
+// CHANGES: Fixed hidden admin double-click event listener
 
-var APP_VERSION = "2.28";
+var APP_VERSION = "2.29";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -968,12 +966,22 @@ function loadAndRender() {
         
         // Add double-click handler for golf icon (hidden admin)
         var golfIcon = document.getElementById("golfIcon");
-        if (golfIcon && typeof duplicateMasterRecord === 'function') {
-            golfIcon.addEventListener('dblclick', function() {
+        if (golfIcon) {
+            console.log("Attaching double-click listener to golf icon");
+            golfIcon.addEventListener('dblclick', function(e) {
+                e.stopPropagation();
+                console.log("Double-click detected on golf icon");
                 if (confirm("⚠️ ADMIN FUNCTION\n\nDuplicate Master Record to today's date?")) {
-                    duplicateMasterRecord();
+                    if (typeof duplicateMasterRecord === 'function') {
+                        duplicateMasterRecord();
+                    } else {
+                        console.error("duplicateMasterRecord function not found");
+                        alert("Error: Admin function not available. Please refresh.");
+                    }
                 }
             });
+        } else {
+            console.error("Golf icon not found in DOM");
         }
         
         document.getElementById("previousGamesBtn").addEventListener("click", goToPreviousGames);
@@ -1012,16 +1020,14 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 
 <!--
 FILE: index.html
-VERSION: 2.28
+VERSION: 2.29
 KEY CHANGES:
-   - UPDATED: Footer text to "© 2026 Piti Pramotedham - piti@pramotedham.com"
-   - ADDED: Hidden admin function on double-click golf flag icon (⛳)
-   - ADDED: Script reference to js/index-hidden.js for hidden functions
-   - ADDED: Displays current Game ID in faint green next to device tag
-   - All other functionality identical to v2.27
-   - Reduced top empty space on mobile view
-   - header margin-bottom: 30px → 16px
-   - golf-icon margin-bottom: 16px → 8px
+   - FIXED: Hidden admin double-click event listener now attaches correctly
+   - Moved event listener code inside loadAndRender() after HTML is rendered
+   - Added safety check for duplicateMasterRecord function existence
+   - Added console log for debugging
+   - Updated footer text to "© 2026 Piti Pramotedham - piti@pramotedham.com"
+   - All other functionality identical to v2.28
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
