@@ -1,13 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: Removed all encoding/decoding logic
-   - NEW: Reads JSON arrays directly from history record (schema: json_v1)
-   - NEW: Direct access to f1Scores, f2Scores, matchResults, tr arrays
-   - REMOVED: Dependency on encoding.js (no longer needed)
-   - REMOVED: decodeHoleData() function entirely
-   - SIMPLER: Render directly from stored arrays
+   - UPDATED: Now reads flattened arrays from history-record.js v2.01
+   - Player score access: f1Scores[(holeIndex * 4) + playerIndex]
+   - Match result access: matchResults[(holeIndex * 16) + matchIndex]
+   - TR values: trTeamA[holeIndex], trTeamB[holeIndex]
+   - Display rows: t1Row[holeIndex], t2Row[holeIndex], strkRow[holeIndex]
    - All UI functionality preserved (flight toggle, hole navigation, P/N toggle)
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/game-ui.js
 STATUS: Ready for integration
@@ -436,7 +435,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.00</div>
+<div class="version-tag">v3.01</div>
 
 <script>
 // ============================================================
@@ -465,7 +464,7 @@ var currentGameData = null;
 var currentGameId = null;
 var allPlayersCache = null;
 var courseCache = null;
-var holeDataCache = null;  // Will contain the JSON arrays
+var holeDataCache = null;  // Contains flattened arrays from history record
 
 // Scorecard state
 var currentHole = 1;
@@ -522,37 +521,41 @@ function getFlightOrderedPlayers(flight) {
     return teamA.concat(teamB);
 }
 
-function getPlayerScore(player, holeNumber) {
+// Get player score from flattened arrays
+// holeIndex: 0-17, playerIndex: 0-3 (A1, A2, B1, B2 in handicap order)
+function getPlayerScoreFromFlattened(player, holeNumber) {
     if (!holeDataCache) return "-";
     
-    // holeNumber is 1-18 natural
     var holeIndex = holeNumber - 1;
-    var flightScores = (player.flight === 1) ? holeDataCache.f1Scores[holeIndex] : holeDataCache.f2Scores[holeIndex];
-    if (!flightScores) return "-";
-    
-    // Get ordered players for this flight to map index
     var flightPlayers = allPlayersCache.filter(function(p) { return p.flight === player.flight; });
     var teamA = flightPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flightPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var orderedPlayers = [teamA[0], teamA[1], teamB[0], teamB[1]];
     
+    var playerIndex = -1;
     for (var i = 0; i < orderedPlayers.length; i++) {
         if (orderedPlayers[i] && orderedPlayers[i].name === player.name) {
-            return flightScores[i];
+            playerIndex = i;
+            break;
         }
     }
     
-    return "-";
+    if (playerIndex === -1) return "-";
+    
+    var arrayIndex = (holeIndex * 4) + playerIndex;
+    var scores = (player.flight === 1) ? holeDataCache.f1Scores : holeDataCache.f2Scores;
+    
+    return scores[arrayIndex] || "-";
 }
 
-function getMatchValue(player, opponent) {
+// Get match value from flattened arrays
+// holeIndex: 0-17, matchIndex: 0-15 (A1,B1; A1,B2; A2,B1; A2,B2; A3,B3; etc.)
+function getMatchValueFromFlattened(player, opponent, holeNumber) {
     if (!holeDataCache) return 0;
     
-    var holeIndex = currentHole - 1;
-    var matchResultsForHole = holeDataCache.matchResults[holeIndex];
-    if (!matchResultsForHole) return 0;
+    var holeIndex = holeNumber - 1;
     
-    // Find match index: all Team A players vs all Team B players in handicap order
+    // Find match index
     var teamAPlayers = allPlayersCache.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = allPlayersCache.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
@@ -569,7 +572,17 @@ function getMatchValue(player, opponent) {
     if (aIndex === -1 || bIndex === -1) return 0;
     
     var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
-    return matchResultsForHole[matchIndex] || 0;
+    var arrayIndex = (holeIndex * 16) + matchIndex;
+    
+    return holeDataCache.matchResults[arrayIndex] || 0;
+}
+
+function getPlayerScore(player, holeNumber) {
+    return getPlayerScoreFromFlattened(player, holeNumber);
+}
+
+function getMatchValue(player, opponent) {
+    return getMatchValueFromFlattened(player, opponent, currentHole);
 }
 
 function getBubbleClass(player, opponent) {
@@ -683,7 +696,7 @@ function renderHCPPage() {
         
         var tableHtml = '<table class="hcp-table"><thead><tr>';
         tableHtml += '<th>Player</th><th>Cur</th><th>Anc</th><th>Perf</th><th>New</th>';
-        tableHtml += '<tr></thead><tbody>';
+        tableHtml += '</tr></thead><tbody>';
         
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
@@ -1023,14 +1036,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: Removed all encoding/decoding logic
-   - NEW: Reads JSON arrays directly from history record (schema: json_v1)
-   - NEW: Direct access to f1Scores, f2Scores, matchResults, tr arrays
-   - REMOVED: Dependency on encoding.js (no longer needed)
-   - REMOVED: decodeHoleData() function entirely
-   - SIMPLER: Render directly from stored arrays
+   - UPDATED: Now reads flattened arrays from history-record.js v2.01
+   - Player score access: f1Scores[(holeIndex * 4) + playerIndex]
+   - Match result access: matchResults[(holeIndex * 16) + matchIndex]
+   - TR values: trTeamA[holeIndex], trTeamB[holeIndex]
+   - Display rows: t1Row[holeIndex], t2Row[holeIndex], strkRow[holeIndex]
    - All UI functionality preserved (flight toggle, hole navigation, P/N toggle)
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/game-ui.js
 STATUS: Ready for integration
