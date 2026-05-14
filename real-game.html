@@ -1,15 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 2.37
+VERSION: 2.38
 KEY CHANGES:
-   - NEW: Integrated display-cache.js for fixed-position cache management
-   - NEW: displayCache string maintained throughout gameplay (594 chars)
-   - NEW: After each hole save, update displayCache for that hole
-   - NEW: After cascade recalculation, update displayCache for affected holes
-   - NEW: Progressive sync to Firestore (historyGames) after every cache update
-   - NEW: createOrUpdateHistoryRecord() called on first cache update
-   - Uses shared DisplayCache module for all encoding/decoding
-   - All other functionality identical to v2.36
+   - FIXED: History record now uses fixed ID: gameId + "_history"
+   - Uses .set(data, { merge: true }) for create/update - no duplicates
+   - Removed historyRecordId variable - always derived from gameId
+   - Progressive sync now updates same record throughout gameplay
+   - All other functionality identical to v2.37
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/display-cache.js
 STATUS: Ready for integration
 -->
@@ -393,7 +390,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.37 REAL</div>
+<div class="version-tag">v2.38 REAL</div>
 
 <script>
 // ============================================================
@@ -432,11 +429,8 @@ var courseSi = [];
 var allPlayers = [];
 
 var displayCache = null;           // 594-char string
-var historyRecordId = null;        // Firestore document ID for this game's history record
 var isGameCompleteFlag = false;
 var celebrationTriggered = false;
-var archiveRetryCount = 0;
-var maxArchiveRetries = 3;
 
 // Save button state
 var saveBtn = null;
@@ -445,6 +439,14 @@ var saveInProgress = false;
 // Modal references
 var activeWaitModal = null;
 var activeCompleteModal = null;
+
+// ============================================================
+// Helper: Get History Record ID (fixed, based on gameId)
+// ============================================================
+
+function getHistoryRecordId() {
+    return gameId + "_history";
+}
 
 // ============================================================
 // Display Cache Management
@@ -522,10 +524,10 @@ function updateDisplayCacheForHole(holeNumber) {
     }
     
     // Get TR for this hole (cumulative)
-    var position = getHolePosition(holeNumber);
     var tr = GameLoader.getTRForHole(holeNumber);
     
     // Get display rows for this hole
+    var position = getHolePosition(holeNumber);
     var t1Row = cache.t1Row[position] || "AS";
     var t2Row = cache.t2Row[position] || "AS";
     var strkRow = cache.strkRow[position] || "AS";
@@ -552,56 +554,36 @@ function updateDisplayCacheForHole(holeNumber) {
 function syncDisplayCacheToFirestore() {
     if (!displayCache) return;
     
+    var historyRecordId = getHistoryRecordId();
+    
     var dataToSave = {
+        originalGameId: gameId,
+        status: "in_progress",
+        version: 3,
+        schema: "json_v1",
+        gameInfo: {
+            date: new Date().toISOString().split('T')[0],
+            course: { name: courseName, par: coursePar, si: courseSi },
+            startingHole: startingHole,
+            teamGameFormat: teamGameFormat
+        },
+        players: allPlayers,
         holeData: displayCache,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    if (historyRecordId) {
-        // Update existing record
-        db.collection('historyGames').doc(historyRecordId).update(dataToSave)
-            .then(function() {
-                console.log("Display cache synced to Firestore");
-            })
-            .catch(function(err) {
-                console.error("Error syncing display cache:", err);
-            });
-    } else {
-        // Create new record
-        var gameDataSnapshot = {
-            gameInfo: {
-                date: new Date().toISOString().split('T')[0],
-                course: { name: courseName, par: coursePar, si: courseSi },
-                startingHole: startingHole,
-                teamGameFormat: teamGameFormat
-            },
-            players: allPlayers
-        };
-        
-        var newRecord = {
-            originalGameId: gameId,
-            status: "in_progress",
-            version: 3,
-            schema: "json_v1",
-            gameInfo: gameDataSnapshot.gameInfo,
-            players: gameDataSnapshot.players,
-            holeData: displayCache,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        
-        db.collection('historyGames').add(newRecord).then(function(docRef) {
-            historyRecordId = docRef.id;
-            console.log("History record created with ID:", historyRecordId);
-        }).catch(function(err) {
-            console.error("Error creating history record:", err);
+    // Use set with merge to create or update the same document
+    db.collection('historyGames').doc(historyRecordId).set(dataToSave, { merge: true })
+        .then(function() {
+            console.log("Display cache synced to:", historyRecordId);
+        })
+        .catch(function(err) {
+            console.error("Error syncing display cache:", err);
         });
-    }
 }
 
 function markHistoryRecordComplete() {
-    if (!historyRecordId) return;
-    
+    var historyRecordId = getHistoryRecordId();
     var tr = GameLoader.getTRForHole(currentHole);
     var finalScores = { teamA: tr.teamA, teamB: tr.teamB };
     var winner = finalScores.teamA > finalScores.teamB ? "A" : (finalScores.teamB > finalScores.teamA ? "B" : "Tie");
@@ -617,7 +599,7 @@ function markHistoryRecordComplete() {
         },
         completedAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(function() {
-        console.log("History record marked as pending_handicap");
+        console.log("History record marked as pending_handicap:", historyRecordId);
     }).catch(function(err) {
         console.error("Error marking record complete:", err);
     });
@@ -1254,15 +1236,8 @@ function showCelebrationAndHandicap() {
     var matchPoints = buildMatchResultsForHandicap();
     
     SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
-        if (historyRecordId) {
-            HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, matchPoints, {}, false);
-        } else {
-            // Create new record if missing
-            syncDisplayCacheToFirestore();
-            setTimeout(function() {
-                HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, matchPoints, {}, false);
-            }, 1000);
-        }
+        var historyRecordId = getHistoryRecordId();
+        HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, matchPoints, {}, false);
     });
 }
 
@@ -1572,16 +1547,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.37
+VERSION: 2.38
 KEY CHANGES:
-   - NEW: Integrated display-cache.js for fixed-position cache management
-   - NEW: displayCache string maintained throughout gameplay (594 chars)
-   - NEW: After each hole save, update displayCache for that hole
-   - NEW: After cascade recalculation, update displayCache for affected holes
-   - NEW: Progressive sync to Firestore (historyGames) after every cache update
-   - NEW: createOrUpdateHistoryRecord() called on first cache update
-   - Uses shared DisplayCache module for all encoding/decoding
-   - All other functionality identical to v2.36
+   - FIXED: History record now uses fixed ID: gameId + "_history"
+   - Uses .set(data, { merge: true }) for create/update - no duplicates
+   - Removed historyRecordId variable - always derived from gameId
+   - Progressive sync now updates same record throughout gameplay
+   - All other functionality identical to v2.37
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/display-cache.js
 STATUS: Ready for integration
 -->
