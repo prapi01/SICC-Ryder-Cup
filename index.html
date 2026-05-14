@@ -1,7 +1,16 @@
-<!-- FILE: index.html - VERSION 2.26 -->
-<!-- Landing page for SICC Ryder Cup App -->
-<!-- ADDED: Reduced empty space at top - moved screen up by 2 lines -->
-<!-- CHANGES: header margin-bottom 30px→16px, golf-icon margin-bottom 16px→8px -->
+<!--
+FILE: index.html
+VERSION: 2.27
+KEY CHANGES:
+   - FIXED: "VIEW PREVIOUS GAMES" button now links to view-history.html
+   - All other functionality identical to v2.26
+   - Reduced top empty space on mobile view
+   - header margin-bottom: 30px → 16px
+   - golf-icon margin-bottom: 16px → 8px
+DEPENDS ON: js/session.js
+STATUS: Ready for deployment
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -266,13 +275,13 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.26</div>
+<div class="version-tag">v2.27</div>
 
 <script>
-// FILE: index.html - VERSION 2.26
-// CHANGES: Reduced top empty space (header margin 30px→16px, golf-icon margin 16px→8px)
+// FILE: index.html - VERSION 2.27
+// CHANGES: VIEW PREVIOUS GAMES button now links to view-history.html
 
-var APP_VERSION = "2.26";
+var APP_VERSION = "2.27";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -841,11 +850,12 @@ function proceedToRealGame(gameId, gameType) {
 }
 
 function goToPreviousGames() {
-    SessionManager.addNavigationHistory("history.html", "previous_games");
+    // UPDATED: Now links to view-history.html instead of history.html
+    SessionManager.addNavigationHistory("view-history.html", "previous_games");
     SessionManager.updateSession({
         returnDestination: "index.html"
     });
-    window.location.href = "history.html";
+    window.location.href = "view-history.html";
 }
 
 function goToAdmin() {
@@ -958,14 +968,16 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 </script>
 </body>
 </html>
+
 <!--
 FILE: index.html
-VERSION: 2.26
+VERSION: 2.27
 KEY CHANGES:
+   - FIXED: "VIEW PREVIOUS GAMES" button now links to view-history.html
+   - All other functionality identical to v2.26
    - Reduced top empty space on mobile view
    - header margin-bottom: 30px → 16px
    - golf-icon margin-bottom: 16px → 8px
-   - Moves screen up by approximately 2 lines
 DEPENDS ON: js/session.js
 STATUS: Ready for deployment
 -->
