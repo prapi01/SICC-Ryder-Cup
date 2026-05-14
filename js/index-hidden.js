@@ -1,11 +1,11 @@
 /*
 FILE: js/index-hidden.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - FIXED: newId variable scope - moved declaration outside promise chain
-   - FIXED: Error when showing alert after game creation
-   - duplicateMasterRecord() now correctly displays the new Game ID
-   - All functions working correctly
+   - FIXED: Date calculation now uses local timezone instead of UTC
+   - Added getLocalDate() function for consistent date handling
+   - Today's date is now correctly determined regardless of timezone
+   - All other functionality identical to v1.02
    - duplicateMasterRecord(): Copies Master_Record_H17_2028 to today's date
    - Sets gameStarted: true, resets locks/signatures/submitted
    - Displays new Game ID in faint green next to device ID
@@ -15,19 +15,28 @@ STATUS: Ready for integration
 */
 
 // ============================================================
+// Helper: Get local date string (YYYY-MM-DD)
+// ============================================================
+
+function getLocalDate() {
+    var today = new Date();
+    var year = today.getFullYear();
+    var month = String(today.getMonth() + 1).padStart(2, '0');
+    var day = String(today.getDate()).padStart(2, '0');
+    return year + '-' + month + '-' + day;
+}
+
+// ============================================================
 // Display Game ID in faint green next to device tag
 // ============================================================
 
 function displayGameId(gameId) {
     var deviceTag = document.getElementById("deviceTag");
     if (deviceTag) {
-        // Check if game ID already displayed
         var currentText = deviceTag.innerHTML;
         if (currentText.indexOf("Game:") !== -1) {
-            // Replace existing game ID
             deviceTag.innerHTML = currentText.replace(/Game: [A-Za-z0-9_]+/, "Game: " + gameId);
         } else {
-            // Append game ID
             deviceTag.innerHTML = currentText + ' | <span style="color: #4caf50; opacity: 0.7;">Game: ' + gameId + '</span>';
         }
     }
@@ -58,7 +67,7 @@ function getCurrentGameId() {
         return;
     }
     
-    var today = new Date().toISOString().split('T')[0];
+    var today = getLocalDate();
     
     db.collection("scheduledGames")
         .where("date", "==", today)
@@ -85,7 +94,7 @@ function duplicateMasterRecord() {
         return;
     }
     
-    var newId;  // Declared OUTSIDE the promise so it's accessible in the .then() chain
+    var newId;
     
     var masterRef = db.collection("scheduledGames").doc("Master_Record_H17_2028");
     
@@ -96,28 +105,24 @@ function duplicateMasterRecord() {
         }
         
         var original = doc.data();
-        var today = new Date().toISOString().split('T')[0];
+        var today = getLocalDate();
         newId = 'Game_H17_' + today.replace(/-/g, '') + '_' + Date.now();
         
         var duplicate = JSON.parse(JSON.stringify(original));
         
-        // Update fields for new game
         duplicate.date = today;
         duplicate.gameStarted = true;
         duplicate.locks = { f1: null, f2: null };
         duplicate.signatures = {};
         duplicate.submitted = {};
         
-        // Remove old timestamps and id
         delete duplicate.id;
         delete duplicate.createdAt;
         delete duplicate.updatedAt;
         
-        // Add new timestamps
         duplicate.createdAt = firebase.firestore.FieldValue.serverTimestamp();
         duplicate.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
-        // Save the new game
         return db.collection("scheduledGames").doc(newId).set(duplicate);
     }).then(function() {
         console.log("✅ Game created with today's date. ID:", newId);
@@ -125,7 +130,6 @@ function duplicateMasterRecord() {
         if (typeof displayGameId === 'function') {
             displayGameId(newId);
         }
-        // Refresh the page after user clicks OK
         setTimeout(function() {
             window.location.reload();
         }, 1000);
@@ -140,9 +144,7 @@ function duplicateMasterRecord() {
 // ============================================================
 
 function initHiddenAdmin() {
-    // Wait for DOM to load
     setTimeout(function() {
-        // Get current game ID on page load
         getCurrentGameId();
     }, 2000);
 }
@@ -156,12 +158,12 @@ window.clearDisplayedGameId = clearDisplayedGameId;
 
 /*
 FILE: js/index-hidden.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - FIXED: newId variable scope - moved declaration outside promise chain
-   - FIXED: Error when showing alert after game creation
-   - duplicateMasterRecord() now correctly displays the new Game ID
-   - All functions working correctly
+   - FIXED: Date calculation now uses local timezone instead of UTC
+   - Added getLocalDate() function for consistent date handling
+   - Today's date is now correctly determined regardless of timezone
+   - All other functionality identical to v1.02
    - duplicateMasterRecord(): Copies Master_Record_H17_2028 to today's date
    - Sets gameStarted: true, resets locks/signatures/submitted
    - Displays new Game ID in faint green next to device ID
