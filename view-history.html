@@ -1,15 +1,14 @@
 <!--
 FILE: view-history.html
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
-   - COMPLETE RESTRUCTURE: HCP page is now the landing page after game selection
-   - NEW: HCP page shows TR display (Team A vs Team B with colors)
-   - NEW: HCP page shows handicap adjustment table
-   - NEW: HCP page has [Back] (to game list) and [Scorecard] buttons
-   - NEW: Scorecard page has single [Back] button to return to HCP page
-   - REMOVED: Back to Main Menu and Back to Game List from scorecard page
+   - REMOVED: "HANDICAP ADJUSTMENT" title text
+   - NEW: Course name as main title (large, bold)
+   - NEW: Date as subtitle below course name
+   - NEW: "FINAL RESULT" as major section header above TR
+   - Layout: Course Name > Date > FINAL RESULT > TR > Anchor Card > Table > Buttons
    - TR color scheme: Green for winning/tie, Red for losing
-   - All existing functionality preserved (flight toggle, hole navigation, P/N toggle)
+   - All other functionality identical to v2.00
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -130,29 +129,46 @@ STATUS: Ready for integration
             margin-bottom: 20px;
             border: 1px solid #333;
         }
-        .hcp-title {
+        
+        /* Course Title - Large & Bold */
+        .course-title {
             text-align: center;
-            font-size: 1.3rem;
+            font-size: 1.6rem;
             font-weight: 800;
             color: #4caf50;
+            letter-spacing: -0.5px;
             margin-bottom: 4px;
         }
-        .hcp-subtitle {
+        
+        /* Date Subtitle */
+        .date-subtitle {
             text-align: center;
-            font-size: 0.75rem;
+            font-size: 0.85rem;
             color: #888;
-            margin-bottom: 20px;
+            margin-bottom: 24px;
+        }
+        
+        /* Final Result Section */
+        .final-result-title {
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #ffaa44;
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+            border-top: 1px solid #333;
+            padding-top: 20px;
         }
         
         .tr-container {
-            margin: 20px 0;
+            margin: 0 0 20px 0;
         }
         
         .anchor-info {
             background: #0a0a0a;
             border-radius: 16px;
             padding: 12px;
-            margin-bottom: 16px;
+            margin-bottom: 20px;
             text-align: center;
             border: 1px solid #333;
         }
@@ -396,17 +412,27 @@ STATUS: Ready for integration
     <!-- HCP Page (shown after game selection) -->
     <div id="hcpPage" style="display:none;">
         <div class="hcp-page">
-            <div class="hcp-title">🏌️ HANDICAP ADJUSTMENT</div>
-            <div class="hcp-subtitle" id="hcpSubtitle"></div>
+            <!-- Course Name - Large & Bold -->
+            <div class="course-title" id="courseTitle"></div>
             
+            <!-- Date Subtitle -->
+            <div class="date-subtitle" id="dateSubtitle"></div>
+            
+            <!-- FINAL RESULT Section -->
+            <div class="final-result-title">FINAL RESULT</div>
+            
+            <!-- TR Display -->
             <div class="tr-container" id="hcpTrDisplay"></div>
             
+            <!-- Anchor Card -->
             <div id="hcpAnchorInfo" class="anchor-info"></div>
             
+            <!-- HCP Table -->
             <div id="hcpTableContainer"></div>
             <div id="hcpZeroInfo"></div>
             <div id="hcpNewAnchorInfo"></div>
             
+            <!-- Buttons -->
             <div class="action-buttons-row">
                 <button class="btn-half btn-back" id="hcpBackToGameListBtn">← Back</button>
                 <button class="btn-half btn-scorecard" id="hcpToScorecardBtn">Scorecard →</button>
@@ -446,7 +472,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.00</div>
+<div class="version-tag">v2.01</div>
 
 <script>
 // ============================================================
@@ -676,7 +702,7 @@ function getStoredScore(player, hole) {
 }
 
 // ============================================================
-// TR Display Function (using GameUI)
+// TR Display Function (using GameUI style)
 // ============================================================
 
 function updateTRDisplay(containerId, teamA, teamB, teamAGreen, teamBGreen) {
@@ -741,7 +767,12 @@ function renderHCPPage() {
     var courseName = courseCache?.name || "Unknown Course";
     var gameDateRaw = currentGameData.gameInfo?.date || "";
     var gameDateFormatted = formatDisplayDate(gameDateRaw);
-    document.getElementById("hcpSubtitle").innerHTML = `${escapeHtml(courseName)} | ${gameDateFormatted}`;
+    
+    // Course Title - Large & Bold
+    document.getElementById("courseTitle").innerHTML = escapeHtml(courseName);
+    
+    // Date Subtitle
+    document.getElementById("dateSubtitle").innerHTML = gameDateFormatted;
     
     // Get final TR from hole 18
     var tr = getFinalTRFromHoleData();
@@ -762,7 +793,7 @@ function renderHCPPage() {
         // Table
         var tableHtml = '<table class="hcp-table"><thead><tr>';
         tableHtml += '<th>Player</th><th>Cur</th><th>Anc</th><th>Perf</th><th>New</th>';
-        tableHtml += '<tr></thead><tbody>';
+        tableHtml += '</tr></thead><tbody>';
         
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
@@ -1102,16 +1133,15 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 2.00
+VERSION: 2.01
 KEY CHANGES:
-   - COMPLETE RESTRUCTURE: HCP page is now the landing page after game selection
-   - NEW: HCP page shows TR display (Team A vs Team B with colors)
-   - NEW: HCP page shows handicap adjustment table
-   - NEW: HCP page has [Back] (to game list) and [Scorecard] buttons
-   - NEW: Scorecard page has single [Back] button to return to HCP page
-   - REMOVED: Back to Main Menu and Back to Game List from scorecard page
+   - REMOVED: "HANDICAP ADJUSTMENT" title text
+   - NEW: Course name as main title (large, bold)
+   - NEW: Date as subtitle below course name
+   - NEW: "FINAL RESULT" as major section header above TR
+   - Layout: Course Name > Date > FINAL RESULT > TR > Anchor Card > Table > Buttons
    - TR color scheme: Green for winning/tie, Red for losing
-   - All existing functionality preserved (flight toggle, hole navigation, P/N toggle)
+   - All other functionality identical to v2.00
 DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
