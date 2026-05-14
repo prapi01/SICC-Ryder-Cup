@@ -1,7 +1,10 @@
 <!--
 FILE: view-history.html
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
+   - FIXED: Added missing history-record.js script include
+   - FIXED: HistoryRecord is now defined and loads correctly
+   - All other functionality identical to v1.00
    - NEW: History viewer for completed games
    - NEW: Lists all completed games from historyGames collection
    - NEW: Decodes encoded holeData string (594 chars) for display
@@ -10,7 +13,7 @@ KEY CHANGES:
    - NEW: Scorecard display with all rows (F1, F2, T-1, T-2, Strk)
    - NEW: Match bubbles display for each player
    - NEW: TR display with correct colors
-DEPENDS ON: Firebase Firestore, js/session.js, js/encoding.js, js/game-ui.js
+DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
 
@@ -20,9 +23,11 @@ STATUS: Ready for integration
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SICC Ryder Cup - History Viewer</title>
+    
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/history-record.js"></script>
     <script src="js/encoding.js"></script>
     <script src="js/game-ui.js"></script>
     
@@ -297,7 +302,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.00</div>
+<div class="version-tag">v1.01</div>
 
 <script>
 // ============================================================
@@ -808,8 +813,11 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
+   - FIXED: Added missing history-record.js script include
+   - FIXED: HistoryRecord is now defined and loads correctly
+   - All other functionality identical to v1.00
    - NEW: History viewer for completed games
    - NEW: Lists all completed games from historyGames collection
    - NEW: Decodes encoded holeData string (594 chars) for display
@@ -818,6 +826,6 @@ KEY CHANGES:
    - NEW: Scorecard display with all rows (F1, F2, T-1, T-2, Strk)
    - NEW: Match bubbles display for each player
    - NEW: TR display with correct colors
-DEPENDS ON: Firebase Firestore, js/session.js, js/encoding.js, js/game-ui.js
+DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/encoding.js, js/game-ui.js
 STATUS: Ready for integration
 -->
