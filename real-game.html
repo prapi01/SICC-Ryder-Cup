@@ -1,15 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 2.33
+VERSION: 2.34
 KEY CHANGES:
-   - FIXED: Waiting screen now transitions to Game Complete when both flights sign
-   - FIXED: Snapshot listener detects both signatures and calls showGameCompleteScreen()
-   - FIXED: pendingArchiveCreated flag set immediately to prevent duplicate archive records
-   - FIXED: SAVE button shows hole number (e.g., "💾 SAVE H3")
-   - NEW: createPendingArchiveRecord() now passes flight1DataObj, flight2DataObj, matchResults for encoding
-   - Celebration and Handicap flow now properly triggered from Game Complete screen
+   - ADDED: Cache validation before creating history record
+   - Validates all 18 holes are saved in both flights (flight1Data and flight2Data)
+   - Validates matchResults.cross exists and has data
+   - If cache incomplete, waits 1 second and retries (up to 3 retries)
+   - Prevents malformed history records from being created
+   - All other functionality identical to v2.33
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/encoding.js
-STATUS: Ready for testing
+STATUS: Ready for integration
 -->
 
 <!DOCTYPE html>
@@ -391,7 +391,7 @@ STATUS: Ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.33 REAL</div>
+<div class="version-tag">v2.34 REAL</div>
 
 <script>
 // ============================================================
@@ -433,6 +433,8 @@ var currentArchiveId = null;
 var isGameCompleteFlag = false;
 var celebrationTriggered = false;
 var pendingArchiveCreated = false;
+var archiveRetryCount = 0;
+var maxArchiveRetries = 3;
 
 // Save button state
 var saveBtn = null;
@@ -981,6 +983,7 @@ function showSignCardModal() {
                 // Both signed - create archive and show Game Complete
                 if (!pendingArchiveCreated) {
                     pendingArchiveCreated = true;
+                    archiveRetryCount = 0;
                     createPendingArchiveRecord(function(err, archiveId) {
                         if (err) console.error("Failed to create archive record:", err);
                         isGameCompleteFlag = true;
@@ -1055,10 +1058,51 @@ function showGameCompleteScreen() {
     });
 }
 
+function isCacheComplete() {
+    var cache = GameLoader.getLocalCache();
+    
+    // Check all 18 holes are saved in both flights
+    for (var h = 1; h <= 18; h++) {
+        if (!cache.flight1Data[h] || !cache.flight1Data[h].saved) {
+            console.warn('Cache incomplete: Flight 1 hole', h, 'not saved');
+            return false;
+        }
+        if (!cache.flight2Data[h] || !cache.flight2Data[h].saved) {
+            console.warn('Cache incomplete: Flight 2 hole', h, 'not saved');
+            return false;
+        }
+    }
+    
+    // Check match results exist
+    if (!cache.matchResults.cross || Object.keys(cache.matchResults.cross).length === 0) {
+        console.warn('Cache incomplete: matchResults.cross is empty');
+        return false;
+    }
+    
+    console.log('Cache validation passed - all 18 holes saved in both flights');
+    return true;
+}
+
 function createPendingArchiveRecord(callback) {
     if (pendingArchiveCreated) {
         if (callback) callback(null, currentArchiveId);
         return;
+    }
+    
+    // Validate cache before proceeding
+    if (!isCacheComplete()) {
+        if (archiveRetryCount < maxArchiveRetries) {
+            archiveRetryCount++;
+            console.log(`Cache incomplete, retry ${archiveRetryCount}/${maxArchiveRetries} in 1 second...`);
+            setTimeout(function() {
+                createPendingArchiveRecord(callback);
+            }, 1000);
+            return;
+        } else {
+            console.error('Cache still incomplete after max retries');
+            if (callback) callback(new Error('Cache incomplete - cannot create history record'), null);
+            return;
+        }
     }
     
     var cache = GameLoader.getLocalCache();
@@ -1289,6 +1333,7 @@ function onCacheUpdate(cache) {
         console.log("Both signatures detected - showing Game Complete screen");
         if (!pendingArchiveCreated) {
             pendingArchiveCreated = true;
+            archiveRetryCount = 0;
             createPendingArchiveRecord(function(err, archiveId) {
                 if (err) console.error("Failed to create archive record:", err);
                 isGameCompleteFlag = true;
@@ -1454,14 +1499,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.33
+VERSION: 2.34
 KEY CHANGES:
-   - FIXED: Waiting screen now transitions to Game Complete when both flights sign
-   - FIXED: Snapshot listener detects both signatures and calls showGameCompleteScreen()
-   - FIXED: pendingArchiveCreated flag set immediately to prevent duplicate archive records
-   - FIXED: SAVE button shows hole number (e.g., "💾 SAVE H3")
-   - NEW: createPendingArchiveRecord() now passes flight1DataObj, flight2DataObj, matchResults for encoding
-   - Celebration and Handicap flow now properly triggered from Game Complete screen
+   - ADDED: Cache validation before creating history record
+   - Validates all 18 holes are saved in both flights (flight1Data and flight2Data)
+   - Validates matchResults.cross exists and has data
+   - If cache incomplete, waits 1 second and retries (up to 3 retries)
+   - Prevents malformed history records from being created
+   - All other functionality identical to v2.33
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/encoding.js
-STATUS: Ready for testing
+STATUS: Ready for integration
 -->
