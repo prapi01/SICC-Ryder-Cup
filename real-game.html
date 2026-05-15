@@ -1,14 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 2.41
+VERSION: 3.00
 KEY CHANGES:
-   - ADDED: initializeDisplayCacheFromExistingData() - scans for holes already saved on load
-   - ADDED: Load provision for mid-game recovery (refresh, network interruption, device switch)
-   - When game loads, writes any hole already saved by both flights to display cache
-   - Prevents losing data for holes 1-17 when duplicating Master Record
-   - Comprehensive debug logging for cache operations
-   - All other functionality identical to v2.40
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/display-cache.js
+   - COMPLETE REWRITE: No encoding, no display cache
+   - Stores raw f1.d and f2.d strings directly in scheduledGames
+   - Stores pre-calculated results object
+   - Single source of truth - Firestore only
+   - All calculations done once during play
+   - Removed all encoding/decoding logic
+DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
 
@@ -30,9 +30,7 @@ STATUS: Ready for integration
     <script src="js/game-loader.js"></script>
     <script src="js/card-submit.js"></script>
     <script src="js/sign-card.js"></script>
-    <script src="js/history-record.js"></script>
     <script src="js/hcp-adjust.js"></script>
-    <script src="js/display-cache.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -88,6 +86,7 @@ STATUS: Ready for integration
             padding: 10px;
             text-align: center;
             margin: 16px 0;
+            cursor: pointer;
         }
         
         .team-score-card {
@@ -97,9 +96,6 @@ STATUS: Ready for integration
             text-align: center;
             margin-bottom: 20px;
         }
-        .team-score-green { color: #4caf50; }
-        .team-score-red { color: #ff6b6b; }
-        .team-score { font-size: 1.3rem; font-weight: 700; }
         
         .player-card {
             background: #111;
@@ -121,7 +117,7 @@ STATUS: Ready for integration
         .score-btn { background: #1a3a1a; border: none; width: 40px; height: 40px; border-radius: 30px; font-size: 1.2rem; color: #fff; cursor: pointer; }
         .score-btn:active { transform: scale(0.95); }
         .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; }
+        .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
         
         .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
         .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
@@ -177,21 +173,9 @@ STATUS: Ready for integration
         
         .action-buttons { display: flex; gap: 12px; margin: 20px 0; }
         .btn { flex: 1; padding: 12px; border-radius: 40px; font-weight: 600; text-align: center; cursor: pointer; border: none; transition: all 0.2s ease; }
-        .btn-save { 
-            background: #1a3a1a; 
-            color: #4caf50; 
-            border: 1px solid #4caf50;
-        }
-        .btn-save-pending {
-            background: #3a1a1a;
-            color: #ff6b6b;
-            border: 1px solid #ff6b6b;
-        }
-        .btn-save-retry {
-            background: #3a1a1a;
-            color: #ffaa44;
-            border: 1px solid #ffaa44;
-        }
+        .btn-save { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .btn-save-pending { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        .btn-save-retry { background: #3a1a1a; color: #ffaa44; border: 1px solid #ffaa44; }
         .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .btn-next-inactive { background: #2a2a2a; color: #555; border: 1px solid #444; cursor: not-allowed; }
         .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
@@ -212,7 +196,6 @@ STATUS: Ready for integration
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Modal Styles */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -235,21 +218,9 @@ STATUS: Ready for integration
             text-align: center;
             border: 2px solid #4caf50;
         }
-        .sign-modal-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #4caf50;
-            margin-bottom: 16px;
-        }
-        .sign-modal-message {
-            font-size: 0.9rem;
-            color: #ccc;
-            margin-bottom: 24px;
-        }
-        .sign-modal-buttons {
-            display: flex;
-            gap: 12px;
-        }
+        .sign-modal-title { font-size: 1.5rem; font-weight: 700; color: #4caf50; margin-bottom: 16px; }
+        .sign-modal-message { font-size: 0.9rem; color: #ccc; margin-bottom: 24px; }
+        .sign-modal-buttons { display: flex; gap: 12px; }
         .sign-btn-back {
             flex: 1;
             background: #1a1a1a;
@@ -280,21 +251,9 @@ STATUS: Ready for integration
             text-align: center;
             border: 2px solid #4caf50;
         }
-        .waiting-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #4caf50;
-            margin-bottom: 20px;
-        }
-        .waiting-message {
-            font-size: 0.95rem;
-            color: #ffaa44;
-            margin-bottom: 8px;
-        }
-        .waiting-submessage {
-            font-size: 0.75rem;
-            color: #888;
-        }
+        .waiting-title { font-size: 1.3rem; font-weight: 700; color: #4caf50; margin-bottom: 20px; }
+        .waiting-message { font-size: 0.95rem; color: #ffaa44; margin-bottom: 8px; }
+        .waiting-submessage { font-size: 0.75rem; color: #888; }
         .waiting-spinner {
             width: 32px;
             height: 32px;
@@ -314,21 +273,9 @@ STATUS: Ready for integration
             text-align: center;
             border: 2px solid #4caf50;
         }
-        .complete-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #4caf50;
-            margin-bottom: 12px;
-        }
-        .complete-emojis {
-            font-size: 1.2rem;
-            margin-bottom: 20px;
-        }
-        .complete-message {
-            font-size: 0.85rem;
-            color: #ccc;
-            margin-bottom: 28px;
-        }
+        .complete-title { font-size: 1.5rem; font-weight: 700; color: #4caf50; margin-bottom: 12px; }
+        .complete-emojis { font-size: 1.2rem; margin-bottom: 20px; }
+        .complete-message { font-size: 0.85rem; color: #ccc; margin-bottom: 28px; }
         .complete-btn {
             background: #ffaa44;
             color: #1a3a1a;
@@ -348,9 +295,7 @@ STATUS: Ready for integration
             50% { background: #4caf50; border-color: #4caf50; color: #1a3a1a; }
             100% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
         }
-        .btn-save-flash {
-            animation: flashGreen 0.5s ease;
-        }
+        .btn-save-flash { animation: flashGreen 0.5s ease; }
         
         @keyframes spin {
             to { transform: rotate(360deg); }
@@ -386,12 +331,11 @@ STATUS: Ready for integration
     </div>
     
     <button class="btn btn-menu" id="menuBtn">← Back to Main Menu</button>
-    
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v2.41 REAL</div>
+<div class="version-tag">v3.00</div>
 
 <script>
 // ============================================================
@@ -429,309 +373,43 @@ var coursePar = [];
 var courseSi = [];
 var allPlayers = [];
 
-var displayCache = null;           // 594-char string
 var isGameCompleteFlag = false;
 var celebrationTriggered = false;
 
-// Track which holes have been written to display cache
-var holesWrittenToCache = {};
-
-// Save button state
 var saveBtn = null;
 var saveInProgress = false;
 
-// Modal references
 var activeWaitModal = null;
 var activeCompleteModal = null;
-
-// ============================================================
-// Helper: Get History Record ID (fixed, based on gameId)
-// ============================================================
-
-function getHistoryRecordId() {
-    return gameId + "_history";
-}
-
-// ============================================================
-// Build a snapshot for a specific hole using current cache data
-// ============================================================
-
-function buildHoleSnapshot(holeNumber) {
-    var cache = GameLoader.getLocalCache();
-    
-    function getOrderedPlayers(flight) {
-        var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
-        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        return [teamA[0], teamA[1], teamB[0], teamB[1]];
-    }
-    
-    function getFlightScores(flight, holeNum) {
-        var orderedPlayers = getOrderedPlayers(flight);
-        var scores = [];
-        for (var i = 0; i < orderedPlayers.length; i++) {
-            var player = orderedPlayers[i];
-            var score = 0;
-            if (flight === 1) {
-                var f1Hole = cache.flight1Data[holeNum];
-                if (f1Hole && f1Hole.saved) {
-                    if (i === 0) score = f1Hole.scores.a1;
-                    else if (i === 1) score = f1Hole.scores.a2;
-                    else if (i === 2) score = f1Hole.scores.b1;
-                    else if (i === 3) score = f1Hole.scores.b2;
-                }
-            } else {
-                var f2Hole = cache.flight2Data[holeNum];
-                if (f2Hole && f2Hole.saved) {
-                    if (i === 0) score = f2Hole.scores.a1;
-                    else if (i === 1) score = f2Hole.scores.a2;
-                    else if (i === 2) score = f2Hole.scores.b1;
-                    else if (i === 3) score = f2Hole.scores.b2;
-                }
-            }
-            if (score === 0) score = coursePar[holeNum - 1];
-            scores.push(score);
-        }
-        return scores;
-    }
-    
-    function getMatchResultsForHole(holeNum) {
-        var matchResults = GameMatch.calculateCrossFlight(
-            cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNum, coursePar
-        );
-        
-        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        
-        var resultArray = [];
-        for (var a = 0; a < teamAPlayers.length; a++) {
-            for (var b = 0; b < teamBPlayers.length; b++) {
-                var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
-                var value = matchResults[key] || 0;
-                if (value > 15) value = 15;
-                if (value < -10) value = -10;
-                resultArray.push(value);
-            }
-        }
-        return resultArray;
-    }
-    
-    var position = getHolePosition(holeNumber);
-    var tr = GameLoader.getTRForHole(holeNumber);
-    var t1Row = cache.t1Row[position] || "AS";
-    var t2Row = cache.t2Row[position] || "AS";
-    var strkRow = cache.strkRow[position] || "AS";
-    
-    var f1ScoresGross = getFlightScores(1, holeNumber);
-    var f2ScoresGross = getFlightScores(2, holeNumber);
-    var matchResultsArray = getMatchResultsForHole(holeNumber);
-    
-    return DisplayCache.encodeHoleSnapshot(
-        f1ScoresGross, f2ScoresGross, matchResultsArray,
-        tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen,
-        t1Row, t2Row, strkRow
-    );
-}
-
-// ============================================================
-// Update display cache for a hole and sync to Firestore
-// ============================================================
-
-function updateDisplayCacheForHole(holeNumber) {
-    if (holesWrittenToCache[holeNumber]) {
-        console.log("  Hole " + holeNumber + " already written, skipping");
-        return;
-    }
-    
-    console.log("  Building snapshot for hole " + holeNumber + "...");
-    var holeSnapshot = buildHoleSnapshot(holeNumber);
-    
-    if (!holeSnapshot || holeSnapshot.length !== 33) {
-        console.error("  ❌ Invalid hole snapshot for hole " + holeNumber + ": length " + (holeSnapshot ? holeSnapshot.length : 'null'));
-        return;
-    }
-    
-    console.log("  ✅ Hole " + holeNumber + " snapshot built (" + holeSnapshot.length + " chars)");
-    
-    displayCache = DisplayCache.updateDisplayCache(displayCache, holeNumber, holeSnapshot);
-    holesWrittenToCache[holeNumber] = true;
-    
-    console.log("  💾 Hole " + holeNumber + " written to display cache");
-    
-    // Sync to Firestore
-    var historyRecordId = getHistoryRecordId();
-    db.collection('historyGames').doc(historyRecordId).update({
-        holeData: displayCache,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(function() {
-        console.log("  ☁️ Synced hole " + holeNumber + " to Firestore");
-    }).catch(function(err) {
-        console.error("  ❌ Error syncing hole " + holeNumber + ":", err);
-    });
-}
-
-// ============================================================
-// Check if a hole is fully saved by both flights
-// ============================================================
-
-function checkAndWriteHoleIfFinalized(holeNumber) {
-    var cache = GameLoader.getLocalCache();
-    var f1Saved = cache.flight1Data[holeNumber] && cache.flight1Data[holeNumber].saved;
-    var f2Saved = cache.flight2Data[holeNumber] && cache.flight2Data[holeNumber].saved;
-    
-    console.log("  🔍 Check hole " + holeNumber + ": f1Saved=" + f1Saved + ", f2Saved=" + f2Saved + ", alreadyWritten=" + holesWrittenToCache[holeNumber]);
-    
-    if (f1Saved && f2Saved && !holesWrittenToCache[holeNumber]) {
-        console.log("  ✍️ Hole " + holeNumber + " is finalized - writing to cache");
-        updateDisplayCacheForHole(holeNumber);
-    }
-}
-
-// ============================================================
-// Initialize display cache from existing saved holes (LOAD provision)
-// ============================================================
-
-function initializeDisplayCacheFromExistingData() {
-    var cache = GameLoader.getLocalCache();
-    var holesFound = 0;
-    
-    console.log("=== LOAD PROVISION: Scanning for already saved holes ===");
-    
-    for (var h = 1; h <= 18; h++) {
-        var f1Saved = cache.flight1Data[h] && cache.flight1Data[h].saved;
-        var f2Saved = cache.flight2Data[h] && cache.flight2Data[h].saved;
-        
-        if (f1Saved && f2Saved) {
-            console.log("  Found hole " + h + " already saved by both flights");
-            holesFound++;
-            updateDisplayCacheForHole(h);
-        }
-    }
-    
-    console.log("=== LOAD PROVISION: Found " + holesFound + " holes already saved ===");
-}
-
-// ============================================================
-// Create history record at game start
-// ============================================================
-
-function createHistoryRecord() {
-    var historyRecordId = getHistoryRecordId();
-    displayCache = DisplayCache.createEmptyDisplayCache();
-    
-    var initialData = {
-        originalGameId: gameId,
-        status: "in_progress",
-        version: 3,
-        schema: "json_v1",
-        gameInfo: {
-            date: new Date().toISOString().split('T')[0],
-            course: { name: courseName, par: coursePar, si: courseSi },
-            startingHole: startingHole,
-            teamGameFormat: teamGameFormat
-        },
-        players: allPlayers,
-        holeData: displayCache,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-    
-    db.collection('historyGames').doc(historyRecordId).set(initialData)
-        .then(function() {
-            console.log("✅ History record created at game start:", historyRecordId);
-        })
-        .catch(function(err) {
-            console.error("❌ Failed to create history record:", err);
-        });
-}
-
-// ============================================================
-// Mark history record as complete
-// ============================================================
-
-function markHistoryRecordComplete() {
-    var historyRecordId = getHistoryRecordId();
-    var tr = GameLoader.getTRForHole(currentHole);
-    var finalScores = { teamA: tr.teamA, teamB: tr.teamB };
-    var winner = finalScores.teamA > finalScores.teamB ? "A" : (finalScores.teamB > finalScores.teamA ? "B" : "Tie");
-    var winnerText = winner === "A" ? "Team A Wins!" : (winner === "B" ? "Team B Wins!" : "Tie Game!");
-    
-    db.collection('historyGames').doc(historyRecordId).update({
-        status: "pending_handicap",
-        finalResults: {
-            teamAScore: finalScores.teamA,
-            teamBScore: finalScores.teamB,
-            winner: winner,
-            winnerText: winnerText
-        },
-        completedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(function() {
-        console.log("✅ History record marked as pending_handicap:", historyRecordId);
-    }).catch(function(err) {
-        console.error("❌ Error marking record complete:", err);
-    });
-}
-
-// ============================================================
-// Save Button State Management
-// ============================================================
-
-function setSaveButtonIdle() {
-    if (!saveBtn) return;
-    saveBtn.classList.remove('btn-save-pending', 'btn-save-retry');
-    saveBtn.classList.add('btn-save');
-    updateSaveButtonText();
-    saveBtn.disabled = false;
-    saveInProgress = false;
-}
-
-function setSaveButtonPending() {
-    if (!saveBtn) return;
-    saveBtn.classList.remove('btn-save', 'btn-save-retry');
-    saveBtn.classList.add('btn-save-pending');
-    saveBtn.innerHTML = '⏳ SAVING...';
-    saveBtn.disabled = true;
-    saveInProgress = true;
-}
-
-function setSaveButtonRetry() {
-    if (!saveBtn) return;
-    saveBtn.classList.remove('btn-save', 'btn-save-pending');
-    saveBtn.classList.add('btn-save-retry');
-    saveBtn.innerHTML = '⚠️ RETRY';
-    saveBtn.disabled = false;
-    saveInProgress = false;
-}
-
-function flashSaveButtonSuccess() {
-    if (!saveBtn) return;
-    saveBtn.classList.add('btn-save-flash');
-    setTimeout(function() {
-        saveBtn.classList.remove('btn-save-flash');
-        updateSaveButtonText();
-    }, 500);
-}
-
-function updateSaveButtonText() {
-    if (!saveBtn) return;
-    if (!saveBtn.classList.contains('btn-save')) return;
-    saveBtn.innerHTML = '💾 SAVE H' + currentHole;
-}
 
 // ============================================================
 // Helper Functions
 // ============================================================
 
 function getPlayOrder() {
-    return GameLoader.getPlayOrder(startingHole);
+    var order = [];
+    for (var i = startingHole; i <= 18; i++) order.push(i);
+    for (var i = 1; i < startingHole; i++) order.push(i);
+    return order;
 }
 
 function getDisplayHoles() {
-    return GameUI.getDisplayHoles(startingHole, GameUI.getDisplayMode());
+    var mode = GameUI.getDisplayMode();
+    if (mode === "natural") {
+        var natural = [];
+        for (var i = 1; i <= 18; i++) natural.push(i);
+        return natural;
+    } else {
+        return getPlayOrder();
+    }
 }
 
 function getHolePosition(holeNumber) {
-    return GameLoader.getHolePosition(holeNumber, startingHole);
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        if (playOrder[i] === holeNumber) return i;
+    }
+    return holeNumber - 1;
 }
 
 function getFlightOrderedPlayers(flight) {
@@ -817,165 +495,44 @@ function updateTRDisplay() {
 }
 
 // ============================================================
-// Results Calculation and Storage
-// ============================================================
-
-function initializeEmptyResults() {
-    return {
-        version: 1,
-        game1: {
-            matches: {},
-            pointsA: new Array(18).fill(8),
-            pointsB: new Array(18).fill(8)
-        },
-        game2: {
-            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
-            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
-            pointsA: new Array(18).fill(1),
-            pointsB: new Array(18).fill(1)
-        },
-        game3: {
-            leader: new Array(18).fill("AS"),
-            nettA: new Array(18).fill(0),
-            nettB: new Array(18).fill(0),
-            pointsA: new Array(18).fill(0.5),
-            pointsB: new Array(18).fill(0.5)
-        },
-        tr: {
-            teamA: new Array(18).fill(9.5),
-            teamB: new Array(18).fill(9.5),
-            teamAGreen: new Array(18).fill(true),
-            teamBGreen: new Array(18).fill(true)
-        },
-        computedUpToHole: 0,
-        lastComputedAt: null
-    };
-}
-
-function calculateHoleResults(holeNumber) {
-    var cache = GameLoader.getLocalCache();
-    var position = getHolePosition(holeNumber);
-    
-    var f1Hole = cache.flight1Data[holeNumber];
-    var f2Hole = cache.flight2Data[holeNumber];
-    
-    if (!f1Hole || !f1Hole.saved || !f2Hole || !f2Hole.saved) {
-        return null;
-    }
-    
-    var teamResults = GameTeam.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, teamGameFormat);
-    var flight1Total = teamResults.flight1Cumulative[position];
-    var flight2Total = teamResults.flight2Cumulative[position];
-    
-    var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole);
-    var strokeLeader = strokeResults[position];
-    
-    var tempMatchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
-    var game1PointsA = 0;
-    var game1PointsB = 0;
-    var matchCount = 0;
-    
-    for (var key in tempMatchResults) {
-        if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
-            var firstPlayerName = key.split("_vs_")[0];
-            var firstPlayer = allPlayers.find(function(p) { return p.name === firstPlayerName; });
-            if (firstPlayer && firstPlayer.team === "A") {
-                var value = tempMatchResults[key];
-                if (value > 0) game1PointsA += 1;
-                else if (value < 0) game1PointsB += 1;
-                else { game1PointsA += 0.5; game1PointsB += 0.5; }
-                matchCount++;
-            }
-        }
-    }
-    
-    var flight1PointsA = (flight1Total > 0) ? 1 : (flight1Total < 0) ? 0 : 0.5;
-    var flight1PointsB = (flight1Total > 0) ? 0 : (flight1Total < 0) ? 1 : 0.5;
-    var flight2PointsA = (flight2Total > 0) ? 1 : (flight2Total < 0) ? 0 : 0.5;
-    var flight2PointsB = (flight2Total > 0) ? 0 : (flight2Total < 0) ? 1 : 0.5;
-    var game2PointsA = flight1PointsA + flight2PointsA;
-    var game2PointsB = flight1PointsB + flight2PointsB;
-    
-    var game3PointsA = (strokeLeader === "A") ? 1 : (strokeLeader === "B") ? 0 : 0.5;
-    var game3PointsB = (strokeLeader === "A") ? 0 : (strokeLeader === "B") ? 1 : 0.5;
-    
-    var trA = game1PointsA + game2PointsA + game3PointsA;
-    var trB = game1PointsB + game2PointsB + game3PointsB;
-    var trAGreen = (trA > trB);
-    var trBGreen = (trB > trA);
-    
-    return {
-        position: position,
-        game1PointsA: game1PointsA,
-        game1PointsB: game1PointsB,
-        game2PointsA: game2PointsA,
-        game2PointsB: game2PointsB,
-        game3PointsA: game3PointsA,
-        game3PointsB: game3PointsB,
-        trA: trA,
-        trB: trB,
-        trAGreen: trAGreen,
-        trBGreen: trBGreen
-    };
-}
-
-async function saveResultsToFirestore(holeNumber) {
-    var resultsData = calculateHoleResults(holeNumber);
-    if (!resultsData) {
-        console.log('No results data for hole', holeNumber);
-        return;
-    }
-    
-    var position = resultsData.position;
-    var updatePayload = {};
-    
-    updatePayload["results.game1.pointsA." + position] = resultsData.game1PointsA;
-    updatePayload["results.game1.pointsB." + position] = resultsData.game1PointsB;
-    updatePayload["results.game2.pointsA." + position] = resultsData.game2PointsA;
-    updatePayload["results.game2.pointsB." + position] = resultsData.game2PointsB;
-    updatePayload["results.game3.pointsA." + position] = resultsData.game3PointsA;
-    updatePayload["results.game3.pointsB." + position] = resultsData.game3PointsB;
-    updatePayload["results.tr.teamA." + position] = resultsData.trA;
-    updatePayload["results.tr.teamB." + position] = resultsData.trB;
-    updatePayload["results.tr.teamAGreen." + position] = resultsData.trAGreen;
-    updatePayload["results.tr.teamBGreen." + position] = resultsData.trBGreen;
-    
-    if (position + 1 > (GameLoader.getLocalCache().results?.computedUpToHole || 0)) {
-        updatePayload["results.computedUpToHole"] = position + 1;
-    }
-    updatePayload["results.lastComputedAt"] = new Date().toISOString();
-    
-    try {
-        await db.collection("scheduledGames").doc(gameId).update(updatePayload);
-        console.log('Results saved for hole', holeNumber, 'position', position);
-        
-        var cache = GameLoader.getLocalCache();
-        if (!cache.results) {
-            cache.results = initializeEmptyResults();
-        }
-        cache.results.game1.pointsA[position] = resultsData.game1PointsA;
-        cache.results.game1.pointsB[position] = resultsData.game1PointsB;
-        cache.results.game2.pointsA[position] = resultsData.game2PointsA;
-        cache.results.game2.pointsB[position] = resultsData.game2PointsB;
-        cache.results.game3.pointsA[position] = resultsData.game3PointsA;
-        cache.results.game3.pointsB[position] = resultsData.game3PointsB;
-        cache.results.tr.teamA[position] = resultsData.trA;
-        cache.results.tr.teamB[position] = resultsData.trB;
-        cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
-        cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
-        if (position + 1 > cache.results.computedUpToHole) {
-            cache.results.computedUpToHole = position + 1;
-        }
-        cache.results.lastComputedAt = updatePayload["results.lastComputedAt"];
-        
-    } catch (error) {
-        console.error('Error saving results:', error);
-    }
-}
-
-// ============================================================
 // Save Functions
 // ============================================================
+
+function setSaveButtonIdle() {
+    if (!saveBtn) return;
+    saveBtn.classList.remove('btn-save-pending', 'btn-save-retry');
+    saveBtn.classList.add('btn-save');
+    saveBtn.innerHTML = '💾 SAVE H' + currentHole;
+    saveBtn.disabled = false;
+    saveInProgress = false;
+}
+
+function setSaveButtonPending() {
+    if (!saveBtn) return;
+    saveBtn.classList.remove('btn-save', 'btn-save-retry');
+    saveBtn.classList.add('btn-save-pending');
+    saveBtn.innerHTML = '⏳ SAVING...';
+    saveBtn.disabled = true;
+    saveInProgress = true;
+}
+
+function setSaveButtonRetry() {
+    if (!saveBtn) return;
+    saveBtn.classList.remove('btn-save', 'btn-save-pending');
+    saveBtn.classList.add('btn-save-retry');
+    saveBtn.innerHTML = '⚠️ RETRY';
+    saveBtn.disabled = false;
+    saveInProgress = false;
+}
+
+function flashSaveButtonSuccess() {
+    if (!saveBtn) return;
+    saveBtn.classList.add('btn-save-flash');
+    setTimeout(function() {
+        saveBtn.classList.remove('btn-save-flash');
+        saveBtn.innerHTML = '💾 SAVE H' + currentHole;
+    }, 500);
+}
 
 function performSave() {
     return new Promise(function(resolve, reject) {
@@ -1001,19 +558,13 @@ function performSave() {
         
         var scores = { a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score };
         
-        GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
+        GameData.saveCurrentHole(currentHole, scores, coursePar, function(success) {
             if (success) {
                 for (var key in localChanges) {
                     if (key.startsWith(flight + "_" + currentHole + "_")) {
                         delete localChanges[key];
                     }
                 }
-                await saveResultsToFirestore(currentHole);
-                
-                // After successful save, check if this hole is now finalized
-                console.log("  📝 After save, checking hole " + currentHole);
-                checkAndWriteHoleIfFinalized(currentHole);
-                
                 resolve(true);
             } else {
                 reject(new Error("Save failed"));
@@ -1093,7 +644,7 @@ function nextHole() {
     var nextIndex = (currentIndex + 1) % 18;
     currentHole = playOrder[nextIndex];
     
-    updateSaveButtonText();
+    setSaveButtonIdle();
     renderAll();
 }
 
@@ -1106,7 +657,7 @@ function prevHole() {
     var prevIndex = currentIndex - 1;
     currentHole = playOrder[prevIndex];
     
-    updateSaveButtonText();
+    setSaveButtonIdle();
     renderAll();
 }
 
@@ -1195,8 +746,7 @@ function showSignCardModal() {
     document.getElementById("signConfirmBtnNew").addEventListener("click", async function() {
         document.getElementById("signModalNew").remove();
         
-        var collection = "scheduledGames";
-        var success = await SignCard.submitSignature(gameId, editableFlight, null, collection);
+        var success = await SignCard.submitSignature(gameId, editableFlight, null, "scheduledGames");
         
         if (success) {
             var cache = GameLoader.getLocalCache();
@@ -1204,7 +754,7 @@ function showSignCardModal() {
             else cache.signatures.f2 = true;
             
             if (cache.signatures.f1 && cache.signatures.f2) {
-                markHistoryRecordComplete();
+                await createHistoryRecord();
                 isGameCompleteFlag = true;
                 celebrationTriggered = false;
                 showGameCompleteScreen();
@@ -1275,6 +825,50 @@ function showGameCompleteScreen() {
     });
 }
 
+async function createHistoryRecord() {
+    var cache = GameLoader.getLocalCache();
+    var tr = GameLoader.getTRForHole(currentHole);
+    
+    var historyRecordId = gameId + "_history";
+    
+    var historyData = {
+        originalGameId: gameId,
+        completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        status: "pending_handicap",
+        gameInfo: {
+            date: new Date().toISOString().split('T')[0],
+            course: { name: courseName, par: coursePar, si: courseSi },
+            startingHole: startingHole,
+            teamGameFormat: teamGameFormat
+        },
+        players: allPlayers,
+        f1DataString: cache.f1DataString,
+        f2DataString: cache.f2DataString,
+        results: cache.results,
+        finalResults: {
+            teamAScore: tr.teamA,
+            teamBScore: tr.teamB,
+            winner: tr.teamA > tr.teamB ? "A" : (tr.teamB > tr.teamA ? "B" : "Tie"),
+            winnerText: tr.teamA > tr.teamB ? "Team A Wins!" : (tr.teamB > tr.teamA ? "Team B Wins!" : "Tie Game!")
+        },
+        signatures: {
+            f1: { signed: cache.signatures.f1, signedAt: null, captainName: null },
+            f2: { signed: cache.signatures.f2, signedAt: null, captainName: null }
+        },
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    
+    try {
+        await db.collection("historyGames").doc(historyRecordId).set(historyData);
+        console.log("History record created:", historyRecordId);
+        return historyRecordId;
+    } catch (err) {
+        console.error("Error creating history record:", err);
+        throw err;
+    }
+}
+
 function showCelebrationAndHandicap() {
     if (celebrationTriggered) return;
     celebrationTriggered = true;
@@ -1287,7 +881,7 @@ function showCelebrationAndHandicap() {
     };
     
     var matchPoints = buildMatchResultsForHandicap();
-    var historyRecordId = getHistoryRecordId();
+    var historyRecordId = gameId + "_history";
     
     SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
         HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, matchPoints, {}, false);
@@ -1378,7 +972,6 @@ function renderAll() {
     );
     
     updateNavButtons();
-    updateSaveButtonText();
 }
 
 // ============================================================
@@ -1421,13 +1014,15 @@ function onCacheUpdate(cache) {
     allPlayers = cache.players;
     startingHole = cache.startingHole;
     
-    // Check if both signatures are now true and game not already complete
     if (cache.signatures.f1 && cache.signatures.f2 && !isGameCompleteFlag && !celebrationTriggered) {
         console.log("Both signatures detected - showing Game Complete screen");
-        isGameCompleteFlag = true;
-        markHistoryRecordComplete();
-        showGameCompleteScreen();
-        renderAll();
+        createHistoryRecord().then(function() {
+            isGameCompleteFlag = true;
+            showGameCompleteScreen();
+            renderAll();
+        }).catch(function(err) {
+            console.error("Failed to create history record:", err);
+        });
     }
     
     renderAll();
@@ -1523,16 +1118,6 @@ async function init() {
             return;
         }
         
-        // Initialize display cache and create history record
-        displayCache = DisplayCache.createEmptyDisplayCache();
-        holesWrittenToCache = {};
-        console.log("=== DISPLAY CACHE INITIALIZED ===");
-        
-        createHistoryRecord();
-        
-        // LOAD PROVISION: Write any holes already saved by both flights
-        initializeDisplayCacheFromExistingData();
-        
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
             var hole = playOrder[i];
@@ -1541,8 +1126,6 @@ async function init() {
                 break;
             }
         }
-        
-        console.log("=== Starting on hole " + currentHole + " ===");
         
         renderAll();
         setSaveButtonIdle();
@@ -1598,14 +1181,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 2.41
+VERSION: 3.00
 KEY CHANGES:
-   - ADDED: initializeDisplayCacheFromExistingData() - scans for holes already saved on load
-   - ADDED: Load provision for mid-game recovery (refresh, network interruption, device switch)
-   - When game loads, writes any hole already saved by both flights to display cache
-   - Prevents losing data for holes 1-17 when duplicating Master Record
-   - Comprehensive debug logging for cache operations
-   - All other functionality identical to v2.40
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/history-record.js, js/hcp-adjust.js, js/display-cache.js
+   - COMPLETE REWRITE: No encoding, no display cache
+   - Stores raw f1.d and f2.d strings directly in scheduledGames
+   - Stores pre-calculated results object
+   - Single source of truth - Firestore only
+   - All calculations done once during play
+   - Removed all encoding/decoding logic
+DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
