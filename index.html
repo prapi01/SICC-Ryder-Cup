@@ -1,7 +1,17 @@
-<!-- FILE: index.html - VERSION 2.26 -->
-<!-- Landing page for SICC Ryder Cup App -->
-<!-- ADDED: Reduced empty space at top - moved screen up by 2 lines -->
-<!-- CHANGES: header margin-bottom 30px→16px, golf-icon margin-bottom 16px→8px -->
+<!--
+FILE: index.html
+VERSION: 2.29
+KEY CHANGES:
+   - FIXED: Hidden admin double-click event listener now attaches correctly
+   - Moved event listener code inside loadAndRender() after HTML is rendered
+   - Added safety check for duplicateMasterRecord function existence
+   - Added console log for debugging
+   - Updated footer text to "© 2026 Piti Pramotedham - piti@pramotedham.com"
+   - All other functionality identical to v2.28
+DEPENDS ON: js/session.js, js/index-hidden.js
+STATUS: Ready for deployment
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,6 +21,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/index-hidden.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -56,7 +67,14 @@
         }
         
         .header { text-align: center; margin-bottom: 8px; }
-        .golf-icon { font-size: 4rem; margin-bottom: 4px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5)); }
+        .golf-icon { 
+            font-size: 4rem; 
+            margin-bottom: 4px; 
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+        .golf-icon:active { transform: scale(0.98); }
         .title { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%); background-clip: text; -webkit-background-clip: text; color: transparent; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .subtitle { font-size: 0.75rem; color: #888; margin-top: 4px; letter-spacing: 1px; }
         
@@ -266,13 +284,13 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.26</div>
+<div class="version-tag">v2.29</div>
 
 <script>
-// FILE: index.html - VERSION 2.26
-// CHANGES: Reduced top empty space (header margin 30px→16px, golf-icon margin 16px→8px)
+// FILE: index.html - VERSION 2.29
+// CHANGES: Fixed hidden admin double-click event listener
 
-var APP_VERSION = "2.26";
+var APP_VERSION = "2.29";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -785,6 +803,10 @@ function handleTodayGame() {
         var gameStatus = getGameStatus(gameDate);
         
         if (gameStatus === "today") {
+            // Display the game ID before proceeding
+            if (typeof displayGameId === 'function') {
+                displayGameId(gameId);
+            }
             proceedToRealGame(gameId, "real");
         }
     }).catch(function(e) {
@@ -815,6 +837,11 @@ function handlePreviewGame() {
         var gameDate = nextGame.date;
         var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
         
+        // Display the game ID before proceeding
+        if (typeof displayGameId === 'function') {
+            displayGameId(gameId);
+        }
+        
         showPreviewSessionModal(gameId, gameDate, courseName);
     }).catch(function(e) {
         console.error("Error loading games:", e);
@@ -841,11 +868,11 @@ function proceedToRealGame(gameId, gameType) {
 }
 
 function goToPreviousGames() {
-    SessionManager.addNavigationHistory("history.html", "previous_games");
+    SessionManager.addNavigationHistory("view-history.html", "previous_games");
     SessionManager.updateSession({
         returnDestination: "index.html"
     });
-    window.location.href = "history.html";
+    window.location.href = "view-history.html";
 }
 
 function goToAdmin() {
@@ -869,6 +896,13 @@ function loadAndRender() {
         });
         
         var nextGame = findNextGame(games);
+        
+        // Get today's game ID for display
+        var today = getTodayString();
+        var todayGame = games.find(function(g) { return g.date === today; });
+        if (todayGame && typeof displayGameId === 'function') {
+            displayGameId(todayGame.id);
+        }
         
         var ngbHtml = '';
         if (nextGame) {
@@ -907,7 +941,7 @@ function loadAndRender() {
         
         var html = `
             <div class="header">
-                <div class="golf-icon">⛳</div>
+                <div class="golf-icon" id="golfIcon">⛳</div>
                 <div class="title">SICC RYDER CUP</div>
                 <div class="subtitle">Match Play · Team Game · Net Stroke</div>
             </div>
@@ -925,13 +959,38 @@ function loadAndRender() {
                 <span class="label">GAME SETTINGS</span>
             </div>
             
-            <div class="footer">SICC Ryder Cup App v${APP_VERSION}<br>© 2026 Singapore Island Country Club</div>
+            <div class="footer">SICC Ryder Cup App v${APP_VERSION}<br>© 2026 Piti Pramotedham - piti@pramotedham.com</div>
         `;
         
         document.getElementById("app").innerHTML = html;
         
+        // Add double-click handler for golf icon (hidden admin)
+        var golfIcon = document.getElementById("golfIcon");
+        if (golfIcon) {
+            console.log("Attaching double-click listener to golf icon");
+            golfIcon.addEventListener('dblclick', function(e) {
+                e.stopPropagation();
+                console.log("Double-click detected on golf icon");
+                if (confirm("⚠️ ADMIN FUNCTION\n\nDuplicate Master Record to today's date?")) {
+                    if (typeof duplicateMasterRecord === 'function') {
+                        duplicateMasterRecord();
+                    } else {
+                        console.error("duplicateMasterRecord function not found");
+                        alert("Error: Admin function not available. Please refresh.");
+                    }
+                }
+            });
+        } else {
+            console.error("Golf icon not found in DOM");
+        }
+        
         document.getElementById("previousGamesBtn").addEventListener("click", goToPreviousGames);
         document.getElementById("adminBtn").addEventListener("click", goToAdmin);
+        
+        // Initialize hidden admin features
+        if (typeof initHiddenAdmin === 'function') {
+            initHiddenAdmin();
+        }
         
     }).catch(function(e) {
         console.warn(e);
@@ -958,14 +1017,17 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 </script>
 </body>
 </html>
+
 <!--
 FILE: index.html
-VERSION: 2.26
+VERSION: 2.29
 KEY CHANGES:
-   - Reduced top empty space on mobile view
-   - header margin-bottom: 30px → 16px
-   - golf-icon margin-bottom: 16px → 8px
-   - Moves screen up by approximately 2 lines
-DEPENDS ON: js/session.js
+   - FIXED: Hidden admin double-click event listener now attaches correctly
+   - Moved event listener code inside loadAndRender() after HTML is rendered
+   - Added safety check for duplicateMasterRecord function existence
+   - Added console log for debugging
+   - Updated footer text to "© 2026 Piti Pramotedham - piti@pramotedham.com"
+   - All other functionality identical to v2.28
+DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->

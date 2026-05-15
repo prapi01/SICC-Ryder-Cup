@@ -19,7 +19,7 @@ var SignCard = (function() {
     // ============================================================
     
     function getCelebrationImage() {
-        return "/images/celebration/Celebration.jpg";
+        return "/images/celebration/C.jpg";
     }
     
     // ============================================================

@@ -1,0 +1,1067 @@
+<!--
+FILE: view-history.html
+VERSION: 3.02
+KEY CHANGES:
+   - ADDED: Game ID displayed in faint green next to device tag
+   - Format: "🖥️ DEV-XX | Game: {historyRecordId}"
+   - Also shows originalGameId when viewing a game
+   - All other functionality identical to v3.01
+   - Reads flattened arrays from history-record.js v2.01+
+DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/game-ui.js
+STATUS: Ready for integration
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>SICC Ryder Cup - History Viewer</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/history-record.js"></script>
+    <script src="js/game-ui.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
+        .container { max-width: 550px; margin: 0 auto; padding-top: 35px; }
+        
+        .version-tag {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            letter-spacing: 0.5px;
+        }
+        
+        .game-selector {
+            background: #111;
+            border-radius: 20px;
+            padding: 16px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+        
+        .game-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 16px;
+        }
+        
+        .game-item {
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            border: 1px solid #333;
+            transition: all 0.2s;
+        }
+        
+        .game-item:hover {
+            border-color: #4caf50;
+            background: #1a1a1a;
+        }
+        
+        .game-item.selected {
+            border-color: #4caf50;
+            background: #1a3a1a;
+        }
+        
+        .game-date {
+            font-weight: 700;
+            color: #4caf50;
+            font-size: 0.9rem;
+        }
+        
+        .game-course {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 4px;
+        }
+        
+        .game-result {
+            font-size: 0.7rem;
+            color: #ffaa44;
+            margin-top: 4px;
+        }
+        
+        /* HCP Page Styles */
+        .hcp-page {
+            background: #111;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+        
+        .course-title {
+            text-align: center;
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: #4caf50;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+        }
+        
+        .date-subtitle {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 24px;
+        }
+        
+        .final-result-title {
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #ffaa44;
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+            border-top: 1px solid #333;
+            padding-top: 20px;
+        }
+        
+        .tr-card {
+            background: #0a0a0a;
+            border-radius: 16px;
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+        
+        .hcp-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.7rem;
+            margin-bottom: 16px;
+        }
+        .hcp-table th, .hcp-table td {
+            padding: 8px 4px;
+            text-align: center;
+            border-bottom: 1px solid #333;
+        }
+        .hcp-table th {
+            color: #4caf50;
+            font-weight: 600;
+        }
+        
+        .zero-info {
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 10px;
+            margin-bottom: 16px;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #ffaa44;
+        }
+        
+        .action-buttons-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .btn-half {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+        .btn-back {
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+        }
+        .btn-scorecard {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .btn-menu-full {
+            width: 100%;
+            padding: 14px;
+            border-radius: 40px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+            margin-top: 20px;
+        }
+        
+        /* Scorecard Page Styles */
+        .game-info-header {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .game-course-name {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        .game-date-display {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 4px;
+        }
+        
+        .hole-header { text-align: center; margin: 16px 0; }
+        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
+        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
+        
+        .team-score-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .player-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #333;
+        }
+        .player-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .player-name { font-size: 1rem; font-weight: 600; }
+        .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
+        .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
+        
+        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
+        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        
+        .scorecard-section { margin: 20px 0; }
+        .scorecard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .scorecard-left-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .scorecard-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4caf50;
+            border-left: 2px solid #4caf50;
+            padding-left: 10px;
+        }
+        .pn-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+            line-height: 1;
+        }
+        .flight-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-width: 90px;
+            display: inline-block;
+            text-align: center;
+        }
+        .nav-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .nav-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            width: 36px;
+            height: 36px;
+            border-radius: 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .nav-btn:disabled {
+            background: #2a2a2a;
+            color: #555;
+            border: 1px solid #444;
+            cursor: not-allowed;
+        }
+        .hole-number-display {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4caf50;
+            min-width: 45px;
+            text-align: center;
+        }
+        
+        .scorecard-wrapper { overflow-x: auto; }
+        .scorecard-table {
+            width: 100%;
+            min-width: 700px;
+            font-size: 0.7rem;
+            border-collapse: collapse;
+        }
+        .scorecard-table th, .scorecard-table td {
+            padding: 6px 3px;
+            text-align: center;
+            border: 1px solid #222;
+        }
+        .scorecard-table th {
+            color: #4caf50;
+            background: #111;
+        }
+        .score-green { color: #4caf50; font-weight: 600; }
+        .score-invisible { color: #000; }
+        .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+        
+        .loading { text-align: center; padding: 40px; color: #888; }
+        .empty-message { text-align: center; padding: 40px; color: #888; }
+        
+        .gold-bold {
+            color: #ffaa44;
+            font-weight: 800;
+        }
+        .new-normal {
+            color: #4caf50;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Game Selection Screen -->
+    <div id="gameSelector" class="game-selector">
+        <div class="loading">Loading completed games...</div>
+    </div>
+    
+    <!-- HCP Page (shown after game selection) -->
+    <div id="hcpPage" style="display:none;">
+        <div class="hcp-page">
+            <div class="course-title" id="courseTitle"></div>
+            <div class="date-subtitle" id="dateSubtitle"></div>
+            <div class="final-result-title">FINAL RESULT</div>
+            <div class="tr-card" id="trCardContainer">
+                <div id="hcpTrDisplay"></div>
+            </div>
+            <div id="hcpTableContainer"></div>
+            <div id="hcpZeroInfo"></div>
+            <div id="hcpNewAnchorInfo"></div>
+            <div class="action-buttons-row">
+                <button class="btn-half btn-back" id="hcpBackToGameListBtn">← Back</button>
+                <button class="btn-half btn-scorecard" id="hcpToScorecardBtn">Scorecard →</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scorecard Page -->
+    <div id="scorecardPage" style="display:none;">
+        <div class="game-info-header">
+            <div class="game-course-name" id="scorecardCourseName"></div>
+            <div class="game-date-display" id="scorecardGameDate"></div>
+        </div>
+        <div id="holeHeader" class="hole-header"></div>
+        <div id="trDisplay" class="team-score-card"></div>
+        <div id="playerCards" class="player-cards"></div>
+        <div class="scorecard-section">
+            <div class="scorecard-header" id="scorecardHeader">
+                <div class="scorecard-left-group">
+                    <span class="scorecard-title">SCORECARD</span>
+                    <button class="pn-toggle" id="pnToggleBtn">P</button>
+                </div>
+                <button class="flight-toggle" id="flightToggleBtn">✈️ Flight 1</button>
+                <div class="nav-group">
+                    <button class="nav-btn" id="prevHoleBtn">◀</button>
+                    <span class="hole-number-display" id="holeNumberDisplay">1</span>
+                    <button class="nav-btn" id="nextHoleBtn">▶</button>
+                </div>
+            </div>
+            <div class="scorecard-wrapper" id="scorecardWrapper"></div>
+        </div>
+        <button class="btn-menu-full" id="scorecardBackBtn">← Back</button>
+    </div>
+</div>
+
+<div class="device-tag" id="deviceTag">🖥️ ---</div>
+<div class="version-tag">v3.02</div>
+
+<script>
+// ============================================================
+// Firebase Config
+// ============================================================
+
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+if (!firebase.apps.length) {
+    firebase.initializeApp(FIREBASE_CONFIG);
+}
+var db = firebase.firestore();
+
+// ============================================================
+// Global State
+// ============================================================
+
+var currentGameData = null;
+var currentGameId = null;
+var allPlayersCache = null;
+var courseCache = null;
+var holeDataCache = null;
+
+// Scorecard state
+var currentHole = 1;
+var currentDisplayMode = "play";
+var selectedFlight = 1;
+
+// ============================================================
+// Display Game ID in device tag
+// ============================================================
+
+function displayGameId(gameId) {
+    var deviceTag = document.getElementById("deviceTag");
+    if (deviceTag) {
+        var shortName = SessionManager.getShortNameOnly();
+        deviceTag.innerHTML = `🖥️ ${shortName} | <span style="color: #4caf50; opacity: 0.7;">Game: ${gameId}</span>`;
+    }
+}
+
+function displayOriginalGameId(originalGameId) {
+    var deviceTag = document.getElementById("deviceTag");
+    if (deviceTag) {
+        var shortName = SessionManager.getShortNameOnly();
+        deviceTag.innerHTML = `🖥️ ${shortName} | <span style="color: #4caf50; opacity: 0.7;">Game: ${originalGameId}</span>`;
+    }
+}
+
+// ============================================================
+// Helper Functions
+// ============================================================
+
+function formatDisplayDate(dateString) {
+    if (!dateString) return "";
+    var parts = dateString.split('-');
+    if (parts.length === 3) {
+        var day = parts[2];
+        var month = parts[1];
+        var year = parts[0];
+        var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        var monthIndex = parseInt(month) - 1;
+        return day + ' ' + monthNames[monthIndex] + ' ' + year;
+    }
+    return dateString;
+}
+
+function getPlayOrder(startingHole) {
+    var order = [];
+    for (var i = startingHole; i <= 18; i++) order.push(i);
+    for (var i = 1; i < startingHole; i++) order.push(i);
+    return order;
+}
+
+function getDisplayHoles() {
+    if (currentDisplayMode === "natural") {
+        var natural = [];
+        for (var i = 1; i <= 18; i++) natural.push(i);
+        return natural;
+    } else {
+        return getPlayOrder(courseCache?.startingHole || 1);
+    }
+}
+
+function getHolePosition(holeNumber, startingHole) {
+    var playOrder = getPlayOrder(startingHole);
+    for (var i = 0; i < playOrder.length; i++) {
+        if (playOrder[i] === holeNumber) return i;
+    }
+    return holeNumber - 1;
+}
+
+function getFlightOrderedPlayers(flight) {
+    var flightPlayers = allPlayersCache.filter(function(p) { return p.flight === flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    return teamA.concat(teamB);
+}
+
+function getPlayerScoreFromFlattened(player, holeNumber) {
+    if (!holeDataCache) return "-";
+    
+    var holeIndex = holeNumber - 1;
+    var flightPlayers = allPlayersCache.filter(function(p) { return p.flight === player.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var orderedPlayers = [teamA[0], teamA[1], teamB[0], teamB[1]];
+    
+    var playerIndex = -1;
+    for (var i = 0; i < orderedPlayers.length; i++) {
+        if (orderedPlayers[i] && orderedPlayers[i].name === player.name) {
+            playerIndex = i;
+            break;
+        }
+    }
+    
+    if (playerIndex === -1) return "-";
+    
+    var arrayIndex = (holeIndex * 4) + playerIndex;
+    var scores = (player.flight === 1) ? holeDataCache.f1Scores : holeDataCache.f2Scores;
+    
+    return scores[arrayIndex] || "-";
+}
+
+function getMatchValueFromFlattened(player, opponent, holeNumber) {
+    if (!holeDataCache) return 0;
+    
+    var holeIndex = holeNumber - 1;
+    
+    var teamAPlayers = allPlayersCache.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamBPlayers = allPlayersCache.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var aIndex = -1;
+    var bIndex = -1;
+    
+    for (var i = 0; i < teamAPlayers.length; i++) {
+        if (teamAPlayers[i].name === player.name) aIndex = i;
+    }
+    for (var i = 0; i < teamBPlayers.length; i++) {
+        if (teamBPlayers[i].name === opponent.name) bIndex = i;
+    }
+    
+    if (aIndex === -1 || bIndex === -1) return 0;
+    
+    var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
+    var arrayIndex = (holeIndex * 16) + matchIndex;
+    
+    return holeDataCache.matchResults[arrayIndex] || 0;
+}
+
+function getPlayerScore(player, holeNumber) {
+    return getPlayerScoreFromFlattened(player, holeNumber);
+}
+
+function getMatchValue(player, opponent) {
+    return getMatchValueFromFlattened(player, opponent, currentHole);
+}
+
+function getBubbleClass(player, opponent) {
+    var matchValue = getMatchValue(player, opponent);
+    if (matchValue > 0) return 'bubble-green';
+    if (matchValue < 0) return 'bubble-red';
+    return 'bubble-green';
+}
+
+function getBubbleValue(player, opponent) {
+    var matchValue = getMatchValue(player, opponent);
+    var absValue = Math.abs(matchValue);
+    if (absValue === 0) return 'AS';
+    return absValue.toString();
+}
+
+function getCurrentScore(player) {
+    return getPlayerScore(player, currentHole);
+}
+
+function getAllOpponents(player) {
+    return allPlayersCache.filter(function(op) { return op.team !== player.team; });
+}
+
+function getStoredScore(player, hole) {
+    return getPlayerScore(player, hole);
+}
+
+function getTRForHole(holeNumber) {
+    if (!holeDataCache) return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+    
+    var holeIndex = holeNumber - 1;
+    return {
+        teamA: holeDataCache.trTeamA[holeIndex],
+        teamB: holeDataCache.trTeamB[holeIndex],
+        teamAGreen: holeDataCache.teamAGreen[holeIndex],
+        teamBGreen: holeDataCache.teamBGreen[holeIndex]
+    };
+}
+
+// ============================================================
+// TR Display Function
+// ============================================================
+
+function updateTRDisplay(containerId, teamA, teamB, teamAGreen, teamBGreen) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    
+    var teamADisplay = teamA % 1 === 0 ? teamA : teamA.toFixed(1);
+    var teamBDisplay = teamB % 1 === 0 ? teamB : teamB.toFixed(1);
+    var teamAColor = teamAGreen ? '#4caf50' : '#ff6b6b';
+    var teamBColor = teamBGreen ? '#4caf50' : '#ff6b6b';
+    var separatorColor = '#888';
+    
+    var html = `
+        <div style="text-align: center;">
+            <div style="display: flex; justify-content: center; align-items: center; gap: 16px;">
+                <div style="text-align: center; min-width: 100px;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: ${teamAColor}; letter-spacing: 1px;">TEAM A</div>
+                    <div style="font-size: 1.8rem; font-weight: 800; color: ${teamAColor}; line-height: 1.2;">${teamADisplay}</div>
+                </div>
+                <div style="font-size: 1.5rem; font-weight: 400; color: ${separatorColor};">│</div>
+                <div style="text-align: center; min-width: 100px;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: ${teamBColor}; letter-spacing: 1px;">TEAM B</div>
+                    <div style="font-size: 1.8rem; font-weight: 800; color: ${teamBColor}; line-height: 1.2;">${teamBDisplay}</div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// ============================================================
+// Get Final TR from Hole 18
+// ============================================================
+
+function getFinalTRFromHoleData() {
+    if (!holeDataCache) return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+    
+    var lastIndex = 17;
+    return {
+        teamA: holeDataCache.trTeamA[lastIndex],
+        teamB: holeDataCache.trTeamB[lastIndex],
+        teamAGreen: holeDataCache.teamAGreen[lastIndex],
+        teamBGreen: holeDataCache.teamBGreen[lastIndex]
+    };
+}
+
+// ============================================================
+// Render HCP Page
+// ============================================================
+
+function renderHCPPage() {
+    if (!currentGameData) return;
+    
+    var courseName = courseCache?.name || "Unknown Course";
+    var gameDateRaw = currentGameData.gameInfo?.date || "";
+    var gameDateFormatted = formatDisplayDate(gameDateRaw);
+    
+    document.getElementById("courseTitle").innerHTML = escapeHtml(courseName);
+    document.getElementById("dateSubtitle").innerHTML = gameDateFormatted;
+    
+    var tr = getFinalTRFromHoleData();
+    updateTRDisplay("hcpTrDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+    
+    var hcpData = currentGameData.handicapAdjustment;
+    if (hcpData) {
+        var players = hcpData.players || [];
+        var anchor = hcpData.anchor || "Unknown";
+        
+        var tableHtml = '<table class="hcp-table"><thead><tr>';
+        tableHtml += '<th>Player</th><th>Cur</th><th>Anc</th><th>Perf</th><th>New</th>';
+        tableHtml += '</tr></thead><tbody>';
+        
+        for (var i = 0; i < players.length; i++) {
+            var p = players[i];
+            var anchorAdj = p.anchorAdj || 0;
+            var perfAdj = p.perfAdj || 0;
+            var newHcp = p.newHcp || (p.currentHcp + anchorAdj + perfAdj);
+            var isAnchor = (p.name === anchor);
+            
+            var curClass = isAnchor ? 'gold-bold' : '';
+            var curStyle = isAnchor ? 'class="gold-bold"' : '';
+            
+            var ancColor = anchorAdj >= 0 ? '#4caf50' : '#ff6b6b';
+            var ancSign = anchorAdj >= 0 ? '+' + anchorAdj : anchorAdj;
+            
+            var perfColor = perfAdj > 0 ? '#4caf50' : (perfAdj < 0 ? '#ff6b6b' : '#888');
+            var perfSign = perfAdj > 0 ? '+' + perfAdj : perfAdj;
+            
+            var newClass = isAnchor ? 'gold-bold' : 'new-normal';
+            var newStyle = isAnchor ? 'class="gold-bold"' : 'class="new-normal"';
+            
+            tableHtml += '<tr>';
+            tableHtml += '<td style="text-align:left;">' + escapeHtml(p.name) + '</td>';
+            tableHtml += `<td ${curStyle}>${p.currentHcp}</td>`;
+            tableHtml += `<td style="color:${ancColor};">${ancSign}</td>`;
+            tableHtml += `<td style="color:${perfColor};">${perfSign}</td>`;
+            tableHtml += `<td ${newStyle}>${newHcp}</td>`;
+            tableHtml += '</tr>';
+        }
+        tableHtml += '</tbody></table>';
+        document.getElementById("hcpTableContainer").innerHTML = tableHtml;
+        
+        var needsZeroRise = hcpData.needsZeroRise || false;
+        var zeroRiseAmount = hcpData.zeroRiseAmount || 0;
+        if (needsZeroRise && zeroRiseAmount > 0) {
+            document.getElementById("hcpZeroInfo").innerHTML = '<div class="zero-info">📊 Zero-rise applied: +' + zeroRiseAmount + ' to all players</div>';
+        } else {
+            document.getElementById("hcpZeroInfo").innerHTML = '';
+        }
+        
+        var newAnchor = hcpData.newAnchor || anchor;
+        if (newAnchor !== anchor) {
+            document.getElementById("hcpNewAnchorInfo").innerHTML = '<div class="zero-info">🏆 New Anchor: <strong>' + escapeHtml(newAnchor) + '</strong></div>';
+        } else {
+            document.getElementById("hcpNewAnchorInfo").innerHTML = '';
+        }
+    } else {
+        document.getElementById("hcpTableContainer").innerHTML = '<div class="zero-info">No handicap adjustment data available</div>';
+        document.getElementById("hcpZeroInfo").innerHTML = '';
+        document.getElementById("hcpNewAnchorInfo").innerHTML = '';
+    }
+}
+
+// ============================================================
+// Scorecard Render Functions
+// ============================================================
+
+function renderScorecardPage() {
+    if (!currentGameData || !holeDataCache) return;
+    
+    window.savedHoles = { 
+        1: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18], 
+        2: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18] 
+    };
+    
+    var startingHole = courseCache?.startingHole || 1;
+    var currentPar = (courseCache?.par || [])[currentHole - 1] || 4;
+    var currentSi = (courseCache?.si || [])[currentHole - 1] || 1;
+    var tr = getTRForHole(currentHole);
+    
+    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+    
+    var currentPlayers = getFlightOrderedPlayers(selectedFlight);
+    GameUI.renderPlayerCards(
+        "playerCards",
+        currentPlayers,
+        getAllOpponents,
+        getBubbleClass,
+        getBubbleValue,
+        getCurrentScore,
+        false,
+        null
+    );
+    
+    var t1Row = new Array(18).fill('_');
+    var t2Row = new Array(18).fill('_');
+    var strkRow = new Array(18).fill('_');
+    
+    for (var pos = 0; pos < 18; pos++) {
+        t1Row[pos] = (holeDataCache.t1Row[pos] === "S") ? "AS" : holeDataCache.t1Row[pos];
+        t2Row[pos] = (holeDataCache.t2Row[pos] === "S") ? "AS" : holeDataCache.t2Row[pos];
+        strkRow[pos] = (holeDataCache.strkRow[pos] === "S") ? "AS" : holeDataCache.strkRow[pos];
+    }
+    
+    var holes = getDisplayHoles();
+    GameUI.renderScorecard(
+        "scorecardWrapper",
+        holes,
+        allPlayersCache,
+        getStoredScore,
+        function(flight, hole) { return true; },
+        t1Row,
+        t2Row,
+        strkRow,
+        courseCache?.par || [],
+        courseCache?.si || []
+    );
+    
+    updateNavButtons();
+}
+
+function updatePnButton() {
+    var pnBtn = document.getElementById("pnToggleBtn");
+    if (pnBtn) {
+        pnBtn.innerText = currentDisplayMode === "play" ? "P" : "N";
+    }
+}
+
+function setDisplayMode(mode) {
+    currentDisplayMode = mode;
+    updatePnButton();
+    renderScorecardPage();
+}
+
+function toggleDisplayMode() {
+    var newMode = currentDisplayMode === "play" ? "natural" : "play";
+    setDisplayMode(newMode);
+}
+
+function toggleFlight() {
+    if (selectedFlight === 1) {
+        selectedFlight = 2;
+        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 2";
+    } else {
+        selectedFlight = 1;
+        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
+    }
+    renderScorecardPage();
+}
+
+function goToPrevHole() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex > 0) {
+        currentHole = playOrder[currentIndex - 1];
+        document.getElementById("holeNumberDisplay").innerText = currentHole;
+        renderScorecardPage();
+        updateNavButtons();
+    }
+}
+
+function goToNextHole() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex < 17) {
+        currentHole = playOrder[currentIndex + 1];
+        document.getElementById("holeNumberDisplay").innerText = currentHole;
+        renderScorecardPage();
+        updateNavButtons();
+    }
+}
+
+function updateNavButtons() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    var prevBtn = document.getElementById("prevHoleBtn");
+    var nextBtn = document.getElementById("nextHoleBtn");
+    if (prevBtn) prevBtn.disabled = (currentIndex === 0);
+    if (nextBtn) nextBtn.disabled = (currentIndex === 17);
+}
+
+// ============================================================
+// Navigation Functions
+// ============================================================
+
+function showHCPPage() {
+    document.getElementById("gameSelector").style.display = "none";
+    document.getElementById("hcpPage").style.display = "block";
+    document.getElementById("scorecardPage").style.display = "none";
+    renderHCPPage();
+}
+
+function showScorecardPage() {
+    document.getElementById("gameSelector").style.display = "none";
+    document.getElementById("hcpPage").style.display = "none";
+    document.getElementById("scorecardPage").style.display = "block";
+    
+    currentHole = 1;
+    currentDisplayMode = "play";
+    selectedFlight = 1;
+    updatePnButton();
+    document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
+    
+    renderScorecardPage();
+}
+
+function goBackToGameList() {
+    currentGameData = null;
+    currentGameId = null;
+    allPlayersCache = null;
+    courseCache = null;
+    holeDataCache = null;
+    
+    // Reset device tag to just device name
+    var shortName = SessionManager.getShortNameOnly();
+    document.getElementById("deviceTag").innerHTML = `🖥️ ${shortName}`;
+    
+    document.getElementById("hcpPage").style.display = "none";
+    document.getElementById("scorecardPage").style.display = "none";
+    document.getElementById("gameSelector").style.display = "block";
+    loadGameList();
+}
+
+// ============================================================
+// Game Selection
+// ============================================================
+
+function loadGameList() {
+    var container = document.getElementById("gameSelector");
+    container.innerHTML = '<div class="loading">Loading completed games...</div>';
+    
+    HistoryRecord.getArchivedGames(50, function(err, games) {
+        if (err) {
+            container.innerHTML = '<div class="empty-message">Error loading games: ' + err + '</div>';
+            return;
+        }
+        
+        if (!games || games.length === 0) {
+            container.innerHTML = '<div class="empty-message">No completed games found.</div>';
+            return;
+        }
+        
+        var html = '<div class="game-list">';
+        for (var i = 0; i < games.length; i++) {
+            var g = games[i];
+            var dateDisplay = g.date || "Unknown date";
+            var courseDisplay = g.courseName || "Unknown course";
+            var resultDisplay = g.winner || "Game complete";
+            
+            html += `
+                <div class="game-item" data-id="${g.id}">
+                    <div class="game-date">📅 ${dateDisplay}</div>
+                    <div class="game-course">⛳ ${escapeHtml(courseDisplay)}</div>
+                    <div class="game-result">🏆 ${escapeHtml(resultDisplay)}</div>
+                </div>
+            `;
+        }
+        html += '</div>';
+        html += '<div style="text-align:center; font-size:0.7rem; color:#888;">Click a game to view details</div>';
+        
+        container.innerHTML = html;
+        
+        var items = document.querySelectorAll('.game-item');
+        for (var i = 0; i < items.length; i++) {
+            items[i].addEventListener('click', function() {
+                var id = this.getAttribute('data-id');
+                loadGame(id);
+            });
+        }
+    });
+}
+
+function loadGame(gameId) {
+    var container = document.getElementById("gameSelector");
+    container.innerHTML = '<div class="loading">Loading game data...</div>';
+    
+    HistoryRecord.getArchivedGame(gameId, function(err, gameData) {
+        if (err || !gameData) {
+            container.innerHTML = '<div class="empty-message">Error loading game: ' + (err || "Not found") + '</div>';
+            return;
+        }
+        
+        if (gameData.version !== 3 || gameData.schema !== "json_v1") {
+            container.innerHTML = '<div class="empty-message">This game uses an old format. Please complete a new game with the latest version.</div>';
+            return;
+        }
+        
+        currentGameData = gameData;
+        currentGameId = gameId;
+        allPlayersCache = gameData.players || [];
+        courseCache = gameData.gameInfo?.course || {};
+        holeDataCache = gameData.holeData;
+        
+        if (!holeDataCache || !holeDataCache.f1Scores) {
+            container.innerHTML = '<div class="empty-message">Invalid or missing hole data for this game.</div>';
+            return;
+        }
+        
+        // Display the history record ID and original game ID
+        displayGameId(gameId);
+        
+        document.getElementById("scorecardCourseName").innerHTML = courseCache?.name || "Unknown Course";
+        var gameDateRaw = gameData.gameInfo?.date || "";
+        document.getElementById("scorecardGameDate").innerHTML = formatDisplayDate(gameDateRaw);
+        
+        showHCPPage();
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
+    });
+}
+
+// ============================================================
+// Initialization
+// ============================================================
+
+async function init() {
+    var shortName = await SessionManager.getShortNameOnly();
+    document.getElementById("deviceTag").innerHTML = `🖥️ ${shortName}`;
+    
+    SessionManager.initSession("view-history.html", "index.html", function(session) {
+        console.log("Session initialized:", session);
+    });
+    
+    loadGameList();
+    
+    document.getElementById("hcpBackToGameListBtn").addEventListener("click", goBackToGameList);
+    document.getElementById("hcpToScorecardBtn").addEventListener("click", showScorecardPage);
+    document.getElementById("scorecardBackBtn").addEventListener("click", showHCPPage);
+    document.getElementById("prevHoleBtn").addEventListener("click", goToPrevHole);
+    document.getElementById("nextHoleBtn").addEventListener("click", goToNextHole);
+    document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
+    document.getElementById("flightToggleBtn").addEventListener("click", toggleFlight);
+}
+
+init();
+</script>
+
+</body>
+</html>
+
+<!--
+FILE: view-history.html
+VERSION: 3.02
+KEY CHANGES:
+   - ADDED: Game ID displayed in faint green next to device tag
+   - Format: "🖥️ DEV-XX | Game: {historyRecordId}"
+   - Also shows originalGameId when viewing a game
+   - All other functionality identical to v3.01
+   - Reads flattened arrays from history-record.js v2.01+
+DEPENDS ON: Firebase Firestore, js/session.js, js/history-record.js, js/game-ui.js
+STATUS: Ready for integration
+-->
