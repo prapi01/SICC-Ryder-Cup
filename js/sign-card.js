@@ -1,13 +1,12 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.06
+VERSION: 1.07
 KEY CHANGES:
-   - FIXED: Handicap Adjustment button now properly calls HandicapAdjustment.init() with archiveId
-   - FIXED: Celebration screen now properly passes winningPlayers and matchPoints to HCP module
-   - Added proper modal cleanup to prevent stacking
-   - replayCelebration() now removes existing modals before showing new one
-   - celebration screen styling refined to match new modal designs
-   - Handicap Adjustment button style updated
+   - FIXED: Celebration image now detects both C.jpg and C.jpeg
+   - Uses Image() object with cache-busting to check which file exists
+   - Falls back to trophy emoji if no image found
+   - Prevents 404 errors in console
+   - All other functionality identical to v1.06
 DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/history-record.js
 STATUS: Ready for integration
 */
@@ -15,11 +14,57 @@ STATUS: Ready for integration
 var SignCard = (function() {
     
     // ============================================================
-    // Fixed celebration image - uses Celebration.jpg (Capital C)
+    // Celebration image - detects C.jpg or C.jpeg (bypass cache)
     // ============================================================
     
-    function getCelebrationImage() {
-        return "/images/celebration/C.jpg";
+    var cachedImagePath = null;
+    var imageCheckPromise = null;
+    
+    function getCelebrationImage(callback) {
+        // If already cached, return immediately
+        if (cachedImagePath !== null) {
+            if (callback) callback(cachedImagePath);
+            return;
+        }
+        
+        // If check is already in progress, wait for it
+        if (imageCheckPromise) {
+            imageCheckPromise.then(function(path) {
+                if (callback) callback(path);
+            });
+            return;
+        }
+        
+        // Start new check
+        var cacheBuster = '?t=' + Date.now();
+        var formats = ['/images/celebration/C.jpg', '/images/celebration/C.jpeg'];
+        var currentIndex = 0;
+        
+        imageCheckPromise = new Promise(function(resolve) {
+            function tryNext() {
+                if (currentIndex >= formats.length) {
+                    cachedImagePath = null;
+                    resolve(null);
+                    if (callback) callback(null);
+                    return;
+                }
+                var url = formats[currentIndex] + cacheBuster;
+                var img = new Image();
+                img.onload = function() {
+                    cachedImagePath = formats[currentIndex];
+                    resolve(formats[currentIndex]);
+                    if (callback) callback(formats[currentIndex]);
+                };
+                img.onerror = function() {
+                    currentIndex++;
+                    tryNext();
+                };
+                img.src = url;
+            }
+            tryNext();
+        });
+        
+        return imageCheckPromise;
     }
     
     // ============================================================
@@ -160,13 +205,6 @@ var SignCard = (function() {
         var teamADisplay = teamAScore % 1 === 0 ? teamAScore : teamAScore.toFixed(1);
         var teamBDisplay = teamBScore % 1 === 0 ? teamBScore : teamBScore.toFixed(1);
         
-        var celebrationImage = getCelebrationImage();
-        var imageHtml = `
-            <div class="celebration-image-container">
-                <img src="${celebrationImage}" class="celebration-image" alt="Celebration" onerror="this.style.display='none'">
-            </div>
-        `;
-        
         // Store data for replay and HCP
         var celebrationData = {
             winner: winner,
@@ -177,96 +215,106 @@ var SignCard = (function() {
             onClose: onClose
         };
         
-        var modalHtml = `
-            <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
-                <div class="celebration-modal">
-                    ${imageHtml}
-                    <div class="celebration-title">🏆 MATCH COMPLETE! 🏆</div>
-                    <div class="celebration-beer">🍺 BEER TIME! 🍺</div>
-                    <div class="celebration-winner ${winnerClass}">
-                        ${winnerText}
+        // Get image and then show modal
+        getCelebrationImage(function(imageSrc) {
+            var imageHtml = '';
+            if (imageSrc) {
+                imageHtml = `
+                    <div class="celebration-image-container">
+                        <img src="${imageSrc}" class="celebration-image" alt="Celebration">
                     </div>
-                    <div class="celebration-score">
-                        Team A ${teamADisplay} - ${teamBDisplay} Team B
-                    </div>
-                    <div class="celebration-players">
-                        <div class="celebration-players-title">🏅 ${winner === 'A' ? 'TEAM A' : (winner === 'B' ? 'TEAM B' : 'BOTH TEAMS')} 🏅</div>
-                        <div class="celebration-players-list">
-                            ${playersHtml || (winner === 'Tie' ? '<span class="winning-player">Great Match!</span>' : '')}
-                        </div>
-                    </div>
-                    <button class="celebration-btn" id="handicapAdjustBtn">🏌️ HANDICAP ADJUSTMENT</button>
-                </div>
-            </div>
-        `;
-        
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        
-        // Style the Handicap Adjustment button
-        var hcpBtn = document.getElementById('handicapAdjustBtn');
-        if (hcpBtn) {
-            hcpBtn.style.fontSize = '1rem';
-            hcpBtn.style.padding = '14px 28px';
-            hcpBtn.style.background = '#ffaa44';
-            hcpBtn.style.color = '#1a3a1a';
-            hcpBtn.style.border = 'none';
-            hcpBtn.style.fontWeight = '800';
-            hcpBtn.style.letterSpacing = '1px';
-            hcpBtn.style.borderRadius = '40px';
-            hcpBtn.style.cursor = 'pointer';
-            hcpBtn.style.width = '100%';
-        }
-        
-        addCelebrationStyles();
-        launchConfetti();
-        
-        // FIXED: Handicap Adjustment button now properly gets archiveId
-        document.getElementById("handicapAdjustBtn").addEventListener("click", function() {
-            document.getElementById("celebrationModal").remove();
+                `;
+            } else {
+                imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
+            }
             
-            // Ensure we have an archive record before opening HCP
-            ensureArchiveRecord(gameId, function(err, archiveId) {
-                if (err) {
-                    console.error("Failed to get archive record:", err);
-                    // Fallback: try to open HCP without archiveId
-                    if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
-                        HandicapAdjustment.init(gameId, null, celebrationData.winningPlayers, {}, {}, true);
-                    }
-                } else {
-                    // Build match points from cross results if available
-                    var matchPoints = {};
-                    if (typeof window !== 'undefined' && window.GameLoader) {
-                        var cache = window.GameLoader.getLocalCache();
-                        if (cache && cache.matchResults && cache.matchResults.cross) {
-                            for (var key in cache.matchResults.cross) {
-                                if (key.indexOf('_vs_') !== -1) {
-                                    var parts = key.split('_vs_');
-                                    var playerA = parts[0];
-                                    var playerB = parts[1];
-                                    var value = cache.matchResults.cross[key];
-                                    if (!matchPoints[playerA]) matchPoints[playerA] = { total: 0 };
-                                    if (value > 0) matchPoints[playerA].total += 1;
-                                    else if (value === 0) matchPoints[playerA].total += 0.5;
-                                    if (!matchPoints[playerB]) matchPoints[playerB] = { total: 0 };
-                                    if (value < 0) matchPoints[playerB].total += 1;
-                                    else if (value === 0) matchPoints[playerB].total += 0.5;
+            var modalHtml = `
+                <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
+                    <div class="celebration-modal">
+                        ${imageHtml}
+                        <div class="celebration-title">🏆 MATCH COMPLETE! 🏆</div>
+                        <div class="celebration-beer">🍺 BEER TIME! 🍺</div>
+                        <div class="celebration-winner ${winnerClass}">
+                            ${winnerText}
+                        </div>
+                        <div class="celebration-score">
+                            Team A ${teamADisplay} - ${teamBDisplay} Team B
+                        </div>
+                        <div class="celebration-players">
+                            <div class="celebration-players-title">🏅 ${winner === 'A' ? 'TEAM A' : (winner === 'B' ? 'TEAM B' : 'BOTH TEAMS')} 🏅</div>
+                            <div class="celebration-players-list">
+                                ${playersHtml || (winner === 'Tie' ? '<span class="winning-player">Great Match!</span>' : '')}
+                            </div>
+                        </div>
+                        <button class="celebration-btn" id="handicapAdjustBtn">🏌️ HANDICAP ADJUSTMENT</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Style the Handicap Adjustment button
+            var hcpBtn = document.getElementById('handicapAdjustBtn');
+            if (hcpBtn) {
+                hcpBtn.style.fontSize = '1rem';
+                hcpBtn.style.padding = '14px 28px';
+                hcpBtn.style.background = '#ffaa44';
+                hcpBtn.style.color = '#1a3a1a';
+                hcpBtn.style.border = 'none';
+                hcpBtn.style.fontWeight = '800';
+                hcpBtn.style.letterSpacing = '1px';
+                hcpBtn.style.borderRadius = '40px';
+                hcpBtn.style.cursor = 'pointer';
+                hcpBtn.style.width = '100%';
+            }
+            
+            addCelebrationStyles();
+            launchConfetti();
+            
+            document.getElementById("handicapAdjustBtn").addEventListener("click", function() {
+                document.getElementById("celebrationModal").remove();
+                
+                ensureArchiveRecord(gameId, function(err, archiveId) {
+                    if (err) {
+                        console.error("Failed to get archive record:", err);
+                        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
+                            HandicapAdjustment.init(gameId, null, celebrationData.winningPlayers, {}, {}, true);
+                        }
+                    } else {
+                        var matchPoints = {};
+                        if (typeof window !== 'undefined' && window.GameLoader) {
+                            var cache = window.GameLoader.getLocalCache();
+                            if (cache && cache.matchResults && cache.matchResults.cross) {
+                                for (var key in cache.matchResults.cross) {
+                                    if (key.indexOf('_vs_') !== -1) {
+                                        var parts = key.split('_vs_');
+                                        var playerA = parts[0];
+                                        var playerB = parts[1];
+                                        var value = cache.matchResults.cross[key];
+                                        if (!matchPoints[playerA]) matchPoints[playerA] = { total: 0 };
+                                        if (value > 0) matchPoints[playerA].total += 1;
+                                        else if (value === 0) matchPoints[playerA].total += 0.5;
+                                        if (!matchPoints[playerB]) matchPoints[playerB] = { total: 0 };
+                                        if (value < 0) matchPoints[playerB].total += 1;
+                                        else if (value === 0) matchPoints[playerB].total += 0.5;
+                                    }
                                 }
                             }
                         }
+                        
+                        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
+                            HandicapAdjustment.init(gameId, archiveId, celebrationData.winningPlayers, matchPoints, {}, false);
+                        } else {
+                            console.log("HandicapAdjustment module not loaded yet");
+                            if (celebrationData.onClose) celebrationData.onClose();
+                        }
                     }
-                    
-                    if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
-                        HandicapAdjustment.init(gameId, archiveId, celebrationData.winningPlayers, matchPoints, {}, false);
-                    } else {
-                        console.log("HandicapAdjustment module not loaded yet");
-                        if (celebrationData.onClose) celebrationData.onClose();
-                    }
-                }
+                });
             });
+            
+            // Store reference for replay functionality
+            window._currentCelebrationData = celebrationData;
         });
-        
-        // Store reference for replay functionality
-        window._currentCelebrationData = celebrationData;
     }
     
     // Replay celebration screen (for HCP screen "Celebration Screen" button)
@@ -533,15 +581,13 @@ var SignCard = (function() {
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.06
+VERSION: 1.07
 KEY CHANGES:
-   - FIXED: Handicap Adjustment button now properly calls HandicapAdjustment.init() with archiveId
-   - FIXED: Celebration screen now properly passes winningPlayers and matchPoints to HCP module
-   - Added ensureArchiveRecord() helper to get or create archive record
-   - Added proper modal cleanup to prevent stacking
-   - replayCelebration() now removes existing modals before showing new one
-   - celebration screen styling refined to match new modal designs
-   - Handicap Adjustment button style updated
+   - FIXED: Celebration image now detects both C.jpg and C.jpeg
+   - Uses Image() object with cache-busting to check which file exists
+   - Falls back to trophy emoji if no image found
+   - Prevents 404 errors in console
+   - All other functionality identical to v1.06
 DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/history-record.js
 STATUS: Ready for integration
 */
