@@ -1,13 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: No encoding, no display cache
-   - Stores raw f1.d and f2.d strings directly in scheduledGames
-   - Stores pre-calculated results object
-   - Single source of truth - Firestore only
-   - All calculations done once during play
-   - Removed all encoding/decoding logic
+   - ADDED: Store per-hole match results array (16 values) in results.matchResults
+   - Cascade now updates matchResults for all affected holes when editing previous holes
+   - matchResults stored as array of 16 numbers per hole position
+   - Enables viewers to read match bubbles directly without recalculation
+   - All other functionality identical to v3.00
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -335,7 +334,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.00</div>
+<div class="version-tag">v3.01</div>
 
 <script>
 // ============================================================
@@ -462,8 +461,38 @@ function getAllOpponents(player) {
     return opponents;
 }
 
+// NEW: Get match value from stored results (no recalculation)
+function getMatchValueFromStoredResults(player, opponent, holeNumber) {
+    var cache = GameLoader.getLocalCache();
+    var results = cache.results;
+    if (!results || !results.matchResults) return 0;
+    
+    var position = getHolePosition(holeNumber);
+    
+    // Find match index
+    var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var aIndex = -1;
+    var bIndex = -1;
+    for (var i = 0; i < teamAPlayers.length; i++) {
+        if (teamAPlayers[i].name === player.name) aIndex = i;
+    }
+    for (var i = 0; i < teamBPlayers.length; i++) {
+        if (teamBPlayers[i].name === opponent.name) bIndex = i;
+    }
+    
+    if (aIndex === -1 || bIndex === -1) return 0;
+    
+    var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
+    var matchResultsArray = results.matchResults[position];
+    
+    if (!matchResultsArray) return 0;
+    return matchResultsArray[matchIndex] || 0;
+}
+
 function getBubbleClass(player, opponent) {
-    var matchValue = GameLoader.getMatchValue(player.name, opponent.name);
+    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
     var cache = GameLoader.getLocalCache();
     var lastSyncedHole = cache.lastSyncedHole;
     
@@ -483,7 +512,7 @@ function getBubbleClass(player, opponent) {
 }
 
 function getBubbleValue(player, opponent) {
-    var matchValue = GameLoader.getMatchValue(player.name, opponent.name);
+    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
     var absValue = Math.abs(matchValue);
     if (absValue === 0) return 'AS';
     return absValue.toString();
@@ -558,13 +587,23 @@ function performSave() {
         
         var scores = { a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score };
         
-        GameData.saveCurrentHole(currentHole, scores, coursePar, function(success) {
+        GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
             if (success) {
                 for (var key in localChanges) {
                     if (key.startsWith(flight + "_" + currentHole + "_")) {
                         delete localChanges[key];
                     }
                 }
+                await saveResultsToFirestore(currentHole);
+                
+                // Cascade: recalculate all holes from current hole to 18
+                var playOrder = getPlayOrder();
+                var startPos = playOrder.indexOf(currentHole);
+                for (var i = startPos + 1; i < 18; i++) {
+                    var holeToUpdate = playOrder[i];
+                    await saveResultsToFirestore(holeToUpdate);
+                }
+                
                 resolve(true);
             } else {
                 reject(new Error("Save failed"));
@@ -605,6 +644,222 @@ async function saveHole() {
 function retrySave() {
     if (saveInProgress) return;
     saveHole();
+}
+
+// ============================================================
+// Results Calculation and Storage (with matchResults)
+// ============================================================
+
+function initializeEmptyResults() {
+    return {
+        version: 1,
+        matchResults: new Array(18),  // Will store 16-value arrays per hole
+        game1: {
+            matches: {},
+            pointsA: new Array(18).fill(8),
+            pointsB: new Array(18).fill(8)
+        },
+        game2: {
+            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
+            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
+            pointsA: new Array(18).fill(1),
+            pointsB: new Array(18).fill(1)
+        },
+        game3: {
+            leader: new Array(18).fill("AS"),
+            nettA: new Array(18).fill(0),
+            nettB: new Array(18).fill(0),
+            pointsA: new Array(18).fill(0.5),
+            pointsB: new Array(18).fill(0.5)
+        },
+        tr: {
+            teamA: new Array(18).fill(9.5),
+            teamB: new Array(18).fill(9.5),
+            teamAGreen: new Array(18).fill(true),
+            teamBGreen: new Array(18).fill(true)
+        },
+        computedUpToHole: 0,
+        lastComputedAt: null
+    };
+}
+
+function calculateMatchResultsArray(holeNumber) {
+    var cache = GameLoader.getLocalCache();
+    
+    // Calculate cross-flight matches up to this hole
+    var matchResults = GameMatch.calculateCrossFlight(
+        cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar
+    );
+    
+    // Convert to array of 16 values
+    var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var resultArray = [];
+    for (var a = 0; a < teamAPlayers.length; a++) {
+        for (var b = 0; b < teamBPlayers.length; b++) {
+            var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
+            var value = matchResults[key] || 0;
+            // Clamp to reasonable range for display
+            if (value > 15) value = 15;
+            if (value < -10) value = -10;
+            resultArray.push(value);
+        }
+    }
+    return resultArray;
+}
+
+function calculateHoleResults(holeNumber) {
+    var cache = GameLoader.getLocalCache();
+    var position = getHolePosition(holeNumber);
+    
+    var f1Hole = cache.flight1Data[holeNumber];
+    var f2Hole = cache.flight2Data[holeNumber];
+    
+    if (!f1Hole || !f1Hole.saved || !f2Hole || !f2Hole.saved) {
+        return null;
+    }
+    
+    var teamResults = GameTeam.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, teamGameFormat);
+    var flight1Total = teamResults.flight1Cumulative[position];
+    var flight2Total = teamResults.flight2Cumulative[position];
+    
+    var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole);
+    var strokeLeader = strokeResults[position];
+    
+    // Calculate match results for this hole
+    var matchResultsArray = calculateMatchResultsArray(holeNumber);
+    
+    var tempMatchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
+    var game1PointsA = 0;
+    var game1PointsB = 0;
+    var matchCount = 0;
+    
+    for (var key in tempMatchResults) {
+        if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
+            var firstPlayerName = key.split("_vs_")[0];
+            var firstPlayer = allPlayers.find(function(p) { return p.name === firstPlayerName; });
+            if (firstPlayer && firstPlayer.team === "A") {
+                var value = tempMatchResults[key];
+                if (value > 0) game1PointsA += 1;
+                else if (value < 0) game1PointsB += 1;
+                else { game1PointsA += 0.5; game1PointsB += 0.5; }
+                matchCount++;
+            }
+        }
+    }
+    
+    var flight1PointsA = (flight1Total > 0) ? 1 : (flight1Total < 0) ? 0 : 0.5;
+    var flight1PointsB = (flight1Total > 0) ? 0 : (flight1Total < 0) ? 1 : 0.5;
+    var flight2PointsA = (flight2Total > 0) ? 1 : (flight2Total < 0) ? 0 : 0.5;
+    var flight2PointsB = (flight2Total > 0) ? 0 : (flight2Total < 0) ? 1 : 0.5;
+    var game2PointsA = flight1PointsA + flight2PointsA;
+    var game2PointsB = flight1PointsB + flight2PointsB;
+    
+    var game3PointsA = (strokeLeader === "A") ? 1 : (strokeLeader === "B") ? 0 : 0.5;
+    var game3PointsB = (strokeLeader === "A") ? 0 : (strokeLeader === "B") ? 1 : 0.5;
+    
+    var trA = game1PointsA + game2PointsA + game3PointsA;
+    var trB = game1PointsB + game2PointsB + game3PointsB;
+    var trAGreen = (trA > trB);
+    var trBGreen = (trB > trA);
+    
+    // Get T-1, T-2, Strk leaders for this hole
+    var t1Leader = (flight1Total > 0) ? "A" : (flight1Total < 0) ? "B" : "AS";
+    var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
+    var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
+    
+    return {
+        position: position,
+        matchResults: matchResultsArray,
+        t1Leader: t1Leader,
+        t2Leader: t2Leader,
+        strkLeader: strkLeader,
+        game1PointsA: game1PointsA,
+        game1PointsB: game1PointsB,
+        game2PointsA: game2PointsA,
+        game2PointsB: game2PointsB,
+        game3PointsA: game3PointsA,
+        game3PointsB: game3PointsB,
+        trA: trA,
+        trB: trB,
+        trAGreen: trAGreen,
+        trBGreen: trBGreen
+    };
+}
+
+async function saveResultsToFirestore(holeNumber) {
+    var resultsData = calculateHoleResults(holeNumber);
+    if (!resultsData) {
+        console.log('No results data for hole', holeNumber);
+        return;
+    }
+    
+    var position = resultsData.position;
+    var updatePayload = {};
+    
+    // Store match results array
+    updatePayload[`results.matchResults.${position}`] = resultsData.matchResults;
+    
+    // Store game1 points
+    updatePayload[`results.game1.pointsA.${position}`] = resultsData.game1PointsA;
+    updatePayload[`results.game1.pointsB.${position}`] = resultsData.game1PointsB;
+    
+    // Store game2 points
+    updatePayload[`results.game2.pointsA.${position}`] = resultsData.game2PointsA;
+    updatePayload[`results.game2.pointsB.${position}`] = resultsData.game2PointsB;
+    
+    // Store game2 flight leaders
+    updatePayload[`results.game2.flight1.leader.${position}`] = resultsData.t1Leader;
+    updatePayload[`results.game2.flight2.leader.${position}`] = resultsData.t2Leader;
+    
+    // Store game3 leader
+    updatePayload[`results.game3.leader.${position}`] = resultsData.strkLeader;
+    updatePayload[`results.game3.pointsA.${position}`] = resultsData.game3PointsA;
+    updatePayload[`results.game3.pointsB.${position}`] = resultsData.game3PointsB;
+    
+    // Store TR
+    updatePayload[`results.tr.teamA.${position}`] = resultsData.trA;
+    updatePayload[`results.tr.teamB.${position}`] = resultsData.trB;
+    updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
+    updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
+    
+    if (position + 1 > (GameLoader.getLocalCache().results?.computedUpToHole || 0)) {
+        updatePayload["results.computedUpToHole"] = position + 1;
+    }
+    updatePayload["results.lastComputedAt"] = new Date().toISOString();
+    
+    try {
+        await db.collection("scheduledGames").doc(gameId).update(updatePayload);
+        console.log('Results saved for hole', holeNumber, 'position', position, 'matchResults length:', resultsData.matchResults.length);
+        
+        // Update local cache
+        var cache = GameLoader.getLocalCache();
+        if (!cache.results) {
+            cache.results = initializeEmptyResults();
+        }
+        cache.results.matchResults[position] = resultsData.matchResults;
+        cache.results.game1.pointsA[position] = resultsData.game1PointsA;
+        cache.results.game1.pointsB[position] = resultsData.game1PointsB;
+        cache.results.game2.pointsA[position] = resultsData.game2PointsA;
+        cache.results.game2.pointsB[position] = resultsData.game2PointsB;
+        cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
+        cache.results.game2.flight2.leader[position] = resultsData.t2Leader;
+        cache.results.game3.leader[position] = resultsData.strkLeader;
+        cache.results.game3.pointsA[position] = resultsData.game3PointsA;
+        cache.results.game3.pointsB[position] = resultsData.game3PointsB;
+        cache.results.tr.teamA[position] = resultsData.trA;
+        cache.results.tr.teamB[position] = resultsData.trB;
+        cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
+        cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
+        if (position + 1 > cache.results.computedUpToHole) {
+            cache.results.computedUpToHole = position + 1;
+        }
+        cache.results.lastComputedAt = updatePayload["results.lastComputedAt"];
+        
+    } catch (error) {
+        console.error('Error saving results:', error);
+    }
 }
 
 // ============================================================
@@ -892,20 +1147,31 @@ function buildMatchResultsForHandicap() {
     var cache = GameLoader.getLocalCache();
     var playerPoints = {};
     
-    for (var key in cache.matchResults.cross) {
-        if (key.indexOf("_vs_") !== -1) {
-            var parts = key.split("_vs_");
-            var playerA = parts[0];
-            var playerB = parts[1];
-            var value = cache.matchResults.cross[key];
+    // Use stored match results from cache.results.matchResults
+    if (cache.results && cache.results.matchResults) {
+        var matchResultsArray = cache.results.matchResults[17]; // Final hole results
+        if (matchResultsArray) {
+            var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
             
-            if (!playerPoints[playerA]) playerPoints[playerA] = { total: 0 };
-            if (value > 0) playerPoints[playerA].total += 1;
-            else if (value === 0) playerPoints[playerA].total += 0.5;
-            
-            if (!playerPoints[playerB]) playerPoints[playerB] = { total: 0 };
-            if (value < 0) playerPoints[playerB].total += 1;
-            else if (value === 0) playerPoints[playerB].total += 0.5;
+            for (var a = 0; a < teamAPlayers.length; a++) {
+                for (var b = 0; b < teamBPlayers.length; b++) {
+                    var matchIndex = a * teamBPlayers.length + b;
+                    var value = matchResultsArray[matchIndex] || 0;
+                    var playerA = teamAPlayers[a];
+                    var playerB = teamBPlayers[b];
+                    
+                    if (!playerPoints[playerA.name]) playerPoints[playerA.name] = { total: 0 };
+                    if (!playerPoints[playerB.name]) playerPoints[playerB.name] = { total: 0 };
+                    
+                    if (value > 0) playerPoints[playerA.name].total += 1;
+                    else if (value < 0) playerPoints[playerB.name].total += 1;
+                    else {
+                        playerPoints[playerA.name].total += 0.5;
+                        playerPoints[playerB.name].total += 0.5;
+                    }
+                }
+            }
         }
     }
     
@@ -1181,14 +1447,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: No encoding, no display cache
-   - Stores raw f1.d and f2.d strings directly in scheduledGames
-   - Stores pre-calculated results object
-   - Single source of truth - Firestore only
-   - All calculations done once during play
-   - Removed all encoding/decoding logic
+   - ADDED: Store per-hole match results array (16 values) in results.matchResults
+   - Cascade now updates matchResults for all affected holes when editing previous holes
+   - matchResults stored as array of 16 numbers per hole position
+   - Enables viewers to read match bubbles directly without recalculation
+   - All other functionality identical to v3.00
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
