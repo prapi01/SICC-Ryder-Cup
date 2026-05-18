@@ -1,12 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 2.30
+VERSION: 3.00
 KEY CHANGES:
-   - ADDED: Apple touch icon for iOS web app (Add to Home Screen)
-   - ADDED: Web app meta tags for full-screen experience on iOS
-   - Icon path: /images/ICON.png
-   - apple-mobile-web-app-capable, status-bar-style, and title
-   - All other functionality identical to v2.29
+   - REMOVED: Old preview session modal (moved to preview-game.html)
+   - SIMPLIFIED: handlePreviewGame() now just navigates to preview-game.html with gameId
+   - No modal, no session list, no preview sandbox logic in index
+   - All preview logic moved to preview-game.html
+   - Cleaner, simpler index as pure navigation launchpad
+   - All other functionality identical to v2.30
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -160,137 +161,7 @@ STATUS: Ready for deployment
             margin-top: 20px;
         }
         
-        /* Modal Styles */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.95);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-        }
-        .modal {
-            background: #1a1a1a;
-            border-radius: 24px;
-            padding: 28px;
-            max-width: 380px;
-            width: 90%;
-            border: 1px solid #4caf50;
-            text-align: center;
-        }
-        .modal-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #4caf50;
-            margin-bottom: 20px;
-        }
-        .sessions-list {
-            max-height: 250px;
-            overflow-y: auto;
-            margin-bottom: 20px;
-            text-align: left;
-        }
-        .session-item {
-            background: #0a0a0a;
-            border: 1px solid #333;
-            border-radius: 12px;
-            padding: 12px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .session-item:hover {
-            border-color: #4caf50;
-            background: #1a1a1a;
-        }
-        .session-item.selected {
-            border-color: #4caf50;
-            background: #1a3a1a;
-        }
-        .session-name {
-            font-weight: 700;
-            color: #fff;
-        }
-        .session-meta {
-            font-size: 0.7rem;
-            color: #888;
-            margin-top: 4px;
-        }
-        .session-creator {
-            font-size: 0.65rem;
-            color: #4caf50;
-        }
-        .radio-group {
-            margin: 20px 0;
-            text-align: left;
-        }
-        .radio-option {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px;
-            background: #0a0a0a;
-            border-radius: 12px;
-            margin-bottom: 12px;
-            cursor: pointer;
-            border: 1px solid #333;
-        }
-        .radio-option.selected {
-            border-color: #4caf50;
-            background: #1a3a1a;
-        }
-        .radio-option input {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-        .radio-option label {
-            flex: 1;
-            cursor: pointer;
-            font-weight: 500;
-        }
-        .session-name-input {
-            width: 100%;
-            padding: 10px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 30px;
-            color: #fff;
-            margin-top: 8px;
-        }
-        .modal-buttons {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            margin-top: 20px;
-        }
-        .modal-btn {
-            padding: 10px 24px;
-            border-radius: 40px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            cursor: pointer;
-            border: none;
-        }
-        .modal-btn-primary {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        .modal-btn-secondary {
-            background: #333;
-            color: #ccc;
-        }
         .loading { text-align: center; padding: 40px; color: #888; }
-        .empty-sessions {
-            text-align: center;
-            padding: 20px;
-            color: #888;
-        }
     </style>
 </head>
 <body>
@@ -298,13 +169,13 @@ STATUS: Ready for deployment
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v2.30</div>
+<div class="version-tag">v3.00</div>
 
 <script>
-// FILE: index.html - VERSION 2.30
-// CHANGES: Added Apple touch icon and web app meta tags for iOS
+// FILE: index.html - VERSION 3.00
+// CHANGES: Removed preview modal logic (moved to preview-game.html)
 
-var APP_VERSION = "2.30";
+var APP_VERSION = "3.00";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -487,305 +358,6 @@ function resetGameData(gameId) {
     });
 }
 
-// ============================================================
-// PREVIEW SESSION MODAL
-// ============================================================
-
-function showPreviewSessionModal(gameId, gameDate, courseName) {
-    var deviceId = SessionManager.getDeviceIdDisplay();
-    
-    // Load existing preview sandboxes for this game
-    db.collection("previewSandboxes")
-        .where("originalGameId", "==", gameId)
-        .where("expiresAt", ">", Date.now())
-        .get()
-        .then(function(snapshot) {
-            var sessions = [];
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                sessions.push({
-                    id: doc.id,
-                    sessionName: data.sessionName,
-                    createdBy: data.createdBy,
-                    createdAt: data.createdAt,
-                    updatedAt: data.updatedAt
-                });
-            });
-            
-            // Sort by most recent first
-            sessions.sort(function(a, b) {
-                return (b.updatedAt || 0) - (a.updatedAt || 0);
-            });
-            
-            renderPreviewModal(gameId, gameDate, courseName, deviceId, sessions);
-        })
-        .catch(function(err) {
-            console.error("Error loading preview sessions:", err);
-            renderPreviewModal(gameId, gameDate, courseName, deviceId, []);
-        });
-}
-
-function renderPreviewModal(gameId, gameDate, courseName, deviceId, sessions) {
-    var modalHtml = `
-        <div class="modal-overlay" id="previewModal">
-            <div class="modal">
-                <div class="modal-title">🔍 PREVIEW SESSIONS</div>
-                <div class="modal-message" style="font-size:0.8rem; margin-bottom:16px;">
-                    ${courseName} - ${formatDisplayDate(gameDate)}
-                </div>
-                
-                <div id="sessionsListContainer" style="margin-bottom:20px;">
-                    ${renderSessionsList(sessions, deviceId)}
-                </div>
-                
-                <div class="radio-group" id="actionGroup">
-                    <div class="radio-option" data-action="join" id="joinOption">
-                        <input type="radio" name="previewAction" value="join" id="joinRadio">
-                        <label for="joinRadio">Join existing session</label>
-                    </div>
-                    <div class="radio-option" data-action="create" id="createOption">
-                        <input type="radio" name="previewAction" value="create" id="createRadio">
-                        <label for="createRadio">Create new session</label>
-                    </div>
-                </div>
-                
-                <div id="newSessionNameContainer" style="display:none; margin-bottom:20px;">
-                    <input type="text" id="newSessionName" class="session-name-input" placeholder="Enter session name (e.g., Team Strategy)">
-                </div>
-                
-                <div class="modal-buttons">
-                    <button class="modal-btn modal-btn-secondary" id="previewCancelBtn">Cancel</button>
-                    <button class="modal-btn modal-btn-primary" id="previewConfirmBtn">Continue</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    var selectedSessionId = null;
-    var selectedAction = null;
-    
-    // Session selection handler
-    document.querySelectorAll('.session-item').forEach(function(item) {
-        item.addEventListener('click', function() {
-            document.querySelectorAll('.session-item').forEach(function(s) {
-                s.classList.remove('selected');
-            });
-            this.classList.add('selected');
-            selectedSessionId = this.dataset.sessionId;
-            
-            // Auto-select "Join" radio
-            document.getElementById('joinRadio').checked = true;
-            selectedAction = 'join';
-            updateRadioSelection('join');
-            document.getElementById('newSessionNameContainer').style.display = 'none';
-        });
-    });
-    
-    // Radio option handlers
-    function updateRadioSelection(action) {
-        document.querySelectorAll('.radio-option').forEach(function(opt) {
-            opt.classList.remove('selected');
-        });
-        if (action === 'join') {
-            document.getElementById('joinOption').classList.add('selected');
-            document.getElementById('joinRadio').checked = true;
-            // If no session selected, clear selection
-            if (selectedSessionId === null && sessions.length > 0) {
-                // Optionally auto-select first session
-            }
-        } else {
-            document.getElementById('createOption').classList.add('selected');
-            document.getElementById('createRadio').checked = true;
-            document.getElementById('newSessionNameContainer').style.display = 'block';
-            selectedSessionId = null;
-        }
-    }
-    
-    document.getElementById('joinRadio').addEventListener('change', function() {
-        if (this.checked) {
-            selectedAction = 'join';
-            updateRadioSelection('join');
-            document.getElementById('newSessionNameContainer').style.display = 'none';
-        }
-    });
-    
-    document.getElementById('createRadio').addEventListener('change', function() {
-        if (this.checked) {
-            selectedAction = 'create';
-            updateRadioSelection('create');
-        }
-    });
-    
-    document.getElementById('previewConfirmBtn').addEventListener('click', function() {
-        var action = selectedAction;
-        
-        if (action === 'join') {
-            if (!selectedSessionId) {
-                alert("Please select a session to join");
-                return;
-            }
-            proceedToPreview(gameId, gameDate, selectedSessionId, null);
-        } else if (action === 'create') {
-            var sessionName = document.getElementById('newSessionName').value.trim();
-            if (!sessionName) {
-                alert("Please enter a session name");
-                return;
-            }
-            createNewPreviewSession(gameId, gameDate, sessionName);
-        }
-    });
-    
-    document.getElementById('previewCancelBtn').addEventListener('click', function() {
-        document.getElementById('previewModal').remove();
-    });
-}
-
-function renderSessionsList(sessions, deviceId) {
-    if (!sessions || sessions.length === 0) {
-        return '<div class="empty-sessions">No active preview sessions.<br>Create a new session to start testing.</div>';
-    }
-    
-    var html = '<div class="sessions-list">';
-    for (var i = 0; i < sessions.length; i++) {
-        var s = sessions[i];
-        var timeAgo = getTimeAgo(s.updatedAt || s.createdAt);
-        var isCurrentUser = (s.createdBy === deviceId);
-        var creatorLabel = isCurrentUser ? '(You)' : s.createdBy;
-        
-        html += `
-            <div class="session-item" data-session-id="${s.id}">
-                <div class="session-name">📌 ${escapeHtml(s.sessionName)}</div>
-                <div class="session-meta">
-                    ${timeAgo} • Created by ${escapeHtml(creatorLabel)}
-                </div>
-            </div>
-        `;
-    }
-    html += '</div>';
-    return html;
-}
-
-function getTimeAgo(timestamp) {
-    if (!timestamp) return 'Recently';
-    var seconds = Math.floor((Date.now() - timestamp) / 1000);
-    if (seconds < 60) return 'Just now';
-    var minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return minutes + ' min ago';
-    var hours = Math.floor(minutes / 60);
-    if (hours < 24) return hours + ' hour' + (hours > 1 ? 's' : '') + ' ago';
-    var days = Math.floor(hours / 24);
-    return days + ' day' + (days > 1 ? 's' : '') + ' ago';
-}
-
-function createNewPreviewSession(gameId, gameDate, sessionName) {
-    // First, get the original game data
-    db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
-        if (!doc.exists) {
-            alert("Original game not found");
-            return;
-        }
-        
-        var originalData = doc.data();
-        var deviceId = SessionManager.getDeviceIdDisplay();
-        var sessionId_short = Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
-        var sandboxId = "preview_" + gameId + "_" + sessionId_short;
-        
-        // Create default data string
-        function generateDefaultDataNatural(parArray) {
-            var result = "";
-            for (var h = 0; h < 18; h++) {
-                var par = parArray[h];
-                var parStr = par.toString().padStart(2, '0');
-                result += "F" + parStr + parStr + parStr + parStr;
-            }
-            return result;
-        }
-        
-        function rotateDataString(naturalData, startHole) {
-            if (startHole === 1) return naturalData;
-            var blocks = [];
-            for (var i = 0; i < 18; i++) {
-                blocks.push(naturalData.substr(i * 9, 9));
-            }
-            var rotated = [];
-            for (var i = startHole - 1; i < 18; i++) rotated.push(blocks[i]);
-            for (var i = 0; i < startHole - 1; i++) rotated.push(blocks[i]);
-            return rotated.join('');
-        }
-        
-        var startingHole = originalData.startingHole || 1;
-        var naturalData = generateDefaultDataNatural(originalData.course.par);
-        var rotatedData = rotateDataString(naturalData, startingHole);
-        
-        var sandboxData = {
-            originalGameId: gameId,
-            sessionName: sessionName,
-            createdBy: deviceId,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
-            
-            course: originalData.course,
-            players: originalData.players,
-            startingHole: startingHole,
-            
-            f1: {
-                d: rotatedData,
-                se: false,
-                x: false
-            },
-            f2: {
-                d: rotatedData,
-                se: false,
-                x: false
-            },
-            locks: {
-                f1: null,
-                f2: null
-            },
-            currentHoleF1: 1,
-            currentHoleF2: 1
-        };
-        
-        db.collection("previewSandboxes").doc(sandboxId).set(sandboxData).then(function() {
-            console.log("Preview sandbox created:", sandboxId);
-            proceedToPreview(gameId, gameDate, sandboxId, sessionName);
-        }).catch(function(err) {
-            console.error("Error creating preview sandbox:", err);
-            alert("Error creating preview session: " + err.message);
-        });
-    }).catch(function(err) {
-        console.error("Error loading original game:", err);
-        alert("Error loading game data");
-    });
-}
-
-function proceedToPreview(gameId, gameDate, sandboxId, sessionName) {
-    var targetPage = "pre-game.html";
-    
-    SessionManager.addNavigationHistory(targetPage, "click_preview", {
-        gameId: gameId,
-        gameType: "preview",
-        sandboxId: sandboxId,
-        sessionName: sessionName
-    });
-    SessionManager.updateSession({
-        returnDestination: "index.html",
-        activeGame: {
-            gameId: sandboxId,
-            originalGameId: gameId,
-            gameType: "preview",
-            gameMode: "preview",
-            role: null,
-            collection: "previewSandboxes"
-        }
-    });
-    sessionStorage.setItem("currentGameId", sandboxId);
-    window.location.href = targetPage;
-}
-
 function handleTodayGame() {
     if (!firestoreReady) {
         alert("Connecting to server... Please wait.");
@@ -849,14 +421,14 @@ function handlePreviewGame() {
         
         var gameId = nextGame.id;
         var gameDate = nextGame.date;
-        var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
         
         // Display the game ID before proceeding
         if (typeof displayGameId === 'function') {
             displayGameId(gameId);
         }
         
-        showPreviewSessionModal(gameId, gameDate, courseName);
+        // Navigate to preview-game.html with gameId parameter
+        window.location.href = 'preview-game.html?gameId=' + gameId + '&date=' + gameDate;
     }).catch(function(e) {
         console.error("Error loading games:", e);
         alert("Error loading games: " + e.message);
@@ -1029,13 +601,14 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 
 <!--
 FILE: index.html
-VERSION: 2.30
+VERSION: 3.00
 KEY CHANGES:
-   - ADDED: Apple touch icon for iOS web app (Add to Home Screen)
-   - ADDED: Web app meta tags for full-screen experience on iOS
-   - Icon path: /images/ICON.png
-   - apple-mobile-web-app-capable, status-bar-style, and title
-   - All other functionality identical to v2.29
+   - REMOVED: Old preview session modal (moved to preview-game.html)
+   - SIMPLIFIED: handlePreviewGame() now just navigates to preview-game.html with gameId
+   - No modal, no session list, no preview sandbox logic in index
+   - All preview logic moved to preview-game.html
+   - Cleaner, simpler index as pure navigation launchpad
+   - All other functionality identical to v2.30
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
