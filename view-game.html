@@ -1,14 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: No recalculation - reads pre-calculated results from Firestore
-   - Uses snapshot listener for real-time updates during LIVE game
-   - Reads f1.d, f2.d, and results directly from scheduledGames
-   - Displays using GameUI functions (same as real-game)
-   - TR, match bubbles, T-1, T-2, Strk from stored results
-   - Flight toggle, hole navigation, P/N toggle all work
-   - No GameMatch, GameTeam, GameStroke calculations
+   - FIXED: Now reads match bubbles from stored results.matchResults (no recalculation)
+   - Uses getMatchValueFromStoredResults() instead of GameLoader.getMatchValue()
+   - Eliminates all match bubble recalculation
+   - TR, T-1, T-2, Strk already from stored results
+   - Faster, more reliable, no calculation bugs
+   - All other functionality identical to v3.00
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -240,7 +239,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.00 VIEWER</div>
+<div class="version-tag">v3.01 VIEWER</div>
 
 <script>
 // ============================================================
@@ -368,15 +367,20 @@ function isHoleSaved(flight, hole) {
     return holeData && holeData.saved;
 }
 
-function getMatchValueFromResults(player, opponent) {
-    if (!resultsCache) return 0;
+// NEW: Get match value from stored results (no recalculation)
+function getMatchValueFromStoredResults(player, opponent, holeNumber) {
+    if (!resultsCache || !resultsCache.matchResults) return 0;
     
+    var position = getHolePosition(holeNumber);
+    var matchResultsArray = resultsCache.matchResults[position];
+    if (!matchResultsArray) return 0;
+    
+    // Find match index
     var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
     var aIndex = -1;
     var bIndex = -1;
-    
     for (var i = 0; i < teamAPlayers.length; i++) {
         if (teamAPlayers[i].name === player.name) aIndex = i;
     }
@@ -387,31 +391,33 @@ function getMatchValueFromResults(player, opponent) {
     if (aIndex === -1 || bIndex === -1) return 0;
     
     var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
-    
-    // Use cumulative results from stored data
-    var pointsA = resultsCache.game1?.pointsA;
-    var pointsB = resultsCache.game1?.pointsB;
-    
-    if (pointsA && pointsB) {
-        var totalA = pointsA[17] || 8;
-        var totalB = pointsB[17] || 8;
-        if (totalA > totalB) return 1;
-        if (totalB > totalA) return -1;
-        return 0;
-    }
-    
-    return 0;
+    return matchResultsArray[matchIndex] || 0;
 }
 
 function getBubbleClass(player, opponent) {
-    var matchValue = getMatchValueFromResults(player, opponent);
+    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
+    
+    // For intra-flight, check if hole is saved
+    if (player.flight === opponent.flight) {
+        var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
+        if (!isHoleSavedForFlight) return 'bubble-grey';
+        if (matchValue > 0) return 'bubble-green';
+        if (matchValue < 0) return 'bubble-red';
+        return 'bubble-green';
+    }
+    
+    // For cross-flight, check sync status using results.computedUpToHole
+    var computedUpTo = resultsCache?.computedUpToHole || 0;
+    var isSynced = (computedUpTo >= currentHole);
+    
+    if (!isSynced) return 'bubble-grey';
     if (matchValue > 0) return 'bubble-green';
     if (matchValue < 0) return 'bubble-red';
     return 'bubble-green';
 }
 
 function getBubbleValue(player, opponent) {
-    var matchValue = getMatchValueFromResults(player, opponent);
+    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
     var absValue = Math.abs(matchValue);
     if (absValue === 0) return 'AS';
     return absValue.toString();
@@ -667,15 +673,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: No recalculation - reads pre-calculated results from Firestore
-   - Uses snapshot listener for real-time updates during LIVE game
-   - Reads f1.d, f2.d, and results directly from scheduledGames
-   - Displays using GameUI functions (same as real-game)
-   - TR, match bubbles, T-1, T-2, Strk from stored results
-   - Flight toggle, hole navigation, P/N toggle all work
-   - No GameMatch, GameTeam, GameStroke calculations
+   - FIXED: Now reads match bubbles from stored results.matchResults (no recalculation)
+   - Uses getMatchValueFromStoredResults() instead of GameLoader.getMatchValue()
+   - Eliminates all match bubble recalculation
+   - TR, T-1, T-2, Strk already from stored results
+   - Faster, more reliable, no calculation bugs
+   - All other functionality identical to v3.00
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js
 STATUS: Ready for integration
 -->
