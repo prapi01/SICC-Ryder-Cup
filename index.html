@@ -1,12 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.03
+VERSION: 3.04
 KEY CHANGES:
-   - FIXED: Splash screen now triggers after HTML is rendered in loadAndRender()
-   - Removed window load event listener (was too early)
-   - Splash shows after golf icon is in the DOM
-   - All other functionality identical to v3.02
-DEPENDS ON: js/session.js, js/index-hidden.js, js/splash.js
+   - Splash appears immediately before any content loads
+   - Container hidden initially, revealed after splash ends
+   - Inline splash creation (no script loading delay)
+   - No "flash" of landing page before splash
+   - All other functionality identical to v3.03
+DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
 
@@ -35,10 +36,18 @@ STATUS: Ready for deployment
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     <script src="js/index-hidden.js"></script>
-    <script src="js/splash.js"></script>
     
+    <!-- Inline styles for splash and hidden container -->
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        /* Container hidden initially - only shown after splash */
+        .container {
+            display: none;
+            max-width: 420px;
+            width: 100%;
+        }
+        
         body {
             background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
             font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
@@ -50,7 +59,87 @@ STATUS: Ready for deployment
             padding: 20px;
             margin-top: -60px;
         }
-        .container { max-width: 420px; width: 100%; }
+        
+        /* Splash overlay */
+        #splashOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            opacity: 1;
+            transition: opacity 0.8s ease;
+        }
+        
+        /* Golf icon container */
+        .splash-icon-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .splash-golf-icon {
+            font-size: 6rem;
+            display: inline-block;
+            transform: translateY(-300px);
+            filter: drop-shadow(0 0 20px rgba(76,175,80,0.5));
+        }
+        
+        .splash-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            text-align: center;
+            letter-spacing: 2px;
+            opacity: 0;
+        }
+        
+        .splash-subtitle {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 8px;
+            letter-spacing: 1px;
+            opacity: 0;
+        }
+        
+        @keyframes splashDropDown {
+            0% { transform: translateY(-300px) rotate(0deg); }
+            55% { transform: translateY(10px) rotate(180deg); }
+            75% { transform: translateY(-5px) rotate(270deg); }
+            100% { transform: translateY(0) rotate(360deg); }
+        }
+        
+        @keyframes splashFadeInUp {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes splashThumpRing {
+            0% { transform: scale(0); opacity: 0.8; }
+            100% { transform: scale(4); opacity: 0; }
+        }
+        
+        @keyframes splashShake {
+            0% { transform: translate(1px, 1px); }
+            10% { transform: translate(-1px, -2px); }
+            20% { transform: translate(-3px, 0px); }
+            30% { transform: translate(3px, 2px); }
+            40% { transform: translate(1px, -1px); }
+            50% { transform: translate(-1px, 2px); }
+            60% { transform: translate(-3px, 1px); }
+            70% { transform: translate(3px, 1px); }
+            80% { transform: translate(-1px, -1px); }
+            90% { transform: translate(1px, 2px); }
+            100% { transform: translate(0, 0); }
+        }
         
         .device-tag {
             position: fixed;
@@ -128,10 +217,6 @@ STATUS: Ready for deployment
             cursor: pointer;
             transition: all 0.2s;
         }
-        .menu-btn:hover {
-            transform: scale(1.02);
-            border-color: #4caf50;
-        }
         .menu-btn .label {
             font-size: 0.95rem;
             font-weight: 600;
@@ -165,17 +250,29 @@ STATUS: Ready for deployment
     </style>
 </head>
 <body>
+
+<!-- Splash Overlay - Created Immediately -->
+<div id="splashOverlay">
+    <div class="splash-icon-container">
+        <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
+    </div>
+    <div class="splash-title" id="splashTitle">SICC RYDER CUP</div>
+    <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
+</div>
+
+<!-- Main Container - Hidden Initially -->
 <div class="container" id="app">
     <div class="loading">Loading...</div>
 </div>
+
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.03</div>
+<div class="version-tag">v3.04</div>
 
 <script>
-// FILE: index.html - VERSION 3.03
-// CHANGES: Splash screen triggers after HTML is rendered
+// FILE: index.html - VERSION 3.04
+// CHANGES: Splash appears immediately, container hidden until splash ends
 
-var APP_VERSION = "3.03";
+var APP_VERSION = "3.04";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -197,15 +294,98 @@ var db = null;
 var firestoreReady = false;
 var currentSession = null;
 
-try {
-    if (!firebase.apps.length) {
-        firebase.initializeApp(FIREBASE_CONFIG);
+// Get splash elements
+var splashOverlay = document.getElementById('splashOverlay');
+var splashGolfIcon = document.getElementById('splashGolfIcon');
+var splashTitle = document.getElementById('splashTitle');
+var splashSubtitle = document.getElementById('splashSubtitle');
+
+// Animate splash
+setTimeout(function() {
+    // Drop animation for golf icon
+    splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+    splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
+}, 100);
+
+// Fade in title and subtitle
+setTimeout(function() {
+    splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+    splashTitle.style.opacity = '1';
+    splashTitle.style.transform = 'translateY(0)';
+}, 400);
+
+setTimeout(function() {
+    splashSubtitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+    splashSubtitle.style.opacity = '1';
+    splashSubtitle.style.transform = 'translateY(0)';
+}, 600);
+
+// Thump ring effect
+setTimeout(function() {
+    var thumpRing = document.createElement('div');
+    thumpRing.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 50px;
+        height: 50px;
+        margin-left: -25px;
+        margin-top: -25px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(76,175,80,0.5) 0%, transparent 70%);
+        transform: scale(0);
+        pointer-events: none;
+        z-index: 10001;
+    `;
+    splashOverlay.appendChild(thumpRing);
+    thumpRing.style.animation = 'splashThumpRing 0.4s ease-out forwards';
+}, 700);
+
+// Shake effect
+setTimeout(function() {
+    splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
+}, 700);
+
+// Vibrate if supported
+if (navigator.vibrate) {
+    setTimeout(function() {
+        navigator.vibrate(50);
+    }, 700);
+}
+
+// Fade out splash and show main content
+setTimeout(function() {
+    splashOverlay.style.opacity = '0';
+    setTimeout(function() {
+        splashOverlay.remove();
+        // Show main container
+        var container = document.querySelector('.container');
+        if (container) {
+            container.style.display = 'block';
+        }
+        // Initialize Firebase and app
+        initApp();
+    }, 800);
+}, 2800);
+
+function initApp() {
+    try {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(FIREBASE_CONFIG);
+        }
+        db = firebase.firestore();
+        firestoreReady = true;
+        console.log("Firebase ready - v" + APP_VERSION);
+    } catch(e) {
+        console.warn(e);
     }
-    db = firebase.firestore();
-    firestoreReady = true;
-    console.log("Firebase ready - v" + APP_VERSION);
-} catch(e) {
-    console.warn(e);
+    
+    SessionManager.initSession("index.html", "index.html", function(session) {
+        console.log("Session initialized:", session);
+        currentSession = session;
+        displayDeviceId();
+        loadAndRender();
+    });
 }
 
 function displayDeviceId() {
@@ -275,15 +455,15 @@ function checkExistingPreviewData(gameId) {
 
 function showResumeModal(gameId, gameDate, callback) {
     var modalHtml = `
-        <div class="modal-overlay" id="resumeModal">
-            <div class="modal">
-                <div class="modal-title">⚠️ Existing Game Data Found</div>
-                <div class="modal-message">This game already has saved scores.</div>
-                <div class="modal-time">📅 ${formatDisplayDate(gameDate)}</div>
-                <div class="modal-buttons">
-                    <button class="modal-btn modal-btn-primary" id="resumeContinueBtn">Continue</button>
-                    <button class="modal-btn" id="resumeResetBtn" style="background:#3a1a1a; color:#ff6b6b; border:1px solid #ff6b6b;">Reset (Start Over)</button>
-                    <button class="modal-btn modal-btn-secondary" id="resumeCancelBtn">Cancel</button>
+        <div class="modal-overlay" id="resumeModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:2000;">
+            <div style="background:#1a1a1a; border-radius:24px; padding:28px; max-width:380px; width:90%; border:1px solid #4caf50; text-align:center;">
+                <div style="font-size:1.3rem; font-weight:700; color:#4caf50; margin-bottom:20px;">⚠️ Existing Game Data Found</div>
+                <div style="font-size:0.9rem; color:#ccc; margin-bottom:8px;">This game already has saved scores.</div>
+                <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:20px;">📅 ${formatDisplayDate(gameDate)}</div>
+                <div style="display:flex; gap:12px; justify-content:center;">
+                    <button id="resumeContinueBtn" style="background:#1a3a1a; color:#4caf50; border:1px solid #4caf50; padding:10px 20px; border-radius:40px; font-weight:600; cursor:pointer;">Continue</button>
+                    <button id="resumeResetBtn" style="background:#3a1a1a; color:#ff6b6b; border:1px solid #ff6b6b; padding:10px 20px; border-radius:40px; font-weight:600; cursor:pointer;">Reset (Start Over)</button>
+                    <button id="resumeCancelBtn" style="background:#333; color:#ccc; padding:10px 20px; border-radius:40px; font-weight:600; cursor:pointer;">Cancel</button>
                 </div>
             </div>
         </div>
@@ -567,13 +747,6 @@ function loadAndRender() {
             initHiddenAdmin();
         }
         
-        // Show splash screen after HTML is rendered and golf icon exists
-        setTimeout(function() {
-            if (typeof SplashScreen !== 'undefined' && SplashScreen.show) {
-                SplashScreen.show();
-            }
-        }, 200);
-        
     }).catch(function(e) {
         console.warn(e);
         document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
@@ -589,25 +762,19 @@ function escapeHtml(str) {
         return m;
     });
 }
-
-SessionManager.initSession("index.html", "index.html", function(session) {
-    console.log("Session initialized:", session);
-    currentSession = session;
-    displayDeviceId();
-    loadAndRender();
-});
 </script>
 </body>
 </html>
 
 <!--
 FILE: index.html
-VERSION: 3.03
+VERSION: 3.04
 KEY CHANGES:
-   - FIXED: Splash screen now triggers after HTML is rendered in loadAndRender()
-   - Removed window load event listener (was too early)
-   - Splash shows after golf icon is in the DOM
-   - All other functionality identical to v3.02
-DEPENDS ON: js/session.js, js/index-hidden.js, js/splash.js
+   - Splash appears immediately before any content loads
+   - Container hidden initially, revealed after splash ends
+   - Inline splash creation (no script loading delay)
+   - No "flash" of landing page before splash
+   - All other functionality identical to v3.03
+DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
