@@ -1,11 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.02
+VERSION: 3.03
 KEY CHANGES:
-   - FIXED: Splash screen timing - changed from DOMContentLoaded to load event
-   - Added small delay to ensure golf icon is rendered
-   - Splash now appears correctly on page load
-   - All other functionality identical to v3.01
+   - FIXED: Splash screen now triggers after HTML is rendered in loadAndRender()
+   - Removed window load event listener (was too early)
+   - Splash shows after golf icon is in the DOM
+   - All other functionality identical to v3.02
 DEPENDS ON: js/session.js, js/index-hidden.js, js/splash.js
 STATUS: Ready for deployment
 -->
@@ -18,7 +18,7 @@ STATUS: Ready for deployment
     <title>SICC Ryder Cup</title>
     
     <!-- iOS / iPadOS Web App Settings -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SICC Ryder Cup">
     <meta name="theme-color" content="#000000">
@@ -169,13 +169,13 @@ STATUS: Ready for deployment
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.02</div>
+<div class="version-tag">v3.03</div>
 
 <script>
-// FILE: index.html - VERSION 3.02
-// CHANGES: Fixed splash screen timing
+// FILE: index.html - VERSION 3.03
+// CHANGES: Splash screen triggers after HTML is rendered
 
-var APP_VERSION = "3.02";
+var APP_VERSION = "3.03";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -567,6 +567,13 @@ function loadAndRender() {
             initHiddenAdmin();
         }
         
+        // Show splash screen after HTML is rendered and golf icon exists
+        setTimeout(function() {
+            if (typeof SplashScreen !== 'undefined' && SplashScreen.show) {
+                SplashScreen.show();
+            }
+        }, 200);
+        
     }).catch(function(e) {
         console.warn(e);
         document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
@@ -583,15 +590,6 @@ function escapeHtml(str) {
     });
 }
 
-// Show splash screen on page load - using load event with delay
-window.addEventListener('load', function() {
-    setTimeout(function() {
-        if (typeof SplashScreen !== 'undefined' && SplashScreen.show) {
-            SplashScreen.show();
-        }
-    }, 100);
-});
-
 SessionManager.initSession("index.html", "index.html", function(session) {
     console.log("Session initialized:", session);
     currentSession = session;
@@ -604,12 +602,12 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 
 <!--
 FILE: index.html
-VERSION: 3.02
+VERSION: 3.03
 KEY CHANGES:
-   - FIXED: Splash screen timing - changed from DOMContentLoaded to load event
-   - Added small delay to ensure golf icon is rendered
-   - Splash now appears correctly on page load
-   - All other functionality identical to v3.01
+   - FIXED: Splash screen now triggers after HTML is rendered in loadAndRender()
+   - Removed window load event listener (was too early)
+   - Splash shows after golf icon is in the DOM
+   - All other functionality identical to v3.02
 DEPENDS ON: js/session.js, js/index-hidden.js, js/splash.js
 STATUS: Ready for deployment
 -->
