@@ -1,12 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
-   - ADDED: Store per-hole match results array (16 values) in results.matchResults
-   - Cascade now updates matchResults for all affected holes when editing previous holes
-   - matchResults stored as array of 16 numbers per hole position
-   - Enables viewers to read match bubbles directly without recalculation
-   - All other functionality identical to v3.00
+   - ADDED: Live score ticker (stock market style) showing each player's score relative to par
+   - Ticker appears below status bubble, above course name
+   - Updates automatically after each hole save
+   - Green for all scores (golf etiquette: under par is good)
+   - Black background (#111) with white player names, green scores
+   - Scrolling animation with hover-to-pause
+   - Professional dark theme matching app design
+   - All other functionality identical to v3.01
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -72,6 +75,37 @@ STATUS: Ready for integration
             border-radius: 20px;
             font-size: 0.7rem;
             margin-bottom: 16px;
+            color: #4caf50;
+        }
+        
+        /* Live Ticker Styles */
+        .ticker-container {
+            width: 100%;
+            overflow: hidden;
+            background: #111111;
+            border-radius: 0;
+            margin-bottom: 12px;
+            white-space: nowrap;
+            border-top: 1px solid #2a2a2a;
+            border-bottom: 1px solid #2a2a2a;
+            padding: 8px 0;
+        }
+        .ticker-content {
+            display: inline-block;
+            white-space: nowrap;
+            font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+            font-size: 0.8rem;
+            letter-spacing: 0.3px;
+            font-weight: 400;
+            animation: tickerScroll 45s linear infinite;
+            padding-right: 100%;
+        }
+        .ticker-container:hover .ticker-content {
+            animation-play-state: paused;
+        }
+        @keyframes tickerScroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
         }
         
         .hole-header { text-align: center; margin: 16px 0; }
@@ -305,6 +339,12 @@ STATUS: Ready for integration
 
 <div class="container">
     <div class="status-bubble" id="statusBubble">LIVE</div>
+    
+    <!-- Live Ticker -->
+    <div class="ticker-container" id="tickerContainer">
+        <div class="ticker-content" id="tickerContent">Loading scores...</div>
+    </div>
+    
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
     <div id="holeHeader" class="hole-header"></div>
@@ -334,7 +374,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.01</div>
+<div class="version-tag">v3.02</div>
 
 <script>
 // ============================================================
@@ -380,6 +420,9 @@ var saveInProgress = false;
 
 var activeWaitModal = null;
 var activeCompleteModal = null;
+
+// Ticker update function
+var updateTicker = null;
 
 // ============================================================
 // Helper Functions
@@ -461,15 +504,15 @@ function getAllOpponents(player) {
     return opponents;
 }
 
-// NEW: Get match value from stored results (no recalculation)
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
     if (!results || !results.matchResults) return 0;
     
     var position = getHolePosition(holeNumber);
+    var matchResultsArray = results.matchResults[position];
+    if (!matchResultsArray) return 0;
     
-    // Find match index
     var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
@@ -485,9 +528,6 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     if (aIndex === -1 || bIndex === -1) return 0;
     
     var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
-    var matchResultsArray = results.matchResults[position];
-    
-    if (!matchResultsArray) return 0;
     return matchResultsArray[matchIndex] || 0;
 }
 
@@ -521,6 +561,61 @@ function getBubbleValue(player, opponent) {
 function updateTRDisplay() {
     var tr = GameLoader.getTRForHole(currentHole);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+}
+
+// ============================================================
+// Ticker Functions
+// ============================================================
+
+function calculatePlayerScoreRelativeToPar(player) {
+    var cache = GameLoader.getLocalCache();
+    var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+    var totalGross = 0;
+    var totalPar = 0;
+    
+    for (var h = 1; h <= 18; h++) {
+        var par = coursePar[h - 1];
+        totalPar += par;
+        
+        var holeData = GameData.parseHoleData(flightDataStr, h);
+        if (holeData && holeData.saved) {
+            var score = 0;
+            var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+            var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            if (player.team === 'A') {
+                if (teamA[0] && teamA[0].name === player.name) score = holeData.scores.a1;
+                else if (teamA[1] && teamA[1].name === player.name) score = holeData.scores.a2;
+            } else {
+                if (teamB[0] && teamB[0].name === player.name) score = holeData.scores.b1;
+                else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
+            }
+            totalGross += score;
+        } else {
+            // If hole not saved yet, use par for projection
+            totalGross += par;
+        }
+    }
+    
+    return totalGross - totalPar;
+}
+
+function updateTickerDisplay() {
+    if (!allPlayers || allPlayers.length === 0) return;
+    
+    var tickerContent = document.getElementById("tickerContent");
+    if (!tickerContent) return;
+    
+    var parts = [];
+    for (var i = 0; i < allPlayers.length; i++) {
+        var player = allPlayers[i];
+        var score = calculatePlayerScoreRelativeToPar(player);
+        var scoreDisplay = score > 0 ? '+' + score : (score < 0 ? score.toString() : 'E');
+        parts.push('<span style="color:#ffffff; font-weight:500;">' + player.label + '</span> <span style="color:#4caf50;">' + scoreDisplay + '</span>');
+    }
+    
+    tickerContent.innerHTML = parts.join('   <span style="color:#555555;">•</span>   ');
 }
 
 // ============================================================
@@ -604,6 +699,9 @@ function performSave() {
                     await saveResultsToFirestore(holeToUpdate);
                 }
                 
+                // Update ticker after save
+                updateTickerDisplay();
+                
                 resolve(true);
             } else {
                 reject(new Error("Save failed"));
@@ -653,7 +751,7 @@ function retrySave() {
 function initializeEmptyResults() {
     return {
         version: 1,
-        matchResults: new Array(18),  // Will store 16-value arrays per hole
+        matchResults: new Array(18),
         game1: {
             matches: {},
             pointsA: new Array(18).fill(8),
@@ -686,12 +784,10 @@ function initializeEmptyResults() {
 function calculateMatchResultsArray(holeNumber) {
     var cache = GameLoader.getLocalCache();
     
-    // Calculate cross-flight matches up to this hole
     var matchResults = GameMatch.calculateCrossFlight(
         cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar
     );
     
-    // Convert to array of 16 values
     var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
@@ -700,7 +796,6 @@ function calculateMatchResultsArray(holeNumber) {
         for (var b = 0; b < teamBPlayers.length; b++) {
             var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
             var value = matchResults[key] || 0;
-            // Clamp to reasonable range for display
             if (value > 15) value = 15;
             if (value < -10) value = -10;
             resultArray.push(value);
@@ -727,7 +822,6 @@ function calculateHoleResults(holeNumber) {
     var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole);
     var strokeLeader = strokeResults[position];
     
-    // Calculate match results for this hole
     var matchResultsArray = calculateMatchResultsArray(holeNumber);
     
     var tempMatchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
@@ -764,7 +858,6 @@ function calculateHoleResults(holeNumber) {
     var trAGreen = (trA > trB);
     var trBGreen = (trB > trA);
     
-    // Get T-1, T-2, Strk leaders for this hole
     var t1Leader = (flight1Total > 0) ? "A" : (flight1Total < 0) ? "B" : "AS";
     var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
@@ -798,27 +891,16 @@ async function saveResultsToFirestore(holeNumber) {
     var position = resultsData.position;
     var updatePayload = {};
     
-    // Store match results array
     updatePayload[`results.matchResults.${position}`] = resultsData.matchResults;
-    
-    // Store game1 points
     updatePayload[`results.game1.pointsA.${position}`] = resultsData.game1PointsA;
     updatePayload[`results.game1.pointsB.${position}`] = resultsData.game1PointsB;
-    
-    // Store game2 points
     updatePayload[`results.game2.pointsA.${position}`] = resultsData.game2PointsA;
     updatePayload[`results.game2.pointsB.${position}`] = resultsData.game2PointsB;
-    
-    // Store game2 flight leaders
     updatePayload[`results.game2.flight1.leader.${position}`] = resultsData.t1Leader;
     updatePayload[`results.game2.flight2.leader.${position}`] = resultsData.t2Leader;
-    
-    // Store game3 leader
     updatePayload[`results.game3.leader.${position}`] = resultsData.strkLeader;
     updatePayload[`results.game3.pointsA.${position}`] = resultsData.game3PointsA;
     updatePayload[`results.game3.pointsB.${position}`] = resultsData.game3PointsB;
-    
-    // Store TR
     updatePayload[`results.tr.teamA.${position}`] = resultsData.trA;
     updatePayload[`results.tr.teamB.${position}`] = resultsData.trB;
     updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
@@ -831,9 +913,8 @@ async function saveResultsToFirestore(holeNumber) {
     
     try {
         await db.collection("scheduledGames").doc(gameId).update(updatePayload);
-        console.log('Results saved for hole', holeNumber, 'position', position, 'matchResults length:', resultsData.matchResults.length);
+        console.log('Results saved for hole', holeNumber, 'position', position);
         
-        // Update local cache
         var cache = GameLoader.getLocalCache();
         if (!cache.results) {
             cache.results = initializeEmptyResults();
@@ -1147,9 +1228,8 @@ function buildMatchResultsForHandicap() {
     var cache = GameLoader.getLocalCache();
     var playerPoints = {};
     
-    // Use stored match results from cache.results.matchResults
     if (cache.results && cache.results.matchResults) {
-        var matchResultsArray = cache.results.matchResults[17]; // Final hole results
+        var matchResultsArray = cache.results.matchResults[17];
         if (matchResultsArray) {
             var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
             var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -1238,6 +1318,7 @@ function renderAll() {
     );
     
     updateNavButtons();
+    updateTickerDisplay();
 }
 
 // ============================================================
@@ -1279,6 +1360,8 @@ function onCacheUpdate(cache) {
     }
     allPlayers = cache.players;
     startingHole = cache.startingHole;
+    
+    updateTickerDisplay();
     
     if (cache.signatures.f1 && cache.signatures.f2 && !isGameCompleteFlag && !celebrationTriggered) {
         console.log("Both signatures detected - showing Game Complete screen");
@@ -1393,6 +1476,7 @@ async function init() {
             }
         }
         
+        updateTickerDisplay();
         renderAll();
         setSaveButtonIdle();
         
@@ -1447,13 +1531,16 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
-   - ADDED: Store per-hole match results array (16 values) in results.matchResults
-   - Cascade now updates matchResults for all affected holes when editing previous holes
-   - matchResults stored as array of 16 numbers per hole position
-   - Enables viewers to read match bubbles directly without recalculation
-   - All other functionality identical to v3.00
+   - ADDED: Live score ticker (stock market style) showing each player's score relative to par
+   - Ticker appears below status bubble, above course name
+   - Updates automatically after each hole save
+   - Green for all scores (golf etiquette: under par is good)
+   - Black background (#111) with white player names, green scores
+   - Scrolling animation with hover-to-pause
+   - Professional dark theme matching app design
+   - All other functionality identical to v3.01
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
