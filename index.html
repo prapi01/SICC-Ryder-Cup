@@ -1,14 +1,12 @@
 <!--
 FILE: index.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - REMOVED: Old preview session modal (moved to preview-game.html)
-   - SIMPLIFIED: handlePreviewGame() now just navigates to preview-game.html with gameId
-   - No modal, no session list, no preview sandbox logic in index
-   - All preview logic moved to preview-game.html
-   - Cleaner, simpler index as pure navigation launchpad
-   - All other functionality identical to v2.30
-DEPENDS ON: js/session.js, js/index-hidden.js
+   - ADDED: Splash screen with golf icon drop animation (js/splash.js)
+   - Splash triggers on page load, drops icon from top with thump effect
+   - Can modify splash independently without touching index.html
+   - All other functionality identical to v3.00
+DEPENDS ON: js/session.js, js/index-hidden.js, js/splash.js
 STATUS: Ready for deployment
 -->
 
@@ -37,6 +35,8 @@ STATUS: Ready for deployment
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     <script src="js/index-hidden.js"></script>
+    <script src="js/splash.js"></script>
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -169,13 +169,13 @@ STATUS: Ready for deployment
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.00</div>
+<div class="version-tag">v3.01</div>
 
 <script>
-// FILE: index.html - VERSION 3.00
-// CHANGES: Removed preview modal logic (moved to preview-game.html)
+// FILE: index.html - VERSION 3.01
+// CHANGES: Added splash screen integration
 
-var APP_VERSION = "3.00";
+var APP_VERSION = "3.01";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -389,7 +389,6 @@ function handleTodayGame() {
         var gameStatus = getGameStatus(gameDate);
         
         if (gameStatus === "today") {
-            // Display the game ID before proceeding
             if (typeof displayGameId === 'function') {
                 displayGameId(gameId);
             }
@@ -422,12 +421,10 @@ function handlePreviewGame() {
         var gameId = nextGame.id;
         var gameDate = nextGame.date;
         
-        // Display the game ID before proceeding
         if (typeof displayGameId === 'function') {
             displayGameId(gameId);
         }
         
-        // Navigate to preview-game.html with gameId parameter
         window.location.href = 'preview-game.html?gameId=' + gameId + '&date=' + gameDate;
     }).catch(function(e) {
         console.error("Error loading games:", e);
@@ -483,7 +480,6 @@ function loadAndRender() {
         
         var nextGame = findNextGame(games);
         
-        // Get today's game ID for display
         var today = getTodayString();
         var todayGame = games.find(function(g) { return g.date === today; });
         if (todayGame && typeof displayGameId === 'function') {
@@ -550,7 +546,6 @@ function loadAndRender() {
         
         document.getElementById("app").innerHTML = html;
         
-        // Add double-click handler for golf icon (hidden admin)
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
             golfIcon.addEventListener('dblclick', function(e) {
@@ -568,7 +563,6 @@ function loadAndRender() {
         document.getElementById("previousGamesBtn").addEventListener("click", goToPreviousGames);
         document.getElementById("adminBtn").addEventListener("click", goToAdmin);
         
-        // Initialize hidden admin features
         if (typeof initHiddenAdmin === 'function') {
             initHiddenAdmin();
         }
@@ -589,6 +583,13 @@ function escapeHtml(str) {
     });
 }
 
+// Show splash screen on page load
+window.addEventListener('DOMContentLoaded', function() {
+    if (typeof SplashScreen !== 'undefined' && SplashScreen.show) {
+        SplashScreen.show();
+    }
+});
+
 SessionManager.initSession("index.html", "index.html", function(session) {
     console.log("Session initialized:", session);
     currentSession = session;
@@ -601,14 +602,12 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 
 <!--
 FILE: index.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - REMOVED: Old preview session modal (moved to preview-game.html)
-   - SIMPLIFIED: handlePreviewGame() now just navigates to preview-game.html with gameId
-   - No modal, no session list, no preview sandbox logic in index
-   - All preview logic moved to preview-game.html
-   - Cleaner, simpler index as pure navigation launchpad
-   - All other functionality identical to v2.30
-DEPENDS ON: js/session.js, js/index-hidden.js
+   - ADDED: Splash screen with golf icon drop animation (js/splash.js)
+   - Splash triggers on page load, drops icon from top with thump effect
+   - Can modify splash independently without touching index.html
+   - All other functionality identical to v3.00
+DEPENDS ON: js/session.js, js/index-hidden.js, js/splash.js
 STATUS: Ready for deployment
 -->
