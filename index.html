@@ -1,11 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
-   - ADDED: Splash screen with golf icon drop animation (js/splash.js)
-   - Splash triggers on page load, drops icon from top with thump effect
-   - Can modify splash independently without touching index.html
-   - All other functionality identical to v3.00
+   - FIXED: Splash screen timing - changed from DOMContentLoaded to load event
+   - Added small delay to ensure golf icon is rendered
+   - Splash now appears correctly on page load
+   - All other functionality identical to v3.01
 DEPENDS ON: js/session.js, js/index-hidden.js, js/splash.js
 STATUS: Ready for deployment
 -->
@@ -169,13 +169,13 @@ STATUS: Ready for deployment
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.01</div>
+<div class="version-tag">v3.02</div>
 
 <script>
-// FILE: index.html - VERSION 3.01
-// CHANGES: Added splash screen integration
+// FILE: index.html - VERSION 3.02
+// CHANGES: Fixed splash screen timing
 
-var APP_VERSION = "3.01";
+var APP_VERSION = "3.02";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -583,11 +583,13 @@ function escapeHtml(str) {
     });
 }
 
-// Show splash screen on page load
-window.addEventListener('DOMContentLoaded', function() {
-    if (typeof SplashScreen !== 'undefined' && SplashScreen.show) {
-        SplashScreen.show();
-    }
+// Show splash screen on page load - using load event with delay
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        if (typeof SplashScreen !== 'undefined' && SplashScreen.show) {
+            SplashScreen.show();
+        }
+    }, 100);
 });
 
 SessionManager.initSession("index.html", "index.html", function(session) {
@@ -602,12 +604,12 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 
 <!--
 FILE: index.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
-   - ADDED: Splash screen with golf icon drop animation (js/splash.js)
-   - Splash triggers on page load, drops icon from top with thump effect
-   - Can modify splash independently without touching index.html
-   - All other functionality identical to v3.00
+   - FIXED: Splash screen timing - changed from DOMContentLoaded to load event
+   - Added small delay to ensure golf icon is rendered
+   - Splash now appears correctly on page load
+   - All other functionality identical to v3.01
 DEPENDS ON: js/session.js, js/index-hidden.js, js/splash.js
 STATUS: Ready for deployment
 -->
