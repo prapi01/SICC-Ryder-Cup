@@ -1,12 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.05
+VERSION: 2.06
 KEY CHANGES:
-   - ADDED: applyTightLayout() - injects CSS for tighter phone layout
-   - ADDED: addFlightIndicator(flightNumber) - adds small flight bubble to first player card
-   - ADDED: removeFlightIndicator() - removes flight bubble when flight changes
-   - ADDED: updateLIVEBubblePosition() - centers LIVE bubble at top of screen
-   - All existing UI functions unchanged (renderScorecard, renderPlayerCards, updateTR, etc.)
+   - FIXED: TR display now shows both teams GREEN on tie (9.5 - 9.5)
+   - Added isTie check to override color logic
+   - All other UI functions unchanged
+   - applyTightLayout() - injects CSS for tighter phone layout
+   - addFlightIndicator() - adds small flight bubble to first player card
    - Single source of truth for all UI layout
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
@@ -15,7 +15,7 @@ STATUS: Ready for integration
 var GameUI = (function() {
     
     // ============================================================
-    // Existing Functions (unchanged from v2.04)
+    // Existing Functions (unchanged from v2.05 except updateTR)
     // ============================================================
     
     // Track if tight layout has been applied
@@ -23,7 +23,7 @@ var GameUI = (function() {
     var currentFlightIndicator = null;
     
     // ============================================================
-    // Scorecard Rendering (IDENTICAL to v2.04)
+    // Scorecard Rendering
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
@@ -214,7 +214,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Player Cards with Bubbles (IDENTICAL to v2.04)
+    // Player Cards with Bubbles
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -289,6 +289,7 @@ var GameUI = (function() {
     
     // ============================================================
     // TR (Title Result) Display - Billboard Design
+    // FIXED: On tie (9.5 - 9.5), both teams show GREEN
     // ============================================================
     
     function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
@@ -297,8 +298,11 @@ var GameUI = (function() {
         
         var teamADisplay = teamAPoints % 1 === 0 ? teamAPoints : teamAPoints.toFixed(1);
         var teamBDisplay = teamBPoints % 1 === 0 ? teamBPoints : teamBPoints.toFixed(1);
-        var teamAColor = teamAGreen ? '#4caf50' : '#ff6b6b';
-        var teamBColor = teamBGreen ? '#4caf50' : '#ff6b6b';
+        
+        // On tie, both should be green regardless of teamAGreen/teamBGreen values
+        var isTie = (teamAPoints === teamBPoints);
+        var teamAColor = (isTie || teamAGreen) ? '#4caf50' : '#ff6b6b';
+        var teamBColor = (isTie || teamBGreen) ? '#4caf50' : '#ff6b6b';
         var separatorColor = '#888';
         
         var html = `
@@ -348,7 +352,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Display Mode Management (IDENTICAL to v2.04)
+    // Display Mode Management
     // ============================================================
     
     var currentDisplayMode = "play";
@@ -402,7 +406,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // NEW: Tight Layout Functions for Phone
+    // Tight Layout Functions for Phone
     // ============================================================
     
     function applyTightLayout() {
@@ -542,7 +546,7 @@ var GameUI = (function() {
         updateToggleButtons: updateToggleButtons,
         getDisplayHoles: getDisplayHoles,
         
-        // NEW: Tight layout functions
+        // Tight layout functions
         applyTightLayout: applyTightLayout,
         addFlightIndicator: addFlightIndicator,
         removeFlightIndicator: removeFlightIndicator,
@@ -553,13 +557,13 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.05
+VERSION: 2.06
 KEY CHANGES:
-   - ADDED: applyTightLayout() - injects CSS for tighter phone layout
-   - ADDED: addFlightIndicator(flightNumber) - adds small flight bubble to first player card
-   - ADDED: removeFlightIndicator() - removes flight bubble when flight changes
-   - ADDED: updateFlightIndicator() - updates flight number on indicator
-   - All existing UI functions unchanged (renderScorecard, renderPlayerCards, updateTR, etc.)
+   - FIXED: TR display now shows both teams GREEN on tie (9.5 - 9.5)
+   - Added isTie check to override color logic
+   - All other UI functions unchanged
+   - applyTightLayout() - injects CSS for tighter phone layout
+   - addFlightIndicator() - adds small flight bubble to first player card
    - Single source of truth for all UI layout
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
