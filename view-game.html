@@ -1,14 +1,15 @@
 <!--
 FILE: view-game.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
-   - FIXED: Now reads match bubbles from stored results.matchResults (no recalculation)
-   - Uses getMatchValueFromStoredResults() instead of GameLoader.getMatchValue()
-   - Eliminates all match bubble recalculation
-   - TR, T-1, T-2, Strk already from stored results
-   - Faster, more reliable, no calculation bugs
-   - All other functionality identical to v3.00
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js
+   - ADDED: Ticker line (same as real-game)
+   - ADDED: Tight layout via GameUI.applyTightLayout()
+   - ADDED: Consistent match index using GameData.getMatchIndex()
+   - MOVED: VIEWER bubble to top center
+   - FIXED: Version tag cleaned (no "VIEWER" text)
+   - FIXED: Toggle buttons have round edges, dark background
+   - All other functionality identical to v3.01
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js
 STATUS: Ready for integration
 -->
 
@@ -24,6 +25,7 @@ STATUS: Ready for integration
     <script src="js/session.js"></script>
     <script src="js/game-data.js"></script>
     <script src="js/game-ui.js"></script>
+    <script src="js/ticker.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -35,7 +37,7 @@ STATUS: Ready for integration
             top: 8px;
             right: 8px;
             font-size: 0.65rem;
-            color: #ffaa44;
+            color: #4caf50;
             background: rgba(0,0,0,0.6);
             padding: 2px 10px;
             border-radius: 16px;
@@ -48,7 +50,7 @@ STATUS: Ready for integration
             top: 8px;
             left: 8px;
             font-size: 0.55rem;
-            color: #ffaa44;
+            color: #4caf50;
             background: rgba(0,0,0,0.4);
             padding: 2px 8px;
             border-radius: 12px;
@@ -57,6 +59,7 @@ STATUS: Ready for integration
             opacity: 0.4;
         }
         
+        /* Status bubble - will be repositioned by GameUI.applyTightLayout() */
         .status-bubble {
             background: rgba(255,170,68,0.3);
             border: 1px solid #ffaa44;
@@ -68,7 +71,7 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
-        .hole-header { text-align: center; margin: 16px 0; }
+        .hole-header { text-align: center; }
         .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
         .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
         
@@ -120,26 +123,46 @@ STATUS: Ready for integration
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
+            gap: 8px;
             flex-wrap: wrap;
+        }
+        .scorecard-left-group {
+            display: flex;
+            align-items: center;
             gap: 10px;
         }
-        .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
-        .view-toggle { display: flex; gap: 4px; }
-        .toggle-btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 20px;
-            padding: 4px 12px;
-            font-size: 0.65rem;
-            cursor: pointer;
-            color: #888;
-        }
-        .toggle-btn.active {
-            background: #1a3a1a;
-            border-color: #4caf50;
+        .scorecard-title {
+            font-size: 0.9rem;
+            font-weight: 600;
             color: #4caf50;
+            border-left: 2px solid #4caf50;
+            padding-left: 10px;
         }
-        
+        .pn-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            border-radius: 30px;
+            padding: 6px 12px;
+            min-width: 45px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+        }
+        .flight-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            border-radius: 30px;
+            padding: 6px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-width: 90px;
+            display: inline-block;
+            text-align: center;
+        }
         .nav-group {
             display: flex;
             align-items: center;
@@ -211,6 +234,12 @@ STATUS: Ready for integration
 
 <div class="container">
     <div class="status-bubble" id="statusBubble">VIEWER</div>
+    
+    <!-- Live Ticker -->
+    <div class="ticker-container" id="tickerContainer">
+        <div class="ticker-content" id="tickerContent">Loading scores...</div>
+    </div>
+    
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
     <div id="holeHeader" class="hole-header"></div>
@@ -239,7 +268,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.01 VIEWER</div>
+<div class="version-tag">v3.02</div>
 
 <script>
 // ============================================================
@@ -261,7 +290,7 @@ if (!firebase.apps.length) {
 var db = firebase.firestore();
 
 // ============================================================
-// Game State
+// Global State
 // ============================================================
 
 var gameId = null;
@@ -280,6 +309,55 @@ var f2DataString = "";
 var resultsCache = null;
 
 var unsubscribe = null;
+
+// ============================================================
+// Ticker Functions
+// ============================================================
+
+function calculatePlayerScoreRelativeToPar(player) {
+    var flightDataStr = player.flight === 1 ? f1DataString : f2DataString;
+    var totalGross = 0;
+    var totalPar = 0;
+    
+    for (var h = 1; h <= 18; h++) {
+        var par = coursePar[h - 1];
+        totalPar += par;
+        
+        var holeData = GameData.parseHoleData(flightDataStr, h);
+        if (holeData && holeData.saved) {
+            var score = 0;
+            var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+            var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            if (player.team === 'A') {
+                if (teamA[0] && teamA[0].name === player.name) score = holeData.scores.a1;
+                else if (teamA[1] && teamA[1].name === player.name) score = holeData.scores.a2;
+            } else {
+                if (teamB[0] && teamB[0].name === player.name) score = holeData.scores.b1;
+                else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
+            }
+            totalGross += score;
+        } else {
+            totalGross += par;
+        }
+    }
+    
+    return totalGross - totalPar;
+}
+
+function getPlayerScoreForTicker(player) {
+    return calculatePlayerScoreRelativeToPar(player);
+}
+
+function initTicker() {
+    if (typeof Ticker !== 'undefined') {
+        Ticker.init('tickerContainer', 'tickerContent', getPlayerScoreForTicker);
+        if (allPlayers && allPlayers.length) {
+            Ticker.setPlayers(allPlayers);
+        }
+    }
+}
 
 // ============================================================
 // Helper Functions
@@ -367,7 +445,7 @@ function isHoleSaved(flight, hole) {
     return holeData && holeData.saved;
 }
 
-// NEW: Get match value from stored results (no recalculation)
+// FIXED: Uses GameData.getMatchIndex() for consistent match indexing
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     if (!resultsCache || !resultsCache.matchResults) return 0;
     
@@ -375,29 +453,16 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var matchResultsArray = resultsCache.matchResults[position];
     if (!matchResultsArray) return 0;
     
-    // Find match index
-    var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    // Use consistent match index from GameData
+    var matchIndex = GameData.getMatchIndex(player.name, opponent.name, allPlayers);
+    if (matchIndex === -1) return 0;
     
-    var aIndex = -1;
-    var bIndex = -1;
-    for (var i = 0; i < teamAPlayers.length; i++) {
-        if (teamAPlayers[i].name === player.name) aIndex = i;
-    }
-    for (var i = 0; i < teamBPlayers.length; i++) {
-        if (teamBPlayers[i].name === opponent.name) bIndex = i;
-    }
-    
-    if (aIndex === -1 || bIndex === -1) return 0;
-    
-    var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
     return matchResultsArray[matchIndex] || 0;
 }
 
 function getBubbleClass(player, opponent) {
     var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
     
-    // For intra-flight, check if hole is saved
     if (player.flight === opponent.flight) {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         if (!isHoleSavedForFlight) return 'bubble-grey';
@@ -406,7 +471,6 @@ function getBubbleClass(player, opponent) {
         return 'bubble-green';
     }
     
-    // For cross-flight, check sync status using results.computedUpToHole
     var computedUpTo = resultsCache?.computedUpToHole || 0;
     var isSynced = (computedUpTo >= currentHole);
     
@@ -530,7 +594,6 @@ function renderAll() {
     var tr = getTRForHole(currentHole);
     
     GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-    GameUI.updateFlightTab("flightTab", selectedFlight, false);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(selectedFlight);
@@ -560,7 +623,6 @@ function renderAll() {
     
     var holes = getDisplayHoles();
     window.savedHoles = { 1: [], 2: [] };
-    // Mark holes as saved based on actual saved status
     for (var h = 1; h <= 18; h++) {
         if (isHoleSaved(1, h)) window.savedHoles[1].push(h);
         if (isHoleSaved(2, h)) window.savedHoles[2].push(h);
@@ -580,6 +642,11 @@ function renderAll() {
     );
     
     updateNavButtons();
+    
+    // Update ticker
+    if (typeof Ticker !== 'undefined') {
+        Ticker.refresh();
+    }
 }
 
 // ============================================================
@@ -605,6 +672,12 @@ function startGameListener() {
             resultsCache = data.results || null;
             
             document.getElementById("courseName").innerHTML = courseName;
+            
+            // Update ticker players
+            if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
+                Ticker.setPlayers(allPlayers);
+                Ticker.refresh();
+            }
             
             // Find first unsaved hole to set as current
             var playOrder = getPlayOrder();
@@ -651,6 +724,14 @@ async function init() {
         return;
     }
     
+    // Apply tight layout for phone
+    if (typeof GameUI !== 'undefined') {
+        GameUI.applyTightLayout();
+    }
+    
+    // Initialize ticker
+    initTicker();
+    
     startGameListener();
     
     document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
@@ -673,14 +754,15 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.01
+VERSION: 3.02
 KEY CHANGES:
-   - FIXED: Now reads match bubbles from stored results.matchResults (no recalculation)
-   - Uses getMatchValueFromStoredResults() instead of GameLoader.getMatchValue()
-   - Eliminates all match bubble recalculation
-   - TR, T-1, T-2, Strk already from stored results
-   - Faster, more reliable, no calculation bugs
-   - All other functionality identical to v3.00
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js
+   - ADDED: Ticker line (same as real-game)
+   - ADDED: Tight layout via GameUI.applyTightLayout()
+   - ADDED: Consistent match index using GameData.getMatchIndex()
+   - MOVED: VIEWER bubble to top center
+   - FIXED: Version tag cleaned (no "VIEWER" text)
+   - FIXED: Toggle buttons have round edges, dark background
+   - All other functionality identical to v3.01
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js
 STATUS: Ready for integration
 -->
