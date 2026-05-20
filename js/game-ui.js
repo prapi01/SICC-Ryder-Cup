@@ -1,13 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.06
+VERSION: 2.08
 KEY CHANGES:
-   - FIXED: TR display now shows both teams GREEN on tie (9.5 - 9.5)
-   - Added isTie check to override color logic
+   - ADDED: applyButtonStyles() - injects consistent button styles for all pages
+   - Button styles now centralized (P/N toggle, Flight toggle, navigation buttons)
+   - Removed button style overrides from tight layout
+   - Single source of truth for all UI components
    - All other UI functions unchanged
-   - applyTightLayout() - injects CSS for tighter phone layout
-   - addFlightIndicator() - adds small flight bubble to first player card
-   - Single source of truth for all UI layout
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -15,11 +14,12 @@ STATUS: Ready for integration
 var GameUI = (function() {
     
     // ============================================================
-    // Existing Functions (unchanged from v2.05 except updateTR)
+    // Existing Functions
     // ============================================================
     
-    // Track if tight layout has been applied
+    // Track if styles have been applied
     var tightLayoutApplied = false;
+    var buttonStylesApplied = false;
     var currentFlightIndicator = null;
     
     // ============================================================
@@ -52,30 +52,30 @@ var GameUI = (function() {
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
-        html += '<tr><td style="font-weight:700;">Par</td>';
+        html += '<tr><td style="font-weight:700;">Par<\/td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
             totalPar += par;
-            html += '<td>' + par + '</td>';
+            html += '<td>' + par + '<\/td>';
         }
-        html += '<td>' + totalPar + '</td></tr>';
+        html += '<td>' + totalPar + '<\/td><\/tr>';
         
         // SI row
-        html += '<tr><td style="font-weight:700;">SI</td>';
+        html += '<tr><td style="font-weight:700;">SI<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
-            html += '<td>' + si + '</td>';
+            html += '<td>' + si + '<\/td>';
         }
-        html += '<td>-</td></tr>';
+        html += '<td>-<\/td><\/tr>';
         
         // GREEN LINE under SI row (separator)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -83,16 +83,16 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
         // Green line after Flight 1 (before T-1)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-1 row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var holeNum = holes[i];
@@ -118,17 +118,17 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
         // Green line after T-1 (before Flight 2)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -136,16 +136,16 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
         // GREEN LINE AFTER FLIGHT 2 (BEFORE T-2)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-2 row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -171,15 +171,15 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
         // Green line after T-2 (before Strk)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Strk row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -205,9 +205,9 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
         html += '</tbody></table>';
         container.innerHTML = html;
@@ -289,7 +289,6 @@ var GameUI = (function() {
     
     // ============================================================
     // TR (Title Result) Display - Billboard Design
-    // FIXED: On tie (9.5 - 9.5), both teams show GREEN
     // ============================================================
     
     function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
@@ -299,7 +298,6 @@ var GameUI = (function() {
         var teamADisplay = teamAPoints % 1 === 0 ? teamAPoints : teamAPoints.toFixed(1);
         var teamBDisplay = teamBPoints % 1 === 0 ? teamBPoints : teamBPoints.toFixed(1);
         
-        // On tie, both should be green regardless of teamAGreen/teamBGreen values
         var isTie = (teamAPoints === teamBPoints);
         var teamAColor = (isTie || teamAGreen) ? '#4caf50' : '#ff6b6b';
         var teamBColor = (isTie || teamBGreen) ? '#4caf50' : '#ff6b6b';
@@ -406,11 +404,127 @@ var GameUI = (function() {
     }
     
     // ============================================================
+    // Button Styles - Single Source of Truth
+    // ============================================================
+    
+    function applyButtonStyles() {
+        if (buttonStylesApplied) return;
+        
+        var style = document.createElement('style');
+        style.id = 'gameui-button-styles';
+        style.textContent = `
+            /* P/N Toggle Button */
+            .pn-toggle {
+                background: #1a3a1a !important;
+                border: 1px solid #4caf50 !important;
+                color: #4caf50 !important;
+                border-radius: 30px !important;
+                padding: 6px 12px !important;
+                min-width: 45px !important;
+                font-size: 0.9rem !important;
+                font-weight: 700 !important;
+                cursor: pointer !important;
+                text-align: center !important;
+            }
+            
+            /* Flight Toggle Button */
+            .flight-toggle {
+                background: #1a3a1a !important;
+                border: 1px solid #4caf50 !important;
+                color: #4caf50 !important;
+                border-radius: 30px !important;
+                padding: 6px 16px !important;
+                font-size: 0.8rem !important;
+                font-weight: 600 !important;
+                cursor: pointer !important;
+                min-width: 90px !important;
+                display: inline-block !important;
+                text-align: center !important;
+            }
+            
+            /* Play Order / Natural Order Toggle Buttons */
+            .toggle-btn {
+                background: #1a1a1a !important;
+                border: 1px solid #333 !important;
+                color: #888 !important;
+                border-radius: 30px !important;
+                padding: 4px 12px !important;
+                font-size: 0.65rem !important;
+                cursor: pointer !important;
+            }
+            .toggle-btn.active {
+                background: #1a3a1a !important;
+                border-color: #4caf50 !important;
+                color: #4caf50 !important;
+            }
+            
+            /* Navigation Buttons */
+            .nav-btn {
+                background: #1a3a1a !important;
+                border: 1px solid #4caf50 !important;
+                color: #4caf50 !important;
+                width: 36px !important;
+                height: 36px !important;
+                border-radius: 20px !important;
+                font-size: 1rem !important;
+                cursor: pointer !important;
+                font-weight: bold !important;
+            }
+            .nav-btn:disabled {
+                background: #2a2a2a !important;
+                color: #555 !important;
+                border: 1px solid #444 !important;
+                cursor: not-allowed !important;
+            }
+            
+            /* Scorecard Header Layout */
+            .scorecard-header {
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                margin-bottom: 10px !important;
+                gap: 8px !important;
+                flex-wrap: wrap !important;
+            }
+            .scorecard-left-group {
+                display: flex !important;
+                align-items: center !important;
+                gap: 10px !important;
+            }
+            .scorecard-title {
+                font-size: 0.9rem !important;
+                font-weight: 600 !important;
+                color: #4caf50 !important;
+                border-left: 2px solid #4caf50 !important;
+                padding-left: 10px !important;
+            }
+            .nav-group {
+                display: flex !important;
+                align-items: center !important;
+                gap: 6px !important;
+            }
+            .hole-number-display {
+                font-size: 0.9rem !important;
+                font-weight: 600 !important;
+                color: #4caf50 !important;
+                min-width: 45px !important;
+                text-align: center !important;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        buttonStylesApplied = true;
+    }
+    
+    // ============================================================
     // Tight Layout Functions for Phone
     // ============================================================
     
     function applyTightLayout() {
         if (tightLayoutApplied) return;
+        
+        // First ensure button styles are applied
+        applyButtonStyles();
         
         var style = document.createElement('style');
         style.id = 'gameui-tight-layout';
@@ -454,7 +568,7 @@ var GameUI = (function() {
         `;
         document.head.appendChild(style);
         
-        // Move LIVE bubble to top center
+        // Move LIVE/VIEWER/PREVIEW bubble to top center
         var statusBubble = document.getElementById('statusBubble');
         if (statusBubble) {
             statusBubble.style.position = 'fixed';
@@ -470,8 +584,11 @@ var GameUI = (function() {
         tightLayoutApplied = true;
     }
     
+    // ============================================================
+    // Flight Indicator Functions
+    // ============================================================
+    
     function addFlightIndicator(flightNumber) {
-        // Remove existing indicator first
         removeFlightIndicator();
         
         var playerCards = document.getElementById('playerCards');
@@ -505,7 +622,6 @@ var GameUI = (function() {
             currentFlightIndicator.remove();
             currentFlightIndicator = null;
         }
-        // Also remove any other flight indicators that might exist
         var existing = document.querySelectorAll('.flight-indicator');
         for (var i = 0; i < existing.length; i++) {
             existing[i].remove();
@@ -535,19 +651,24 @@ var GameUI = (function() {
     // ============================================================
     
     return {
-        // Existing
+        // Core rendering
         renderScorecard: renderScorecard,
         renderPlayerCards: renderPlayerCards,
         updateTR: updateTR,
         updateHoleHeader: updateHoleHeader,
         updateFlightTab: updateFlightTab,
+        
+        // Display mode
         getDisplayMode: getDisplayMode,
         setDisplayMode: setDisplayMode,
         updateToggleButtons: updateToggleButtons,
         getDisplayHoles: getDisplayHoles,
         
-        // Tight layout functions
+        // Layout and styles
+        applyButtonStyles: applyButtonStyles,
         applyTightLayout: applyTightLayout,
+        
+        // Flight indicator
         addFlightIndicator: addFlightIndicator,
         removeFlightIndicator: removeFlightIndicator,
         updateFlightIndicator: updateFlightIndicator
@@ -557,14 +678,13 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.06
+VERSION: 2.08
 KEY CHANGES:
-   - FIXED: TR display now shows both teams GREEN on tie (9.5 - 9.5)
-   - Added isTie check to override color logic
+   - ADDED: applyButtonStyles() - injects consistent button styles for all pages
+   - Button styles now centralized (P/N toggle, Flight toggle, navigation buttons)
+   - Removed button style overrides from tight layout
+   - Single source of truth for all UI components
    - All other UI functions unchanged
-   - applyTightLayout() - injects CSS for tighter phone layout
-   - addFlightIndicator() - adds small flight bubble to first player card
-   - Single source of truth for all UI layout
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
