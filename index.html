@@ -301,12 +301,27 @@ var splashGolfIcon = document.getElementById('splashGolfIcon');
 var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
 
-// Animate splash
-setTimeout(function() {
-    // Drop animation for golf icon
-    splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
-    splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
-}, 100);
+// Check if splash already shown in this session
+if (sessionStorage.getItem('splashShown') === 'true') {
+    // Skip splash - show container immediately
+    splashOverlay.style.display = 'none';
+    var container = document.querySelector('.container');
+    if (container) {
+        container.style.display = 'block';
+    }
+    initApp();
+} else {
+    // Mark splash as shown
+    sessionStorage.setItem('splashShown', 'true');
+    
+    // Animate splash (existing code)
+    setTimeout(function() {
+        splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+        splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
+    }, 100);
+    
+    // ... rest of your splash animation code ...
+}
 
 // Fade in title and subtitle
 setTimeout(function() {
