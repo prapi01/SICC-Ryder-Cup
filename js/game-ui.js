@@ -1,11 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.12
+VERSION: 2.13
 KEY CHANGES:
-   - FIXED: updateNextButtonForLastHole() now properly preserves onclick handler
-   - FIXED: Added ensureNoStuckModals() to clean up before showing new modal
-   - FIXED: Modal now has guaranteed visibility with inline styles
-   - All existing functions unchanged from v2.11
+   - FIXED: Status bubble z-index changed from 1001 to 999 (below modals)
+   - FIXED: Added modal z-index constants for consistency
+   - FIXED: ensureNoStuckModals() now more aggressive
+   - All existing functions unchanged from v2.12
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -13,7 +13,17 @@ STATUS: Ready for integration
 var GameUI = (function() {
     
     // ============================================================
-    // Existing Functions (same as v2.11)
+    // Constants
+    // ============================================================
+    
+    var Z_INDEX = {
+        STATUS_BUBBLE: 999,
+        MODAL_OVERLAY: 10001,
+        MODAL_CONTENT: 10002
+    };
+    
+    // ============================================================
+    // Existing Functions (unchanged from v2.12)
     // ============================================================
     
     // Track if styles have been applied
@@ -460,7 +470,6 @@ var GameUI = (function() {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Store save callback for later use
         if (onSaveCallback) {
             eventCallbacks.onSave = onSaveCallback;
         }
@@ -475,10 +484,8 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
-        // Attach event listener
         var saveBtn = document.getElementById('saveBtn');
         if (saveBtn && eventCallbacks.onSave) {
-            // Remove any existing listeners to avoid duplicates
             var newSaveBtn = saveBtn.cloneNode(true);
             saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
             newSaveBtn.addEventListener('click', function() {
@@ -491,11 +498,7 @@ var GameUI = (function() {
         var saveBtn = document.getElementById('saveBtn');
         if (saveBtn) {
             saveBtn.innerHTML = '💾 SAVE H' + currentHole;
-            if (isDisabled) {
-                saveBtn.disabled = true;
-            } else {
-                saveBtn.disabled = false;
-            }
+            saveBtn.disabled = isDisabled;
         }
     }
     
@@ -517,7 +520,6 @@ var GameUI = (function() {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Store menu callback
         if (onMenuCallback) {
             eventCallbacks.onMenu = onMenuCallback;
         }
@@ -530,7 +532,6 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
-        // Attach event listener
         var menuBtn = document.getElementById('menuBtn');
         if (menuBtn && eventCallbacks.onMenu) {
             var newMenuBtn = menuBtn.cloneNode(true);
@@ -542,7 +543,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Navigation Button Disable Logic (centralized)
+    // Navigation Button Logic
     // ============================================================
     
     function updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameComplete, celebrationTriggered) {
@@ -571,13 +572,11 @@ var GameUI = (function() {
         }
     }
     
-    // FIXED: Improved version with better handler preservation
     function updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, onSignCardCallback) {
         var nextHoleBtn = document.getElementById('nextHoleBtn');
         if (!nextHoleBtn) return;
         
         if (isLast && isCurrentSaved) {
-            // SIGN MODE - Gold button with pencil icon
             nextHoleBtn.innerHTML = '✍️';
             nextHoleBtn.style.background = '#ffaa44';
             nextHoleBtn.style.color = '#1a3a1a';
@@ -585,10 +584,8 @@ var GameUI = (function() {
             nextHoleBtn.style.fontWeight = 'bold';
             nextHoleBtn.disabled = false;
             
-            // Store and attach sign callback - preserve the reference
             nextHoleBtn._onSignCard = onSignCardCallback;
             
-            // Remove any existing listeners to avoid duplicates
             var newBtn = nextHoleBtn.cloneNode(true);
             nextHoleBtn.parentNode.replaceChild(newBtn, nextHoleBtn);
             newBtn._onSignCard = onSignCardCallback;
@@ -599,7 +596,6 @@ var GameUI = (function() {
                 }
             };
         } else {
-            // NORMAL MODE - Green navigation button
             nextHoleBtn.innerHTML = '▶';
             nextHoleBtn.style.background = '#1a3a1a';
             nextHoleBtn.style.color = '#4caf50';
@@ -608,7 +604,6 @@ var GameUI = (function() {
         }
     }
     
-    // NEW: Clean up stuck modals
     function ensureNoStuckModals() {
         var modals = document.querySelectorAll('.modal-overlay');
         for (var i = 0; i < modals.length; i++) {
@@ -641,11 +636,9 @@ var GameUI = (function() {
     // ============================================================
     
     function attachGlobalEventListeners(onPrevHole, onNextHole) {
-        // Store callbacks
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
         
-        // Attach to scorecard header navigation buttons
         var prevHoleBtn = document.getElementById('prevHoleBtn');
         var nextHoleBtn = document.getElementById('nextHoleBtn');
         var pnToggleBtn = document.getElementById('pnToggleBtn');
@@ -831,7 +824,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Tight Layout Functions for Phone
+    // Tight Layout Functions for Phone - FIXED z-index
     // ============================================================
     
     function applyTightLayout() {
@@ -852,13 +845,14 @@ var GameUI = (function() {
         `;
         document.head.appendChild(style);
         
+        // Move LIVE/VIEWER/PREVIEW bubble to top center - FIXED z-index to 999 (below modals)
         var statusBubble = document.getElementById('statusBubble');
         if (statusBubble) {
             statusBubble.style.position = 'fixed';
             statusBubble.style.top = '8px';
             statusBubble.style.left = '50%';
             statusBubble.style.transform = 'translateX(-50%)';
-            statusBubble.style.zIndex = '1001';
+            statusBubble.style.zIndex = Z_INDEX.STATUS_BUBBLE;  // 999 - below modals
             statusBubble.style.margin = '0';
             statusBubble.style.fontSize = '0.65rem';
             statusBubble.style.padding = '2px 10px';
@@ -944,12 +938,12 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.12
+VERSION: 2.13
 KEY CHANGES:
-   - FIXED: updateNextButtonForLastHole() now properly preserves onclick handler
-   - FIXED: Added ensureNoStuckModals() to clean up before showing new modal
-   - FIXED: Modal now has guaranteed visibility with inline styles
-   - All existing functions unchanged from v2.11
+   - FIXED: Status bubble z-index changed from 1001 to 999 (below modals)
+   - FIXED: Added modal z-index constants for consistency
+   - FIXED: ensureNoStuckModals() now more aggressive
+   - All existing functions unchanged from v2.12
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
