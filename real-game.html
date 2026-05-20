@@ -1,13 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 3.03
+VERSION: 3.05
 KEY CHANGES:
-   - INTEGRATED: Shared ticker module (js/ticker.js)
-   - Removed embedded ticker code
-   - Ticker now uses Ticker.setPlayers() and Ticker.refresh()
-   - Continuous seamless loop (no blank gap)
-   - Live scores update after each save
-   - All other functionality identical to v3.02
+   - INTEGRATED: GameUI.applyTightLayout() for phone-optimized layout
+   - INTEGRATED: GameUI.addFlightIndicator() for small flight bubble on player card
+   - REMOVED: Course name display (handled by tight layout)
+   - REMOVED: PAR/SI line (handled by tight layout)
+   - REMOVED: Separate flight tab (replaced by bubble on player card)
+   - MOVED: LIVE bubble to top center (handled by tight layout)
+   - Flight indicator updates when toggling between Flight 1 and Flight 2
+   - All other functionality identical to v3.04
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -36,7 +38,7 @@ STATUS: Ready for integration
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
-        .container { max-width: 550px; margin: 0 auto; padding-top: 35px; }
+        .container { max-width: 550px; margin: 0 auto; }
         
         .version-tag {
             position: fixed;
@@ -66,6 +68,7 @@ STATUS: Ready for integration
             cursor: pointer;
         }
         
+        /* Status bubble styles - position will be set by GameUI.applyTightLayout() */
         .status-bubble {
             background: rgba(76,175,80,0.3);
             border: 1px solid #4caf50;
@@ -77,26 +80,14 @@ STATUS: Ready for integration
             color: #4caf50;
         }
         
-        .hole-header { text-align: center; margin: 16px 0; }
+        .hole-header { text-align: center; }
         .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
         .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
-        
-        .flight-tab {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            border-radius: 40px;
-            padding: 10px;
-            text-align: center;
-            margin: 16px 0;
-            cursor: pointer;
-        }
         
         .team-score-card {
             background: #111;
             border-radius: 16px;
-            padding: 16px;
             text-align: center;
-            margin-bottom: 20px;
         }
         
         .player-card {
@@ -314,6 +305,7 @@ STATUS: Ready for integration
         <div class="ticker-content" id="tickerContent">Loading scores...</div>
     </div>
     
+    <!-- Course name hidden by tight layout -->
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
     <div id="holeHeader" class="hole-header"></div>
@@ -343,7 +335,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.03</div>
+<div class="version-tag">v3.05</div>
 
 <script>
 // ============================================================
@@ -427,22 +419,10 @@ function calculatePlayerScoreRelativeToPar(player) {
     return totalGross - totalPar;
 }
 
-function updateTickerDisplay() {
-    if (!allPlayers || allPlayers.length === 0) return;
-    
-    // Update scores for each player via the ticker's callback
-    // The ticker will call calculatePlayerScoreRelativeToPar for each player
-    if (typeof Ticker !== 'undefined') {
-        Ticker.refresh();
-    }
-}
-
-// Ticker callback function - called by Ticker module to get each player's score
 function getPlayerScoreForTicker(player) {
     return calculatePlayerScoreRelativeToPar(player);
 }
 
-// Initialize ticker
 function initTicker() {
     if (typeof Ticker !== 'undefined') {
         Ticker.init('tickerContainer', 'tickerContent', getPlayerScoreForTicker);
@@ -1244,7 +1224,6 @@ function renderAll() {
     var tr = GameLoader.getTRForHole(currentHole);
     
     GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-    GameUI.updateFlightTab("flightTab", editableFlight, canEdit && !isGameCompleteFlag);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
@@ -1276,6 +1255,9 @@ function renderAll() {
             renderAll();
         }
     );
+    
+    // Update flight indicator on player card
+    GameUI.updateFlightIndicator(editableFlight);
     
     var holes = getDisplayHoles();
     window.savedHoles = cache.savedHoles;
@@ -1448,6 +1430,9 @@ async function init() {
             return;
         }
         
+        // Apply tight layout for phone
+        GameUI.applyTightLayout();
+        
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
             var hole = playOrder[i];
@@ -1517,14 +1502,16 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.03
+VERSION: 3.05
 KEY CHANGES:
-   - INTEGRATED: Shared ticker module (js/ticker.js)
-   - Removed embedded ticker code
-   - Ticker now uses Ticker.setPlayers() and Ticker.refresh()
-   - Continuous seamless loop (no blank gap)
-   - Live scores update after each save
-   - All other functionality identical to v3.02
+   - INTEGRATED: GameUI.applyTightLayout() for phone-optimized layout
+   - INTEGRATED: GameUI.addFlightIndicator() for small flight bubble on player card
+   - REMOVED: Course name display (handled by tight layout)
+   - REMOVED: PAR/SI line (handled by tight layout)
+   - REMOVED: Separate flight tab (replaced by bubble on player card)
+   - MOVED: LIVE bubble to top center (handled by tight layout)
+   - Flight indicator updates when toggling between Flight 1 and Flight 2
+   - All other functionality identical to v3.04
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
