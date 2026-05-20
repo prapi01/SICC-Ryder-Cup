@@ -1,16 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 3.09
+VERSION: 3.10
 KEY CHANGES:
-   - REMOVED: Duplicate action buttons HTML (now in game-ui.js)
-   - REMOVED: Duplicate Back to Menu button HTML (now in game-ui.js)
-   - REMOVED: Duplicate navigation event listeners (now in game-ui.js)
-   - REMOVED: Duplicate flight toggle logic (now in game-ui.js)
-   - REMOVED: Flight indicator calls (now redundant - Flight toggle in header)
-   - NOW USES: GameUI.renderActionButtons(), GameUI.renderBottomMenu()
-   - NOW USES: GameUI.attachGlobalEventListeners(), GameUI.updateNavButtonsWithDisableLogic()
-   - NOW USES: GameUI.updateFlightToggleButton() instead of flight indicator
-   - All game logic (save, load, results calculation) unchanged
+   - FIXED: setSaveButtonIdle() now uses GameUI.resetSaveButton() instead of updateSaveButton()
+   - This properly removes btn-save-pending class and restores green styling after successful save
+   - All other functionality identical to v3.09
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -283,7 +277,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.09</div>
+<div class="version-tag">v3.10</div>
 
 <script>
 // ============================================================
@@ -505,7 +499,8 @@ function updateTRDisplay() {
 // ============================================================
 
 function setSaveButtonIdle() {
-    GameUI.updateSaveButton(currentHole, false);
+    // FIXED: Use resetSaveButton() which properly removes pending classes and restores green styling
+    GameUI.resetSaveButton(currentHole);
     saveInProgress = false;
 }
 
@@ -537,7 +532,6 @@ function flashSaveButtonSuccess() {
         saveBtn.classList.add('btn-save-flash');
         setTimeout(function() {
             saveBtn.classList.remove('btn-save-flash');
-            saveBtn.innerHTML = '💾 SAVE H' + currentHole;
         }, 500);
     }
 }
@@ -1392,17 +1386,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.09
+VERSION: 3.10
 KEY CHANGES:
-   - REMOVED: Duplicate action buttons HTML (now in game-ui.js)
-   - REMOVED: Duplicate Back to Menu button HTML (now in game-ui.js)
-   - REMOVED: Duplicate navigation event listeners (now in game-ui.js)
-   - REMOVED: Duplicate flight toggle logic (now in game-ui.js)
-   - REMOVED: Flight indicator calls (now redundant - Flight toggle in header)
-   - NOW USES: GameUI.renderActionButtons(), GameUI.renderBottomMenu()
-   - NOW USES: GameUI.attachGlobalEventListeners(), GameUI.updateNavButtonsWithDisableLogic()
-   - NOW USES: GameUI.updateFlightToggleButton() instead of flight indicator
-   - All game logic (save, load, results calculation) unchanged
+   - FIXED: setSaveButtonIdle() now uses GameUI.resetSaveButton() instead of updateSaveButton()
+   - This properly removes btn-save-pending class and restores green styling after successful save
+   - All other functionality identical to v3.09
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
