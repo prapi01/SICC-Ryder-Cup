@@ -1,19 +1,19 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - ADDED: getMatchIndex(playerName, opponentName, allPlayers) - returns consistent match index
-   - Match order: A1vsB1, A1vsB2, A1vsB3, A1vsB4, A2vsB1, ... A4vsB4
-   - Teams sorted by handicap (lowest first)
-   - Independent of flight selection - consistent across all views
+   - ADDED: getMatchValueFromResults() - shared function for match bubble retrieval
+   - Handles correct orientation (Team A vs Team B regardless of argument order)
+   - Inverts value when viewing from Team B perspective
+   - Eliminates duplicate code across all game pages
    - All existing functions unchanged
 DEPENDS ON: None
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.02
+// FILE: js/game-data.js - VERSION 2.03
 // String-based data manager for SICC Ryder Cup
-// ADDED: getMatchIndex() for consistent match bubble indexing
+// ADDED: getMatchValueFromResults() for shared match bubble logic
 
 var GameData = (function() {
     
@@ -115,7 +115,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // NEW: Consistent Match Index for Match Bubbles
+    // Consistent Match Index for Match Bubbles
     // ============================================================
     // Returns a consistent index (0-15) for any player pair
     // Order: A1vsB1, A1vsB2, A1vsB3, A1vsB4, A2vsB1, ... A4vsB4
@@ -152,23 +152,49 @@ var GameData = (function() {
             }
         }
         
-        // If not found, try swapping (player might be Team B, opponent Team A)
-        if (aIndex === -1) {
-            for (var i = 0; i < teamBPlayers.length; i++) {
-                if (teamBPlayers[i].name === playerName) {
-                    // Player is actually Team B, so this is a cross match but indices reversed
-                    // We need to handle this case
-                    console.warn('getMatchIndex: player is Team B, opponent should be Team A');
-                    return -1;
-                }
-            }
-        }
-        
         if (aIndex === -1 || bIndex === -1) {
             return -1;
         }
         
         return (aIndex * teamBPlayers.length) + bIndex;
+    }
+    
+    // ============================================================
+    // NEW: Shared Match Value Retrieval
+    // Handles both Team A and Team B perspectives correctly
+    // ============================================================
+    
+    function getMatchValueFromResults(results, player, opponent, holeNumber, allPlayers, getHolePositionFn) {
+        if (!results || !results.matchResults) return 0;
+        
+        var position = getHolePositionFn(holeNumber);
+        var matchResultsArray = results.matchResults[position];
+        if (!matchResultsArray) return 0;
+        
+        // Determine who is Team A and who is Team B
+        var teamAPlayer, teamBPlayer;
+        if (player.team === "A" && opponent.team === "B") {
+            teamAPlayer = player;
+            teamBPlayer = opponent;
+        } else if (player.team === "B" && opponent.team === "A") {
+            teamAPlayer = opponent;
+            teamBPlayer = player;
+        } else {
+            // Intra-flight (same team) - this function is for cross-flight only
+            return 0;
+        }
+        
+        var matchIndex = getMatchIndex(teamAPlayer.name, teamBPlayer.name, allPlayers);
+        if (matchIndex === -1) return 0;
+        
+        var value = matchResultsArray[matchIndex] || 0;
+        
+        // If the original player is Team B, invert the value
+        // Because the stored value is always from Team A's perspective
+        if (player.team === "B") {
+            return -value;
+        }
+        return value;
     }
     
     // ============================================================
@@ -240,7 +266,7 @@ var GameData = (function() {
         };
     }
     
-    // Update hole data string (works for ANY hole number)
+    // Update hole data string
     function updateHoleData(existingData, holeNumber, scores, isSaved) {
         if (!existingData || existingData.length !== 162) {
             existingData = generateDefaultData(currentCourse ? currentCourse.par : null);
@@ -338,7 +364,7 @@ var GameData = (function() {
         
         firebase.firestore().collection(collection).doc(gameIdParam).update(resetData)
             .then(function() {
-                console.log("Full game reset completed - scores, locks, and results cleared");
+                console.log("Full game reset completed");
                 flight1Data.data = rotatedData;
                 flight1Data.saveEvent = false;
                 flight1Data.crossEvent = false;
@@ -490,7 +516,7 @@ var GameData = (function() {
                     flight2Data.saveEvent = true;
                     flight1Data.crossEvent = true;
                 }
-                console.log("Save successful - crossEvent set for other flight");
+                console.log("Save successful");
                 notifyDataChanged();
                 if (callback) callback(true);
             })
@@ -538,7 +564,7 @@ var GameData = (function() {
                         teamGameFormat = "tournament";
                     }
                     
-                    console.log("Refresh completed - startingHole:", startingHole, "teamGameFormat:", teamGameFormat);
+                    console.log("Refresh completed");
                     notifyDataChanged();
                 }
             })
@@ -621,7 +647,7 @@ var GameData = (function() {
                         locks.f2 = data.locks.f2 || null;
                     }
                     
-                    console.log("Game loaded - startingHole:", startingHole, "teamGameFormat:", teamGameFormat, "isPreviewSandbox:", isPreviewSandbox);
+                    console.log("Game loaded");
                     notifyDataChanged();
                     if (callback) callback(true);
                 } else {
@@ -664,19 +690,20 @@ var GameData = (function() {
         getStorageIndexForHole: getStorageIndexForHole,
         resetFullGame: resetFullGame,
         initializeEmptyResults: initializeEmptyResults,
-        // NEW: Consistent match index
-        getMatchIndex: getMatchIndex
+        // Match index functions
+        getMatchIndex: getMatchIndex,
+        getMatchValueFromResults: getMatchValueFromResults
     };
 })();
 
 /*
 FILE: js/game-data.js
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - ADDED: getMatchIndex(playerName, opponentName, allPlayers) - returns consistent match index
-   - Match order: A1vsB1, A1vsB2, A1vsB3, A1vsB4, A2vsB1, ... A4vsB4
-   - Teams sorted by handicap (lowest first)
-   - Independent of flight selection - consistent across all views
+   - ADDED: getMatchValueFromResults() - shared function for match bubble retrieval
+   - Handles correct orientation (Team A vs Team B regardless of argument order)
+   - Inverts value when viewing from Team B perspective
+   - Eliminates duplicate code across all game pages
    - All existing functions unchanged
 DEPENDS ON: None
 STATUS: Ready for integration
