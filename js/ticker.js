@@ -1,13 +1,12 @@
 /*
 FILE: js/ticker.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - FIXED: Seamless continuous loop with 3 sets of content
-   - No blank gaps between loops on any screen size
+   - FIXED: Separator (•) now appears between content sets
+   - No missing separators at the join between last and first player
+   - Seamless continuous loop with 3 sets of content
    - Animation uses -66.66% translate for 3 sets
-   - Removed extra separator at join points
-   - Slower animation for smoother experience (60s for 3 sets)
-   - All other functionality identical to v1.00
+   - All other functionality identical to v1.01
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -34,6 +33,7 @@ var Ticker = (function() {
     // ============================================================
     // Build the ticker HTML from player data
     // Uses 3 sets for seamless looping on all screen sizes
+    // Separator (•) appears between players AND between sets
     // ============================================================
     
     function buildTickerHTML() {
@@ -55,11 +55,10 @@ var Ticker = (function() {
         
         var separator = '   <span style="color:#555555;">•</span>   ';
         var singleSet = parts.join(separator);
-        var spacer = '   ';  // Space between sets (no separator to avoid double •)
         
-        // Three sets for seamless looping on all screen sizes
-        // The animation will translate by -66.66% to show each set in sequence
-        return singleSet + spacer + singleSet + spacer + singleSet;
+        // Three sets with separators between them for seamless looping
+        // Format: Set1 • Set2 • Set3
+        return singleSet + separator + singleSet + separator + singleSet;
     }
     
     // ============================================================
@@ -184,14 +183,13 @@ var Ticker = (function() {
 
 /*
 FILE: js/ticker.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - FIXED: Seamless continuous loop with 3 sets of content
-   - No blank gaps between loops on any screen size
+   - FIXED: Separator (•) now appears between content sets
+   - No missing separators at the join between last and first player
+   - Seamless continuous loop with 3 sets of content
    - Animation uses -66.66% translate for 3 sets
-   - Removed extra separator at join points
-   - Slower animation for smoother experience (60s for 3 sets)
-   - All other functionality identical to v1.00
+   - All other functionality identical to v1.01
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
