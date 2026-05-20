@@ -1,12 +1,15 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.08
+VERSION: 2.09
 KEY CHANGES:
-   - ADDED: applyButtonStyles() - injects consistent button styles for all pages
-   - Button styles now centralized (P/N toggle, Flight toggle, navigation buttons)
-   - Removed button style overrides from tight layout
-   - Single source of truth for all UI components
-   - All other UI functions unchanged
+   - ADDED: renderActionButtons() - renders full-width SAVE button
+   - ADDED: renderBottomMenu() - renders Back to Main Menu button
+   - ADDED: updateNavButtonsWithDisableLogic() - centralized next button disable logic
+   - ADDED: attachGlobalEventListeners() - centralizes all shared event listeners
+   - ADDED: toggleFlight() - centralized flight toggle logic
+   - ADDED: updateFlightToggleButton() - updates flight toggle button text
+   - REMOVED: Flight indicator functions (now redundant - Flight toggle in header)
+   - All existing functions (renderScorecard, renderPlayerCards, updateTR, etc.) unchanged
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -14,13 +17,26 @@ STATUS: Ready for integration
 var GameUI = (function() {
     
     // ============================================================
-    // Existing Functions
+    // Existing Functions (unchanged from v2.08)
     // ============================================================
     
     // Track if styles have been applied
     var tightLayoutApplied = false;
     var buttonStylesApplied = false;
-    var currentFlightIndicator = null;
+    
+    // Track current state for UI updates
+    var currentFlight = 1;
+    var currentDisplayMode = "play";
+    
+    // Callback registry for shared UI events
+    var eventCallbacks = {
+        onSave: null,
+        onMenu: null,
+        onPrevHole: null,
+        onNextHole: null,
+        onToggleFlight: null,
+        onToggleDisplay: null
+    };
     
     // ============================================================
     // Scorecard Rendering
@@ -75,7 +91,7 @@ var GameUI = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -338,7 +354,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Flight Tab Display
+    // Flight Tab Display (legacy - kept for compatibility)
     // ============================================================
     
     function updateFlightTab(containerId, flightNumber, canEdit) {
@@ -352,8 +368,6 @@ var GameUI = (function() {
     // ============================================================
     // Display Mode Management
     // ============================================================
-    
-    var currentDisplayMode = "play";
     
     function getDisplayMode() {
         var saved = localStorage.getItem("scorecardDisplay");
@@ -377,6 +391,11 @@ var GameUI = (function() {
                 naturalBtn.classList.add('active');
             }
         }
+        // Also update P/N toggle button if it exists
+        var pnToggle = document.getElementById('pnToggleBtn');
+        if (pnToggle) {
+            pnToggle.innerText = mode === 'play' ? 'P' : 'N';
+        }
     }
     
     function setDisplayMode(mode, onModeChanged) {
@@ -387,6 +406,15 @@ var GameUI = (function() {
         if (onModeChanged && typeof onModeChanged === 'function') {
             onModeChanged(mode);
         }
+        // Also trigger callback if registered
+        if (eventCallbacks.onToggleDisplay) {
+            eventCallbacks.onToggleDisplay(mode);
+        }
+    }
+    
+    function toggleDisplayMode() {
+        var newMode = currentDisplayMode === "play" ? "natural" : "play";
+        setDisplayMode(newMode, null);
     }
     
     function getDisplayHoles(startingHole, preference) {
@@ -400,6 +428,214 @@ var GameUI = (function() {
             for (var i = startingHole; i <= 18; i++) playOrder.push(i);
             for (var i = 1; i < startingHole; i++) playOrder.push(i);
             return playOrder;
+        }
+    }
+    
+    // ============================================================
+    // Flight Toggle Functions (NEW - centralized)
+    // ============================================================
+    
+    function updateFlightToggleButton(flightNumber) {
+        var flightToggle = document.getElementById('flightToggleBtn');
+        if (flightToggle) {
+            flightToggle.innerHTML = '✈️ Flight ' + flightNumber;
+        }
+        currentFlight = flightNumber;
+    }
+    
+    function toggleFlight() {
+        var newFlight = currentFlight === 1 ? 2 : 1;
+        currentFlight = newFlight;
+        updateFlightToggleButton(currentFlight);
+        if (eventCallbacks.onToggleFlight) {
+            eventCallbacks.onToggleFlight(currentFlight);
+        }
+    }
+    
+    function getCurrentFlight() {
+        return currentFlight;
+    }
+    
+    // ============================================================
+    // NEW: Action Button Rendering
+    // ============================================================
+    
+    function renderActionButtons(containerId, currentHole, isSaveDisabled, onSaveCallback) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        // Store save callback for later use
+        if (onSaveCallback) {
+            eventCallbacks.onSave = onSaveCallback;
+        }
+        
+        var html = `
+            <div class="action-buttons" style="display: flex; gap: 0; margin: 20px 0;">
+                <button class="btn btn-save" id="saveBtn" style="flex: 1; width: 100%; display: block; margin: 0; border-radius: 40px; padding: 14px; font-size: 1rem; font-weight: 700;" ${isSaveDisabled ? 'disabled' : ''}>
+                    💾 SAVE H${currentHole}
+                </button>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        
+        // Attach event listener
+        var saveBtn = document.getElementById('saveBtn');
+        if (saveBtn && eventCallbacks.onSave) {
+            // Remove any existing listeners to avoid duplicates
+            var newSaveBtn = saveBtn.cloneNode(true);
+            saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+            newSaveBtn.addEventListener('click', function() {
+                if (eventCallbacks.onSave) eventCallbacks.onSave();
+            });
+        }
+    }
+    
+    function updateSaveButton(currentHole, isDisabled) {
+        var saveBtn = document.getElementById('saveBtn');
+        if (saveBtn) {
+            saveBtn.innerHTML = '💾 SAVE H' + currentHole;
+            if (isDisabled) {
+                saveBtn.disabled = true;
+            } else {
+                saveBtn.disabled = false;
+            }
+        }
+    }
+    
+    // ============================================================
+    // NEW: Bottom Menu Button Rendering
+    // ============================================================
+    
+    function renderBottomMenu(containerId, onMenuCallback) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        // Store menu callback
+        if (onMenuCallback) {
+            eventCallbacks.onMenu = onMenuCallback;
+        }
+        
+        var html = `
+            <button class="btn btn-menu" id="menuBtn" style="width: 100%; padding: 14px; border-radius: 40px; font-weight: 600; text-align: center; cursor: pointer; background: #1a1a1a; color: #ccc; border: 1px solid #333; margin-top: 20px;">
+                ← Back to Main Menu
+            </button>
+        `;
+        
+        container.innerHTML = html;
+        
+        // Attach event listener
+        var menuBtn = document.getElementById('menuBtn');
+        if (menuBtn && eventCallbacks.onMenu) {
+            var newMenuBtn = menuBtn.cloneNode(true);
+            menuBtn.parentNode.replaceChild(newMenuBtn, menuBtn);
+            newMenuBtn.addEventListener('click', function() {
+                if (eventCallbacks.onMenu) eventCallbacks.onMenu();
+            });
+        }
+    }
+    
+    // ============================================================
+    // NEW: Navigation Button Disable Logic (centralized)
+    // ============================================================
+    
+    function updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameComplete, celebrationTriggered) {
+        var prevBtn = document.getElementById('prevHoleBtn');
+        var nextBtn = document.getElementById('nextHoleBtn');
+        
+        if (!prevBtn || !nextBtn) return;
+        
+        // For prev button - always enabled unless at first hole (handled by caller)
+        // We don't disable prev based on save state, only based on position
+        
+        // For next button - disable logic
+        if (isGameComplete && !celebrationTriggered) {
+            // Game complete - next button becomes "SEE RESULTS"
+            nextBtn.textContent = "🏆";
+            nextBtn.disabled = false;
+            nextBtn.classList.add('btn-next');
+            nextBtn.classList.remove('btn-next-inactive');
+        } else {
+            // Normal game mode
+            var isCurrentSavedState = isCurrentSaved && !hasUnsavedChanges;
+            
+            if (isCurrentSavedState) {
+                nextBtn.disabled = false;
+                nextBtn.classList.add('btn-next');
+                nextBtn.classList.remove('btn-next-inactive');
+            } else {
+                nextBtn.disabled = true;
+                nextBtn.classList.add('btn-next-inactive');
+                nextBtn.classList.remove('btn-next');
+            }
+        }
+    }
+    
+    function setNextButtonToSignMode() {
+        var nextBtn = document.getElementById('nextBtn');
+        if (nextBtn) {
+            nextBtn.textContent = "✍️";
+            nextBtn.disabled = false;
+            nextBtn.classList.add('btn-next');
+            nextBtn.classList.remove('btn-next-inactive');
+        }
+    }
+    
+    function setNextButtonToSeeResults() {
+        var nextBtn = document.getElementById('nextBtn');
+        if (nextBtn) {
+            nextBtn.textContent = "🏆";
+            nextBtn.disabled = false;
+            nextBtn.classList.add('btn-next');
+            nextBtn.classList.remove('btn-next-inactive');
+        }
+    }
+    
+    // ============================================================
+    // NEW: Centralized Event Listener Attachment
+    // ============================================================
+    
+    function attachGlobalEventListeners(onPrevHole, onNextHole) {
+        // Store callbacks
+        if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
+        if (onNextHole) eventCallbacks.onNextHole = onNextHole;
+        
+        // Attach to scorecard header navigation buttons
+        var prevHoleBtn = document.getElementById('prevHoleBtn');
+        var nextHoleBtn = document.getElementById('nextHoleBtn');
+        var pnToggleBtn = document.getElementById('pnToggleBtn');
+        var flightToggleBtn = document.getElementById('flightToggleBtn');
+        
+        if (prevHoleBtn && eventCallbacks.onPrevHole) {
+            var newPrevBtn = prevHoleBtn.cloneNode(true);
+            prevHoleBtn.parentNode.replaceChild(newPrevBtn, prevHoleBtn);
+            newPrevBtn.addEventListener('click', function() {
+                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
+            });
+        }
+        
+        if (nextHoleBtn && eventCallbacks.onNextHole) {
+            var newNextBtn = nextHoleBtn.cloneNode(true);
+            nextHoleBtn.parentNode.replaceChild(newNextBtn, nextHoleBtn);
+            newNextBtn.addEventListener('click', function() {
+                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+            });
+        }
+        
+        if (pnToggleBtn) {
+            var newPnBtn = pnToggleBtn.cloneNode(true);
+            pnToggleBtn.parentNode.replaceChild(newPnBtn, pnToggleBtn);
+            newPnBtn.addEventListener('click', function() {
+                toggleDisplayMode();
+            });
+        }
+        
+        if (flightToggleBtn) {
+            var newFlightBtn = flightToggleBtn.cloneNode(true);
+            flightToggleBtn.parentNode.replaceChild(newFlightBtn, flightToggleBtn);
+            newFlightBtn.addEventListener('click', function() {
+                toggleFlight();
+            });
         }
     }
     
@@ -510,6 +746,45 @@ var GameUI = (function() {
                 min-width: 45px !important;
                 text-align: center !important;
             }
+            
+            /* SAVE Button Full Width */
+            .btn-save {
+                flex: 1 !important;
+                width: 100% !important;
+                display: block !important;
+                margin: 0 !important;
+                border-radius: 40px !important;
+                padding: 14px !important;
+                font-size: 1rem !important;
+                font-weight: 700 !important;
+                background: #1a3a1a !important;
+                color: #4caf50 !important;
+                border: 1px solid #4caf50 !important;
+                cursor: pointer !important;
+            }
+            .btn-save:disabled {
+                opacity: 0.4 !important;
+                cursor: not-allowed !important;
+            }
+            .btn-save-pending {
+                background: #3a1a1a !important;
+                color: #ff6b6b !important;
+                border: 1px solid #ff6b6b !important;
+            }
+            .btn-save-retry {
+                background: #3a1a1a !important;
+                color: #ffaa44 !important;
+                border: 1px solid #ffaa44 !important;
+            }
+            .btn-save-flash {
+                animation: flashGreen 0.5s ease !important;
+            }
+            
+            @keyframes flashGreen {
+                0% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+                50% { background: #4caf50; border-color: #4caf50; color: #1a3a1a; }
+                100% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+            }
         `;
         document.head.appendChild(style);
         
@@ -561,7 +836,7 @@ var GameUI = (function() {
                 padding-top: 30px !important;
             }
             
-            /* Player card needs relative position for absolute flight indicator */
+            /* Player card needs relative position for absolute flight indicator (deprecated but kept) */
             .player-card {
                 position: relative;
             }
@@ -585,51 +860,22 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Flight Indicator Functions
+    // Flight Indicator Functions (DEPRECATED - kept for compatibility)
+    // These are now redundant because Flight toggle is in scorecard header
     // ============================================================
     
     function addFlightIndicator(flightNumber) {
-        removeFlightIndicator();
-        
-        var playerCards = document.getElementById('playerCards');
-        if (!playerCards || playerCards.children.length === 0) return;
-        
-        var firstCard = playerCards.children[0];
-        var flightIndicator = document.createElement('div');
-        flightIndicator.className = 'flight-indicator';
-        flightIndicator.id = 'flightIndicator';
-        flightIndicator.innerHTML = 'Flight ' + flightNumber;
-        flightIndicator.style.cssText = `
-            position: absolute;
-            top: -16px;
-            left: 10px;
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            font-size: 0.6rem;
-            font-weight: 600;
-            padding: 2px 10px;
-            border-radius: 20px;
-            z-index: 10;
-        `;
-        firstCard.style.position = 'relative';
-        firstCard.appendChild(flightIndicator);
-        currentFlightIndicator = flightIndicator;
+        // Deprecated - do nothing
+        console.log('Flight indicator deprecated - use Flight toggle button in scorecard header');
     }
     
     function removeFlightIndicator() {
-        if (currentFlightIndicator) {
-            currentFlightIndicator.remove();
-            currentFlightIndicator = null;
-        }
-        var existing = document.querySelectorAll('.flight-indicator');
-        for (var i = 0; i < existing.length; i++) {
-            existing[i].remove();
-        }
+        // Deprecated - do nothing
     }
     
     function updateFlightIndicator(flightNumber) {
-        addFlightIndicator(flightNumber);
+        // Deprecated - use updateFlightToggleButton instead
+        updateFlightToggleButton(flightNumber);
     }
     
     // ============================================================
@@ -662,13 +908,34 @@ var GameUI = (function() {
         getDisplayMode: getDisplayMode,
         setDisplayMode: setDisplayMode,
         updateToggleButtons: updateToggleButtons,
+        toggleDisplayMode: toggleDisplayMode,
         getDisplayHoles: getDisplayHoles,
+        
+        // Flight toggle (NEW)
+        updateFlightToggleButton: updateFlightToggleButton,
+        toggleFlight: toggleFlight,
+        getCurrentFlight: getCurrentFlight,
+        
+        // Action buttons (NEW)
+        renderActionButtons: renderActionButtons,
+        updateSaveButton: updateSaveButton,
+        
+        // Bottom menu (NEW)
+        renderBottomMenu: renderBottomMenu,
+        
+        // Navigation logic (NEW)
+        updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
+        setNextButtonToSignMode: setNextButtonToSignMode,
+        setNextButtonToSeeResults: setNextButtonToSeeResults,
+        
+        // Event listeners (NEW)
+        attachGlobalEventListeners: attachGlobalEventListeners,
         
         // Layout and styles
         applyButtonStyles: applyButtonStyles,
         applyTightLayout: applyTightLayout,
         
-        // Flight indicator
+        // Flight indicator (DEPRECATED - kept for compatibility)
         addFlightIndicator: addFlightIndicator,
         removeFlightIndicator: removeFlightIndicator,
         updateFlightIndicator: updateFlightIndicator
@@ -678,13 +945,16 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.08
+VERSION: 2.09
 KEY CHANGES:
-   - ADDED: applyButtonStyles() - injects consistent button styles for all pages
-   - Button styles now centralized (P/N toggle, Flight toggle, navigation buttons)
-   - Removed button style overrides from tight layout
-   - Single source of truth for all UI components
-   - All other UI functions unchanged
+   - ADDED: renderActionButtons() - renders full-width SAVE button
+   - ADDED: renderBottomMenu() - renders Back to Main Menu button
+   - ADDED: updateNavButtonsWithDisableLogic() - centralized next button disable logic
+   - ADDED: attachGlobalEventListeners() - centralizes all shared event listeners
+   - ADDED: toggleFlight() - centralized flight toggle logic
+   - ADDED: updateFlightToggleButton() - updates flight toggle button text
+   - REMOVED: Flight indicator functions (now redundant - Flight toggle in header)
+   - All existing functions (renderScorecard, renderPlayerCards, updateTR, etc.) unchanged
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
