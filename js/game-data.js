@@ -1,17 +1,19 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - ADDED: resetFullGame(gameId, startingHole, coursePar, callback) function
-   - Resets all scores, flags, locks, and results object
-   - Can be called from pre-game.html for admin reset or first-touch reset
-   - Maintains backward compatibility with existing functions
+   - ADDED: getMatchIndex(playerName, opponentName, allPlayers) - returns consistent match index
+   - Match order: A1vsB1, A1vsB2, A1vsB3, A1vsB4, A2vsB1, ... A4vsB4
+   - Teams sorted by handicap (lowest first)
+   - Independent of flight selection - consistent across all views
+   - All existing functions unchanged
+DEPENDS ON: None
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.01
+// FILE: js/game-data.js - VERSION 2.02
 // String-based data manager for SICC Ryder Cup
-// ADDED: resetFullGame() for complete game reset
+// ADDED: getMatchIndex() for consistent match bubble indexing
 
 var GameData = (function() {
     
@@ -110,6 +112,63 @@ var GameData = (function() {
         } else {
             return getPlayOrder();
         }
+    }
+    
+    // ============================================================
+    // NEW: Consistent Match Index for Match Bubbles
+    // ============================================================
+    // Returns a consistent index (0-15) for any player pair
+    // Order: A1vsB1, A1vsB2, A1vsB3, A1vsB4, A2vsB1, ... A4vsB4
+    // Team A and Team B players sorted by handicap (lowest first)
+    // ============================================================
+    
+    function getMatchIndex(playerName, opponentName, allPlayers) {
+        if (!allPlayers || allPlayers.length === 0) {
+            console.warn('getMatchIndex: no players provided');
+            return -1;
+        }
+        
+        // Get all Team A players, sorted by handicap (lowest first)
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        // Get all Team B players, sorted by handicap (lowest first)
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        // Find indices
+        var aIndex = -1;
+        var bIndex = -1;
+        
+        for (var i = 0; i < teamAPlayers.length; i++) {
+            if (teamAPlayers[i].name === playerName) {
+                aIndex = i;
+                break;
+            }
+        }
+        
+        for (var i = 0; i < teamBPlayers.length; i++) {
+            if (teamBPlayers[i].name === opponentName) {
+                bIndex = i;
+                break;
+            }
+        }
+        
+        // If not found, try swapping (player might be Team B, opponent Team A)
+        if (aIndex === -1) {
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === playerName) {
+                    // Player is actually Team B, so this is a cross match but indices reversed
+                    // We need to handle this case
+                    console.warn('getMatchIndex: player is Team B, opponent should be Team A');
+                    return -1;
+                }
+            }
+        }
+        
+        if (aIndex === -1 || bIndex === -1) {
+            return -1;
+        }
+        
+        return (aIndex * teamBPlayers.length) + bIndex;
     }
     
     // ============================================================
@@ -245,7 +304,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // RESET FULL GAME (NEW)
+    // RESET FULL GAME
     // ============================================================
     
     function resetFullGame(gameIdParam, startingHoleParam, courseParArray, callback) {
@@ -280,7 +339,6 @@ var GameData = (function() {
         firebase.firestore().collection(collection).doc(gameIdParam).update(resetData)
             .then(function() {
                 console.log("Full game reset completed - scores, locks, and results cleared");
-                // Also reset local cache
                 flight1Data.data = rotatedData;
                 flight1Data.saveEvent = false;
                 flight1Data.crossEvent = false;
@@ -398,7 +456,6 @@ var GameData = (function() {
         flight2Data.saveEvent = false;
     }
     
-    // Get collection name based on mode
     function getCollectionName() {
         if (isPreviewSandbox) {
             return "previewSandboxes";
@@ -406,7 +463,6 @@ var GameData = (function() {
         return "scheduledGames";
     }
     
-    // Save ANY hole number, ALWAYS set crossEvent for other flight
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
         var flight = (editableFlight === 1) ? 1 : 2;
         
@@ -606,19 +662,22 @@ var GameData = (function() {
         getNaturalOrderMapping: getNaturalOrderMapping,
         getHoleAtStoragePosition: getHoleAtStoragePosition,
         getStorageIndexForHole: getStorageIndexForHole,
-        // NEW: Reset function
         resetFullGame: resetFullGame,
-        initializeEmptyResults: initializeEmptyResults
+        initializeEmptyResults: initializeEmptyResults,
+        // NEW: Consistent match index
+        getMatchIndex: getMatchIndex
     };
 })();
 
 /*
 FILE: js/game-data.js
-VERSION: 2.01
+VERSION: 2.02
 KEY CHANGES:
-   - ADDED: resetFullGame(gameId, startingHole, coursePar, callback) function
-   - Resets all scores, flags, locks, and results object
-   - Can be called from pre-game.html for admin reset or first-touch reset
-   - Maintains backward compatibility with existing functions
+   - ADDED: getMatchIndex(playerName, opponentName, allPlayers) - returns consistent match index
+   - Match order: A1vsB1, A1vsB2, A1vsB3, A1vsB4, A2vsB1, ... A4vsB4
+   - Teams sorted by handicap (lowest first)
+   - Independent of flight selection - consistent across all views
+   - All existing functions unchanged
+DEPENDS ON: None
 STATUS: Ready for integration
 */
