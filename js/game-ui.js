@@ -1,15 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.09
+VERSION: 2.10
 KEY CHANGES:
-   - ADDED: renderActionButtons() - renders full-width SAVE button
-   - ADDED: renderBottomMenu() - renders Back to Main Menu button
-   - ADDED: updateNavButtonsWithDisableLogic() - centralized next button disable logic
-   - ADDED: attachGlobalEventListeners() - centralizes all shared event listeners
-   - ADDED: toggleFlight() - centralized flight toggle logic
-   - ADDED: updateFlightToggleButton() - updates flight toggle button text
-   - REMOVED: Flight indicator functions (now redundant - Flight toggle in header)
-   - All existing functions (renderScorecard, renderPlayerCards, updateTR, etc.) unchanged
+   - ADDED: resetSaveButton() - properly resets save button to normal green state
+   - Removes btn-save-pending, btn-save-retry, btn-save-flash classes
+   - Restores normal btn-save styling and text
+   - All existing functions unchanged from v2.09
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -17,7 +13,7 @@ STATUS: Ready for integration
 var GameUI = (function() {
     
     // ============================================================
-    // Existing Functions (unchanged from v2.08)
+    // Existing Functions (unchanged from v2.09)
     // ============================================================
     
     // Track if styles have been applied
@@ -91,7 +87,7 @@ var GameUI = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -432,7 +428,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Flight Toggle Functions (NEW - centralized)
+    // Flight Toggle Functions
     // ============================================================
     
     function updateFlightToggleButton(flightNumber) {
@@ -457,7 +453,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // NEW: Action Button Rendering
+    // Action Button Rendering
     // ============================================================
     
     function renderActionButtons(containerId, currentHole, isSaveDisabled, onSaveCallback) {
@@ -503,8 +499,21 @@ var GameUI = (function() {
         }
     }
     
+    // NEW: Reset save button to normal green state (removes pending/retry classes)
+    function resetSaveButton(currentHole) {
+        var saveBtn = document.getElementById('saveBtn');
+        if (saveBtn) {
+            // Remove all state classes
+            saveBtn.classList.remove('btn-save-pending', 'btn-save-retry', 'btn-save-flash');
+            // Add the normal save class
+            saveBtn.classList.add('btn-save');
+            saveBtn.innerHTML = '💾 SAVE H' + currentHole;
+            saveBtn.disabled = false;
+        }
+    }
+    
     // ============================================================
-    // NEW: Bottom Menu Button Rendering
+    // Bottom Menu Button Rendering
     // ============================================================
     
     function renderBottomMenu(containerId, onMenuCallback) {
@@ -536,7 +545,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // NEW: Navigation Button Disable Logic (centralized)
+    // Navigation Button Disable Logic (centralized)
     // ============================================================
     
     function updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameComplete, celebrationTriggered) {
@@ -592,7 +601,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // NEW: Centralized Event Listener Attachment
+    // Centralized Event Listener Attachment
     // ============================================================
     
     function attachGlobalEventListeners(onPrevHole, onNextHole) {
@@ -861,7 +870,6 @@ var GameUI = (function() {
     
     // ============================================================
     // Flight Indicator Functions (DEPRECATED - kept for compatibility)
-    // These are now redundant because Flight toggle is in scorecard header
     // ============================================================
     
     function addFlightIndicator(flightNumber) {
@@ -911,31 +919,32 @@ var GameUI = (function() {
         toggleDisplayMode: toggleDisplayMode,
         getDisplayHoles: getDisplayHoles,
         
-        // Flight toggle (NEW)
+        // Flight toggle
         updateFlightToggleButton: updateFlightToggleButton,
         toggleFlight: toggleFlight,
         getCurrentFlight: getCurrentFlight,
         
-        // Action buttons (NEW)
+        // Action buttons
         renderActionButtons: renderActionButtons,
         updateSaveButton: updateSaveButton,
+        resetSaveButton: resetSaveButton,  // NEW: Reset save button to green state
         
-        // Bottom menu (NEW)
+        // Bottom menu
         renderBottomMenu: renderBottomMenu,
         
-        // Navigation logic (NEW)
+        // Navigation logic
         updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
         setNextButtonToSignMode: setNextButtonToSignMode,
         setNextButtonToSeeResults: setNextButtonToSeeResults,
         
-        // Event listeners (NEW)
+        // Event listeners
         attachGlobalEventListeners: attachGlobalEventListeners,
         
         // Layout and styles
         applyButtonStyles: applyButtonStyles,
         applyTightLayout: applyTightLayout,
         
-        // Flight indicator (DEPRECATED - kept for compatibility)
+        // Flight indicator (DEPRECATED)
         addFlightIndicator: addFlightIndicator,
         removeFlightIndicator: removeFlightIndicator,
         updateFlightIndicator: updateFlightIndicator
@@ -945,16 +954,12 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.09
+VERSION: 2.10
 KEY CHANGES:
-   - ADDED: renderActionButtons() - renders full-width SAVE button
-   - ADDED: renderBottomMenu() - renders Back to Main Menu button
-   - ADDED: updateNavButtonsWithDisableLogic() - centralized next button disable logic
-   - ADDED: attachGlobalEventListeners() - centralizes all shared event listeners
-   - ADDED: toggleFlight() - centralized flight toggle logic
-   - ADDED: updateFlightToggleButton() - updates flight toggle button text
-   - REMOVED: Flight indicator functions (now redundant - Flight toggle in header)
-   - All existing functions (renderScorecard, renderPlayerCards, updateTR, etc.) unchanged
+   - ADDED: resetSaveButton() - properly resets save button to normal green state
+   - Removes btn-save-pending, btn-save-retry, btn-save-flash classes
+   - Restores normal btn-save styling and text
+   - All existing functions unchanged from v2.09
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
