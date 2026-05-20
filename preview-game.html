@@ -1,15 +1,17 @@
 <!--
 FILE: preview-game.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: Based on real-game.html v3.01
-   - No signatures, no handicap adjustment, no history records
-   - Uses previewGames collection with fixed session IDs
-   - Modal for session selection (Session 1 / Session 2)
-   - Auto-creates preview document if not exists
-   - Same functionality as real-game (edit, save, cascade)
-   - All calculations use shared JS modules
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js
+   - ADDED: Ticker line (same as real-game)
+   - ADDED: Tight layout via GameUI.applyTightLayout()
+   - ADDED: Consistent match index using GameData.getMatchIndex()
+   - ADDED: All required JS modules (game-data, game-ui, game-loader, ticker, etc.)
+   - MOVED: PREVIEW bubble to top center
+   - FIXED: Version tag cleaned (no "PREVIEW" text)
+   - FIXED: Toggle buttons have round edges, dark background
+   - No signatures, no handicap adjustment (preview only)
+   - All other functionality identical to v3.00
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/ticker.js
 STATUS: Ready for integration
 -->
 
@@ -29,11 +31,12 @@ STATUS: Ready for integration
     <script src="js/game-stroke.js"></script>
     <script src="js/game-ui.js"></script>
     <script src="js/game-loader.js"></script>
+    <script src="js/ticker.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
-        .container { max-width: 550px; margin: 0 auto; padding-top: 35px; }
+        .container { max-width: 550px; margin: 0 auto; }
         
         .version-tag {
             position: fixed;
@@ -63,6 +66,7 @@ STATUS: Ready for integration
             cursor: pointer;
         }
         
+        /* Status bubble - will be repositioned by GameUI.applyTightLayout() */
         .status-bubble {
             background: rgba(255,170,68,0.3);
             border: 1px solid #ffaa44;
@@ -74,7 +78,7 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
-        .hole-header { text-align: center; margin: 16px 0; }
+        .hole-header { text-align: center; }
         .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
         .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
         
@@ -130,24 +134,74 @@ STATUS: Ready for integration
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
+            gap: 8px;
             flex-wrap: wrap;
+        }
+        .scorecard-left-group {
+            display: flex;
+            align-items: center;
             gap: 10px;
         }
-        .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
-        .view-toggle { display: flex; gap: 4px; }
-        .toggle-btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 20px;
-            padding: 4px 12px;
-            font-size: 0.65rem;
-            cursor: pointer;
-            color: #888;
-        }
-        .toggle-btn.active {
-            background: #1a3a1a;
-            border-color: #4caf50;
+        .scorecard-title {
+            font-size: 0.9rem;
+            font-weight: 600;
             color: #4caf50;
+            border-left: 2px solid #4caf50;
+            padding-left: 10px;
+        }
+        .pn-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            border-radius: 30px;
+            padding: 6px 12px;
+            min-width: 45px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+        }
+        .flight-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            border-radius: 30px;
+            padding: 6px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-width: 90px;
+            display: inline-block;
+            text-align: center;
+        }
+        .nav-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .nav-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            width: 36px;
+            height: 36px;
+            border-radius: 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .nav-btn:disabled {
+            background: #2a2a2a;
+            color: #555;
+            border: 1px solid #444;
+            cursor: not-allowed;
+        }
+        .hole-number-display {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4caf50;
+            min-width: 45px;
+            text-align: center;
         }
         
         .scorecard-wrapper { overflow-x: auto; }
@@ -244,45 +298,55 @@ STATUS: Ready for integration
         .session-btn:hover {
             background: #2a4a2a;
         }
+        
+        @keyframes flashGreen {
+            0% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+            50% { background: #4caf50; border-color: #4caf50; color: #1a3a1a; }
+            100% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+        }
+        .btn-save-flash { animation: flashGreen 0.5s ease; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="status-bubble" id="statusBubble">PREVIEW</div>
-    <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
-    <div id="gameContent" style="display:none;">
-        <div id="holeHeader" class="hole-header"></div>
-        <div id="flightTab" class="flight-tab"></div>
-        <div id="trDisplay" class="team-score-card"></div>
-        <div id="playerCards" class="player-cards"></div>
-        
-        <div class="action-buttons">
-            <button class="btn btn-back" id="backBtn">← Back</button>
-            <button class="btn btn-save" id="saveBtn">💾 SAVE</button>
-            <button class="btn btn-next" id="nextBtn">Next →</button>
-        </div>
-        
-        <div class="scorecard-section">
-            <div class="scorecard-header">
-                <div class="scorecard-title">SCORECARD</div>
-                <div class="view-toggle">
-                    <button class="toggle-btn" id="playOrderBtn">⛳ Play Order</button>
-                    <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
-                </div>
-            </div>
-            <div class="scorecard-wrapper" id="scorecardWrapper"></div>
-        </div>
-        
-        <button class="btn btn-menu" id="menuBtn">← Back to Main Menu</button>
+    <!-- Live Ticker -->
+    <div class="ticker-container" id="tickerContainer">
+        <div class="ticker-content" id="tickerContent">Loading scores...</div>
     </div>
     
+    <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
+    
+    <div id="holeHeader" class="hole-header"></div>
+    <div id="flightTab" class="flight-tab"></div>
+    <div id="trDisplay" class="team-score-card"></div>
+    <div id="playerCards" class="player-cards"></div>
+    
+    <div class="action-buttons">
+        <button class="btn btn-back" id="backBtn">← Back</button>
+        <button class="btn btn-save" id="saveBtn">💾 SAVE</button>
+        <button class="btn btn-next" id="nextBtn">Next →</button>
+    </div>
+    
+    <div class="scorecard-section">
+        <div class="scorecard-header">
+            <div class="scorecard-title">SCORECARD</div>
+            <div class="view-toggle">
+                <button class="toggle-btn" id="playOrderBtn">⛳ Play Order</button>
+                <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
+            </div>
+        </div>
+        <div class="scorecard-wrapper" id="scorecardWrapper"></div>
+    </div>
+    
+    <button class="btn btn-menu" id="menuBtn">← Back to Main Menu</button>
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.00</div>
+<div class="version-tag">v3.01</div>
 
 <script>
 // ============================================================
@@ -325,6 +389,56 @@ var allPlayers = [];
 var saveBtn = null;
 var saveInProgress = false;
 var unsubscribe = null;
+
+// ============================================================
+// Ticker Functions (using shared module)
+// ============================================================
+
+function calculatePlayerScoreRelativeToPar(player) {
+    var cache = GameLoader.getLocalCache();
+    var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+    var totalGross = 0;
+    var totalPar = 0;
+    
+    for (var h = 1; h <= 18; h++) {
+        var par = coursePar[h - 1];
+        totalPar += par;
+        
+        var holeData = GameData.parseHoleData(flightDataStr, h);
+        if (holeData && holeData.saved) {
+            var score = 0;
+            var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+            var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            if (player.team === 'A') {
+                if (teamA[0] && teamA[0].name === player.name) score = holeData.scores.a1;
+                else if (teamA[1] && teamA[1].name === player.name) score = holeData.scores.a2;
+            } else {
+                if (teamB[0] && teamB[0].name === player.name) score = holeData.scores.b1;
+                else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
+            }
+            totalGross += score;
+        } else {
+            totalGross += par;
+        }
+    }
+    
+    return totalGross - totalPar;
+}
+
+function getPlayerScoreForTicker(player) {
+    return calculatePlayerScoreRelativeToPar(player);
+}
+
+function initTicker() {
+    if (typeof Ticker !== 'undefined') {
+        Ticker.init('tickerContainer', 'tickerContent', getPlayerScoreForTicker);
+        if (allPlayers && allPlayers.length) {
+            Ticker.setPlayers(allPlayers);
+        }
+    }
+}
 
 // ============================================================
 // Helper Functions
@@ -406,6 +520,7 @@ function getAllOpponents(player) {
     return opponents;
 }
 
+// FIXED: Uses GameData.getMatchIndex() for consistent match indexing
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
@@ -415,21 +530,9 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var matchResultsArray = results.matchResults[position];
     if (!matchResultsArray) return 0;
     
-    var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var matchIndex = GameData.getMatchIndex(player.name, opponent.name, allPlayers);
+    if (matchIndex === -1) return 0;
     
-    var aIndex = -1;
-    var bIndex = -1;
-    for (var i = 0; i < teamAPlayers.length; i++) {
-        if (teamAPlayers[i].name === player.name) aIndex = i;
-    }
-    for (var i = 0; i < teamBPlayers.length; i++) {
-        if (teamBPlayers[i].name === opponent.name) bIndex = i;
-    }
-    
-    if (aIndex === -1 || bIndex === -1) return 0;
-    
-    var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
     return matchResultsArray[matchIndex] || 0;
 }
 
@@ -546,6 +649,11 @@ function performSave() {
                     await saveResultsToFirestore(holeToUpdate);
                 }
                 
+                // Update ticker after save
+                if (typeof Ticker !== 'undefined') {
+                    Ticker.refresh();
+                }
+                
                 resolve(true);
             } else {
                 reject(new Error("Save failed"));
@@ -585,7 +693,7 @@ function retrySave() {
 }
 
 // ============================================================
-// Results Calculation and Storage
+// Results Calculation and Storage (with matchResults)
 // ============================================================
 
 function initializeEmptyResults() {
@@ -869,7 +977,6 @@ function renderAll() {
     var tr = GameLoader.getTRForHole(currentHole);
     
     GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-    GameUI.updateFlightTab("flightTab", editableFlight, canEdit);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
@@ -917,6 +1024,11 @@ function renderAll() {
     );
     
     updateNavButtons();
+    
+    // Update ticker
+    if (typeof Ticker !== 'undefined') {
+        Ticker.refresh();
+    }
 }
 
 // ============================================================
@@ -1093,6 +1205,17 @@ async function startGame(scheduledGameId, sessionNumber) {
             document.getElementById("courseName").innerHTML = courseName;
             document.getElementById("gameContent").style.display = "block";
             
+            // Apply tight layout
+            if (typeof GameUI !== 'undefined') {
+                GameUI.applyTightLayout();
+            }
+            
+            // Initialize ticker
+            initTicker();
+            if (allPlayers && allPlayers.length) {
+                Ticker.setPlayers(allPlayers);
+            }
+            
             var playOrder = getPlayOrder();
             for (var i = 0; i < playOrder.length; i++) {
                 var hole = playOrder[i];
@@ -1124,8 +1247,6 @@ async function startGame(scheduledGameId, sessionNumber) {
 }
 
 function refreshFromFirestore(data) {
-    // Update GameLoader's cache (handled by snapshot listener in GameLoader)
-    // Just trigger a re-render
     renderAll();
 }
 
@@ -1142,6 +1263,12 @@ function onCacheUpdate(cache) {
     }
     allPlayers = cache.players;
     startingHole = cache.startingHole;
+    
+    // Update ticker players when cache updates
+    if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
+        Ticker.setPlayers(allPlayers);
+        Ticker.refresh();
+    }
     
     renderAll();
 }
@@ -1208,15 +1335,17 @@ init();
 
 <!--
 FILE: preview-game.html
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: Based on real-game.html v3.01
-   - No signatures, no handicap adjustment, no history records
-   - Uses previewGames collection with fixed session IDs
-   - Modal for session selection (Session 1 / Session 2)
-   - Auto-creates preview document if not exists
-   - Same functionality as real-game (edit, save, cascade)
-   - All calculations use shared JS modules
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js
+   - ADDED: Ticker line (same as real-game)
+   - ADDED: Tight layout via GameUI.applyTightLayout()
+   - ADDED: Consistent match index using GameData.getMatchIndex()
+   - ADDED: All required JS modules (game-data, game-ui, game-loader, ticker, etc.)
+   - MOVED: PREVIEW bubble to top center
+   - FIXED: Version tag cleaned (no "PREVIEW" text)
+   - FIXED: Toggle buttons have round edges, dark background
+   - No signatures, no handicap adjustment (preview only)
+   - All other functionality identical to v3.00
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/ticker.js
 STATUS: Ready for integration
 -->
