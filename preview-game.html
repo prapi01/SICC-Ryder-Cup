@@ -1,10 +1,11 @@
 <!--
 FILE: preview-game.html
-VERSION: 3.05
+VERSION: 3.06
 KEY CHANGES:
-   - FIXED: setSaveButtonIdle() now uses GameUI.resetSaveButton() instead of updateSaveButton()
-   - This properly removes btn-save-pending class and restores green styling after successful save
-   - All other functionality identical to v3.04
+   - UPDATED: updateNavButtons() now uses GameUI.updateNextButtonForLastHole()
+   - Handles last hole SIGN button (gold ✍️) for card signing
+   - Removed local duplicate logic for last hole detection
+   - All other functionality identical to v3.05
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -244,7 +245,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.05</div>
+<div class="version-tag">v3.06</div>
 
 <script>
 // ============================================================
@@ -463,7 +464,6 @@ function updateTRDisplay() {
 // ============================================================
 
 function setSaveButtonIdle() {
-    // FIXED: Use resetSaveButton() which properly removes pending classes and restores green styling
     GameUI.resetSaveButton(currentHole);
     saveInProgress = false;
 }
@@ -799,6 +799,11 @@ function nextHole() {
     
     var isCurrentSaved = isSaved && !hasUnsavedChanges;
     
+    if (isLast && isCurrentSaved) {
+        showSignCardModal();
+        return;
+    }
+    
     if (!isCurrentSaved) {
         return;
     }
@@ -846,9 +851,42 @@ function updateNavButtons() {
     }
     
     var isCurrentSaved = isSaved && !hasUnsavedChanges;
+    var isLast = (currentHole === 18);
     
-    // Update next button disable logic via GameUI
-    GameUI.updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, false, false);
+    // Use centralized GameUI function for last hole SIGN button
+    GameUI.updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, showSignCardModal);
+}
+
+// ============================================================
+// Sign Card Modal Functions
+// ============================================================
+
+function showSignCardModal() {
+    var modalHtml = `
+        <div class="modal-overlay" id="signModalPreview">
+            <div class="sign-modal-container">
+                <div class="sign-modal-title">✍️ SIGN SCORECARD</div>
+                <div class="sign-modal-message">Confirm that all scores are correct before signing.</div>
+                <div class="sign-modal-buttons">
+                    <button class="sign-btn-back" id="signBackBtnPreview">← BACK</button>
+                    <button class="sign-btn-confirm" id="signConfirmBtnPreview">✓ SIGN CARD</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("signBackBtnPreview").addEventListener("click", function() {
+        document.getElementById("signModalPreview").remove();
+    });
+    
+    document.getElementById("signConfirmBtnPreview").addEventListener("click", async function() {
+        document.getElementById("signModalPreview").remove();
+        
+        // In preview mode, just show completion without actual signature submission
+        alert("PREVIEW MODE: Card signing simulation complete.");
+    });
 }
 
 // ============================================================
@@ -1219,11 +1257,12 @@ init();
 
 <!--
 FILE: preview-game.html
-VERSION: 3.05
+VERSION: 3.06
 KEY CHANGES:
-   - FIXED: setSaveButtonIdle() now uses GameUI.resetSaveButton() instead of updateSaveButton()
-   - This properly removes btn-save-pending class and restores green styling after successful save
-   - All other functionality identical to v3.04
+   - UPDATED: updateNavButtons() now uses GameUI.updateNextButtonForLastHole()
+   - Handles last hole SIGN button (gold ✍️) for card signing
+   - Removed local duplicate logic for last hole detection
+   - All other functionality identical to v3.05
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/ticker.js
 STATUS: Ready for integration
 -->
