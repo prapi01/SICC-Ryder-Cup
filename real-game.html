@@ -1,10 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 3.06
+VERSION: 3.07
 KEY CHANGES:
-   - FIXED: getMatchValueFromStoredResults() now uses GameData.getMatchIndex() for consistent match indexing
-   - Match bubbles now show same values regardless of which flight is viewed
-   - All other functionality identical to v3.05
+   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
+   - Eliminated local duplicate code
+   - Match bubbles now consistent between Team A and Team B views
+   - All other functionality identical to v3.06
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -118,24 +119,73 @@ STATUS: Ready for integration
             justify-content: space-between;
             align-items: center;
             margin-bottom: 10px;
+            gap: 8px;
             flex-wrap: wrap;
+        }
+        .scorecard-left-group {
+            display: flex;
+            align-items: center;
             gap: 10px;
         }
-        .scorecard-title { font-size: 0.9rem; font-weight: 600; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
-        .view-toggle { display: flex; gap: 4px; }
-        .toggle-btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 20px;
-            padding: 4px 12px;
-            font-size: 0.65rem;
-            cursor: pointer;
-            color: #888;
-        }
-        .toggle-btn.active {
-            background: #1a3a1a;
-            border-color: #4caf50;
+        .scorecard-title {
+            font-size: 0.9rem; font-weight: 600;
             color: #4caf50;
+            border-left: 2px solid #4caf50;
+            padding-left: 10px;
+        }
+        .pn-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            border-radius: 30px;
+            padding: 6px 12px;
+            min-width: 45px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+        }
+        .flight-toggle {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            border-radius: 30px;
+            padding: 6px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-width: 90px;
+            display: inline-block;
+            text-align: center;
+        }
+        .nav-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .nav-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            width: 36px;
+            height: 36px;
+            border-radius: 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .nav-btn:disabled {
+            background: #2a2a2a;
+            color: #555;
+            border: 1px solid #444;
+            cursor: not-allowed;
+        }
+        .hole-number-display {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4caf50;
+            min-width: 45px;
+            text-align: center;
         }
         
         .scorecard-wrapper { overflow-x: auto; }
@@ -294,7 +344,6 @@ STATUS: Ready for integration
 <div class="container">
     <div class="status-bubble" id="statusBubble">LIVE</div>
     
-    <!-- Live Ticker -->
     <div class="ticker-container" id="tickerContainer">
         <div class="ticker-content" id="tickerContent">Loading scores...</div>
     </div>
@@ -328,7 +377,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.06</div>
+<div class="version-tag">v3.07</div>
 
 <script>
 // ============================================================
@@ -376,7 +425,7 @@ var activeWaitModal = null;
 var activeCompleteModal = null;
 
 // ============================================================
-// Ticker Functions (using shared module)
+// Ticker Functions
 // ============================================================
 
 function calculatePlayerScoreRelativeToPar(player) {
@@ -505,24 +554,13 @@ function getAllOpponents(player) {
     return opponents;
 }
 
-// FIXED: Now uses GameData.getMatchIndex() for consistent indexing
+// FIXED: Uses shared GameData.getMatchValueFromResults()
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
-    if (!results || !results.matchResults) return 0;
+    if (!results) return 0;
     
-    var position = getHolePosition(holeNumber);
-    var matchResultsArray = results.matchResults[position];
-    if (!matchResultsArray) return 0;
-    
-    // Use consistent match index from GameData
-    var matchIndex = GameData.getMatchIndex(player.name, opponent.name, allPlayers);
-    if (matchIndex === -1) {
-        console.warn('getMatchValueFromStoredResults: Could not find match index for', player.name, 'vs', opponent.name);
-        return 0;
-    }
-    
-    return matchResultsArray[matchIndex] || 0;
+    return GameData.getMatchValueFromResults(results, player, opponent, holeNumber, allPlayers, getHolePosition);
 }
 
 function getBubbleClass(player, opponent) {
@@ -630,7 +668,6 @@ function performSave() {
                 }
                 await saveResultsToFirestore(currentHole);
                 
-                // Cascade: recalculate all holes from current hole to 18
                 var playOrder = getPlayOrder();
                 var startPos = playOrder.indexOf(currentHole);
                 for (var i = startPos + 1; i < 18; i++) {
@@ -638,7 +675,6 @@ function performSave() {
                     await saveResultsToFirestore(holeToUpdate);
                 }
                 
-                // Update ticker after save
                 if (typeof Ticker !== 'undefined') {
                     Ticker.refresh();
                 }
@@ -686,7 +722,7 @@ function retrySave() {
 }
 
 // ============================================================
-// Results Calculation and Storage (with matchResults)
+// Results Calculation and Storage
 // ============================================================
 
 function initializeEmptyResults() {
@@ -1242,7 +1278,6 @@ function renderAll() {
         }
     );
     
-    // Update flight indicator on player card
     GameUI.updateFlightIndicator(editableFlight);
     
     var holes = getDisplayHoles();
@@ -1306,7 +1341,6 @@ function onCacheUpdate(cache) {
     allPlayers = cache.players;
     startingHole = cache.startingHole;
     
-    // Update ticker players when cache updates
     if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
         Ticker.setPlayers(allPlayers);
         Ticker.refresh();
@@ -1416,7 +1450,6 @@ async function init() {
             return;
         }
         
-        // Apply tight layout for phone
         GameUI.applyTightLayout();
         
         var playOrder = getPlayOrder();
@@ -1428,7 +1461,6 @@ async function init() {
             }
         }
         
-        // Initialize ticker
         initTicker();
         if (allPlayers && allPlayers.length) {
             Ticker.setPlayers(allPlayers);
@@ -1488,11 +1520,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.06
+VERSION: 3.07
 KEY CHANGES:
-   - FIXED: getMatchValueFromStoredResults() now uses GameData.getMatchIndex() for consistent match indexing
-   - Match bubbles now show same values regardless of which flight is viewed
-   - All other functionality identical to v3.05
+   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
+   - Eliminated local duplicate code
+   - Match bubbles now consistent between Team A and Team B views
+   - All other functionality identical to v3.06
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
