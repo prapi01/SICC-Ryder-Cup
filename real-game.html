@@ -1,10 +1,16 @@
 <!--
 FILE: real-game.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - REMOVED: Duplicate button CSS (now in game-ui.js)
-   - Button styles now centralized via GameUI.applyButtonStyles()
-   - All other functionality identical to v3.07
+   - REMOVED: Duplicate action buttons HTML (now in game-ui.js)
+   - REMOVED: Duplicate Back to Menu button HTML (now in game-ui.js)
+   - REMOVED: Duplicate navigation event listeners (now in game-ui.js)
+   - REMOVED: Duplicate flight toggle logic (now in game-ui.js)
+   - REMOVED: Flight indicator calls (now redundant - Flight toggle in header)
+   - NOW USES: GameUI.renderActionButtons(), GameUI.renderBottomMenu()
+   - NOW USES: GameUI.attachGlobalEventListeners(), GameUI.updateNavButtonsWithDisableLogic()
+   - NOW USES: GameUI.updateFlightToggleButton() instead of flight indicator
+   - All game logic (save, load, results calculation) unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -133,28 +139,6 @@ STATUS: Ready for integration
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
         
-        .action-buttons { display: flex; gap: 12px; margin: 20px 0; }
-        .btn { flex: 1; padding: 12px; border-radius: 40px; font-weight: 600; text-align: center; cursor: pointer; border: none; transition: all 0.2s ease; }
-        .btn-save { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-        .btn-save-pending { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
-        .btn-save-retry { background: #3a1a1a; color: #ffaa44; border: 1px solid #ffaa44; }
-        .btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-        .btn-next-inactive { background: #2a2a2a; color: #555; border: 1px solid #444; cursor: not-allowed; }
-        .btn-back { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
-        .btn-back:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
-        .btn-menu {
-            width: 100%;
-            padding: 14px;
-            border-radius: 40px;
-            font-weight: 600;
-            text-align: center;
-            cursor: pointer;
-            background: #1a1a1a;
-            color: #ccc;
-            border: 1px solid #333;
-            margin-top: 20px;
-        }
-        
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
@@ -252,13 +236,6 @@ STATUS: Ready for integration
             margin: 0 auto;
         }
         
-        @keyframes flashGreen {
-            0% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
-            50% { background: #4caf50; border-color: #4caf50; color: #1a3a1a; }
-            100% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
-        }
-        .btn-save-flash { animation: flashGreen 0.5s ease; }
-        
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
@@ -280,11 +257,8 @@ STATUS: Ready for integration
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
     
-    <div class="action-buttons">
-        <button class="btn btn-back" id="backBtn">← Back</button>
-        <button class="btn btn-save" id="saveBtn">💾 SAVE</button>
-        <button class="btn btn-next" id="nextBtn">Next →</button>
-    </div>
+    <!-- Action buttons container - GameUI will render SAVE button here -->
+    <div id="actionButtonsContainer"></div>
     
     <div class="scorecard-section">
         <div class="scorecard-header">
@@ -302,12 +276,14 @@ STATUS: Ready for integration
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
-    <button class="btn btn-menu" id="menuBtn">← Back to Main Menu</button>
+    <!-- Bottom menu container - GameUI will render Back to Main Menu button here -->
+    <div id="bottomMenuContainer"></div>
+    
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.08</div>
+<div class="version-tag">v3.09</div>
 
 <script>
 // ============================================================
@@ -348,7 +324,6 @@ var allPlayers = [];
 var isGameCompleteFlag = false;
 var celebrationTriggered = false;
 
-var saveBtn = null;
 var saveInProgress = false;
 
 var activeWaitModal = null;
@@ -530,39 +505,41 @@ function updateTRDisplay() {
 // ============================================================
 
 function setSaveButtonIdle() {
-    if (!saveBtn) return;
-    saveBtn.classList.remove('btn-save-pending', 'btn-save-retry');
-    saveBtn.classList.add('btn-save');
-    saveBtn.innerHTML = '💾 SAVE H' + currentHole;
-    saveBtn.disabled = false;
+    GameUI.updateSaveButton(currentHole, false);
     saveInProgress = false;
 }
 
 function setSaveButtonPending() {
-    if (!saveBtn) return;
-    saveBtn.classList.remove('btn-save', 'btn-save-retry');
-    saveBtn.classList.add('btn-save-pending');
-    saveBtn.innerHTML = '⏳ SAVING...';
-    saveBtn.disabled = true;
+    var saveBtn = document.getElementById('saveBtn');
+    if (saveBtn) {
+        saveBtn.classList.remove('btn-save', 'btn-save-retry');
+        saveBtn.classList.add('btn-save-pending');
+        saveBtn.innerHTML = '⏳ SAVING...';
+        saveBtn.disabled = true;
+    }
     saveInProgress = true;
 }
 
 function setSaveButtonRetry() {
-    if (!saveBtn) return;
-    saveBtn.classList.remove('btn-save', 'btn-save-pending');
-    saveBtn.classList.add('btn-save-retry');
-    saveBtn.innerHTML = '⚠️ RETRY';
-    saveBtn.disabled = false;
+    var saveBtn = document.getElementById('saveBtn');
+    if (saveBtn) {
+        saveBtn.classList.remove('btn-save', 'btn-save-pending');
+        saveBtn.classList.add('btn-save-retry');
+        saveBtn.innerHTML = '⚠️ RETRY';
+        saveBtn.disabled = false;
+    }
     saveInProgress = false;
 }
 
 function flashSaveButtonSuccess() {
-    if (!saveBtn) return;
-    saveBtn.classList.add('btn-save-flash');
-    setTimeout(function() {
-        saveBtn.classList.remove('btn-save-flash');
-        saveBtn.innerHTML = '💾 SAVE H' + currentHole;
-    }, 500);
+    var saveBtn = document.getElementById('saveBtn');
+    if (saveBtn) {
+        saveBtn.classList.add('btn-save-flash');
+        setTimeout(function() {
+            saveBtn.classList.remove('btn-save-flash');
+            saveBtn.innerHTML = '💾 SAVE H' + currentHole;
+        }, 500);
+    }
 }
 
 function performSave() {
@@ -887,6 +864,7 @@ function nextHole() {
     var nextIndex = (currentIndex + 1) % 18;
     currentHole = playOrder[nextIndex];
     
+    updateHoleNumberDisplay();
     setSaveButtonIdle();
     renderAll();
 }
@@ -900,20 +878,19 @@ function prevHole() {
     var prevIndex = currentIndex - 1;
     currentHole = playOrder[prevIndex];
     
+    updateHoleNumberDisplay();
     setSaveButtonIdle();
     renderAll();
 }
 
+function updateHoleNumberDisplay() {
+    var holeDisplay = document.getElementById("holeNumberDisplay");
+    if (holeDisplay) {
+        holeDisplay.innerText = currentHole;
+    }
+}
+
 function updateNavButtons() {
-    var backBtn = document.getElementById("backBtn");
-    var nextBtn = document.getElementById("nextBtn");
-    if (!backBtn || !nextBtn) return;
-    
-    var playOrder = getPlayOrder();
-    var currentIndex = playOrder.indexOf(currentHole);
-    backBtn.disabled = (currentIndex === 0);
-    
-    var isLast = CardSubmit.isLastHole(currentHole, startingHole);
     var isSaved = isHoleSaved(editableFlight, currentHole);
     
     var hasUnsavedChanges = false;
@@ -925,40 +902,15 @@ function updateNavButtons() {
     }
     
     var isCurrentSaved = isSaved && !hasUnsavedChanges;
+    var isLast = CardSubmit.isLastHole(currentHole, startingHole);
     
+    // Update next button disable logic via GameUI
     if (isGameCompleteFlag && !celebrationTriggered) {
-        nextBtn.textContent = "🏆 SEE RESULTS";
-        nextBtn.disabled = false;
-        nextBtn.classList.add("btn-game-complete");
-        nextBtn.classList.remove("btn-next", "btn-next-inactive");
-        return;
-    }
-    
-    nextBtn.classList.remove("btn-game-complete");
-    
-    if (isLast) {
-        if (isCurrentSaved) {
-            nextBtn.textContent = "✍️ SIGN CARD";
-            nextBtn.disabled = false;
-            nextBtn.classList.add("btn-next");
-            nextBtn.classList.remove("btn-next-inactive");
-        } else {
-            nextBtn.textContent = "✍️ SIGN CARD";
-            nextBtn.disabled = true;
-            nextBtn.classList.add("btn-next-inactive");
-            nextBtn.classList.remove("btn-next");
-        }
+        GameUI.setNextButtonToSeeResults();
+    } else if (isLast && isCurrentSaved) {
+        GameUI.setNextButtonToSignMode();
     } else {
-        nextBtn.textContent = "Next →";
-        if (isCurrentSaved) {
-            nextBtn.disabled = false;
-            nextBtn.classList.add("btn-next");
-            nextBtn.classList.remove("btn-next-inactive");
-        } else {
-            nextBtn.disabled = true;
-            nextBtn.classList.add("btn-next-inactive");
-            nextBtn.classList.remove("btn-next");
-        }
+        GameUI.updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameCompleteFlag, celebrationTriggered);
     }
 }
 
@@ -1166,6 +1118,15 @@ function buildMatchResultsForHandicap() {
 }
 
 // ============================================================
+// Flight Toggle Handler
+// ============================================================
+
+function onToggleFlight(flightNumber) {
+    editableFlight = flightNumber;
+    renderAll();
+}
+
+// ============================================================
 // Render Functions
 // ============================================================
 
@@ -1207,8 +1168,6 @@ function renderAll() {
             renderAll();
         }
     );
-    
-    GameUI.updateFlightIndicator(editableFlight);
     
     var holes = getDisplayHoles();
     window.savedHoles = cache.savedHoles;
@@ -1328,8 +1287,6 @@ async function init() {
     var myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
     
-    saveBtn = document.getElementById("saveBtn");
-    
     var session = await new Promise(function(resolve) {
         SessionManager.initSession("real-game.html", "index.html", resolve);
     });
@@ -1383,6 +1340,21 @@ async function init() {
         // Apply tight layout and button styles
         GameUI.applyTightLayout();
         
+        // Render action buttons (SAVE button)
+        GameUI.renderActionButtons("actionButtonsContainer", currentHole, false, saveHole);
+        
+        // Render bottom menu (Back to Main Menu)
+        GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+        
+        // Set initial flight toggle button text
+        GameUI.updateFlightToggleButton(editableFlight);
+        
+        // Attach global event listeners
+        GameUI.attachGlobalEventListeners(prevHole, nextHole);
+        
+        // Register flight toggle callback
+        window.onToggleFlight = onToggleFlight;
+        
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
             var hole = playOrder[i];
@@ -1391,6 +1363,7 @@ async function init() {
                 break;
             }
         }
+        updateHoleNumberDisplay();
         
         initTicker();
         if (allPlayers && allPlayers.length) {
@@ -1406,38 +1379,6 @@ async function init() {
         document.getElementById("naturalOrderBtn").addEventListener("click", function() {
             GameUI.setDisplayMode("natural", function() { renderAll(); });
         });
-        document.getElementById("saveBtn").addEventListener("click", function() {
-            if (saveBtn.classList.contains('btn-save-retry')) {
-                retrySave();
-            } else {
-                saveHole();
-            }
-        });
-        document.getElementById("backBtn").addEventListener("click", prevHole);
-        document.getElementById("menuBtn").addEventListener("click", exitToMainMenu);
-        
-        document.getElementById("nextBtn").addEventListener("click", function() {
-            if (isGameCompleteFlag && !celebrationTriggered) {
-                showCelebrationAndHandicap();
-                return;
-            }
-            
-            var isLast = CardSubmit.isLastHole(currentHole, startingHole);
-            var isSaved = isHoleSaved(editableFlight, currentHole);
-            
-            var hasUnsavedChanges = false;
-            for (var key in localChanges) {
-                if (key.startsWith(editableFlight + "_" + currentHole + "_")) {
-                    hasUnsavedChanges = true;
-                    break;
-                }
-            }
-            
-            var isCurrentSaved = isSaved && !hasUnsavedChanges;
-            
-            if (isLast && isCurrentSaved) showSignCardModal();
-            else if (!isLast) nextHole();
-        });
     });
     
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
@@ -1451,11 +1392,17 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - REMOVED: Duplicate button CSS (now in game-ui.js)
-   - Button styles now centralized via GameUI.applyButtonStyles()
-   - All other functionality identical to v3.07
+   - REMOVED: Duplicate action buttons HTML (now in game-ui.js)
+   - REMOVED: Duplicate Back to Menu button HTML (now in game-ui.js)
+   - REMOVED: Duplicate navigation event listeners (now in game-ui.js)
+   - REMOVED: Duplicate flight toggle logic (now in game-ui.js)
+   - REMOVED: Flight indicator calls (now redundant - Flight toggle in header)
+   - NOW USES: GameUI.renderActionButtons(), GameUI.renderBottomMenu()
+   - NOW USES: GameUI.attachGlobalEventListeners(), GameUI.updateNavButtonsWithDisableLogic()
+   - NOW USES: GameUI.updateFlightToggleButton() instead of flight indicator
+   - All game logic (save, load, results calculation) unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
