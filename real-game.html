@@ -1,10 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 3.10
+VERSION: 3.11
 KEY CHANGES:
-   - FIXED: setSaveButtonIdle() now uses GameUI.resetSaveButton() instead of updateSaveButton()
-   - This properly removes btn-save-pending class and restores green styling after successful save
-   - All other functionality identical to v3.09
+   - UPDATED: updateNavButtons() now uses GameUI.updateNextButtonForLastHole()
+   - Handles last hole SIGN button (gold ✍️) for card signing
+   - Removed local duplicate logic for last hole detection
+   - All other functionality identical to v3.10
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -277,7 +278,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.10</div>
+<div class="version-tag">v3.11</div>
 
 <script>
 // ============================================================
@@ -499,7 +500,6 @@ function updateTRDisplay() {
 // ============================================================
 
 function setSaveButtonIdle() {
-    // FIXED: Use resetSaveButton() which properly removes pending classes and restores green styling
     GameUI.resetSaveButton(currentHole);
     saveInProgress = false;
 }
@@ -831,7 +831,7 @@ function nextHole() {
         return;
     }
     
-    var isLast = CardSubmit.isLastHole(currentHole, startingHole);
+    var isLast = (currentHole === 18);
     var isSaved = isHoleSaved(editableFlight, currentHole);
     
     var hasUnsavedChanges = false;
@@ -896,16 +896,10 @@ function updateNavButtons() {
     }
     
     var isCurrentSaved = isSaved && !hasUnsavedChanges;
-    var isLast = CardSubmit.isLastHole(currentHole, startingHole);
+    var isLast = (currentHole === 18);
     
-    // Update next button disable logic via GameUI
-    if (isGameCompleteFlag && !celebrationTriggered) {
-        GameUI.setNextButtonToSeeResults();
-    } else if (isLast && isCurrentSaved) {
-        GameUI.setNextButtonToSignMode();
-    } else {
-        GameUI.updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameCompleteFlag, celebrationTriggered);
-    }
+    // Use centralized GameUI function for last hole SIGN button
+    GameUI.updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, showSignCardModal);
 }
 
 // ============================================================
@@ -1386,11 +1380,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.10
+VERSION: 3.11
 KEY CHANGES:
-   - FIXED: setSaveButtonIdle() now uses GameUI.resetSaveButton() instead of updateSaveButton()
-   - This properly removes btn-save-pending class and restores green styling after successful save
-   - All other functionality identical to v3.09
+   - UPDATED: updateNavButtons() now uses GameUI.updateNextButtonForLastHole()
+   - Handles last hole SIGN button (gold ✍️) for card signing
+   - Removed local duplicate logic for last hole detection
+   - All other functionality identical to v3.10
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
