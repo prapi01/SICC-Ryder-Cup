@@ -1,0 +1,192 @@
+/*
+FILE: js/ticker.js
+VERSION: 1.00
+KEY CHANGES:
+   - NEW: Shared ticker module for all game pages
+   - Provides continuous seamless scrolling loop
+   - Duplicates content to eliminate blank gap
+   - Single source of truth for ticker logic
+   - Can be used by real-game, preview-game, view-game, view-history
+DEPENDS ON: None (pure DOM manipulation)
+STATUS: Ready for integration
+*/
+
+var Ticker = (function() {
+    
+    // Private variables
+    var tickerContainer = null;
+    var tickerContent = null;
+    var isInitialized = false;
+    var currentPlayers = [];
+    var getPlayerScoreCallback = null;
+    
+    // ============================================================
+    // Format a single player's score for display
+    // ============================================================
+    
+    function formatScore(score) {
+        if (score > 0) return '+' + score;
+        if (score < 0) return score.toString();
+        return 'E';
+    }
+    
+    // ============================================================
+    // Build the ticker HTML from player data
+    // ============================================================
+    
+    function buildTickerHTML() {
+        if (!currentPlayers.length) return 'Loading scores...';
+        
+        var parts = [];
+        for (var i = 0; i < currentPlayers.length; i++) {
+            var player = currentPlayers[i];
+            var score = 0;
+            
+            // Get score from callback if provided
+            if (getPlayerScoreCallback) {
+                score = getPlayerScoreCallback(player);
+            }
+            
+            var scoreDisplay = formatScore(score);
+            parts.push('<span style="color:#ffffff; font-weight:500;">' + player.label + '</span> <span style="color:#4caf50;">' + scoreDisplay + '</span>');
+        }
+        
+        // Single set of players
+        var singleSet = parts.join('   <span style="color:#555555;">•</span>   ');
+        
+        // Duplicate for seamless looping (content appears twice)
+        return singleSet + '   <span style="color:#555555;">•</span>   ' + singleSet;
+    }
+    
+    // ============================================================
+    // Update the ticker display
+    // ============================================================
+    
+    function update() {
+        if (!tickerContent || !isInitialized) return;
+        tickerContent.innerHTML = buildTickerHTML();
+    }
+    
+    // ============================================================
+    // Initialize the ticker
+    // ============================================================
+    
+    function init(containerId, contentId, playerScoreCallback) {
+        tickerContainer = document.getElementById(containerId);
+        tickerContent = document.getElementById(contentId);
+        getPlayerScoreCallback = playerScoreCallback || null;
+        
+        if (!tickerContainer || !tickerContent) {
+            console.warn('Ticker: Container or content element not found');
+            return false;
+        }
+        
+        isInitialized = true;
+        
+        // Ensure the parent container has the correct CSS for scrolling
+        if (tickerContainer) {
+            tickerContainer.style.cssText = `
+                width: 100%;
+                overflow: hidden;
+                background: #111111;
+                border-radius: 0;
+                margin-bottom: 12px;
+                white-space: nowrap;
+                border-top: 1px solid #2a2a2a;
+                border-bottom: 1px solid #2a2a2a;
+                padding: 8px 0;
+            `;
+        }
+        
+        if (tickerContent) {
+            tickerContent.style.cssText = `
+                display: inline-block;
+                white-space: nowrap;
+                font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+                font-size: 0.8rem;
+                letter-spacing: 0.3px;
+                font-weight: 400;
+                animation: tickerScroll 36s linear infinite;
+                padding-right: 100%;
+            `;
+        }
+        
+        // Add animation styles if not already present
+        if (!document.getElementById('ticker-styles')) {
+            var style = document.createElement('style');
+            style.id = 'ticker-styles';
+            style.textContent = `
+                @keyframes tickerScroll {
+                    0% { transform: translateX(0); }
+                    100% { transform: translateX(-50%); }
+                }
+                .ticker-container:hover .ticker-content {
+                    animation-play-state: paused;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        return true;
+    }
+    
+    // ============================================================
+    // Set players data
+    // ============================================================
+    
+    function setPlayers(players) {
+        currentPlayers = players;
+        update();
+    }
+    
+    // ============================================================
+    // Update a single player's score and refresh display
+    // ============================================================
+    
+    function updatePlayerScore(playerLabel, newScore) {
+        if (!currentPlayers.length) return false;
+        
+        for (var i = 0; i < currentPlayers.length; i++) {
+            if (currentPlayers[i].label === playerLabel || currentPlayers[i].name === playerLabel) {
+                // Score will be retrieved via callback on next update
+                update();
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // ============================================================
+    // Force refresh (call after scores change)
+    // ============================================================
+    
+    function refresh() {
+        update();
+    }
+    
+    // ============================================================
+    // Public API
+    // ============================================================
+    
+    return {
+        init: init,
+        setPlayers: setPlayers,
+        updatePlayerScore: updatePlayerScore,
+        refresh: refresh,
+        update: update
+    };
+    
+})();
+
+/*
+FILE: js/ticker.js
+VERSION: 1.00
+KEY CHANGES:
+   - NEW: Shared ticker module for all game pages
+   - Provides continuous seamless scrolling loop
+   - Duplicates content to eliminate blank gap
+   - Single source of truth for ticker logic
+   - Can be used by real-game, preview-game, view-game, view-history
+DEPENDS ON: None (pure DOM manipulation)
+STATUS: Ready for integration
+*/
