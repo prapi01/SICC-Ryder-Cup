@@ -1,12 +1,13 @@
 /*
 FILE: js/ticker.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - NEW: Shared ticker module for all game pages
-   - Provides continuous seamless scrolling loop
-   - Duplicates content to eliminate blank gap
-   - Single source of truth for ticker logic
-   - Can be used by real-game, preview-game, view-game, view-history
+   - FIXED: Seamless continuous loop with 3 sets of content
+   - No blank gaps between loops on any screen size
+   - Animation uses -66.66% translate for 3 sets
+   - Removed extra separator at join points
+   - Slower animation for smoother experience (60s for 3 sets)
+   - All other functionality identical to v1.00
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -32,6 +33,7 @@ var Ticker = (function() {
     
     // ============================================================
     // Build the ticker HTML from player data
+    // Uses 3 sets for seamless looping on all screen sizes
     // ============================================================
     
     function buildTickerHTML() {
@@ -51,11 +53,13 @@ var Ticker = (function() {
             parts.push('<span style="color:#ffffff; font-weight:500;">' + player.label + '</span> <span style="color:#4caf50;">' + scoreDisplay + '</span>');
         }
         
-        // Single set of players
-        var singleSet = parts.join('   <span style="color:#555555;">•</span>   ');
+        var separator = '   <span style="color:#555555;">•</span>   ';
+        var singleSet = parts.join(separator);
+        var spacer = '   ';  // Space between sets (no separator to avoid double •)
         
-        // Duplicate for seamless looping (content appears twice)
-        return singleSet + '   <span style="color:#555555;">•</span>   ' + singleSet;
+        // Three sets for seamless looping on all screen sizes
+        // The animation will translate by -66.66% to show each set in sequence
+        return singleSet + spacer + singleSet + spacer + singleSet;
     }
     
     // ============================================================
@@ -106,7 +110,7 @@ var Ticker = (function() {
                 font-size: 0.8rem;
                 letter-spacing: 0.3px;
                 font-weight: 400;
-                animation: tickerScroll 36s linear infinite;
+                animation: tickerScroll 60s linear infinite;
                 padding-right: 100%;
             `;
         }
@@ -118,7 +122,7 @@ var Ticker = (function() {
             style.textContent = `
                 @keyframes tickerScroll {
                     0% { transform: translateX(0); }
-                    100% { transform: translateX(-50%); }
+                    100% { transform: translateX(-66.66%); }
                 }
                 .ticker-container:hover .ticker-content {
                     animation-play-state: paused;
@@ -180,13 +184,14 @@ var Ticker = (function() {
 
 /*
 FILE: js/ticker.js
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - NEW: Shared ticker module for all game pages
-   - Provides continuous seamless scrolling loop
-   - Duplicates content to eliminate blank gap
-   - Single source of truth for ticker logic
-   - Can be used by real-game, preview-game, view-game, view-history
+   - FIXED: Seamless continuous loop with 3 sets of content
+   - No blank gaps between loops on any screen size
+   - Animation uses -66.66% translate for 3 sets
+   - Removed extra separator at join points
+   - Slower animation for smoother experience (60s for 3 sets)
+   - All other functionality identical to v1.00
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
