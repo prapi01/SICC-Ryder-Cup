@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES:
-   - UPDATED: updateNavButtons() now uses GameUI.updateNextButtonForLastHole()
-   - Handles last hole SIGN button (gold ✍️) for card signing
-   - Removed local duplicate logic for last hole detection
-   - All other functionality identical to v3.10
+   - FIXED: showSignCardModal() now calls GameUI.ensureNoStuckModals() first
+   - FIXED: Modal now has guaranteed visibility with inline styles
+   - Ensures no duplicate modals stack up
+   - All other functionality identical to v3.11
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -278,7 +278,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.11</div>
+<div class="version-tag">v3.12</div>
 
 <script>
 // ============================================================
@@ -903,18 +903,23 @@ function updateNavButtons() {
 }
 
 // ============================================================
-// Modal Functions
+// Modal Functions - FIXED with ensureNoStuckModals
 // ============================================================
 
 function showSignCardModal() {
+    // First, clean up any stuck modals
+    if (typeof GameUI.ensureNoStuckModals === 'function') {
+        GameUI.ensureNoStuckModals();
+    }
+    
     var modalHtml = `
-        <div class="modal-overlay" id="signModalNew">
-            <div class="sign-modal-container">
-                <div class="sign-modal-title">✍️ SIGN SCORECARD</div>
-                <div class="sign-modal-message">Confirm that all scores are correct before signing.</div>
-                <div class="sign-modal-buttons">
-                    <button class="sign-btn-back" id="signBackBtnNew">← BACK</button>
-                    <button class="sign-btn-confirm" id="signConfirmBtnNew">✓ SIGN CARD</button>
+        <div class="modal-overlay" id="signModalNew" style="z-index: 10001; display: flex !important; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); align-items: center; justify-content: center;">
+            <div class="sign-modal-container" style="background: #1a1a1a; border-radius: 28px; padding: 28px; max-width: 360px; width: 90%; text-align: center; border: 2px solid #4caf50;">
+                <div class="sign-modal-title" style="font-size: 1.5rem; font-weight: 700; color: #4caf50; margin-bottom: 16px;">✍️ SIGN SCORECARD</div>
+                <div class="sign-modal-message" style="font-size: 0.9rem; color: #ccc; margin-bottom: 24px;">Confirm that all scores are correct before signing.</div>
+                <div class="sign-modal-buttons" style="display: flex; gap: 12px;">
+                    <button class="sign-btn-back" id="signBackBtnNew" style="flex: 1; background: #1a1a1a; border: 1px solid #333; color: #888; padding: 12px; border-radius: 40px; font-weight: 600; cursor: pointer;">← BACK</button>
+                    <button class="sign-btn-confirm" id="signConfirmBtnNew" style="flex: 1; background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; padding: 12px; border-radius: 40px; font-weight: 700; cursor: pointer;">✓ SIGN CARD</button>
                 </div>
             </div>
         </div>
@@ -952,13 +957,14 @@ function showSignCardModal() {
 }
 
 function showWaitingScreen() {
+    // Remove any existing waiting modal
     if (activeWaitModal) {
         activeWaitModal.remove();
         activeWaitModal = null;
     }
     
     var modalHtml = `
-        <div class="modal-overlay" id="waitingModalNew">
+        <div class="modal-overlay" id="waitingModalNew" style="z-index: 10001; display: flex !important;">
             <div class="waiting-modal-container">
                 <div class="waiting-title">⌛ CARD SIGNED</div>
                 <div class="waiting-message">Waiting for ${editableFlight === 1 ? 'Flight 2' : 'Flight 1'}...</div>
@@ -988,7 +994,7 @@ function showGameCompleteScreen() {
     }
     
     var modalHtml = `
-        <div class="modal-overlay" id="completeModalNew">
+        <div class="modal-overlay" id="completeModalNew" style="z-index: 10001; display: flex !important;">
             <div class="complete-modal-container">
                 <div class="complete-title">🏆 GAME COMPLETE</div>
                 <div class="complete-emojis">🍺 🏆 🍺</div>
@@ -1380,12 +1386,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES:
-   - UPDATED: updateNavButtons() now uses GameUI.updateNextButtonForLastHole()
-   - Handles last hole SIGN button (gold ✍️) for card signing
-   - Removed local duplicate logic for last hole detection
-   - All other functionality identical to v3.10
+   - FIXED: showSignCardModal() now calls GameUI.ensureNoStuckModals() first
+   - FIXED: Modal now has guaranteed visibility with inline styles
+   - Ensures no duplicate modals stack up
+   - All other functionality identical to v3.11
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
