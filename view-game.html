@@ -1,14 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 3.02
+VERSION: 3.03
 KEY CHANGES:
-   - ADDED: Ticker line (same as real-game)
-   - ADDED: Tight layout via GameUI.applyTightLayout()
-   - ADDED: Consistent match index using GameData.getMatchIndex()
-   - MOVED: VIEWER bubble to top center
-   - FIXED: Version tag cleaned (no "VIEWER" text)
-   - FIXED: Toggle buttons have round edges, dark background
-   - All other functionality identical to v3.01
+   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
+   - Eliminated local duplicate code
+   - Match bubbles now consistent between Team A and Team B views
+   - All other functionality identical to v3.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -59,7 +56,6 @@ STATUS: Ready for integration
             opacity: 0.4;
         }
         
-        /* Status bubble - will be repositioned by GameUI.applyTightLayout() */
         .status-bubble {
             background: rgba(255,170,68,0.3);
             border: 1px solid #ffaa44;
@@ -132,8 +128,7 @@ STATUS: Ready for integration
             gap: 10px;
         }
         .scorecard-title {
-            font-size: 0.9rem;
-            font-weight: 600;
+            font-size: 0.9rem; font-weight: 600;
             color: #4caf50;
             border-left: 2px solid #4caf50;
             padding-left: 10px;
@@ -235,7 +230,6 @@ STATUS: Ready for integration
 <div class="container">
     <div class="status-bubble" id="statusBubble">VIEWER</div>
     
-    <!-- Live Ticker -->
     <div class="ticker-container" id="tickerContainer">
         <div class="ticker-content" id="tickerContent">Loading scores...</div>
     </div>
@@ -268,7 +262,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.02</div>
+<div class="version-tag">v3.03</div>
 
 <script>
 // ============================================================
@@ -445,19 +439,10 @@ function isHoleSaved(flight, hole) {
     return holeData && holeData.saved;
 }
 
-// FIXED: Uses GameData.getMatchIndex() for consistent match indexing
+// FIXED: Uses shared GameData.getMatchValueFromResults()
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
-    if (!resultsCache || !resultsCache.matchResults) return 0;
-    
-    var position = getHolePosition(holeNumber);
-    var matchResultsArray = resultsCache.matchResults[position];
-    if (!matchResultsArray) return 0;
-    
-    // Use consistent match index from GameData
-    var matchIndex = GameData.getMatchIndex(player.name, opponent.name, allPlayers);
-    if (matchIndex === -1) return 0;
-    
-    return matchResultsArray[matchIndex] || 0;
+    if (!resultsCache) return 0;
+    return GameData.getMatchValueFromResults(resultsCache, player, opponent, holeNumber, allPlayers, getHolePosition);
 }
 
 function getBubbleClass(player, opponent) {
@@ -608,7 +593,6 @@ function renderAll() {
         null
     );
     
-    // Build display rows from stored results
     var t1Row = new Array(18).fill('_');
     var t2Row = new Array(18).fill('_');
     var strkRow = new Array(18).fill('_');
@@ -643,7 +627,6 @@ function renderAll() {
     
     updateNavButtons();
     
-    // Update ticker
     if (typeof Ticker !== 'undefined') {
         Ticker.refresh();
     }
@@ -673,13 +656,11 @@ function startGameListener() {
             
             document.getElementById("courseName").innerHTML = courseName;
             
-            // Update ticker players
             if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
                 Ticker.setPlayers(allPlayers);
                 Ticker.refresh();
             }
             
-            // Find first unsaved hole to set as current
             var playOrder = getPlayOrder();
             var foundCurrent = false;
             for (var i = 0; i < playOrder.length; i++) {
@@ -724,14 +705,8 @@ async function init() {
         return;
     }
     
-    // Apply tight layout for phone
-    if (typeof GameUI !== 'undefined') {
-        GameUI.applyTightLayout();
-    }
-    
-    // Initialize ticker
+    GameUI.applyTightLayout();
     initTicker();
-    
     startGameListener();
     
     document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
@@ -754,15 +729,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.02
+VERSION: 3.03
 KEY CHANGES:
-   - ADDED: Ticker line (same as real-game)
-   - ADDED: Tight layout via GameUI.applyTightLayout()
-   - ADDED: Consistent match index using GameData.getMatchIndex()
-   - MOVED: VIEWER bubble to top center
-   - FIXED: Version tag cleaned (no "VIEWER" text)
-   - FIXED: Toggle buttons have round edges, dark background
-   - All other functionality identical to v3.01
+   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
+   - Eliminated local duplicate code
+   - Match bubbles now consistent between Team A and Team B views
+   - All other functionality identical to v3.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js
 STATUS: Ready for integration
 -->
