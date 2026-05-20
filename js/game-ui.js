@@ -1,11 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.10
+VERSION: 2.11
 KEY CHANGES:
-   - ADDED: resetSaveButton() - properly resets save button to normal green state
-   - Removes btn-save-pending, btn-save-retry, btn-save-flash classes
-   - Restores normal btn-save styling and text
-   - All existing functions unchanged from v2.09
+   - ADDED: updateNextButtonForLastHole() - handles last hole SIGN button logic
+   - Changes next button to gold ✍️ when on last hole and saved
+   - Restores normal green ▶ button for other holes
+   - Centralizes sign card trigger for all game pages
+   - All existing functions unchanged from v2.10
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -13,7 +14,7 @@ STATUS: Ready for integration
 var GameUI = (function() {
     
     // ============================================================
-    // Existing Functions (unchanged from v2.09)
+    // Existing Functions (unchanged from v2.10)
     // ============================================================
     
     // Track if styles have been applied
@@ -140,7 +141,7 @@ var GameUI = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -499,7 +500,6 @@ var GameUI = (function() {
         }
     }
     
-    // NEW: Reset save button to normal green state (removes pending/retry classes)
     function resetSaveButton(currentHole) {
         var saveBtn = document.getElementById('saveBtn');
         if (saveBtn) {
@@ -577,6 +577,37 @@ var GameUI = (function() {
                 nextBtn.classList.add('btn-next-inactive');
                 nextBtn.classList.remove('btn-next');
             }
+        }
+    }
+    
+    // NEW: Handle last hole SIGN button (gold ✍️)
+    function updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, onSignCardCallback) {
+        var nextHoleBtn = document.getElementById('nextHoleBtn');
+        if (!nextHoleBtn) return;
+        
+        if (isLast && isCurrentSaved) {
+            // SIGN MODE - Gold button with pencil icon
+            nextHoleBtn.innerHTML = '✍️';
+            nextHoleBtn.style.background = '#ffaa44';
+            nextHoleBtn.style.color = '#1a3a1a';
+            nextHoleBtn.style.border = '1px solid #ffaa44';
+            nextHoleBtn.style.fontWeight = 'bold';
+            nextHoleBtn.disabled = false;
+            
+            // Store and attach sign callback
+            nextHoleBtn._onSignCard = onSignCardCallback;
+            nextHoleBtn.onclick = function() {
+                if (this._onSignCard && typeof this._onSignCard === 'function') {
+                    this._onSignCard();
+                }
+            };
+        } else {
+            // NORMAL MODE - Green navigation button
+            nextHoleBtn.innerHTML = '▶';
+            nextHoleBtn.style.background = '#1a3a1a';
+            nextHoleBtn.style.color = '#4caf50';
+            nextHoleBtn.style.border = '1px solid #4caf50';
+            nextHoleBtn.disabled = !isCurrentSaved;
         }
     }
     
@@ -927,13 +958,14 @@ var GameUI = (function() {
         // Action buttons
         renderActionButtons: renderActionButtons,
         updateSaveButton: updateSaveButton,
-        resetSaveButton: resetSaveButton,  // NEW: Reset save button to green state
+        resetSaveButton: resetSaveButton,
         
         // Bottom menu
         renderBottomMenu: renderBottomMenu,
         
         // Navigation logic
         updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
+        updateNextButtonForLastHole: updateNextButtonForLastHole,  // NEW
         setNextButtonToSignMode: setNextButtonToSignMode,
         setNextButtonToSeeResults: setNextButtonToSeeResults,
         
@@ -954,12 +986,13 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.10
+VERSION: 2.11
 KEY CHANGES:
-   - ADDED: resetSaveButton() - properly resets save button to normal green state
-   - Removes btn-save-pending, btn-save-retry, btn-save-flash classes
-   - Restores normal btn-save styling and text
-   - All existing functions unchanged from v2.09
+   - ADDED: updateNextButtonForLastHole() - handles last hole SIGN button logic
+   - Changes next button to gold ✍️ when on last hole and saved
+   - Restores normal green ▶ button for other holes
+   - Centralizes sign card trigger for all game pages
+   - All existing functions unchanged from v2.10
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
