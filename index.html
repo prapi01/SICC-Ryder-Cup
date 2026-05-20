@@ -1,12 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.04
+VERSION: 3.05
 KEY CHANGES:
-   - Splash appears immediately before any content loads
-   - Container hidden initially, revealed after splash ends
-   - Inline splash creation (no script loading delay)
-   - No "flash" of landing page before splash
-   - All other functionality identical to v3.03
+   - Added spacing between header, subtitle, and NGB button
+   - Splash screen now shows only once per session (sessionStorage)
+   - Added safe area insets for iPhone home indicator (dark background)
+   - Better visual separation on landing page
+   - No white band at bottom on iOS devices
+   - All other functionality identical to v3.04
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -46,6 +47,7 @@ STATUS: Ready for deployment
             display: none;
             max-width: 420px;
             width: 100%;
+            padding-bottom: env(safe-area-inset-bottom, 20px);
         }
         
         body {
@@ -57,6 +59,7 @@ STATUS: Ready for deployment
             align-items: center;
             justify-content: center;
             padding: 20px;
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
             margin-top: -60px;
         }
         
@@ -190,8 +193,8 @@ STATUS: Ready for deployment
             text-align: center;
             cursor: pointer;
             transition: all 0.3s ease;
-            margin-top: 8px;
             margin-bottom: 20px;
+            margin-top: 8px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
         }
         .ngb:active { transform: scale(0.98); }
@@ -245,6 +248,7 @@ STATUS: Ready for deployment
             font-size: 0.65rem;
             color: #555;
             margin-top: 20px;
+            padding-bottom: env(safe-area-inset-bottom, 10px);
         }
         
         .loading { text-align: center; padding: 40px; color: #888; }
@@ -267,13 +271,13 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.04</div>
+<div class="version-tag">v3.05</div>
 
 <script>
-// FILE: index.html - VERSION 3.04
-// CHANGES: Splash appears immediately, container hidden until splash ends
+// FILE: index.html - VERSION 3.05
+// CHANGES: Spacing adjustments, splash once per session, safe area insets
 
-var APP_VERSION = "3.04";
+var APP_VERSION = "3.05";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -314,75 +318,72 @@ if (sessionStorage.getItem('splashShown') === 'true') {
     // Mark splash as shown
     sessionStorage.setItem('splashShown', 'true');
     
-    // Animate splash (existing code)
+    // Animate splash
     setTimeout(function() {
         splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
         splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
     }, 100);
     
-    // ... rest of your splash animation code ...
-}
-
-// Fade in title and subtitle
-setTimeout(function() {
-    splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-    splashTitle.style.opacity = '1';
-    splashTitle.style.transform = 'translateY(0)';
-}, 400);
-
-setTimeout(function() {
-    splashSubtitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-    splashSubtitle.style.opacity = '1';
-    splashSubtitle.style.transform = 'translateY(0)';
-}, 600);
-
-// Thump ring effect
-setTimeout(function() {
-    var thumpRing = document.createElement('div');
-    thumpRing.style.cssText = `
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 50px;
-        height: 50px;
-        margin-left: -25px;
-        margin-top: -25px;
-        border-radius: 50%;
-        background: radial-gradient(circle, rgba(76,175,80,0.5) 0%, transparent 70%);
-        transform: scale(0);
-        pointer-events: none;
-        z-index: 10001;
-    `;
-    splashOverlay.appendChild(thumpRing);
-    thumpRing.style.animation = 'splashThumpRing 0.4s ease-out forwards';
-}, 700);
-
-// Shake effect
-setTimeout(function() {
-    splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
-}, 700);
-
-// Vibrate if supported
-if (navigator.vibrate) {
+    // Fade in title and subtitle
     setTimeout(function() {
-        navigator.vibrate(50);
+        splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+        splashTitle.style.opacity = '1';
+        splashTitle.style.transform = 'translateY(0)';
+    }, 400);
+    
+    setTimeout(function() {
+        splashSubtitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+        splashSubtitle.style.opacity = '1';
+        splashSubtitle.style.transform = 'translateY(0)';
+    }, 600);
+    
+    // Thump ring effect
+    setTimeout(function() {
+        var thumpRing = document.createElement('div');
+        thumpRing.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            margin-left: -25px;
+            margin-top: -25px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(76,175,80,0.5) 0%, transparent 70%);
+            transform: scale(0);
+            pointer-events: none;
+            z-index: 10001;
+        `;
+        splashOverlay.appendChild(thumpRing);
+        thumpRing.style.animation = 'splashThumpRing 0.4s ease-out forwards';
     }, 700);
-}
-
-// Fade out splash and show main content
-setTimeout(function() {
-    splashOverlay.style.opacity = '0';
+    
+    // Shake effect
     setTimeout(function() {
-        splashOverlay.remove();
-        // Show main container
-        var container = document.querySelector('.container');
-        if (container) {
-            container.style.display = 'block';
-        }
-        // Initialize Firebase and app
-        initApp();
-    }, 800);
-}, 2800);
+        splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
+    }, 700);
+    
+    // Vibrate if supported
+    if (navigator.vibrate) {
+        setTimeout(function() {
+            navigator.vibrate(50);
+        }, 700);
+    }
+    
+    // Fade out splash and show main content
+    setTimeout(function() {
+        splashOverlay.style.opacity = '0';
+        setTimeout(function() {
+            splashOverlay.remove();
+            // Show main container
+            var container = document.querySelector('.container');
+            if (container) {
+                container.style.display = 'block';
+            }
+            initApp();
+        }, 800);
+    }, 2800);
+}
 
 function initApp() {
     try {
@@ -784,13 +785,14 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.04
+VERSION: 3.05
 KEY CHANGES:
-   - Splash appears immediately before any content loads
-   - Container hidden initially, revealed after splash ends
-   - Inline splash creation (no script loading delay)
-   - No "flash" of landing page before splash
-   - All other functionality identical to v3.03
+   - Added spacing between header, subtitle, and NGB button
+   - Splash screen now shows only once per session (sessionStorage)
+   - Added safe area insets for iPhone home indicator (dark background)
+   - Better visual separation on landing page
+   - No white band at bottom on iOS devices
+   - All other functionality identical to v3.04
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
