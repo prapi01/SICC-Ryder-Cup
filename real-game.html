@@ -1,11 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 3.07
+VERSION: 3.08
 KEY CHANGES:
-   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
-   - Eliminated local duplicate code
-   - Match bubbles now consistent between Team A and Team B views
-   - All other functionality identical to v3.06
+   - REMOVED: Duplicate button CSS (now in game-ui.js)
+   - Button styles now centralized via GameUI.applyButtonStyles()
+   - All other functionality identical to v3.07
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -114,80 +113,6 @@ STATUS: Ready for integration
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
         
         .scorecard-section { margin: 20px 0; }
-        .scorecard-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        .scorecard-left-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .scorecard-title {
-            font-size: 0.9rem; font-weight: 600;
-            color: #4caf50;
-            border-left: 2px solid #4caf50;
-            padding-left: 10px;
-        }
-        .pn-toggle {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            border-radius: 30px;
-            padding: 6px 12px;
-            min-width: 45px;
-            font-size: 0.9rem;
-            font-weight: 700;
-            cursor: pointer;
-            text-align: center;
-        }
-        .flight-toggle {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            border-radius: 30px;
-            padding: 6px 16px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            cursor: pointer;
-            min-width: 90px;
-            display: inline-block;
-            text-align: center;
-        }
-        .nav-group {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .nav-btn {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            width: 36px;
-            height: 36px;
-            border-radius: 20px;
-            font-size: 1rem;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .nav-btn:disabled {
-            background: #2a2a2a;
-            color: #555;
-            border: 1px solid #444;
-            cursor: not-allowed;
-        }
-        .hole-number-display {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #4caf50;
-            min-width: 45px;
-            text-align: center;
-        }
-        
         .scorecard-wrapper { overflow-x: auto; }
         .scorecard-table {
             width: 100%;
@@ -363,10 +288,15 @@ STATUS: Ready for integration
     
     <div class="scorecard-section">
         <div class="scorecard-header">
-            <div class="scorecard-title">SCORECARD</div>
-            <div class="view-toggle">
-                <button class="toggle-btn" id="playOrderBtn">⛳ Play Order</button>
-                <button class="toggle-btn" id="naturalOrderBtn">📋 Natural Order</button>
+            <div class="scorecard-left-group">
+                <span class="scorecard-title">SCORECARD</span>
+                <button class="pn-toggle" id="pnToggleBtn">P</button>
+            </div>
+            <button class="flight-toggle" id="flightToggleBtn">✈️ Flight 1</button>
+            <div class="nav-group">
+                <button class="nav-btn" id="prevHoleBtn">◀</button>
+                <span class="hole-number-display" id="holeNumberDisplay">1</span>
+                <button class="nav-btn" id="nextHoleBtn">▶</button>
             </div>
         </div>
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
@@ -377,7 +307,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.07</div>
+<div class="version-tag">v3.08</div>
 
 <script>
 // ============================================================
@@ -554,7 +484,7 @@ function getAllOpponents(player) {
     return opponents;
 }
 
-// FIXED: Uses shared GameData.getMatchValueFromResults()
+// Uses shared GameData.getMatchValueFromResults()
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
@@ -1450,6 +1380,7 @@ async function init() {
             return;
         }
         
+        // Apply tight layout and button styles
         GameUI.applyTightLayout();
         
         var playOrder = getPlayOrder();
@@ -1520,12 +1451,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.07
+VERSION: 3.08
 KEY CHANGES:
-   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
-   - Eliminated local duplicate code
-   - Match bubbles now consistent between Team A and Team B views
-   - All other functionality identical to v3.06
+   - REMOVED: Duplicate button CSS (now in game-ui.js)
+   - Button styles now centralized via GameUI.applyButtonStyles()
+   - All other functionality identical to v3.07
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
