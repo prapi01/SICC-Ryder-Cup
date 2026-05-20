@@ -1,15 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 3.05
+VERSION: 3.06
 KEY CHANGES:
-   - INTEGRATED: GameUI.applyTightLayout() for phone-optimized layout
-   - INTEGRATED: GameUI.addFlightIndicator() for small flight bubble on player card
-   - REMOVED: Course name display (handled by tight layout)
-   - REMOVED: PAR/SI line (handled by tight layout)
-   - REMOVED: Separate flight tab (replaced by bubble on player card)
-   - MOVED: LIVE bubble to top center (handled by tight layout)
-   - Flight indicator updates when toggling between Flight 1 and Flight 2
-   - All other functionality identical to v3.04
+   - FIXED: getMatchValueFromStoredResults() now uses GameData.getMatchIndex() for consistent match indexing
+   - Match bubbles now show same values regardless of which flight is viewed
+   - All other functionality identical to v3.05
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -68,7 +63,6 @@ STATUS: Ready for integration
             cursor: pointer;
         }
         
-        /* Status bubble styles - position will be set by GameUI.applyTightLayout() */
         .status-bubble {
             background: rgba(76,175,80,0.3);
             border: 1px solid #4caf50;
@@ -305,7 +299,6 @@ STATUS: Ready for integration
         <div class="ticker-content" id="tickerContent">Loading scores...</div>
     </div>
     
-    <!-- Course name hidden by tight layout -->
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
     <div id="holeHeader" class="hole-header"></div>
@@ -335,7 +328,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.05</div>
+<div class="version-tag">v3.06</div>
 
 <script>
 // ============================================================
@@ -512,6 +505,7 @@ function getAllOpponents(player) {
     return opponents;
 }
 
+// FIXED: Now uses GameData.getMatchIndex() for consistent indexing
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
@@ -521,21 +515,13 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var matchResultsArray = results.matchResults[position];
     if (!matchResultsArray) return 0;
     
-    var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var aIndex = -1;
-    var bIndex = -1;
-    for (var i = 0; i < teamAPlayers.length; i++) {
-        if (teamAPlayers[i].name === player.name) aIndex = i;
-    }
-    for (var i = 0; i < teamBPlayers.length; i++) {
-        if (teamBPlayers[i].name === opponent.name) bIndex = i;
+    // Use consistent match index from GameData
+    var matchIndex = GameData.getMatchIndex(player.name, opponent.name, allPlayers);
+    if (matchIndex === -1) {
+        console.warn('getMatchValueFromStoredResults: Could not find match index for', player.name, 'vs', opponent.name);
+        return 0;
     }
     
-    if (aIndex === -1 || bIndex === -1) return 0;
-    
-    var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
     return matchResultsArray[matchIndex] || 0;
 }
 
@@ -1502,16 +1488,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.05
+VERSION: 3.06
 KEY CHANGES:
-   - INTEGRATED: GameUI.applyTightLayout() for phone-optimized layout
-   - INTEGRATED: GameUI.addFlightIndicator() for small flight bubble on player card
-   - REMOVED: Course name display (handled by tight layout)
-   - REMOVED: PAR/SI line (handled by tight layout)
-   - REMOVED: Separate flight tab (replaced by bubble on player card)
-   - MOVED: LIVE bubble to top center (handled by tight layout)
-   - Flight indicator updates when toggling between Flight 1 and Flight 2
-   - All other functionality identical to v3.04
+   - FIXED: getMatchValueFromStoredResults() now uses GameData.getMatchIndex() for consistent match indexing
+   - Match bubbles now show same values regardless of which flight is viewed
+   - All other functionality identical to v3.05
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
