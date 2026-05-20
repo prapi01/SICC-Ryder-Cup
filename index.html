@@ -1,13 +1,12 @@
 <!--
 FILE: index.html
-VERSION: 3.05
+VERSION: 3.06
 KEY CHANGES:
+   - Added html background to fix iOS white band
    - Added spacing between header, subtitle, and NGB button
    - Splash screen now shows only once per session (sessionStorage)
-   - Added safe area insets for iPhone home indicator (dark background)
-   - Better visual separation on landing page
-   - No white band at bottom on iOS devices
-   - All other functionality identical to v3.04
+   - Safe area insets for iPhone home indicator
+   - All other functionality identical to v3.05
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -38,9 +37,12 @@ STATUS: Ready for deployment
     <script src="js/session.js"></script>
     <script src="js/index-hidden.js"></script>
     
-    <!-- Inline styles for splash and hidden container -->
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html {
+            background: #000000;
+        }
         
         /* Container hidden initially - only shown after splash */
         .container {
@@ -271,13 +273,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.05</div>
+<div class="version-tag">v3.06</div>
 
 <script>
-// FILE: index.html - VERSION 3.05
-// CHANGES: Spacing adjustments, splash once per session, safe area insets
+// FILE: index.html - VERSION 3.06
 
-var APP_VERSION = "3.05";
+var APP_VERSION = "3.06";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -375,7 +376,6 @@ if (sessionStorage.getItem('splashShown') === 'true') {
         splashOverlay.style.opacity = '0';
         setTimeout(function() {
             splashOverlay.remove();
-            // Show main container
             var container = document.querySelector('.container');
             if (container) {
                 container.style.display = 'block';
@@ -785,14 +785,13 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.05
+VERSION: 3.06
 KEY CHANGES:
+   - Added html background to fix iOS white band
    - Added spacing between header, subtitle, and NGB button
    - Splash screen now shows only once per session (sessionStorage)
-   - Added safe area insets for iPhone home indicator (dark background)
-   - Better visual separation on landing page
-   - No white band at bottom on iOS devices
-   - All other functionality identical to v3.04
+   - Safe area insets for iPhone home indicator
+   - All other functionality identical to v3.05
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
