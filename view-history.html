@@ -1,13 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 3.04
+VERSION: 3.05
 KEY CHANGES:
-   - FIXED: Now reads match bubbles from stored results.matchResults (no recalculation)
-   - Uses getMatchValueFromStoredResults() for all match bubble display
-   - TR, T-1, T-2, Strk already from stored results
-   - Eliminates all calculation from history viewer
-   - Faster, more reliable, matches view-game behavior
-   - All other functionality identical to v3.03
+   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
+   - Eliminated local duplicate code
+   - Match bubbles now consistent between Team A and Team B views
+   - All other functionality identical to v3.04
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -425,7 +423,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.04</div>
+<div class="version-tag">v3.05</div>
 
 <script>
 // ============================================================
@@ -548,32 +546,13 @@ function isHoleSaved(flight, hole) {
     return holeData && holeData.saved;
 }
 
-// Get match value from stored results (no recalculation)
+// FIXED: Uses shared GameData.getMatchValueFromResults()
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
-    if (!resultsCache || !resultsCache.matchResults) return 0;
-    
+    if (!resultsCache) return 0;
     var startingHole = courseCache?.startingHole || 1;
-    var position = getHolePosition(holeNumber, startingHole);
-    var matchResultsArray = resultsCache.matchResults[position];
-    if (!matchResultsArray) return 0;
-    
-    // Find match index
-    var teamAPlayers = allPlayersCache.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamBPlayers = allPlayersCache.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var aIndex = -1;
-    var bIndex = -1;
-    for (var i = 0; i < teamAPlayers.length; i++) {
-        if (teamAPlayers[i].name === player.name) aIndex = i;
-    }
-    for (var i = 0; i < teamBPlayers.length; i++) {
-        if (teamBPlayers[i].name === opponent.name) bIndex = i;
-    }
-    
-    if (aIndex === -1 || bIndex === -1) return 0;
-    
-    var matchIndex = (aIndex * teamBPlayers.length) + bIndex;
-    return matchResultsArray[matchIndex] || 0;
+    return GameData.getMatchValueFromResults(resultsCache, player, opponent, holeNumber, allPlayersCache, function(hole) {
+        return getHolePosition(hole, startingHole);
+    });
 }
 
 function getBubbleClass(player, opponent) {
@@ -587,7 +566,6 @@ function getBubbleClass(player, opponent) {
         return 'bubble-green';
     }
     
-    // For cross-flight, use computedUpToHole to determine sync status
     var computedUpTo = resultsCache?.computedUpToHole || 0;
     var isSynced = (computedUpTo >= currentHole);
     
@@ -682,7 +660,6 @@ function renderHCPPage() {
     document.getElementById("courseTitle").innerHTML = escapeHtml(courseName);
     document.getElementById("dateSubtitle").innerHTML = gameDateFormatted;
     
-    // Get final TR (after hole 18)
     var finalTR = getTRForHole(18);
     updateTRDisplay("hcpTrDisplay", finalTR.teamA, finalTR.teamB, finalTR.teamAGreen, finalTR.teamBGreen);
     
@@ -693,7 +670,7 @@ function renderHCPPage() {
         
         var tableHtml = '<table class="hcp-table"><thead><tr>';
         tableHtml += '<th>Player</th><th>Cur</th><th>Anc</th><th>Perf</th><th>New</th>';
-        tableHtml += '<tr></thead><tbody>';
+        tableHtml += '</tr></thead><tbody>';
         
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
@@ -769,7 +746,6 @@ function renderScorecardPage() {
         null
     );
     
-    // Build display rows from stored results
     var t1Row = new Array(18).fill('_');
     var t2Row = new Array(18).fill('_');
     var strkRow = new Array(18).fill('_');
@@ -1033,14 +1009,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 3.04
+VERSION: 3.05
 KEY CHANGES:
-   - FIXED: Now reads match bubbles from stored results.matchResults (no recalculation)
-   - Uses getMatchValueFromStoredResults() for all match bubble display
-   - TR, T-1, T-2, Strk already from stored results
-   - Eliminates all calculation from history viewer
-   - Faster, more reliable, matches view-game behavior
-   - All other functionality identical to v3.03
+   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
+   - Eliminated local duplicate code
+   - Match bubbles now consistent between Team A and Team B views
+   - All other functionality identical to v3.04
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js
 STATUS: Ready for integration
 -->
