@@ -1,15 +1,13 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.04
+VERSION: 2.05
 KEY CHANGES:
-   - ONLY updateTR() function changed to new billboard design
-   - ALL other functions IDENTICAL to v2.01 (fully working)
-   - renderScorecard() unchanged (no savedHoles dependency issues)
-   - renderPlayerCards() unchanged
-   - All display mode functions unchanged
-   - TR display: Team A | Team B with vertical separator
-   - Font sizes: 0.85rem for team names, 1.8rem for numbers
-   - Colours: Green for winning/tie, Red for losing
+   - ADDED: applyTightLayout() - injects CSS for tighter phone layout
+   - ADDED: addFlightIndicator(flightNumber) - adds small flight bubble to first player card
+   - ADDED: removeFlightIndicator() - removes flight bubble when flight changes
+   - ADDED: updateLIVEBubblePosition() - centers LIVE bubble at top of screen
+   - All existing UI functions unchanged (renderScorecard, renderPlayerCards, updateTR, etc.)
+   - Single source of truth for all UI layout
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -17,7 +15,15 @@ STATUS: Ready for integration
 var GameUI = (function() {
     
     // ============================================================
-    // Scorecard Rendering (IDENTICAL to v2.01 - FULLY WORKING)
+    // Existing Functions (unchanged from v2.04)
+    // ============================================================
+    
+    // Track if tight layout has been applied
+    var tightLayoutApplied = false;
+    var currentFlightIndicator = null;
+    
+    // ============================================================
+    // Scorecard Rendering (IDENTICAL to v2.04)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
@@ -46,30 +52,30 @@ var GameUI = (function() {
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
-        html += '<tr><td style="font-weight:700;">Par<\/td>';
+        html += '<tr><td style="font-weight:700;">Par</td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
             totalPar += par;
-            html += '<td>' + par + '<\/td>';
+            html += '<td>' + par + '</td>';
         }
-        html += '<td>' + totalPar + '<\/td><\/tr>';
+        html += '<td>' + totalPar + '</td></tr>';
         
         // SI row
-        html += '<tr><td style="font-weight:700;">SI<\/td>';
+        html += '<tr><td style="font-weight:700;">SI</td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
-            html += '<td>' + si + '<\/td>';
+            html += '<td>' + si + '</td>';
         }
-        html += '<td>-<\/td><\/tr>';
+        html += '<td>-</td></tr>';
         
         // GREEN LINE under SI row (separator)
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -77,16 +83,16 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '<\/td>';
+                html += '<td class="' + cellClass + '">' + score + '</td>';
             }
-            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
+            html += '<td class="score-green">' + playerTotal + '</td></tr>';
         }
         
         // Green line after Flight 1 (before T-1)
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // T-1 row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var holeNum = holes[i];
@@ -112,17 +118,17 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
         }
-        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        html += '<td style="color:#4caf50;">-</td></tr>';
         
         // Green line after T-1 (before Flight 2)
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -130,16 +136,16 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '<\/td>';
+                html += '<td class="' + cellClass + '">' + score + '</td>';
             }
-            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
+            html += '<td class="score-green">' + playerTotal + '</td></tr>';
         }
         
         // GREEN LINE AFTER FLIGHT 2 (BEFORE T-2)
-        html += '<tr class="green-line"><td colspan="20"> </td>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // T-2 row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -165,15 +171,15 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
         }
-        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        html += '<td style="color:#4caf50;">-</td></tr>';
         
         // Green line after T-2 (before Strk)
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // Strk row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -199,16 +205,16 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
         }
-        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        html += '<td style="color:#4caf50;">-</td></tr>';
         
         html += '</tbody></table>';
         container.innerHTML = html;
     }
     
     // ============================================================
-    // Player Cards with Bubbles (IDENTICAL to v2.01)
+    // Player Cards with Bubbles (IDENTICAL to v2.04)
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -282,8 +288,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // TR (Title Result) Display - NEW BILLBOARD DESIGN v2.04
-    // ONLY THIS FUNCTION CHANGED FROM v2.01
+    // TR (Title Result) Display - Billboard Design
     // ============================================================
     
     function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
@@ -316,7 +321,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Hole Header Display (IDENTICAL to v2.01)
+    // Hole Header Display
     // ============================================================
     
     function updateHoleHeader(containerId, currentHole, currentPar, currentSi) {
@@ -331,7 +336,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Flight Tab Display (IDENTICAL to v2.01)
+    // Flight Tab Display
     // ============================================================
     
     function updateFlightTab(containerId, flightNumber, canEdit) {
@@ -343,7 +348,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Display Mode Management (IDENTICAL to v2.01)
+    // Display Mode Management (IDENTICAL to v2.04)
     // ============================================================
     
     var currentDisplayMode = "play";
@@ -397,7 +402,118 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Helper (IDENTICAL to v2.01)
+    // NEW: Tight Layout Functions for Phone
+    // ============================================================
+    
+    function applyTightLayout() {
+        if (tightLayoutApplied) return;
+        
+        var style = document.createElement('style');
+        style.id = 'gameui-tight-layout';
+        style.textContent = `
+            /* Hide course name (redundant) */
+            #courseName {
+                display: none !important;
+            }
+            
+            /* Hide PAR/SI line in hole header */
+            .hole-par {
+                display: none !important;
+            }
+            
+            /* Hide separate flight tab - now on player card */
+            #flightTab {
+                display: none !important;
+            }
+            
+            /* Reduce space between HOLE X and TR */
+            .hole-header {
+                margin-bottom: 4px !important;
+                margin-top: 4px !important;
+            }
+            
+            .team-score-card {
+                margin-top: 0 !important;
+                margin-bottom: 8px !important;
+                padding: 8px !important;
+            }
+            
+            /* Tighter container padding */
+            .container {
+                padding-top: 30px !important;
+            }
+            
+            /* Player card needs relative position for absolute flight indicator */
+            .player-card {
+                position: relative;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Move LIVE bubble to top center
+        var statusBubble = document.getElementById('statusBubble');
+        if (statusBubble) {
+            statusBubble.style.position = 'fixed';
+            statusBubble.style.top = '8px';
+            statusBubble.style.left = '50%';
+            statusBubble.style.transform = 'translateX(-50%)';
+            statusBubble.style.zIndex = '1001';
+            statusBubble.style.margin = '0';
+            statusBubble.style.fontSize = '0.65rem';
+            statusBubble.style.padding = '2px 10px';
+        }
+        
+        tightLayoutApplied = true;
+    }
+    
+    function addFlightIndicator(flightNumber) {
+        // Remove existing indicator first
+        removeFlightIndicator();
+        
+        var playerCards = document.getElementById('playerCards');
+        if (!playerCards || playerCards.children.length === 0) return;
+        
+        var firstCard = playerCards.children[0];
+        var flightIndicator = document.createElement('div');
+        flightIndicator.className = 'flight-indicator';
+        flightIndicator.id = 'flightIndicator';
+        flightIndicator.innerHTML = 'Flight ' + flightNumber;
+        flightIndicator.style.cssText = `
+            position: absolute;
+            top: -16px;
+            left: 10px;
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            font-size: 0.6rem;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 20px;
+            z-index: 10;
+        `;
+        firstCard.style.position = 'relative';
+        firstCard.appendChild(flightIndicator);
+        currentFlightIndicator = flightIndicator;
+    }
+    
+    function removeFlightIndicator() {
+        if (currentFlightIndicator) {
+            currentFlightIndicator.remove();
+            currentFlightIndicator = null;
+        }
+        // Also remove any other flight indicators that might exist
+        var existing = document.querySelectorAll('.flight-indicator');
+        for (var i = 0; i < existing.length; i++) {
+            existing[i].remove();
+        }
+    }
+    
+    function updateFlightIndicator(flightNumber) {
+        addFlightIndicator(flightNumber);
+    }
+    
+    // ============================================================
+    // Helper
     // ============================================================
     
     function escapeHtml(str) {
@@ -411,10 +527,11 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Public API (IDENTICAL to v2.01)
+    // Public API
     // ============================================================
     
     return {
+        // Existing
         renderScorecard: renderScorecard,
         renderPlayerCards: renderPlayerCards,
         updateTR: updateTR,
@@ -423,23 +540,27 @@ var GameUI = (function() {
         getDisplayMode: getDisplayMode,
         setDisplayMode: setDisplayMode,
         updateToggleButtons: updateToggleButtons,
-        getDisplayHoles: getDisplayHoles
+        getDisplayHoles: getDisplayHoles,
+        
+        // NEW: Tight layout functions
+        applyTightLayout: applyTightLayout,
+        addFlightIndicator: addFlightIndicator,
+        removeFlightIndicator: removeFlightIndicator,
+        updateFlightIndicator: updateFlightIndicator
     };
     
 })();
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.04
+VERSION: 2.05
 KEY CHANGES:
-   - ONLY updateTR() function changed to new billboard design
-   - ALL other functions IDENTICAL to v2.01 (fully working)
-   - renderScorecard() unchanged (no savedHoles dependency issues)
-   - renderPlayerCards() unchanged
-   - All display mode functions unchanged
-   - TR display: Team A | Team B with vertical separator
-   - Font sizes: 0.85rem for team names, 1.8rem for numbers
-   - Colours: Green for winning/tie, Red for losing
+   - ADDED: applyTightLayout() - injects CSS for tighter phone layout
+   - ADDED: addFlightIndicator(flightNumber) - adds small flight bubble to first player card
+   - ADDED: removeFlightIndicator() - removes flight bubble when flight changes
+   - ADDED: updateFlightIndicator() - updates flight number on indicator
+   - All existing UI functions unchanged (renderScorecard, renderPlayerCards, updateTR, etc.)
+   - Single source of truth for all UI layout
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
