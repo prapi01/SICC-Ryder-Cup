@@ -1,11 +1,10 @@
 <!--
 FILE: view-game.html
-VERSION: 3.03
+VERSION: 3.04
 KEY CHANGES:
-   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
-   - Eliminated local duplicate code
-   - Match bubbles now consistent between Team A and Team B views
-   - All other functionality identical to v3.02
+   - REMOVED: Duplicate button CSS (now in game-ui.js)
+   - Button styles now centralized via GameUI.applyButtonStyles()
+   - All other functionality identical to v3.03
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -114,80 +113,6 @@ STATUS: Ready for integration
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
         
         .scorecard-section { margin: 20px 0; }
-        .scorecard-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        .scorecard-left-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .scorecard-title {
-            font-size: 0.9rem; font-weight: 600;
-            color: #4caf50;
-            border-left: 2px solid #4caf50;
-            padding-left: 10px;
-        }
-        .pn-toggle {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            border-radius: 30px;
-            padding: 6px 12px;
-            min-width: 45px;
-            font-size: 0.9rem;
-            font-weight: 700;
-            cursor: pointer;
-            text-align: center;
-        }
-        .flight-toggle {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            border-radius: 30px;
-            padding: 6px 16px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            cursor: pointer;
-            min-width: 90px;
-            display: inline-block;
-            text-align: center;
-        }
-        .nav-group {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .nav-btn {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            width: 36px;
-            height: 36px;
-            border-radius: 20px;
-            font-size: 1rem;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .nav-btn:disabled {
-            background: #2a2a2a;
-            color: #555;
-            border: 1px solid #444;
-            cursor: not-allowed;
-        }
-        .hole-number-display {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #4caf50;
-            min-width: 45px;
-            text-align: center;
-        }
-        
         .scorecard-wrapper { overflow-x: auto; }
         .scorecard-table {
             width: 100%;
@@ -242,7 +167,7 @@ STATUS: Ready for integration
     <div id="playerCards" class="player-cards"></div>
     
     <div class="scorecard-section">
-        <div class="scorecard-header" id="scorecardHeader">
+        <div class="scorecard-header">
             <div class="scorecard-left-group">
                 <span class="scorecard-title">SCORECARD</span>
                 <button class="pn-toggle" id="pnToggleBtn">P</button>
@@ -262,7 +187,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.03</div>
+<div class="version-tag">v3.04</div>
 
 <script>
 // ============================================================
@@ -357,20 +282,6 @@ function initTicker() {
 // Helper Functions
 // ============================================================
 
-function formatDisplayDate(dateString) {
-    if (!dateString) return "";
-    var parts = dateString.split('-');
-    if (parts.length === 3) {
-        var day = parts[2];
-        var month = parts[1];
-        var year = parts[0];
-        var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        var monthIndex = parseInt(month) - 1;
-        return day + ' ' + monthNames[monthIndex] + ' ' + year;
-    }
-    return dateString;
-}
-
 function getPlayOrder() {
     var order = [];
     for (var i = startingHole; i <= 18; i++) order.push(i);
@@ -439,7 +350,7 @@ function isHoleSaved(flight, hole) {
     return holeData && holeData.saved;
 }
 
-// FIXED: Uses shared GameData.getMatchValueFromResults()
+// Uses shared GameData.getMatchValueFromResults()
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     if (!resultsCache) return 0;
     return GameData.getMatchValueFromResults(resultsCache, player, opponent, holeNumber, allPlayers, getHolePosition);
@@ -705,7 +616,9 @@ async function init() {
         return;
     }
     
+    // Apply tight layout and button styles
     GameUI.applyTightLayout();
+    
     initTicker();
     startGameListener();
     
@@ -729,12 +642,11 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.03
+VERSION: 3.04
 KEY CHANGES:
-   - FIXED: Now uses shared GameData.getMatchValueFromResults() for match bubbles
-   - Eliminated local duplicate code
-   - Match bubbles now consistent between Team A and Team B views
-   - All other functionality identical to v3.02
+   - REMOVED: Duplicate button CSS (now in game-ui.js)
+   - Button styles now centralized via GameUI.applyButtonStyles()
+   - All other functionality identical to v3.03
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js
 STATUS: Ready for integration
 -->
