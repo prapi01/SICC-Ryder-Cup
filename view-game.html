@@ -1,11 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 3.04
+VERSION: 3.06
 KEY CHANGES:
-   - REMOVED: Duplicate button CSS (now in game-ui.js)
-   - Button styles now centralized via GameUI.applyButtonStyles()
-   - All other functionality identical to v3.03
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js
+   - ADDED: Game completion detection for viewers
+   - When both flights sign, next button turns gold 🏆
+   - Clicking gold button shows celebration screen and handicap adjustment
+   - No waiting screen for viewers (they just see the game complete)
+   - Added SignCard and HandicapAdjustment script references
+   - All other functionality identical to v3.05
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
 
@@ -22,6 +25,8 @@ STATUS: Ready for integration
     <script src="js/game-data.js"></script>
     <script src="js/game-ui.js"></script>
     <script src="js/ticker.js"></script>
+    <script src="js/sign-card.js"></script>
+    <script src="js/hcp-adjust.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -133,21 +138,122 @@ STATUS: Ready for integration
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
         
-        .btn-menu {
-            width: 100%;
-            padding: 14px;
-            border-radius: 40px;
-            font-weight: 600;
-            text-align: center;
-            cursor: pointer;
-            background: #1a1a1a;
-            color: #ccc;
-            border: 1px solid #333;
-            margin-top: 20px;
-        }
-        
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
+        
+        /* Celebration Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+        
+        .celebration-modal {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
+            border-radius: 48px;
+            padding: 32px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            border: 3px solid #ffaa44;
+            box-shadow: 0 0 50px rgba(255,170,68,0.4);
+            animation: bounceIn 0.6s ease-out;
+        }
+        .celebration-image-container {
+            margin-bottom: 16px;
+        }
+        .celebration-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 24px;
+            object-fit: cover;
+        }
+        .celebration-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 16px;
+        }
+        .celebration-beer {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #4caf50;
+            margin-bottom: 20px;
+            letter-spacing: 2px;
+            animation: bounce 0.5s ease 2;
+        }
+        .celebration-winner {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 16px;
+            padding: 12px;
+            border-radius: 60px;
+        }
+        .winner-a { background: rgba(76,175,80,0.2); color: #4caf50; }
+        .winner-b { background: rgba(76,175,80,0.2); color: #4caf50; }
+        .winner-tie { background: rgba(255,170,68,0.2); color: #ffaa44; }
+        .celebration-score {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 24px;
+        }
+        .celebration-players {
+            background: rgba(0,0,0,0.5);
+            border-radius: 24px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        .celebration-players-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 12px;
+        }
+        .celebration-players-list {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 8px;
+        }
+        .winning-player {
+            background: #1a3a1a;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #4caf50;
+        }
+        .celebration-btn {
+            background: #1a3a1a;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            padding: 14px 28px;
+            border-radius: 60px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+        }
+        
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); }
+            70% { transform: scale(0.95); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
     </style>
 </head>
 <body>
@@ -166,6 +272,8 @@ STATUS: Ready for integration
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
     
+    <!-- No action buttons container in VIEW mode (read-only) -->
+    
     <div class="scorecard-section">
         <div class="scorecard-header">
             <div class="scorecard-left-group">
@@ -182,12 +290,14 @@ STATUS: Ready for integration
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
-    <button class="btn-menu" id="menuBtn">← Back to Main Menu</button>
+    <!-- Bottom menu container - GameUI will render Back to Main Menu button here -->
+    <div id="bottomMenuContainer"></div>
+    
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.04</div>
+<div class="version-tag">v3.06</div>
 
 <script>
 // ============================================================
@@ -228,6 +338,10 @@ var f2DataString = "";
 var resultsCache = null;
 
 var unsubscribe = null;
+
+// NEW: Game completion tracking for viewers
+var isGameCompleteFlag = false;
+var celebrationTriggered = false;
 
 // ============================================================
 // Ticker Functions
@@ -350,7 +464,6 @@ function isHoleSaved(flight, hole) {
     return holeData && holeData.saved;
 }
 
-// Uses shared GameData.getMatchValueFromResults()
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     if (!resultsCache) return 0;
     return GameData.getMatchValueFromResults(resultsCache, player, opponent, holeNumber, allPlayers, getHolePosition);
@@ -419,6 +532,82 @@ function getDisplayRow(rowName, position) {
 }
 
 // ============================================================
+// Celebration and Handicap Functions for Viewers
+// ============================================================
+
+function showCelebrationAndHandicap() {
+    if (celebrationTriggered) return;
+    celebrationTriggered = true;
+    
+    var tr = getTRForHole(currentHole);
+    var winner = SignCard.getWinner(tr.teamA, tr.teamB);
+    var winningPlayers = {
+        teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
+        teamB: allPlayers.filter(function(p) { return p.team === "B"; })
+    };
+    
+    // Build match points for handicap adjustment
+    var matchPoints = {};
+    if (resultsCache && resultsCache.matchResults) {
+        var matchResultsArray = resultsCache.matchResults[17];
+        if (matchResultsArray) {
+            var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            for (var a = 0; a < teamAPlayers.length; a++) {
+                for (var b = 0; b < teamBPlayers.length; b++) {
+                    var matchIndex = a * teamBPlayers.length + b;
+                    var value = matchResultsArray[matchIndex] || 0;
+                    var playerA = teamAPlayers[a];
+                    var playerB = teamBPlayers[b];
+                    
+                    if (!matchPoints[playerA.name]) matchPoints[playerA.name] = { total: 0 };
+                    if (!matchPoints[playerB.name]) matchPoints[playerB.name] = { total: 0 };
+                    
+                    if (value > 0) matchPoints[playerA.name].total += 1;
+                    else if (value < 0) matchPoints[playerB.name].total += 1;
+                    else {
+                        matchPoints[playerA.name].total += 0.5;
+                        matchPoints[playerB.name].total += 0.5;
+                    }
+                }
+            }
+        }
+    }
+    
+    var historyRecordId = gameId + "_history";
+    
+    SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
+        if (typeof HandicapAdjustment !== 'undefined') {
+            HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, matchPoints, {}, false);
+        } else {
+            console.log("HandicapAdjustment not available");
+        }
+    });
+}
+
+function enableCelebrationMode() {
+    var nextBtn = document.getElementById('nextHoleBtn');
+    if (nextBtn && !celebrationTriggered) {
+        nextBtn.innerHTML = '🏆';
+        nextBtn.style.background = '#ffaa44';
+        nextBtn.style.color = '#1a3a1a';
+        nextBtn.style.border = '1px solid #ffaa44';
+        nextBtn.style.fontWeight = 'bold';
+        nextBtn.disabled = false;
+        
+        // Replace click handler
+        var newBtn = nextBtn.cloneNode(true);
+        nextBtn.parentNode.replaceChild(newBtn, nextBtn);
+        newBtn.addEventListener('click', function() {
+            showCelebrationAndHandicap();
+        });
+        
+        console.log('🏆 Celebration mode enabled for viewer');
+    }
+}
+
+// ============================================================
 // Update Functions
 // ============================================================
 
@@ -440,18 +629,10 @@ function toggleDisplayMode() {
     setDisplayMode(newMode);
 }
 
-function toggleFlight() {
-    if (selectedFlight === 1) {
-        selectedFlight = 2;
-        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 2";
-    } else {
-        selectedFlight = 1;
-        document.getElementById("flightToggleBtn").innerHTML = "✈️ Flight 1";
-    }
-    renderAll();
-}
-
 function goToPrevHole() {
+    if (isGameCompleteFlag && !celebrationTriggered) {
+        return;
+    }
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex > 0) {
@@ -463,6 +644,10 @@ function goToPrevHole() {
 }
 
 function goToNextHole() {
+    if (isGameCompleteFlag && !celebrationTriggered) {
+        showCelebrationAndHandicap();
+        return;
+    }
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex < 17) {
@@ -479,7 +664,12 @@ function updateNavButtons() {
     var prevBtn = document.getElementById("prevHoleBtn");
     var nextBtn = document.getElementById("nextHoleBtn");
     if (prevBtn) prevBtn.disabled = (currentIndex === 0);
-    if (nextBtn) nextBtn.disabled = (currentIndex === 17);
+    if (nextBtn) {
+        // Don't disable next button if game is complete
+        if (!isGameCompleteFlag || celebrationTriggered) {
+            nextBtn.disabled = (currentIndex === 17);
+        }
+    }
 }
 
 function renderAll() {
@@ -544,6 +734,24 @@ function renderAll() {
 }
 
 // ============================================================
+// Flight Toggle Handler
+// ============================================================
+
+function onToggleFlight(flightNumber) {
+    selectedFlight = flightNumber;
+    renderAll();
+}
+
+// ============================================================
+// Exit to Main Menu
+// ============================================================
+
+function exitToMainMenu() {
+    if (unsubscribe) unsubscribe();
+    window.location.href = "index.html";
+}
+
+// ============================================================
 // Firestore Listener
 // ============================================================
 
@@ -564,6 +772,16 @@ function startGameListener() {
             f1DataString = data.f1?.d || "";
             f2DataString = data.f2?.d || "";
             resultsCache = data.results || null;
+            
+            // Check for game completion
+            var signatures = data.signatures || {};
+            var bothSigned = signatures.f1?.signed === true && signatures.f2?.signed === true;
+            
+            if (bothSigned && !isGameCompleteFlag && !celebrationTriggered) {
+                console.log('🎉 Game is complete! Enabling celebration mode for viewer.');
+                isGameCompleteFlag = true;
+                enableCelebrationMode();
+            }
             
             document.getElementById("courseName").innerHTML = courseName;
             
@@ -619,17 +837,20 @@ async function init() {
     // Apply tight layout and button styles
     GameUI.applyTightLayout();
     
+    // Render bottom menu (Back to Main Menu)
+    GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+    
+    // Set initial flight toggle button text
+    GameUI.updateFlightToggleButton(selectedFlight);
+    
+    // Attach global event listeners
+    GameUI.attachGlobalEventListeners(goToPrevHole, goToNextHole);
+    
+    // Register flight toggle callback
+    window.onToggleFlight = onToggleFlight;
+    
     initTicker();
     startGameListener();
-    
-    document.getElementById("pnToggleBtn").addEventListener("click", toggleDisplayMode);
-    document.getElementById("prevHoleBtn").addEventListener("click", goToPrevHole);
-    document.getElementById("nextHoleBtn").addEventListener("click", goToNextHole);
-    document.getElementById("flightToggleBtn").addEventListener("click", toggleFlight);
-    document.getElementById("menuBtn").addEventListener("click", function() {
-        if (unsubscribe) unsubscribe();
-        window.location.href = "index.html";
-    });
     
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
@@ -642,11 +863,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.04
+VERSION: 3.06
 KEY CHANGES:
-   - REMOVED: Duplicate button CSS (now in game-ui.js)
-   - Button styles now centralized via GameUI.applyButtonStyles()
-   - All other functionality identical to v3.03
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js
+   - ADDED: Game completion detection for viewers
+   - When both flights sign, next button turns gold 🏆
+   - Clicking gold button shows celebration screen and handicap adjustment
+   - No waiting screen for viewers (they just see the game complete)
+   - Added SignCard and HandicapAdjustment script references
+   - All other functionality identical to v3.05
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
