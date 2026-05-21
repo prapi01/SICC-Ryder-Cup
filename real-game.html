@@ -1,13 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 3.13
+VERSION: 3.14
 KEY CHANGES:
-   - FIXED: Modal now uses proper z-index constants (10001)
-   - FIXED: Status bubble z-index handled by game-ui.js (999)
-   - FIXED: Sign card modal event listeners properly attached
-   - FIXED: Confirm button click now reliably triggers signature
-   - All other functionality identical to v3.12
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
+   - FIXED: createHistoryRecord() now uses HistoryRecord.createPendingRecord()
+   - Now properly passes all required parameters (flight data strings, match results)
+   - Ensures holeData field is created in history record
+   - This fixes the missing holeData issue in previous versions
+   - All other functionality identical to v3.13
+DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -31,6 +31,7 @@ STATUS: Ready for integration
     <script src="js/sign-card.js"></script>
     <script src="js/hcp-adjust.js"></script>
     <script src="js/ticker.js"></script>
+    <script src="js/history-record.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -280,7 +281,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.13</div>
+<div class="version-tag">v3.14</div>
 
 <script>
 // ============================================================
@@ -905,7 +906,7 @@ function updateNavButtons() {
 }
 
 // ============================================================
-// Modal Functions - FIXED with proper event listeners
+// Modal Functions
 // ============================================================
 
 function showSignCardModal() {
@@ -929,7 +930,6 @@ function showSignCardModal() {
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    // Get button references
     var backBtn = document.getElementById('signBackBtnNew');
     var confirmBtn = document.getElementById('signConfirmBtnNew');
     
@@ -959,7 +959,7 @@ function showSignCardModal() {
                 console.log('Both signed?', cache.signatures.f1 && cache.signatures.f2);
                 
                 if (cache.signatures.f1 && cache.signatures.f2) {
-                    console.log('Both signed - showing Game Complete screen');
+                    console.log('Both signed - creating history record and showing Game Complete screen');
                     await createHistoryRecord();
                     isGameCompleteFlag = true;
                     celebrationTriggered = false;
@@ -1037,48 +1037,78 @@ function showGameCompleteScreen() {
     });
 }
 
+// ============================================================
+// FIXED: createHistoryRecord now uses HistoryRecord.createPendingRecord()
+// ============================================================
+
 async function createHistoryRecord() {
     var cache = GameLoader.getLocalCache();
     var tr = GameLoader.getTRForHole(currentHole);
     
-    var historyRecordId = gameId + "_history";
+    // Build match results object for the entire game
+    var allMatchResults = {};
+    for (var hole = 1; hole <= 18; hole++) {
+        var resultsData = calculateHoleResults(hole);
+        if (resultsData) {
+            // Get match results for this hole
+            var matchResults = GameMatch.calculateCrossFlight(
+                cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, hole, coursePar
+            );
+            // Merge into allMatchResults
+            for (var key in matchResults) {
+                allMatchResults[key] = matchResults[key];
+            }
+        }
+    }
     
-    var historyData = {
-        originalGameId: gameId,
-        completedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        status: "pending_handicap",
-        gameInfo: {
-            date: new Date().toISOString().split('T')[0],
-            course: { name: courseName, par: coursePar, si: courseSi },
-            startingHole: startingHole,
-            teamGameFormat: teamGameFormat
-        },
-        players: allPlayers,
-        f1DataString: cache.f1DataString,
-        f2DataString: cache.f2DataString,
-        results: cache.results,
-        finalResults: {
-            teamAScore: tr.teamA,
-            teamBScore: tr.teamB,
-            winner: tr.teamA > tr.teamB ? "A" : (tr.teamB > tr.teamA ? "B" : "Tie"),
-            winnerText: tr.teamA > tr.teamB ? "Team A Wins!" : (tr.teamB > tr.teamA ? "Team B Wins!" : "Tie Game!")
-        },
-        signatures: {
-            f1: { signed: cache.signatures.f1, signedAt: null, captainName: null },
-            f2: { signed: cache.signatures.f2, signedAt: null, captainName: null }
-        },
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    // Prepare final scores object
+    var finalScores = {
+        teamA: tr.teamA,
+        teamB: tr.teamB
     };
     
-    try {
-        await db.collection("historyGames").doc(historyRecordId).set(historyData);
-        console.log("History record created:", historyRecordId);
-        return historyRecordId;
-    } catch (err) {
-        console.error("Error creating history record:", err);
-        throw err;
-    }
+    // Prepare signatures object
+    var signatures = {
+        f1: { signed: cache.signatures.f1 || false, signedAt: null, captainName: null },
+        f2: { signed: cache.signatures.f2 || false, signedAt: null, captainName: null }
+    };
+    
+    // Prepare game data object for history record
+    var gameDataForHistory = {
+        date: new Date().toISOString().split('T')[0],
+        course: {
+            name: courseName,
+            id: cache.course?.id || "",
+            par: coursePar,
+            si: courseSi
+        },
+        players: allPlayers,
+        startingHole: startingHole,
+        teamGameFormat: teamGameFormat
+    };
+    
+    // Use HistoryRecord.createPendingRecord to create proper record with holeData
+    return new Promise(function(resolve, reject) {
+        HistoryRecord.createPendingRecord(
+            gameId,
+            gameDataForHistory,
+            cache.results,
+            finalScores,
+            signatures,
+            cache.f1DataString,  // Flight 1 data string
+            cache.f2DataString,  // Flight 2 data string
+            allMatchResults,
+            function(err, recordId) {
+                if (err) {
+                    console.error("Error creating history record:", err);
+                    reject(err);
+                } else {
+                    console.log("History record created with ID:", recordId);
+                    resolve(recordId);
+                }
+            }
+        );
+    });
 }
 
 function showCelebrationAndHandicap() {
@@ -1409,13 +1439,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.13
+VERSION: 3.14
 KEY CHANGES:
-   - FIXED: Modal now uses proper z-index constants (10001)
-   - FIXED: Status bubble z-index handled by game-ui.js (999)
-   - FIXED: Sign card modal event listeners properly attached
-   - FIXED: Confirm button click now reliably triggers signature
-   - All other functionality identical to v3.12
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
+   - FIXED: createHistoryRecord() now uses HistoryRecord.createPendingRecord()
+   - Now properly passes all required parameters (flight data strings, match results)
+   - Ensures holeData field is created in history record
+   - This fixes the missing holeData issue in previous versions
+   - All other functionality identical to v3.13
+DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
