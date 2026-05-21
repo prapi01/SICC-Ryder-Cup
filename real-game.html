@@ -1,13 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 3.16
+VERSION: 3.17
 KEY CHANGES:
-   - REMOVED: Old scorecard header HTML
-   - REMOVED: Old action buttons (SAVE button now in compact header)
-   - NOW USES: GameUI.renderCompactHeader() for single-line header
-   - Header layout: [FLIGHT P] [💾 SAVE H#] [◀ # ▶]
-   - Status bubble now clickable for refresh
-   - Scorecard rows tightened for better spacing
+   - CHANGED: Now uses GameUI.renderCompactHeader() with centered SAVE button
+   - CHANGED: Flight badge appears on first player card (not in header)
+   - REMOVED: Old flight button references
    - All game logic (save, load, results calculation) unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -95,6 +92,7 @@ STATUS: Ready for integration
             padding: 16px;
             margin-bottom: 12px;
             border: 1px solid #333;
+            position: relative;
         }
         .player-header {
             display: flex;
@@ -277,7 +275,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.16</div>
+<div class="version-tag">v3.17</div>
 
 <script>
 // ============================================================
@@ -507,7 +505,7 @@ function setSaveButtonPending() {
     if (saveBtn) {
         saveBtn.classList.remove('btn-save', 'btn-save-retry');
         saveBtn.classList.add('btn-save-pending');
-        saveBtn.innerHTML = '⏳ SAVING...';
+        saveBtn.innerText = 'SAVING...';
         saveBtn.disabled = true;
     }
     saveInProgress = true;
@@ -518,7 +516,7 @@ function setSaveButtonRetry() {
     if (saveBtn) {
         saveBtn.classList.remove('btn-save', 'btn-save-pending');
         saveBtn.classList.add('btn-save-retry');
-        saveBtn.innerHTML = '⚠️ RETRY';
+        saveBtn.innerText = 'RETRY';
         saveBtn.disabled = false;
     }
     saveInProgress = false;
@@ -897,6 +895,17 @@ function updateNavButtons() {
 }
 
 // ============================================================
+// Flight Toggle Handler
+// ============================================================
+
+function onToggleFlight(flightNumber) {
+    editableFlight = flightNumber;
+    // Update the flight badge on the first player card
+    GameUI.updateFlightBadge(flightNumber);
+    renderAll();
+}
+
+// ============================================================
 // Modal Functions
 // ============================================================
 
@@ -1143,15 +1152,6 @@ function buildMatchResultsForHandicap() {
 }
 
 // ============================================================
-// Flight Toggle Handler
-// ============================================================
-
-function onToggleFlight(flightNumber) {
-    editableFlight = flightNumber;
-    renderAll();
-}
-
-// ============================================================
 // Render Functions
 // ============================================================
 
@@ -1193,6 +1193,9 @@ function renderAll() {
             renderAll();
         }
     );
+    
+    // Update flight badge on first player card
+    GameUI.updateFlightBadge(editableFlight);
     
     var holes = getDisplayHoles();
     window.savedHoles = cache.savedHoles;
@@ -1365,7 +1368,7 @@ async function init() {
         // Apply tight layout and button styles (includes clickable status bubble)
         GameUI.applyTightLayout();
         
-        // Render compact header (single line with FLIGHT, SAVE, navigation)
+        // Render compact header (centered SAVE button)
         GameUI.renderCompactHeader(
             "compactHeaderContainer",
             editableFlight,
@@ -1374,11 +1377,16 @@ async function init() {
             prevHole,
             nextHole,
             onToggleFlight,
-            null  // onToggleDisplay handled internally
+            null
         );
         
         // Set initial display mode for P/N button
         GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
+        
+        // Add flight badge to first player card
+        setTimeout(function() {
+            GameUI.addFlightBadge(editableFlight);
+        }, 100);
         
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
@@ -1397,24 +1405,6 @@ async function init() {
         
         renderAll();
         setSaveButtonIdle();
-        
-        // Hide old P/N and Flight toggle buttons (they are now in compact header)
-        var oldPnBtn = document.getElementById('pnToggleBtn');
-        var oldFlightBtn = document.getElementById('flightToggleBtn');
-        var oldPrevBtn = document.getElementById('prevHoleBtn');
-        var oldNextBtn = document.getElementById('nextHoleBtn');
-        var oldHoleDisplay = document.getElementById('holeNumberDisplay');
-        if (oldPnBtn) oldPnBtn.style.display = 'none';
-        if (oldFlightBtn) oldFlightBtn.style.display = 'none';
-        if (oldPrevBtn) oldPrevBtn.style.display = 'none';
-        if (oldNextBtn) oldNextBtn.style.display = 'none';
-        if (oldHoleDisplay) oldHoleDisplay.style.display = 'none';
-        
-        // Hide play order buttons if they exist (not used in compact header)
-        var playOrderBtn = document.getElementById('playOrderBtn');
-        var naturalOrderBtn = document.getElementById('naturalOrderBtn');
-        if (playOrderBtn) playOrderBtn.style.display = 'none';
-        if (naturalOrderBtn) naturalOrderBtn.style.display = 'none';
     });
     
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
@@ -1428,14 +1418,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.16
+VERSION: 3.17
 KEY CHANGES:
-   - REMOVED: Old scorecard header HTML
-   - REMOVED: Old action buttons (SAVE button now in compact header)
-   - NOW USES: GameUI.renderCompactHeader() for single-line header
-   - Header layout: [FLIGHT P] [💾 SAVE H#] [◀ # ▶]
-   - Status bubble now clickable for refresh
-   - Scorecard rows tightened for better spacing
+   - CHANGED: Now uses GameUI.renderCompactHeader() with centered SAVE button
+   - CHANGED: Flight badge appears on first player card (not in header)
+   - REMOVED: Old flight button references
    - All game logic (save, load, results calculation) unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
