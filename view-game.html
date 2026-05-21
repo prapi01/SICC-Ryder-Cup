@@ -1,14 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 3.10
+VERSION: 3.11
 KEY CHANGES:
-   - ADDED: Responsive hole header (LIVE left, HOLE centered)
-   - ADDED: Flight badge on first player card
-   - ADDED: Clickable status bubble (refresh)
-   - CHANGED: Now uses GameUI.updateNavigationButtons() for nav logic
-   - CHANGED: Uses GameUI.renderHoleHeader() for hole display
-   - CHANGED: Uses GameUI.addFlightBadge() for flight indication
-   - All viewer functionality (real-time sync, game completion detection) preserved
+   - FIXED: Viewer mode now correctly distinguishes from player mode
+   - REMOVED: Sign button (✍️) - viewers never sign cards
+   - FIXED: Next button only shows gold 🏆 when game is complete
+   - FIXED: Navigation buttons (◀ ▶) work correctly for all holes
+   - FIXED: No waiting screen for viewers
+   - All viewer functionality (real-time sync, celebration, HCP read-only) preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -280,7 +279,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.10</div>
+<div class="version-tag">v3.11</div>
 
 <script>
 // ============================================================
@@ -561,7 +560,7 @@ function showCelebrationAndHandicap() {
     
     SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
         if (typeof HandicapAdjustment !== 'undefined') {
-            HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, matchPoints, {}, false);
+            HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, matchPoints, {}, true);
         } else {
             console.log("HandicapAdjustment not available");
         }
@@ -588,13 +587,10 @@ function enableCelebrationMode() {
 }
 
 // ============================================================
-// Navigation Functions
+// Navigation Functions (Viewer Mode - No Sign Button)
 // ============================================================
 
 function goToPrevHole() {
-    if (isGameCompleteFlag && !celebrationTriggered) {
-        return;
-    }
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex > 0) {
@@ -602,14 +598,17 @@ function goToPrevHole() {
         GameUI.updateCompactHoleDisplay(currentHole);
         GameUI.updateHoleHeaderNumber(currentHole);
         renderAll();
+        updateNavButtons();
     }
 }
 
 function goToNextHole() {
+    // If game is complete and celebration not triggered, show celebration
     if (isGameCompleteFlag && !celebrationTriggered) {
         showCelebrationAndHandicap();
         return;
     }
+    
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex < 17) {
@@ -617,6 +616,27 @@ function goToNextHole() {
         GameUI.updateCompactHoleDisplay(currentHole);
         GameUI.updateHoleHeaderNumber(currentHole);
         renderAll();
+        updateNavButtons();
+    }
+}
+
+function updateNavButtons() {
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    var prevBtn = document.getElementById('compactPrevBtn');
+    var nextBtn = document.getElementById('compactNextBtn');
+    
+    if (prevBtn) prevBtn.disabled = (currentIndex === 0);
+    
+    // For viewer: next button is only disabled at last hole UNLESS game is complete
+    if (nextBtn) {
+        if (isGameCompleteFlag && !celebrationTriggered) {
+            // Game complete - button is gold 🏆 and enabled
+            nextBtn.disabled = false;
+        } else {
+            // Normal mode - disabled at last hole
+            nextBtn.disabled = (currentIndex === 17);
+        }
     }
 }
 
@@ -678,18 +698,7 @@ function renderAll() {
         courseSi
     );
     
-    // Update navigation buttons using centralized function
-    var playOrder = getPlayOrder();
-    var isCurrentSaved = isHoleSaved(selectedFlight, currentHole);
-    
-    GameUI.updateNavigationButtons(
-        currentHole,
-        playOrder,
-        isCurrentSaved,
-        isGameCompleteFlag,
-        celebrationTriggered,
-        null  // No sign card callback for viewer
-    );
+    updateNavButtons();
     
     if (typeof Ticker !== 'undefined') {
         Ticker.refresh();
@@ -839,15 +848,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.10
+VERSION: 3.11
 KEY CHANGES:
-   - ADDED: Responsive hole header (LIVE left, HOLE centered)
-   - ADDED: Flight badge on first player card
-   - ADDED: Clickable status bubble (refresh)
-   - CHANGED: Now uses GameUI.updateNavigationButtons() for nav logic
-   - CHANGED: Uses GameUI.renderHoleHeader() for hole display
-   - CHANGED: Uses GameUI.addFlightBadge() for flight indication
-   - All viewer functionality (real-time sync, game completion detection) preserved
+   - FIXED: Viewer mode now correctly distinguishes from player mode
+   - REMOVED: Sign button (✍️) - viewers never sign cards
+   - FIXED: Next button only shows gold 🏆 when game is complete
+   - FIXED: Navigation buttons (◀ ▶) work correctly for all holes
+   - FIXED: No waiting screen for viewers
+   - All viewer functionality (real-time sync, celebration, HCP read-only) preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
