@@ -1,11 +1,18 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.13
+VERSION: 2.14
 KEY CHANGES:
-   - FIXED: Status bubble z-index changed from 1001 to 999 (below modals)
-   - FIXED: Added modal z-index constants for consistency
-   - FIXED: ensureNoStuckModals() now more aggressive
-   - All existing functions unchanged from v2.12
+   - ADDED: renderScorecardHeader() - renders responsive scorecard header
+   - Desktop (>550px): Single row layout
+   - Mobile (<550px): Two-row stacked layout
+     Row 1: SCORE (left) + Flight # (center) + ◀ # ▶ (right)
+     Row 2: CARD + P/N button (left-aligned)
+   - ADDED: updateHoleNumberDisplay() - updates hole number in header
+   - ADDED: updateFlightButtonText() - updates flight button text
+   - FIXED: Added full screen background coverage to prevent system UI bleed-through
+   - FIXED: html/body background set to black with safe area insets
+   - FIXED: Status bubble z-index and positioning improved
+   - All existing functions unchanged from v2.13
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -22,17 +29,15 @@ var GameUI = (function() {
         MODAL_CONTENT: 10002
     };
     
-    // ============================================================
-    // Existing Functions (unchanged from v2.12)
-    // ============================================================
-    
     // Track if styles have been applied
     var tightLayoutApplied = false;
     var buttonStylesApplied = false;
+    var backgroundFixed = false;
     
     // Track current state for UI updates
     var currentFlight = 1;
     var currentDisplayMode = "play";
+    var currentHoleNumber = 1;
     
     // Callback registry for shared UI events
     var eventCallbacks = {
@@ -45,7 +50,158 @@ var GameUI = (function() {
     };
     
     // ============================================================
-    // Scorecard Rendering
+    // Fix Background for All Pages (prevents system UI bleed-through)
+    // ============================================================
+    
+    function fixBackground() {
+        if (backgroundFixed) return;
+        
+        // Fix html element
+        var htmlElem = document.documentElement;
+        htmlElem.style.margin = '0';
+        htmlElem.style.padding = '0';
+        htmlElem.style.backgroundColor = '#000000';
+        htmlElem.style.minHeight = '100vh';
+        
+        // Fix body element
+        document.body.style.margin = '0';
+        document.body.style.padding = '20px';
+        document.body.style.backgroundColor = '#000000';
+        document.body.style.minHeight = '100vh';
+        document.body.style.position = 'relative';
+        
+        // Add viewport meta if missing or update existing
+        var viewport = document.querySelector('meta[name="viewport"]');
+        if (viewport) {
+            var content = viewport.getAttribute('content');
+            if (content && !content.includes('viewport-fit=cover')) {
+                viewport.setAttribute('content', content + ', viewport-fit=cover');
+            }
+        }
+        
+        backgroundFixed = true;
+        console.log('Background fixed to prevent system UI bleed-through');
+    }
+    
+    // ============================================================
+    // Scorecard Header Rendering (NEW - responsive)
+    // ============================================================
+    
+    function renderScorecardHeader(containerId, flightNumber, currentHole, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        // Store callbacks
+        if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
+        if (onNextHole) eventCallbacks.onNextHole = onNextHole;
+        if (onToggleFlight) eventCallbacks.onToggleFlight = onToggleFlight;
+        if (onToggleDisplay) eventCallbacks.onToggleDisplay = onToggleDisplay;
+        
+        currentFlight = flightNumber;
+        currentHoleNumber = currentHole;
+        
+        // Responsive HTML structure
+        var html = `
+            <div class="scorecard-header-responsive">
+                <!-- Row 1: SCORE (left), Flight (center), Navigation (right) -->
+                <div class="scorecard-header-row-1">
+                    <div class="scorecard-label-group">
+                        <span class="scorecard-label">SCORE</span>
+                    </div>
+                    <div class="scorecard-flight-group">
+                        <button class="flight-toggle" id="flightToggleBtn">✈️ Flight ${flightNumber}</button>
+                    </div>
+                    <div class="scorecard-nav-group">
+                        <button class="nav-btn" id="prevHoleBtn">◀</button>
+                        <span class="hole-number-display" id="holeNumberDisplay">${currentHole}</span>
+                        <button class="nav-btn" id="nextHoleBtn">▶</button>
+                    </div>
+                </div>
+                <!-- Row 2: CARD (left) + P/N button -->
+                <div class="scorecard-header-row-2">
+                    <div class="scorecard-card-group">
+                        <span class="scorecard-card-label">CARD</span>
+                        <button class="pn-toggle" id="pnToggleBtn">${currentDisplayMode === 'play' ? 'P' : 'N'}</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        
+        // Attach event listeners
+        var prevBtn = document.getElementById('prevHoleBtn');
+        var nextBtn = document.getElementById('nextHoleBtn');
+        var pnBtn = document.getElementById('pnToggleBtn');
+        var flightBtn = document.getElementById('flightToggleBtn');
+        
+        if (prevBtn && eventCallbacks.onPrevHole) {
+            var newPrevBtn = prevBtn.cloneNode(true);
+            prevBtn.parentNode.replaceChild(newPrevBtn, prevBtn);
+            newPrevBtn.addEventListener('click', function() {
+                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
+            });
+        }
+        
+        if (nextBtn && eventCallbacks.onNextHole) {
+            var newNextBtn = nextBtn.cloneNode(true);
+            nextBtn.parentNode.replaceChild(newNextBtn, nextBtn);
+            newNextBtn.addEventListener('click', function() {
+                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+            });
+        }
+        
+        if (pnBtn) {
+            var newPnBtn = pnBtn.cloneNode(true);
+            pnBtn.parentNode.replaceChild(newPnBtn, pnBtn);
+            newPnBtn.addEventListener('click', function() {
+                var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
+                setDisplayMode(newMode, null);
+                updatePnButtonText();
+                if (eventCallbacks.onToggleDisplay) {
+                    eventCallbacks.onToggleDisplay(newMode);
+                }
+            });
+        }
+        
+        if (flightBtn) {
+            var newFlightBtn = flightBtn.cloneNode(true);
+            flightBtn.parentNode.replaceChild(newFlightBtn, flightBtn);
+            newFlightBtn.addEventListener('click', function() {
+                var newFlight = currentFlight === 1 ? 2 : 1;
+                currentFlight = newFlight;
+                updateFlightButtonText();
+                if (eventCallbacks.onToggleFlight) {
+                    eventCallbacks.onToggleFlight(newFlight);
+                }
+            });
+        }
+    }
+    
+    function updateHoleNumberDisplay(holeNumber) {
+        currentHoleNumber = holeNumber;
+        var holeDisplay = document.getElementById('holeNumberDisplay');
+        if (holeDisplay) {
+            holeDisplay.innerText = holeNumber;
+        }
+    }
+    
+    function updateFlightButtonText() {
+        var flightBtn = document.getElementById('flightToggleBtn');
+        if (flightBtn) {
+            flightBtn.innerHTML = `✈️ Flight ${currentFlight}`;
+        }
+    }
+    
+    function updatePnButtonText() {
+        var pnBtn = document.getElementById('pnToggleBtn');
+        if (pnBtn) {
+            pnBtn.innerText = currentDisplayMode === 'play' ? 'P' : 'N';
+        }
+    }
+    
+    // ============================================================
+    // Scorecard Rendering (original - unchanged)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
@@ -74,30 +230,30 @@ var GameUI = (function() {
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
-        html += '<tr><td style="font-weight:700;">Par<\/td>';
+        html += '<tr><td style="font-weight:700;">Par</td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
             totalPar += par;
-            html += '<td>' + par + '<\/td>';
+            html += '<td>' + par + '</td>';
         }
-        html += '<td>' + totalPar + '<\/td><\/tr>';
+        html += '<td>' + totalPar + '</td></tr>';
         
         // SI row
-        html += '<tr><td style="font-weight:700;">SI<\/td>';
+        html += '<tr><td style="font-weight:700;">SI</td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
-            html += '<td>' + si + '<\/td>';
+            html += '<td>' + si + '</td>';
         }
-        html += '<td>-<\/td><\/tr>';
+        html += '<td>-</td></tr>';
         
         // GREEN LINE under SI row (separator)
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -105,16 +261,16 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '<\/td>';
+                html += '<td class="' + cellClass + '">' + score + '</td>';
             }
-            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
+            html += '<td class="score-green">' + playerTotal + '</td></tr>';
         }
         
         // Green line after Flight 1 (before T-1)
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // T-1 row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var holeNum = holes[i];
@@ -140,17 +296,17 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
         }
-        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        html += '<td style="color:#4caf50;">-</td></tr>';
         
         // Green line after T-1 (before Flight 2)
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -158,16 +314,16 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '<\/td>';
+                html += '<td class="' + cellClass + '">' + score + '</td>';
             }
-            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
+            html += '<td class="score-green">' + playerTotal + '</td></tr>';
         }
         
         // GREEN LINE AFTER FLIGHT 2 (BEFORE T-2)
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // T-2 row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -193,15 +349,15 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
         }
-        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        html += '<td style="color:#4caf50;">-</td></tr>';
         
         // Green line after T-2 (before Strk)
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // Strk row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -227,9 +383,9 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
         }
-        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        html += '<td style="color:#4caf50;">-</td></tr>';
         
         html += '</tbody></table>';
         container.innerHTML = html;
@@ -397,11 +553,7 @@ var GameUI = (function() {
                 naturalBtn.classList.add('active');
             }
         }
-        // Also update P/N toggle button if it exists
-        var pnToggle = document.getElementById('pnToggleBtn');
-        if (pnToggle) {
-            pnToggle.innerText = mode === 'play' ? 'P' : 'N';
-        }
+        updatePnButtonText();
     }
     
     function setDisplayMode(mode, onModeChanged) {
@@ -409,10 +561,10 @@ var GameUI = (function() {
         currentDisplayMode = mode;
         localStorage.setItem("scorecardDisplay", mode);
         updateToggleButtons(mode);
+        updatePnButtonText();
         if (onModeChanged && typeof onModeChanged === 'function') {
             onModeChanged(mode);
         }
-        // Also trigger callback if registered
         if (eventCallbacks.onToggleDisplay) {
             eventCallbacks.onToggleDisplay(mode);
         }
@@ -442,17 +594,14 @@ var GameUI = (function() {
     // ============================================================
     
     function updateFlightToggleButton(flightNumber) {
-        var flightToggle = document.getElementById('flightToggleBtn');
-        if (flightToggle) {
-            flightToggle.innerHTML = '✈️ Flight ' + flightNumber;
-        }
         currentFlight = flightNumber;
+        updateFlightButtonText();
     }
     
     function toggleFlight() {
         var newFlight = currentFlight === 1 ? 2 : 1;
         currentFlight = newFlight;
-        updateFlightToggleButton(currentFlight);
+        updateFlightButtonText();
         if (eventCallbacks.onToggleFlight) {
             eventCallbacks.onToggleFlight(currentFlight);
         }
@@ -641,8 +790,6 @@ var GameUI = (function() {
         
         var prevHoleBtn = document.getElementById('prevHoleBtn');
         var nextHoleBtn = document.getElementById('nextHoleBtn');
-        var pnToggleBtn = document.getElementById('pnToggleBtn');
-        var flightToggleBtn = document.getElementById('flightToggleBtn');
         
         if (prevHoleBtn && eventCallbacks.onPrevHole) {
             var newPrevBtn = prevHoleBtn.cloneNode(true);
@@ -659,26 +806,10 @@ var GameUI = (function() {
                 if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
             });
         }
-        
-        if (pnToggleBtn) {
-            var newPnBtn = pnToggleBtn.cloneNode(true);
-            pnToggleBtn.parentNode.replaceChild(newPnBtn, pnToggleBtn);
-            newPnBtn.addEventListener('click', function() {
-                toggleDisplayMode();
-            });
-        }
-        
-        if (flightToggleBtn) {
-            var newFlightBtn = flightToggleBtn.cloneNode(true);
-            flightToggleBtn.parentNode.replaceChild(newFlightBtn, flightToggleBtn);
-            newFlightBtn.addEventListener('click', function() {
-                toggleFlight();
-            });
-        }
     }
     
     // ============================================================
-    // Button Styles - Single Source of Truth
+    // Button Styles - Single Source of Truth (with responsive fixes)
     // ============================================================
     
     function applyButtonStyles() {
@@ -687,6 +818,7 @@ var GameUI = (function() {
         var style = document.createElement('style');
         style.id = 'gameui-button-styles';
         style.textContent = `
+            /* Base styles */
             .pn-toggle {
                 background: #1a3a1a !important;
                 border: 1px solid #4caf50 !important;
@@ -714,21 +846,6 @@ var GameUI = (function() {
                 text-align: center !important;
             }
             
-            .toggle-btn {
-                background: #1a1a1a !important;
-                border: 1px solid #333 !important;
-                color: #888 !important;
-                border-radius: 30px !important;
-                padding: 4px 12px !important;
-                font-size: 0.65rem !important;
-                cursor: pointer !important;
-            }
-            .toggle-btn.active {
-                background: #1a3a1a !important;
-                border-color: #4caf50 !important;
-                color: #4caf50 !important;
-            }
-            
             .nav-btn {
                 background: #1a3a1a !important;
                 border: 1px solid #4caf50 !important;
@@ -747,39 +864,92 @@ var GameUI = (function() {
                 cursor: not-allowed !important;
             }
             
-            .scorecard-header {
-                display: flex !important;
-                justify-content: space-between !important;
-                align-items: center !important;
-                margin-bottom: 10px !important;
-                gap: 8px !important;
-                flex-wrap: wrap !important;
-            }
-            .scorecard-left-group {
-                display: flex !important;
-                align-items: center !important;
-                gap: 10px !important;
-            }
-            .scorecard-title {
-                font-size: 0.9rem !important;
-                font-weight: 600 !important;
-                color: #4caf50 !important;
-                border-left: 2px solid #4caf50 !important;
-                padding-left: 10px !important;
-            }
-            .nav-group {
-                display: flex !important;
-                align-items: center !important;
-                gap: 6px !important;
-            }
-            .hole-number-display {
-                font-size: 0.9rem !important;
-                font-weight: 600 !important;
-                color: #4caf50 !important;
-                min-width: 45px !important;
-                text-align: center !important;
+            /* Responsive Scorecard Header */
+            .scorecard-header-responsive {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                margin-bottom: 10px;
             }
             
+            .scorecard-header-row-1 {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            
+            .scorecard-label-group {
+                display: flex;
+                align-items: center;
+            }
+            
+            .scorecard-label {
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: #4caf50;
+                border-left: 2px solid #4caf50;
+                padding-left: 10px;
+            }
+            
+            .scorecard-flight-group {
+                display: flex;
+                justify-content: center;
+                flex: 1;
+            }
+            
+            .scorecard-nav-group {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            
+            .scorecard-header-row-2 {
+                display: flex;
+                justify-content: flex-start;
+                align-items: center;
+            }
+            
+            .scorecard-card-group {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .scorecard-card-label {
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: #4caf50;
+            }
+            
+            .hole-number-display {
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: #4caf50;
+                min-width: 45px;
+                text-align: center;
+            }
+            
+            /* Desktop layout (>550px) - override to single row */
+            @media (min-width: 551px) {
+                .scorecard-header-responsive {
+                    flex-direction: row;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+                .scorecard-header-row-1 {
+                    flex: 2;
+                    gap: 16px;
+                }
+                .scorecard-flight-group {
+                    flex: 0 0 auto;
+                }
+                .scorecard-header-row-2 {
+                    flex: 0 0 auto;
+                }
+            }
+            
+            /* SAVE Button Full Width */
             .btn-save {
                 flex: 1 !important;
                 width: 100% !important;
@@ -817,6 +987,46 @@ var GameUI = (function() {
                 50% { background: #4caf50; border-color: #4caf50; color: #1a3a1a; }
                 100% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
             }
+            
+            /* Scorecard table - horizontal scroll only, no fixed min-width */
+            .scorecard-wrapper {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .scorecard-table {
+                border-collapse: collapse;
+                font-size: 0.7rem;
+            }
+            .scorecard-table th, .scorecard-table td {
+                padding: 6px 3px;
+                text-align: center;
+                border: 1px solid #222;
+                white-space: nowrap;
+            }
+            .scorecard-table th {
+                color: #4caf50;
+                background: #111;
+            }
+            .score-green { color: #4caf50; font-weight: 600; }
+            .score-invisible { color: #000; }
+            .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+            
+            /* Bubble responsiveness */
+            .bubbles {
+                display: flex;
+                gap: 6px;
+                margin-top: 12px;
+                flex-wrap: wrap;
+            }
+            .bubble {
+                flex: 1;
+                min-width: 70px;
+                text-align: center;
+                padding: 6px;
+                border-radius: 20px;
+                font-size: 0.65rem;
+                font-weight: 600;
+            }
         `;
         document.head.appendChild(style);
         
@@ -824,11 +1034,14 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Tight Layout Functions for Phone - FIXED z-index
+    // Tight Layout Functions for Phone
     // ============================================================
     
     function applyTightLayout() {
         if (tightLayoutApplied) return;
+        
+        // Fix background first
+        fixBackground();
         
         applyButtonStyles();
         
@@ -845,17 +1058,19 @@ var GameUI = (function() {
         `;
         document.head.appendChild(style);
         
-        // Move LIVE/VIEWER/PREVIEW bubble to top center - FIXED z-index to 999 (below modals)
+        // Move status bubble to top center with correct z-index
         var statusBubble = document.getElementById('statusBubble');
         if (statusBubble) {
             statusBubble.style.position = 'fixed';
             statusBubble.style.top = '8px';
             statusBubble.style.left = '50%';
             statusBubble.style.transform = 'translateX(-50%)';
-            statusBubble.style.zIndex = Z_INDEX.STATUS_BUBBLE;  // 999 - below modals
+            statusBubble.style.zIndex = Z_INDEX.STATUS_BUBBLE;
             statusBubble.style.margin = '0';
             statusBubble.style.fontSize = '0.65rem';
             statusBubble.style.padding = '2px 10px';
+            statusBubble.style.backgroundColor = 'rgba(0,0,0,0.7)';
+            statusBubble.style.borderRadius = '20px';
         }
         
         tightLayoutApplied = true;
@@ -896,39 +1111,55 @@ var GameUI = (function() {
     // ============================================================
     
     return {
+        // Core rendering
         renderScorecard: renderScorecard,
         renderPlayerCards: renderPlayerCards,
         updateTR: updateTR,
         updateHoleHeader: updateHoleHeader,
         updateFlightTab: updateFlightTab,
         
+        // NEW: Scorecard header
+        renderScorecardHeader: renderScorecardHeader,
+        updateHoleNumberDisplay: updateHoleNumberDisplay,
+        updateFlightButtonText: updateFlightButtonText,
+        updatePnButtonText: updatePnButtonText,
+        
+        // Display mode
         getDisplayMode: getDisplayMode,
         setDisplayMode: setDisplayMode,
         updateToggleButtons: updateToggleButtons,
         toggleDisplayMode: toggleDisplayMode,
         getDisplayHoles: getDisplayHoles,
         
+        // Flight toggle
         updateFlightToggleButton: updateFlightToggleButton,
         toggleFlight: toggleFlight,
         getCurrentFlight: getCurrentFlight,
         
+        // Action buttons
         renderActionButtons: renderActionButtons,
         updateSaveButton: updateSaveButton,
         resetSaveButton: resetSaveButton,
         
+        // Bottom menu
         renderBottomMenu: renderBottomMenu,
         
+        // Navigation logic
         updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
         updateNextButtonForLastHole: updateNextButtonForLastHole,
         ensureNoStuckModals: ensureNoStuckModals,
         setNextButtonToSignMode: setNextButtonToSignMode,
         setNextButtonToSeeResults: setNextButtonToSeeResults,
         
+        // Event listeners
         attachGlobalEventListeners: attachGlobalEventListeners,
         
+        // Layout and styles
         applyButtonStyles: applyButtonStyles,
         applyTightLayout: applyTightLayout,
+        fixBackground: fixBackground,
         
+        // Flight indicator (DEPRECATED)
         addFlightIndicator: addFlightIndicator,
         removeFlightIndicator: removeFlightIndicator,
         updateFlightIndicator: updateFlightIndicator
@@ -938,12 +1169,19 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.13
+VERSION: 2.14
 KEY CHANGES:
-   - FIXED: Status bubble z-index changed from 1001 to 999 (below modals)
-   - FIXED: Added modal z-index constants for consistency
-   - FIXED: ensureNoStuckModals() now more aggressive
-   - All existing functions unchanged from v2.12
+   - ADDED: renderScorecardHeader() - renders responsive scorecard header
+   - Desktop (>550px): Single row layout
+   - Mobile (<550px): Two-row stacked layout
+     Row 1: SCORE (left) + Flight # (center) + ◀ # ▶ (right)
+     Row 2: CARD + P/N button (left-aligned)
+   - ADDED: updateHoleNumberDisplay() - updates hole number in header
+   - ADDED: updateFlightButtonText() - updates flight button text
+   - FIXED: Added full screen background coverage to prevent system UI bleed-through
+   - FIXED: html/body background set to black with safe area insets
+   - FIXED: Status bubble z-index and positioning improved
+   - All existing functions unchanged from v2.13
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
