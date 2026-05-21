@@ -1,13 +1,14 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.16
+VERSION: 2.17
 KEY CHANGES:
-   - ADDED: addFlightBadge() - adds FLIGHT # badge centered on first player card
-   - CHANGED: renderCompactHeader() - new layout: [P/N] [SAVE H#] [◀ # ▶] with centered SAVE
-   - CHANGED: All buttons now 52px height for easier tapping on mobile
-   - REMOVED: Flight button from header (now a badge on player card)
-   - REMOVED: Save icon (text only)
-   - All existing functions unchanged from v2.15
+   - ADDED: renderHoleHeader() - new layout with LIVE bubble left, HOLE centered
+   - Uses CSS Grid for perfect centering (1fr auto 1fr)
+   - Removed separate .hole-par display (saved space)
+   - Tighter spacing (margin-bottom: -2px)
+   - HOLE font size increased to 1.5rem
+   - Status bubble no longer fixed position (moved inline)
+   - All existing functions unchanged from v2.16
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -28,6 +29,7 @@ var GameUI = (function() {
     var tightLayoutApplied = false;
     var buttonStylesApplied = false;
     var backgroundFixed = false;
+    var holeHeaderRendered = false;
     
     // Track current state for UI updates
     var currentFlight = 1;
@@ -88,15 +90,83 @@ var GameUI = (function() {
         
         statusBubble.onmouseenter = function() {
             this.style.opacity = '0.8';
-            this.style.transform = 'translateX(-50%) scale(1.02)';
         };
         statusBubble.onmouseleave = function() {
             this.style.opacity = '1';
-            this.style.transform = 'translateX(-50%)';
         };
         statusBubble.onclick = function() {
             location.reload();
         };
+    }
+    
+    // ============================================================
+    // NEW: Render Hole Header (LIVE left, HOLE centered)
+    // ============================================================
+    
+    function renderHoleHeader(containerId, currentHole, currentPar, currentSi) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        // Get the current hole text
+        var holeText = 'HOLE ' + currentHole;
+        
+        // Get the LIVE bubble element
+        var statusBubble = document.getElementById('statusBubble');
+        
+        // Create new header HTML
+        var html = `
+            <div class="hole-header-grid" style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: -2px; width: 100%;">
+                <div class="hole-header-left" style="justify-self: start;">
+                    ${statusBubble ? statusBubble.outerHTML : '<span class="status-bubble">LIVE</span>'}
+                </div>
+                <div class="hole-number-display" style="font-size: 1.5rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; margin: 0; justify-self: center;">
+                    ${holeText}
+                </div>
+                <div class="hole-header-right" style="justify-self: end;"></div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        
+        // Hide the original status bubble
+        if (statusBubble) {
+            statusBubble.style.display = 'none';
+        }
+        
+        // Make the new status bubble clickable
+        var newStatusBubble = container.querySelector('.hole-header-left .status-bubble');
+        if (newStatusBubble) {
+            newStatusBubble.style.cursor = 'pointer';
+            newStatusBubble.style.padding = '4px 12px';
+            newStatusBubble.style.fontSize = '0.7rem';
+            newStatusBubble.style.borderRadius = '20px';
+            newStatusBubble.style.backgroundColor = 'rgba(76,175,80,0.3)';
+            newStatusBubble.style.border = '1px solid #4caf50';
+            newStatusBubble.style.color = '#4caf50';
+            newStatusBubble.onclick = function() {
+                location.reload();
+            };
+        }
+        
+        holeHeaderRendered = true;
+        currentHoleNumber = currentHole;
+    }
+    
+    function updateHoleHeaderNumber(holeNumber) {
+        currentHoleNumber = holeNumber;
+        var holeDisplay = document.querySelector('.hole-header-grid .hole-number-display');
+        if (holeDisplay) {
+            holeDisplay.innerText = 'HOLE ' + holeNumber;
+        }
+    }
+    
+    // ============================================================
+    // Legacy updateHoleHeader (kept for compatibility)
+    // ============================================================
+    
+    function updateHoleHeader(containerId, currentHole, currentPar, currentSi) {
+        // Use new render function
+        renderHoleHeader(containerId, currentHole, currentPar, currentSi);
     }
     
     // ============================================================
@@ -359,7 +429,7 @@ var GameUI = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -410,7 +480,7 @@ var GameUI = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -600,21 +670,6 @@ var GameUI = (function() {
             </div>
         `;
         
-        container.innerHTML = html;
-    }
-    
-    // ============================================================
-    // Hole Header Display
-    // ============================================================
-    
-    function updateHoleHeader(containerId, currentHole, currentPar, currentSi) {
-        var container = document.getElementById(containerId);
-        if (!container) return;
-        
-        var html = `
-            <div class="hole-number">HOLE ${currentHole}</div>
-            <div class="hole-par">PAR ${currentPar}  SI ${currentSi}</div>
-        `;
         container.innerHTML = html;
     }
     
@@ -896,28 +951,11 @@ var GameUI = (function() {
             #courseName { display: none !important; }
             .hole-par { display: none !important; }
             #flightTab { display: none !important; }
-            .hole-header { margin-bottom: 4px !important; margin-top: 4px !important; }
             .team-score-card { margin-top: 0 !important; margin-bottom: 8px !important; padding: 8px !important; }
             .container { padding-top: 30px !important; }
             .player-card { position: relative; }
         `;
         document.head.appendChild(style);
-        
-        var statusBubble = document.getElementById('statusBubble');
-        if (statusBubble) {
-            statusBubble.style.position = 'fixed';
-            statusBubble.style.top = '8px';
-            statusBubble.style.left = '50%';
-            statusBubble.style.transform = 'translateX(-50%)';
-            statusBubble.style.zIndex = Z_INDEX.STATUS_BUBBLE;
-            statusBubble.style.margin = '0';
-            statusBubble.style.fontSize = '0.65rem';
-            statusBubble.style.padding = '2px 10px';
-            statusBubble.style.backgroundColor = 'rgba(0,0,0,0.7)';
-            statusBubble.style.borderRadius = '20px';
-        }
-        
-        makeStatusBubbleClickable();
         
         tightLayoutApplied = true;
     }
@@ -946,6 +984,8 @@ var GameUI = (function() {
         renderPlayerCards: renderPlayerCards,
         updateTR: updateTR,
         updateHoleHeader: updateHoleHeader,
+        renderHoleHeader: renderHoleHeader,
+        updateHoleHeaderNumber: updateHoleHeaderNumber,
         updateFlightTab: updateFlightTab,
         
         // Compact header
@@ -960,8 +1000,7 @@ var GameUI = (function() {
         removeFlightBadge: removeFlightBadge,
         
         // Legacy compatibility
-        renderScorecardHeader: renderCompactHeader,
-        updateHoleNumberDisplay: updateCompactHoleDisplay,
+        updateFlightToggleButton: updateFlightBadge,
         updateFlightButtonText: updateFlightBadge,
         updatePnButtonText: updateCompactPnButton,
         
@@ -973,7 +1012,6 @@ var GameUI = (function() {
         getDisplayHoles: getDisplayHoles,
         
         // Flight toggle
-        updateFlightToggleButton: updateFlightBadge,
         toggleFlight: toggleFlight,
         getCurrentFlight: getCurrentFlight,
         
@@ -1012,14 +1050,15 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.16
+VERSION: 2.17
 KEY CHANGES:
-   - ADDED: addFlightBadge() - adds FLIGHT # badge centered on first player card
-   - CHANGED: renderCompactHeader() - new layout: [P/N] [SAVE H#] [◀ # ▶] with centered SAVE
-   - CHANGED: All buttons now 52px height for easier tapping on mobile
-   - REMOVED: Flight button from header (now a badge on player card)
-   - REMOVED: Save icon (text only)
-   - All existing functions unchanged from v2.15
+   - ADDED: renderHoleHeader() - new layout with LIVE bubble left, HOLE centered
+   - Uses CSS Grid for perfect centering (1fr auto 1fr)
+   - Removed separate .hole-par display (saved space)
+   - Tighter spacing (margin-bottom: -2px)
+   - HOLE font size increased to 1.5rem
+   - Status bubble no longer fixed position (moved inline)
+   - All existing functions unchanged from v2.16
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
