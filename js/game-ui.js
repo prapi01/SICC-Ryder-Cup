@@ -1,12 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.20
+VERSION: 2.21
 KEY CHANGES:
-   - FIXED: updateNavigationButtons() now properly preserves navigation handlers
-   - FIXED: Next button correctly disabled when hole not saved
-   - FIXED: Original onclick handlers stored and restored
-   - Navigation callbacks no longer lost when updating button states
-   - All other functions unchanged from v2.19
+   - ADDED: CSS rules for disabled button states (greyed out)
+   - Disabled prev/next buttons now have grey background and text
+   - Disabled save button now properly greyed out
+   - Applies to all holes across all pages
+   - All other functions unchanged from v2.20
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -170,7 +170,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // SINGLE SOURCE OF TRUTH: Navigation Buttons (FIXED)
+    // SINGLE SOURCE OF TRUTH: Navigation Buttons
     // ============================================================
     
     function updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameComplete, celebrationTriggered, onSignCardCallback) {
@@ -892,7 +892,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Button Styles
+    // Button Styles (with disabled states)
     // ============================================================
     
     function applyButtonStyles() {
@@ -941,6 +941,29 @@ var GameUI = (function() {
             .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
             .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
             .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+            
+            /* Disabled button states - greyed out */
+            .compact-prev-btn:disabled, .compact-next-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
+            .compact-save-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
+            .compact-pn-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
         `;
         document.head.appendChild(style);
         
@@ -1011,7 +1034,7 @@ var GameUI = (function() {
         updateFlightBadge: updateFlightBadge,
         removeFlightBadge: removeFlightBadge,
         
-        // SINGLE SOURCE OF TRUTH - Navigation (FIXED)
+        // SINGLE SOURCE OF TRUTH - Navigation
         updateNavigationButtons: updateNavigationButtons,
         
         // Legacy compatibility
@@ -1065,13 +1088,13 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.20
+VERSION: 2.21
 KEY CHANGES:
-   - FIXED: updateNavigationButtons() now properly preserves navigation handlers
-   - FIXED: Next button correctly disabled when hole not saved
-   - FIXED: Original onclick handlers stored and restored
-   - Navigation callbacks no longer lost when updating button states
-   - All other functions unchanged from v2.19
+   - ADDED: CSS rules for disabled button states (greyed out)
+   - Disabled prev/next buttons now have grey background and text
+   - Disabled save button now properly greyed out
+   - Applies to all holes across all pages
+   - All other functions unchanged from v2.20
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
