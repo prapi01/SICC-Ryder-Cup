@@ -1,13 +1,13 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.04
+VERSION: 3.05
 KEY CHANGES:
-   - FIXED: Lock write now correctly retrieves sessionId from deviceSession or SessionManager
-   - sessionStorage.getItem('sessionId') was returning null, causing sid: null in locks
-   - Now uses: deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown"
-   - Ensures proper session tracking for role locks
-   - All other functionality identical to v3.03 (role selection, admin reset, etc.)
-STATUS: Ready for testing
+   - ADDED: Detection of completed games for VIEWER role
+   - If game is completed, viewer redirects to view-history.html instead of view-game.html
+   - Passes gameId in URL for direct load
+   - All other functionality (role selection, locks, admin reset) unchanged
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
+STATUS: Ready for integration
 -->
 
 <!DOCTYPE html>
@@ -371,13 +371,12 @@ STATUS: Ready for testing
     <div class="loading">Loading game data...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.04</div>
+<div class="version-tag">v3.05</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.04
-// FIXED: Lock write now correctly retrieves sessionId
+// FILE: pre-game.html - VERSION 3.05
 
-var VERSION = "3.04";
+var VERSION = "3.05";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -430,7 +429,6 @@ function displayDeviceId() {
     var deviceTag = document.getElementById("deviceTag");
     deviceTag.innerHTML = "🖥️ " + shortName;
     
-    // Hidden admin reset - tap device ID 2 times
     var tapCount = 0;
     var tapTimer = null;
     deviceTag.addEventListener("click", function() {
@@ -694,7 +692,6 @@ function takeoverRole(flight) {
     var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
     var deviceId = SessionManager.getDeviceIdDisplay();
     
-    // FIXED: Get sessionId correctly
     var sessionId = deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown";
     
     var updatePayload = {};
@@ -750,6 +747,13 @@ function showStaleSessionModal(callback) {
         document.getElementById("staleModal").remove();
         callback(true);
     });
+}
+
+// Check if game is completed (both signatures present)
+function isGameCompleted(gameData) {
+    if (!gameData) return false;
+    var signatures = gameData.signatures || {};
+    return signatures.f1?.signed === true && signatures.f2?.signed === true;
 }
 
 function loadGame() {
@@ -880,8 +884,15 @@ function startGame() {
         return;
     }
     
-    // VIEW ONLY
+    // VIEW ONLY role
     if (tempSelectedRole === "view") {
+        // Check if game is already completed
+        if (isGameCompleted(gameData)) {
+            console.log("Game is completed - redirecting to view-history.html");
+            window.location.href = "view-history.html?gameId=" + gameId;
+            return;
+        }
+        
         localStorage.setItem("userRole", "view");
         if (deviceSession) {
             SessionManager.updateSession({
@@ -944,8 +955,6 @@ function startGame() {
     }
     
     var deviceId = SessionManager.getDeviceIdDisplay();
-    
-    // FIXED: Get sessionId correctly - was previously using sessionStorage which returned null
     var sessionId = deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown";
     
     if (tempSelectedRole === "update1") {
@@ -1138,8 +1147,14 @@ function render() {
         roleStatusText = "✓ Flight 2 selected. Click TEE OFF to lock this role.";
         roleStatusClass = "role-status-selected";
     } else if (tempSelectedRole === "view") {
-        roleStatusText = "✓ View Only selected. Click TEE OFF to continue.";
+        // Check if game is completed for viewer
+        if (isGameCompleted(gameData)) {
+            roleStatusText = "⚠️ This game is already completed. Click TEE OFF to see final results.";
+        } else {
+            roleStatusText = "✓ View Only selected. Click TEE OFF to continue.";
+        }
         roleStatusClass = "role-status-selected";
+        isTeeOffDisabled = false;
     } else if (deviceHasFlight1) {
         roleStatusText = "✓ You already have Flight 1. Click TEE OFF to enter the game.";
         roleStatusClass = "role-status-selected";
@@ -1264,12 +1279,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.04
+VERSION: 3.05
 KEY CHANGES:
-   - FIXED: Lock write now correctly retrieves sessionId from deviceSession or SessionManager
-   - sessionStorage.getItem('sessionId') was returning null, causing sid: null in locks
-   - Now uses: deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown"
-   - Ensures proper session tracking for role locks
-   - All other functionality identical to v3.03 (role selection, admin reset, etc.)
-STATUS: Ready for testing
+   - ADDED: Detection of completed games for VIEWER role
+   - If game is completed, viewer redirects to view-history.html instead of view-game.html
+   - Passes gameId in URL for direct load
+   - All other functionality (role selection, locks, admin reset) unchanged
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
+STATUS: Ready for integration
 -->
