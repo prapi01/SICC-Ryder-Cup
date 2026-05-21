@@ -1,12 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.06
+VERSION: 3.07
 KEY CHANGES:
-   - Added html background to fix iOS white band
-   - Added spacing between header, subtitle, and NGB button
-   - Splash screen now shows only once per session (sessionStorage)
-   - Safe area insets for iPhone home indicator
-   - All other functionality identical to v3.05
+   - FIXED: TODAY GAME button now matches PREVIEW button size
+   - Added date line to TODAY GAME button for consistent height
+   - Both NGB buttons now have same structure: Icon → Title → Date → Course Name
+   - Maintained all splash screen and session functionality from v3.06
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -203,8 +202,8 @@ STATUS: Ready for deployment
         .ngb .icon { font-size: 2.5rem; margin-bottom: 12px; display: block; }
         .ngb .title { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 8px; background: none; -webkit-background-clip: unset; color: #4caf50; }
         .ngb .subtitle-text { font-size: 1rem; font-weight: 500; color: #ccc; margin-bottom: 4px; }
-        .ngb .date { font-size: 0.9rem; font-weight: 400; color: #aaa; }
-        .ngb .course-name { font-size: 0.85rem; font-weight: 400; color: #888; margin-top: 8px; }
+        .ngb .date { font-size: 0.9rem; font-weight: 400; color: #aaa; margin-bottom: 4px; }
+        .ngb .course-name { font-size: 0.85rem; font-weight: 400; color: #888; margin-top: 4px; }
         .ngb .no-game { font-size: 1rem; font-weight: 500; color: #888; }
         
         .menu-buttons {
@@ -273,12 +272,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.06</div>
+<div class="version-tag">v3.07</div>
 
 <script>
-// FILE: index.html - VERSION 3.06
+// FILE: index.html - VERSION 3.07
 
-var APP_VERSION = "3.06";
+var APP_VERSION = "3.07";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -690,10 +689,12 @@ function loadAndRender() {
             var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
             
             if (status === "today") {
+                // TODAY GAME button - now with date line to match PREVIEW size
                 ngbHtml = `
                     <div class="ngb" onclick="handleTodayGame()">
                         <div class="icon">⛳</div>
                         <div class="title">TODAY GAME</div>
+                        <div class="date">${formattedDate}</div>
                         <div class="course-name">${escapeHtml(courseName)}</div>
                     </div>
                 `;
@@ -785,13 +786,12 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.06
+VERSION: 3.07
 KEY CHANGES:
-   - Added html background to fix iOS white band
-   - Added spacing between header, subtitle, and NGB button
-   - Splash screen now shows only once per session (sessionStorage)
-   - Safe area insets for iPhone home indicator
-   - All other functionality identical to v3.05
+   - FIXED: TODAY GAME button now matches PREVIEW button size
+   - Added date line to TODAY GAME button for consistent height
+   - Both NGB buttons now have same structure: Icon → Title → Date → Course Name
+   - Maintained all splash screen and session functionality from v3.06
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
