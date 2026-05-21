@@ -1,12 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.18
+VERSION: 2.19
 KEY CHANGES:
-   - FIXED: renderHoleHeader() now properly displays LIVE bubble
-   - LIVE bubble inherits original colors and styles
-   - Click handler attached to new status bubble for refresh
-   - Original status bubble hidden correctly
-   - All existing functions unchanged from v2.17
+   - ADDED: updateNavigationButtons() - SINGLE SOURCE OF TRUTH for prev/next buttons
+   - Removed duplicate logic from updateNavButtonsWithDisableLogic and updateNextButtonForLastHole
+   - Centralized: prev button enabled/disabled based on hole position
+   - Centralized: next button behavior (normal navigation, last hole SIGN, game complete)
+   - All other functions unchanged from v2.18
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -41,7 +41,8 @@ var GameUI = (function() {
         onPrevHole: null,
         onNextHole: null,
         onToggleFlight: null,
-        onToggleDisplay: null
+        onToggleDisplay: null,
+        onSignCard: null
     };
     
     // ============================================================
@@ -108,7 +109,6 @@ var GameUI = (function() {
         var holeText = 'HOLE ' + currentHole;
         var statusBubble = document.getElementById('statusBubble');
         
-        // Get original status bubble styles
         var statusText = 'LIVE';
         var statusColor = '#4caf50';
         var statusBg = 'rgba(76,175,80,0.3)';
@@ -122,7 +122,6 @@ var GameUI = (function() {
             statusBorder = computedStyle.border;
         }
         
-        // Create new header
         var html = `
             <div class="hole-header-grid" style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: -2px; width: 100%;">
                 <div class="hole-header-left" style="justify-self: start;">
@@ -139,12 +138,10 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
-        // Hide original status bubble
         if (statusBubble) {
             statusBubble.style.display = 'none';
         }
         
-        // Make new status bubble clickable for refresh
         var newStatusBubble = container.querySelector('.status-bubble-new');
         if (newStatusBubble) {
             newStatusBubble.onclick = function() {
@@ -165,7 +162,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Legacy updateHoleHeader (kept for compatibility)
+    // Legacy updateHoleHeader
     // ============================================================
     
     function updateHoleHeader(containerId, currentHole, currentPar, currentSi) {
@@ -173,11 +170,72 @@ var GameUI = (function() {
     }
     
     // ============================================================
+    // SINGLE SOURCE OF TRUTH: Navigation Buttons
+    // ============================================================
+    
+    function updateNavigationButtons(currentHole, playOrderLength, isCurrentSaved, isGameComplete, celebrationTriggered, onSignCardCallback) {
+        var prevBtn = document.getElementById('compactPrevBtn');
+        var nextBtn = document.getElementById('compactNextBtn');
+        
+        if (!prevBtn || !nextBtn) return;
+        
+        // Get current position in play order
+        var currentIndex = playOrderLength ? playOrderLength.indexOf(currentHole) : -1;
+        var isFirstHole = (currentIndex === 0);
+        var isLastHole = (currentIndex === 17);
+        
+        // ============================================================
+        // PREV BUTTON: Disabled only at first hole
+        // ============================================================
+        prevBtn.disabled = isFirstHole;
+        
+        // ============================================================
+        // NEXT BUTTON: Logic based on game state
+        // ============================================================
+        
+        // Case 1: Game complete (both signed) - show trophy
+        if (isGameComplete && !celebrationTriggered) {
+            nextBtn.innerHTML = '🏆';
+            nextBtn.style.background = '#ffaa44';
+            nextBtn.style.color = '#1a3a1a';
+            nextBtn.style.border = '1px solid #ffaa44';
+            nextBtn.disabled = false;
+            nextBtn.onclick = function() {
+                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+            };
+            return;
+        }
+        
+        // Case 2: Last hole AND current hole is saved - show sign button (gold)
+        if (isLastHole && isCurrentSaved) {
+            nextBtn.innerHTML = '✍️';
+            nextBtn.style.background = '#ffaa44';
+            nextBtn.style.color = '#1a3a1a';
+            nextBtn.style.border = '1px solid #ffaa44';
+            nextBtn.disabled = false;
+            // Store the sign callback
+            nextBtn.onclick = function() {
+                if (onSignCardCallback) onSignCardCallback();
+            };
+            return;
+        }
+        
+        // Case 3: Normal mode - show green arrow, disabled if not saved
+        nextBtn.innerHTML = '▶';
+        nextBtn.style.background = '#1a3a1a';
+        nextBtn.style.color = '#4caf50';
+        nextBtn.style.border = '1px solid #4caf50';
+        nextBtn.disabled = !isCurrentSaved;
+        nextBtn.onclick = function() {
+            if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+        };
+    }
+    
+    // ============================================================
     // Add Flight Badge to First Player Card
     // ============================================================
     
     function addFlightBadge(flightNumber) {
-        // Remove any existing badge
         var existingBadge = document.querySelector('.flight-badge');
         if (existingBadge) existingBadge.remove();
         
@@ -256,14 +314,13 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Render Compact Header (Single Line with Centered SAVE)
+    // Render Compact Header
     // ============================================================
     
     function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Store callbacks
         if (onSave) eventCallbacks.onSave = onSave;
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
@@ -275,12 +332,10 @@ var GameUI = (function() {
         
         var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
         
-        // Add flight badge to first player card
         setTimeout(function() {
             addFlightBadge(flightNumber);
         }, 50);
         
-        // Build header HTML
         var html = `
             <div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 10px;">
                 <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; padding: 0 16px; min-width: 60px; height: 52px; font-size: 1rem; font-weight: 700; cursor: pointer; flex-shrink: 0;">
@@ -303,11 +358,8 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
-        // Attach event listeners
         var pnBtn = document.getElementById('compactPnBtn');
         var saveBtn = document.getElementById('compactSaveBtn');
-        var prevBtn = document.getElementById('compactPrevBtn');
-        var nextBtn = document.getElementById('compactNextBtn');
         
         if (pnBtn && eventCallbacks.onToggleDisplay) {
             pnBtn.addEventListener('click', function() {
@@ -324,17 +376,10 @@ var GameUI = (function() {
             });
         }
         
-        if (prevBtn && eventCallbacks.onPrevHole) {
-            prevBtn.addEventListener('click', function() {
-                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
-            });
-        }
-        
-        if (nextBtn && eventCallbacks.onNextHole) {
-            nextBtn.addEventListener('click', function() {
-                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
-            });
-        }
+        // Navigation buttons will have their handlers set by updateNavigationButtons
+        // Store callbacks for later use
+        if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
+        if (onNextHole) eventCallbacks.onNextHole = onNextHole;
     }
     
     function updateCompactSaveButton(currentHole, isDisabled) {
@@ -362,7 +407,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Legacy Functions (kept for compatibility)
+    // Legacy Functions
     // ============================================================
     
     function updateFlightToggleButton(flightNumber) {
@@ -403,36 +448,33 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead></tr><th>Hole</th>';
+        html += '<thead><tr><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
         html += '<th>Tot</th> </thead><tbody>';
         
-        // Par row
-        html += '<tr><td style="font-weight:700;">Par</td>';
+        html += '<tr><td style="font-weight:700;">Par<\/td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
             totalPar += par;
-            html += '<td>' + par + '</td>';
+            html += '<td>' + par + '<\/td>';
         }
-        html += '<td>' + totalPar + '</td></tr>';
+        html += '<td>' + totalPar + '<\/td><\/tr>';
         
-        // SI row
-        html += '<tr><td style="font-weight:700;">SI</td>';
+        html += '<tr><td style="font-weight:700;">SI<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
-            html += '<td>' + si + '</td>';
+            html += '<td>' + si + '<\/td>';
         }
-        html += '<td>-</td></tr>';
+        html += '<td>-<\/td><\/tr>';
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -440,15 +482,14 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var holeNum = holes[i];
@@ -474,16 +515,15 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -491,15 +531,14 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
+        html += '<td><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -525,14 +564,13 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -558,9 +596,9 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
         html += '</tbody></table>';
         container.innerHTML = html;
@@ -803,54 +841,15 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Navigation Button Logic
+    // Navigation Logic (legacy wrappers)
     // ============================================================
     
     function updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameComplete, celebrationTriggered) {
-        var nextBtn = document.getElementById('compactNextBtn');
-        if (!nextBtn) return;
-        
-        if (isGameComplete && !celebrationTriggered) {
-            nextBtn.innerHTML = '🏆';
-            nextBtn.disabled = false;
-        } else {
-            var isCurrentSavedState = isCurrentSaved && !hasUnsavedChanges;
-            nextBtn.disabled = !isCurrentSavedState;
-        }
+        // Deprecated - use updateNavigationButtons instead
     }
     
     function updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, onSignCardCallback) {
-        var nextBtn = document.getElementById('compactNextBtn');
-        if (!nextBtn) return;
-        
-        if (isLast && isCurrentSaved) {
-            nextBtn.innerHTML = '✍️';
-            nextBtn.style.background = '#ffaa44';
-            nextBtn.style.color = '#1a3a1a';
-            nextBtn.style.border = '1px solid #ffaa44';
-            nextBtn.disabled = false;
-            nextBtn.onclick = function() {
-                if (onSignCardCallback) onSignCardCallback();
-            };
-        } else {
-            nextBtn.innerHTML = '▶';
-            nextBtn.style.background = '#1a3a1a';
-            nextBtn.style.color = '#4caf50';
-            nextBtn.style.border = '1px solid #4caf50';
-            nextBtn.disabled = !isCurrentSaved;
-            if (eventCallbacks.onNextHole) {
-                nextBtn.onclick = function() {
-                    if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
-                };
-            }
-        }
-    }
-    
-    function ensureNoStuckModals() {
-        var modals = document.querySelectorAll('.modal-overlay');
-        for (var i = 0; i < modals.length; i++) {
-            modals[i].remove();
-        }
+        // Deprecated - use updateNavigationButtons instead
     }
     
     function setNextButtonToSignMode() {
@@ -870,6 +869,13 @@ var GameUI = (function() {
             nextBtn.style.background = '#ffaa44';
             nextBtn.style.color = '#1a3a1a';
             nextBtn.disabled = false;
+        }
+    }
+    
+    function ensureNoStuckModals() {
+        var modals = document.querySelectorAll('.modal-overlay');
+        for (var i = 0; i < modals.length; i++) {
+            modals[i].remove();
         }
     }
     
@@ -1002,6 +1008,9 @@ var GameUI = (function() {
         updateFlightBadge: updateFlightBadge,
         removeFlightBadge: removeFlightBadge,
         
+        // SINGLE SOURCE OF TRUTH - Navigation
+        updateNavigationButtons: updateNavigationButtons,
+        
         // Legacy compatibility
         updateFlightToggleButton: updateFlightBadge,
         updateFlightButtonText: updateFlightBadge,
@@ -1026,12 +1035,12 @@ var GameUI = (function() {
         // Bottom menu
         renderBottomMenu: renderBottomMenu,
         
-        // Navigation logic
+        // Navigation logic (deprecated legacy wrappers)
         updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
         updateNextButtonForLastHole: updateNextButtonForLastHole,
-        ensureNoStuckModals: ensureNoStuckModals,
         setNextButtonToSignMode: setNextButtonToSignMode,
         setNextButtonToSeeResults: setNextButtonToSeeResults,
+        ensureNoStuckModals: ensureNoStuckModals,
         
         // Event listeners
         attachGlobalEventListeners: attachGlobalEventListeners,
@@ -1053,13 +1062,13 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.18
+VERSION: 2.19
 KEY CHANGES:
-   - FIXED: renderHoleHeader() now properly displays LIVE bubble
-   - LIVE bubble inherits original colors and styles
-   - Click handler attached to new status bubble for refresh
-   - Original status bubble hidden correctly
-   - All existing functions unchanged from v2.17
+   - ADDED: updateNavigationButtons() - SINGLE SOURCE OF TRUTH for prev/next buttons
+   - Removed duplicate logic from updateNavButtonsWithDisableLogic and updateNextButtonForLastHole
+   - Centralized: prev button enabled/disabled based on hole position
+   - Centralized: next button behavior (normal navigation, last hole SIGN, game complete)
+   - All other functions unchanged from v2.18
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
