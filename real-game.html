@@ -1,11 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 3.17
+VERSION: 3.18
 KEY CHANGES:
-   - CHANGED: Now uses GameUI.renderCompactHeader() with centered SAVE button
-   - CHANGED: Flight badge appears on first player card (not in header)
-   - REMOVED: Old flight button references
-   - All game logic (save, load, results calculation) unchanged
+   - CHANGED: Now uses GameUI.renderHoleHeader() for new hole header layout
+   - LIVE bubble now inline with HOLE number (left-aligned)
+   - HOLE number perfectly centered using CSS Grid
+   - Removed separate PAR/SI line (saved space)
+   - Tighter spacing throughout
+   - All game logic unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -72,13 +74,8 @@ STATUS: Ready for integration
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 0.7rem;
-            margin-bottom: 16px;
             color: #4caf50;
         }
-        
-        .hole-header { text-align: center; }
-        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
-        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
         
         .team-score-card {
             background: #111;
@@ -257,7 +254,9 @@ STATUS: Ready for integration
     
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
-    <div id="holeHeader" class="hole-header"></div>
+    <!-- Hole header container - GameUI will render new header here -->
+    <div id="holeHeader"></div>
+    
     <div id="flightTab" class="flight-tab"></div>
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
@@ -275,7 +274,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.17</div>
+<div class="version-tag">v3.18</div>
 
 <script>
 // ============================================================
@@ -875,6 +874,7 @@ function prevHole() {
 
 function updateHoleNumberDisplay() {
     GameUI.updateCompactHoleDisplay(currentHole);
+    GameUI.updateHoleHeaderNumber(currentHole);
 }
 
 function updateNavButtons() {
@@ -900,7 +900,6 @@ function updateNavButtons() {
 
 function onToggleFlight(flightNumber) {
     editableFlight = flightNumber;
-    // Update the flight badge on the first player card
     GameUI.updateFlightBadge(flightNumber);
     renderAll();
 }
@@ -1161,7 +1160,8 @@ function renderAll() {
     var currentSi = courseSi[currentHole - 1];
     var tr = GameLoader.getTRForHole(currentHole);
     
-    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    // Use new hole header renderer
+    GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
@@ -1365,7 +1365,7 @@ async function init() {
             return;
         }
         
-        // Apply tight layout and button styles (includes clickable status bubble)
+        // Apply tight layout and button styles
         GameUI.applyTightLayout();
         
         // Render compact header (centered SAVE button)
@@ -1418,12 +1418,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.17
+VERSION: 3.18
 KEY CHANGES:
-   - CHANGED: Now uses GameUI.renderCompactHeader() with centered SAVE button
-   - CHANGED: Flight badge appears on first player card (not in header)
-   - REMOVED: Old flight button references
-   - All game logic (save, load, results calculation) unchanged
+   - CHANGED: Now uses GameUI.renderHoleHeader() for new hole header layout
+   - LIVE bubble now inline with HOLE number (left-aligned)
+   - HOLE number perfectly centered using CSS Grid
+   - Removed separate PAR/SI line (saved space)
+   - Tighter spacing throughout
+   - All game logic unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
