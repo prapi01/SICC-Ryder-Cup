@@ -1,12 +1,12 @@
 <!--
 FILE: index.html
-VERSION: 3.09
+VERSION: 3.10
 KEY CHANGES:
-   - FIXED: All buttons now have same width (matching NGB button)
-   - VIEW PREVIOUS GAMES button width matches NGB (280px)
-   - GAME SETTINGS button width matches NGB (280px)
+   - FIXED: All buttons now have same width (95% of title width)
+   - NGB button is square (width × height)
+   - VIEW PREVIOUS GAMES button: single line, same width
+   - GAME SETTINGS button: same width
    - All buttons centered in container
-   - Maintained square NGB button (280px × 280px)
    - Maintained all splash screen and session functionality
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
@@ -185,16 +185,33 @@ STATUS: Ready for deployment
             transition: transform 0.1s ease;
         }
         .golf-icon:active { transform: scale(0.98); }
-        .title { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%); background-clip: text; -webkit-background-clip: text; color: transparent; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .title { 
+            font-size: 1.8rem; 
+            font-weight: 800; 
+            letter-spacing: -0.5px; 
+            background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%); 
+            background-clip: text; 
+            -webkit-background-clip: text; 
+            color: transparent; 
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: inline-block;
+            white-space: nowrap;
+        }
         .subtitle { font-size: 0.75rem; color: #888; margin-top: 4px; margin-bottom: 16px; letter-spacing: 1px; }
         
-        /* SQUARE NGB BUTTONS - fixed width and height */
+        /* Container for centering all content */
+        .app-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+        
+        /* SQUARE NGB BUTTONS - 95% of title width */
         .ngb {
             background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
             border: 2px solid #4caf50;
             border-radius: 32px;
-            width: 280px;
-            height: 280px;
             margin: 0 auto 24px auto;
             display: flex;
             flex-direction: column;
@@ -207,7 +224,7 @@ STATUS: Ready for deployment
         }
         .ngb:active { transform: scale(0.98); }
         .ngb .icon { font-size: 3rem; margin-bottom: 16px; display: block; }
-        .ngb .title { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 12px; background: none; -webkit-background-clip: unset; color: #4caf50; }
+        .ngb .title { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 12px; background: none; -webkit-background-clip: unset; color: #4caf50; white-space: normal; }
         .ngb .subtitle-text { font-size: 1rem; font-weight: 500; color: #ccc; margin-bottom: 8px; }
         .ngb .date { font-size: 0.9rem; font-weight: 400; color: #aaa; margin-bottom: 8px; }
         .ngb .course-name { font-size: 0.85rem; font-weight: 400; color: #888; margin-top: 4px; }
@@ -223,17 +240,17 @@ STATUS: Ready for deployment
             width: 100%;
         }
         
-        /* VIEW PREVIOUS GAMES button - same width as NGB */
+        /* VIEW PREVIOUS GAMES button - same width as NGB, single line */
         .menu-btn {
             background: linear-gradient(145deg, #1a1a1a, #111);
             border: 1px solid #4caf50;
             border-radius: 60px;
             padding: 14px 20px;
-            width: 280px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
             box-sizing: border-box;
+            white-space: nowrap;
         }
         .menu-btn .label {
             font-size: 0.95rem;
@@ -247,7 +264,6 @@ STATUS: Ready for deployment
             border: 1px solid rgba(255,255,255,0.15);
             border-radius: 60px;
             padding: 12px 24px;
-            width: 280px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -269,6 +285,36 @@ STATUS: Ready for deployment
         
         .loading { text-align: center; padding: 40px; color: #888; }
     </style>
+    
+    <script>
+        // Dynamically set button widths based on title width
+        function setButtonWidths() {
+            var title = document.querySelector('.title');
+            var ngb = document.querySelector('.ngb');
+            var menuBtn = document.querySelector('.menu-btn');
+            var gsb = document.querySelector('.gsb');
+            
+            if (!title || !ngb) return;
+            
+            var titleWidth = title.offsetWidth;
+            var buttonWidth = Math.floor(titleWidth * 0.95);
+            
+            ngb.style.width = buttonWidth + 'px';
+            ngb.style.height = buttonWidth + 'px';
+            
+            if (menuBtn) {
+                menuBtn.style.width = buttonWidth + 'px';
+            }
+            
+            if (gsb) {
+                gsb.style.width = buttonWidth + 'px';
+            }
+        }
+        
+        // Run after page loads and after any resize
+        window.addEventListener('load', setButtonWidths);
+        window.addEventListener('resize', setButtonWidths);
+    </script>
 </head>
 <body>
 
@@ -287,12 +333,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.09</div>
+<div class="version-tag">v3.10</div>
 
 <script>
-// FILE: index.html - VERSION 3.09
+// FILE: index.html - VERSION 3.10
 
-var APP_VERSION = "3.09";
+var APP_VERSION = "3.10";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -742,23 +788,28 @@ function loadAndRender() {
                 <div class="subtitle">Match Play · Team Game · Net Stroke</div>
             </div>
             
-            ${ngbHtml}
-            
-            <div class="menu-buttons">
-                <div class="menu-btn" id="previousGamesBtn">
-                    <span class="label">📋 VIEW PREVIOUS GAMES</span>
+            <div class="app-content">
+                ${ngbHtml}
+                
+                <div class="menu-buttons">
+                    <div class="menu-btn" id="previousGamesBtn">
+                        <span class="label">📋 VIEW PREVIOUS GAMES</span>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="gsb" id="adminBtn">
-                <span class="icon">⚙️</span>
-                <span class="label">GAME SETTINGS</span>
+                
+                <div class="gsb" id="adminBtn">
+                    <span class="icon">⚙️</span>
+                    <span class="label">GAME SETTINGS</span>
+                </div>
             </div>
             
             <div class="footer">SICC Ryder Cup App v${APP_VERSION}<br>© 2026 Piti Pramotedham - piti@pramotedham.com</div>
         `;
         
         document.getElementById("app").innerHTML = html;
+        
+        // Apply dynamic button widths
+        setTimeout(setButtonWidths, 10);
         
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
@@ -802,13 +853,13 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.09
+VERSION: 3.10
 KEY CHANGES:
-   - FIXED: All buttons now have same width (matching NGB button)
-   - VIEW PREVIOUS GAMES button width matches NGB (280px)
-   - GAME SETTINGS button width matches NGB (280px)
+   - FIXED: All buttons now have same width (95% of title width)
+   - NGB button is square (width × height)
+   - VIEW PREVIOUS GAMES button: single line, same width
+   - GAME SETTINGS button: same width
    - All buttons centered in container
-   - Maintained square NGB button (280px × 280px)
    - Maintained all splash screen and session functionality
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
