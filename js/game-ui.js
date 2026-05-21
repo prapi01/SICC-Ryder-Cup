@@ -1,18 +1,13 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.14
+VERSION: 2.15
 KEY CHANGES:
-   - ADDED: renderScorecardHeader() - renders responsive scorecard header
-   - Desktop (>550px): Single row layout
-   - Mobile (<550px): Two-row stacked layout
-     Row 1: SCORE (left) + Flight # (center) + ◀ # ▶ (right)
-     Row 2: CARD + P/N button (left-aligned)
-   - ADDED: updateHoleNumberDisplay() - updates hole number in header
-   - ADDED: updateFlightButtonText() - updates flight button text
-   - FIXED: Added full screen background coverage to prevent system UI bleed-through
-   - FIXED: html/body background set to black with safe area insets
-   - FIXED: Status bubble z-index and positioning improved
-   - All existing functions unchanged from v2.13
+   - ADDED: renderCompactHeader() - single-line header with [FLIGHT P] [SAVE H#] [◀ # ▶]
+   - ADDED: makeStatusBubbleClickable() - status bubble refreshes page on click
+   - ADDED: tightenScorecardRows() - reduces row spacing for compact scorecard
+   - ADDED: updateSaveButtonText() - updates SAVE button text when hole changes
+   - REMOVED: Green vertical line from SCORE label
+   - All existing functions unchanged from v2.14
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -33,6 +28,7 @@ var GameUI = (function() {
     var tightLayoutApplied = false;
     var buttonStylesApplied = false;
     var backgroundFixed = false;
+    var headerRendered = false;
     
     // Track current state for UI updates
     var currentFlight = 1;
@@ -50,27 +46,24 @@ var GameUI = (function() {
     };
     
     // ============================================================
-    // Fix Background for All Pages (prevents system UI bleed-through)
+    // Fix Background for All Pages
     // ============================================================
     
     function fixBackground() {
         if (backgroundFixed) return;
         
-        // Fix html element
         var htmlElem = document.documentElement;
         htmlElem.style.margin = '0';
         htmlElem.style.padding = '0';
         htmlElem.style.backgroundColor = '#000000';
         htmlElem.style.minHeight = '100vh';
         
-        // Fix body element
         document.body.style.margin = '0';
         document.body.style.padding = '20px';
         document.body.style.backgroundColor = '#000000';
         document.body.style.minHeight = '100vh';
         document.body.style.position = 'relative';
         
-        // Add viewport meta if missing or update existing
         var viewport = document.querySelector('meta[name="viewport"]');
         if (viewport) {
             var content = viewport.getAttribute('content');
@@ -80,18 +73,71 @@ var GameUI = (function() {
         }
         
         backgroundFixed = true;
-        console.log('Background fixed to prevent system UI bleed-through');
     }
     
     // ============================================================
-    // Scorecard Header Rendering (NEW - responsive)
+    // Make Status Bubble Clickable (Refresh)
     // ============================================================
     
-    function renderScorecardHeader(containerId, flightNumber, currentHole, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
+    function makeStatusBubbleClickable() {
+        var statusBubble = document.getElementById('statusBubble');
+        if (!statusBubble) return;
+        
+        statusBubble.style.cursor = 'pointer';
+        statusBubble.title = 'Click to refresh page';
+        statusBubble.style.transition = 'opacity 0.2s, transform 0.2s';
+        
+        statusBubble.onmouseenter = function() {
+            this.style.opacity = '0.8';
+            this.style.transform = 'translateX(-50%) scale(1.02)';
+        };
+        statusBubble.onmouseleave = function() {
+            this.style.opacity = '1';
+            this.style.transform = 'translateX(-50%)';
+        };
+        statusBubble.onclick = function() {
+            location.reload();
+        };
+    }
+    
+    // ============================================================
+    // Tighten Scorecard Rows
+    // ============================================================
+    
+    function tightenScorecardRows() {
+        var table = document.querySelector('.scorecard-table');
+        if (!table) return;
+        
+        var allRows = table.querySelectorAll('tr');
+        for (var i = 0; i < allRows.length; i++) {
+            allRows[i].style.lineHeight = '1.2';
+        }
+        
+        var allCells = table.querySelectorAll('th, td');
+        for (var i = 0; i < allCells.length; i++) {
+            allCells[i].style.padding = '4px 2px';
+            allCells[i].style.lineHeight = '1.2';
+        }
+        
+        var headerRow = table.querySelector('thead tr');
+        if (headerRow) {
+            var headerCells = headerRow.querySelectorAll('th');
+            for (var i = 0; i < headerCells.length; i++) {
+                headerCells[i].style.padding = '6px 2px';
+            }
+        }
+    }
+    
+    // ============================================================
+    // Render Compact Header (Single Line)
+    // ============================================================
+    
+    function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
         // Store callbacks
+        if (onSave) eventCallbacks.onSave = onSave;
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
         if (onToggleFlight) eventCallbacks.onToggleFlight = onToggleFlight;
@@ -100,29 +146,29 @@ var GameUI = (function() {
         currentFlight = flightNumber;
         currentHoleNumber = currentHole;
         
-        // Responsive HTML structure
+        var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
+        
         var html = `
-            <div class="scorecard-header-responsive">
-                <!-- Row 1: SCORE (left), Flight (center), Navigation (right) -->
-                <div class="scorecard-header-row-1">
-                    <div class="scorecard-label-group">
-                        <span class="scorecard-label">SCORE</span>
-                    </div>
-                    <div class="scorecard-flight-group">
-                        <button class="flight-toggle" id="flightToggleBtn">✈️ Flight ${flightNumber}</button>
-                    </div>
-                    <div class="scorecard-nav-group">
-                        <button class="nav-btn" id="prevHoleBtn">◀</button>
-                        <span class="hole-number-display" id="holeNumberDisplay">${currentHole}</span>
-                        <button class="nav-btn" id="nextHoleBtn">▶</button>
-                    </div>
+            <div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 8px; margin-bottom: 10px;">
+                <div class="compact-left-group" style="display: flex; align-items: center; gap: 6px;">
+                    <button class="compact-flight-btn" id="compactFlightBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; padding: 6px 12px; font-size: 0.7rem; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                        FLIGHT ${flightNumber}
+                    </button>
+                    <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; padding: 6px 10px; min-width: 36px; font-size: 0.7rem; font-weight: 600; cursor: pointer; text-align: center;">
+                        ${pnText}
+                    </button>
                 </div>
-                <!-- Row 2: CARD (left) + P/N button -->
-                <div class="scorecard-header-row-2">
-                    <div class="scorecard-card-group">
-                        <span class="scorecard-card-label">CARD</span>
-                        <button class="pn-toggle" id="pnToggleBtn">${currentDisplayMode === 'play' ? 'P' : 'N'}</button>
-                    </div>
+                <button class="compact-save-btn" id="compactSaveBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; padding: 6px 16px; font-size: 0.7rem; font-weight: 600; cursor: pointer; white-space: nowrap; min-width: 90px;">
+                    💾 SAVE H${currentHole}
+                </button>
+                <div class="compact-nav-group" style="display: flex; align-items: center; gap: 4px;">
+                    <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: 28px; height: 28px; border-radius: 20px; font-size: 0.7rem; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                        ◀
+                    </button>
+                    <span class="compact-hole-display" style="font-size: 0.75rem; font-weight: 600; color: #4caf50; min-width: 28px; text-align: center;">${currentHole}</span>
+                    <button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: 28px; height: 28px; border-radius: 20px; font-size: 0.7rem; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                        ▶
+                    </button>
                 </div>
             </div>
         `;
@@ -130,89 +176,103 @@ var GameUI = (function() {
         container.innerHTML = html;
         
         // Attach event listeners
-        var prevBtn = document.getElementById('prevHoleBtn');
-        var nextBtn = document.getElementById('nextHoleBtn');
-        var pnBtn = document.getElementById('pnToggleBtn');
-        var flightBtn = document.getElementById('flightToggleBtn');
+        var flightBtn = document.getElementById('compactFlightBtn');
+        var pnBtn = document.getElementById('compactPnBtn');
+        var saveBtn = document.getElementById('compactSaveBtn');
+        var prevBtn = document.getElementById('compactPrevBtn');
+        var nextBtn = document.getElementById('compactNextBtn');
+        
+        if (flightBtn && eventCallbacks.onToggleFlight) {
+            flightBtn.addEventListener('click', function() {
+                var newFlight = currentFlight === 1 ? 2 : 1;
+                currentFlight = newFlight;
+                if (eventCallbacks.onToggleFlight) eventCallbacks.onToggleFlight(newFlight);
+                updateCompactFlightButton(newFlight);
+            });
+        }
+        
+        if (pnBtn && eventCallbacks.onToggleDisplay) {
+            pnBtn.addEventListener('click', function() {
+                var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
+                setDisplayMode(newMode, null);
+                updateCompactPnButton();
+                if (eventCallbacks.onToggleDisplay) eventCallbacks.onToggleDisplay(newMode);
+            });
+        }
+        
+        if (saveBtn && eventCallbacks.onSave) {
+            saveBtn.addEventListener('click', function() {
+                if (eventCallbacks.onSave) eventCallbacks.onSave();
+            });
+        }
         
         if (prevBtn && eventCallbacks.onPrevHole) {
-            var newPrevBtn = prevBtn.cloneNode(true);
-            prevBtn.parentNode.replaceChild(newPrevBtn, prevBtn);
-            newPrevBtn.addEventListener('click', function() {
+            prevBtn.addEventListener('click', function() {
                 if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
             });
         }
         
         if (nextBtn && eventCallbacks.onNextHole) {
-            var newNextBtn = nextBtn.cloneNode(true);
-            nextBtn.parentNode.replaceChild(newNextBtn, nextBtn);
-            newNextBtn.addEventListener('click', function() {
+            nextBtn.addEventListener('click', function() {
                 if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
             });
         }
         
-        if (pnBtn) {
-            var newPnBtn = pnBtn.cloneNode(true);
-            pnBtn.parentNode.replaceChild(newPnBtn, pnBtn);
-            newPnBtn.addEventListener('click', function() {
-                var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
-                setDisplayMode(newMode, null);
-                updatePnButtonText();
-                if (eventCallbacks.onToggleDisplay) {
-                    eventCallbacks.onToggleDisplay(newMode);
-                }
-            });
+        headerRendered = true;
+    }
+    
+    function updateCompactSaveButton(currentHole, isDisabled) {
+        var saveBtn = document.getElementById('compactSaveBtn');
+        if (saveBtn) {
+            saveBtn.innerHTML = '💾 SAVE H' + currentHole;
+            saveBtn.disabled = isDisabled;
         }
-        
+    }
+    
+    function updateCompactFlightButton(flightNumber) {
+        var flightBtn = document.getElementById('compactFlightBtn');
         if (flightBtn) {
-            var newFlightBtn = flightBtn.cloneNode(true);
-            flightBtn.parentNode.replaceChild(newFlightBtn, flightBtn);
-            newFlightBtn.addEventListener('click', function() {
-                var newFlight = currentFlight === 1 ? 2 : 1;
-                currentFlight = newFlight;
-                updateFlightButtonText();
-                if (eventCallbacks.onToggleFlight) {
-                    eventCallbacks.onToggleFlight(newFlight);
-                }
-            });
+            flightBtn.innerText = 'FLIGHT ' + flightNumber;
         }
+        currentFlight = flightNumber;
     }
     
-    function updateHoleNumberDisplay(holeNumber) {
-        currentHoleNumber = holeNumber;
-        var holeDisplay = document.getElementById('holeNumberDisplay');
-        if (holeDisplay) {
-            holeDisplay.innerText = holeNumber;
-        }
-    }
-    
-    function updateFlightButtonText() {
-        var flightBtn = document.getElementById('flightToggleBtn');
-        if (flightBtn) {
-            flightBtn.innerHTML = `✈️ Flight ${currentFlight}`;
-        }
-    }
-    
-    function updatePnButtonText() {
-        var pnBtn = document.getElementById('pnToggleBtn');
+    function updateCompactPnButton() {
+        var pnBtn = document.getElementById('compactPnBtn');
         if (pnBtn) {
             pnBtn.innerText = currentDisplayMode === 'play' ? 'P' : 'N';
         }
     }
     
+    function updateCompactHoleDisplay(holeNumber) {
+        currentHoleNumber = holeNumber;
+        var holeDisplay = document.querySelector('.compact-hole-display');
+        if (holeDisplay) {
+            holeDisplay.innerText = holeNumber;
+        }
+        updateCompactSaveButton(holeNumber, false);
+    }
+    
     // ============================================================
-    // Scorecard Rendering (original - unchanged)
+    // Legacy Scorecard Header (kept for compatibility)
+    // ============================================================
+    
+    function renderScorecardHeader(containerId, flightNumber, currentHole, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
+        // For compatibility, call the new compact header
+        renderCompactHeader(containerId, flightNumber, currentHole, null, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay);
+    }
+    
+    // ============================================================
+    // Scorecard Rendering
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Group players by flight (Flight 1 then Flight 2)
         var flight1Players = players.filter(function(p) { return p.flight === 1; });
         var flight2Players = players.filter(function(p) { return p.flight === 2; });
         
-        // Sort players within each flight: Team A (lowest handicap first), then Team B (lowest handicap first)
         function sortFlightPlayers(flightPlayers) {
             var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
             var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -230,30 +290,29 @@ var GameUI = (function() {
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
-        html += '<tr><td style="font-weight:700;">Par</td>';
+        html += '<td><td style="font-weight:700;">Par<\/td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
             totalPar += par;
-            html += '<td>' + par + '</td>';
+            html += '<td>' + par + '<\/td>';
         }
-        html += '<td>' + totalPar + '</td></tr>';
+        html += '<td>' + totalPar + '<\/td><\/tr>';
         
         // SI row
-        html += '<tr><td style="font-weight:700;">SI</td>';
+        html += '<tr><td style="font-weight:700;">SI<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
-            html += '<td>' + si + '</td>';
+            html += '<td>' + si + '<\/td>';
         }
-        html += '<td>-</td></tr>';
+        html += '<td>-<\/td><\/tr>';
         
-        // GREEN LINE under SI row (separator)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -261,16 +320,15 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        // Green line after Flight 1 (before T-1)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
+        // T-1 row
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var holeNum = holes[i];
@@ -296,17 +354,16 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        // Green line after T-1 (before Flight 2)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -314,16 +371,15 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        // GREEN LINE AFTER FLIGHT 2 (BEFORE T-2)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
+        // T-2 row
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -349,15 +405,14 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        // Green line after T-2 (before Strk)
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row (with AS for tied synced holes)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
+        // Strk row
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -383,12 +438,15 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
         html += '</tbody></table>';
         container.innerHTML = html;
+        
+        // Tighten rows after rendering
+        tightenScorecardRows();
     }
     
     // ============================================================
@@ -435,7 +493,6 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
-        // Attach event listeners if editing is enabled
         if (canEdit && onScoreChange) {
             var playerCards = container.querySelectorAll('.player-card');
             for (var i = 0; i < playerCards.length; i++) {
@@ -466,7 +523,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // TR (Title Result) Display - Billboard Design
+    // TR (Title Result) Display
     // ============================================================
     
     function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
@@ -482,16 +539,16 @@ var GameUI = (function() {
         var separatorColor = '#888';
         
         var html = `
-            <div style="text-align: center; font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;">
+            <div style="text-align: center;">
                 <div style="display: flex; justify-content: center; align-items: center; gap: 16px;">
                     <div style="text-align: center; min-width: 100px;">
-                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamAColor}; letter-spacing: 1px;">TEAM A</div>
-                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamAColor}; line-height: 1.2;">${teamADisplay}</div>
+                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamAColor};">TEAM A</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamAColor};">${teamADisplay}</div>
                     </div>
-                    <div style="font-size: 1.5rem; font-weight: 400; color: ${separatorColor};">│</div>
+                    <div style="font-size: 1.5rem; color: ${separatorColor};">│</div>
                     <div style="text-align: center; min-width: 100px;">
-                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamBColor}; letter-spacing: 1px;">TEAM B</div>
-                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamBColor}; line-height: 1.2;">${teamBDisplay}</div>
+                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamBColor};">TEAM B</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamBColor};">${teamBDisplay}</div>
                     </div>
                 </div>
             </div>
@@ -516,7 +573,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Flight Tab Display (legacy - kept for compatibility)
+    // Flight Tab Display (legacy)
     // ============================================================
     
     function updateFlightTab(containerId, flightNumber, canEdit) {
@@ -553,7 +610,7 @@ var GameUI = (function() {
                 naturalBtn.classList.add('active');
             }
         }
-        updatePnButtonText();
+        updateCompactPnButton();
     }
     
     function setDisplayMode(mode, onModeChanged) {
@@ -561,7 +618,7 @@ var GameUI = (function() {
         currentDisplayMode = mode;
         localStorage.setItem("scorecardDisplay", mode);
         updateToggleButtons(mode);
-        updatePnButtonText();
+        updateCompactPnButton();
         if (onModeChanged && typeof onModeChanged === 'function') {
             onModeChanged(mode);
         }
@@ -594,14 +651,13 @@ var GameUI = (function() {
     // ============================================================
     
     function updateFlightToggleButton(flightNumber) {
-        currentFlight = flightNumber;
-        updateFlightButtonText();
+        updateCompactFlightButton(flightNumber);
     }
     
     function toggleFlight() {
         var newFlight = currentFlight === 1 ? 2 : 1;
         currentFlight = newFlight;
-        updateFlightButtonText();
+        updateCompactFlightButton(currentFlight);
         if (eventCallbacks.onToggleFlight) {
             eventCallbacks.onToggleFlight(currentFlight);
         }
@@ -612,53 +668,26 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Action Button Rendering
+    // Action Button Rendering (legacy - kept for compatibility)
     // ============================================================
     
     function renderActionButtons(containerId, currentHole, isSaveDisabled, onSaveCallback) {
-        var container = document.getElementById(containerId);
-        if (!container) return;
-        
+        // For compatibility, store callback but don't render (handled by compact header)
         if (onSaveCallback) {
             eventCallbacks.onSave = onSaveCallback;
         }
-        
-        var html = `
-            <div class="action-buttons" style="display: flex; gap: 0; margin: 20px 0;">
-                <button class="btn btn-save" id="saveBtn" style="flex: 1; width: 100%; display: block; margin: 0; border-radius: 40px; padding: 14px; font-size: 1rem; font-weight: 700;" ${isSaveDisabled ? 'disabled' : ''}>
-                    💾 SAVE H${currentHole}
-                </button>
-            </div>
-        `;
-        
-        container.innerHTML = html;
-        
-        var saveBtn = document.getElementById('saveBtn');
-        if (saveBtn && eventCallbacks.onSave) {
-            var newSaveBtn = saveBtn.cloneNode(true);
-            saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-            newSaveBtn.addEventListener('click', function() {
-                if (eventCallbacks.onSave) eventCallbacks.onSave();
-            });
+        var container = document.getElementById(containerId);
+        if (container) {
+            container.style.display = 'none';
         }
     }
     
     function updateSaveButton(currentHole, isDisabled) {
-        var saveBtn = document.getElementById('saveBtn');
-        if (saveBtn) {
-            saveBtn.innerHTML = '💾 SAVE H' + currentHole;
-            saveBtn.disabled = isDisabled;
-        }
+        updateCompactSaveButton(currentHole, isDisabled);
     }
     
     function resetSaveButton(currentHole) {
-        var saveBtn = document.getElementById('saveBtn');
-        if (saveBtn) {
-            saveBtn.classList.remove('btn-save-pending', 'btn-save-retry', 'btn-save-flash');
-            saveBtn.classList.add('btn-save');
-            saveBtn.innerHTML = '💾 SAVE H' + currentHole;
-            saveBtn.disabled = false;
-        }
+        updateCompactSaveButton(currentHole, false);
     }
     
     // ============================================================
@@ -696,60 +725,43 @@ var GameUI = (function() {
     // ============================================================
     
     function updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameComplete, celebrationTriggered) {
-        var prevBtn = document.getElementById('prevHoleBtn');
-        var nextBtn = document.getElementById('nextHoleBtn');
-        
-        if (!prevBtn || !nextBtn) return;
+        var nextBtn = document.getElementById('compactNextBtn');
+        if (!nextBtn) return;
         
         if (isGameComplete && !celebrationTriggered) {
-            nextBtn.textContent = "🏆";
+            nextBtn.innerHTML = '🏆';
             nextBtn.disabled = false;
-            nextBtn.classList.add('btn-next');
-            nextBtn.classList.remove('btn-next-inactive');
         } else {
             var isCurrentSavedState = isCurrentSaved && !hasUnsavedChanges;
-            
-            if (isCurrentSavedState) {
-                nextBtn.disabled = false;
-                nextBtn.classList.add('btn-next');
-                nextBtn.classList.remove('btn-next-inactive');
-            } else {
-                nextBtn.disabled = true;
-                nextBtn.classList.add('btn-next-inactive');
-                nextBtn.classList.remove('btn-next');
-            }
+            nextBtn.disabled = !isCurrentSavedState;
         }
     }
     
     function updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, onSignCardCallback) {
-        var nextHoleBtn = document.getElementById('nextHoleBtn');
-        if (!nextHoleBtn) return;
+        var nextBtn = document.getElementById('compactNextBtn');
+        if (!nextBtn) return;
         
         if (isLast && isCurrentSaved) {
-            nextHoleBtn.innerHTML = '✍️';
-            nextHoleBtn.style.background = '#ffaa44';
-            nextHoleBtn.style.color = '#1a3a1a';
-            nextHoleBtn.style.border = '1px solid #ffaa44';
-            nextHoleBtn.style.fontWeight = 'bold';
-            nextHoleBtn.disabled = false;
-            
-            nextHoleBtn._onSignCard = onSignCardCallback;
-            
-            var newBtn = nextHoleBtn.cloneNode(true);
-            nextHoleBtn.parentNode.replaceChild(newBtn, nextHoleBtn);
-            newBtn._onSignCard = onSignCardCallback;
-            newBtn.onclick = function(e) {
-                e.stopPropagation();
-                if (this._onSignCard && typeof this._onSignCard === 'function') {
-                    this._onSignCard();
-                }
+            nextBtn.innerHTML = '✍️';
+            nextBtn.style.background = '#ffaa44';
+            nextBtn.style.color = '#1a3a1a';
+            nextBtn.style.border = '1px solid #ffaa44';
+            nextBtn.disabled = false;
+            nextBtn.onclick = function() {
+                if (onSignCardCallback) onSignCardCallback();
             };
         } else {
-            nextHoleBtn.innerHTML = '▶';
-            nextHoleBtn.style.background = '#1a3a1a';
-            nextHoleBtn.style.color = '#4caf50';
-            nextHoleBtn.style.border = '1px solid #4caf50';
-            nextHoleBtn.disabled = !isCurrentSaved;
+            nextBtn.innerHTML = '▶';
+            nextBtn.style.background = '#1a3a1a';
+            nextBtn.style.color = '#4caf50';
+            nextBtn.style.border = '1px solid #4caf50';
+            nextBtn.disabled = !isCurrentSaved;
+            // Restore original onclick
+            if (eventCallbacks.onNextHole) {
+                nextBtn.onclick = function() {
+                    if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+                };
+            }
         }
     }
     
@@ -761,22 +773,22 @@ var GameUI = (function() {
     }
     
     function setNextButtonToSignMode() {
-        var nextBtn = document.getElementById('nextBtn');
+        var nextBtn = document.getElementById('compactNextBtn');
         if (nextBtn) {
-            nextBtn.textContent = "✍️";
+            nextBtn.innerHTML = '✍️';
+            nextBtn.style.background = '#ffaa44';
+            nextBtn.style.color = '#1a3a1a';
             nextBtn.disabled = false;
-            nextBtn.classList.add('btn-next');
-            nextBtn.classList.remove('btn-next-inactive');
         }
     }
     
     function setNextButtonToSeeResults() {
-        var nextBtn = document.getElementById('nextBtn');
+        var nextBtn = document.getElementById('compactNextBtn');
         if (nextBtn) {
-            nextBtn.textContent = "🏆";
+            nextBtn.innerHTML = '🏆';
+            nextBtn.style.background = '#ffaa44';
+            nextBtn.style.color = '#1a3a1a';
             nextBtn.disabled = false;
-            nextBtn.classList.add('btn-next');
-            nextBtn.classList.remove('btn-next-inactive');
         }
     }
     
@@ -787,29 +799,10 @@ var GameUI = (function() {
     function attachGlobalEventListeners(onPrevHole, onNextHole) {
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
-        
-        var prevHoleBtn = document.getElementById('prevHoleBtn');
-        var nextHoleBtn = document.getElementById('nextHoleBtn');
-        
-        if (prevHoleBtn && eventCallbacks.onPrevHole) {
-            var newPrevBtn = prevHoleBtn.cloneNode(true);
-            prevHoleBtn.parentNode.replaceChild(newPrevBtn, prevHoleBtn);
-            newPrevBtn.addEventListener('click', function() {
-                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
-            });
-        }
-        
-        if (nextHoleBtn && eventCallbacks.onNextHole) {
-            var newNextBtn = nextHoleBtn.cloneNode(true);
-            nextHoleBtn.parentNode.replaceChild(newNextBtn, nextHoleBtn);
-            newNextBtn.addEventListener('click', function() {
-                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
-            });
-        }
     }
     
     // ============================================================
-    // Button Styles - Single Source of Truth (with responsive fixes)
+    // Button Styles
     // ============================================================
     
     function applyButtonStyles() {
@@ -818,177 +811,6 @@ var GameUI = (function() {
         var style = document.createElement('style');
         style.id = 'gameui-button-styles';
         style.textContent = `
-            /* Base styles */
-            .pn-toggle {
-                background: #1a3a1a !important;
-                border: 1px solid #4caf50 !important;
-                color: #4caf50 !important;
-                border-radius: 30px !important;
-                padding: 6px 12px !important;
-                min-width: 45px !important;
-                font-size: 0.9rem !important;
-                font-weight: 700 !important;
-                cursor: pointer !important;
-                text-align: center !important;
-            }
-            
-            .flight-toggle {
-                background: #1a3a1a !important;
-                border: 1px solid #4caf50 !important;
-                color: #4caf50 !important;
-                border-radius: 30px !important;
-                padding: 6px 16px !important;
-                font-size: 0.8rem !important;
-                font-weight: 600 !important;
-                cursor: pointer !important;
-                min-width: 90px !important;
-                display: inline-block !important;
-                text-align: center !important;
-            }
-            
-            .nav-btn {
-                background: #1a3a1a !important;
-                border: 1px solid #4caf50 !important;
-                color: #4caf50 !important;
-                width: 36px !important;
-                height: 36px !important;
-                border-radius: 20px !important;
-                font-size: 1rem !important;
-                cursor: pointer !important;
-                font-weight: bold !important;
-            }
-            .nav-btn:disabled {
-                background: #2a2a2a !important;
-                color: #555 !important;
-                border: 1px solid #444 !important;
-                cursor: not-allowed !important;
-            }
-            
-            /* Responsive Scorecard Header */
-            .scorecard-header-responsive {
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-                margin-bottom: 10px;
-            }
-            
-            .scorecard-header-row-1 {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                flex-wrap: wrap;
-            }
-            
-            .scorecard-label-group {
-                display: flex;
-                align-items: center;
-            }
-            
-            .scorecard-label {
-                font-size: 0.9rem;
-                font-weight: 600;
-                color: #4caf50;
-                border-left: 2px solid #4caf50;
-                padding-left: 10px;
-            }
-            
-            .scorecard-flight-group {
-                display: flex;
-                justify-content: center;
-                flex: 1;
-            }
-            
-            .scorecard-nav-group {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }
-            
-            .scorecard-header-row-2 {
-                display: flex;
-                justify-content: flex-start;
-                align-items: center;
-            }
-            
-            .scorecard-card-group {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }
-            
-            .scorecard-card-label {
-                font-size: 0.9rem;
-                font-weight: 600;
-                color: #4caf50;
-            }
-            
-            .hole-number-display {
-                font-size: 0.9rem;
-                font-weight: 600;
-                color: #4caf50;
-                min-width: 45px;
-                text-align: center;
-            }
-            
-            /* Desktop layout (>550px) - override to single row */
-            @media (min-width: 551px) {
-                .scorecard-header-responsive {
-                    flex-direction: row;
-                    justify-content: space-between;
-                    align-items: center;
-                }
-                .scorecard-header-row-1 {
-                    flex: 2;
-                    gap: 16px;
-                }
-                .scorecard-flight-group {
-                    flex: 0 0 auto;
-                }
-                .scorecard-header-row-2 {
-                    flex: 0 0 auto;
-                }
-            }
-            
-            /* SAVE Button Full Width */
-            .btn-save {
-                flex: 1 !important;
-                width: 100% !important;
-                display: block !important;
-                margin: 0 !important;
-                border-radius: 40px !important;
-                padding: 14px !important;
-                font-size: 1rem !important;
-                font-weight: 700 !important;
-                background: #1a3a1a !important;
-                color: #4caf50 !important;
-                border: 1px solid #4caf50 !important;
-                cursor: pointer !important;
-            }
-            .btn-save:disabled {
-                opacity: 0.4 !important;
-                cursor: not-allowed !important;
-            }
-            .btn-save-pending {
-                background: #3a1a1a !important;
-                color: #ff6b6b !important;
-                border: 1px solid #ff6b6b !important;
-            }
-            .btn-save-retry {
-                background: #3a1a1a !important;
-                color: #ffaa44 !important;
-                border: 1px solid #ffaa44 !important;
-            }
-            .btn-save-flash {
-                animation: flashGreen 0.5s ease !important;
-            }
-            
-            @keyframes flashGreen {
-                0% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
-                50% { background: #4caf50; border-color: #4caf50; color: #1a3a1a; }
-                100% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
-            }
-            
-            /* Scorecard table - horizontal scroll only, no fixed min-width */
             .scorecard-wrapper {
                 overflow-x: auto;
                 -webkit-overflow-scrolling: touch;
@@ -996,9 +818,9 @@ var GameUI = (function() {
             .scorecard-table {
                 border-collapse: collapse;
                 font-size: 0.7rem;
+                min-width: 700px;
             }
             .scorecard-table th, .scorecard-table td {
-                padding: 6px 3px;
                 text-align: center;
                 border: 1px solid #222;
                 white-space: nowrap;
@@ -1011,7 +833,6 @@ var GameUI = (function() {
             .score-invisible { color: #000; }
             .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
             
-            /* Bubble responsiveness */
             .bubbles {
                 display: flex;
                 gap: 6px;
@@ -1027,6 +848,9 @@ var GameUI = (function() {
                 font-size: 0.65rem;
                 font-weight: 600;
             }
+            .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+            .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+            .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
         `;
         document.head.appendChild(style);
         
@@ -1034,15 +858,13 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Tight Layout Functions for Phone
+    // Tight Layout Functions
     // ============================================================
     
     function applyTightLayout() {
         if (tightLayoutApplied) return;
         
-        // Fix background first
         fixBackground();
-        
         applyButtonStyles();
         
         var style = document.createElement('style');
@@ -1058,7 +880,6 @@ var GameUI = (function() {
         `;
         document.head.appendChild(style);
         
-        // Move status bubble to top center with correct z-index
         var statusBubble = document.getElementById('statusBubble');
         if (statusBubble) {
             statusBubble.style.position = 'fixed';
@@ -1073,23 +894,10 @@ var GameUI = (function() {
             statusBubble.style.borderRadius = '20px';
         }
         
+        // Make status bubble clickable
+        makeStatusBubbleClickable();
+        
         tightLayoutApplied = true;
-    }
-    
-    // ============================================================
-    // Flight Indicator Functions (DEPRECATED)
-    // ============================================================
-    
-    function addFlightIndicator(flightNumber) {
-        console.log('Flight indicator deprecated - use Flight toggle button in scorecard header');
-    }
-    
-    function removeFlightIndicator() {
-        // Deprecated
-    }
-    
-    function updateFlightIndicator(flightNumber) {
-        updateFlightToggleButton(flightNumber);
     }
     
     // ============================================================
@@ -1118,11 +926,18 @@ var GameUI = (function() {
         updateHoleHeader: updateHoleHeader,
         updateFlightTab: updateFlightTab,
         
-        // NEW: Scorecard header
+        // Compact header (NEW)
+        renderCompactHeader: renderCompactHeader,
+        updateCompactSaveButton: updateCompactSaveButton,
+        updateCompactFlightButton: updateCompactFlightButton,
+        updateCompactPnButton: updateCompactPnButton,
+        updateCompactHoleDisplay: updateCompactHoleDisplay,
+        
+        // Legacy header (compatibility)
         renderScorecardHeader: renderScorecardHeader,
-        updateHoleNumberDisplay: updateHoleNumberDisplay,
-        updateFlightButtonText: updateFlightButtonText,
-        updatePnButtonText: updatePnButtonText,
+        updateHoleNumberDisplay: updateCompactHoleDisplay,
+        updateFlightButtonText: updateCompactFlightButton,
+        updatePnButtonText: updateCompactPnButton,
         
         // Display mode
         getDisplayMode: getDisplayMode,
@@ -1136,7 +951,7 @@ var GameUI = (function() {
         toggleFlight: toggleFlight,
         getCurrentFlight: getCurrentFlight,
         
-        // Action buttons
+        // Action buttons (legacy)
         renderActionButtons: renderActionButtons,
         updateSaveButton: updateSaveButton,
         resetSaveButton: resetSaveButton,
@@ -1157,31 +972,28 @@ var GameUI = (function() {
         // Layout and styles
         applyButtonStyles: applyButtonStyles,
         applyTightLayout: applyTightLayout,
+        tightenScorecardRows: tightenScorecardRows,
+        makeStatusBubbleClickable: makeStatusBubbleClickable,
         fixBackground: fixBackground,
         
         // Flight indicator (DEPRECATED)
-        addFlightIndicator: addFlightIndicator,
-        removeFlightIndicator: removeFlightIndicator,
-        updateFlightIndicator: updateFlightIndicator
+        addFlightIndicator: function() {},
+        removeFlightIndicator: function() {},
+        updateFlightIndicator: updateFlightToggleButton
     };
     
 })();
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.14
+VERSION: 2.15
 KEY CHANGES:
-   - ADDED: renderScorecardHeader() - renders responsive scorecard header
-   - Desktop (>550px): Single row layout
-   - Mobile (<550px): Two-row stacked layout
-     Row 1: SCORE (left) + Flight # (center) + ◀ # ▶ (right)
-     Row 2: CARD + P/N button (left-aligned)
-   - ADDED: updateHoleNumberDisplay() - updates hole number in header
-   - ADDED: updateFlightButtonText() - updates flight button text
-   - FIXED: Added full screen background coverage to prevent system UI bleed-through
-   - FIXED: html/body background set to black with safe area insets
-   - FIXED: Status bubble z-index and positioning improved
-   - All existing functions unchanged from v2.13
+   - ADDED: renderCompactHeader() - single-line header with [FLIGHT P] [SAVE H#] [◀ # ▶]
+   - ADDED: makeStatusBubbleClickable() - status bubble refreshes page on click
+   - ADDED: tightenScorecardRows() - reduces row spacing for compact scorecard
+   - ADDED: updateCompactSaveButton() - updates SAVE button text when hole changes
+   - REMOVED: Green vertical line from SCORE label
+   - All existing functions unchanged from v2.14
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
