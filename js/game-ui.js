@@ -1,13 +1,13 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.15
+VERSION: 2.16
 KEY CHANGES:
-   - ADDED: renderCompactHeader() - single-line header with [FLIGHT P] [SAVE H#] [◀ # ▶]
-   - ADDED: makeStatusBubbleClickable() - status bubble refreshes page on click
-   - ADDED: tightenScorecardRows() - reduces row spacing for compact scorecard
-   - ADDED: updateSaveButtonText() - updates SAVE button text when hole changes
-   - REMOVED: Green vertical line from SCORE label
-   - All existing functions unchanged from v2.14
+   - ADDED: addFlightBadge() - adds FLIGHT # badge centered on first player card
+   - CHANGED: renderCompactHeader() - new layout: [P/N] [SAVE H#] [◀ # ▶] with centered SAVE
+   - CHANGED: All buttons now 52px height for easier tapping on mobile
+   - REMOVED: Flight button from header (now a badge on player card)
+   - REMOVED: Save icon (text only)
+   - All existing functions unchanged from v2.15
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -28,7 +28,6 @@ var GameUI = (function() {
     var tightLayoutApplied = false;
     var buttonStylesApplied = false;
     var backgroundFixed = false;
-    var headerRendered = false;
     
     // Track current state for UI updates
     var currentFlight = 1;
@@ -101,6 +100,61 @@ var GameUI = (function() {
     }
     
     // ============================================================
+    // Add Flight Badge to First Player Card
+    // ============================================================
+    
+    function addFlightBadge(flightNumber) {
+        // Remove any existing badge
+        var existingBadge = document.querySelector('.flight-badge');
+        if (existingBadge) existingBadge.remove();
+        
+        var playerCards = document.getElementById('playerCards');
+        if (!playerCards || playerCards.children.length === 0) return;
+        
+        var firstCard = playerCards.children[0];
+        
+        var badge = document.createElement('div');
+        badge.className = 'flight-badge';
+        badge.innerText = 'FLIGHT ' + flightNumber;
+        badge.style.cssText = `
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a3a1a;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 4px 16px;
+            border-radius: 30px;
+            z-index: 100;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        `;
+        
+        firstCard.style.position = 'relative';
+        firstCard.appendChild(badge);
+        
+        currentFlight = flightNumber;
+    }
+    
+    function updateFlightBadge(flightNumber) {
+        var badge = document.querySelector('.flight-badge');
+        if (badge) {
+            badge.innerText = 'FLIGHT ' + flightNumber;
+        } else {
+            addFlightBadge(flightNumber);
+        }
+        currentFlight = flightNumber;
+    }
+    
+    function removeFlightBadge() {
+        var badge = document.querySelector('.flight-badge');
+        if (badge) badge.remove();
+    }
+    
+    // ============================================================
     // Tighten Scorecard Rows
     // ============================================================
     
@@ -129,7 +183,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Render Compact Header (Single Line)
+    // Render Compact Header (Single Line with Centered SAVE)
     // ============================================================
     
     function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
@@ -148,25 +202,26 @@ var GameUI = (function() {
         
         var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
         
+        // Add flight badge to first player card
+        setTimeout(function() {
+            addFlightBadge(flightNumber);
+        }, 50);
+        
+        // Build header HTML
         var html = `
-            <div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 8px; margin-bottom: 10px;">
-                <div class="compact-left-group" style="display: flex; align-items: center; gap: 6px;">
-                    <button class="compact-flight-btn" id="compactFlightBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; padding: 6px 12px; font-size: 0.7rem; font-weight: 600; cursor: pointer; white-space: nowrap;">
-                        FLIGHT ${flightNumber}
-                    </button>
-                    <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; padding: 6px 10px; min-width: 36px; font-size: 0.7rem; font-weight: 600; cursor: pointer; text-align: center;">
-                        ${pnText}
-                    </button>
-                </div>
-                <button class="compact-save-btn" id="compactSaveBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; padding: 6px 16px; font-size: 0.7rem; font-weight: 600; cursor: pointer; white-space: nowrap; min-width: 90px;">
-                    💾 SAVE H${currentHole}
+            <div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 10px;">
+                <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; padding: 0 16px; min-width: 60px; height: 52px; font-size: 1rem; font-weight: 700; cursor: pointer; flex-shrink: 0;">
+                    ${pnText}
                 </button>
-                <div class="compact-nav-group" style="display: flex; align-items: center; gap: 4px;">
-                    <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: 28px; height: 28px; border-radius: 20px; font-size: 0.7rem; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                <button class="compact-save-btn" id="compactSaveBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; padding: 0 20px; height: 52px; font-size: 1rem; font-weight: 700; cursor: pointer; flex: 1; text-align: center; white-space: nowrap;">
+                    SAVE H${currentHole}
+                </button>
+                <div class="compact-nav-group" style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                    <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: 52px; height: 52px; border-radius: 30px; font-size: 1.3rem; cursor: pointer; display: flex; align-items: center; justify-content: center;">
                         ◀
                     </button>
-                    <span class="compact-hole-display" style="font-size: 0.75rem; font-weight: 600; color: #4caf50; min-width: 28px; text-align: center;">${currentHole}</span>
-                    <button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: 28px; height: 28px; border-radius: 20px; font-size: 0.7rem; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    <span class="compact-hole-display" style="font-size: 1.2rem; font-weight: 700; color: #4caf50; min-width: 44px; text-align: center;">${currentHole}</span>
+                    <button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: 52px; height: 52px; border-radius: 30px; font-size: 1.3rem; cursor: pointer; display: flex; align-items: center; justify-content: center;">
                         ▶
                     </button>
                 </div>
@@ -176,20 +231,10 @@ var GameUI = (function() {
         container.innerHTML = html;
         
         // Attach event listeners
-        var flightBtn = document.getElementById('compactFlightBtn');
         var pnBtn = document.getElementById('compactPnBtn');
         var saveBtn = document.getElementById('compactSaveBtn');
         var prevBtn = document.getElementById('compactPrevBtn');
         var nextBtn = document.getElementById('compactNextBtn');
-        
-        if (flightBtn && eventCallbacks.onToggleFlight) {
-            flightBtn.addEventListener('click', function() {
-                var newFlight = currentFlight === 1 ? 2 : 1;
-                currentFlight = newFlight;
-                if (eventCallbacks.onToggleFlight) eventCallbacks.onToggleFlight(newFlight);
-                updateCompactFlightButton(newFlight);
-            });
-        }
         
         if (pnBtn && eventCallbacks.onToggleDisplay) {
             pnBtn.addEventListener('click', function() {
@@ -217,24 +262,14 @@ var GameUI = (function() {
                 if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
             });
         }
-        
-        headerRendered = true;
     }
     
     function updateCompactSaveButton(currentHole, isDisabled) {
         var saveBtn = document.getElementById('compactSaveBtn');
         if (saveBtn) {
-            saveBtn.innerHTML = '💾 SAVE H' + currentHole;
+            saveBtn.innerText = 'SAVE H' + currentHole;
             saveBtn.disabled = isDisabled;
         }
-    }
-    
-    function updateCompactFlightButton(flightNumber) {
-        var flightBtn = document.getElementById('compactFlightBtn');
-        if (flightBtn) {
-            flightBtn.innerText = 'FLIGHT ' + flightNumber;
-        }
-        currentFlight = flightNumber;
     }
     
     function updateCompactPnButton() {
@@ -254,12 +289,24 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Legacy Scorecard Header (kept for compatibility)
+    // Legacy Functions (kept for compatibility)
     // ============================================================
     
-    function renderScorecardHeader(containerId, flightNumber, currentHole, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
-        // For compatibility, call the new compact header
-        renderCompactHeader(containerId, flightNumber, currentHole, null, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay);
+    function updateFlightToggleButton(flightNumber) {
+        updateFlightBadge(flightNumber);
+    }
+    
+    function toggleFlight() {
+        var newFlight = currentFlight === 1 ? 2 : 1;
+        currentFlight = newFlight;
+        updateFlightBadge(currentFlight);
+        if (eventCallbacks.onToggleFlight) {
+            eventCallbacks.onToggleFlight(currentFlight);
+        }
+    }
+    
+    function getCurrentFlight() {
+        return currentFlight;
     }
     
     // ============================================================
@@ -290,7 +337,7 @@ var GameUI = (function() {
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
-        html += '<td><td style="font-weight:700;">Par<\/td>';
+        html += '<tr><td style="font-weight:700;">Par<\/td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
@@ -445,7 +492,6 @@ var GameUI = (function() {
         html += '</tbody></table>';
         container.innerHTML = html;
         
-        // Tighten rows after rendering
         tightenScorecardRows();
     }
     
@@ -647,32 +693,10 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Flight Toggle Functions
-    // ============================================================
-    
-    function updateFlightToggleButton(flightNumber) {
-        updateCompactFlightButton(flightNumber);
-    }
-    
-    function toggleFlight() {
-        var newFlight = currentFlight === 1 ? 2 : 1;
-        currentFlight = newFlight;
-        updateCompactFlightButton(currentFlight);
-        if (eventCallbacks.onToggleFlight) {
-            eventCallbacks.onToggleFlight(currentFlight);
-        }
-    }
-    
-    function getCurrentFlight() {
-        return currentFlight;
-    }
-    
-    // ============================================================
-    // Action Button Rendering (legacy - kept for compatibility)
+    // Action Button Rendering (legacy)
     // ============================================================
     
     function renderActionButtons(containerId, currentHole, isSaveDisabled, onSaveCallback) {
-        // For compatibility, store callback but don't render (handled by compact header)
         if (onSaveCallback) {
             eventCallbacks.onSave = onSaveCallback;
         }
@@ -756,7 +780,6 @@ var GameUI = (function() {
             nextBtn.style.color = '#4caf50';
             nextBtn.style.border = '1px solid #4caf50';
             nextBtn.disabled = !isCurrentSaved;
-            // Restore original onclick
             if (eventCallbacks.onNextHole) {
                 nextBtn.onclick = function() {
                     if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
@@ -894,7 +917,6 @@ var GameUI = (function() {
             statusBubble.style.borderRadius = '20px';
         }
         
-        // Make status bubble clickable
         makeStatusBubbleClickable();
         
         tightLayoutApplied = true;
@@ -926,17 +948,21 @@ var GameUI = (function() {
         updateHoleHeader: updateHoleHeader,
         updateFlightTab: updateFlightTab,
         
-        // Compact header (NEW)
+        // Compact header
         renderCompactHeader: renderCompactHeader,
         updateCompactSaveButton: updateCompactSaveButton,
-        updateCompactFlightButton: updateCompactFlightButton,
         updateCompactPnButton: updateCompactPnButton,
         updateCompactHoleDisplay: updateCompactHoleDisplay,
         
-        // Legacy header (compatibility)
-        renderScorecardHeader: renderScorecardHeader,
+        // Flight badge
+        addFlightBadge: addFlightBadge,
+        updateFlightBadge: updateFlightBadge,
+        removeFlightBadge: removeFlightBadge,
+        
+        // Legacy compatibility
+        renderScorecardHeader: renderCompactHeader,
         updateHoleNumberDisplay: updateCompactHoleDisplay,
-        updateFlightButtonText: updateCompactFlightButton,
+        updateFlightButtonText: updateFlightBadge,
         updatePnButtonText: updateCompactPnButton,
         
         // Display mode
@@ -947,7 +973,7 @@ var GameUI = (function() {
         getDisplayHoles: getDisplayHoles,
         
         // Flight toggle
-        updateFlightToggleButton: updateFlightToggleButton,
+        updateFlightToggleButton: updateFlightBadge,
         toggleFlight: toggleFlight,
         getCurrentFlight: getCurrentFlight,
         
@@ -979,21 +1005,21 @@ var GameUI = (function() {
         // Flight indicator (DEPRECATED)
         addFlightIndicator: function() {},
         removeFlightIndicator: function() {},
-        updateFlightIndicator: updateFlightToggleButton
+        updateFlightIndicator: updateFlightBadge
     };
     
 })();
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.15
+VERSION: 2.16
 KEY CHANGES:
-   - ADDED: renderCompactHeader() - single-line header with [FLIGHT P] [SAVE H#] [◀ # ▶]
-   - ADDED: makeStatusBubbleClickable() - status bubble refreshes page on click
-   - ADDED: tightenScorecardRows() - reduces row spacing for compact scorecard
-   - ADDED: updateCompactSaveButton() - updates SAVE button text when hole changes
-   - REMOVED: Green vertical line from SCORE label
-   - All existing functions unchanged from v2.14
+   - ADDED: addFlightBadge() - adds FLIGHT # badge centered on first player card
+   - CHANGED: renderCompactHeader() - new layout: [P/N] [SAVE H#] [◀ # ▶] with centered SAVE
+   - CHANGED: All buttons now 52px height for easier tapping on mobile
+   - REMOVED: Flight button from header (now a badge on player card)
+   - REMOVED: Save icon (text only)
+   - All existing functions unchanged from v2.15
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
