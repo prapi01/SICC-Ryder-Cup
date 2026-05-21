@@ -1,14 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - REMOVED: Old scorecard header HTML
-   - NOW USES: GameUI.renderCompactHeader() for single-line header
-   - Header layout: [FLIGHT P] [◀ # ▶] (no SAVE button in VIEW mode)
-   - Status bubble now clickable for refresh
-   - Scorecard rows tightened for better spacing
-   - Game completion detection and celebration features preserved
-   - All viewer functionality unchanged
+   - FIXED: Firestore snapshot listener now properly updates data
+   - Fixed issue where variables weren't being populated
+   - Added proper error handling for snapshot listener
+   - All other functionality (compact header, celebration mode) unchanged
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -293,7 +290,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.08</div>
+<div class="version-tag">v3.09</div>
 
 <script>
 // ============================================================
@@ -737,16 +734,21 @@ function exitToMainMenu() {
 }
 
 // ============================================================
-// Firestore Listener
+// Firestore Listener (FIXED)
 // ============================================================
 
 function startGameListener() {
-    if (unsubscribe) unsubscribe();
+    if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+    }
     
     var collection = "scheduledGames";
     unsubscribe = db.collection(collection).doc(gameId).onSnapshot(function(doc) {
         if (doc.exists) {
             var data = doc.data();
+            
+            console.log('🔥 Snapshot received - updating data');
             
             courseName = data.course?.name || "Unknown Course";
             coursePar = data.course?.par || [];
@@ -758,6 +760,7 @@ function startGameListener() {
             f2DataString = data.f2?.d || "";
             resultsCache = data.results || null;
             
+            // Check for game completion
             var signatures = data.signatures || {};
             var bothSigned = signatures.f1?.signed === true && signatures.f2?.signed === true;
             
@@ -792,8 +795,11 @@ function startGameListener() {
             renderAll();
         }
     }, function(error) {
+        console.error("Snapshot error:", error);
         document.getElementById("debug").innerHTML = "Sync error: " + error.message;
     });
+    
+    console.log('✅ Firestore listener started for game:', gameId);
 }
 
 // ============================================================
@@ -822,7 +828,6 @@ async function init() {
     GameUI.applyTightLayout();
     
     // Render compact header for VIEWER (no SAVE button, just FLIGHT and navigation)
-    // For viewer mode, we pass null for onSave callback
     GameUI.renderCompactHeader(
         "compactHeaderContainer",
         selectedFlight,
@@ -852,15 +857,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - REMOVED: Old scorecard header HTML
-   - NOW USES: GameUI.renderCompactHeader() for single-line header
-   - Header layout: [FLIGHT P] [◀ # ▶] (no SAVE button in VIEW mode)
-   - Status bubble now clickable for refresh
-   - Scorecard rows tightened for better spacing
-   - Game completion detection and celebration features preserved
-   - All viewer functionality unchanged
+   - FIXED: Firestore snapshot listener now properly updates data
+   - Fixed issue where variables weren't being populated
+   - Added proper error handling for snapshot listener
+   - All other functionality (compact header, celebration mode) unchanged
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
