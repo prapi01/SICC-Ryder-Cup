@@ -1,11 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 3.09
+VERSION: 3.10
 KEY CHANGES:
-   - FIXED: Firestore snapshot listener now properly updates data
-   - Fixed issue where variables weren't being populated
-   - Added proper error handling for snapshot listener
-   - All other functionality (compact header, celebration mode) unchanged
+   - ADDED: Responsive hole header (LIVE left, HOLE centered)
+   - ADDED: Flight badge on first player card
+   - ADDED: Clickable status bubble (refresh)
+   - CHANGED: Now uses GameUI.updateNavigationButtons() for nav logic
+   - CHANGED: Uses GameUI.renderHoleHeader() for hole display
+   - CHANGED: Uses GameUI.addFlightBadge() for flight indication
+   - All viewer functionality (real-time sync, game completion detection) preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -65,22 +68,7 @@ STATUS: Ready for integration
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 0.7rem;
-            margin-bottom: 16px;
             color: #ffaa44;
-        }
-        
-        .hole-header { text-align: center; }
-        .hole-number { font-size: 1.8rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; }
-        .hole-par { font-size: 0.8rem; color: #888; margin-top: 4px; }
-        
-        .flight-tab {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            border-radius: 40px;
-            padding: 10px;
-            text-align: center;
-            margin: 16px 0;
-            cursor: pointer;
         }
         
         .team-score-card {
@@ -97,6 +85,7 @@ STATUS: Ready for integration
             padding: 16px;
             margin-bottom: 12px;
             border: 1px solid #333;
+            position: relative;
         }
         .player-header {
             display: flex;
@@ -146,7 +135,6 @@ STATUS: Ready for integration
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Celebration Modal Styles */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -272,7 +260,9 @@ STATUS: Ready for integration
     
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
-    <div id="holeHeader" class="hole-header"></div>
+    <!-- Hole header container - GameUI will render new header here -->
+    <div id="holeHeader"></div>
+    
     <div id="flightTab" class="flight-tab"></div>
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
@@ -290,7 +280,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.09</div>
+<div class="version-tag">v3.10</div>
 
 <script>
 // ============================================================
@@ -598,19 +588,8 @@ function enableCelebrationMode() {
 }
 
 // ============================================================
-// Update Functions
+// Navigation Functions
 // ============================================================
-
-function setDisplayMode(mode) {
-    currentDisplayMode = mode;
-    GameUI.setDisplayMode(mode, null);
-    renderAll();
-}
-
-function toggleDisplayMode() {
-    var newMode = currentDisplayMode === "play" ? "natural" : "play";
-    setDisplayMode(newMode);
-}
 
 function goToPrevHole() {
     if (isGameCompleteFlag && !celebrationTriggered) {
@@ -621,8 +600,8 @@ function goToPrevHole() {
     if (currentIndex > 0) {
         currentHole = playOrder[currentIndex - 1];
         GameUI.updateCompactHoleDisplay(currentHole);
+        GameUI.updateHoleHeaderNumber(currentHole);
         renderAll();
-        updateNavButtons();
     }
 }
 
@@ -636,21 +615,8 @@ function goToNextHole() {
     if (currentIndex < 17) {
         currentHole = playOrder[currentIndex + 1];
         GameUI.updateCompactHoleDisplay(currentHole);
+        GameUI.updateHoleHeaderNumber(currentHole);
         renderAll();
-        updateNavButtons();
-    }
-}
-
-function updateNavButtons() {
-    var playOrder = getPlayOrder();
-    var currentIndex = playOrder.indexOf(currentHole);
-    var prevBtn = document.getElementById('compactPrevBtn');
-    var nextBtn = document.getElementById('compactNextBtn');
-    if (prevBtn) prevBtn.disabled = (currentIndex === 0);
-    if (nextBtn) {
-        if (!isGameCompleteFlag || celebrationTriggered) {
-            nextBtn.disabled = (currentIndex === 17);
-        }
     }
 }
 
@@ -661,10 +627,11 @@ function renderAll() {
     var currentSi = courseSi[currentHole - 1];
     var tr = getTRForHole(currentHole);
     
-    GameUI.updateHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(selectedFlight);
+    
     GameUI.renderPlayerCards(
         "playerCards",
         currentPlayers,
@@ -675,6 +642,9 @@ function renderAll() {
         false,
         null
     );
+    
+    // Add flight badge to first player card
+    GameUI.updateFlightBadge(selectedFlight);
     
     var t1Row = new Array(18).fill('_');
     var t2Row = new Array(18).fill('_');
@@ -708,7 +678,18 @@ function renderAll() {
         courseSi
     );
     
-    updateNavButtons();
+    // Update navigation buttons using centralized function
+    var playOrder = getPlayOrder();
+    var isCurrentSaved = isHoleSaved(selectedFlight, currentHole);
+    
+    GameUI.updateNavigationButtons(
+        currentHole,
+        playOrder,
+        isCurrentSaved,
+        isGameCompleteFlag,
+        celebrationTriggered,
+        null  // No sign card callback for viewer
+    );
     
     if (typeof Ticker !== 'undefined') {
         Ticker.refresh();
@@ -721,6 +702,7 @@ function renderAll() {
 
 function onToggleFlight(flightNumber) {
     selectedFlight = flightNumber;
+    GameUI.updateFlightBadge(flightNumber);
     renderAll();
 }
 
@@ -734,21 +716,16 @@ function exitToMainMenu() {
 }
 
 // ============================================================
-// Firestore Listener (FIXED)
+// Firestore Listener
 // ============================================================
 
 function startGameListener() {
-    if (unsubscribe) {
-        unsubscribe();
-        unsubscribe = null;
-    }
+    if (unsubscribe) unsubscribe();
     
     var collection = "scheduledGames";
     unsubscribe = db.collection(collection).doc(gameId).onSnapshot(function(doc) {
         if (doc.exists) {
             var data = doc.data();
-            
-            console.log('🔥 Snapshot received - updating data');
             
             courseName = data.course?.name || "Unknown Course";
             coursePar = data.course?.par || [];
@@ -760,7 +737,6 @@ function startGameListener() {
             f2DataString = data.f2?.d || "";
             resultsCache = data.results || null;
             
-            // Check for game completion
             var signatures = data.signatures || {};
             var bothSigned = signatures.f1?.signed === true && signatures.f2?.signed === true;
             
@@ -791,15 +767,13 @@ function startGameListener() {
                 currentHole = playOrder[0];
             }
             GameUI.updateCompactHoleDisplay(currentHole);
+            GameUI.updateHoleHeaderNumber(currentHole);
             
             renderAll();
         }
     }, function(error) {
-        console.error("Snapshot error:", error);
         document.getElementById("debug").innerHTML = "Sync error: " + error.message;
     });
-    
-    console.log('✅ Firestore listener started for game:', gameId);
 }
 
 // ============================================================
@@ -824,10 +798,13 @@ async function init() {
         return;
     }
     
-    // Apply tight layout and button styles (includes clickable status bubble)
+    // Apply tight layout and button styles (includes disabled button styles)
     GameUI.applyTightLayout();
     
-    // Render compact header for VIEWER (no SAVE button, just FLIGHT and navigation)
+    // Make status bubble clickable for refresh
+    GameUI.makeStatusBubbleClickable();
+    
+    // Render compact header for VIEWER (no SAVE button, just P/N and navigation)
     GameUI.renderCompactHeader(
         "compactHeaderContainer",
         selectedFlight,
@@ -836,11 +813,16 @@ async function init() {
         goToPrevHole,
         goToNextHole,
         onToggleFlight,
-        toggleDisplayMode
+        null  // Toggle display handled by P/N button internally
     );
     
     // Set initial display mode for P/N button
     GameUI.setDisplayMode(currentDisplayMode, null);
+    
+    // Add flight badge to first player card
+    setTimeout(function() {
+        GameUI.addFlightBadge(selectedFlight);
+    }, 100);
     
     // Render bottom menu (Back to Main Menu)
     GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
@@ -857,12 +839,15 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.09
+VERSION: 3.10
 KEY CHANGES:
-   - FIXED: Firestore snapshot listener now properly updates data
-   - Fixed issue where variables weren't being populated
-   - Added proper error handling for snapshot listener
-   - All other functionality (compact header, celebration mode) unchanged
+   - ADDED: Responsive hole header (LIVE left, HOLE centered)
+   - ADDED: Flight badge on first player card
+   - ADDED: Clickable status bubble (refresh)
+   - CHANGED: Now uses GameUI.updateNavigationButtons() for nav logic
+   - CHANGED: Uses GameUI.renderHoleHeader() for hole display
+   - CHANGED: Uses GameUI.addFlightBadge() for flight indication
+   - All viewer functionality (real-time sync, game completion detection) preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
