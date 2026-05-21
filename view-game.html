@@ -1,13 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 3.06
+VERSION: 3.07
 KEY CHANGES:
-   - ADDED: Game completion detection for viewers
-   - When both flights sign, next button turns gold 🏆
-   - Clicking gold button shows celebration screen and handicap adjustment
-   - No waiting screen for viewers (they just see the game complete)
-   - Added SignCard and HandicapAdjustment script references
-   - All other functionality identical to v3.05
+   - REMOVED: Hardcoded scorecard header HTML
+   - NOW USES: GameUI.renderScorecardHeader() for responsive layout
+   - Scorecard header now responsive: 
+     Desktop: single row | Mobile: two-row stacked
+   - Game completion detection and celebration features preserved from v3.06
+   - All other functionality identical to v3.06
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -118,17 +118,23 @@ STATUS: Ready for integration
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
         
         .scorecard-section { margin: 20px 0; }
+        
+        /* Scorecard header container - GameUI will render into this */
+        #scorecardHeaderContainer {
+            margin-bottom: 10px;
+        }
+        
         .scorecard-wrapper { overflow-x: auto; }
         .scorecard-table {
             width: 100%;
-            min-width: 700px;
-            font-size: 0.7rem;
             border-collapse: collapse;
+            font-size: 0.7rem;
         }
         .scorecard-table th, .scorecard-table td {
             padding: 6px 3px;
             text-align: center;
             border: 1px solid #222;
+            white-space: nowrap;
         }
         .scorecard-table th {
             color: #4caf50;
@@ -275,18 +281,8 @@ STATUS: Ready for integration
     <!-- No action buttons container in VIEW mode (read-only) -->
     
     <div class="scorecard-section">
-        <div class="scorecard-header">
-            <div class="scorecard-left-group">
-                <span class="scorecard-title">SCORECARD</span>
-                <button class="pn-toggle" id="pnToggleBtn">P</button>
-            </div>
-            <button class="flight-toggle" id="flightToggleBtn">✈️ Flight 1</button>
-            <div class="nav-group">
-                <button class="nav-btn" id="prevHoleBtn">◀</button>
-                <span class="hole-number-display" id="holeNumberDisplay">1</span>
-                <button class="nav-btn" id="nextHoleBtn">▶</button>
-            </div>
-        </div>
+        <!-- Scorecard header container - GameUI will render responsive header here -->
+        <div id="scorecardHeaderContainer"></div>
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
@@ -297,7 +293,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.06</div>
+<div class="version-tag">v3.07</div>
 
 <script>
 // ============================================================
@@ -339,7 +335,7 @@ var resultsCache = null;
 
 var unsubscribe = null;
 
-// NEW: Game completion tracking for viewers
+// Game completion tracking for viewers
 var isGameCompleteFlag = false;
 var celebrationTriggered = false;
 
@@ -546,7 +542,6 @@ function showCelebrationAndHandicap() {
         teamB: allPlayers.filter(function(p) { return p.team === "B"; })
     };
     
-    // Build match points for handicap adjustment
     var matchPoints = {};
     if (resultsCache && resultsCache.matchResults) {
         var matchResultsArray = resultsCache.matchResults[17];
@@ -596,7 +591,6 @@ function enableCelebrationMode() {
         nextBtn.style.fontWeight = 'bold';
         nextBtn.disabled = false;
         
-        // Replace click handler
         var newBtn = nextBtn.cloneNode(true);
         nextBtn.parentNode.replaceChild(newBtn, nextBtn);
         newBtn.addEventListener('click', function() {
@@ -611,16 +605,9 @@ function enableCelebrationMode() {
 // Update Functions
 // ============================================================
 
-function updatePnButton() {
-    var pnBtn = document.getElementById("pnToggleBtn");
-    if (pnBtn) {
-        pnBtn.innerText = currentDisplayMode === "play" ? "P" : "N";
-    }
-}
-
 function setDisplayMode(mode) {
     currentDisplayMode = mode;
-    updatePnButton();
+    GameUI.setDisplayMode(mode, null);
     renderAll();
 }
 
@@ -637,7 +624,7 @@ function goToPrevHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex > 0) {
         currentHole = playOrder[currentIndex - 1];
-        document.getElementById("holeNumberDisplay").innerText = currentHole;
+        GameUI.updateHoleNumberDisplay(currentHole);
         renderAll();
         updateNavButtons();
     }
@@ -652,7 +639,7 @@ function goToNextHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex < 17) {
         currentHole = playOrder[currentIndex + 1];
-        document.getElementById("holeNumberDisplay").innerText = currentHole;
+        GameUI.updateHoleNumberDisplay(currentHole);
         renderAll();
         updateNavButtons();
     }
@@ -665,7 +652,6 @@ function updateNavButtons() {
     var nextBtn = document.getElementById("nextHoleBtn");
     if (prevBtn) prevBtn.disabled = (currentIndex === 0);
     if (nextBtn) {
-        // Don't disable next button if game is complete
         if (!isGameCompleteFlag || celebrationTriggered) {
             nextBtn.disabled = (currentIndex === 17);
         }
@@ -803,7 +789,7 @@ function startGameListener() {
             if (!foundCurrent && playOrder.length > 0) {
                 currentHole = playOrder[0];
             }
-            document.getElementById("holeNumberDisplay").innerText = currentHole;
+            GameUI.updateHoleNumberDisplay(currentHole);
             
             renderAll();
         }
@@ -843,16 +829,22 @@ async function init() {
     // Set initial flight toggle button text
     GameUI.updateFlightToggleButton(selectedFlight);
     
-    // Attach global event listeners
-    GameUI.attachGlobalEventListeners(goToPrevHole, goToNextHole);
+    // Render responsive scorecard header
+    GameUI.renderScorecardHeader(
+        "scorecardHeaderContainer",
+        selectedFlight,
+        currentHole,
+        goToPrevHole,
+        goToNextHole,
+        onToggleFlight,
+        toggleDisplayMode
+    );
     
-    // Register flight toggle callback
-    window.onToggleFlight = onToggleFlight;
+    // Set initial display mode for P/N button
+    GameUI.setDisplayMode(currentDisplayMode, null);
     
     initTicker();
     startGameListener();
-    
-    GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
 init();
@@ -863,14 +855,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.06
+VERSION: 3.07
 KEY CHANGES:
-   - ADDED: Game completion detection for viewers
-   - When both flights sign, next button turns gold 🏆
-   - Clicking gold button shows celebration screen and handicap adjustment
-   - No waiting screen for viewers (they just see the game complete)
-   - Added SignCard and HandicapAdjustment script references
-   - All other functionality identical to v3.05
+   - REMOVED: Hardcoded scorecard header HTML
+   - NOW USES: GameUI.renderScorecardHeader() for responsive layout
+   - Scorecard header now responsive: 
+     Desktop: single row | Mobile: two-row stacked
+   - Game completion detection and celebration features preserved from v3.06
+   - All other functionality identical to v3.06
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
