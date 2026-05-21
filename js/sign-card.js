@@ -1,12 +1,13 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.07
+VERSION: 1.08
 KEY CHANGES:
-   - FIXED: Celebration image now detects both C.jpg and C.jpeg
-   - Uses Image() object with cache-busting to check which file exists
-   - Falls back to trophy emoji if no image found
-   - Prevents 404 errors in console
-   - All other functionality identical to v1.06
+   - FIXED: Celebration screen now fully responsive with viewport units (vh, vw)
+   - FIXED: Player names display in 2-column grid to prevent overflow
+   - FIXED: All font sizes reduced for mobile screens
+   - FIXED: Modal max-width 90vw, max-height 85vh with scroll if needed
+   - ADDED: Responsive breakpoint for very small screens (<380px)
+   - All other functionality identical to v1.07
 DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/history-record.js
 STATUS: Ready for integration
 */
@@ -21,13 +22,11 @@ var SignCard = (function() {
     var imageCheckPromise = null;
     
     function getCelebrationImage(callback) {
-        // If already cached, return immediately
         if (cachedImagePath !== null) {
             if (callback) callback(cachedImagePath);
             return;
         }
         
-        // If check is already in progress, wait for it
         if (imageCheckPromise) {
             imageCheckPromise.then(function(path) {
                 if (callback) callback(path);
@@ -35,7 +34,6 @@ var SignCard = (function() {
             return;
         }
         
-        // Start new check
         var cacheBuster = '?t=' + Date.now();
         var formats = ['/images/celebration/C.jpg', '/images/celebration/C.jpeg'];
         var currentIndex = 0;
@@ -72,7 +70,6 @@ var SignCard = (function() {
     // ============================================================
     
     function showWaitingScreen(flightNumber, onComplete) {
-        // Remove any existing waiting modal first
         var existingModal = document.getElementById('waitingModal');
         if (existingModal) existingModal.remove();
         
@@ -131,16 +128,12 @@ var SignCard = (function() {
     // ============================================================
     
     function ensureArchiveRecord(gameId, callback) {
-        // First check if an archive record already exists
         if (typeof HistoryRecord !== 'undefined' && HistoryRecord.getArchivedGameByOriginalId) {
             HistoryRecord.getArchivedGameByOriginalId(gameId, function(err, result) {
                 if (!err && result && result.id) {
-                    // Archive exists
                     callback(null, result.id);
                 } else {
-                    // Create new pending record
                     if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
-                        // Need to fetch game data first
                         firebase.firestore().collection('scheduledGames').doc(gameId).get()
                             .then(function(doc) {
                                 if (doc.exists) {
@@ -174,11 +167,10 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen
+    // Celebration Screen - FULLY RESPONSIVE with 2-column grid
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
-        // Remove any existing celebration modal
         var existingModal = document.getElementById('celebrationModal');
         if (existingModal) existingModal.remove();
         
@@ -197,7 +189,9 @@ var SignCard = (function() {
         }
         
         var winningTeamPlayers = (winner === "A") ? winningPlayers.teamA : (winner === "B") ? winningPlayers.teamB : [];
-        var playersHtml = "";
+        
+        // Build player list as 2-column grid
+        var playersHtml = '';
         for (var i = 0; i < winningTeamPlayers.length; i++) {
             playersHtml += '<span class="winning-player">' + escapeHtml(winningTeamPlayers[i].name) + '</span>';
         }
@@ -205,7 +199,6 @@ var SignCard = (function() {
         var teamADisplay = teamAScore % 1 === 0 ? teamAScore : teamAScore.toFixed(1);
         var teamBDisplay = teamBScore % 1 === 0 ? teamBScore : teamBScore.toFixed(1);
         
-        // Store data for replay and HCP
         var celebrationData = {
             winner: winner,
             teamAScore: teamAScore,
@@ -215,7 +208,6 @@ var SignCard = (function() {
             onClose: onClose
         };
         
-        // Get image and then show modal
         getCelebrationImage(function(imageSrc) {
             var imageHtml = '';
             if (imageSrc) {
@@ -225,20 +217,22 @@ var SignCard = (function() {
                     </div>
                 `;
             } else {
-                imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
+                imageHtml = '<div class="celebration-image-container" style="font-size:3rem;">🏆</div>';
             }
             
             var modalHtml = `
                 <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                     <div class="celebration-modal">
                         ${imageHtml}
-                        <div class="celebration-title">🏆 MATCH COMPLETE! 🏆</div>
+                        <div class="celebration-title">MATCH COMPLETE!</div>
                         <div class="celebration-beer">🍺 BEER TIME! 🍺</div>
                         <div class="celebration-winner ${winnerClass}">
                             ${winnerText}
                         </div>
                         <div class="celebration-score">
-                            Team A ${teamADisplay} - ${teamBDisplay} Team B
+                            <span>Team A ${teamADisplay}</span>
+                            <span>-</span>
+                            <span>${teamBDisplay} Team B</span>
                         </div>
                         <div class="celebration-players">
                             <div class="celebration-players-title">🏅 ${winner === 'A' ? 'TEAM A' : (winner === 'B' ? 'TEAM B' : 'BOTH TEAMS')} 🏅</div>
@@ -252,22 +246,6 @@ var SignCard = (function() {
             `;
             
             document.body.insertAdjacentHTML('beforeend', modalHtml);
-            
-            // Style the Handicap Adjustment button
-            var hcpBtn = document.getElementById('handicapAdjustBtn');
-            if (hcpBtn) {
-                hcpBtn.style.fontSize = '1rem';
-                hcpBtn.style.padding = '14px 28px';
-                hcpBtn.style.background = '#ffaa44';
-                hcpBtn.style.color = '#1a3a1a';
-                hcpBtn.style.border = 'none';
-                hcpBtn.style.fontWeight = '800';
-                hcpBtn.style.letterSpacing = '1px';
-                hcpBtn.style.borderRadius = '40px';
-                hcpBtn.style.cursor = 'pointer';
-                hcpBtn.style.width = '100%';
-            }
-            
             addCelebrationStyles();
             launchConfetti();
             
@@ -312,14 +290,11 @@ var SignCard = (function() {
                 });
             });
             
-            // Store reference for replay functionality
             window._currentCelebrationData = celebrationData;
         });
     }
     
-    // Replay celebration screen (for HCP screen "Celebration Screen" button)
     function replayCelebration() {
-        // Remove any existing celebration modal
         var existingModal = document.getElementById('celebrationModal');
         if (existingModal) existingModal.remove();
         
@@ -330,7 +305,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Styles
+    // Celebration Styles - RESPONSIVE with viewport units
     // ============================================================
     
     function addCelebrationStyles() {
@@ -387,90 +362,103 @@ var SignCard = (function() {
                     animation: spin 1s linear infinite;
                 }
                 
-                /* Celebration Modal */
+                /* Celebration Modal - RESPONSIVE */
                 .celebration-modal {
                     background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
-                    border-radius: 48px;
-                    padding: 32px;
-                    max-width: 500px;
-                    width: 90%;
+                    border-radius: 24px;
+                    padding: 5vh 5vw;
+                    max-width: 90vw;
+                    width: auto;
                     text-align: center;
-                    border: 3px solid #ffaa44;
-                    box-shadow: 0 0 50px rgba(255,170,68,0.4);
+                    border: 2px solid #ffaa44;
+                    box-shadow: 0 0 30px rgba(255,170,68,0.3);
                     animation: bounceIn 0.6s ease-out;
+                    max-height: 85vh;
+                    overflow-y: auto;
                 }
                 .celebration-image-container {
-                    margin-bottom: 16px;
+                    margin-bottom: 8px;
                 }
                 .celebration-image {
-                    max-width: 100%;
-                    max-height: 200px;
-                    border-radius: 24px;
+                    max-width: 80%;
+                    max-height: 25vh;
+                    border-radius: 16px;
                     object-fit: cover;
                 }
                 .celebration-title {
-                    font-size: 1.5rem;
+                    font-size: 1.2rem;
                     font-weight: 700;
                     color: #ffaa44;
-                    margin-bottom: 16px;
+                    margin-bottom: 4px;
                 }
                 .celebration-beer {
-                    font-size: 2rem;
+                    font-size: 1.4rem;
                     font-weight: 800;
                     color: #4caf50;
-                    margin-bottom: 20px;
-                    letter-spacing: 2px;
+                    margin-bottom: 8px;
+                    letter-spacing: 1px;
                     animation: bounce 0.5s ease 2;
                 }
                 .celebration-winner {
-                    font-size: 1.5rem;
+                    font-size: 1rem;
                     font-weight: 800;
-                    margin-bottom: 16px;
-                    padding: 12px;
-                    border-radius: 60px;
+                    margin-bottom: 8px;
+                    padding: 6px;
+                    border-radius: 40px;
                 }
                 .winner-a { background: rgba(76,175,80,0.2); color: #4caf50; }
                 .winner-b { background: rgba(76,175,80,0.2); color: #4caf50; }
                 .winner-tie { background: rgba(255,170,68,0.2); color: #ffaa44; }
                 .celebration-score {
-                    font-size: 1.2rem;
+                    font-size: 0.85rem;
                     font-weight: 700;
                     color: #fff;
-                    margin-bottom: 24px;
+                    margin-bottom: 12px;
+                    display: flex;
+                    justify-content: center;
+                    gap: 6px;
+                    flex-wrap: wrap;
                 }
                 .celebration-players {
                     background: rgba(0,0,0,0.5);
-                    border-radius: 24px;
-                    padding: 16px;
-                    margin-bottom: 24px;
+                    border-radius: 16px;
+                    padding: 10px;
+                    margin-bottom: 16px;
                 }
                 .celebration-players-title {
-                    font-size: 1rem;
+                    font-size: 0.75rem;
                     font-weight: 700;
                     color: #ffaa44;
-                    margin-bottom: 12px;
+                    margin-bottom: 8px;
                 }
+                /* 2-COLUMN GRID FOR PLAYERS - prevents overflow */
                 .celebration-players-list {
-                    display: flex;
-                    flex-wrap: wrap;
-                    justify-content: center;
-                    gap: 8px;
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 6px;
+                    justify-items: center;
+                    align-items: center;
                 }
                 .winning-player {
                     background: #1a3a1a;
-                    padding: 4px 12px;
+                    padding: 4px 8px;
                     border-radius: 20px;
-                    font-size: 0.8rem;
+                    font-size: 0.7rem;
                     font-weight: 600;
                     color: #4caf50;
+                    text-align: center;
+                    width: 100%;
+                    white-space: nowrap;
+                    overflow-x: auto;
+                    max-width: 100%;
                 }
                 .celebration-btn {
                     background: #1a3a1a;
-                    border: 2px solid #4caf50;
+                    border: 1px solid #4caf50;
                     color: #4caf50;
-                    padding: 14px 28px;
-                    border-radius: 60px;
-                    font-size: 1.1rem;
+                    padding: 10px 20px;
+                    border-radius: 40px;
+                    font-size: 0.85rem;
                     font-weight: 700;
                     cursor: pointer;
                     width: 100%;
@@ -479,6 +467,33 @@ var SignCard = (function() {
                 .celebration-btn:hover {
                     background: #2a4a2a;
                     transform: scale(1.02);
+                }
+                
+                /* Responsive breakpoint for very small screens */
+                @media (max-width: 380px) {
+                    .celebration-modal {
+                        padding: 3vh 4vw;
+                    }
+                    .celebration-title {
+                        font-size: 1rem;
+                    }
+                    .celebration-beer {
+                        font-size: 1.2rem;
+                    }
+                    .celebration-winner {
+                        font-size: 0.85rem;
+                    }
+                    .celebration-score {
+                        font-size: 0.75rem;
+                    }
+                    .winning-player {
+                        font-size: 0.6rem;
+                        padding: 3px 6px;
+                    }
+                    .celebration-btn {
+                        font-size: 0.75rem;
+                        padding: 8px 16px;
+                    }
                 }
                 
                 /* Confetti */
@@ -581,13 +596,14 @@ var SignCard = (function() {
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.07
+VERSION: 1.08
 KEY CHANGES:
-   - FIXED: Celebration image now detects both C.jpg and C.jpeg
-   - Uses Image() object with cache-busting to check which file exists
-   - Falls back to trophy emoji if no image found
-   - Prevents 404 errors in console
-   - All other functionality identical to v1.06
+   - FIXED: Celebration screen now fully responsive with viewport units (vh, vw)
+   - FIXED: Player names display in 2-column grid to prevent overflow
+   - FIXED: All font sizes reduced for mobile screens
+   - FIXED: Modal max-width 90vw, max-height 85vh with scroll if needed
+   - ADDED: Responsive breakpoint for very small screens (<380px)
+   - All other functionality identical to v1.07
 DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/history-record.js
 STATUS: Ready for integration
 */
