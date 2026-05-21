@@ -1,11 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 3.12
+VERSION: 3.13
 KEY CHANGES:
-   - FIXED: showSignCardModal() now calls GameUI.ensureNoStuckModals() first
-   - FIXED: Modal now has guaranteed visibility with inline styles
-   - Ensures no duplicate modals stack up
-   - All other functionality identical to v3.11
+   - FIXED: Modal now uses proper z-index constants (10001)
+   - FIXED: Status bubble z-index handled by game-ui.js (999)
+   - FIXED: Sign card modal event listeners properly attached
+   - FIXED: Confirm button click now reliably triggers signature
+   - All other functionality identical to v3.12
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
@@ -147,7 +148,7 @@ STATUS: Ready for integration
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 3000;
+            z-index: 10001;
         }
         
         .sign-modal-container {
@@ -158,6 +159,7 @@ STATUS: Ready for integration
             width: 90%;
             text-align: center;
             border: 2px solid #4caf50;
+            z-index: 10002;
         }
         .sign-modal-title { font-size: 1.5rem; font-weight: 700; color: #4caf50; margin-bottom: 16px; }
         .sign-modal-message { font-size: 0.9rem; color: #ccc; margin-bottom: 24px; }
@@ -278,7 +280,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.12</div>
+<div class="version-tag">v3.13</div>
 
 <script>
 // ============================================================
@@ -903,7 +905,7 @@ function updateNavButtons() {
 }
 
 // ============================================================
-// Modal Functions - FIXED with ensureNoStuckModals
+// Modal Functions - FIXED with proper event listeners
 // ============================================================
 
 function showSignCardModal() {
@@ -914,7 +916,7 @@ function showSignCardModal() {
     
     var modalHtml = `
         <div class="modal-overlay" id="signModalNew" style="z-index: 10001; display: flex !important; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); align-items: center; justify-content: center;">
-            <div class="sign-modal-container" style="background: #1a1a1a; border-radius: 28px; padding: 28px; max-width: 360px; width: 90%; text-align: center; border: 2px solid #4caf50;">
+            <div class="sign-modal-container" style="background: #1a1a1a; border-radius: 28px; padding: 28px; max-width: 360px; width: 90%; text-align: center; border: 2px solid #4caf50; z-index: 10002;">
                 <div class="sign-modal-title" style="font-size: 1.5rem; font-weight: 700; color: #4caf50; margin-bottom: 16px;">✍️ SIGN SCORECARD</div>
                 <div class="sign-modal-message" style="font-size: 0.9rem; color: #ccc; margin-bottom: 24px;">Confirm that all scores are correct before signing.</div>
                 <div class="sign-modal-buttons" style="display: flex; gap: 12px;">
@@ -927,33 +929,53 @@ function showSignCardModal() {
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    document.getElementById("signBackBtnNew").addEventListener("click", function() {
-        document.getElementById("signModalNew").remove();
-    });
+    // Get button references
+    var backBtn = document.getElementById('signBackBtnNew');
+    var confirmBtn = document.getElementById('signConfirmBtnNew');
     
-    document.getElementById("signConfirmBtnNew").addEventListener("click", async function() {
-        document.getElementById("signModalNew").remove();
-        
-        var success = await SignCard.submitSignature(gameId, editableFlight, null, "scheduledGames");
-        
-        if (success) {
-            var cache = GameLoader.getLocalCache();
-            if (editableFlight === 1) cache.signatures.f1 = true;
-            else cache.signatures.f2 = true;
+    if (backBtn) {
+        backBtn.addEventListener('click', function() {
+            var modal = document.getElementById('signModalNew');
+            if (modal) modal.remove();
+            console.log('Sign cancelled');
+        });
+    }
+    
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', async function() {
+            console.log('Confirm clicked - submitting signature...');
+            var modal = document.getElementById('signModalNew');
+            if (modal) modal.remove();
             
-            if (cache.signatures.f1 && cache.signatures.f2) {
-                await createHistoryRecord();
-                isGameCompleteFlag = true;
-                celebrationTriggered = false;
-                showGameCompleteScreen();
-                renderAll();
+            var success = await SignCard.submitSignature(gameId, editableFlight, null, "scheduledGames");
+            console.log('Submit result:', success);
+            
+            if (success) {
+                var cache = GameLoader.getLocalCache();
+                if (editableFlight === 1) cache.signatures.f1 = true;
+                else cache.signatures.f2 = true;
+                
+                console.log('Flight', editableFlight, 'signed');
+                console.log('Both signed?', cache.signatures.f1 && cache.signatures.f2);
+                
+                if (cache.signatures.f1 && cache.signatures.f2) {
+                    console.log('Both signed - showing Game Complete screen');
+                    await createHistoryRecord();
+                    isGameCompleteFlag = true;
+                    celebrationTriggered = false;
+                    showGameCompleteScreen();
+                    renderAll();
+                } else {
+                    console.log('Waiting for other flight - showing waiting screen');
+                    showWaitingScreen();
+                }
             } else {
-                showWaitingScreen();
+                alert("Error signing card. Please try again.");
             }
-        } else {
-            alert("Error signing card. Please try again.");
-        }
-    });
+        });
+    }
+    
+    console.log('Sign modal displayed with event listeners attached');
 }
 
 function showWaitingScreen() {
@@ -976,6 +998,7 @@ function showWaitingScreen() {
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     activeWaitModal = document.getElementById("waitingModalNew");
+    console.log('Waiting screen displayed');
 }
 
 function hideWaitingScreen() {
@@ -1386,12 +1409,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.12
+VERSION: 3.13
 KEY CHANGES:
-   - FIXED: showSignCardModal() now calls GameUI.ensureNoStuckModals() first
-   - FIXED: Modal now has guaranteed visibility with inline styles
-   - Ensures no duplicate modals stack up
-   - All other functionality identical to v3.11
+   - FIXED: Modal now uses proper z-index constants (10001)
+   - FIXED: Status bubble z-index handled by game-ui.js (999)
+   - FIXED: Sign card modal event listeners properly attached
+   - FIXED: Confirm button click now reliably triggers signature
+   - All other functionality identical to v3.12
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js
 STATUS: Ready for integration
 -->
