@@ -1,14 +1,12 @@
 /*
 FILE: js/history-record.js
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - FIXED: Implemented upsert logic to prevent duplicate records
-   - NEW: upsertPendingRecord() - creates or updates record based on originalGameId
-   - If record exists (from F1 signing), update it with F2 data
-   - If no record exists, create new one
-   - Prevents duplicate history records in all scenarios
-   - All data flattened for Firestore compatibility
-DEPENDS ON: Firebase Firestore
+   - FIXED: buildHoleDataObject() now accepts data strings instead of parsed objects
+   - Added parseFlightDataString() to convert strings to hole data objects
+   - This ensures holeData is properly created for history records
+   - All existing functions unchanged from v2.02
+DEPENDS ON: Firebase Firestore, js/game-data.js (for parseHoleData if needed)
 STATUS: Ready for integration
 */
 
@@ -17,38 +15,52 @@ var HistoryRecord = (function() {
     var COLLECTION = "historyGames";
     
     // ============================================================
-    // Helper: Check if record already exists
+    // Helper: Parse flight data string into hole data object
     // ============================================================
     
-    function getExistingRecord(gameId, callback) {
-        if (!gameId) {
-            if (callback) callback("No game ID provided", null);
-            return;
-        }
+    function parseFlightDataString(dataString, startingHole) {
+        var result = {};
+        var playOrder = [];
         
-        firebase.firestore().collection(COLLECTION)
-            .where("originalGameId", "==", gameId)
-            .limit(1)
-            .get()
-            .then(function(snapshot) {
-                if (snapshot.empty) {
-                    callback(null, null);
-                } else {
-                    var doc = snapshot.docs[0];
-                    callback(null, { id: doc.id, data: doc.data() });
-                }
-            })
-            .catch(function(err) {
-                console.error("Error checking existing record:", err);
-                callback(err, null);
-            });
+        // Build play order based on starting hole
+        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        
+        for (var pos = 0; pos < 18; pos++) {
+            var actualHole = playOrder[pos];
+            var startIdx = pos * 9;
+            var segment = dataString.substring(startIdx, startIdx + 9);
+            
+            if (segment.length === 9) {
+                result[actualHole] = {
+                    saved: segment[0] === 'T',
+                    scores: {
+                        a1: parseInt(segment.substring(1, 3), 10),
+                        a2: parseInt(segment.substring(3, 5), 10),
+                        b1: parseInt(segment.substring(5, 7), 10),
+                        b2: parseInt(segment.substring(7, 9), 10)
+                    }
+                };
+            } else {
+                result[actualHole] = {
+                    saved: false,
+                    scores: { a1: 0, a2: 0, b1: 0, b2: 0 }
+                };
+            }
+        }
+        return result;
     }
     
     // ============================================================
     // Build hole data object (FLATTENED for Firestore)
+    // Now accepts data strings instead of parsed objects
     // ============================================================
     
-    function buildHoleDataObject(flight1Data, flight2Data, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow, allPlayers, startingHole) {
+    function buildHoleDataObject(flight1DataString, flight2DataString, matchResults, trTeamA, trTeamB, teamAGreen, teamBGreen, t1Row, t2Row, strkRow, allPlayers, startingHole) {
+        
+        // Parse the data strings into hole data objects
+        var flight1Data = parseFlightDataString(flight1DataString, startingHole);
+        var flight2Data = parseFlightDataString(flight2DataString, startingHole);
         
         // Get ordered players for score mapping
         function getOrderedPlayers(flight) {
@@ -131,10 +143,38 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
+    // Helper: Check if record already exists
+    // ============================================================
+    
+    function getExistingRecord(gameId, callback) {
+        if (!gameId) {
+            if (callback) callback("No game ID provided", null);
+            return;
+        }
+        
+        firebase.firestore().collection(COLLECTION)
+            .where("originalGameId", "==", gameId)
+            .limit(1)
+            .get()
+            .then(function(snapshot) {
+                if (snapshot.empty) {
+                    callback(null, null);
+                } else {
+                    var doc = snapshot.docs[0];
+                    callback(null, { id: doc.id, data: doc.data() });
+                }
+            })
+            .catch(function(err) {
+                console.error("Error checking existing record:", err);
+                callback(err, null);
+            });
+    }
+    
+    // ============================================================
     // Upsert pending archive record (CREATE OR UPDATE)
     // ============================================================
     
-    function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataObj, flight2DataObj, matchResults, callback) {
+    function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
         if (!gameId || !gameData) {
             var err = new Error("Missing required data for archive record");
             if (callback) callback(err, null);
@@ -153,7 +193,7 @@ var HistoryRecord = (function() {
                 // Record exists - UPDATE IT
                 console.log("Found existing archive record for game:", gameId, "ID:", existing.id);
                 
-                // Get data for hole data object (may already have some data)
+                // Get data for hole data object
                 var allPlayers = gameData.players || [];
                 var startingHole = gameData.startingHole || 1;
                 var trTeamA = results.tr?.teamA || existing.data?.holeData?.trTeamA || new Array(18).fill(9.5);
@@ -164,12 +204,12 @@ var HistoryRecord = (function() {
                 var t2Row = results.game2?.flight2?.leader || existing.data?.holeData?.t2Row || new Array(18).fill("S");
                 var strkRow = results.game3?.leader || existing.data?.holeData?.strkRow || new Array(18).fill("S");
                 
-                // Build hole data object
+                // Build hole data object from strings
                 var holeDataObject = {};
                 try {
                     holeDataObject = buildHoleDataObject(
-                        flight1DataObj || {},
-                        flight2DataObj || {},
+                        flight1DataString || "",
+                        flight2DataString || "",
                         matchResults || {},
                         trTeamA, trTeamB, teamAGreen, teamBGreen,
                         t1Row, t2Row, strkRow,
@@ -240,12 +280,12 @@ var HistoryRecord = (function() {
                 var t2Row = results.game2?.flight2?.leader || new Array(18).fill("AS");
                 var strkRow = results.game3?.leader || new Array(18).fill("AS");
                 
-                // Build hole data object
+                // Build hole data object from strings
                 var holeDataObject = {};
                 try {
                     holeDataObject = buildHoleDataObject(
-                        flight1DataObj || {},
-                        flight2DataObj || {},
+                        flight1DataString || "",
+                        flight2DataString || "",
                         matchResults || {},
                         trTeamA, trTeamB, teamAGreen, teamBGreen,
                         t1Row, t2Row, strkRow,
@@ -368,8 +408,8 @@ var HistoryRecord = (function() {
     // Legacy wrapper for createPendingRecord (calls upsert)
     // ============================================================
     
-    function createPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataObj, flight2DataObj, matchResults, callback) {
-        upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataObj, flight2DataObj, matchResults, callback);
+    function createPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
+        upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback);
     }
     
     // ============================================================
@@ -494,21 +534,20 @@ var HistoryRecord = (function() {
         getArchivedGameByOriginalId: getArchivedGameByOriginalId,
         getExistingRecord: getExistingRecord,
         deleteArchiveRecord: deleteArchiveRecord,
-        buildHoleDataObject: buildHoleDataObject
+        buildHoleDataObject: buildHoleDataObject,
+        parseFlightDataString: parseFlightDataString
     };
     
 })();
 
 /*
 FILE: js/history-record.js
-VERSION: 2.02
+VERSION: 2.03
 KEY CHANGES:
-   - FIXED: Implemented upsert logic to prevent duplicate records
-   - NEW: upsertPendingRecord() - creates or updates record based on originalGameId
-   - If record exists (from F1 signing), update it with F2 data
-   - If no record exists, create new one
-   - Prevents duplicate history records in all scenarios
-   - All data flattened for Firestore compatibility
+   - FIXED: buildHoleDataObject() now accepts data strings instead of parsed objects
+   - Added parseFlightDataString() to convert strings to hole data objects
+   - This ensures holeData is properly created for history records
+   - All existing functions unchanged from v2.02
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
