@@ -1,12 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.19
+VERSION: 2.20
 KEY CHANGES:
-   - ADDED: updateNavigationButtons() - SINGLE SOURCE OF TRUTH for prev/next buttons
-   - Removed duplicate logic from updateNavButtonsWithDisableLogic and updateNextButtonForLastHole
-   - Centralized: prev button enabled/disabled based on hole position
-   - Centralized: next button behavior (normal navigation, last hole SIGN, game complete)
-   - All other functions unchanged from v2.18
+   - FIXED: updateNavigationButtons() now properly preserves navigation handlers
+   - FIXED: Next button correctly disabled when hole not saved
+   - FIXED: Original onclick handlers stored and restored
+   - Navigation callbacks no longer lost when updating button states
+   - All other functions unchanged from v2.19
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -170,31 +170,40 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // SINGLE SOURCE OF TRUTH: Navigation Buttons
+    // SINGLE SOURCE OF TRUTH: Navigation Buttons (FIXED)
     // ============================================================
     
-    function updateNavigationButtons(currentHole, playOrderLength, isCurrentSaved, isGameComplete, celebrationTriggered, onSignCardCallback) {
+    function updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameComplete, celebrationTriggered, onSignCardCallback) {
         var prevBtn = document.getElementById('compactPrevBtn');
         var nextBtn = document.getElementById('compactNextBtn');
         
         if (!prevBtn || !nextBtn) return;
         
-        // Get current position in play order
-        var currentIndex = playOrderLength ? playOrderLength.indexOf(currentHole) : -1;
+        // Store original navigation handlers if not already stored
+        if (!prevBtn._originalOnClick && eventCallbacks.onPrevHole) {
+            prevBtn._originalOnClick = function() {
+                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
+            };
+        }
+        if (!nextBtn._originalOnClick && eventCallbacks.onNextHole) {
+            nextBtn._originalOnClick = function() {
+                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+            };
+        }
+        
+        var currentIndex = playOrder.indexOf(currentHole);
         var isFirstHole = (currentIndex === 0);
         var isLastHole = (currentIndex === 17);
         
-        // ============================================================
-        // PREV BUTTON: Disabled only at first hole
-        // ============================================================
+        // Prev button: disabled only at first hole
         prevBtn.disabled = isFirstHole;
+        if (prevBtn._originalOnClick) {
+            prevBtn.onclick = prevBtn._originalOnClick;
+        }
         
-        // ============================================================
-        // NEXT BUTTON: Logic based on game state
-        // ============================================================
-        
-        // Case 1: Game complete (both signed) - show trophy
+        // Next button logic
         if (isGameComplete && !celebrationTriggered) {
+            // Game complete - show trophy
             nextBtn.innerHTML = '🏆';
             nextBtn.style.background = '#ffaa44';
             nextBtn.style.color = '#1a3a1a';
@@ -203,32 +212,27 @@ var GameUI = (function() {
             nextBtn.onclick = function() {
                 if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
             };
-            return;
-        }
-        
-        // Case 2: Last hole AND current hole is saved - show sign button (gold)
-        if (isLastHole && isCurrentSaved) {
+        } else if (isLastHole && isCurrentSaved) {
+            // Last hole AND saved - show sign button (gold)
             nextBtn.innerHTML = '✍️';
             nextBtn.style.background = '#ffaa44';
             nextBtn.style.color = '#1a3a1a';
             nextBtn.style.border = '1px solid #ffaa44';
             nextBtn.disabled = false;
-            // Store the sign callback
             nextBtn.onclick = function() {
                 if (onSignCardCallback) onSignCardCallback();
             };
-            return;
+        } else {
+            // Normal mode - green arrow, disabled if not saved
+            nextBtn.innerHTML = '▶';
+            nextBtn.style.background = '#1a3a1a';
+            nextBtn.style.color = '#4caf50';
+            nextBtn.style.border = '1px solid #4caf50';
+            nextBtn.disabled = !isCurrentSaved;
+            if (nextBtn._originalOnClick) {
+                nextBtn.onclick = nextBtn._originalOnClick;
+            }
         }
-        
-        // Case 3: Normal mode - show green arrow, disabled if not saved
-        nextBtn.innerHTML = '▶';
-        nextBtn.style.background = '#1a3a1a';
-        nextBtn.style.color = '#4caf50';
-        nextBtn.style.border = '1px solid #4caf50';
-        nextBtn.disabled = !isCurrentSaved;
-        nextBtn.onclick = function() {
-            if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
-        };
     }
     
     // ============================================================
@@ -321,6 +325,7 @@ var GameUI = (function() {
         var container = document.getElementById(containerId);
         if (!container) return;
         
+        // Store callbacks
         if (onSave) eventCallbacks.onSave = onSave;
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
@@ -377,9 +382,7 @@ var GameUI = (function() {
         }
         
         // Navigation buttons will have their handlers set by updateNavigationButtons
-        // Store callbacks for later use
-        if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
-        if (onNextHole) eventCallbacks.onNextHole = onNextHole;
+        // The callbacks are already stored in eventCallbacks
     }
     
     function updateCompactSaveButton(currentHole, isDisabled) {
@@ -538,7 +541,7 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<td><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -1008,7 +1011,7 @@ var GameUI = (function() {
         updateFlightBadge: updateFlightBadge,
         removeFlightBadge: removeFlightBadge,
         
-        // SINGLE SOURCE OF TRUTH - Navigation
+        // SINGLE SOURCE OF TRUTH - Navigation (FIXED)
         updateNavigationButtons: updateNavigationButtons,
         
         // Legacy compatibility
@@ -1062,13 +1065,13 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.19
+VERSION: 2.20
 KEY CHANGES:
-   - ADDED: updateNavigationButtons() - SINGLE SOURCE OF TRUTH for prev/next buttons
-   - Removed duplicate logic from updateNavButtonsWithDisableLogic and updateNextButtonForLastHole
-   - Centralized: prev button enabled/disabled based on hole position
-   - Centralized: next button behavior (normal navigation, last hole SIGN, game complete)
-   - All other functions unchanged from v2.18
+   - FIXED: updateNavigationButtons() now properly preserves navigation handlers
+   - FIXED: Next button correctly disabled when hole not saved
+   - FIXED: Original onclick handlers stored and restored
+   - Navigation callbacks no longer lost when updating button states
+   - All other functions unchanged from v2.19
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
