@@ -1,13 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 3.15
+VERSION: 3.16
 KEY CHANGES:
-   - REMOVED: Hardcoded scorecard header HTML
-   - NOW USES: GameUI.renderScorecardHeader() for responsive layout
-   - Scorecard header now responsive: 
-     Desktop: single row | Mobile: two-row stacked
-   - Added GameUI.updateHoleNumberDisplay() calls for hole navigation
-   - All other functionality identical to v3.14
+   - REMOVED: Old scorecard header HTML
+   - REMOVED: Old action buttons (SAVE button now in compact header)
+   - NOW USES: GameUI.renderCompactHeader() for single-line header
+   - Header layout: [FLIGHT P] [💾 SAVE H#] [◀ # ▶]
+   - Status bubble now clickable for refresh
+   - Scorecard rows tightened for better spacing
+   - All game logic (save, load, results calculation) unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -118,8 +119,8 @@ STATUS: Ready for integration
         
         .scorecard-section { margin: 20px 0; }
         
-        /* Scorecard header container - GameUI will render into this */
-        #scorecardHeaderContainer {
+        /* Compact header container */
+        #compactHeaderContainer {
             margin-bottom: 10px;
         }
         
@@ -128,6 +129,7 @@ STATUS: Ready for integration
             width: 100%;
             border-collapse: collapse;
             font-size: 0.7rem;
+            min-width: 700px;
         }
         .scorecard-table th, .scorecard-table td {
             padding: 6px 3px;
@@ -262,12 +264,9 @@ STATUS: Ready for integration
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
     
-    <!-- Action buttons container - GameUI will render SAVE button here -->
-    <div id="actionButtonsContainer"></div>
-    
     <div class="scorecard-section">
-        <!-- Scorecard header container - GameUI will render responsive header here -->
-        <div id="scorecardHeaderContainer"></div>
+        <!-- Compact header container - GameUI will render into this -->
+        <div id="compactHeaderContainer"></div>
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
@@ -278,7 +277,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.15</div>
+<div class="version-tag">v3.16</div>
 
 <script>
 // ============================================================
@@ -499,12 +498,12 @@ function updateTRDisplay() {
 // ============================================================
 
 function setSaveButtonIdle() {
-    GameUI.resetSaveButton(currentHole);
+    GameUI.updateCompactSaveButton(currentHole, false);
     saveInProgress = false;
 }
 
 function setSaveButtonPending() {
-    var saveBtn = document.getElementById('saveBtn');
+    var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.classList.remove('btn-save', 'btn-save-retry');
         saveBtn.classList.add('btn-save-pending');
@@ -515,7 +514,7 @@ function setSaveButtonPending() {
 }
 
 function setSaveButtonRetry() {
-    var saveBtn = document.getElementById('saveBtn');
+    var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.classList.remove('btn-save', 'btn-save-pending');
         saveBtn.classList.add('btn-save-retry');
@@ -526,7 +525,7 @@ function setSaveButtonRetry() {
 }
 
 function flashSaveButtonSuccess() {
-    var saveBtn = document.getElementById('saveBtn');
+    var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.classList.add('btn-save-flash');
         setTimeout(function() {
@@ -877,7 +876,7 @@ function prevHole() {
 }
 
 function updateHoleNumberDisplay() {
-    GameUI.updateHoleNumberDisplay(currentHole);
+    GameUI.updateCompactHoleDisplay(currentHole);
 }
 
 function updateNavButtons() {
@@ -1363,24 +1362,19 @@ async function init() {
             return;
         }
         
-        // Apply tight layout and button styles
+        // Apply tight layout and button styles (includes clickable status bubble)
         GameUI.applyTightLayout();
         
-        // Render action buttons (SAVE button)
-        GameUI.renderActionButtons("actionButtonsContainer", currentHole, false, saveHole);
-        
-        // Render bottom menu (Back to Main Menu)
-        GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
-        
-        // Render responsive scorecard header
-        GameUI.renderScorecardHeader(
-            "scorecardHeaderContainer",
+        // Render compact header (single line with FLIGHT, SAVE, navigation)
+        GameUI.renderCompactHeader(
+            "compactHeaderContainer",
             editableFlight,
             currentHole,
+            saveHole,
             prevHole,
             nextHole,
             onToggleFlight,
-            null  // onToggleDisplay will be handled by P/N button internally
+            null  // onToggleDisplay handled internally
         );
         
         // Set initial display mode for P/N button
@@ -1404,12 +1398,23 @@ async function init() {
         renderAll();
         setSaveButtonIdle();
         
-        document.getElementById("playOrderBtn").addEventListener("click", function() {
-            GameUI.setDisplayMode("play", function() { renderAll(); });
-        });
-        document.getElementById("naturalOrderBtn").addEventListener("click", function() {
-            GameUI.setDisplayMode("natural", function() { renderAll(); });
-        });
+        // Hide old P/N and Flight toggle buttons (they are now in compact header)
+        var oldPnBtn = document.getElementById('pnToggleBtn');
+        var oldFlightBtn = document.getElementById('flightToggleBtn');
+        var oldPrevBtn = document.getElementById('prevHoleBtn');
+        var oldNextBtn = document.getElementById('nextHoleBtn');
+        var oldHoleDisplay = document.getElementById('holeNumberDisplay');
+        if (oldPnBtn) oldPnBtn.style.display = 'none';
+        if (oldFlightBtn) oldFlightBtn.style.display = 'none';
+        if (oldPrevBtn) oldPrevBtn.style.display = 'none';
+        if (oldNextBtn) oldNextBtn.style.display = 'none';
+        if (oldHoleDisplay) oldHoleDisplay.style.display = 'none';
+        
+        // Hide play order buttons if they exist (not used in compact header)
+        var playOrderBtn = document.getElementById('playOrderBtn');
+        var naturalOrderBtn = document.getElementById('naturalOrderBtn');
+        if (playOrderBtn) playOrderBtn.style.display = 'none';
+        if (naturalOrderBtn) naturalOrderBtn.style.display = 'none';
     });
     
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
@@ -1423,14 +1428,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.15
+VERSION: 3.16
 KEY CHANGES:
-   - REMOVED: Hardcoded scorecard header HTML
-   - NOW USES: GameUI.renderScorecardHeader() for responsive layout
-   - Scorecard header now responsive: 
-     Desktop: single row | Mobile: two-row stacked
-   - Added GameUI.updateHoleNumberDisplay() calls for hole navigation
-   - All other functionality identical to v3.14
+   - REMOVED: Old scorecard header HTML
+   - REMOVED: Old action buttons (SAVE button now in compact header)
+   - NOW USES: GameUI.renderCompactHeader() for single-line header
+   - Header layout: [FLIGHT P] [💾 SAVE H#] [◀ # ▶]
+   - Status bubble now clickable for refresh
+   - Scorecard rows tightened for better spacing
+   - All game logic (save, load, results calculation) unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
