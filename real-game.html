@@ -1,12 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 3.18
+VERSION: 3.19
 KEY CHANGES:
-   - CHANGED: Now uses GameUI.renderHoleHeader() for new hole header layout
-   - LIVE bubble now inline with HOLE number (left-aligned)
-   - HOLE number perfectly centered using CSS Grid
-   - Removed separate PAR/SI line (saved space)
-   - Tighter spacing throughout
+   - CHANGED: Now uses GameUI.updateNavigationButtons() as single source of truth
+   - REMOVED: Duplicate updateNavButtons() logic
+   - REMOVED: Local last hole detection and sign button logic (now in game-ui.js)
+   - Navigation buttons now consistent and reliable
    - All game logic unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -114,7 +113,6 @@ STATUS: Ready for integration
         
         .scorecard-section { margin: 20px 0; }
         
-        /* Compact header container */
         #compactHeaderContainer {
             margin-bottom: 10px;
         }
@@ -254,7 +252,6 @@ STATUS: Ready for integration
     
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
     
-    <!-- Hole header container - GameUI will render new header here -->
     <div id="holeHeader"></div>
     
     <div id="flightTab" class="flight-tab"></div>
@@ -262,19 +259,17 @@ STATUS: Ready for integration
     <div id="playerCards" class="player-cards"></div>
     
     <div class="scorecard-section">
-        <!-- Compact header container - GameUI will render into this -->
         <div id="compactHeaderContainer"></div>
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
-    <!-- Bottom menu container - GameUI will render Back to Main Menu button here -->
     <div id="bottomMenuContainer"></div>
     
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.18</div>
+<div class="version-tag">v3.19</div>
 
 <script>
 // ============================================================
@@ -603,7 +598,6 @@ async function saveHole() {
                 document.getElementById("debug").innerHTML = "";
             }
         }, 2000);
-        updateNavButtons();
         renderAll();
     } catch (error) {
         console.error("Save error:", error);
@@ -877,23 +871,6 @@ function updateHoleNumberDisplay() {
     GameUI.updateHoleHeaderNumber(currentHole);
 }
 
-function updateNavButtons() {
-    var isSaved = isHoleSaved(editableFlight, currentHole);
-    
-    var hasUnsavedChanges = false;
-    for (var key in localChanges) {
-        if (key.startsWith(editableFlight + "_" + currentHole + "_")) {
-            hasUnsavedChanges = true;
-            break;
-        }
-    }
-    
-    var isCurrentSaved = isSaved && !hasUnsavedChanges;
-    var isLast = (currentHole === 18);
-    
-    GameUI.updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, showSignCardModal);
-}
-
 // ============================================================
 // Flight Toggle Handler
 // ============================================================
@@ -1160,7 +1137,6 @@ function renderAll() {
     var currentSi = courseSi[currentHole - 1];
     var tr = GameLoader.getTRForHole(currentHole);
     
-    // Use new hole header renderer
     GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
@@ -1194,7 +1170,6 @@ function renderAll() {
         }
     );
     
-    // Update flight badge on first player card
     GameUI.updateFlightBadge(editableFlight);
     
     var holes = getDisplayHoles();
@@ -1212,7 +1187,21 @@ function renderAll() {
         courseSi
     );
     
-    updateNavButtons();
+    // SINGLE SOURCE OF TRUTH: Update navigation buttons
+    var playOrder = getPlayOrder();
+    var isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) {
+        return key.startsWith(editableFlight + "_" + currentHole + "_");
+    }).length === 0;
+    
+    GameUI.updateNavigationButtons(
+        currentHole,
+        playOrder,
+        isCurrentSaved,
+        isGameCompleteFlag,
+        celebrationTriggered,
+        showSignCardModal
+    );
+    
     if (typeof Ticker !== 'undefined') {
         Ticker.refresh();
     }
@@ -1365,10 +1354,8 @@ async function init() {
             return;
         }
         
-        // Apply tight layout and button styles
         GameUI.applyTightLayout();
         
-        // Render compact header (centered SAVE button)
         GameUI.renderCompactHeader(
             "compactHeaderContainer",
             editableFlight,
@@ -1380,10 +1367,8 @@ async function init() {
             null
         );
         
-        // Set initial display mode for P/N button
         GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
         
-        // Add flight badge to first player card
         setTimeout(function() {
             GameUI.addFlightBadge(editableFlight);
         }, 100);
@@ -1418,13 +1403,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.18
+VERSION: 3.19
 KEY CHANGES:
-   - CHANGED: Now uses GameUI.renderHoleHeader() for new hole header layout
-   - LIVE bubble now inline with HOLE number (left-aligned)
-   - HOLE number perfectly centered using CSS Grid
-   - Removed separate PAR/SI line (saved space)
-   - Tighter spacing throughout
+   - CHANGED: Now uses GameUI.updateNavigationButtons() as single source of truth
+   - REMOVED: Duplicate updateNavButtons() logic
+   - REMOVED: Local last hole detection and sign button logic (now in game-ui.js)
+   - Navigation buttons now consistent and reliable
    - All game logic unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
