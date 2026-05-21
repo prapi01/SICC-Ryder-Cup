@@ -1,16 +1,14 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.07
+VERSION: 2.08
 KEY CHANGES:
-   - NEW: Anchor selection flow at Handicap Adjustment screen
-   - If only one player with 0 handicap → auto-select, calculate, save, show read-only table
-   - If multiple players with 0 handicap → show dropdown, user selects anchor, then calculate/save
-   - No "Confirm & Save" button after selection - table is read-only
-   - Performance adjustment: Win = +1, Loss = -1, Tie = +0.5
-   - Match de-duplication (each match counted once)
-   - Contribution thresholds: >= 3.5 → -1, <= -3.5 → +1, else 0
-   - Four buttons: Back to Scorecard, Celebration Screen, Main Menu, Exit
-DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js, game-match.js
+   - ADDED: Support for readonly mode (viewing completed games)
+   - ADDED: loadFromHistory() - loads game data from historyGames collection
+   - ADDED: URL parameter detection (?gameId=xxx&mode=readonly)
+   - ADDED: Back button returns to view-history.html when in readonly mode
+   - CHANGED: Disabled all interactive elements in readonly mode
+   - All existing functionality (anchor selection, calculations, saving) unchanged for live mode
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
 
@@ -27,6 +25,8 @@ var HandicapAdjustment = (function() {
     var flight2Data = null;
     var currentTableData = null;
     var isViewOnly = false;
+    var isReadOnlyMode = false;  // NEW: for completed games
+    var returnDestination = null;  // NEW: where to go back to
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -122,7 +122,6 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Calculate Performance Adjustment from match results
-    // Win = +1, Loss = -1, Tie = +0.5, each match counted once
     // ============================================================
     
     function calculatePerformanceAdjustmentFromCache(cache, allPlayersList) {
@@ -299,7 +298,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table (Read-only after anchor selected)
+    // Display Table (with readonly support)
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -315,7 +314,7 @@ var HandicapAdjustment = (function() {
         tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Anc</th>';
         tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Perf</th>';
         tableHtml += '<th style="padding:6px 4px; text-align:center; width:55px;">New</th>';
-        tableHtml += '</tr></thead><tbody>';
+        tableHtml += '</thead><tbody>';
         
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
@@ -325,7 +324,7 @@ var HandicapAdjustment = (function() {
             tableHtml += `<td style="padding:6px 4px; text-align:left;">${escapeHtml(p.name)}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center;">${p.currentHcp}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${p.anchorAdj >= 0 ? '#4caf50' : '#ff6b6b'}; font-weight:600;">${p.anchorAdj >= 0 ? '+' + p.anchorAdj : p.anchorAdj}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${p.perfAdj > 0 ? '#4caf50' : (p.perfAdj < 0 ? '#ff6b6b' : '#888')}; font-weight:600;">${p.perfAdj > 0 ? '+' + p.perfAdj : (p.perfAdj < 0 ? p.perfAdj : '0')}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${p.perfAdj > 0 ? '#4caf50' : (p.perfAdj < 0 ? '#ff6b6b' : '#888')}; font-weight:600;">${p.perfAdj > 0 ? '+' + p.perfAdj : p.perfAdj}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
             tableHtml += '</tr>';
         }
@@ -339,6 +338,25 @@ var HandicapAdjustment = (function() {
             messageHtml = `<div style="font-size:0.85rem; color:#ffaa44; text-align:center; margin-bottom:12px;">🎉 ${escapeHtml(newAnchorName)} will be the NEW ANCHOR! 🎉</div>`;
         }
         
+        // Different button layout for readonly mode
+        var buttonsHtml = '';
+        if (isReadOnly) {
+            buttonsHtml = `
+                <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; justify-content:center;">
+                    <button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:10px 20px; border-radius:30px; font-size:0.8rem; font-weight:600; cursor:pointer;">← Back</button>
+                </div>
+            `;
+        } else {
+            buttonsHtml = `
+                <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; justify-content:center;">
+                    <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏌️ Back to Scorecard</button>
+                    <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🎉 Celebration Screen</button>
+                    <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏠 Main Menu</button>
+                    <button id="exitBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🚪 Exit</button>
+                </div>
+            `;
+        }
+        
         var modalHtml = `
             <div class="modal-overlay" id="hcpAdjustModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10000;">
                 <div style="background:#1a1a1a; border-radius:28px; padding:16px; max-width:95%; width:auto; border:2px solid #4caf50;">
@@ -346,12 +364,7 @@ var HandicapAdjustment = (function() {
                     ${messageHtml}
                     ${anchorInfoHtml}
                     ${tableHtml}
-                    <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; justify-content:center;">
-                        <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏌️ Back to Scorecard</button>
-                        <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🎉 Celebration Screen</button>
-                        <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏠 Main Menu</button>
-                        <button id="exitBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🚪 Exit</button>
-                    </div>
+                    ${buttonsHtml}
                 </div>
             </div>
         `;
@@ -361,28 +374,38 @@ var HandicapAdjustment = (function() {
         
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         
-        // Button handlers
-        document.getElementById('backToScorecardBtn').addEventListener('click', function() {
-            document.getElementById('hcpAdjustModal').remove();
-            window.location.href = 'view-game.html';
-        });
-        
-        document.getElementById('celebrationBtn').addEventListener('click', function() {
-            document.getElementById('hcpAdjustModal').remove();
-            if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
-                SignCard.replayCelebration();
-            } else {
-                alert('Celebration screen not available');
-            }
-        });
-        
-        document.getElementById('mainMenuBtn').addEventListener('click', function() {
-            window.location.href = 'index.html';
-        });
-        
-        document.getElementById('exitBtn').addEventListener('click', function() {
-            window.location.href = 'index.html';
-        });
+        if (isReadOnly) {
+            document.getElementById('hcpBackBtn').addEventListener('click', function() {
+                document.getElementById('hcpAdjustModal').remove();
+                if (returnDestination) {
+                    window.location.href = returnDestination;
+                } else {
+                    window.history.back();
+                }
+            });
+        } else {
+            document.getElementById('backToScorecardBtn').addEventListener('click', function() {
+                document.getElementById('hcpAdjustModal').remove();
+                window.location.href = 'view-game.html';
+            });
+            
+            document.getElementById('celebrationBtn').addEventListener('click', function() {
+                document.getElementById('hcpAdjustModal').remove();
+                if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
+                    SignCard.replayCelebration();
+                } else {
+                    alert('Celebration screen not available');
+                }
+            });
+            
+            document.getElementById('mainMenuBtn').addEventListener('click', function() {
+                window.location.href = 'index.html';
+            });
+            
+            document.getElementById('exitBtn').addEventListener('click', function() {
+                window.location.href = 'index.html';
+            });
+        }
     }
     
     // ============================================================
@@ -415,25 +438,22 @@ var HandicapAdjustment = (function() {
             var selectedAnchor = allPlayers.find(p => p.name === selectedName);
             document.getElementById('anchorSelectModal').remove();
             
-            // Calculate and save with selected anchor
             anchorPlayer = selectedAnchor;
             var calculationResult = calculateAllAdjustments(anchorPlayer);
             currentTableData = calculationResult;
             
-            // Save to Firestore
             saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
                 if (err) {
                     alert("Error saving handicap data. Please try again.");
                 } else {
-                    // Show read-only table
-                    showAdjustmentTable(calculationResult, anchorPlayer.name, true);
+                    showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                 }
             });
         });
     }
     
     // ============================================================
-    // Load game data from Firestore
+    // Load game data from Firestore (for live games)
     // ============================================================
     
     function loadGameData(gameId, callback) {
@@ -457,6 +477,72 @@ var HandicapAdjustment = (function() {
             });
     }
     
+    // ============================================================
+    // NEW: Load from historyGames (for readonly mode)
+    // ============================================================
+    
+    function loadFromHistory(gameId, callback) {
+        firebase.firestore().collection("historyGames").where("originalGameId", "==", gameId).limit(1).get()
+            .then(function(snapshot) {
+                if (snapshot.empty) {
+                    console.error("No history record found for game:", gameId);
+                    callback(null);
+                    return;
+                }
+                var doc = snapshot.docs[0];
+                var historyData = doc.data();
+                
+                // Extract data from history record
+                courseSi = historyData.gameInfo?.course?.si || [];
+                coursePar = historyData.gameInfo?.course?.par || [];
+                startingHole = historyData.gameInfo?.startingHole || 1;
+                allPlayers = historyData.players || [];
+                
+                // For readonly mode, we don't need flight data strings
+                flight1Data = "";
+                flight2Data = "";
+                
+                // Extract handicap adjustment data if it exists
+                var hcpData = historyData.handicapAdjustment;
+                if (hcpData && hcpData.players) {
+                    // Display existing adjustment in readonly mode
+                    var calculationResult = {
+                        players: hcpData.players.map(function(p) {
+                            return {
+                                name: p.name,
+                                label: p.name.substring(0, 3).toUpperCase(),
+                                currentHcp: p.currentHcp,
+                                anchorAdj: p.anchorAdj || 0,
+                                perfAdj: p.perfAdj || 0,
+                                newHcp: p.newHcp
+                            };
+                        }),
+                        needsZeroRise: hcpData.needsZeroRise || false,
+                        zeroRiseAmount: hcpData.zeroRiseAmount || 0,
+                        newAnchorName: hcpData.newAnchor
+                    };
+                    
+                    callback({
+                        data: historyData,
+                        isFromHistory: true,
+                        preCalculatedResult: calculationResult,
+                        anchor: hcpData.anchor
+                    });
+                } else {
+                    callback({
+                        data: historyData,
+                        isFromHistory: true,
+                        preCalculatedResult: null,
+                        anchor: null
+                    });
+                }
+            })
+            .catch(function(err) {
+                console.error("Error loading history data:", err);
+                callback(null);
+            });
+    }
+    
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -468,7 +554,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Main Entry Point
+    // Main Entry Point (updated for readonly mode)
     // ============================================================
     
     function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
@@ -476,10 +562,10 @@ var HandicapAdjustment = (function() {
         currentArchiveId = archiveId;
         allPlayers = winningPlayers.teamA.concat(winningPlayers.teamB);
         isViewOnly = isViewOnlyMode || false;
+        isReadOnlyMode = false;
         
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // Find players with handicap 0
         var zeroHcpPlayers = allPlayers.filter(function(p) { return p.handicap === 0; });
         
         loadGameData(gameId, function(gameData) {
@@ -489,25 +575,21 @@ var HandicapAdjustment = (function() {
             }
             
             if (zeroHcpPlayers.length === 1) {
-                // Single anchor - auto-select
                 anchorPlayer = zeroHcpPlayers[0];
                 var calculationResult = calculateAllAdjustments(anchorPlayer);
                 currentTableData = calculationResult;
                 
-                // Auto-save to Firestore
                 saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
                     if (err) {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, true);
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                     }
                 });
             } else if (zeroHcpPlayers.length > 1) {
-                // Multiple anchors - show selection modal
                 showAnchorSelectionModal(zeroHcpPlayers);
             } else {
-                // No zero handicap players - use lowest handicap as anchor
                 var lowestHcpPlayer = allPlayers[0];
                 anchorPlayer = lowestHcpPlayer;
                 var calculationResult = calculateAllAdjustments(anchorPlayer);
@@ -518,30 +600,92 @@ var HandicapAdjustment = (function() {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, true);
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                     }
                 });
             }
         });
     }
     
+    // NEW: Initialize in readonly mode (for completed games)
+    function initReadOnly(gameId, returnUrl) {
+        currentGameId = gameId;
+        isReadOnlyMode = true;
+        returnDestination = returnUrl || "view-history.html?gameId=" + gameId;
+        
+        loadFromHistory(gameId, function(historyResult) {
+            if (!historyResult) {
+                alert("Unable to load handicap data for this completed game.");
+                window.location.href = returnDestination;
+                return;
+            }
+            
+            allPlayers = historyResult.data.players || [];
+            allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            if (historyResult.preCalculatedResult) {
+                // Use existing handicap adjustment data
+                showAdjustmentTable(historyResult.preCalculatedResult, historyResult.anchor || "Anchor", true);
+            } else {
+                // No handicap adjustment data available
+                var emptyResult = {
+                    players: allPlayers.map(function(p) {
+                        return {
+                            name: p.name,
+                            label: p.label,
+                            currentHcp: p.handicap,
+                            anchorAdj: 0,
+                            perfAdj: 0,
+                            newHcp: p.handicap
+                        };
+                    }),
+                    needsZeroRise: false,
+                    zeroRiseAmount: 0,
+                    newAnchorName: null
+                };
+                showAdjustmentTable(emptyResult, "Not calculated", true);
+            }
+        });
+    }
+    
+    // Check URL parameters for readonly mode
+    function checkUrlAndInit() {
+        var urlParams = new URLSearchParams(window.location.search);
+        var gameId = urlParams.get('gameId');
+        var mode = urlParams.get('mode');
+        var returnTo = urlParams.get('returnTo');
+        
+        if (gameId && mode === 'readonly') {
+            // Called from view-history.html
+            var returnUrl = returnTo === 'history' ? 'view-history.html?gameId=' + gameId : null;
+            initReadOnly(gameId, returnUrl);
+            return true;
+        }
+        return false;
+    }
+    
+    // Auto-initialize if URL parameters present
+    if (typeof window !== 'undefined') {
+        checkUrlAndInit();
+    }
+    
     return {
-        init: init
+        init: init,
+        initReadOnly: initReadOnly,
+        checkUrlAndInit: checkUrlAndInit
     };
 })();
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.07
+VERSION: 2.08
 KEY CHANGES:
-   - NEW: Anchor selection flow at Handicap Adjustment screen
-   - If only one player with 0 handicap → auto-select, calculate, save, show read-only table
-   - If multiple players with 0 handicap → show dropdown, user selects anchor, then calculate/save
-   - No "Confirm & Save" button after selection - table is read-only
-   - Performance adjustment: Win = +1, Loss = -1, Tie = +0.5
-   - Match de-duplication (each match counted once)
-   - Contribution thresholds: >= 3.5 → -1, <= -3.5 → +1, else 0
-   - Four buttons: Back to Scorecard, Celebration Screen, Main Menu, Exit
-DEPENDS ON: Firebase Firestore, history-record.js, sign-card.js, game-match.js
+   - ADDED: Support for readonly mode (viewing completed games)
+   - ADDED: loadFromHistory() - loads game data from historyGames collection
+   - ADDED: URL parameter detection (?gameId=xxx&mode=readonly)
+   - ADDED: Back button returns to view-history.html when in readonly mode
+   - CHANGED: Disabled all interactive elements in readonly mode
+   - All existing functionality (anchor selection, calculations, saving) unchanged for live mode
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
