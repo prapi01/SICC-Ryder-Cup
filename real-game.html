@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 3.14
+VERSION: 3.15
 KEY CHANGES:
-   - FIXED: createHistoryRecord() now uses HistoryRecord.createPendingRecord()
-   - Now properly passes all required parameters (flight data strings, match results)
-   - Ensures holeData field is created in history record
-   - This fixes the missing holeData issue in previous versions
-   - All other functionality identical to v3.13
+   - REMOVED: Hardcoded scorecard header HTML
+   - NOW USES: GameUI.renderScorecardHeader() for responsive layout
+   - Scorecard header now responsive: 
+     Desktop: single row | Mobile: two-row stacked
+   - Added GameUI.updateHoleNumberDisplay() calls for hole navigation
+   - All other functionality identical to v3.14
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -116,17 +117,23 @@ STATUS: Ready for integration
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
         
         .scorecard-section { margin: 20px 0; }
+        
+        /* Scorecard header container - GameUI will render into this */
+        #scorecardHeaderContainer {
+            margin-bottom: 10px;
+        }
+        
         .scorecard-wrapper { overflow-x: auto; }
         .scorecard-table {
             width: 100%;
-            min-width: 700px;
-            font-size: 0.7rem;
             border-collapse: collapse;
+            font-size: 0.7rem;
         }
         .scorecard-table th, .scorecard-table td {
             padding: 6px 3px;
             text-align: center;
             border: 1px solid #222;
+            white-space: nowrap;
         }
         .scorecard-table th {
             color: #4caf50;
@@ -259,18 +266,8 @@ STATUS: Ready for integration
     <div id="actionButtonsContainer"></div>
     
     <div class="scorecard-section">
-        <div class="scorecard-header">
-            <div class="scorecard-left-group">
-                <span class="scorecard-title">SCORECARD</span>
-                <button class="pn-toggle" id="pnToggleBtn">P</button>
-            </div>
-            <button class="flight-toggle" id="flightToggleBtn">✈️ Flight 1</button>
-            <div class="nav-group">
-                <button class="nav-btn" id="prevHoleBtn">◀</button>
-                <span class="hole-number-display" id="holeNumberDisplay">1</span>
-                <button class="nav-btn" id="nextHoleBtn">▶</button>
-            </div>
-        </div>
+        <!-- Scorecard header container - GameUI will render responsive header here -->
+        <div id="scorecardHeaderContainer"></div>
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
@@ -281,7 +278,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.14</div>
+<div class="version-tag">v3.15</div>
 
 <script>
 // ============================================================
@@ -457,7 +454,6 @@ function getAllOpponents(player) {
     return opponents;
 }
 
-// Uses shared GameData.getMatchValueFromResults()
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
@@ -881,10 +877,7 @@ function prevHole() {
 }
 
 function updateHoleNumberDisplay() {
-    var holeDisplay = document.getElementById("holeNumberDisplay");
-    if (holeDisplay) {
-        holeDisplay.innerText = currentHole;
-    }
+    GameUI.updateHoleNumberDisplay(currentHole);
 }
 
 function updateNavButtons() {
@@ -901,7 +894,6 @@ function updateNavButtons() {
     var isCurrentSaved = isSaved && !hasUnsavedChanges;
     var isLast = (currentHole === 18);
     
-    // Use centralized GameUI function for last hole SIGN button
     GameUI.updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, showSignCardModal);
 }
 
@@ -910,7 +902,6 @@ function updateNavButtons() {
 // ============================================================
 
 function showSignCardModal() {
-    // First, clean up any stuck modals
     if (typeof GameUI.ensureNoStuckModals === 'function') {
         GameUI.ensureNoStuckModals();
     }
@@ -979,7 +970,6 @@ function showSignCardModal() {
 }
 
 function showWaitingScreen() {
-    // Remove any existing waiting modal
     if (activeWaitModal) {
         activeWaitModal.remove();
         activeWaitModal = null;
@@ -1037,43 +1027,33 @@ function showGameCompleteScreen() {
     });
 }
 
-// ============================================================
-// FIXED: createHistoryRecord now uses HistoryRecord.createPendingRecord()
-// ============================================================
-
 async function createHistoryRecord() {
     var cache = GameLoader.getLocalCache();
     var tr = GameLoader.getTRForHole(currentHole);
     
-    // Build match results object for the entire game
     var allMatchResults = {};
     for (var hole = 1; hole <= 18; hole++) {
         var resultsData = calculateHoleResults(hole);
         if (resultsData) {
-            // Get match results for this hole
             var matchResults = GameMatch.calculateCrossFlight(
                 cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, hole, coursePar
             );
-            // Merge into allMatchResults
             for (var key in matchResults) {
                 allMatchResults[key] = matchResults[key];
             }
         }
     }
     
-    // Prepare final scores object
     var finalScores = {
         teamA: tr.teamA,
         teamB: tr.teamB
     };
     
-    // Prepare signatures object
     var signatures = {
         f1: { signed: cache.signatures.f1 || false, signedAt: null, captainName: null },
         f2: { signed: cache.signatures.f2 || false, signedAt: null, captainName: null }
     };
     
-    // Prepare game data object for history record
     var gameDataForHistory = {
         date: new Date().toISOString().split('T')[0],
         course: {
@@ -1087,7 +1067,6 @@ async function createHistoryRecord() {
         teamGameFormat: teamGameFormat
     };
     
-    // Use HistoryRecord.createPendingRecord to create proper record with holeData
     return new Promise(function(resolve, reject) {
         HistoryRecord.createPendingRecord(
             gameId,
@@ -1095,8 +1074,8 @@ async function createHistoryRecord() {
             cache.results,
             finalScores,
             signatures,
-            cache.f1DataString,  // Flight 1 data string
-            cache.f2DataString,  // Flight 2 data string
+            cache.f1DataString,
+            cache.f2DataString,
             allMatchResults,
             function(err, recordId) {
                 if (err) {
@@ -1393,14 +1372,19 @@ async function init() {
         // Render bottom menu (Back to Main Menu)
         GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
         
-        // Set initial flight toggle button text
-        GameUI.updateFlightToggleButton(editableFlight);
+        // Render responsive scorecard header
+        GameUI.renderScorecardHeader(
+            "scorecardHeaderContainer",
+            editableFlight,
+            currentHole,
+            prevHole,
+            nextHole,
+            onToggleFlight,
+            null  // onToggleDisplay will be handled by P/N button internally
+        );
         
-        // Attach global event listeners
-        GameUI.attachGlobalEventListeners(prevHole, nextHole);
-        
-        // Register flight toggle callback
-        window.onToggleFlight = onToggleFlight;
+        // Set initial display mode for P/N button
+        GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
         
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
@@ -1439,13 +1423,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.14
+VERSION: 3.15
 KEY CHANGES:
-   - FIXED: createHistoryRecord() now uses HistoryRecord.createPendingRecord()
-   - Now properly passes all required parameters (flight data strings, match results)
-   - Ensures holeData field is created in history record
-   - This fixes the missing holeData issue in previous versions
-   - All other functionality identical to v3.13
+   - REMOVED: Hardcoded scorecard header HTML
+   - NOW USES: GameUI.renderScorecardHeader() for responsive layout
+   - Scorecard header now responsive: 
+     Desktop: single row | Mobile: two-row stacked
+   - Added GameUI.updateHoleNumberDisplay() calls for hole navigation
+   - All other functionality identical to v3.14
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
