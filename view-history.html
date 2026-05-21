@@ -1,14 +1,13 @@
 <!--
 FILE: view-history.html
-VERSION: 3.06
+VERSION: 3.07
 KEY CHANGES:
-   - ADDED: Responsive scorecard header matching real-game/view-game
-   - ADDED: Flight badge on first player card
-   - ADDED: Clickable status bubble (refresh)
-   - CHANGED: Now uses GameUI.renderCompactHeader() for scorecard header
-   - CHANGED: Uses GameUI.addFlightBadge() for flight indication
-   - CHANGED: Uses GameUI.updateNavigationButtons() for nav logic
-   - All history viewer functionality (archived games, handicap display) preserved
+   - ADDED: Final Result Mode (landing page for completed games)
+   - ADDED: Three-mode navigation (Result → Scorecard → HCP)
+   - ADDED: Full scorecard view with match bubbles, T-1, T-2, Strk rows
+   - ADDED: Flight toggle and P/N toggle for scorecard mode
+   - CHANGED: Back button returns to previous mode (Result or HCP)
+   - All history viewer functionality preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js
 STATUS: Ready for integration
 -->
@@ -112,6 +111,118 @@ STATUS: Ready for integration
             margin-top: 4px;
         }
         
+        /* Final Result Mode Styles */
+        .final-result-container {
+            background: #111;
+            border-radius: 28px;
+            padding: 24px;
+            text-align: center;
+            border: 1px solid #333;
+            margin-bottom: 20px;
+        }
+        .final-course-name {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 4px;
+        }
+        .final-date {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 24px;
+        }
+        .final-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #ffaa44;
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+            border-top: 1px solid #333;
+            padding-top: 16px;
+        }
+        .final-score {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            align-items: center;
+        }
+        .final-score .team-a, .final-score .team-b {
+            min-width: 100px;
+        }
+        .final-score .team-a.winner { color: #4caf50; }
+        .final-score .team-b.winner { color: #4caf50; }
+        .final-score .team-a.loser { color: #ff6b6b; }
+        .final-score .team-b.loser { color: #ff6b6b; }
+        .final-winner {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 24px;
+            padding: 8px;
+            background: rgba(76,175,80,0.1);
+            border-radius: 40px;
+            display: inline-block;
+            width: auto;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .final-players-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #ffaa44;
+            margin-bottom: 12px;
+        }
+        .final-players-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+        .final-player {
+            background: #1a3a1a;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #4caf50;
+            text-align: center;
+        }
+        .final-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .final-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .final-btn-scorecard {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .final-btn-hcp {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .final-btn-back {
+            background: #1a1a1a;
+            color: #ccc;
+            border: 1px solid #333;
+            margin-top: 12px;
+        }
+        
         /* HCP Page Styles */
         .hcp-page {
             background: #111;
@@ -180,44 +291,6 @@ STATUS: Ready for integration
             text-align: center;
             font-size: 0.75rem;
             color: #ffaa44;
-        }
-        
-        .action-buttons-row {
-            display: flex;
-            gap: 12px;
-            margin-top: 20px;
-        }
-        .btn-half {
-            flex: 1;
-            padding: 12px;
-            border-radius: 40px;
-            font-weight: 600;
-            text-align: center;
-            cursor: pointer;
-            border: none;
-            transition: all 0.2s ease;
-        }
-        .btn-back {
-            background: #1a1a1a;
-            color: #ccc;
-            border: 1px solid #333;
-        }
-        .btn-scorecard {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        .btn-menu-full {
-            width: 100%;
-            padding: 14px;
-            border-radius: 40px;
-            font-weight: 600;
-            text-align: center;
-            cursor: pointer;
-            background: #1a1a1a;
-            color: #ccc;
-            border: 1px solid #333;
-            margin-top: 20px;
         }
         
         /* Scorecard Page Styles */
@@ -315,8 +388,27 @@ STATUS: Ready for integration
 <div class="container">
     <div class="status-bubble" id="statusBubble">HISTORY</div>
     
+    <!-- Game Selector (default view) -->
     <div id="gameSelector" class="game-selector">
         <div class="loading">Loading completed games...</div>
+    </div>
+    
+    <!-- Final Result Mode -->
+    <div id="finalResultPage" style="display:none;">
+        <div class="final-result-container">
+            <div class="final-course-name" id="finalCourseName"></div>
+            <div class="final-date" id="finalDate"></div>
+            <div class="final-title">FINAL RESULT</div>
+            <div class="final-score" id="finalScore"></div>
+            <div class="final-winner" id="finalWinner"></div>
+            <div class="final-players-title" id="finalPlayersTitle">🏅 WINNING TEAM 🏅</div>
+            <div class="final-players-grid" id="finalPlayersGrid"></div>
+            <div class="final-buttons">
+                <button class="final-btn final-btn-scorecard" id="finalScorecardBtn">📋 VIEW SCORECARD</button>
+                <button class="final-btn final-btn-hcp" id="finalHcpBtn">📊 HANDICAP ADJUSTMENT</button>
+            </div>
+            <button class="final-btn final-btn-back" id="finalBackBtn">← Back to Game List</button>
+        </div>
     </div>
     
     <!-- HCP Page -->
@@ -331,33 +423,32 @@ STATUS: Ready for integration
             <div id="hcpTableContainer"></div>
             <div id="hcpZeroInfo"></div>
             <div id="hcpNewAnchorInfo"></div>
-            <div class="action-buttons-row">
-                <button class="btn-half btn-back" id="hcpBackToGameListBtn">← Back</button>
-                <button class="btn-half btn-scorecard" id="hcpToScorecardBtn">Scorecard →</button>
+            <div class="action-buttons-row" style="display: flex; gap: 12px; margin-top: 20px;">
+                <button class="btn-half btn-back" id="hcpBackToResultBtn" style="flex: 1; padding: 12px; border-radius: 40px; font-weight: 600; cursor: pointer; background: #1a1a1a; color: #ccc; border: 1px solid #333;">← Back</button>
+                <button class="btn-half btn-scorecard" id="hcpToScorecardBtn" style="flex: 1; padding: 12px; border-radius: 40px; font-weight: 600; cursor: pointer; background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50;">Scorecard →</button>
             </div>
         </div>
     </div>
     
-    <!-- Scorecard Page -->
+    <!-- Scorecard Page (read-only, same UI as real-game) -->
     <div id="scorecardPage" style="display:none;">
         <div class="game-info-header">
             <div class="game-course-name" id="scorecardCourseName"></div>
             <div class="game-date-display" id="scorecardGameDate"></div>
         </div>
-        <div id="holeHeader" class="hole-header"></div>
+        <div id="holeHeader"></div>
         <div id="trDisplay" class="team-score-card"></div>
         <div id="playerCards" class="player-cards"></div>
         <div class="scorecard-section">
-            <!-- Scorecard header container - GameUI will render responsive header here -->
             <div id="compactHeaderContainer"></div>
             <div class="scorecard-wrapper" id="scorecardWrapper"></div>
         </div>
-        <button class="btn-menu-full" id="scorecardBackBtn">← Back</button>
+        <button class="btn-menu-full" id="scorecardBackBtn" style="width: 100%; padding: 14px; border-radius: 40px; font-weight: 600; cursor: pointer; background: #1a1a1a; color: #ccc; border: 1px solid #333; margin-top: 20px;">← Back</button>
     </div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.06</div>
+<div class="version-tag">v3.07</div>
 
 <script>
 // ============================================================
@@ -393,6 +484,9 @@ var resultsCache = null;
 var currentHole = 1;
 var currentDisplayMode = "play";
 var selectedFlight = 1;
+
+// Current mode: 'result', 'scorecard', 'hcp'
+var currentMode = 'result';
 
 // ============================================================
 // Helper Functions
@@ -579,6 +673,193 @@ function updateTRDisplay(containerId, teamA, teamB, teamAGreen, teamBGreen) {
     container.innerHTML = html;
 }
 
+// ============================================================
+// Final Result Mode
+// ============================================================
+
+function renderFinalResult() {
+    if (!currentGameData) return;
+    
+    var finalResults = currentGameData.finalResults || {};
+    var teamAScore = finalResults.teamAScore || 9.5;
+    var teamBScore = finalResults.teamBScore || 9.5;
+    var winner = finalResults.winner || "Tie";
+    var winnerText = finalResults.winnerText || (winner === "A" ? "Team A Wins!" : winner === "B" ? "Team B Wins!" : "Tie Game!");
+    
+    var courseName = courseCache?.name || "Unknown Course";
+    var gameDateRaw = currentGameData.gameInfo?.date || "";
+    var gameDateFormatted = formatDisplayDate(gameDateRaw);
+    
+    document.getElementById("finalCourseName").innerHTML = escapeHtml(courseName);
+    document.getElementById("finalDate").innerHTML = gameDateFormatted;
+    
+    // Score display
+    var teamAClass = (winner === "A") ? "winner" : "loser";
+    var teamBClass = (winner === "B") ? "winner" : "loser";
+    if (winner === "Tie") { teamAClass = "winner"; teamBClass = "winner"; }
+    
+    document.getElementById("finalScore").innerHTML = `
+        <span class="team-a ${teamAClass}">Team A ${teamAScore}</span>
+        <span>-</span>
+        <span class="team-b ${teamBClass}">${teamBScore} Team B</span>
+    `;
+    document.getElementById("finalWinner").innerHTML = winnerText;
+    
+    // Winning team players
+    var winningTeamPlayers = [];
+    if (winner === "A") {
+        winningTeamPlayers = allPlayersCache.filter(function(p) { return p.team === "A"; });
+        document.getElementById("finalPlayersTitle").innerHTML = "🏅 TEAM A 🏅";
+    } else if (winner === "B") {
+        winningTeamPlayers = allPlayersCache.filter(function(p) { return p.team === "B"; });
+        document.getElementById("finalPlayersTitle").innerHTML = "🏅 TEAM B 🏅";
+    } else {
+        winningTeamPlayers = allPlayersCache;
+        document.getElementById("finalPlayersTitle").innerHTML = "🏅 BOTH TEAMS 🏅";
+    }
+    
+    var playersHtml = "";
+    for (var i = 0; i < winningTeamPlayers.length; i++) {
+        playersHtml += '<div class="final-player">' + escapeHtml(winningTeamPlayers[i].name) + '</div>';
+    }
+    document.getElementById("finalPlayersGrid").innerHTML = playersHtml;
+}
+
+// ============================================================
+// Scorecard Page (read-only)
+// ============================================================
+
+function goToPrevHole() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex > 0) {
+        currentHole = playOrder[currentIndex - 1];
+        GameUI.updateCompactHoleDisplay(currentHole);
+        GameUI.updateHoleHeaderNumber(currentHole);
+        renderScorecardPage();
+    }
+}
+
+function goToNextHole() {
+    var startingHole = courseCache?.startingHole || 1;
+    var playOrder = getPlayOrder(startingHole);
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex < 17) {
+        currentHole = playOrder[currentIndex + 1];
+        GameUI.updateCompactHoleDisplay(currentHole);
+        GameUI.updateHoleHeaderNumber(currentHole);
+        renderScorecardPage();
+    }
+}
+
+function onToggleFlight(flightNumber) {
+    selectedFlight = flightNumber;
+    GameUI.updateFlightBadge(flightNumber);
+    renderScorecardPage();
+}
+
+function toggleDisplayMode() {
+    var newMode = currentDisplayMode === "play" ? "natural" : "play";
+    currentDisplayMode = newMode;
+    GameUI.setDisplayMode(newMode, null);
+    renderScorecardPage();
+}
+
+function renderScorecardPage() {
+    if (!f1DataString || !f2DataString) return;
+    
+    window.savedHoles = { 
+        1: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18], 
+        2: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18] 
+    };
+    
+    var startingHole = courseCache?.startingHole || 1;
+    var currentPar = (courseCache?.par || [])[currentHole - 1] || 4;
+    var currentSi = (courseCache?.si || [])[currentHole - 1] || 1;
+    var tr = getTRForHole(currentHole);
+    
+    GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+    
+    var currentPlayers = getFlightOrderedPlayers(selectedFlight);
+    GameUI.renderPlayerCards(
+        "playerCards",
+        currentPlayers,
+        getAllOpponents,
+        getBubbleClass,
+        getBubbleValue,
+        getCurrentScore,
+        false,  // canEdit = false (read-only)
+        null
+    );
+    
+    GameUI.updateFlightBadge(selectedFlight);
+    
+    var t1Row = new Array(18).fill('_');
+    var t2Row = new Array(18).fill('_');
+    var strkRow = new Array(18).fill('_');
+    
+    if (resultsCache) {
+        for (var pos = 0; pos < 18; pos++) {
+            t1Row[pos] = getDisplayRow("t1", pos);
+            t2Row[pos] = getDisplayRow("t2", pos);
+            strkRow[pos] = getDisplayRow("strk", pos);
+        }
+    }
+    
+    var holes = getDisplayHoles();
+    GameUI.renderScorecard(
+        "scorecardWrapper",
+        holes,
+        allPlayersCache,
+        getStoredScore,
+        isHoleSaved,
+        t1Row,
+        t2Row,
+        strkRow,
+        courseCache?.par || [],
+        courseCache?.si || []
+    );
+}
+
+function showScorecardMode() {
+    currentMode = 'scorecard';
+    currentHole = 1;
+    currentDisplayMode = "play";
+    selectedFlight = 1;
+    
+    // Hide other pages
+    document.getElementById("finalResultPage").style.display = "none";
+    document.getElementById("hcpPage").style.display = "none";
+    document.getElementById("gameSelector").style.display = "none";
+    document.getElementById("scorecardPage").style.display = "block";
+    
+    // Render compact header for scorecard
+    GameUI.renderCompactHeader(
+        "compactHeaderContainer",
+        selectedFlight,
+        currentHole,
+        null,  // No save button
+        goToPrevHole,
+        goToNextHole,
+        onToggleFlight,
+        toggleDisplayMode
+    );
+    
+    GameUI.setDisplayMode(currentDisplayMode, null);
+    
+    setTimeout(function() {
+        GameUI.addFlightBadge(selectedFlight);
+    }, 100);
+    
+    renderScorecardPage();
+}
+
+// ============================================================
+// HCP Page (read-only)
+// ============================================================
+
 function renderHCPPage() {
     if (!currentGameData) return;
     
@@ -647,176 +928,26 @@ function renderHCPPage() {
     }
 }
 
-// ============================================================
-// Scorecard Page Functions
-// ============================================================
-
-function goToPrevHole() {
-    var startingHole = courseCache?.startingHole || 1;
-    var playOrder = getPlayOrder(startingHole);
-    var currentIndex = playOrder.indexOf(currentHole);
-    if (currentIndex > 0) {
-        currentHole = playOrder[currentIndex - 1];
-        GameUI.updateCompactHoleDisplay(currentHole);
-        renderScorecardPage();
-        updateNavButtons();
-    }
-}
-
-function goToNextHole() {
-    var startingHole = courseCache?.startingHole || 1;
-    var playOrder = getPlayOrder(startingHole);
-    var currentIndex = playOrder.indexOf(currentHole);
-    if (currentIndex < 17) {
-        currentHole = playOrder[currentIndex + 1];
-        GameUI.updateCompactHoleDisplay(currentHole);
-        renderScorecardPage();
-        updateNavButtons();
-    }
-}
-
-function updateNavButtons() {
-    var startingHole = courseCache?.startingHole || 1;
-    var playOrder = getPlayOrder(startingHole);
-    var currentIndex = playOrder.indexOf(currentHole);
-    var isFirstHole = (currentIndex === 0);
-    var isLastHole = (currentIndex === 17);
+function showHCPMode() {
+    currentMode = 'hcp';
     
-    var prevBtn = document.getElementById('compactPrevBtn');
-    var nextBtn = document.getElementById('compactNextBtn');
-    
-    if (prevBtn) prevBtn.disabled = isFirstHole;
-    if (nextBtn) nextBtn.disabled = isLastHole;
-}
-
-function onToggleFlight(flightNumber) {
-    selectedFlight = flightNumber;
-    GameUI.updateFlightBadge(flightNumber);
-    renderScorecardPage();
-}
-
-function toggleDisplayMode() {
-    var newMode = currentDisplayMode === "play" ? "natural" : "play";
-    currentDisplayMode = newMode;
-    GameUI.setDisplayMode(newMode, null);
-    renderScorecardPage();
-}
-
-function renderScorecardPage() {
-    if (!f1DataString || !f2DataString) return;
-    
-    window.savedHoles = { 
-        1: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18], 
-        2: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18] 
-    };
-    
-    var startingHole = courseCache?.startingHole || 1;
-    var currentPar = (courseCache?.par || [])[currentHole - 1] || 4;
-    var currentSi = (courseCache?.si || [])[currentHole - 1] || 1;
-    var tr = getTRForHole(currentHole);
-    
-    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
-    
-    var currentPlayers = getFlightOrderedPlayers(selectedFlight);
-    GameUI.renderPlayerCards(
-        "playerCards",
-        currentPlayers,
-        getAllOpponents,
-        getBubbleClass,
-        getBubbleValue,
-        getCurrentScore,
-        false,
-        null
-    );
-    
-    // Add flight badge to first player card
-    GameUI.updateFlightBadge(selectedFlight);
-    
-    var t1Row = new Array(18).fill('_');
-    var t2Row = new Array(18).fill('_');
-    var strkRow = new Array(18).fill('_');
-    
-    if (resultsCache) {
-        for (var pos = 0; pos < 18; pos++) {
-            t1Row[pos] = getDisplayRow("t1", pos);
-            t2Row[pos] = getDisplayRow("t2", pos);
-            strkRow[pos] = getDisplayRow("strk", pos);
-        }
-    }
-    
-    var holes = getDisplayHoles();
-    GameUI.renderScorecard(
-        "scorecardWrapper",
-        holes,
-        allPlayersCache,
-        getStoredScore,
-        isHoleSaved,
-        t1Row,
-        t2Row,
-        strkRow,
-        courseCache?.par || [],
-        courseCache?.si || []
-    );
-    
-    updateNavButtons();
-}
-
-// ============================================================
-// Navigation Functions
-// ============================================================
-
-function showHCPPage() {
+    document.getElementById("finalResultPage").style.display = "none";
+    document.getElementById("scorecardPage").style.display = "none";
     document.getElementById("gameSelector").style.display = "none";
     document.getElementById("hcpPage").style.display = "block";
-    document.getElementById("scorecardPage").style.display = "none";
+    
     renderHCPPage();
 }
 
-function showScorecardPage() {
-    document.getElementById("gameSelector").style.display = "none";
-    document.getElementById("hcpPage").style.display = "none";
-    document.getElementById("scorecardPage").style.display = "block";
-    
-    currentHole = 1;
-    currentDisplayMode = "play";
-    selectedFlight = 1;
-    
-    // Render the compact header
-    GameUI.renderCompactHeader(
-        "compactHeaderContainer",
-        selectedFlight,
-        currentHole,
-        null,  // No save button in history view
-        goToPrevHole,
-        goToNextHole,
-        onToggleFlight,
-        toggleDisplayMode
-    );
-    
-    // Set initial display mode
-    GameUI.setDisplayMode(currentDisplayMode, null);
-    
-    // Add flight badge
-    setTimeout(function() {
-        GameUI.addFlightBadge(selectedFlight);
-    }, 100);
-    
-    renderScorecardPage();
-}
-
-function goBackToGameList() {
-    currentGameData = null;
-    currentGameId = null;
-    allPlayersCache = null;
-    courseCache = null;
-    f1DataString = null;
-    f2DataString = null;
-    resultsCache = null;
+function showResultMode() {
+    currentMode = 'result';
     
     document.getElementById("hcpPage").style.display = "none";
     document.getElementById("scorecardPage").style.display = "none";
-    document.getElementById("gameSelector").style.display = "block";
-    loadGameList();
+    document.getElementById("gameSelector").style.display = "none";
+    document.getElementById("finalResultPage").style.display = "block";
+    
+    renderFinalResult();
 }
 
 // ============================================================
@@ -901,7 +1032,14 @@ function loadGame(gameId) {
             var gameDateRaw = gameData.gameInfo?.date || "";
             document.getElementById("scorecardGameDate").innerHTML = formatDisplayDate(gameDateRaw);
             
-            showHCPPage();
+            // Apply tight layout and button styles
+            GameUI.applyTightLayout();
+            
+            // Make status bubble clickable for refresh
+            GameUI.makeStatusBubbleClickable();
+            
+            // Show Final Result mode by default
+            showResultMode();
         })
         .catch(function(err) {
             console.error("Error loading game:", err);
@@ -943,17 +1081,35 @@ async function init() {
         console.log("Session initialized:", session);
     });
     
-    // Apply tight layout and button styles
-    GameUI.applyTightLayout();
+    // Check for gameId in URL (direct navigation from pre-game or hcp)
+    var urlParams = new URLSearchParams(window.location.search);
+    var directGameId = urlParams.get('gameId');
     
-    // Make status bubble clickable for refresh
-    GameUI.makeStatusBubbleClickable();
+    if (directGameId) {
+        // Load game directly without showing game list
+        loadGame(directGameId);
+    } else {
+        // Show game list
+        loadGameList();
+    }
     
-    loadGameList();
+    // Button event listeners
+    document.getElementById("finalScorecardBtn").addEventListener("click", showScorecardMode);
+    document.getElementById("finalHcpBtn").addEventListener("click", showHCPMode);
+    document.getElementById("finalBackBtn").addEventListener("click", function() {
+        // Go back to game list
+        currentGameData = null;
+        currentGameId = null;
+        document.getElementById("finalResultPage").style.display = "none";
+        document.getElementById("scorecardPage").style.display = "none";
+        document.getElementById("hcpPage").style.display = "none";
+        document.getElementById("gameSelector").style.display = "block";
+        loadGameList();
+    });
     
-    document.getElementById("hcpBackToGameListBtn").addEventListener("click", goBackToGameList);
-    document.getElementById("hcpToScorecardBtn").addEventListener("click", showScorecardPage);
-    document.getElementById("scorecardBackBtn").addEventListener("click", showHCPPage);
+    document.getElementById("hcpBackToResultBtn").addEventListener("click", showResultMode);
+    document.getElementById("hcpToScorecardBtn").addEventListener("click", showScorecardMode);
+    document.getElementById("scorecardBackBtn").addEventListener("click", showResultMode);
 }
 
 init();
@@ -964,15 +1120,14 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 3.06
+VERSION: 3.07
 KEY CHANGES:
-   - ADDED: Responsive scorecard header matching real-game/view-game
-   - ADDED: Flight badge on first player card
-   - ADDED: Clickable status bubble (refresh)
-   - CHANGED: Now uses GameUI.renderCompactHeader() for scorecard header
-   - CHANGED: Uses GameUI.addFlightBadge() for flight indication
-   - CHANGED: Uses GameUI.updateNavigationButtons() for nav logic
-   - All history viewer functionality (archived games, handicap display) preserved
+   - ADDED: Final Result Mode (landing page for completed games)
+   - ADDED: Three-mode navigation (Result → Scorecard → HCP)
+   - ADDED: Full scorecard view with match bubbles, T-1, T-2, Strk rows
+   - ADDED: Flight toggle and P/N toggle for scorecard mode
+   - CHANGED: Back button returns to previous mode (Result or HCP)
+   - All history viewer functionality preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js
 STATUS: Ready for integration
 -->
