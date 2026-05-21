@@ -1,12 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - FIXED: NGB buttons are now SQUARE (equal width and height)
-   - Fixed width: 280px, Fixed height: 280px
-   - Content vertically and horizontally centered using flexbox
-   - Both TODAY GAME and PREVIEW buttons now identical in size
-   - Maintained all splash screen and session functionality from v3.07
+   - FIXED: All buttons now have same width (matching NGB button)
+   - VIEW PREVIOUS GAMES button width matches NGB (280px)
+   - GAME SETTINGS button width matches NGB (280px)
+   - All buttons centered in container
+   - Maintained square NGB button (280px × 280px)
+   - Maintained all splash screen and session functionality
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -194,7 +195,7 @@ STATUS: Ready for deployment
             border-radius: 32px;
             width: 280px;
             height: 280px;
-            margin: 0 auto 20px auto;
+            margin: 0 auto 24px auto;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -212,21 +213,27 @@ STATUS: Ready for deployment
         .ngb .course-name { font-size: 0.85rem; font-weight: 400; color: #888; margin-top: 4px; }
         .ngb .no-game { font-size: 1rem; font-weight: 500; color: #888; }
         
+        /* Menu buttons container - centered */
         .menu-buttons {
             display: flex;
             flex-direction: column;
+            align-items: center;
             gap: 12px;
             margin-bottom: 20px;
+            width: 100%;
         }
         
+        /* VIEW PREVIOUS GAMES button - same width as NGB */
         .menu-btn {
             background: linear-gradient(145deg, #1a1a1a, #111);
             border: 1px solid #4caf50;
             border-radius: 60px;
             padding: 14px 20px;
+            width: 280px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
+            box-sizing: border-box;
         }
         .menu-btn .label {
             font-size: 0.95rem;
@@ -234,17 +241,19 @@ STATUS: Ready for deployment
             color: #4caf50;
         }
         
+        /* GAME SETTINGS button - same width as NGB */
         .gsb {
             background: rgba(17,17,17,0.9);
             border: 1px solid rgba(255,255,255,0.15);
             border-radius: 60px;
             padding: 12px 24px;
+            width: 280px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s ease;
-            width: 220px;
             margin: 0 auto;
             backdrop-filter: blur(4px);
+            box-sizing: border-box;
         }
         .gsb:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
         .gsb .icon { font-size: 1rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
@@ -278,12 +287,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.08</div>
+<div class="version-tag">v3.09</div>
 
 <script>
-// FILE: index.html - VERSION 3.08
+// FILE: index.html - VERSION 3.09
 
-var APP_VERSION = "3.08";
+var APP_VERSION = "3.09";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -793,13 +802,14 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - FIXED: NGB buttons are now SQUARE (equal width and height)
-   - Fixed width: 280px, Fixed height: 280px
-   - Content vertically and horizontally centered using flexbox
-   - Both TODAY GAME and PREVIEW buttons now identical in size
-   - Maintained all splash screen and session functionality from v3.07
+   - FIXED: All buttons now have same width (matching NGB button)
+   - VIEW PREVIOUS GAMES button width matches NGB (280px)
+   - GAME SETTINGS button width matches NGB (280px)
+   - All buttons centered in container
+   - Maintained square NGB button (280px × 280px)
+   - Maintained all splash screen and session functionality
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
