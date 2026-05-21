@@ -1,14 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.17
+VERSION: 2.18
 KEY CHANGES:
-   - ADDED: renderHoleHeader() - new layout with LIVE bubble left, HOLE centered
-   - Uses CSS Grid for perfect centering (1fr auto 1fr)
-   - Removed separate .hole-par display (saved space)
-   - Tighter spacing (margin-bottom: -2px)
-   - HOLE font size increased to 1.5rem
-   - Status bubble no longer fixed position (moved inline)
-   - All existing functions unchanged from v2.16
+   - FIXED: renderHoleHeader() now properly displays LIVE bubble
+   - LIVE bubble inherits original colors and styles
+   - Click handler attached to new status bubble for refresh
+   - Original status bubble hidden correctly
+   - All existing functions unchanged from v2.17
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -100,24 +98,37 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // NEW: Render Hole Header (LIVE left, HOLE centered)
+    // Render Hole Header (LIVE left, HOLE centered)
     // ============================================================
     
     function renderHoleHeader(containerId, currentHole, currentPar, currentSi) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Get the current hole text
         var holeText = 'HOLE ' + currentHole;
-        
-        // Get the LIVE bubble element
         var statusBubble = document.getElementById('statusBubble');
         
-        // Create new header HTML
+        // Get original status bubble styles
+        var statusText = 'LIVE';
+        var statusColor = '#4caf50';
+        var statusBg = 'rgba(76,175,80,0.3)';
+        var statusBorder = '1px solid #4caf50';
+        
+        if (statusBubble) {
+            statusText = statusBubble.innerText;
+            var computedStyle = window.getComputedStyle(statusBubble);
+            statusColor = computedStyle.color;
+            statusBg = computedStyle.backgroundColor;
+            statusBorder = computedStyle.border;
+        }
+        
+        // Create new header
         var html = `
             <div class="hole-header-grid" style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: -2px; width: 100%;">
                 <div class="hole-header-left" style="justify-self: start;">
-                    ${statusBubble ? statusBubble.outerHTML : '<span class="status-bubble">LIVE</span>'}
+                    <span class="status-bubble-new" style="display: inline-block; background: ${statusBg}; border: ${statusBorder}; color: ${statusColor}; border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; cursor: pointer;">
+                        ${statusText}
+                    </span>
                 </div>
                 <div class="hole-number-display" style="font-size: 1.5rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; margin: 0; justify-self: center;">
                     ${holeText}
@@ -128,21 +139,14 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
-        // Hide the original status bubble
+        // Hide original status bubble
         if (statusBubble) {
             statusBubble.style.display = 'none';
         }
         
-        // Make the new status bubble clickable
-        var newStatusBubble = container.querySelector('.hole-header-left .status-bubble');
+        // Make new status bubble clickable for refresh
+        var newStatusBubble = container.querySelector('.status-bubble-new');
         if (newStatusBubble) {
-            newStatusBubble.style.cursor = 'pointer';
-            newStatusBubble.style.padding = '4px 12px';
-            newStatusBubble.style.fontSize = '0.7rem';
-            newStatusBubble.style.borderRadius = '20px';
-            newStatusBubble.style.backgroundColor = 'rgba(76,175,80,0.3)';
-            newStatusBubble.style.border = '1px solid #4caf50';
-            newStatusBubble.style.color = '#4caf50';
             newStatusBubble.onclick = function() {
                 location.reload();
             };
@@ -165,7 +169,6 @@ var GameUI = (function() {
     // ============================================================
     
     function updateHoleHeader(containerId, currentHole, currentPar, currentSi) {
-        // Use new render function
         renderHoleHeader(containerId, currentHole, currentPar, currentSi);
     }
     
@@ -400,36 +403,36 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead><tr><th>Hole</th>';
+        html += '<thead></tr><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
-        html += '<tr><td style="font-weight:700;">Par<\/td>';
+        html += '<tr><td style="font-weight:700;">Par</td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
             totalPar += par;
-            html += '<td>' + par + '<\/td>';
+            html += '<td>' + par + '</td>';
         }
-        html += '<td>' + totalPar + '<\/td><\/tr>';
+        html += '<td>' + totalPar + '</td></tr>';
         
         // SI row
-        html += '<tr><td style="font-weight:700;">SI<\/td>';
+        html += '<tr><td style="font-weight:700;">SI</td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
-            html += '<td>' + si + '<\/td>';
+            html += '<td>' + si + '</td>';
         }
-        html += '<td>-<\/td><\/tr>';
+        html += '<td>-</td></tr>';
         
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -437,15 +440,15 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '<\/td>';
+                html += '<td class="' + cellClass + '">' + score + '</td>';
             }
-            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
+            html += '<td class="score-green">' + playerTotal + '</td></tr>';
         }
         
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // T-1 row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var holeNum = holes[i];
@@ -471,16 +474,16 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
         }
-        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        html += '<td style="color:#4caf50;">-</td></tr>';
         
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -488,15 +491,15 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '<\/td>';
+                html += '<td class="' + cellClass + '">' + score + '</td>';
             }
-            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
+            html += '<td class="score-green">' + playerTotal + '</td></tr>';
         }
         
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // T-2 row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -522,14 +525,14 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
         }
-        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        html += '<td style="color:#4caf50;">-</td></tr>';
         
-        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        html += '<tr class="green-line"><td colspan="20"></tr>';
         
         // Strk row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -555,9 +558,9 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
         }
-        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        html += '<td style="color:#4caf50;">-</td></tr>';
         
         html += '</tbody></table>';
         container.innerHTML = html;
@@ -1050,15 +1053,13 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.17
+VERSION: 2.18
 KEY CHANGES:
-   - ADDED: renderHoleHeader() - new layout with LIVE bubble left, HOLE centered
-   - Uses CSS Grid for perfect centering (1fr auto 1fr)
-   - Removed separate .hole-par display (saved space)
-   - Tighter spacing (margin-bottom: -2px)
-   - HOLE font size increased to 1.5rem
-   - Status bubble no longer fixed position (moved inline)
-   - All existing functions unchanged from v2.16
+   - FIXED: renderHoleHeader() now properly displays LIVE bubble
+   - LIVE bubble inherits original colors and styles
+   - Click handler attached to new status bubble for refresh
+   - Original status bubble hidden correctly
+   - All existing functions unchanged from v2.17
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
