@@ -1,12 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.21
+VERSION: 2.22
 KEY CHANGES:
-   - ADDED: CSS rules for disabled button states (greyed out)
-   - Disabled prev/next buttons now have grey background and text
-   - Disabled save button now properly greyed out
-   - Applies to all holes across all pages
-   - All other functions unchanged from v2.20
+   - FIXED: renderBottomMenu() now properly attaches click handler
+   - Uses direct DOM element creation instead of innerHTML
+   - Ensures menu button works in real-game, view-game, and preview-game
+   - All other functions unchanged from v2.21
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -477,7 +476,7 @@ var GameUI = (function() {
         
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -526,7 +525,7 @@ var GameUI = (function() {
         
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -814,33 +813,37 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Bottom Menu Button Rendering
+    // Bottom Menu Button Rendering - FIXED in v2.22
     // ============================================================
     
     function renderBottomMenu(containerId, onMenuCallback) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
+        // Store callback
         if (onMenuCallback) {
             eventCallbacks.onMenu = onMenuCallback;
         }
         
-        var html = `
-            <button class="btn btn-menu" id="menuBtn" style="width: 100%; padding: 14px; border-radius: 40px; font-weight: 600; text-align: center; cursor: pointer; background: #1a1a1a; color: #ccc; border: 1px solid #333; margin-top: 20px;">
-                ← Back to Main Menu
-            </button>
-        `;
+        // Clear container
+        container.innerHTML = '';
         
-        container.innerHTML = html;
+        // Create button directly with DOM methods (more reliable than innerHTML)
+        var btn = document.createElement('button');
+        btn.id = 'menuBtn';
+        btn.textContent = '← Back to Main Menu';
+        btn.style.cssText = 'width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;';
         
-        var menuBtn = document.getElementById('menuBtn');
-        if (menuBtn && eventCallbacks.onMenu) {
-            var newMenuBtn = menuBtn.cloneNode(true);
-            menuBtn.parentNode.replaceChild(newMenuBtn, menuBtn);
-            newMenuBtn.addEventListener('click', function() {
-                if (eventCallbacks.onMenu) eventCallbacks.onMenu();
-            });
-        }
+        // Attach click handler directly
+        btn.onclick = function() {
+            if (eventCallbacks.onMenu && typeof eventCallbacks.onMenu === 'function') {
+                eventCallbacks.onMenu();
+            } else if (onMenuCallback && typeof onMenuCallback === 'function') {
+                onMenuCallback();
+            }
+        };
+        
+        container.appendChild(btn);
     }
     
     // ============================================================
@@ -1058,7 +1061,7 @@ var GameUI = (function() {
         updateSaveButton: updateSaveButton,
         resetSaveButton: resetSaveButton,
         
-        // Bottom menu
+        // Bottom menu - FIXED in v2.22
         renderBottomMenu: renderBottomMenu,
         
         // Navigation logic (deprecated legacy wrappers)
@@ -1088,13 +1091,12 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.21
+VERSION: 2.22
 KEY CHANGES:
-   - ADDED: CSS rules for disabled button states (greyed out)
-   - Disabled prev/next buttons now have grey background and text
-   - Disabled save button now properly greyed out
-   - Applies to all holes across all pages
-   - All other functions unchanged from v2.20
+   - FIXED: renderBottomMenu() now properly attaches click handler
+   - Uses direct DOM element creation instead of innerHTML
+   - Ensures menu button works in real-game, view-game, and preview-game
+   - All other functions unchanged from v2.21
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
