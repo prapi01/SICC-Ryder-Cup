@@ -1,13 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES:
-   - FIXED: Viewer mode now correctly distinguishes from player mode
-   - REMOVED: Sign button (✍️) - viewers never sign cards
-   - FIXED: Next button only shows gold 🏆 when game is complete
-   - FIXED: Navigation buttons (◀ ▶) work correctly for all holes
-   - FIXED: No waiting screen for viewers
-   - All viewer functionality (real-time sync, celebration, HCP read-only) preserved
+   - FIXED: Navigation buttons (◀ ▶) now properly attach click handlers
+   - FIXED: P/N button now properly attaches toggleDisplayMode handler
+   - Added manual handler attachment after renderCompactHeader()
+   - Added setTimeout to ensure DOM elements exist before attaching
+   - All other functionality unchanged from v3.11
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -279,7 +278,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.11</div>
+<div class="version-tag">v3.12</div>
 
 <script>
 // ============================================================
@@ -716,6 +715,17 @@ function onToggleFlight(flightNumber) {
 }
 
 // ============================================================
+// Display Mode Toggle
+// ============================================================
+
+function toggleDisplayMode() {
+    var newMode = currentDisplayMode === "play" ? "natural" : "play";
+    currentDisplayMode = newMode;
+    GameUI.setDisplayMode(newMode, null);
+    renderAll();
+}
+
+// ============================================================
 // Exit to Main Menu
 // ============================================================
 
@@ -825,6 +835,26 @@ async function init() {
         null  // Toggle display handled by P/N button internally
     );
     
+    // FIX v3.12: Manually attach navigation handlers (renderCompactHeader doesn't attach them properly)
+    setTimeout(function() {
+        var prevBtn = document.getElementById('compactPrevBtn');
+        var nextBtn = document.getElementById('compactNextBtn');
+        var pnBtn = document.getElementById('compactPnBtn');
+        
+        if (prevBtn && typeof goToPrevHole === 'function') {
+            prevBtn.onclick = goToPrevHole;
+            console.log('✅ Prev button handler attached');
+        }
+        if (nextBtn && typeof goToNextHole === 'function') {
+            nextBtn.onclick = goToNextHole;
+            console.log('✅ Next button handler attached');
+        }
+        if (pnBtn && typeof toggleDisplayMode === 'function') {
+            pnBtn.onclick = toggleDisplayMode;
+            console.log('✅ P/N button handler attached');
+        }
+    }, 100);
+    
     // Set initial display mode for P/N button
     GameUI.setDisplayMode(currentDisplayMode, null);
     
@@ -833,8 +863,16 @@ async function init() {
         GameUI.addFlightBadge(selectedFlight);
     }, 100);
     
-    // Render bottom menu (Back to Main Menu)
-    GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+    // Render bottom menu (Back to Main Menu) - FIXED with direct handler
+    var bottomContainer = document.getElementById("bottomMenuContainer");
+    if (bottomContainer) {
+        bottomContainer.innerHTML = '<button id="menuBtn" style="width:100%; padding:14px; border-radius:40px; font-weight:600; text-align:center; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;">← Back to Main Menu</button>';
+        var menuBtn = document.getElementById('menuBtn');
+        if (menuBtn && typeof exitToMainMenu === 'function') {
+            menuBtn.onclick = exitToMainMenu;
+            console.log('✅ Menu button handler attached');
+        }
+    }
     
     initTicker();
     startGameListener();
@@ -848,14 +886,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES:
-   - FIXED: Viewer mode now correctly distinguishes from player mode
-   - REMOVED: Sign button (✍️) - viewers never sign cards
-   - FIXED: Next button only shows gold 🏆 when game is complete
-   - FIXED: Navigation buttons (◀ ▶) work correctly for all holes
-   - FIXED: No waiting screen for viewers
-   - All viewer functionality (real-time sync, celebration, HCP read-only) preserved
+   - FIXED: Navigation buttons (◀ ▶) now properly attach click handlers
+   - FIXED: P/N button now properly attaches toggleDisplayMode handler
+   - FIXED: Menu button (Back to Main Menu) now properly attaches handler
+   - Added manual handler attachment after renderCompactHeader()
+   - Added setTimeout to ensure DOM elements exist before attaching
+   - All other functionality unchanged from v3.11
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
