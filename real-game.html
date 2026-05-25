@@ -1,12 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 3.19
+VERSION: 3.20
 KEY CHANGES:
-   - CHANGED: Now uses GameUI.updateNavigationButtons() as single source of truth
-   - REMOVED: Duplicate updateNavButtons() logic
-   - REMOVED: Local last hole detection and sign button logic (now in game-ui.js)
-   - Navigation buttons now consistent and reliable
-   - All game logic unchanged
+   - ADDED: Missing bottomMenuContainer div for Back to Main Menu button
+   - Menu button now appears correctly on page load
+   - All other functionality unchanged from v3.19
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -263,13 +261,14 @@ STATUS: Ready for integration
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
+    <!-- Bottom menu container for Back to Main Menu button -->
     <div id="bottomMenuContainer"></div>
     
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.19</div>
+<div class="version-tag">v3.20</div>
 
 <script>
 // ============================================================
@@ -1373,6 +1372,9 @@ async function init() {
             GameUI.addFlightBadge(editableFlight);
         }, 100);
         
+        // Render bottom menu (Back to Main Menu)
+        GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+        
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
             var hole = playOrder[i];
@@ -1403,13 +1405,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.19
+VERSION: 3.20
 KEY CHANGES:
-   - CHANGED: Now uses GameUI.updateNavigationButtons() as single source of truth
-   - REMOVED: Duplicate updateNavButtons() logic
-   - REMOVED: Local last hole detection and sign button logic (now in game-ui.js)
-   - Navigation buttons now consistent and reliable
-   - All game logic unchanged
+   - ADDED: Missing bottomMenuContainer div for Back to Main Menu button
+   - Menu button now appears correctly on page load
+   - All other functionality unchanged from v3.19
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
