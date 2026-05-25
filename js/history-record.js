@@ -1,12 +1,15 @@
 /*
 FILE: js/history-record.js
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - FIXED: buildHoleDataObject() now accepts data strings instead of parsed objects
-   - Added parseFlightDataString() to convert strings to hole data objects
-   - This ensures holeData is properly created for history records
-   - All existing functions unchanged from v2.02
-DEPENDS ON: Firebase Firestore, js/game-data.js (for parseHoleData if needed)
+   - ADDED: Store f1DataString and f2DataString in archive for history viewer compatibility
+   - When creating new archive records, both data strings are now saved
+   - FIXED: Also store data strings when UPDATING existing/pending archive records
+   - This ensures both create and update paths capture the data strings
+   - Allows view-history.html to read data strings directly without reconstruction
+   - Backward compatible with existing archives (view-history will fall back to holeData reconstruction)
+   - All existing functions unchanged from v2.03
+DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
@@ -241,7 +244,10 @@ var HistoryRecord = (function() {
                             signedAt: signatures.f2?.signedAt || null,
                             captainName: signatures.f2?.captainName || null
                         }
-                    }
+                    },
+                    // NEW IN v2.04: Store data strings when UPDATING existing records
+                    f1DataString: flight1DataString || "",
+                    f2DataString: flight2DataString || ""
                 };
                 
                 firebase.firestore().collection(COLLECTION).doc(existing.id).update(updateData)
@@ -346,6 +352,10 @@ var HistoryRecord = (function() {
                     },
                     
                     holeData: holeDataObject,
+                    
+                    // NEW IN v2.04: Store original data strings for history viewer compatibility
+                    f1DataString: flight1DataString || "",
+                    f2DataString: flight2DataString || "",
                     
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
@@ -542,12 +552,15 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 2.03
+VERSION: 2.04
 KEY CHANGES:
-   - FIXED: buildHoleDataObject() now accepts data strings instead of parsed objects
-   - Added parseFlightDataString() to convert strings to hole data objects
-   - This ensures holeData is properly created for history records
-   - All existing functions unchanged from v2.02
+   - ADDED: Store f1DataString and f2DataString in archive for history viewer compatibility
+   - When creating new archive records, both data strings are now saved
+   - FIXED: Also store data strings when UPDATING existing/pending archive records
+   - This ensures both create and update paths capture the data strings
+   - Allows view-history.html to read data strings directly without reconstruction
+   - Backward compatible with existing archives (view-history will fall back to holeData reconstruction)
+   - All existing functions unchanged from v2.03
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
