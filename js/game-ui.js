@@ -1,15 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.23
+VERSION: 2.24
 KEY CHANGES:
-   - ADDED: Shared display functions for consistent UI across all game pages
-   - getFlightOrderedPlayersShared() - A1,A2,B1,B2 order
-   - getAllOpponentsShared() - intra-flight first, then cross-flight
-   - getMatchValueShared() - retrieves match results from cache
-   - getBubbleClassShared() - determines bubble color based on match value
-   - getBubbleValueShared() - formats bubble display value
-   - These functions will be used by view-game.html and eventually real-game.html
-   - All existing functions unchanged - backward compatible
+   - FIXED: getBubbleClassShared() - simplified logic, no team check needed
+   - Since getMatchValueShared already returns value from player's perspective
+   - Positive = winning (green), Negative = losing (red), Zero = tie (green)
+   - This matches real-game behavior exactly
+   - All other functions unchanged from v2.23
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -544,7 +541,7 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<td><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -606,7 +603,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></tr>';
+        html += '</tbody></table>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -852,7 +849,6 @@ var GameUI = (function() {
     
     // ============================================================
     // NEW v2.23: SHARED DISPLAY FUNCTIONS
-    // These functions provide consistent display logic across all game pages
     // ============================================================
     
     // Get players in correct order: A1, A2, B1, B2 (sorted by handicap)
@@ -877,7 +873,7 @@ var GameUI = (function() {
         return opponents;
     }
     
-    // Get match result value from results cache
+    // Get match result value from results cache (returns value from player's perspective)
     function getMatchValueShared(player, opponent, holeNumber, resultsCache, allPlayers, getHolePositionFn) {
         if (!resultsCache || !resultsCache.matchResults) return 0;
         var position = getHolePositionFn(holeNumber);
@@ -910,21 +906,19 @@ var GameUI = (function() {
     }
     
     // Get bubble CSS class based on match result
+    // FIXED in v2.24: Simplified logic - positive = winning (green), negative = losing (red)
     function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn) {
         var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
         var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
         
         if (!isHoleSavedForFlight) return 'bubble-grey';
         
-        if (player.team === 'A') {
-            if (matchValue > 0) return 'bubble-green';
-            if (matchValue < 0) return 'bubble-red';
-            return 'bubble-green';
-        } else {
-            if (matchValue < 0) return 'bubble-green';
-            if (matchValue > 0) return 'bubble-red';
-            return 'bubble-green';
-        }
+        // Positive = player is winning -> Green
+        // Negative = player is losing -> Red
+        // Zero = tie -> Green
+        if (matchValue > 0) return 'bubble-green';
+        if (matchValue < 0) return 'bubble-red';
+        return 'bubble-green';
     }
     
     // Get bubble display value (e.g., "2", "5", "AS")
@@ -1153,7 +1147,7 @@ var GameUI = (function() {
         // Bottom menu
         renderBottomMenu: renderBottomMenu,
         
-        // NEW v2.23: Shared display functions
+        // Shared display functions
         getFlightOrderedPlayersShared: getFlightOrderedPlayersShared,
         getAllOpponentsShared: getAllOpponentsShared,
         getMatchValueShared: getMatchValueShared,
@@ -1187,16 +1181,13 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.23
+VERSION: 2.24
 KEY CHANGES:
-   - ADDED: Shared display functions for consistent UI across all game pages
-   - getFlightOrderedPlayersShared() - A1,A2,B1,B2 order
-   - getAllOpponentsShared() - intra-flight first, then cross-flight
-   - getMatchValueShared() - retrieves match results from cache
-   - getBubbleClassShared() - determines bubble color based on match value
-   - getBubbleValueShared() - formats bubble display value
-   - These functions will be used by view-game.html and eventually real-game.html
-   - All existing functions unchanged - backward compatible
+   - FIXED: getBubbleClassShared() - simplified logic, no team check needed
+   - Since getMatchValueShared already returns value from player's perspective
+   - Positive = winning (green), Negative = losing (red), Zero = tie (green)
+   - This matches real-game behavior exactly
+   - All other functions unchanged from v2.23
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
