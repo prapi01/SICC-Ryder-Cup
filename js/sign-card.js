@@ -1,14 +1,13 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.08
+VERSION: 1.09
 KEY CHANGES:
-   - FIXED: Celebration screen now fully responsive with viewport units (vh, vw)
-   - FIXED: Player names display in 2-column grid to prevent overflow
-   - FIXED: All font sizes reduced for mobile screens
-   - FIXED: Modal max-width 90vw, max-height 85vh with scroll if needed
-   - ADDED: Responsive breakpoint for very small screens (<380px)
-   - All other functionality identical to v1.07
-DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/history-record.js
+   - FIXED: ensureArchiveRecord() now passes all required parameters to createPendingRecord()
+   - Added extraction of flight1DataString, flight2DataString, and matchResults from gameData
+   - Now passes 8 parameters (gameId, gameData, results, finalScores, signatures, f1DataStr, f2DataStr, matchResults)
+   - This ensures archive records store both holeData and raw data strings for history viewer
+   - All other functionality unchanged from v1.08
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
@@ -125,6 +124,7 @@ var SignCard = (function() {
     
     // ============================================================
     // Helper: Get or create archive record for handicap adjustment
+    // FIXED in v1.09: Pass all required parameters to createPendingRecord
     // ============================================================
     
     function ensureArchiveRecord(gameId, callback) {
@@ -145,10 +145,31 @@ var SignCard = (function() {
                                     };
                                     var signatures = gameData.signatures || {};
                                     
-                                    HistoryRecord.createPendingRecord(gameId, gameData, results, finalScores, signatures, function(err, archiveId) {
-                                        if (err) callback(err, null);
-                                        else callback(null, archiveId);
-                                    });
+                                    // NEW IN v1.09: Extract the missing parameters
+                                    var flight1DataString = gameData.f1?.d || "";
+                                    var flight2DataString = gameData.f2?.d || "";
+                                    
+                                    // Build matchResults object from results.game1.matches
+                                    var matchResults = {};
+                                    if (results.game1 && results.game1.matches) {
+                                        matchResults = results.game1.matches;
+                                    }
+                                    
+                                    // Now pass all 8 parameters as expected by createPendingRecord
+                                    HistoryRecord.createPendingRecord(
+                                        gameId, 
+                                        gameData, 
+                                        results, 
+                                        finalScores, 
+                                        signatures,
+                                        flight1DataString,
+                                        flight2DataString,
+                                        matchResults,
+                                        function(err, archiveId) {
+                                            if (err) callback(err, null);
+                                            else callback(null, archiveId);
+                                        }
+                                    );
                                 } else {
                                     callback(new Error("Game not found"), null);
                                 }
@@ -596,14 +617,13 @@ var SignCard = (function() {
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.08
+VERSION: 1.09
 KEY CHANGES:
-   - FIXED: Celebration screen now fully responsive with viewport units (vh, vw)
-   - FIXED: Player names display in 2-column grid to prevent overflow
-   - FIXED: All font sizes reduced for mobile screens
-   - FIXED: Modal max-width 90vw, max-height 85vh with scroll if needed
-   - ADDED: Responsive breakpoint for very small screens (<380px)
-   - All other functionality identical to v1.07
-DEPENDS ON: Firebase Firestore, js/hcp-adjust.js, js/history-record.js
+   - FIXED: ensureArchiveRecord() now passes all required parameters to createPendingRecord()
+   - Added extraction of flight1DataString, flight2DataString, and matchResults from gameData
+   - Now passes 8 parameters (gameId, gameData, results, finalScores, signatures, f1DataStr, f2DataStr, matchResults)
+   - This ensures archive records store both holeData and raw data strings for history viewer
+   - All other functionality unchanged from v1.08
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
