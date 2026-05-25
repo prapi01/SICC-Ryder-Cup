@@ -1,11 +1,15 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.22
+VERSION: 2.23
 KEY CHANGES:
-   - FIXED: renderBottomMenu() now properly attaches click handler
-   - Uses direct DOM element creation instead of innerHTML
-   - Ensures menu button works in real-game, view-game, and preview-game
-   - All other functions unchanged from v2.21
+   - ADDED: Shared display functions for consistent UI across all game pages
+   - getFlightOrderedPlayersShared() - A1,A2,B1,B2 order
+   - getAllOpponentsShared() - intra-flight first, then cross-flight
+   - getMatchValueShared() - retrieves match results from cache
+   - getBubbleClassShared() - determines bubble color based on match value
+   - getBubbleValueShared() - formats bubble display value
+   - These functions will be used by view-game.html and eventually real-game.html
+   - All existing functions unchanged - backward compatible
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -476,7 +480,7 @@ var GameUI = (function() {
         
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -525,7 +529,7 @@ var GameUI = (function() {
         
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -602,7 +606,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></table>';
+        html += '</tbody></tr>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -813,7 +817,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Bottom Menu Button Rendering - FIXED in v2.22
+    // Bottom Menu Button Rendering
     // ============================================================
     
     function renderBottomMenu(containerId, onMenuCallback) {
@@ -828,7 +832,7 @@ var GameUI = (function() {
         // Clear container
         container.innerHTML = '';
         
-        // Create button directly with DOM methods (more reliable than innerHTML)
+        // Create button directly with DOM methods
         var btn = document.createElement('button');
         btn.id = 'menuBtn';
         btn.textContent = '← Back to Main Menu';
@@ -844,6 +848,91 @@ var GameUI = (function() {
         };
         
         container.appendChild(btn);
+    }
+    
+    // ============================================================
+    // NEW v2.23: SHARED DISPLAY FUNCTIONS
+    // These functions provide consistent display logic across all game pages
+    // ============================================================
+    
+    // Get players in correct order: A1, A2, B1, B2 (sorted by handicap)
+    function getFlightOrderedPlayersShared(flight, allPlayers) {
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        return teamA.concat(teamB);
+    }
+    
+    // Get opponents: intra-flight first (same flight), then cross-flight (other flight)
+    function getAllOpponentsShared(player, allPlayers) {
+        var opponents = allPlayers.filter(function(op) { return op.team !== player.team; });
+        opponents.sort(function(a, b) {
+            var aIntra = (a.flight === player.flight);
+            var bIntra = (b.flight === player.flight);
+            if (aIntra && !bIntra) return -1;
+            if (!aIntra && bIntra) return 1;
+            if (aIntra && bIntra) return a.handicap - b.handicap;
+            return a.flight - b.flight;
+        });
+        return opponents;
+    }
+    
+    // Get match result value from results cache
+    function getMatchValueShared(player, opponent, holeNumber, resultsCache, allPlayers, getHolePositionFn) {
+        if (!resultsCache || !resultsCache.matchResults) return 0;
+        var position = getHolePositionFn(holeNumber);
+        var matchArray = resultsCache.matchResults[position];
+        if (!matchArray) return 0;
+        
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        var aIdx = -1, bIdx = -1;
+        if (player.team === 'A') {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === player.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === opponent.name) bIdx = i;
+            }
+        } else {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === opponent.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === player.name) bIdx = i;
+            }
+        }
+        if (aIdx === -1 || bIdx === -1) return 0;
+        var matchIndex = aIdx * teamBPlayers.length + bIdx;
+        var value = matchArray[matchIndex] || 0;
+        return (player.team === 'B') ? -value : value;
+    }
+    
+    // Get bubble CSS class based on match result
+    function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn) {
+        var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
+        var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
+        
+        if (!isHoleSavedForFlight) return 'bubble-grey';
+        
+        if (player.team === 'A') {
+            if (matchValue > 0) return 'bubble-green';
+            if (matchValue < 0) return 'bubble-red';
+            return 'bubble-green';
+        } else {
+            if (matchValue < 0) return 'bubble-green';
+            if (matchValue > 0) return 'bubble-red';
+            return 'bubble-green';
+        }
+    }
+    
+    // Get bubble display value (e.g., "2", "5", "AS")
+    function getBubbleValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn) {
+        var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
+        var absValue = Math.abs(matchValue);
+        if (absValue === 0) return 'AS';
+        return absValue.toString();
     }
     
     // ============================================================
@@ -1061,8 +1150,15 @@ var GameUI = (function() {
         updateSaveButton: updateSaveButton,
         resetSaveButton: resetSaveButton,
         
-        // Bottom menu - FIXED in v2.22
+        // Bottom menu
         renderBottomMenu: renderBottomMenu,
+        
+        // NEW v2.23: Shared display functions
+        getFlightOrderedPlayersShared: getFlightOrderedPlayersShared,
+        getAllOpponentsShared: getAllOpponentsShared,
+        getMatchValueShared: getMatchValueShared,
+        getBubbleClassShared: getBubbleClassShared,
+        getBubbleValueShared: getBubbleValueShared,
         
         // Navigation logic (deprecated legacy wrappers)
         updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
@@ -1091,12 +1187,16 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.22
+VERSION: 2.23
 KEY CHANGES:
-   - FIXED: renderBottomMenu() now properly attaches click handler
-   - Uses direct DOM element creation instead of innerHTML
-   - Ensures menu button works in real-game, view-game, and preview-game
-   - All other functions unchanged from v2.21
+   - ADDED: Shared display functions for consistent UI across all game pages
+   - getFlightOrderedPlayersShared() - A1,A2,B1,B2 order
+   - getAllOpponentsShared() - intra-flight first, then cross-flight
+   - getMatchValueShared() - retrieves match results from cache
+   - getBubbleClassShared() - determines bubble color based on match value
+   - getBubbleValueShared() - formats bubble display value
+   - These functions will be used by view-game.html and eventually real-game.html
+   - All existing functions unchanged - backward compatible
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
