@@ -1,13 +1,12 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.08
+VERSION: 2.09
 KEY CHANGES:
-   - ADDED: Support for readonly mode (viewing completed games)
-   - ADDED: loadFromHistory() - loads game data from historyGames collection
-   - ADDED: URL parameter detection (?gameId=xxx&mode=readonly)
-   - ADDED: Back button returns to view-history.html when in readonly mode
-   - CHANGED: Disabled all interactive elements in readonly mode
-   - All existing functionality (anchor selection, calculations, saving) unchanged for live mode
+   - ADDED: initForViewer() - simplified viewer mode that doesn't require archive records
+   - FIXED: Celebration screen handicap button now works in viewer mode
+   - Uses current game data directly instead of looking for history records
+   - Displays handicap table in readonly mode without redirects
+   - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -25,8 +24,8 @@ var HandicapAdjustment = (function() {
     var flight2Data = null;
     var currentTableData = null;
     var isViewOnly = false;
-    var isReadOnlyMode = false;  // NEW: for completed games
-    var returnDestination = null;  // NEW: where to go back to
+    var isReadOnlyMode = false;
+    var returnDestination = null;
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -234,70 +233,6 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Save to Firestore and update player profiles
-    // ============================================================
-    
-    function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
-        var handicapData = {
-            anchor: anchor.name,
-            players: calculationResult.players.map(function(p) {
-                return {
-                    name: p.name,
-                    currentHcp: p.currentHcp,
-                    anchorAdj: p.anchorAdj,
-                    perfAdj: p.perfAdj,
-                    newHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp
-                };
-            }),
-            needsZeroRise: calculationResult.needsZeroRise,
-            zeroRiseAmount: calculationResult.zeroRiseAmount,
-            newAnchor: calculationResult.newAnchorName || anchor.name
-        };
-        
-        if (currentArchiveId && typeof HistoryRecord !== 'undefined') {
-            HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, function(err) {
-                if (err) {
-                    console.error("Error saving handicap data:", err);
-                    if (callback) callback(err);
-                } else {
-                    updatePlayerProfiles(handicapData.players, callback);
-                }
-            });
-        } else {
-            updatePlayerProfiles(handicapData.players, callback);
-        }
-    }
-    
-    function updatePlayerProfiles(players, callback) {
-        firebase.firestore().collection('playerInformation').doc('defaultPlayers').get()
-            .then(function(doc) {
-                if (doc.exists && doc.data().players) {
-                    var currentPlayers = doc.data().players;
-                    for (var i = 0; i < currentPlayers.length; i++) {
-                        for (var j = 0; j < players.length; j++) {
-                            if (currentPlayers[i].name === players[j].name) {
-                                currentPlayers[i].handicap = players[j].newHcp;
-                                console.log(`Updated ${players[j].name}: ${players[j].currentHcp} → ${players[j].newHcp}`);
-                            }
-                        }
-                    }
-                    return firebase.firestore().collection('playerInformation').doc('defaultPlayers').set({
-                        players: currentPlayers,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                }
-                return Promise.resolve();
-            })
-            .then(function() {
-                if (callback) callback(null);
-            })
-            .catch(function(err) {
-                console.error("Error updating player profiles:", err);
-                if (callback) callback(err);
-            });
-    }
-    
-    // ============================================================
     // Display Table (with readonly support)
     // ============================================================
     
@@ -338,7 +273,6 @@ var HandicapAdjustment = (function() {
             messageHtml = `<div style="font-size:0.85rem; color:#ffaa44; text-align:center; margin-bottom:12px;">🎉 ${escapeHtml(newAnchorName)} will be the NEW ANCHOR! 🎉</div>`;
         }
         
-        // Different button layout for readonly mode
         var buttonsHtml = '';
         if (isReadOnly) {
             buttonsHtml = `
@@ -409,152 +343,41 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Anchor Selection Modal
+    // NEW v2.09: initForViewer - Simplified viewer mode
+    // Uses current game data directly, no archive lookup
     // ============================================================
     
-    function showAnchorSelectionModal(zeroHcpPlayers) {
-        var optionsHtml = '';
-        for (var i = 0; i < zeroHcpPlayers.length; i++) {
-            optionsHtml += `<option value="${zeroHcpPlayers[i].name}">${zeroHcpPlayers[i].name} (HCP ${zeroHcpPlayers[i].handicap})</option>`;
+    function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
+        console.log('HandicapAdjustment.initForViewer - viewer mode');
+        
+        currentGameId = gameIdParam;
+        allPlayers = players || [];
+        flight1Data = flight1DataStr || "";
+        flight2Data = flight2DataStr || "";
+        courseSi = courseSiParam || [];
+        coursePar = courseParParam || [];
+        startingHole = startingHoleParam || 1;
+        isReadOnlyMode = true;
+        
+        if (!allPlayers.length) {
+            console.error('No players provided for handicap adjustment');
+            return;
         }
         
-        var modalHtml = `
-            <div class="modal-overlay" id="anchorSelectModal" style="z-index: 10001;">
-                <div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:360px; width:90%; text-align:center; border:2px solid #4caf50;">
-                    <div style="font-size:1.3rem; font-weight:800; color:#4caf50; margin-bottom:16px;">🏌️ SELECT ANCHOR</div>
-                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:20px;">Who is today's Anchor? (Lowest handicap player)</div>
-                    <select id="anchorSelect" style="width:100%; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:30px; font-size:1rem; margin-bottom:20px;">
-                        ${optionsHtml}
-                    </select>
-                    <button id="anchorConfirmBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px 24px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer; width:100%;">✓ Confirm Anchor</button>
-                </div>
-            </div>
-        `;
+        allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        // Find anchor (lowest handicap)
+        var anchor = allPlayers[0];
         
-        document.getElementById('anchorConfirmBtn').addEventListener('click', function() {
-            var selectedName = document.getElementById('anchorSelect').value;
-            var selectedAnchor = allPlayers.find(p => p.name === selectedName);
-            document.getElementById('anchorSelectModal').remove();
-            
-            anchorPlayer = selectedAnchor;
-            var calculationResult = calculateAllAdjustments(anchorPlayer);
-            currentTableData = calculationResult;
-            
-            saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
-                if (err) {
-                    alert("Error saving handicap data. Please try again.");
-                } else {
-                    showAdjustmentTable(calculationResult, anchorPlayer.name, false);
-                }
-            });
-        });
+        // Calculate adjustments (without saving)
+        var calculationResult = calculateAllAdjustments(anchor);
+        
+        // Display table in readonly mode
+        showAdjustmentTable(calculationResult, anchor.name, true);
     }
     
     // ============================================================
-    // Load game data from Firestore (for live games)
-    // ============================================================
-    
-    function loadGameData(gameId, callback) {
-        firebase.firestore().collection("scheduledGames").doc(gameId).get()
-            .then(function(doc) {
-                if (!doc.exists) {
-                    callback(null);
-                    return;
-                }
-                var data = doc.data();
-                courseSi = data.course ? data.course.si : [];
-                coursePar = data.course ? data.course.par : [];
-                startingHole = data.startingHole || 1;
-                flight1Data = data.f1 && data.f1.d ? data.f1.d : "";
-                flight2Data = data.f2 && data.f2.d ? data.f2.d : "";
-                callback(data);
-            })
-            .catch(function(err) {
-                console.error("Error loading game data:", err);
-                callback(null);
-            });
-    }
-    
-    // ============================================================
-    // NEW: Load from historyGames (for readonly mode)
-    // ============================================================
-    
-    function loadFromHistory(gameId, callback) {
-        firebase.firestore().collection("historyGames").where("originalGameId", "==", gameId).limit(1).get()
-            .then(function(snapshot) {
-                if (snapshot.empty) {
-                    console.error("No history record found for game:", gameId);
-                    callback(null);
-                    return;
-                }
-                var doc = snapshot.docs[0];
-                var historyData = doc.data();
-                
-                // Extract data from history record
-                courseSi = historyData.gameInfo?.course?.si || [];
-                coursePar = historyData.gameInfo?.course?.par || [];
-                startingHole = historyData.gameInfo?.startingHole || 1;
-                allPlayers = historyData.players || [];
-                
-                // For readonly mode, we don't need flight data strings
-                flight1Data = "";
-                flight2Data = "";
-                
-                // Extract handicap adjustment data if it exists
-                var hcpData = historyData.handicapAdjustment;
-                if (hcpData && hcpData.players) {
-                    // Display existing adjustment in readonly mode
-                    var calculationResult = {
-                        players: hcpData.players.map(function(p) {
-                            return {
-                                name: p.name,
-                                label: p.name.substring(0, 3).toUpperCase(),
-                                currentHcp: p.currentHcp,
-                                anchorAdj: p.anchorAdj || 0,
-                                perfAdj: p.perfAdj || 0,
-                                newHcp: p.newHcp
-                            };
-                        }),
-                        needsZeroRise: hcpData.needsZeroRise || false,
-                        zeroRiseAmount: hcpData.zeroRiseAmount || 0,
-                        newAnchorName: hcpData.newAnchor
-                    };
-                    
-                    callback({
-                        data: historyData,
-                        isFromHistory: true,
-                        preCalculatedResult: calculationResult,
-                        anchor: hcpData.anchor
-                    });
-                } else {
-                    callback({
-                        data: historyData,
-                        isFromHistory: true,
-                        preCalculatedResult: null,
-                        anchor: null
-                    });
-                }
-            })
-            .catch(function(err) {
-                console.error("Error loading history data:", err);
-                callback(null);
-            });
-    }
-    
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
-    }
-    
-    // ============================================================
-    // Main Entry Point (updated for readonly mode)
+    // Legacy init function (for real-game)
     // ============================================================
     
     function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
@@ -607,7 +430,197 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    // NEW: Initialize in readonly mode (for completed games)
+    // ============================================================
+    // Load game data from Firestore (for live games)
+    // ============================================================
+    
+    function loadGameData(gameId, callback) {
+        firebase.firestore().collection("scheduledGames").doc(gameId).get()
+            .then(function(doc) {
+                if (!doc.exists) {
+                    callback(null);
+                    return;
+                }
+                var data = doc.data();
+                courseSi = data.course ? data.course.si : [];
+                coursePar = data.course ? data.course.par : [];
+                startingHole = data.startingHole || 1;
+                flight1Data = data.f1 && data.f1.d ? data.f1.d : "";
+                flight2Data = data.f2 && data.f2.d ? data.f2.d : "";
+                callback(data);
+            })
+            .catch(function(err) {
+                console.error("Error loading game data:", err);
+                callback(null);
+            });
+    }
+    
+    // ============================================================
+    // Save to Firestore and update player profiles
+    // ============================================================
+    
+    function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
+        var handicapData = {
+            anchor: anchor.name,
+            players: calculationResult.players.map(function(p) {
+                return {
+                    name: p.name,
+                    currentHcp: p.currentHcp,
+                    anchorAdj: p.anchorAdj,
+                    perfAdj: p.perfAdj,
+                    newHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp
+                };
+            }),
+            needsZeroRise: calculationResult.needsZeroRise,
+            zeroRiseAmount: calculationResult.zeroRiseAmount,
+            newAnchor: calculationResult.newAnchorName || anchor.name
+        };
+        
+        if (currentArchiveId && typeof HistoryRecord !== 'undefined') {
+            HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, function(err) {
+                if (err) {
+                    console.error("Error saving handicap data:", err);
+                    if (callback) callback(err);
+                } else {
+                    updatePlayerProfiles(handicapData.players, callback);
+                }
+            });
+        } else {
+            updatePlayerProfiles(handicapData.players, callback);
+        }
+    }
+    
+    function updatePlayerProfiles(players, callback) {
+        firebase.firestore().collection('playerInformation').doc('defaultPlayers').get()
+            .then(function(doc) {
+                if (doc.exists && doc.data().players) {
+                    var currentPlayers = doc.data().players;
+                    for (var i = 0; i < currentPlayers.length; i++) {
+                        for (var j = 0; j < players.length; j++) {
+                            if (currentPlayers[i].name === players[j].name) {
+                                currentPlayers[i].handicap = players[j].newHcp;
+                                console.log(`Updated ${players[j].name}: ${players[j].currentHcp} → ${players[j].newHcp}`);
+                            }
+                        }
+                    }
+                    return firebase.firestore().collection('playerInformation').doc('defaultPlayers').set({
+                        players: currentPlayers,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+                return Promise.resolve();
+            })
+            .then(function() {
+                if (callback) callback(null);
+            })
+            .catch(function(err) {
+                console.error("Error updating player profiles:", err);
+                if (callback) callback(err);
+            });
+    }
+    
+    function showAnchorSelectionModal(zeroHcpPlayers) {
+        var optionsHtml = '';
+        for (var i = 0; i < zeroHcpPlayers.length; i++) {
+            optionsHtml += `<option value="${zeroHcpPlayers[i].name}">${zeroHcpPlayers[i].name} (HCP ${zeroHcpPlayers[i].handicap})</option>`;
+        }
+        
+        var modalHtml = `
+            <div class="modal-overlay" id="anchorSelectModal" style="z-index: 10001;">
+                <div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:360px; width:90%; text-align:center; border:2px solid #4caf50;">
+                    <div style="font-size:1.3rem; font-weight:800; color:#4caf50; margin-bottom:16px;">🏌️ SELECT ANCHOR</div>
+                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:20px;">Who is today's Anchor? (Lowest handicap player)</div>
+                    <select id="anchorSelect" style="width:100%; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:30px; font-size:1rem; margin-bottom:20px;">
+                        ${optionsHtml}
+                    </select>
+                    <button id="anchorConfirmBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px 24px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer; width:100%;">✓ Confirm Anchor</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        document.getElementById('anchorConfirmBtn').addEventListener('click', function() {
+            var selectedName = document.getElementById('anchorSelect').value;
+            var selectedAnchor = allPlayers.find(p => p.name === selectedName);
+            document.getElementById('anchorSelectModal').remove();
+            
+            anchorPlayer = selectedAnchor;
+            var calculationResult = calculateAllAdjustments(anchorPlayer);
+            currentTableData = calculationResult;
+            
+            saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
+                if (err) {
+                    alert("Error saving handicap data. Please try again.");
+                } else {
+                    showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                }
+            });
+        });
+    }
+    
+    // ============================================================
+    // Load from historyGames (for readonly mode)
+    // ============================================================
+    
+    function loadFromHistory(gameId, callback) {
+        firebase.firestore().collection("historyGames").where("originalGameId", "==", gameId).limit(1).get()
+            .then(function(snapshot) {
+                if (snapshot.empty) {
+                    console.error("No history record found for game:", gameId);
+                    callback(null);
+                    return;
+                }
+                var doc = snapshot.docs[0];
+                var historyData = doc.data();
+                
+                courseSi = historyData.gameInfo?.course?.si || [];
+                coursePar = historyData.gameInfo?.course?.par || [];
+                startingHole = historyData.gameInfo?.startingHole || 1;
+                allPlayers = historyData.players || [];
+                
+                flight1Data = "";
+                flight2Data = "";
+                
+                var hcpData = historyData.handicapAdjustment;
+                if (hcpData && hcpData.players) {
+                    var calculationResult = {
+                        players: hcpData.players.map(function(p) {
+                            return {
+                                name: p.name,
+                                label: p.name.substring(0, 3).toUpperCase(),
+                                currentHcp: p.currentHcp,
+                                anchorAdj: p.anchorAdj || 0,
+                                perfAdj: p.perfAdj || 0,
+                                newHcp: p.newHcp
+                            };
+                        }),
+                        needsZeroRise: hcpData.needsZeroRise || false,
+                        zeroRiseAmount: hcpData.zeroRiseAmount || 0,
+                        newAnchorName: hcpData.newAnchor
+                    };
+                    
+                    callback({
+                        data: historyData,
+                        isFromHistory: true,
+                        preCalculatedResult: calculationResult,
+                        anchor: hcpData.anchor
+                    });
+                } else {
+                    callback({
+                        data: historyData,
+                        isFromHistory: true,
+                        preCalculatedResult: null,
+                        anchor: null
+                    });
+                }
+            })
+            .catch(function(err) {
+                console.error("Error loading history data:", err);
+                callback(null);
+            });
+    }
+    
     function initReadOnly(gameId, returnUrl) {
         currentGameId = gameId;
         isReadOnlyMode = true;
@@ -624,10 +637,8 @@ var HandicapAdjustment = (function() {
             allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
             
             if (historyResult.preCalculatedResult) {
-                // Use existing handicap adjustment data
                 showAdjustmentTable(historyResult.preCalculatedResult, historyResult.anchor || "Anchor", true);
             } else {
-                // No handicap adjustment data available
                 var emptyResult = {
                     players: allPlayers.map(function(p) {
                         return {
@@ -648,7 +659,6 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    // Check URL parameters for readonly mode
     function checkUrlAndInit() {
         var urlParams = new URLSearchParams(window.location.search);
         var gameId = urlParams.get('gameId');
@@ -656,7 +666,6 @@ var HandicapAdjustment = (function() {
         var returnTo = urlParams.get('returnTo');
         
         if (gameId && mode === 'readonly') {
-            // Called from view-history.html
             var returnUrl = returnTo === 'history' ? 'view-history.html?gameId=' + gameId : null;
             initReadOnly(gameId, returnUrl);
             return true;
@@ -664,13 +673,23 @@ var HandicapAdjustment = (function() {
         return false;
     }
     
-    // Auto-initialize if URL parameters present
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
     }
     
     return {
         init: init,
+        initForViewer: initForViewer,
         initReadOnly: initReadOnly,
         checkUrlAndInit: checkUrlAndInit
     };
@@ -678,14 +697,13 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.08
+VERSION: 2.09
 KEY CHANGES:
-   - ADDED: Support for readonly mode (viewing completed games)
-   - ADDED: loadFromHistory() - loads game data from historyGames collection
-   - ADDED: URL parameter detection (?gameId=xxx&mode=readonly)
-   - ADDED: Back button returns to view-history.html when in readonly mode
-   - CHANGED: Disabled all interactive elements in readonly mode
-   - All existing functionality (anchor selection, calculations, saving) unchanged for live mode
+   - ADDED: initForViewer() - simplified viewer mode that doesn't require archive records
+   - FIXED: Celebration screen handicap button now works in viewer mode
+   - Uses current game data directly instead of looking for history records
+   - Displays handicap table in readonly mode without redirects
+   - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
