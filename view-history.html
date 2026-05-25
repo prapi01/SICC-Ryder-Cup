@@ -1,11 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - REMOVED: Built-in HCP display code (now uses hcp-adjust.js)
-   - CHANGED: "HANDICAP ADJUSTMENT" button now calls hcp-adjust.js in readonly mode
-   - Added hcp-adjust.js script reference
-   - Simplified HCP mode - now just opens modal via hcp-adjust.js
+   - ADDED: reconstructDataStringsFromArchive() - builds data strings from flattened holeData
+   - CHANGED: loadGame() now tries stored f1DataString/f2DataString first, then reconstructs
+   - FIXED: HCP button now passes originalGameId instead of archive ID
+   - This ensures both new and existing archives work with the history viewer
+   - Backward compatible with all existing archive records
    - All other functionality (Final Result, Scorecard) unchanged
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
@@ -359,7 +360,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.08</div>
+<div class="version-tag">v3.09</div>
 
 <script>
 // ============================================================
@@ -386,6 +387,7 @@ var db = firebase.firestore();
 
 var currentGameData = null;
 var currentGameId = null;
+var currentOriginalGameId = null;  // NEW: Store originalGameId for HCP
 var allPlayersCache = null;
 var courseCache = null;
 var f1DataString = null;
@@ -395,6 +397,77 @@ var resultsCache = null;
 var currentHole = 1;
 var currentDisplayMode = "play";
 var selectedFlight = 1;
+
+// ============================================================
+// NEW: Reconstruct Data Strings from Flattened Archive Format
+// This handles older archives that only have holeData
+// ============================================================
+
+function reconstructDataStringsFromArchive(gameData) {
+    // If we already have valid data strings, use them
+    if (gameData.f1DataString && gameData.f1DataString.length === 162 &&
+        gameData.f2DataString && gameData.f2DataString.length === 162) {
+        return { 
+            f1DataString: gameData.f1DataString, 
+            f2DataString: gameData.f2DataString 
+        };
+    }
+    
+    // No holeData to reconstruct from
+    if (!gameData.holeData) {
+        return { f1DataString: "", f2DataString: "" };
+    }
+    
+    var holeData = gameData.holeData;
+    var f1Scores = holeData.f1Scores || [];
+    var f2Scores = holeData.f2Scores || [];
+    
+    // Check if we have enough score data (72 scores = 18 holes × 4 players)
+    if (f1Scores.length < 72 && f2Scores.length < 72) {
+        console.warn("Insufficient score data for reconstruction");
+        return { f1DataString: "", f2DataString: "" };
+    }
+    
+    // Reconstruct flight 1 data string (9 chars per hole)
+    // Format: [T/F][A1(2)][A2(2)][B1(2)][B2(2)] = 9 chars
+    var f1DataStringReconstructed = "";
+    for (var pos = 0; pos < 18; pos++) {
+        // Determine if hole was saved (check if scores are non-zero or if matchResults exists for this position)
+        var saved = 'T';  // Assume all holes are saved in completed games
+        var a1 = f1Scores[pos * 4] || 0;
+        var a2 = f1Scores[pos * 4 + 1] || 0;
+        var b1 = f1Scores[pos * 4 + 2] || 0;
+        var b2 = f1Scores[pos * 4 + 3] || 0;
+        f1DataStringReconstructed += saved + 
+            a1.toString().padStart(2, '0') + 
+            a2.toString().padStart(2, '0') + 
+            b1.toString().padStart(2, '0') + 
+            b2.toString().padStart(2, '0');
+    }
+    
+    // Reconstruct flight 2 data string
+    var f2DataStringReconstructed = "";
+    for (var pos = 0; pos < 18; pos++) {
+        var saved = 'T';
+        var a1 = f2Scores[pos * 4] || 0;
+        var a2 = f2Scores[pos * 4 + 1] || 0;
+        var b1 = f2Scores[pos * 4 + 2] || 0;
+        var b2 = f2Scores[pos * 4 + 3] || 0;
+        f2DataStringReconstructed += saved + 
+            a1.toString().padStart(2, '0') + 
+            a2.toString().padStart(2, '0') + 
+            b1.toString().padStart(2, '0') + 
+            b2.toString().padStart(2, '0');
+    }
+    
+    console.log("Reconstructed data strings from holeData. Lengths:", 
+                f1DataStringReconstructed.length, f2DataStringReconstructed.length);
+    
+    return { 
+        f1DataString: f1DataStringReconstructed, 
+        f2DataString: f2DataStringReconstructed 
+    };
+}
 
 // ============================================================
 // Helper Functions
@@ -767,15 +840,18 @@ function showResultMode() {
 }
 
 // ============================================================
-// HCP Mode - uses hcp-adjust.js
+// HCP Mode - uses hcp-adjust.js with ORIGINAL game ID
+// FIXED in v3.09: Pass originalGameId instead of archive ID
 // ============================================================
 
 function showHCPMode() {
-    // Open hcp-adjust.js in readonly mode
-    if (currentGameId) {
-        window.location.href = "hcp-adjust.html?gameId=" + currentGameId + "&mode=readonly&returnTo=history";
+    // Use originalGameId, not the archive ID
+    if (currentOriginalGameId) {
+        window.location.href = "hcp-adjust.html?gameId=" + currentOriginalGameId + "&mode=readonly&returnTo=history";
+    } else if (currentGameData && currentGameData.originalGameId) {
+        window.location.href = "hcp-adjust.html?gameId=" + currentGameData.originalGameId + "&mode=readonly&returnTo=history";
     } else {
-        alert("Game ID not available");
+        alert("Unable to load handicap data: original game ID not found.");
     }
 }
 
@@ -846,14 +922,20 @@ function loadGame(gameId) {
             var gameData = doc.data();
             currentGameData = gameData;
             currentGameId = gameId;
+            currentOriginalGameId = gameData.originalGameId || null;  // NEW: Store originalGameId
             allPlayersCache = gameData.players || [];
             courseCache = gameData.gameInfo?.course || {};
-            f1DataString = gameData.f1DataString || "";
-            f2DataString = gameData.f2DataString || "";
             resultsCache = gameData.results || null;
             
-            if (!f1DataString || !f2DataString) {
-                container.innerHTML = '<div class="empty-message">Invalid game data (missing score strings).</div>';
+            // NEW: Try to get data strings, reconstruct if missing
+            var dataStrings = reconstructDataStringsFromArchive(gameData);
+            f1DataString = dataStrings.f1DataString;
+            f2DataString = dataStrings.f2DataString;
+            
+            // Validate we have usable data strings
+            if (!f1DataString || !f2DataString || f1DataString.length !== 162 || f2DataString.length !== 162) {
+                console.error("Failed to reconstruct data strings. f1 length:", f1DataString?.length, "f2 length:", f2DataString?.length);
+                container.innerHTML = '<div class="empty-message">Invalid game data (unable to reconstruct score strings).</div>';
                 return;
             }
             
@@ -913,6 +995,7 @@ async function init() {
     document.getElementById("finalBackBtn").addEventListener("click", function() {
         currentGameData = null;
         currentGameId = null;
+        currentOriginalGameId = null;
         document.getElementById("finalResultPage").style.display = "none";
         document.getElementById("scorecardPage").style.display = "none";
         document.getElementById("gameSelector").style.display = "block";
@@ -929,12 +1012,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - REMOVED: Built-in HCP display code (now uses hcp-adjust.js)
-   - CHANGED: "HANDICAP ADJUSTMENT" button now calls hcp-adjust.js in readonly mode
-   - Added hcp-adjust.js script reference
-   - Simplified HCP mode - now just opens modal via hcp-adjust.js
+   - ADDED: reconstructDataStringsFromArchive() - builds data strings from flattened holeData
+   - CHANGED: loadGame() now tries stored f1DataString/f2DataString first, then reconstructs
+   - FIXED: HCP button now passes originalGameId instead of archive ID
+   - This ensures both new and existing archives work with the history viewer
+   - Backward compatible with all existing archive records
    - All other functionality (Final Result, Scorecard) unchanged
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
