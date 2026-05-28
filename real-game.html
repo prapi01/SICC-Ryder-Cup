@@ -1,15 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 3.23
+VERSION: 3.24
 KEY CHANGES:
-   - FIXED: Player handicap now shows as "JO 10" instead of "JO (10)" - no parentheses
-   - All other fixes from v3.22 preserved:
-     - Ticker margin-top 30px
-     - Bubbles nowrap (4 in one row)
-     - Player names use shortform (JO, KF, etc.)
-     - Navigation buttons rounded rectangle (border-radius 12px)
-     - Scorecard consistent column widths
-     - SAVE button font size increased
+   - FIXED: Bubbles now use CSS Grid (repeat(4, minmax(70px, 1fr)))
+   - This guarantees exactly 4 columns on all screen sizes (never wraps)
+   - Added text-overflow: ellipsis for very small screens
+   - All other fixes from v3.23 preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -137,16 +133,14 @@ STATUS: Ready for integration
         .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
         
-        /* Bubbles - nowrap to keep all 4 in one row */
+        /* Bubbles - CSS Grid forces exactly 4 columns, never wraps */
         .bubbles {
-            display: flex;
-            flex-wrap: nowrap;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(70px, 1fr));
             gap: 6px;
             margin-top: 12px;
         }
         .bubble {
-            flex: 1;
-            min-width: 0;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -359,7 +353,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.23</div>
+<div class="version-tag">v3.24</div>
 
 <script>
 // ============================================================
@@ -1509,16 +1503,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.23
+VERSION: 3.24
 KEY CHANGES:
-   - FIXED: Player handicap now shows as "JO 10" instead of "JO (10)" - no parentheses
-   - All other fixes from v3.22 preserved:
-     - Ticker margin-top 30px
-     - Bubbles nowrap (4 in one row)
-     - Player names use shortform (JO, KF, etc.)
-     - Navigation buttons rounded rectangle (border-radius 12px)
-     - Scorecard consistent column widths
-     - SAVE button font size increased
+   - FIXED: Bubbles now use CSS Grid (repeat(4, minmax(70px, 1fr)))
+   - This guarantees exactly 4 columns on all screen sizes (never wraps)
+   - Added text-overflow: ellipsis for very small screens
+   - All other fixes from v3.23 preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
