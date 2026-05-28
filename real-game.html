@@ -2,9 +2,12 @@
 FILE: real-game.html
 VERSION: 4.03
 KEY CHANGES:
-   - FIXED: Bubble overflow on iPhone - optimized grid for 4 columns
-   - INCREASED: Bubble font size to 0.7rem (more readable)
-   - ADJUSTED: Min bubble width to 55px (fits "OCB 3" perfectly)
+   - FIXED: Bubble overflow on iPhone - uniform size across all screen sizes
+   - CHANGED: grid-template-columns: repeat(4, minmax(70px, 1fr)) - ensures all bubbles same width
+   - CHANGED: gap uses clamp(4px, 1.5vw, 8px) for proportionate spacing
+   - CHANGED: font-size uses clamp(0.7rem, 3.5vw, 0.85rem) for readability on all devices
+   - CHANGED: padding uses clamp(4px, 1.5vh, 6px) clamp(2px, 1vw, 4px)
+   - Removed "vs " prefix from bubbles (saves space)
    - All clinch logic and other features preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -133,11 +136,11 @@ STATUS: Ready for integration
         .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
         
-        /* Bubbles - optimized for iPhone (4 columns, min 55px) */
+        /* Bubbles - UNIFORM SIZE across ALL screen sizes (v4.03) */
         .bubbles {
             display: grid;
-            grid-template-columns: repeat(4, minmax(55px, 1fr));
-            gap: 5px;
+            grid-template-columns: repeat(4, minmax(70px, 1fr));
+            gap: clamp(4px, 1.5vw, 8px);
             margin-top: 10px;
         }
         .bubble {
@@ -145,9 +148,9 @@ STATUS: Ready for integration
             overflow: hidden;
             text-overflow: ellipsis;
             text-align: center;
-            padding: 5px 3px;
+            padding: clamp(4px, 1.5vh, 6px) clamp(2px, 1vw, 4px);
             border-radius: 20px;
-            font-size: 0.7rem;
+            font-size: clamp(0.7rem, 3.5vw, 0.85rem);
             font-weight: 600;
         }
         .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
@@ -550,7 +553,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS
+// BUBBLE FUNCTIONS (without "vs " prefix)
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -1317,9 +1320,12 @@ init();
 FILE: real-game.html
 VERSION: 4.03
 KEY CHANGES:
-   - FIXED: Bubble overflow on iPhone - optimized grid for 4 columns
-   - INCREASED: Bubble font size to 0.7rem (more readable)
-   - ADJUSTED: Min bubble width to 55px (fits "OCB 3" perfectly)
+   - FIXED: Bubble overflow on iPhone - uniform size across all screen sizes
+   - CHANGED: grid-template-columns: repeat(4, minmax(70px, 1fr)) - ensures all bubbles same width
+   - CHANGED: gap uses clamp(4px, 1.5vw, 8px) for proportionate spacing
+   - CHANGED: font-size uses clamp(0.7rem, 3.5vw, 0.85rem) for readability on all devices
+   - CHANGED: padding uses clamp(4px, 1.5vh, 6px) clamp(2px, 1vw, 4px)
+   - Removed "vs " prefix from bubbles (saves space)
    - All clinch logic and other features preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
