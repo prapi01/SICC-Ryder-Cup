@@ -1,14 +1,16 @@
 <!--
 FILE: index.html
-VERSION: 3.15
+VERSION: 3.16
 KEY CHANGES:
-   - FIXED: Proper safe area handling for all screen elements
-   - Content now centers within available screen area (below dynamic island)
-   - Splash screen also respects safe area
-   - Removed negative margins causing offset issues
-   - All functionality unchanged from v3.14
+   - ADDED: Simple background pre-fetch of TODAY GAME data
+   - Stores raw Firestore document in sessionStorage as "preloadedRawGameData"
+   - NO additional JavaScript libraries loaded (keeps index.html light)
+   - Pre-fetch happens silently after page loads
+   - Data expires after 5 minutes
+   - Enables instant transition to pre-game.html
+   - All existing functionality preserved from v3.15
 DEPENDS ON: js/session.js, js/index-hidden.js
-STATUS: Ready for deployment
+STATUS: Ready for integration
 -->
 
 <!DOCTYPE html>
@@ -340,12 +342,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.15</div>
+<div class="version-tag">v3.16</div>
 
 <script>
-// FILE: index.html - VERSION 3.15
+// FILE: index.html - VERSION 3.16
 
-var APP_VERSION = "3.15";
+var APP_VERSION = "3.16";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -499,6 +501,66 @@ function getTodayString() {
     return year + "-" + month + "-" + day;
 }
 
+// ============================================================
+// NEW v3.16: Simple background pre-fetch of TODAY GAME data
+// ============================================================
+
+function getPreloadedRawGameData() {
+    var stored = sessionStorage.getItem("preloadedRawGameData");
+    if (stored) {
+        try {
+            var data = JSON.parse(stored);
+            // Check if preload is less than 5 minutes old
+            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
+                return data;
+            } else {
+                sessionStorage.removeItem("preloadedRawGameData");
+            }
+        } catch(e) {
+            console.warn("Failed to parse preloaded raw data:", e);
+        }
+    }
+    return null;
+}
+
+function startBackgroundPreload(gameId) {
+    // Check if already preloaded and fresh
+    var existing = getPreloadedRawGameData();
+    if (existing && existing.gameId === gameId) {
+        console.log("Background preload: Data already cached for game", gameId);
+        return;
+    }
+    
+    if (!db || !gameId) {
+        console.log("Background preload: No db or gameId");
+        return;
+    }
+    
+    console.log("Background preload: Starting for game", gameId);
+    
+    db.collection("scheduledGames").doc(gameId).get()
+        .then(function(doc) {
+            if (doc.exists) {
+                var preloadData = {
+                    gameId: gameId,
+                    rawData: doc.data(),
+                    preloadTimestamp: Date.now()
+                };
+                sessionStorage.setItem("preloadedRawGameData", JSON.stringify(preloadData));
+                console.log("Background preload: Complete for game", gameId);
+            } else {
+                console.log("Background preload: Game not found", gameId);
+            }
+        })
+        .catch(function(err) {
+            console.warn("Background preload: Failed", err);
+        });
+}
+
+// ============================================================
+// End of NEW v3.16 code
+// ============================================================
+
 function findNextGame(scheduledGames) {
     var today = getTodayString();
     
@@ -627,6 +689,13 @@ function loadAndRender() {
             displayGameId(todayGame.id);
         }
         
+        // NEW v3.16: Start background pre-load if today game exists
+        if (todayGame && todayGame.id) {
+            setTimeout(function() {
+                startBackgroundPreload(todayGame.id);
+            }, 1000); // Delay 1 second to not interfere with initial page load
+        }
+        
         var ngbHtml = '';
         if (nextGame) {
             var status = getGameStatus(nextGame.date);
@@ -740,13 +809,15 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.15
+VERSION: 3.16
 KEY CHANGES:
-   - FIXED: Proper safe area handling for all screen elements
-   - Content now centers within available screen area (below dynamic island)
-   - Splash screen also respects safe area
-   - Removed negative margins causing offset issues
-   - All functionality unchanged from v3.14
+   - ADDED: Simple background pre-fetch of TODAY GAME data
+   - Stores raw Firestore document in sessionStorage as "preloadedRawGameData"
+   - NO additional JavaScript libraries loaded (keeps index.html light)
+   - Pre-fetch happens silently after page loads
+   - Data expires after 5 minutes
+   - Enables instant transition to pre-game.html
+   - All existing functionality preserved from v3.15
 DEPENDS ON: js/session.js, js/index-hidden.js
-STATUS: Ready for deployment
+STATUS: Ready for integration
 -->
