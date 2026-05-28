@@ -1,10 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.13
+VERSION: 3.14
 KEY CHANGES:
-   - CHANGED: Container max-width from 420px to 500px for better consistency
-   - Maintained responsive design with centered layout
-   - All other functionality unchanged from v3.12
+   - FIXED: Device tag and version tag now respect safe-area-inset-top
+   - Tags now appear below iPhone status bar / dynamic island
+   - All other functionality unchanged from v3.13
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -48,7 +48,7 @@ STATUS: Ready for deployment
             max-width: 500px;
             width: 100%;
             margin: 0 auto;
-            padding-top: 120px;
+            padding-top: max(60px, env(safe-area-inset-top));
             padding-bottom: env(safe-area-inset-bottom, 20px);
         }
         
@@ -146,9 +146,10 @@ STATUS: Ready for deployment
             100% { transform: translate(0, 0); }
         }
         
+        /* Device tag - respects safe area */
         .device-tag {
             position: fixed;
-            top: 8px;
+            top: max(8px, env(safe-area-inset-top));
             left: 8px;
             font-size: 0.55rem;
             color: #4caf50;
@@ -161,9 +162,10 @@ STATUS: Ready for deployment
             letter-spacing: 0.5px;
         }
         
+        /* Version tag - respects safe area */
         .version-tag {
             position: fixed;
-            top: 8px;
+            top: max(8px, env(safe-area-inset-top));
             right: 8px;
             font-size: 0.65rem;
             color: #4caf50;
@@ -338,12 +340,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.13</div>
+<div class="version-tag">v3.14</div>
 
 <script>
-// FILE: index.html - VERSION 3.13
+// FILE: index.html - VERSION 3.14
 
-var APP_VERSION = "3.13";
+var APP_VERSION = "3.14";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -738,11 +740,11 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.13
+VERSION: 3.14
 KEY CHANGES:
-   - CHANGED: Container max-width from 420px to 500px for better consistency
-   - Maintained responsive design with centered layout
-   - All other functionality unchanged from v3.12
+   - FIXED: Device tag and version tag now respect safe-area-inset-top
+   - Tags now appear below iPhone status bar / dynamic island
+   - All other functionality unchanged from v3.13
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
