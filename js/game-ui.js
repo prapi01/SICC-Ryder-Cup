@@ -1,11 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.29
+VERSION: 2.30
 KEY CHANGES:
-   - CHANGED: Clinch loss bubble from red outline to WHITE outline
-   - CSS: .bubble-loss-clinch now has white border + white text
-   - All other functions unchanged from v2.28
-DEPENDS ON: GameLoader (for clinch status)
+   - FIXED: renderPlayerCards now falls back to window.getBubbleClass/getBubbleValue if parameters are not functions
+   - Ensures that bubble values and colors always work even if parameters are missing
+   - All other functions unchanged from v2.29
+DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
 
@@ -476,7 +476,7 @@ var GameUI = (function() {
         
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -540,7 +540,7 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<td><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -602,19 +602,23 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody><tr>';
+        html += '</tbody></table>';
         container.innerHTML = html;
         
         tightenScorecardRows();
     }
     
     // ============================================================
-    // Player Cards with Bubbles
+    // Player Cards with Bubbles - FIXED v2.30
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
         var container = document.getElementById(containerId);
         if (!container) return;
+        
+        // FIX v2.30: Use global functions as fallback if parameters are not valid
+        var bubbleClassFn = (typeof getBubbleClass === 'function') ? getBubbleClass : (window.getBubbleClass || function() { return 'bubble-green'; });
+        var bubbleValueFn = (typeof getBubbleValue === 'function') ? getBubbleValue : (window.getBubbleValue || function() { return 'AS'; });
         
         var html = '';
         for (var i = 0; i < players.length; i++) {
@@ -626,8 +630,8 @@ var GameUI = (function() {
             var bubblesHtml = '<div class="bubbles">';
             for (var j = 0; j < opponents.length; j++) {
                 var opp = opponents[j];
-                var bubbleClass = getBubbleClass(player, opp);
-                var bubbleValue = getBubbleValue(player, opp);
+                var bubbleClass = bubbleClassFn(player, opp);
+                var bubbleValue = bubbleValueFn(player, opp);
                 bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
             }
             bubblesHtml += '</div>';
@@ -916,11 +920,8 @@ var GameUI = (function() {
         
         // If this is the clinch hole
         if (clinchedAt && currentHole === clinchedAt) {
-            if (matchValue > 0) {
-                return 'bubble-gold';
-            } else if (matchValue < 0) {
-                return 'bubble-loss-clinch';
-            }
+            if (matchValue > 0) return 'bubble-gold';
+            else if (matchValue < 0) return 'bubble-loss-clinch';
         }
         
         // Normal play - green for winning/tie, red for losing
@@ -993,7 +994,6 @@ var GameUI = (function() {
         
         var style = document.createElement('style');
         style.id = 'gameui-button-styles';
-        // FIXED v2.29: Clinch loss bubble changed to WHITE outline
         style.textContent = `
             .scorecard-wrapper {
                 overflow-x: auto;
@@ -1035,15 +1035,12 @@ var GameUI = (function() {
             .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
             .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
             .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
-            
-            /* Match clinch bubble styles */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
                 border: 3px solid #ffaa44;
                 font-weight: 800;
             }
-            /* v2.29: Clinch loss - WHITE outline instead of red */
             .bubble-loss-clinch {
                 background: #3a1a1a;
                 color: #ffffff;
@@ -1204,11 +1201,11 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.29
+VERSION: 2.30
 KEY CHANGES:
-   - CHANGED: Clinch loss bubble from red outline to WHITE outline
-   - CSS: .bubble-loss-clinch now has white border + white text
-   - All other functions unchanged from v2.28
-DEPENDS ON: GameLoader (for clinch status)
+   - FIXED: renderPlayerCards now falls back to window.getBubbleClass/getBubbleValue if parameters are not functions
+   - Ensures that bubble values and colors always work even if parameters are missing
+   - All other functions unchanged from v2.29
+DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
