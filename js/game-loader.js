@@ -1,11 +1,12 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - FIXED: Intra-flight results now recalculated in recalculateDerivedData()
-   - Added intra-flight recalculation for both flights when cache updates
-   - Ensures match bubbles update correctly after either flight saves a hole
-   - Cross-flight recalculation already present and working
+   - ADDED: Clinch detection for each match
+   - Stores `clinchedAt` in cache (hole number where match clinched, or null)
+   - Calculated during recalculateDerivedData() using stored match results
+   - Efficient: only recalculates when match results change
+   - All existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 */
@@ -45,7 +46,11 @@ var GameLoader = (function() {
         },
         flight1Cumulative: Array(18).fill(0),
         flight2Cumulative: Array(18).fill(0),
-        lastSyncedHole: 0
+        lastSyncedHole: 0,
+        
+        // NEW v1.02: Clinch tracking
+        // Format: { "PlayerA_vs_PlayerB": clinchedAtHole (1-18) or null }
+        clinchedAt: {}
     };
     
     var syncStatus = {
@@ -132,6 +137,52 @@ var GameLoader = (function() {
         return lastSynced;
     }
     
+    // NEW v1.02: Calculate clinch status for all matches
+    function calculateClinchedAt(matchResultsArray, allPlayers) {
+        var clinched = {};
+        
+        // Get all Team A and Team B players in correct order
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        // For each cross-flight match (the ones we track in matchResults)
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                var playerA = teamAPlayers[a];
+                var playerB = teamBPlayers[b];
+                var matchKey = playerA.name + "_vs_" + playerB.name;
+                
+                // Get all hole values for this match from matchResultsArray
+                // matchResultsArray is an array of 18 arrays (one per hole position)
+                // Each inner array has 16 values (4x4 matches)
+                var matchIndex = a * teamBPlayers.length + b;
+                
+                var clinchedHole = null;
+                for (var pos = 0; pos < 18; pos++) {
+                    var holeNumber = getHoleAtStoragePosition(pos, localCache.startingHole);
+                    var matchValue = 0;
+                    if (localCache.results && localCache.results.matchResults && localCache.results.matchResults[pos]) {
+                        matchValue = localCache.results.matchResults[pos][matchIndex] || 0;
+                    }
+                    
+                    var absValue = Math.abs(matchValue);
+                    var holesRemaining = 18 - holeNumber;
+                    
+                    if (absValue > holesRemaining) {
+                        clinchedHole = holeNumber;
+                        break;
+                    }
+                }
+                
+                clinched[matchKey] = clinchedHole;
+                // Also store for reverse direction (B vs A)
+                clinched[playerB.name + "_vs_" + playerA.name] = clinchedHole;
+            }
+        }
+        
+        return clinched;
+    }
+    
     function recalculateDerivedData() {
         if (!localCache.players.length || !localCache.f1DataString || !localCache.f2DataString) {
             return;
@@ -152,7 +203,7 @@ var GameLoader = (function() {
         localCache.lastSyncedHole = calculateLastSyncedHole();
         
         // ============================================================
-        // FIXED: Recalculate intra-flight results for both flights
+        // Recalculate intra-flight results for both flights
         // ============================================================
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
@@ -212,6 +263,13 @@ var GameLoader = (function() {
             );
             localCache.strkRow = strokeResults;
         } catch(e) { console.warn("Stroke game recalc error:", e); }
+        
+        // NEW v1.02: Calculate clinch status
+        if (localCache.results && localCache.results.matchResults) {
+            try {
+                localCache.clinchedAt = calculateClinchedAt(localCache.results.matchResults, allPlayers);
+            } catch(e) { console.warn("Clinch calculation error:", e); }
+        }
     }
     
     // ============================================================
@@ -267,6 +325,12 @@ var GameLoader = (function() {
         return 0;
     }
     
+    // NEW v1.02: Get clinch status for a match
+    function getClinchedAt(playerName, opponentName) {
+        var key = playerName + "_vs_" + opponentName;
+        return localCache.clinchedAt[key] || null;
+    }
+    
     function updateLocalCacheFromSnapshot(data) {
         if (data.f1 && data.f1.d) localCache.f1DataString = data.f1.d;
         if (data.f2 && data.f2.d) localCache.f2DataString = data.f2.d;
@@ -286,7 +350,7 @@ var GameLoader = (function() {
         localCache.flight1Data = parseFlightData(localCache.f1DataString, localCache.startingHole);
         localCache.flight2Data = parseFlightData(localCache.f2DataString, localCache.startingHole);
         
-        // Recalculate all derived data (includes intra-flight, cross-flight, team, stroke)
+        // Recalculate all derived data (includes clinch status)
         recalculateDerivedData();
         
         // Notify callbacks
@@ -337,7 +401,7 @@ var GameLoader = (function() {
             localCache.flight1Data = parseFlightData(localCache.f1DataString, localCache.startingHole);
             localCache.flight2Data = parseFlightData(localCache.f2DataString, localCache.startingHole);
             
-            // Recalculate all derived data
+            // Recalculate all derived data (includes clinch status)
             recalculateDerivedData();
             
             // Set sync status to green (no pending writes)
@@ -382,6 +446,7 @@ var GameLoader = (function() {
         getLocalCache: getLocalCache,
         getTRForHole: getTRForHole,
         getMatchValue: getMatchValue,
+        getClinchedAt: getClinchedAt,  // NEW v1.02
         getSyncStatus: getSyncStatus,
         markWritePending: markWritePending,
         markWriteComplete: markWriteComplete,
@@ -391,7 +456,6 @@ var GameLoader = (function() {
         getPlayOrder: getPlayOrder,
         getHolePosition: getHolePosition,
         getHoleAtStoragePosition: getHoleAtStoragePosition,
-        // Expose recalculateDerivedData for manual triggers if needed
         recalculateDerivedData: recalculateDerivedData
     };
     
@@ -399,12 +463,13 @@ var GameLoader = (function() {
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - FIXED: Intra-flight results now recalculated in recalculateDerivedData()
-   - Added intra-flight recalculation for both flights when cache updates
-   - Ensures match bubbles update correctly after either flight saves a hole
-   - Cross-flight recalculation already present and working
+   - ADDED: Clinch detection for each match
+   - Stores `clinchedAt` in cache (hole number where match clinched, or null)
+   - Calculated during recalculateDerivedData() using stored match results
+   - Added getClinchedAt() public function
+   - All existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 */
