@@ -1,15 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 4.02
+VERSION: 4.03
 KEY CHANGES:
-   - CHANGED: Container max-width from 550px to 500px (consistent with main app)
-   - ADDED: Cache-first loading using preloaded data from index.html
-   - READS: "preloadedRawGameData" from sessionStorage for instant render
-   - FALLBACK: Firestore fetch only if no cache exists
-   - REMOVED: All previewSandboxes references (deprecated)
-   - REMOVED: isPreviewSandbox logic and related code
-   - All existing viewer functionality preserved from v4.00
-   - Uses GameLoader for real-time sync after initial render
+   - ADDED: Hidden-by-default CSS (no flash of "VIEWER" or content)
+   - Uses CSS class "data-ready" to reveal content after cache loads
+   - Removed "VIEWER" status bubble flash during transition
+   - Container max-width: 500px (consistent with main app)
+   - Cache-first loading using preloaded data from index.html
+   - All existing viewer functionality preserved from v4.02
+   - Smooth, no-flash transition from pre-game to view-game
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -35,6 +34,27 @@ STATUS: Ready for integration
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; font-family: system-ui, sans-serif; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
         .container { max-width: 500px; width: 100%; margin: 0 auto; padding: 20px 16px; }
+        
+        /* NEW v4.03: Hide elements until data is ready */
+        .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
+            visibility: hidden;
+        }
+        
+        /* Show when data is ready */
+        .data-ready .status-bubble,
+        .data-ready #courseName,
+        .data-ready #holeHeader,
+        .data-ready #trDisplay,
+        .data-ready #playerCards,
+        .data-ready .scorecard-section,
+        .data-ready #bottomMenuContainer {
+            visibility: visible;
+        }
+        
+        /* Ticker container always visible but empty initially */
+        .ticker-container {
+            visibility: visible;
+        }
         
         .version-tag {
             position: fixed;
@@ -215,14 +235,14 @@ STATUS: Ready for integration
 </head>
 <body>
 
-<div class="container">
+<div class="container" id="mainContainer">
     <div class="ticker-container" id="tickerContainer">
         <div class="ticker-content" id="tickerContent">&nbsp;</div>
     </div>
     
     <div id="statusBubble" class="status-bubble">VIEWER</div>
     
-    <div id="courseName" style="text-align:center; margin-bottom:8px;">Loading...</div>
+    <div id="courseName" style="text-align:center; margin-bottom:8px;"></div>
     
     <div id="holeHeader" style="text-align:center; margin-bottom:10px;"></div>
     
@@ -239,7 +259,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.02</div>
+<div class="version-tag">v4.03</div>
 
 <script>
 // ============================================================
@@ -274,7 +294,7 @@ var currentFlight = 1;
 var currentHole = 1;
 
 // ============================================================
-// Cache Loading (v4.02)
+// Cache Loading
 // ============================================================
 
 function getPreloadedRawGameData() {
@@ -303,7 +323,6 @@ function applyCachedDataToGameLoader() {
     console.log("Applying cached data to GameLoader (viewer mode)");
     var rawData = cached.rawData;
     
-    // Build cache object for GameLoader.setLocalCache()
     var cacheData = {
         course: rawData.course,
         players: rawData.players,
@@ -729,7 +748,7 @@ async function init() {
     buildCompactHeader();
     buildBottomMenu();
     
-    // Try to use cached data first (v4.02)
+    // Try to use cached data first
     var cacheApplied = applyCachedDataToGameLoader();
     
     if (cacheApplied) {
@@ -758,12 +777,25 @@ async function init() {
         
         renderAll();
         
+        // Reveal content after data is loaded
+        document.getElementById("mainContainer").classList.add("data-ready");
+        
         // Still attach Firestore listener for real-time updates
         startGameListener();
     } else {
         console.log("No cached data, loading from Firestore");
         initTicker();
         startGameListener();
+        
+        // Reveal content when data arrives via listener
+        // The listener will call renderAll which will show content
+        // Add a small delay to ensure content appears
+        setTimeout(function() {
+            if (!document.getElementById("mainContainer").classList.contains("data-ready")) {
+                // Force reveal if data is already loaded via the first snapshot
+                document.getElementById("mainContainer").classList.add("data-ready");
+            }
+        }, 500);
     }
 }
 
@@ -785,16 +817,15 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 4.02
+VERSION: 4.03
 KEY CHANGES:
-   - CHANGED: Container max-width from 550px to 500px (consistent with main app)
-   - ADDED: Cache-first loading using preloaded data from index.html
-   - READS: "preloadedRawGameData" from sessionStorage for instant render
-   - FALLBACK: Firestore fetch only if no cache exists
-   - REMOVED: All previewSandboxes references (deprecated)
-   - REMOVED: isPreviewSandbox logic and related code
-   - All existing viewer functionality preserved from v4.00
-   - Uses GameLoader for real-time sync after initial render
+   - ADDED: Hidden-by-default CSS (no flash of "VIEWER" or content)
+   - Uses CSS class "data-ready" to reveal content after cache loads
+   - Removed "VIEWER" status bubble flash during transition
+   - Container max-width: 500px (consistent with main app)
+   - Cache-first loading using preloaded data from index.html
+   - All existing viewer functionality preserved from v4.02
+   - Smooth, no-flash transition from pre-game to view-game
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
