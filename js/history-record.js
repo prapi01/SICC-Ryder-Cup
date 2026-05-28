@@ -1,13 +1,14 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: One schema only - store data strings directly
-   - Removed holeData object (flattened arrays) - NO MORE RECONSTRUCTION
-   - Stores f1DataString and f2DataString exactly as they appear in scheduledGames
-   - Archive now has identical format to live games
-   - All display functions can read directly without conversion
-   - Backward compatibility: existing holeData records will be migrated on read
+   - ADDED: adjustedHandicaps field permanently stored in archive record
+   - Stores starting handicap for each player at game time
+   - Stores anchorAdj, perfAdj, finalHcp after handicap adjustment
+   - Prevents future recalculation errors (handicap changes over time)
+   - Archive now has complete immutable handicap adjustment record
+   - Backward compatible: reads existing records without adjustedHandicaps
+   - All existing functionality preserved from v3.00
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
@@ -47,6 +48,7 @@ var HistoryRecord = (function() {
     // ============================================================
     // Create or update archive record (UPSERT)
     // Stores data strings directly - NO conversion
+    // NEW v3.01: Also stores adjustedHandicaps placeholder
     // ============================================================
     
     function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -118,12 +120,23 @@ var HistoryRecord = (function() {
                     winnerText = "Team B Wins!";
                 }
                 
+                // NEW v3.01: Store starting handicaps for all players
+                var playersWithStartingHcp = gameData.players.map(function(p) {
+                    return {
+                        name: p.name,
+                        label: p.label,
+                        handicap: p.handicap,  // STARTING handicap at game time
+                        team: p.team,
+                        flight: p.flight
+                    };
+                });
+                
                 var archiveData = {
                     originalGameId: gameId,
                     completedAt: firebase.firestore.FieldValue.serverTimestamp(),
                     status: "pending_handicap",
                     version: 3,
-                    schema: "v3_strings",  // NEW schema: stores data strings directly
+                    schema: "v3_strings",
                     
                     gameInfo: {
                         date: gameData.date,
@@ -137,15 +150,8 @@ var HistoryRecord = (function() {
                         teamGameFormat: gameData.teamGameFormat || "tournament"
                     },
                     
-                    players: gameData.players.map(function(p) {
-                        return {
-                            name: p.name,
-                            label: p.label,
-                            handicap: p.handicap,
-                            team: p.team,
-                            flight: p.flight
-                        };
-                    }),
+                    // Store players with their STARTING handicaps
+                    players: playersWithStartingHcp,
                     
                     finalResults: {
                         teamAScore: finalScores.teamA,
@@ -172,6 +178,9 @@ var HistoryRecord = (function() {
                     f2DataString: flight2DataString || "",
                     results: results,
                     
+                    // NEW v3.01: Placeholder for handicap adjustment (to be filled later)
+                    adjustedHandicaps: null,
+                    
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 
@@ -196,24 +205,57 @@ var HistoryRecord = (function() {
     
     // ============================================================
     // Update with handicap adjustment (mark as completed)
+    // NEW v3.01: Stores adjustedHandicaps with starting handicaps
     // ============================================================
     
-    function updateWithHandicap(archiveId, handicapData, callback) {
+    function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
         if (!archiveId || !handicapData) {
             var err = new Error("Missing archiveId or handicapData");
             if (callback) callback(err);
             return;
         }
         
+        // NEW v3.01: Build complete adjustedHandicaps record
+        var adjustedHandicaps = {
+            calculatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            anchor: handicapData.anchor,
+            needsZeroRise: handicapData.needsZeroRise || false,
+            zeroRiseAmount: handicapData.zeroRiseAmount || 0,
+            newAnchor: handicapData.newAnchor || handicapData.anchor,
+            players: []
+        };
+        
+        // Merge starting handicaps with adjustment data
+        if (startingPlayers && startingPlayers.length > 0) {
+            for (var i = 0; i < startingPlayers.length; i++) {
+                var player = startingPlayers[i];
+                var adjustment = handicapData.players.find(function(p) { return p.name === player.name; });
+                
+                adjustedHandicaps.players.push({
+                    name: player.name,
+                    label: player.label,
+                    startingHcp: player.handicap,           // Stored permanently
+                    anchorAdj: adjustment ? adjustment.anchorAdj : 0,
+                    perfAdj: adjustment ? adjustment.perfAdj : 0,
+                    finalHcp: adjustment ? adjustment.newHcp : player.handicap
+                });
+            }
+        } else {
+            // Fallback: use only adjustment data if starting players not provided
+            adjustedHandicaps.players = handicapData.players.map(function(p) {
+                return {
+                    name: p.name,
+                    label: p.name.substring(0, 3).toUpperCase(),
+                    startingHcp: p.currentHcp,
+                    anchorAdj: p.anchorAdj || 0,
+                    perfAdj: p.perfAdj || 0,
+                    finalHcp: p.newHcp
+                };
+            });
+        }
+        
         var updatePayload = {
-            "handicapAdjustment": {
-                calculatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                anchor: handicapData.anchor,
-                players: handicapData.players,
-                needsZeroRise: handicapData.needsZeroRise || false,
-                zeroRiseAmount: handicapData.zeroRiseAmount || 0,
-                newAnchor: handicapData.newAnchor || handicapData.anchor
-            },
+            "adjustedHandicaps": adjustedHandicaps,
             "status": "completed",
             "updatedAt": firebase.firestore.FieldValue.serverTimestamp()
         };
@@ -230,7 +272,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Legacy wrapper
+    // Legacy wrapper (maintains backward compatibility)
     // ============================================================
     
     function createPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -345,6 +387,32 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
+    // NEW v3.01: Get stored adjustedHandicaps (for history display)
+    // ============================================================
+    
+    function getAdjustedHandicaps(archiveId, callback) {
+        if (!archiveId) {
+            if (callback) callback("No archive ID provided", null);
+            return;
+        }
+        
+        firebase.firestore().collection(COLLECTION).doc(archiveId).get()
+            .then(function(doc) {
+                if (doc.exists) {
+                    var data = doc.data();
+                    var adjustedHandicaps = data.adjustedHandicaps || null;
+                    callback(null, adjustedHandicaps);
+                } else {
+                    callback("Game not found", null);
+                }
+            })
+            .catch(function(err) {
+                console.error("Error getting adjusted handicaps:", err);
+                callback(err, null);
+            });
+    }
+    
+    // ============================================================
     // Public API
     // ============================================================
     
@@ -356,21 +424,24 @@ var HistoryRecord = (function() {
         getArchivedGames: getArchivedGames,
         getArchivedGameByOriginalId: getArchivedGameByOriginalId,
         getExistingRecord: getExistingRecord,
-        deleteArchiveRecord: deleteArchiveRecord
+        deleteArchiveRecord: deleteArchiveRecord,
+        getAdjustedHandicaps: getAdjustedHandicaps  // NEW v3.01
     };
     
 })();
 
 /*
 FILE: js/history-record.js
-VERSION: 3.00
+VERSION: 3.01
 KEY CHANGES:
-   - COMPLETE REWRITE: One schema only - store data strings directly
-   - Removed holeData object (flattened arrays) - NO MORE RECONSTRUCTION
-   - Stores f1DataString and f2DataString exactly as they appear in scheduledGames
-   - Archive now has identical format to live games
-   - All display functions can read directly without conversion
-   - Backward compatibility: existing holeData records will be migrated on read
+   - ADDED: adjustedHandicaps field permanently stored in archive record
+   - Stores starting handicap for each player at game time
+   - Stores anchorAdj, perfAdj, finalHcp after handicap adjustment
+   - Prevents future recalculation errors (handicap changes over time)
+   - Archive now has complete immutable handicap adjustment record
+   - Backward compatible: reads existing records without adjustedHandicaps
+   - Added getAdjustedHandicaps() for easy retrieval
+   - All existing functionality preserved from v3.00
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
