@@ -1,16 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 4.05
+VERSION: 4.06
 KEY CHANGES:
-   - ADDED: Support for preloaded data from pre-game.html (instant render)
-   - Checks sessionStorage for preloadedGameData before fetching from Firestore
-   - REMOVED: All previewSandboxes references (preview mode deprecated)
-   - REMOVED: isPreviewSandbox logic and related code
-   - REMOVED: preview-game.html redirect references
-   - Uses cached data when available for instant page render
-   - Falls back to Firestore fetch if no preloaded data exists
-   - All bubble CSS now managed exclusively by game-ui.js
-   - Container max-width: 500px with safe area support
+   - REMOVED: "LIVE" status bubble flash during transition (hidden until data ready)
+   - REMOVED: "Loading..." text flash during transition (hidden until data ready)
+   - Elements now hidden by default, shown only when cached data is applied
+   - Uses CSS class "data-ready" to reveal content after cache loads
+   - All existing preload/cache functionality preserved from v4.05
+   - Smooth, no-flash transition from pre-game to real-game
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -60,6 +57,27 @@ STATUS: Ready for integration
             width: 100%;
             margin: 0 auto;
             padding: 20px 16px;
+        }
+        
+        /* NEW v4.06: Hide elements until data is ready */
+        .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
+            visibility: hidden;
+        }
+        
+        /* Show when data is ready */
+        .data-ready .status-bubble,
+        .data-ready #courseName,
+        .data-ready #holeHeader,
+        .data-ready #trDisplay,
+        .data-ready #playerCards,
+        .data-ready .scorecard-section,
+        .data-ready #bottomMenuContainer {
+            visibility: visible;
+        }
+        
+        /* Ticker container always visible but empty initially */
+        .ticker-container {
+            visibility: visible;
         }
         
         /* Device tag - respects safe area */
@@ -312,14 +330,14 @@ STATUS: Ready for integration
 </head>
 <body>
 
-<div class="container">
-    <div class="status-bubble" id="statusBubble">LIVE</div>
-    
+<div class="container" id="mainContainer">
     <div class="ticker-container" id="tickerContainer">
         <div class="ticker-content" id="tickerContent">&nbsp;</div>
     </div>
     
-    <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
+    <div class="status-bubble" id="statusBubble">LIVE</div>
+    
+    <div style="text-align:center; margin-bottom:8px;" id="courseName"></div>
     
     <div id="holeHeader"></div>
     
@@ -332,14 +350,13 @@ STATUS: Ready for integration
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
-    <!-- Bottom menu container for Back to Main Menu button -->
     <div id="bottomMenuContainer"></div>
     
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.05</div>
+<div class="version-tag">v4.06</div>
 
 <script>
 // ============================================================
@@ -385,25 +402,24 @@ var saveInProgress = false;
 var activeWaitModal = null;
 var activeCompleteModal = null;
 
-// NEW v4.05: Track if we used preloaded data
 var usedPreloadedData = false;
 
 // ============================================================
-// Preloaded Data Support (v4.05)
+// Preloaded Data Support
 // ============================================================
 
-function getPreloadedGameData() {
-    var stored = sessionStorage.getItem("preloadedGameData");
+function getPreloadedRawGameData() {
+    var stored = sessionStorage.getItem("preloadedRawGameData");
     if (stored) {
         try {
             var data = JSON.parse(stored);
             if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
                 return data;
             } else {
-                sessionStorage.removeItem("preloadedGameData");
+                sessionStorage.removeItem("preloadedRawGameData");
             }
         } catch(e) {
-            console.warn("Failed to parse preloaded data:", e);
+            console.warn("Failed to parse preloaded raw data:", e);
         }
     }
     return null;
@@ -440,15 +456,16 @@ function applyPreloadedData(preloadData) {
         gameStarted: true
     };
     
-    // Manually set the localCache in GameLoader
-    if (typeof GameLoader !== 'undefined' && GameLoader._setLocalCache) {
-        GameLoader._setLocalCache(mockCache);
+    if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
+        GameLoader.setLocalCache(mockCache);
     } else {
-        // Fallback: store in a global variable for GameLoader to use
         window._preloadedGameCache = mockCache;
     }
     
     document.getElementById("courseName").innerHTML = courseName;
+    
+    // NEW v4.06: Reveal content after data is applied
+    document.getElementById("mainContainer").classList.add("data-ready");
     
     usedPreloadedData = true;
     return true;
@@ -1279,8 +1296,8 @@ async function init() {
     
     GameLoader.addDataCallback(onCacheUpdate);
     
-    // NEW v4.05: Check for preloaded data first
-    var preloadData = getPreloadedGameData();
+    // Check for preloaded data
+    var preloadData = getPreloadedRawGameData();
     var gameDataPreloaded = sessionStorage.getItem("gameDataPreloaded") === "true";
     
     if (preloadData && gameDataPreloaded) {
@@ -1411,6 +1428,9 @@ async function init() {
             
             renderAll();
             setSaveButtonIdle();
+            
+            // Reveal content after data is loaded (fallback case)
+            document.getElementById("mainContainer").classList.add("data-ready");
         });
     }
     
@@ -1425,17 +1445,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.05
+VERSION: 4.06
 KEY CHANGES:
-   - ADDED: Support for preloaded data from pre-game.html (instant render)
-   - Checks sessionStorage for preloadedGameData before fetching from Firestore
-   - REMOVED: All previewSandboxes references (preview mode deprecated)
-   - REMOVED: isPreviewSandbox logic and related code
-   - REMOVED: preview-game.html redirect references
-   - Uses cached data when available for instant page render
-   - Falls back to Firestore fetch if no preloaded data exists
-   - All bubble CSS now managed exclusively by game-ui.js
-   - Container max-width: 500px with safe area support
+   - REMOVED: "LIVE" status bubble flash during transition (hidden until data ready)
+   - REMOVED: "Loading..." text flash during transition (hidden until data ready)
+   - Elements now hidden by default, shown only when cached data is applied
+   - Uses CSS class "data-ready" to reveal content after cache loads
+   - All existing preload/cache functionality preserved from v4.05
+   - Smooth, no-flash transition from pre-game to real-game
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
