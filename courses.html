@@ -1,7 +1,7 @@
-<!-- FILE: courses.html - VERSION 1.29 -->
+<!-- FILE: courses.html - VERSION 1.30 -->
 <!-- Course Management for SICC Ryder Cup App -->
 <!-- Add, edit, delete courses with Par and Stroke Index for 18 holes -->
-<!-- FIXED: SI column now displays correctly in confirmation table -->
+<!-- CHANGED: Container max-width from 550px to 500px -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,13 +13,13 @@
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: 16px; }
-        .container { max-width: 550px; margin: 0 auto; }
+        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+        .container { max-width: 500px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
         .version-tag { 
-            position: fixed; 
-            top: 8px; 
-            right: 8px; 
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
             font-size: 0.65rem; 
             color: #4caf50; 
             background: rgba(0,0,0,0.6); 
@@ -32,8 +32,8 @@
         
         .device-tag {
             position: fixed;
-            top: 8px;
-            left: 8px;
+            top: max(8px, env(safe-area-inset-top));
+            left: max(8px, env(safe-area-inset-left));
             font-size: 0.55rem;
             color: #4caf50;
             background: rgba(0,0,0,0.4);
@@ -92,13 +92,13 @@
     <div class="loading">Loading courses...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.29</div>
+<div class="version-tag">v1.30</div>
 
 <script>
-// FILE: courses.html - VERSION 1.29
-// FIXED: SI column now displays correctly in confirmation table
+// FILE: courses.html - VERSION 1.30
+// CHANGED: Container max-width from 550px to 500px
 
-var VERSION = "1.29";
+var VERSION = "1.30";
 var CACHE_KEY = "courses_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -563,5 +563,5 @@ SessionManager.initSession("courses.html", "admin.html", function(session) {
 </body>
 </html>
 
-<!-- FILE: courses.html - VERSION 1.29 -->
-<!-- FIXED: SI column now displays correctly in confirmation table -->
+<!-- FILE: courses.html - VERSION 1.30 -->
+<!-- CHANGED: Container max-width from 550px to 500px -->
