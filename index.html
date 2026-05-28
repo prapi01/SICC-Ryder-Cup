@@ -1,14 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.16
+VERSION: 3.17
 KEY CHANGES:
-   - ADDED: Simple background pre-fetch of TODAY GAME data
-   - Stores raw Firestore document in sessionStorage as "preloadedRawGameData"
-   - NO additional JavaScript libraries loaded (keeps index.html light)
-   - Pre-fetch happens silently after page loads
-   - Data expires after 5 minutes
-   - Enables instant transition to pre-game.html
-   - All existing functionality preserved from v3.15
+   - ADDED: Preload completion tracking before enabling TODAY GAME button
+   - TODAY GAME button shows "Loading..." and is disabled until preload complete
+   - Preload must complete before user can navigate to pre-game
+   - Ensures cache is guaranteed to exist before transition
+   - Shows loading state on button (replaces spinner)
+   - All existing functionality preserved from v3.16
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -230,13 +229,35 @@ STATUS: Ready for integration
             opacity: 0.7;
             cursor: default;
         }
+        .ngb-loading {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
+            border: 2px solid #ffaa44;
+            opacity: 0.8;
+            cursor: wait;
+        }
         .ngb:active { transform: scale(0.98); }
         .ngb .icon { font-size: 3rem; margin-bottom: 16px; display: block; }
         .ngb .title { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 12px; background: none; -webkit-background-clip: unset; color: #4caf50; white-space: normal; }
+        .ngb-loading .title { color: #ffaa44; }
         .ngb .subtitle-text { font-size: 1rem; font-weight: 500; color: #ccc; margin-bottom: 8px; }
         .ngb .date { font-size: 0.9rem; font-weight: 400; color: #aaa; margin-bottom: 8px; }
         .ngb .course-name { font-size: 0.85rem; font-weight: 400; color: #888; margin-top: 4px; }
         .ngb .no-game { font-size: 1rem; font-weight: 500; color: #888; }
+        .ngb-loading .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ffaa44;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
         
         /* Menu buttons container - centered */
         .menu-buttons {
@@ -342,12 +363,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.16</div>
+<div class="version-tag">v3.17</div>
 
 <script>
-// FILE: index.html - VERSION 3.16
+// FILE: index.html - VERSION 3.17
 
-var APP_VERSION = "3.16";
+var APP_VERSION = "3.17";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -368,6 +389,11 @@ var FIREBASE_CONFIG = {
 var db = null;
 var firestoreReady = false;
 var currentSession = null;
+
+// NEW v3.17: Preload tracking
+var preloadComplete = false;
+var preloadInProgress = false;
+var pendingGameId = null;
 
 // Get splash elements
 var splashOverlay = document.getElementById('splashOverlay');
@@ -502,7 +528,7 @@ function getTodayString() {
 }
 
 // ============================================================
-// NEW v3.16: Simple background pre-fetch of TODAY GAME data
+// NEW v3.17: Preload with completion tracking
 // ============================================================
 
 function getPreloadedRawGameData() {
@@ -510,7 +536,6 @@ function getPreloadedRawGameData() {
     if (stored) {
         try {
             var data = JSON.parse(stored);
-            // Check if preload is less than 5 minutes old
             if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
                 return data;
             } else {
@@ -523,20 +548,30 @@ function getPreloadedRawGameData() {
     return null;
 }
 
-function startBackgroundPreload(gameId) {
+function startBackgroundPreload(gameId, onComplete) {
     // Check if already preloaded and fresh
     var existing = getPreloadedRawGameData();
     if (existing && existing.gameId === gameId) {
-        console.log("Background preload: Data already cached for game", gameId);
+        console.log("Preload: Data already cached for game", gameId);
+        preloadComplete = true;
+        if (onComplete) onComplete(true);
+        return;
+    }
+    
+    if (preloadInProgress) {
+        console.log("Preload already in progress");
         return;
     }
     
     if (!db || !gameId) {
-        console.log("Background preload: No db or gameId");
+        console.log("Preload: No db or gameId");
+        if (onComplete) onComplete(false);
         return;
     }
     
-    console.log("Background preload: Starting for game", gameId);
+    console.log("Preload: Starting for game", gameId);
+    preloadInProgress = true;
+    pendingGameId = gameId;
     
     db.collection("scheduledGames").doc(gameId).get()
         .then(function(doc) {
@@ -547,18 +582,24 @@ function startBackgroundPreload(gameId) {
                     preloadTimestamp: Date.now()
                 };
                 sessionStorage.setItem("preloadedRawGameData", JSON.stringify(preloadData));
-                console.log("Background preload: Complete for game", gameId);
+                preloadComplete = true;
+                console.log("Preload: Complete for game", gameId);
+                if (onComplete) onComplete(true);
             } else {
-                console.log("Background preload: Game not found", gameId);
+                console.log("Preload: Game not found", gameId);
+                if (onComplete) onComplete(false);
             }
+            preloadInProgress = false;
         })
         .catch(function(err) {
-            console.warn("Background preload: Failed", err);
+            console.warn("Preload: Failed", err);
+            preloadInProgress = false;
+            if (onComplete) onComplete(false);
         });
 }
 
 // ============================================================
-// End of NEW v3.16 code
+// End of NEW v3.17 code
 // ============================================================
 
 function findNextGame(scheduledGames) {
@@ -586,9 +627,15 @@ function getGameStatus(gameDateStr) {
     return "past";
 }
 
+// MODIFIED v3.17: Wait for preload before proceeding
 function handleTodayGame() {
     if (!firestoreReady) {
         alert("Connecting to server... Please wait.");
+        return;
+    }
+    
+    if (!preloadComplete) {
+        alert("Still loading game data. Please wait a moment.");
         return;
     }
     
@@ -689,12 +736,8 @@ function loadAndRender() {
             displayGameId(todayGame.id);
         }
         
-        // NEW v3.16: Start background pre-load if today game exists
-        if (todayGame && todayGame.id) {
-            setTimeout(function() {
-                startBackgroundPreload(todayGame.id);
-            }, 1000); // Delay 1 second to not interfere with initial page load
-        }
+        // NEW v3.17: Start preload and show loading state on button
+        var preloadStarted = false;
         
         var ngbHtml = '';
         if (nextGame) {
@@ -703,15 +746,64 @@ function loadAndRender() {
             var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
             
             if (status === "today") {
-                // TODAY GAME button - ACTIVE
-                ngbHtml = `
-                    <div class="ngb" onclick="handleTodayGame()">
-                        <div class="icon">⛳</div>
-                        <div class="title">TODAY GAME</div>
-                        <div class="date">${formattedDate}</div>
-                        <div class="course-name">${escapeHtml(courseName)}</div>
-                    </div>
-                `;
+                // Check if we need to preload
+                var cachedData = getPreloadedRawGameData();
+                if (cachedData && cachedData.gameId === nextGame.id) {
+                    preloadComplete = true;
+                    // TODAY GAME button - ACTIVE (preload already done)
+                    ngbHtml = `
+                        <div class="ngb" onclick="handleTodayGame()">
+                            <div class="icon">⛳</div>
+                            <div class="title">TODAY GAME</div>
+                            <div class="date">${formattedDate}</div>
+                            <div class="course-name">${escapeHtml(courseName)}</div>
+                        </div>
+                    `;
+                } else {
+                    preloadComplete = false;
+                    preloadStarted = true;
+                    // TODAY GAME button - LOADING state (disabled during preload)
+                    ngbHtml = `
+                        <div class="ngb ngb-loading" id="todayGameBtn">
+                            <div class="icon">⛳</div>
+                            <div class="title"><span class="loading-spinner"></span> LOADING...</div>
+                            <div class="date">${formattedDate}</div>
+                            <div class="course-name">${escapeHtml(courseName)}</div>
+                        </div>
+                    `;
+                    // Start preload
+                    startBackgroundPreload(nextGame.id, function(success) {
+                        if (success) {
+                            console.log("Preload complete, enabling TODAY GAME button");
+                            var btnContainer = document.getElementById('todayGameBtn');
+                            if (btnContainer) {
+                                btnContainer.outerHTML = `
+                                    <div class="ngb" onclick="handleTodayGame()">
+                                        <div class="icon">⛳</div>
+                                        <div class="title">TODAY GAME</div>
+                                        <div class="date">${formattedDate}</div>
+                                        <div class="course-name">${escapeHtml(courseName)}</div>
+                                    </div>
+                                `;
+                                // Re-apply button widths
+                                setTimeout(setButtonWidths, 10);
+                            }
+                        } else {
+                            console.log("Preload failed, showing error state");
+                            var btnContainer = document.getElementById('todayGameBtn');
+                            if (btnContainer) {
+                                btnContainer.outerHTML = `
+                                    <div class="ngb ngb-inactive" onclick="alert('Failed to load game data. Please refresh.')">
+                                        <div class="icon">⚠️</div>
+                                        <div class="title">LOAD FAILED</div>
+                                        <div class="date">${formattedDate}</div>
+                                        <div class="course-name">${escapeHtml(courseName)}</div>
+                                    </div>
+                                `;
+                            }
+                        }
+                    });
+                }
             } else {
                 // NEXT GAME button - INACTIVE (shows info on click)
                 ngbHtml = `
@@ -788,6 +880,18 @@ function loadAndRender() {
             initHiddenAdmin();
         }
         
+        // If preload wasn't started in this render, check if we need to start it
+        if (!preloadStarted && todayGame && !preloadComplete) {
+            var cachedData = getPreloadedRawGameData();
+            if (!cachedData || cachedData.gameId !== todayGame.id) {
+                startBackgroundPreload(todayGame.id, function(success) {
+                    if (success) {
+                        console.log("Background preload completed");
+                    }
+                });
+            }
+        }
+        
     }).catch(function(e) {
         console.warn(e);
         document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
@@ -809,15 +913,14 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.16
+VERSION: 3.17
 KEY CHANGES:
-   - ADDED: Simple background pre-fetch of TODAY GAME data
-   - Stores raw Firestore document in sessionStorage as "preloadedRawGameData"
-   - NO additional JavaScript libraries loaded (keeps index.html light)
-   - Pre-fetch happens silently after page loads
-   - Data expires after 5 minutes
-   - Enables instant transition to pre-game.html
-   - All existing functionality preserved from v3.15
+   - ADDED: Preload completion tracking before enabling TODAY GAME button
+   - TODAY GAME button shows "Loading..." and is disabled until preload complete
+   - Preload must complete before user can navigate to pre-game
+   - Ensures cache is guaranteed to exist before transition
+   - Shows loading state on button (replaces spinner)
+   - All existing functionality preserved from v3.16
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
