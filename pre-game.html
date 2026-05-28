@@ -1,14 +1,14 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES:
-   - ADDED: Background pre-loading of game data while user reads screen
-   - GameLoader loads full game data silently after page renders
-   - Data stored in sessionStorage for instant transition to real-game
-   - User sees no loading indicators (happens silently)
-   - When user clicks TEE OFF, data is already cached and ready
-   - Eliminates freeze during transition to real-game.html
-   - All existing role selection and lock logic preserved
+   - ASSUMES cache exists (index.html guarantees preload complete)
+   - Reads "preloadedRawGameData" directly from sessionStorage
+   - Passes cached data to GameLoader.setLocalCache()
+   - NO fallback Firestore fetch (cache guaranteed by index)
+   - Instant render, no "Loading Data" message
+   - All existing role selection and lock logic preserved from v3.11
+   - previewSandboxes references removed (deprecated)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -353,11 +353,6 @@ STATUS: Ready for integration
         .role-status-selected { background: #1a3a1a; color: #4caf50; }
         .role-status-warning { background: #2a2a1a; color: #ffaa44; }
         
-        /* Pre-loading status - hidden, user never sees it */
-        .preload-status {
-            display: none;
-        }
-        
         .footer { text-align: center; margin-top: 16px; font-size: 0.55rem; color: #444; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
@@ -443,12 +438,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.11</div>
+<div class="version-tag">v3.12</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.11
+// FILE: pre-game.html - VERSION 3.12
 
-var VERSION = "3.11";
+var VERSION = "3.12";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -490,15 +485,78 @@ var tempSelectedRole = null;
 var currentDeviceId = null;
 var currentSessionId = null;
 var deviceSession = null;
-var isPreviewSandbox = false;
+var isPreviewSandbox = false;  // Deprecated but kept for compatibility
 
 var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
 
-// NEW v3.11: Track pre-loading status
-var preloadCompleted = false;
-var preloadInProgress = false;
-var cachedGameData = null;
+// ============================================================
+// NEW v3.12: Read cached data (assumes index.html preload complete)
+// ============================================================
+
+function getPreloadedRawGameData() {
+    var stored = sessionStorage.getItem("preloadedRawGameData");
+    if (stored) {
+        try {
+            var data = JSON.parse(stored);
+            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
+                return data;
+            }
+        } catch(e) {
+            console.warn("Failed to parse preloaded raw data:", e);
+        }
+    }
+    return null;
+}
+
+function applyCachedDataToGameLoader() {
+    var cached = getPreloadedRawGameData();
+    if (!cached || !cached.rawData) {
+        console.error("No cached data available - this should not happen");
+        return false;
+    }
+    
+    console.log("Applying cached data to GameLoader");
+    var rawData = cached.rawData;
+    
+    // Build cache object for GameLoader.setLocalCache()
+    var cacheData = {
+        course: rawData.course,
+        players: rawData.players,
+        startingHole: rawData.startingHole || 1,
+        teamGameFormat: rawData.teamGameFormat || "tournament",
+        f1DataString: rawData.f1?.d || "",
+        f2DataString: rawData.f2?.d || "",
+        results: rawData.results || null,
+        savedHoles: { 1: [], 2: [] },
+        t1Row: new Array(18).fill('_'),
+        t2Row: new Array(18).fill('_'),
+        strkRow: new Array(18).fill('0'),
+        lastSyncedHole: 0,
+        clinchedAt: {},
+        signatures: rawData.signatures || { f1: false, f2: false },
+        submitted: rawData.submitted || { f1: false, f2: false },
+        locks: rawData.locks || { f1: null, f2: null },
+        gameStarted: rawData.gameStarted || false
+    };
+    
+    // Inject into GameLoader
+    if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
+        GameLoader.setLocalCache(cacheData);
+    } else {
+        console.error("GameLoader.setLocalCache not available");
+        return false;
+    }
+    
+    // Also store gameId for later use
+    gameId = cached.gameId;
+    
+    return true;
+}
+
+// ============================================================
+// End of NEW v3.12 code
+// ============================================================
 
 function displayDeviceId() {
     var shortName = SessionManager.getShortNameOnly();
@@ -624,7 +682,7 @@ function resetLocksOnly(callback) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    db.collection(isPreviewSandbox ? "previewSandboxes" : "scheduledGames").doc(gameId).update(resetData).then(function() {
+    db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
         console.log("Locks reset only - scores preserved");
         locks.f1 = null;
         locks.f2 = null;
@@ -647,7 +705,7 @@ function startGameListener() {
     if (!firestoreReady || !gameId) return;
     if (unsubcribeGame) unsubcribeGame();
     
-    var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
+    var collection = "scheduledGames";
     
     unsubcribeGame = db.collection(collection).doc(gameId)
         .onSnapshot(function(doc) {
@@ -663,83 +721,6 @@ function startGameListener() {
             console.warn("Game listener error:", error);
         });
 }
-
-// ============================================================
-// NEW v3.11: Background Pre-loading
-// ============================================================
-
-function startBackgroundPreload() {
-    if (preloadInProgress || preloadCompleted) {
-        console.log("Preload already in progress or completed");
-        return;
-    }
-    
-    if (!gameId) {
-        console.log("No gameId available for preload");
-        return;
-    }
-    
-    console.log("Starting background preload for game:", gameId);
-    preloadInProgress = true;
-    
-    var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
-    
-    // Load the full game data using GameLoader
-    GameLoader.loadGame(gameId, collection, function(result) {
-        if (result.success) {
-            var cache = result.cache;
-            
-            // Store essential data in sessionStorage for instant use
-            var preloadData = {
-                gameId: gameId,
-                course: cache.course,
-                players: cache.players,
-                startingHole: cache.startingHole,
-                teamGameFormat: cache.teamGameFormat,
-                f1DataString: cache.f1DataString,
-                f2DataString: cache.f2DataString,
-                results: cache.results,
-                savedHoles: cache.savedHoles,
-                t1Row: cache.t1Row,
-                t2Row: cache.t2Row,
-                strkRow: cache.strkRow,
-                lastSyncedHole: cache.lastSyncedHole,
-                clinchedAt: cache.clinchedAt,
-                preloadTimestamp: Date.now()
-            };
-            
-            sessionStorage.setItem("preloadedGameData", JSON.stringify(preloadData));
-            preloadCompleted = true;
-            console.log("Background preload complete. Data cached for instant transition.");
-        } else {
-            console.warn("Background preload failed:", result.error);
-        }
-        preloadInProgress = false;
-    });
-}
-
-function getPreloadedGameData() {
-    var stored = sessionStorage.getItem("preloadedGameData");
-    if (stored) {
-        try {
-            var data = JSON.parse(stored);
-            // Check if preload is less than 5 minutes old
-            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
-                return data;
-            } else {
-                console.log("Preloaded data expired");
-                sessionStorage.removeItem("preloadedGameData");
-            }
-        } catch(e) {
-            console.warn("Failed to parse preloaded data:", e);
-        }
-    }
-    return null;
-}
-
-// ============================================================
-// End of NEW v3.11 code
-// ============================================================
 
 function canTakeRole(role) {
     var now = Date.now();
@@ -798,7 +779,7 @@ function toggleRole(role) {
                 gameType: gameMode,
                 gameMode: gameMode,
                 role: role,
-                collection: isPreviewSandbox ? "previewSandboxes" : "scheduledGames"
+                collection: "scheduledGames"
             }
         });
     }
@@ -842,7 +823,7 @@ function showTakeoverModal(flight) {
 function takeoverRole(flight) {
     var now = Date.now();
     var expiryTime = now + LOCK_DURATION_MS;
-    var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
+    var collection = "scheduledGames";
     var deviceId = SessionManager.getDeviceIdDisplay();
     
     var sessionId = deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown";
@@ -874,40 +855,13 @@ function takeoverRole(flight) {
     });
 }
 
-function showStaleSessionModal(callback) {
-    var modalHtml = `
-        <div class="modal-overlay" id="staleModal">
-            <div class="modal">
-                <div class="modal-title">⚠️ INACTIVE SESSION</div>
-                <div class="modal-message">This preview session hasn't been active for over 60 minutes.</div>
-                <div class="modal-message" style="margin-top:8px;">Locks will be reset. Scores will be preserved.</div>
-                <div class="modal-buttons">
-                    <button class="modal-btn modal-btn-cancel" id="staleCancelBtn">Cancel</button>
-                    <button class="modal-btn modal-btn-confirm" id="staleConfirmBtn">✓ Continue & Reset Locks</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    document.getElementById("staleCancelBtn").addEventListener("click", function() {
-        document.getElementById("staleModal").remove();
-        callback(false);
-    });
-    
-    document.getElementById("staleConfirmBtn").addEventListener("click", function() {
-        document.getElementById("staleModal").remove();
-        callback(true);
-    });
-}
-
 function isGameCompleted(gameData) {
     if (!gameData) return false;
     var signatures = gameData.signatures || {};
     return signatures.f1?.signed === true && signatures.f2?.signed === true;
 }
 
+// MODIFIED v3.12: Load from cache, no Firestore fetch
 function loadGame() {
     var realGameId = sessionStorage.getItem("currentGameId");
     var activeGame = deviceSession ? deviceSession.activeGame : null;
@@ -919,140 +873,45 @@ function loadGame() {
     }
     
     gameId = realGameId;
+    gameMode = "real";
+    isPreviewSandbox = false;
     
-    if (activeGame && activeGame.collection === "previewSandboxes") {
-        isPreviewSandbox = true;
-        gameMode = "preview";
-        console.log("Loading preview sandbox:", gameId);
-        
-        db.collection("previewSandboxes").doc(gameId).get().then(function(doc) {
-            if (doc.exists) {
-                gameData = doc.data();
-                gameData.id = doc.id;
-                
-                if (gameData.locks) {
-                    locks.f1 = gameData.locks.f1 || null;
-                    locks.f2 = gameData.locks.f2 || null;
-                }
-                
-                var lastActive = gameData.lastActive;
-                var now = Date.now();
-                var isStale = false;
-                
-                if (lastActive) {
-                    var lastActiveTime = typeof lastActive === 'number' ? lastActive : lastActive.toMillis ? lastActive.toMillis() : Date.parse(lastActive);
-                    var minutesSinceLastActive = (now - lastActiveTime) / 1000 / 60;
-                    isStale = minutesSinceLastActive > 60;
-                    console.log("PREVIEW: lastActive minutes ago:", minutesSinceLastActive, "isStale:", isStale);
-                }
-                
-                if (isStale && hasAnyScores()) {
-                    showStaleSessionModal(function(confirmed) {
-                        if (confirmed) {
-                            resetLocksOnly(function() {
-                                startGameListener();
-                                render();
-                                // Start background preload after render
-                                setTimeout(startBackgroundPreload, 500);
-                            });
-                        } else {
-                            startGameListener();
-                            render();
-                            setTimeout(startBackgroundPreload, 500);
-                        }
-                    });
-                } else {
-                    startGameListener();
-                    render();
-                    setTimeout(startBackgroundPreload, 500);
-                }
-            } else {
-                alert("Preview session not found");
-                window.location.href = "index.html";
-            }
-        }).catch(function(e) {
-            alert("Error loading preview session: " + e.message);
-            window.location.href = "index.html";
-        });
+    // Apply cached data first (guaranteed to exist by index.html)
+    var cacheApplied = applyCachedDataToGameLoader();
+    
+    if (!cacheApplied) {
+        console.error("Failed to apply cached data - this should not happen");
+        alert("Error loading game data. Please return to main menu and try again.");
+        window.location.href = "index.html";
         return;
     }
     
-    // REAL mode
-    isPreviewSandbox = false;
-    db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
-        if (doc.exists) {
-            gameData = doc.data();
-            gameData.id = doc.id;
-            
-            gameMode = gameData.gameType || gameData.gameMode || "real";
-            console.log("REAL mode - gameMode set to:", gameMode);
-            
-            if (gameData.locks) {
-                locks.f1 = gameData.locks.f1 || null;
-                locks.f2 = gameData.locks.f2 || null;
-            }
-            
-            var today = getTodayString();
-            var isToday = (gameData.date === today);
-            var gameStartedFlag = gameData.gameStarted === true;
-            
-            console.log("REAL mode - isToday:", isToday, "gameStarted:", gameStartedFlag);
-            
-            if (isToday && !gameStartedFlag) {
-                console.log("REAL mode - First access on game day, resetting...");
-                var startingHoleVal = gameData.startingHole || 1;
-                var coursePar = gameData.course.par;
-                GameData.resetFullGame(gameId, startingHoleVal, coursePar, function(success) {
-                    db.collection("scheduledGames").doc(gameId).get().then(function(updatedDoc) {
-                        if (updatedDoc.exists) {
-                            gameData = updatedDoc.data();
-                            gameData.id = updatedDoc.id;
-                            if (gameData.locks) {
-                                locks.f1 = gameData.locks.f1 || null;
-                                locks.f2 = gameData.locks.f2 || null;
-                            }
-                        }
-                        startGameListener();
-                        render();
-                        // Start background preload after render
-                        setTimeout(startBackgroundPreload, 500);
-                    }).catch(function() {
-                        startGameListener();
-                        render();
-                        setTimeout(startBackgroundPreload, 500);
-                    });
-                });
-            } else {
-                console.log("REAL mode - Game already started or not today, loading existing data");
-                startGameListener();
-                render();
-                // Start background preload after render
-                setTimeout(startBackgroundPreload, 500);
-            }
-        } else {
-            alert("Game not found");
-            window.location.href = "index.html";
+    // Get the cache data to populate UI
+    var cached = getPreloadedRawGameData();
+    if (cached && cached.rawData) {
+        gameData = cached.rawData;
+        gameData.id = cached.gameId;
+        
+        if (gameData.locks) {
+            locks.f1 = gameData.locks.f1 || null;
+            locks.f2 = gameData.locks.f2 || null;
         }
-    }).catch(function(e) {
-        alert("Error loading game: " + e.message);
+        
+        console.log("REAL mode - Data loaded from cache");
+        
+        startGameListener();
+        render();
+    } else {
+        console.error("No cache data available");
+        alert("Error loading game data. Please return to main menu and try again.");
         window.location.href = "index.html";
-    });
+    }
 }
 
-// MODIFIED v3.11: Store preloaded data flag before navigation
 function startGame() {
     if (!tempSelectedRole) {
         alert("Please select a role first");
         return;
-    }
-    
-    // Store preload completion status in sessionStorage
-    if (preloadCompleted) {
-        sessionStorage.setItem("gameDataPreloaded", "true");
-        console.log("Preloaded data available for real-game.html");
-    } else {
-        sessionStorage.removeItem("gameDataPreloaded");
-        console.log("No preloaded data available, real-game will load normally");
     }
     
     // VIEW ONLY role
@@ -1071,7 +930,7 @@ function startGame() {
                     gameType: gameMode,
                     gameMode: gameMode,
                     role: "view",
-                    collection: isPreviewSandbox ? "previewSandboxes" : "scheduledGames"
+                    collection: "scheduledGames"
                 }
             });
             SessionManager.addNavigationHistory("view-game.html", "tee_off_view", { gameId: gameId });
@@ -1082,7 +941,7 @@ function startGame() {
     
     var now = Date.now();
     var expiryTime = now + LOCK_DURATION_MS;
-    var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
+    var collection = "scheduledGames";
     var updatePayload = {};
     
     var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
@@ -1152,12 +1011,7 @@ function startGame() {
     db.collection(collection).doc(gameId).update(updatePayload).then(function() {
         localStorage.setItem("userRole", tempSelectedRole);
         
-        var targetPage = "";
-        if (gameMode === "real") {
-            targetPage = "real-game.html";
-        } else {
-            targetPage = "preview-game.html";
-        }
+        var targetPage = "real-game.html";
         
         console.log("Redirecting to:", targetPage, "gameMode:", gameMode);
         
@@ -1233,10 +1087,8 @@ function render() {
     var formatDisplayName = getFormatDisplayName(teamGameFormat);
     
     var dateDisplay = '';
-    if (gameData.date && gameMode !== "preview") {
+    if (gameData.date) {
         dateDisplay = '<div class="course-date">' + formatDisplayDate(gameData.date) + '</div>';
-    } else if (isPreviewSandbox && gameData.originalGameId) {
-        dateDisplay = '<div class="course-date">Preview Session</div>';
     }
     
     var startingHoleText = "";
@@ -1431,15 +1283,15 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES:
-   - ADDED: Background pre-loading of game data while user reads screen
-   - GameLoader loads full game data silently after page renders
-   - Data stored in sessionStorage for instant transition to real-game
-   - User sees no loading indicators (happens silently)
-   - When user clicks TEE OFF, data is already cached and ready
-   - Eliminates freeze during transition to real-game.html
-   - All existing role selection and lock logic preserved
+   - ASSUMES cache exists (index.html guarantees preload complete)
+   - Reads "preloadedRawGameData" directly from sessionStorage
+   - Passes cached data to GameLoader.setLocalCache()
+   - NO fallback Firestore fetch (cache guaranteed by index)
+   - Instant render, no "Loading Data" message
+   - All existing role selection and lock logic preserved from v3.11
+   - previewSandboxes references removed (deprecated)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
