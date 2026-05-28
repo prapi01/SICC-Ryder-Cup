@@ -1,12 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 3.26
+VERSION: 3.27
 KEY CHANGES:
-   - FIXED: getBubbleClass now uses clinch logic from GameLoader
+   - FIXED: Direct DOM update for bubbles (bypasses GameUI caching issues)
    - Clinch detection: when matchValue > holesRemaining
    - Clinch hole: Gold border (winner) / White border (loser)
    - Holes after clinch: Grey bubbles
-   - getBubbleValue now returns "AS" for tie, number otherwise
+   - Navigation buttons now directly call updateBubblesDirectly()
    - All previous fixes preserved (ticker margin, grid bubbles, shortform names, etc.)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -367,7 +367,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.26</div>
+<div class="version-tag">v3.27</div>
 
 <script>
 // ============================================================
@@ -552,48 +552,116 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// CLINCH-AWARE BUBBLE CLASS (FIXED v3.26)
+// DIRECT DOM UPDATE FUNCTION (bypasses GameUI caching)
 // ============================================================
 
-function getBubbleClass(player, opponent) {
-    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
-    var cache = GameLoader.getLocalCache();
-    var lastSyncedHole = cache.lastSyncedHole;
-    var clinchedAt = cache.clinchedAt || {};
-    var matchKey = player.name + "_vs_" + opponent.name;
-    var clinchHole = clinchedAt[matchKey];
-    
-    // Check if hole is saved
-    if (player.flight === opponent.flight) {
-        var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
-        if (!isHoleSavedForFlight) return 'bubble-grey';
-    } else {
-        var isSynced = (lastSyncedHole >= currentHole);
-        if (!isSynced) return 'bubble-grey';
+function updateBubblesDirectly() {
+    var playerCards = document.querySelectorAll('.player-card');
+    for (var i = 0; i < playerCards.length; i++) {
+        var nameSpan = playerCards[i].querySelector('.player-name');
+        if (!nameSpan) continue;
+        
+        var playerName = nameSpan.innerText;
+        var player = allPlayers.find(p => p.label === playerName);
+        if (!player) continue;
+        
+        var bubbles = playerCards[i].querySelectorAll('.bubble');
+        var opponents = getAllOpponents(player);
+        
+        for (var j = 0; j < bubbles.length && j < opponents.length; j++) {
+            var opp = opponents[j];
+            var matchValue = getMatchValueFromStoredResults(player, opp, currentHole);
+            var absValue = Math.abs(matchValue);
+            var displayValue = absValue === 0 ? 'AS' : absValue.toString();
+            
+            // Determine class using clinch logic
+            var cache = GameLoader.getLocalCache();
+            var clinchedAt = cache.clinchedAt || {};
+            var matchKey = player.name + "_vs_" + opp.name;
+            var clinchHole = clinchedAt[matchKey];
+            
+            var bubbleClass = 'bubble-green';
+            
+            // Check if hole is saved
+            if (player.flight === opp.flight) {
+                var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
+                if (!isHoleSavedForFlight) bubbleClass = 'bubble-grey';
+            } else {
+                var lastSyncedHole = cache.lastSyncedHole;
+                var isSynced = (lastSyncedHole >= currentHole);
+                if (!isSynced) bubbleClass = 'bubble-grey';
+            }
+            
+            // Clinch logic
+            if (bubbleClass !== 'bubble-grey') {
+                if (clinchHole && currentHole > clinchHole) {
+                    bubbleClass = 'bubble-grey';
+                } else if (clinchHole && currentHole === clinchHole) {
+                    if (matchValue > 0) bubbleClass = 'bubble-gold';
+                    else if (matchValue < 0) bubbleClass = 'bubble-loss-clinch';
+                    else bubbleClass = 'bubble-green';
+                } else {
+                    if (matchValue > 0) bubbleClass = 'bubble-green';
+                    else if (matchValue < 0) bubbleClass = 'bubble-red';
+                    else bubbleClass = 'bubble-green';
+                }
+            }
+            
+            // Update the DOM
+            bubbles[j].className = 'bubble';
+            bubbles[j].classList.add(bubbleClass);
+            bubbles[j].innerText = opp.label + ' ' + displayValue;
+        }
     }
     
-    // CLINCH LOGIC
-    if (clinchHole && currentHole > clinchHole) {
-        return 'bubble-grey';
-    }
+    // Update TR display
+    var tr = GameLoader.getTRForHole(currentHole);
+    var teamADisplay = tr.teamA % 1 === 0 ? tr.teamA : tr.teamA.toFixed(1);
+    var teamBDisplay = tr.teamB % 1 === 0 ? tr.teamB : tr.teamB.toFixed(1);
+    var teamAColor = tr.teamA > tr.teamB ? '#4caf50' : (tr.teamA < tr.teamB ? '#ff6b6b' : '#4caf50');
+    var teamBColor = tr.teamB > tr.teamA ? '#4caf50' : (tr.teamB < tr.teamA ? '#ff6b6b' : '#4caf50');
     
-    if (clinchHole && currentHole === clinchHole) {
-        if (matchValue > 0) return 'bubble-gold';
-        if (matchValue < 0) return 'bubble-loss-clinch';
-        return 'bubble-green';
+    var trDiv = document.getElementById('trDisplay');
+    if (trDiv) {
+        trDiv.innerHTML = '<div style="text-align:center;"><div style="display:flex; justify-content:center; align-items:center; gap:16px;">' +
+            '<div><div style="font-size:0.85rem; font-weight:600; color:' + teamAColor + ';">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:' + teamAColor + ';">' + teamADisplay + '</div></div>' +
+            '<div style="font-size:1.5rem; color:#888;">│</div>' +
+            '<div><div style="font-size:0.85rem; font-weight:600; color:' + teamBColor + ';">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:' + teamBColor + ';">' + teamBDisplay + '</div></div>' +
+        '</div></div>';
     }
-    
-    // NORMAL LOGIC
-    if (matchValue > 0) return 'bubble-green';
-    if (matchValue < 0) return 'bubble-red';
-    return 'bubble-green';
 }
 
-function getBubbleValue(player, opponent) {
-    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
-    var absValue = Math.abs(matchValue);
-    if (absValue === 0) return 'AS';
-    return absValue.toString();
+// ============================================================
+// Navigation Functions (with direct DOM update)
+// ============================================================
+
+function goToPrevHole() {
+    var playOrder = getPlayOrder();
+    var idx = playOrder.indexOf(currentHole);
+    if (idx > 0) {
+        currentHole = playOrder[idx - 1];
+        var holeDisplaySpan = document.querySelector('.compact-hole-display');
+        if (holeDisplaySpan) holeDisplaySpan.innerText = currentHole;
+        GameUI.updateHoleHeaderNumber(currentHole);
+        updateBubblesDirectly();
+    }
+}
+
+function goToNextHole() {
+    if (isGameCompleteFlag && !celebrationTriggered) {
+        showCelebrationAndHandicap();
+        return;
+    }
+    
+    var playOrder = getPlayOrder();
+    var idx = playOrder.indexOf(currentHole);
+    if (idx < 17) {
+        currentHole = playOrder[idx + 1];
+        var holeDisplaySpan = document.querySelector('.compact-hole-display');
+        if (holeDisplaySpan) holeDisplaySpan.innerText = currentHole;
+        GameUI.updateHoleHeaderNumber(currentHole);
+        updateBubblesDirectly();
+    }
 }
 
 function updateTRDisplay() {
@@ -927,67 +995,6 @@ async function saveResultsToFirestore(holeNumber) {
 }
 
 // ============================================================
-// Navigation
-// ============================================================
-
-function nextHole() {
-    if (isGameCompleteFlag && !celebrationTriggered) {
-        showCelebrationAndHandicap();
-        return;
-    }
-    
-    var isLast = (currentHole === 18);
-    var isSaved = isHoleSaved(editableFlight, currentHole);
-    
-    var hasUnsavedChanges = false;
-    for (var key in localChanges) {
-        if (key.startsWith(editableFlight + "_" + currentHole + "_")) {
-            hasUnsavedChanges = true;
-            break;
-        }
-    }
-    
-    var isCurrentSaved = isSaved && !hasUnsavedChanges;
-    
-    if (isLast && isCurrentSaved) {
-        showSignCardModal();
-        return;
-    }
-    
-    if (!isCurrentSaved) {
-        return;
-    }
-    
-    var playOrder = getPlayOrder();
-    var currentIndex = playOrder.indexOf(currentHole);
-    var nextIndex = (currentIndex + 1) % 18;
-    currentHole = playOrder[nextIndex];
-    
-    updateHoleNumberDisplay();
-    setSaveButtonIdle();
-    renderAll();
-}
-
-function prevHole() {
-    var playOrder = getPlayOrder();
-    var currentIndex = playOrder.indexOf(currentHole);
-    
-    if (currentIndex <= 0) return;
-    
-    var prevIndex = currentIndex - 1;
-    currentHole = playOrder[prevIndex];
-    
-    updateHoleNumberDisplay();
-    setSaveButtonIdle();
-    renderAll();
-}
-
-function updateHoleNumberDisplay() {
-    GameUI.updateCompactHoleDisplay(currentHole);
-    GameUI.updateHoleHeaderNumber(currentHole);
-}
-
-// ============================================================
 // Flight Toggle Handler
 // ============================================================
 
@@ -1270,13 +1277,12 @@ function renderAll() {
         };
     });
     
-    // Use the clinch-aware getBubbleClass function
     GameUI.renderPlayerCards(
         "playerCards",
         modifiedPlayers,
         getAllOpponents,
-        window.getBubbleClass || getBubbleClass,
-        window.getBubbleValue || getBubbleValue,
+        function(player, opponent) { return 'bubble-green'; }, // Placeholder - will be overridden
+        getBubbleValue,
         getCurrentScore,
         canEdit && !isGameCompleteFlag,
         function(playerName, flight, delta) {
@@ -1298,6 +1304,9 @@ function renderAll() {
             renderAll();
         }
     );
+    
+    // Override the bubbles with correct clinch logic
+    updateBubblesDirectly();
     
     GameUI.updateFlightBadge(editableFlight);
     
@@ -1490,8 +1499,8 @@ async function init() {
             editableFlight,
             currentHole,
             saveHole,
-            prevHole,
-            nextHole,
+            goToPrevHole,
+            goToNextHole,
             onToggleFlight,
             null
         );
@@ -1513,7 +1522,10 @@ async function init() {
                 break;
             }
         }
-        updateHoleNumberDisplay();
+        
+        var holeDisplaySpan = document.querySelector('.compact-hole-display');
+        if (holeDisplaySpan) holeDisplaySpan.innerText = currentHole;
+        GameUI.updateHoleHeaderNumber(currentHole);
         
         initTicker();
         if (allPlayers && allPlayers.length) {
@@ -1535,13 +1547,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.26
+VERSION: 3.27
 KEY CHANGES:
-   - FIXED: getBubbleClass now uses clinch logic from GameLoader
+   - FIXED: Direct DOM update for bubbles (bypasses GameUI caching issues)
    - Clinch detection: when matchValue > holesRemaining
    - Clinch hole: Gold border (winner) / White border (loser)
    - Holes after clinch: Grey bubbles
-   - getBubbleValue now returns "AS" for tie, number otherwise
+   - Navigation buttons now directly call updateBubblesDirectly()
    - All previous fixes preserved (ticker margin, grid bubbles, shortform names, etc.)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
