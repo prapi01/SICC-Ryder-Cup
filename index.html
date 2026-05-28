@@ -1,10 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.12
+VERSION: 3.13
 KEY CHANGES:
-   - CHANGED: NEXT GAME icon from 📅 to 🏆 (trophy)
-   - Removed hardcoded date from icon - now shows trophy icon
-   - All other functionality unchanged from v3.11
+   - CHANGED: Container max-width from 420px to 500px for better consistency
+   - Maintained responsive design with centered layout
+   - All other functionality unchanged from v3.12
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -42,11 +42,12 @@ STATUS: Ready for deployment
             background: #000000;
         }
         
-        /* Container hidden initially - only shown after splash */
+        /* Container - max-width 500px for consistent display */
         .container {
             display: none;
-            max-width: 420px;
+            max-width: 500px;
             width: 100%;
+            margin: 0 auto;
             padding-top: 120px;
             padding-bottom: env(safe-area-inset-bottom, 20px);
         }
@@ -337,12 +338,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.12</div>
+<div class="version-tag">v3.13</div>
 
 <script>
-// FILE: index.html - VERSION 3.12
+// FILE: index.html - VERSION 3.13
 
-var APP_VERSION = "3.12";
+var APP_VERSION = "3.13";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -737,11 +738,11 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.12
+VERSION: 3.13
 KEY CHANGES:
-   - CHANGED: NEXT GAME icon from 📅 to 🏆 (trophy)
-   - Removed hardcoded date from icon - now shows trophy icon
-   - All other functionality unchanged from v3.11
+   - CHANGED: Container max-width from 420px to 500px for better consistency
+   - Maintained responsive design with centered layout
+   - All other functionality unchanged from v3.12
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
