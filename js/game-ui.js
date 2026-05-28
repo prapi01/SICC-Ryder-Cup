@@ -1,12 +1,10 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.28
+VERSION: 2.29
 KEY CHANGES:
-   - SIMPLIFIED: Bubble class logic now reads pre-calculated clinch status from GameLoader
-   - Uses getClinchedAt() to determine if match is clinched
-   - No more on-the-fly clinch calculation (moved to game-loader.js)
-   - All CSS classes preserved (bubble-gold, bubble-loss-clinch, bubble-grey)
-   - All other functions unchanged from v2.27
+   - CHANGED: Clinch loss bubble from red outline to WHITE outline
+   - CSS: .bubble-loss-clinch now has white border + white text
+   - All other functions unchanged from v2.28
 DEPENDS ON: GameLoader (for clinch status)
 STATUS: Ready for integration
 */
@@ -467,7 +465,7 @@ var GameUI = (function() {
         }
         html += '<td>' + totalPar + '<\/td><\/tr>';
         
-        html += '<td><td style="font-weight:700;">SI<\/td>';
+        html += '<tr><td style="font-weight:700;">SI<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
             html += '<td>' + si + '<\/td>';
@@ -493,7 +491,7 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        html += '<td><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var holeNum = holes[i];
@@ -604,7 +602,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></table>';
+        html += '</tbody><tr>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -612,7 +610,6 @@ var GameUI = (function() {
     
     // ============================================================
     // Player Cards with Bubbles
-    // FIXED v2.28: Uses pre-calculated clinch status from GameLoader
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -900,7 +897,6 @@ var GameUI = (function() {
         return (player.team === 'B') ? -value : value;
     }
     
-    // FIXED v2.28: Simplified bubble class using pre-calculated clinch status
     function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn) {
         var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
         var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
@@ -997,6 +993,7 @@ var GameUI = (function() {
         
         var style = document.createElement('style');
         style.id = 'gameui-button-styles';
+        // FIXED v2.29: Clinch loss bubble changed to WHITE outline
         style.textContent = `
             .scorecard-wrapper {
                 overflow-x: auto;
@@ -1038,16 +1035,19 @@ var GameUI = (function() {
             .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
             .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
             .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+            
+            /* Match clinch bubble styles */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
                 border: 3px solid #ffaa44;
                 font-weight: 800;
             }
+            /* v2.29: Clinch loss - WHITE outline instead of red */
             .bubble-loss-clinch {
                 background: #3a1a1a;
-                color: #ff6b6b;
-                border: 3px solid #ff6b6b;
+                color: #ffffff;
+                border: 3px solid #ffffff;
                 font-weight: 800;
             }
             
@@ -1204,13 +1204,11 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.28
+VERSION: 2.29
 KEY CHANGES:
-   - SIMPLIFIED: Bubble class logic now reads pre-calculated clinch status from GameLoader
-   - Uses getClinchedAt() to determine if match is clinched
-   - No more on-the-fly clinch calculation (moved to game-loader.js)
-   - All CSS classes preserved (bubble-gold, bubble-loss-clinch, bubble-grey)
-   - All other functions unchanged from v2.27
+   - CHANGED: Clinch loss bubble from red outline to WHITE outline
+   - CSS: .bubble-loss-clinch now has white border + white text
+   - All other functions unchanged from v2.28
 DEPENDS ON: GameLoader (for clinch status)
 STATUS: Ready for integration
 */
