@@ -1,13 +1,13 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - REMOVED: Status bubble from all screens (Tutorial, Preview, Live labels removed)
-   - Step 1: Added "Button not active until actual game day" instruction
-   - Step 2: Removed "The other flight will wait" from tip
-   - Step 5: Added waiting screen after sign card
-   - Step 6: Removed "Anchor: Jeff Goh" line from handicap table
-   - All other functionality unchanged from v1.00
+   - Step 1: Combined button inactive message into Tip
+   - Step 3: SAVE button turns RED briefly (not green)
+   - Step 5: Added separate waiting screen as Step 5.1 (now 7 steps total)
+   - Step 6: Sign Card (original Step 5)
+   - Step 7: Handicap Adjustment (original Step 6)
+   - All other functionality unchanged from v1.01
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
@@ -258,6 +258,16 @@ STATUS: Ready for integration
             animation: spin 1s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .btn-save-flash {
+            animation: flashRed 0.5s ease;
+        }
+        
+        @keyframes flashRed {
+            0% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+            50% { background: #ff6b6b; border-color: #ff6b6b; color: #1a1a1a; }
+            100% { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+        }
     </style>
 </head>
 <body>
@@ -280,7 +290,7 @@ STATUS: Ready for integration
             • <strong>GAME SETTINGS</strong> - Admin functions
         </div>
         <div class="instruction-tip" id="instructionTip">
-            💡 Tip: The NEXT GAME button becomes TODAY GAME on match day.
+            💡 Tip: The NEXT GAME button will change to TODAY GAME on the match day. The button is not active until actual game day.
         </div>
     </div>
     
@@ -293,7 +303,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.01</div>
+<div class="version-tag">v1.02</div>
 
 <script>
 // ============================================================
@@ -301,7 +311,7 @@ STATUS: Ready for integration
 // ============================================================
 
 var currentStep = 1;
-var totalSteps = 6;
+var totalSteps = 7;  // Now 7 steps (added waiting screen as separate step)
 
 // ============================================================
 // Helper Functions
@@ -453,7 +463,7 @@ function renderStep2() {
 }
 
 // ============================================================
-// Step 3: Score Entry (Save then Next)
+// Step 3: Score Entry (Save then Next) - SAVE button flashes RED
 // ============================================================
 
 function renderStep3() {
@@ -526,11 +536,12 @@ function renderStep3() {
     if (saveBtn) {
         saveBtn.addEventListener('click', function() {
             var originalText = this.innerText;
+            // Flash RED
+            this.classList.add('btn-save-flash');
             this.innerText = '✓ SAVED';
-            this.style.background = '#2a4a2a';
             setTimeout(function() {
+                saveBtn.classList.remove('btn-save-flash');
                 saveBtn.innerText = originalText;
-                saveBtn.style.background = '#1a3a1a';
             }, 1000);
             alert("Demo: Score saved!\n\nIn the real app, you must save before moving to next hole.");
         });
@@ -601,7 +612,7 @@ function renderStep4() {
 }
 
 // ============================================================
-// Step 5: Sign Card & Waiting Screen
+// Step 5: Sign Card (Gold button at hole 18)
 // ============================================================
 
 function renderStep5() {
@@ -656,11 +667,19 @@ function showSignModal() {
     
     document.getElementById('signConfirmBtn').addEventListener('click', function() {
         document.getElementById('signModal').remove();
-        showWaitingScreen();
+        // Move to next step (waiting screen)
+        if (currentStep < totalSteps) {
+            currentStep++;
+            renderStep();
+        }
     });
 }
 
-function showWaitingScreen() {
+// ============================================================
+// Step 6: Waiting Screen (Step 5.1)
+// ============================================================
+
+function renderStep6() {
     var html = `
         <div class="demo-header">
             <!-- No status bubble -->
@@ -672,14 +691,15 @@ function showWaitingScreen() {
             <div class="spin"></div>
         </div>
     `;
+    
     document.getElementById('demoScreen').innerHTML = html;
 }
 
 // ============================================================
-// Step 6: Handicap Adjustment (no anchor line)
+// Step 7: Handicap Adjustment (no anchor line)
 // ============================================================
 
-function renderStep6() {
+function renderStep7() {
     var html = `
         <div class="demo-header">
             <!-- No status bubble -->
@@ -694,7 +714,8 @@ function renderStep6() {
                         <th style="padding:8px;">Anc</th>
                         <th style="padding:8px;">Perf</th>
                         <th style="padding:8px;">New</th>
-                    </tr></thead>
+                    </tr>
+                    </thead>
                     <tbody>
                         <tr style="border-bottom:1px solid #333;"><td style="padding:8px; text-align:left;">Jeff Goh</td><td style="padding:8px;">0</td><td style="padding:8px;">0</td><td style="padding:8px;">0</td><td style="padding:8px; color:#4caf50;">0</td></tr>
                         <tr style="border-bottom:1px solid #333;"><td style="padding:8px; text-align:left;">Ang C H</td><td style="padding:8px;">2</td><td style="padding:8px;">0</td><td style="padding:8px; color:#ff6b6b;">-1</td><td style="padding:8px; color:#4caf50;">1</td></tr>
@@ -722,8 +743,8 @@ function renderStep() {
         case 1:
             renderStep1();
             document.getElementById('instructionTitle').innerHTML = 'Step 1: Main Menu';
-            document.getElementById('instructionText').innerHTML = 'The app has three main sections:<br>• <strong>TODAY GAME / NEXT GAME</strong> - Shows scheduled game<br>• <strong>VIEW PREVIOUS GAMES</strong> - See past results<br>• <strong>DEMO & TUTORIAL</strong> - You are here!<br>• <strong>GAME SETTINGS</strong> - Admin functions<br><br><span style="color:#ffaa44;">📌 Button not active until actual game day</span>';
-            document.getElementById('instructionTip').innerHTML = '💡 Tip: The NEXT GAME button becomes TODAY GAME on match day.';
+            document.getElementById('instructionText').innerHTML = 'The app has three main sections:<br>• <strong>TODAY GAME / NEXT GAME</strong> - Shows scheduled game<br>• <strong>VIEW PREVIOUS GAMES</strong> - See past results<br>• <strong>DEMO & TUTORIAL</strong> - You are here!<br>• <strong>GAME SETTINGS</strong> - Admin functions';
+            document.getElementById('instructionTip').innerHTML = '💡 Tip: The NEXT GAME button will change to TODAY GAME on the match day. The button is not active until actual game day.';
             break;
         case 2:
             renderStep2();
@@ -734,7 +755,7 @@ function renderStep() {
         case 3:
             renderStep3();
             document.getElementById('instructionTitle').innerHTML = 'Step 3: Enter Scores (Save then Next)';
-            document.getElementById('instructionText').innerHTML = 'For each player:<br>1. Use <strong>-</strong> and <strong>+</strong> to set gross score<br>2. Tap <strong>SAVE</strong> - button turns green briefly<br>3. Tap <strong>▶</strong> to move to next hole<br><br>You cannot advance until current hole is saved.';
+            document.getElementById('instructionText').innerHTML = 'For each player:<br>1. Use <strong>-</strong> and <strong>+</strong> to set gross score<br>2. Tap <strong>SAVE</strong> - button flashes RED briefly<br>3. Tap <strong>▶</strong> to move to next hole<br><br>You cannot advance until current hole is saved.';
             document.getElementById('instructionTip').innerHTML = '💡 Tip: Scores start at Par. Adjust up or down as needed.';
             break;
         case 4:
@@ -746,12 +767,18 @@ function renderStep() {
         case 5:
             renderStep5();
             document.getElementById('instructionTitle').innerHTML = 'Step 5: Sign Your Scorecard';
-            document.getElementById('instructionText').innerHTML = 'At hole 18, after saving:<br>• The <strong>▶</strong> button turns <span style="color:#ffaa44;">GOLD ✍️</span><br>• Tap it to open the signature modal<br>• Confirm and sign<br>• Then you see the waiting screen';
+            document.getElementById('instructionText').innerHTML = 'At hole 18, after saving:<br>• The <strong>▶</strong> button turns <span style="color:#ffaa44;">GOLD ✍️</span><br>• Tap it to open the signature modal<br>• Confirm and sign';
             document.getElementById('instructionTip').innerHTML = '💡 Tip: Both flights must sign to complete the match.';
             break;
         case 6:
             renderStep6();
-            document.getElementById('instructionTitle').innerHTML = 'Step 6: Handicap Adjustment';
+            document.getElementById('instructionTitle').innerHTML = 'Step 6: Waiting for Other Flight';
+            document.getElementById('instructionText').innerHTML = 'After signing:<br>• You\'ll see a waiting screen<br>• The match completes when BOTH flights sign<br>• No further action needed from you';
+            document.getElementById('instructionTip').innerHTML = '💡 Tip: Use VIEW ONLY on another device to watch the waiting flight.';
+            break;
+        case 7:
+            renderStep7();
+            document.getElementById('instructionTitle').innerHTML = 'Step 7: Handicap Adjustment';
             document.getElementById('instructionText').innerHTML = 'After both flights sign:<br>• Click <strong>HANDICAP ADJUSTMENT</strong> on celebration screen<br>• View calculated adjustments:<br>  - <strong>Anchor Adj</strong>: Based on match vs anchor player<br>  - <strong>Perf Adj</strong>: Based on overall performance<br>• New handicaps are saved to player profiles';
             document.getElementById('instructionTip').innerHTML = '💡 Tip: The player with lowest handicap becomes the anchor.';
             break;
@@ -801,14 +828,14 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - REMOVED: Status bubble from all screens (Tutorial, Preview, Live labels removed)
-   - Step 1: Added "Button not active until actual game day" instruction
-   - Step 2: Removed "The other flight will wait" from tip
-   - Step 5: Added waiting screen after sign card
-   - Step 6: Removed "Anchor: Jeff Goh" line from handicap table
-   - All other functionality unchanged from v1.00
+   - Step 1: Combined button inactive message into Tip
+   - Step 3: SAVE button turns RED briefly (not green)
+   - Step 5: Added separate waiting screen as Step 5.1 (now 7 steps total)
+   - Step 6: Sign Card (original Step 5)
+   - Step 7: Handicap Adjustment (original Step 6)
+   - All other functionality unchanged from v1.01
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
