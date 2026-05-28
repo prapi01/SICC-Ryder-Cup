@@ -1,12 +1,14 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.09
+VERSION: 2.10
 KEY CHANGES:
-   - ADDED: initForViewer() - simplified viewer mode that doesn't require archive records
-   - FIXED: Celebration screen handicap button now works in viewer mode
-   - Uses current game data directly instead of looking for history records
-   - Displays handicap table in readonly mode without redirects
-   - All existing functionality unchanged
+   - CHANGED: loadFromHistory() now uses stored adjustedHandicaps from archive
+   - NO longer recalculates handicaps from raw game data
+   - Prevents errors from players' handicaps changing over time
+   - Displays historically accurate adjustment data
+   - Falls back to recalculation ONLY if adjustedHandicaps doesn't exist (backward compat)
+   - Added getStoredAdjustment() for direct access
+   - All existing live game functionality unchanged from v2.09
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -174,7 +176,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Calculate all adjustments for anchor
+    // Calculate all adjustments for anchor (LIVE GAME only)
     // ============================================================
     
     function calculateAllAdjustments(anchor) {
@@ -245,10 +247,10 @@ var HandicapAdjustment = (function() {
         tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.75rem; min-width: 460px;">';
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
         tableHtml += '<th style="padding:6px 4px; text-align:left; width:90px;">Player</th>';
-        tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Cur</th>';
+        tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Start</th>';
         tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Anc</th>';
         tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Perf</th>';
-        tableHtml += '<th style="padding:6px 4px; text-align:center; width:55px;">New</th>';
+        tableHtml += '<th style="padding:6px 4px; text-align:center; width:55px;">Final</th>';
         tableHtml += '</thead><tbody>';
         
         for (var i = 0; i < players.length; i++) {
@@ -343,8 +345,146 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // NEW v2.09: initForViewer - Simplified viewer mode
-    // Uses current game data directly, no archive lookup
+    // NEW v2.10: Display stored adjustment from history record
+    // ============================================================
+    
+    function displayStoredAdjustment(adjustedHandicaps, anchorName) {
+        if (!adjustedHandicaps || !adjustedHandicaps.players) {
+            console.error("No stored adjustment data available");
+            return false;
+        }
+        
+        var players = adjustedHandicaps.players.map(function(p) {
+            return {
+                name: p.name,
+                label: p.label || p.name.substring(0, 3).toUpperCase(),
+                currentHcp: p.startingHcp,
+                anchorAdj: p.anchorAdj || 0,
+                perfAdj: p.perfAdj || 0,
+                newHcp: p.finalHcp,
+                newAnchor: null
+            };
+        });
+        
+        // Sort by starting handicap (lowest first)
+        players.sort(function(a, b) { return a.currentHcp - b.currentHcp; });
+        
+        var calculationResult = {
+            players: players,
+            needsZeroRise: adjustedHandicaps.needsZeroRise || false,
+            zeroRiseAmount: adjustedHandicaps.zeroRiseAmount || 0,
+            newAnchorName: adjustedHandicaps.newAnchor
+        };
+        
+        showAdjustmentTable(calculationResult, anchorName, true);
+        return true;
+    }
+    
+    // ============================================================
+    // NEW v2.10: initForHistory - Reads stored adjustment data
+    // ============================================================
+    
+    function initForHistory(gameId, archiveId, returnUrl) {
+        currentGameId = gameId;
+        currentArchiveId = archiveId;
+        isReadOnlyMode = true;
+        returnDestination = returnUrl || "view-history.html?gameId=" + gameId;
+        
+        if (archiveId && typeof HistoryRecord !== 'undefined') {
+            HistoryRecord.getArchivedGame(archiveId, function(err, archiveData) {
+                if (err || !archiveData) {
+                    console.error("Failed to load archive data:", err);
+                    alert("Unable to load handicap data for this completed game.");
+                    window.location.href = returnDestination;
+                    return;
+                }
+                
+                var adjustedHandicaps = archiveData.adjustedHandicaps;
+                var anchorName = adjustedHandicaps ? adjustedHandicaps.anchor : "Anchor";
+                
+                if (adjustedHandicaps && adjustedHandicaps.players) {
+                    displayStoredAdjustment(adjustedHandicaps, anchorName);
+                } else {
+                    // Fallback: try to load from legacy format or recalculate
+                    console.log("No stored adjustment data, attempting legacy load");
+                    loadFromHistoryLegacy(gameId, returnDestination);
+                }
+            });
+        } else {
+            loadFromHistoryLegacy(gameId, returnDestination);
+        }
+    }
+    
+    // ============================================================
+    // LEGACY: Load from historyGames and recalculate (backward compat)
+    // ============================================================
+    
+    function loadFromHistoryLegacy(gameId, returnUrl) {
+        firebase.firestore().collection("historyGames").where("originalGameId", "==", gameId).limit(1).get()
+            .then(function(snapshot) {
+                if (snapshot.empty) {
+                    console.error("No history record found for game:", gameId);
+                    alert("Unable to load handicap data for this completed game.");
+                    window.location.href = returnUrl;
+                    return;
+                }
+                var doc = snapshot.docs[0];
+                var historyData = doc.data();
+                
+                courseSi = historyData.gameInfo?.course?.si || [];
+                coursePar = historyData.gameInfo?.course?.par || [];
+                startingHole = historyData.gameInfo?.startingHole || 1;
+                allPlayers = historyData.players || [];
+                
+                flight1Data = "";
+                flight2Data = "";
+                
+                var hcpData = historyData.handicapAdjustment;
+                if (hcpData && hcpData.players) {
+                    var calculationResult = {
+                        players: hcpData.players.map(function(p) {
+                            return {
+                                name: p.name,
+                                label: p.name.substring(0, 3).toUpperCase(),
+                                currentHcp: p.currentHcp,
+                                anchorAdj: p.anchorAdj || 0,
+                                perfAdj: p.perfAdj || 0,
+                                newHcp: p.newHcp
+                            };
+                        }),
+                        needsZeroRise: hcpData.needsZeroRise || false,
+                        zeroRiseAmount: hcpData.zeroRiseAmount || 0,
+                        newAnchorName: hcpData.newAnchor
+                    };
+                    showAdjustmentTable(calculationResult, hcpData.anchor || "Anchor", true);
+                } else {
+                    var emptyResult = {
+                        players: allPlayers.map(function(p) {
+                            return {
+                                name: p.name,
+                                label: p.label,
+                                currentHcp: p.handicap,
+                                anchorAdj: 0,
+                                perfAdj: 0,
+                                newHcp: p.handicap
+                            };
+                        }),
+                        needsZeroRise: false,
+                        zeroRiseAmount: 0,
+                        newAnchorName: null
+                    };
+                    showAdjustmentTable(emptyResult, "Not calculated", true);
+                }
+            })
+            .catch(function(err) {
+                console.error("Error loading history data:", err);
+                alert("Unable to load handicap data for this completed game.");
+                window.location.href = returnUrl;
+            });
+    }
+    
+    // ============================================================
+    // initForViewer - Simplified viewer mode (LIVE game viewer)
     // ============================================================
     
     function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
@@ -366,13 +506,8 @@ var HandicapAdjustment = (function() {
         
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // Find anchor (lowest handicap)
         var anchor = allPlayers[0];
-        
-        // Calculate adjustments (without saving)
         var calculationResult = calculateAllAdjustments(anchor);
-        
-        // Display table in readonly mode
         showAdjustmentTable(calculationResult, anchor.name, true);
     }
     
@@ -477,7 +612,8 @@ var HandicapAdjustment = (function() {
         };
         
         if (currentArchiveId && typeof HistoryRecord !== 'undefined') {
-            HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, function(err) {
+            // NEW v3.01: Pass starting players to store adjustedHandicaps
+            HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, allPlayers, function(err) {
                 if (err) {
                     console.error("Error saving handicap data:", err);
                     if (callback) callback(err);
@@ -560,103 +696,11 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Load from historyGames (for readonly mode)
+    // Load from historyGames (for readonly mode) - DEPRECATED, use initForHistory
     // ============================================================
     
-    function loadFromHistory(gameId, callback) {
-        firebase.firestore().collection("historyGames").where("originalGameId", "==", gameId).limit(1).get()
-            .then(function(snapshot) {
-                if (snapshot.empty) {
-                    console.error("No history record found for game:", gameId);
-                    callback(null);
-                    return;
-                }
-                var doc = snapshot.docs[0];
-                var historyData = doc.data();
-                
-                courseSi = historyData.gameInfo?.course?.si || [];
-                coursePar = historyData.gameInfo?.course?.par || [];
-                startingHole = historyData.gameInfo?.startingHole || 1;
-                allPlayers = historyData.players || [];
-                
-                flight1Data = "";
-                flight2Data = "";
-                
-                var hcpData = historyData.handicapAdjustment;
-                if (hcpData && hcpData.players) {
-                    var calculationResult = {
-                        players: hcpData.players.map(function(p) {
-                            return {
-                                name: p.name,
-                                label: p.name.substring(0, 3).toUpperCase(),
-                                currentHcp: p.currentHcp,
-                                anchorAdj: p.anchorAdj || 0,
-                                perfAdj: p.perfAdj || 0,
-                                newHcp: p.newHcp
-                            };
-                        }),
-                        needsZeroRise: hcpData.needsZeroRise || false,
-                        zeroRiseAmount: hcpData.zeroRiseAmount || 0,
-                        newAnchorName: hcpData.newAnchor
-                    };
-                    
-                    callback({
-                        data: historyData,
-                        isFromHistory: true,
-                        preCalculatedResult: calculationResult,
-                        anchor: hcpData.anchor
-                    });
-                } else {
-                    callback({
-                        data: historyData,
-                        isFromHistory: true,
-                        preCalculatedResult: null,
-                        anchor: null
-                    });
-                }
-            })
-            .catch(function(err) {
-                console.error("Error loading history data:", err);
-                callback(null);
-            });
-    }
-    
     function initReadOnly(gameId, returnUrl) {
-        currentGameId = gameId;
-        isReadOnlyMode = true;
-        returnDestination = returnUrl || "view-history.html?gameId=" + gameId;
-        
-        loadFromHistory(gameId, function(historyResult) {
-            if (!historyResult) {
-                alert("Unable to load handicap data for this completed game.");
-                window.location.href = returnDestination;
-                return;
-            }
-            
-            allPlayers = historyResult.data.players || [];
-            allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
-            
-            if (historyResult.preCalculatedResult) {
-                showAdjustmentTable(historyResult.preCalculatedResult, historyResult.anchor || "Anchor", true);
-            } else {
-                var emptyResult = {
-                    players: allPlayers.map(function(p) {
-                        return {
-                            name: p.name,
-                            label: p.label,
-                            currentHcp: p.handicap,
-                            anchorAdj: 0,
-                            perfAdj: 0,
-                            newHcp: p.handicap
-                        };
-                    }),
-                    needsZeroRise: false,
-                    zeroRiseAmount: 0,
-                    newAnchorName: null
-                };
-                showAdjustmentTable(emptyResult, "Not calculated", true);
-            }
-        });
+        initForHistory(gameId, null, returnUrl);
     }
     
     function checkUrlAndInit() {
@@ -690,20 +734,25 @@ var HandicapAdjustment = (function() {
     return {
         init: init,
         initForViewer: initForViewer,
+        initForHistory: initForHistory,  // NEW v2.10
         initReadOnly: initReadOnly,
-        checkUrlAndInit: checkUrlAndInit
+        checkUrlAndInit: checkUrlAndInit,
+        displayStoredAdjustment: displayStoredAdjustment  // NEW v2.10
     };
+    
 })();
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.09
+VERSION: 2.10
 KEY CHANGES:
-   - ADDED: initForViewer() - simplified viewer mode that doesn't require archive records
-   - FIXED: Celebration screen handicap button now works in viewer mode
-   - Uses current game data directly instead of looking for history records
-   - Displays handicap table in readonly mode without redirects
-   - All existing functionality unchanged
+   - CHANGED: loadFromHistory() now uses stored adjustedHandicaps from archive
+   - NO longer recalculates handicaps from raw game data
+   - Prevents errors from players' handicaps changing over time
+   - Displays historically accurate adjustment data
+   - Falls back to recalculation ONLY if adjustedHandicaps doesn't exist (backward compat)
+   - Added initForHistory() and displayStoredAdjustment() for direct access
+   - All existing live game functionality unchanged from v2.09
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
