@@ -1,12 +1,12 @@
 /*
 FILE: js/ticker.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - FIXED: Separator (•) now appears between content sets
-   - No missing separators at the join between last and first player
-   - Seamless continuous loop with 3 sets of content
-   - Animation uses -66.66% translate for 3 sets
-   - All other functionality identical to v1.01
+   - FIXED: Removed "Loading scores..." text during initial page load
+   - Empty state now returns '&nbsp;' (invisible placeholder)
+   - Prevents jarring flash of text before player data loads
+   - Affects real-game.html and view-game.html (preview-game.html is deprecated)
+   - All other functionality identical to v1.02
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -37,7 +37,8 @@ var Ticker = (function() {
     // ============================================================
     
     function buildTickerHTML() {
-        if (!currentPlayers.length) return 'Loading scores...';
+        // Empty state - invisible placeholder (no text flash)
+        if (!currentPlayers.length) return '&nbsp;';
         
         var parts = [];
         for (var i = 0; i < currentPlayers.length; i++) {
@@ -57,7 +58,6 @@ var Ticker = (function() {
         var singleSet = parts.join(separator);
         
         // Three sets with separators between them for seamless looping
-        // Format: Set1 • Set2 • Set3
         return singleSet + separator + singleSet + separator + singleSet;
     }
     
@@ -130,6 +130,9 @@ var Ticker = (function() {
             document.head.appendChild(style);
         }
         
+        // Initialize with invisible placeholder (no "Loading scores..." flash)
+        update();
+        
         return true;
     }
     
@@ -183,13 +186,13 @@ var Ticker = (function() {
 
 /*
 FILE: js/ticker.js
-VERSION: 1.02
+VERSION: 1.03
 KEY CHANGES:
-   - FIXED: Separator (•) now appears between content sets
-   - No missing separators at the join between last and first player
-   - Seamless continuous loop with 3 sets of content
-   - Animation uses -66.66% translate for 3 sets
-   - All other functionality identical to v1.01
+   - FIXED: Removed "Loading scores..." text during initial page load
+   - Empty state now returns '&nbsp;' (invisible placeholder)
+   - Prevents jarring flash of text before player data loads
+   - Affects real-game.html and view-game.html (preview-game.html is deprecated)
+   - All other functionality identical to v1.02
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
