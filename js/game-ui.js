@@ -1,14 +1,13 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.27
+VERSION: 2.28
 KEY CHANGES:
-   - ADDED: Match clinch logic for bubbles
-   - When player wins with > holes remaining (e.g., 4&3): GOLD thick border + bold text
-   - When player loses with > holes remaining: RED thick border + bold text
-   - All subsequent holes after clinch: GREY border + grey text
-   - Added CSS classes: bubble-gold, bubble-loss-clinch, bubble-grey
-   - All other functions unchanged from v2.26
-DEPENDS ON: None (pure display)
+   - SIMPLIFIED: Bubble class logic now reads pre-calculated clinch status from GameLoader
+   - Uses getClinchedAt() to determine if match is clinched
+   - No more on-the-fly clinch calculation (moved to game-loader.js)
+   - All CSS classes preserved (bubble-gold, bubble-loss-clinch, bubble-grey)
+   - All other functions unchanged from v2.27
+DEPENDS ON: GameLoader (for clinch status)
 STATUS: Ready for integration
 */
 
@@ -468,7 +467,7 @@ var GameUI = (function() {
         }
         html += '<td>' + totalPar + '<\/td><\/tr>';
         
-        html += '<tr><td style="font-weight:700;">SI<\/td>';
+        html += '<td><td style="font-weight:700;">SI<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
             html += '<td>' + si + '<\/td>';
@@ -479,7 +478,7 @@ var GameUI = (function() {
         
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -613,55 +612,8 @@ var GameUI = (function() {
     
     // ============================================================
     // Player Cards with Bubbles
-    // FIXED v2.27: Added match clinch logic (Gold/Red thick outline)
+    // FIXED v2.28: Uses pre-calculated clinch status from GameLoader
     // ============================================================
-    
-    // Helper function to determine bubble class with clinch logic
-    function getBubbleClassWithClinch(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn) {
-        var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
-        var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
-        
-        if (!isHoleSavedForFlight) return 'bubble-grey';
-        
-        // Calculate holes remaining (including current hole)
-        var holesRemaining = 18 - currentHole;
-        var absValue = Math.abs(matchValue);
-        
-        // Check if match is already clinched from previous holes
-        // For each previous hole, check if clinch occurred
-        var alreadyClinched = false;
-        for (var h = 1; h < currentHole; h++) {
-            var prevMatchValue = getMatchValueShared(player, opponent, h, resultsCache, allPlayers, getHolePositionFn);
-            var prevAbsValue = Math.abs(prevMatchValue);
-            var prevHolesRemaining = 18 - h;
-            if (prevAbsValue > prevHolesRemaining) {
-                alreadyClinched = true;
-                break;
-            }
-        }
-        
-        // If already clinched, return grey
-        if (alreadyClinched) {
-            return 'bubble-grey';
-        }
-        
-        // Check if current hole clinches the match
-        if (absValue > holesRemaining) {
-            // Winning perspective (positive match value)
-            if (matchValue > 0) {
-                return 'bubble-gold';
-            }
-            // Losing perspective (negative match value)
-            if (matchValue < 0) {
-                return 'bubble-loss-clinch';
-            }
-        }
-        
-        // Normal play - green for winning/tie, red for losing
-        if (matchValue > 0) return 'bubble-green';
-        if (matchValue < 0) return 'bubble-red';
-        return 'bubble-green';
-    }
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
         var container = document.getElementById(containerId);
@@ -677,13 +629,7 @@ var GameUI = (function() {
             var bubblesHtml = '<div class="bubbles">';
             for (var j = 0; j < opponents.length; j++) {
                 var opp = opponents[j];
-                // Use the clinch-aware bubble class function
-                var bubbleClass = getBubbleClassWithClinch(player, opp, currentHoleNumber, window.resultsCache || {}, players, function(flight, hole) {
-                    // This is a simplified isHoleSaved check - real implementation will use the passed function
-                    return true; // Placeholder, actual implementation uses the passed getBubbleClass
-                }, function(hole) {
-                    return hole - 1; // Placeholder position function
-                });
+                var bubbleClass = getBubbleClass(player, opp);
                 var bubbleValue = getBubbleValue(player, opp);
                 bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
             }
@@ -954,41 +900,29 @@ var GameUI = (function() {
         return (player.team === 'B') ? -value : value;
     }
     
+    // FIXED v2.28: Simplified bubble class using pre-calculated clinch status
     function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn) {
         var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
         var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
         
         if (!isHoleSavedForFlight) return 'bubble-grey';
         
-        // Calculate holes remaining (excluding current hole)
-        var holesRemaining = 18 - currentHole;
-        var absValue = Math.abs(matchValue);
-        
-        // Check if match is already clinched from previous holes
-        var alreadyClinched = false;
-        for (var h = 1; h < currentHole; h++) {
-            var prevMatchValue = getMatchValueShared(player, opponent, h, resultsCache, allPlayers, getHolePositionFn);
-            var prevAbsValue = Math.abs(prevMatchValue);
-            var prevHolesRemaining = 18 - h;
-            if (prevAbsValue > prevHolesRemaining) {
-                alreadyClinched = true;
-                break;
-            }
+        // Get pre-calculated clinch status from GameLoader
+        var clinchedAt = null;
+        if (typeof GameLoader !== 'undefined' && GameLoader.getClinchedAt) {
+            clinchedAt = GameLoader.getClinchedAt(player.name, opponent.name);
         }
         
-        // If already clinched, return grey
-        if (alreadyClinched) {
+        // If match is already clinched (current hole > clinch hole)
+        if (clinchedAt && currentHole > clinchedAt) {
             return 'bubble-grey';
         }
         
-        // Check if current hole clinches the match
-        if (absValue > holesRemaining) {
-            // Winning perspective (positive match value)
+        // If this is the clinch hole
+        if (clinchedAt && currentHole === clinchedAt) {
             if (matchValue > 0) {
                 return 'bubble-gold';
-            }
-            // Losing perspective (negative match value)
-            if (matchValue < 0) {
+            } else if (matchValue < 0) {
                 return 'bubble-loss-clinch';
             }
         }
@@ -1063,7 +997,6 @@ var GameUI = (function() {
         
         var style = document.createElement('style');
         style.id = 'gameui-button-styles';
-        // FIXED v2.27: Added CSS for new bubble classes (gold, loss-clinch, grey)
         style.textContent = `
             .scorecard-wrapper {
                 overflow-x: auto;
@@ -1105,8 +1038,6 @@ var GameUI = (function() {
             .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
             .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
             .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
-            
-            /* NEW v2.27: Match clinch bubble styles */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
@@ -1186,9 +1117,6 @@ var GameUI = (function() {
             return m;
         });
     }
-    
-    // Expose resultsCache for the clinch logic
-    window.resultsCacheForUI = window.resultsCache || {};
     
     // ============================================================
     // Public API
@@ -1276,14 +1204,13 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.27
+VERSION: 2.28
 KEY CHANGES:
-   - ADDED: Match clinch logic for bubbles
-   - When player wins with > holes remaining (e.g., 4&3): GOLD thick border + bold text
-   - When player loses with > holes remaining: RED thick border + bold text
-   - All subsequent holes after clinch: GREY border + grey text
-   - Added CSS classes: bubble-gold, bubble-loss-clinch, bubble-grey
-   - All other functions unchanged from v2.26
-DEPENDS ON: None (pure display)
+   - SIMPLIFIED: Bubble class logic now reads pre-calculated clinch status from GameLoader
+   - Uses getClinchedAt() to determine if match is clinched
+   - No more on-the-fly clinch calculation (moved to game-loader.js)
+   - All CSS classes preserved (bubble-gold, bubble-loss-clinch, bubble-grey)
+   - All other functions unchanged from v2.27
+DEPENDS ON: GameLoader (for clinch status)
 STATUS: Ready for integration
 */
