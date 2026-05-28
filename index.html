@@ -1,13 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES:
-   - REMOVED: Preview mode from NGB button
-   - NGB now shows "NEXT GAME" for future games (inactive, no action)
-   - NGB shows "TODAY GAME" for current day (active)
-   - ADDED: DEMO & TUTORIAL button below VIEW PREVIOUS GAMES
-   - Demo button opens tutorial.html
-   - All other functionality unchanged
+   - CHANGED: NEXT GAME icon from 📅 to 🏆 (trophy)
+   - Removed hardcoded date from icon - now shows trophy icon
+   - All other functionality unchanged from v3.11
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -340,12 +337,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.11</div>
+<div class="version-tag">v3.12</div>
 
 <script>
-// FILE: index.html - VERSION 3.11
+// FILE: index.html - VERSION 3.12
 
-var APP_VERSION = "3.11";
+var APP_VERSION = "3.12";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -647,7 +644,7 @@ function loadAndRender() {
                 // NEXT GAME button - INACTIVE (shows info on click)
                 ngbHtml = `
                     <div class="ngb ngb-inactive" onclick="handleNextGame()">
-                        <div class="icon">📅</div>
+                        <div class="icon">🏆</div>
                         <div class="title">NEXT GAME</div>
                         <div class="subtitle-text">${formattedDate}</div>
                         <div class="course-name">${escapeHtml(courseName)}</div>
@@ -740,14 +737,11 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.11
+VERSION: 3.12
 KEY CHANGES:
-   - REMOVED: Preview mode from NGB button
-   - NGB now shows "NEXT GAME" for future games (inactive, no action)
-   - NGB shows "TODAY GAME" for current day (active)
-   - ADDED: DEMO & TUTORIAL button below VIEW PREVIOUS GAMES
-   - Demo button opens tutorial.html
-   - All other functionality unchanged
+   - CHANGED: NEXT GAME icon from 📅 to 🏆 (trophy)
+   - Removed hardcoded date from icon - now shows trophy icon
+   - All other functionality unchanged from v3.11
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
