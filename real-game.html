@@ -1,17 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 4.02
+VERSION: 4.03
 KEY CHANGES:
-   - FIXED: Uses original player objects (with real names) for match lookup
-   - FIXED: Player names displayed as shortform labels (ACH, CK, etc.)
-   - Clinch logic fully working with getBubbleClassWithClinch
-   - All working features preserved:
-     - Ticker margin-top 30px
-     - Bubbles grid layout (4 columns)
-     - Navigation buttons rounded rectangle
-     - Scorecard consistent column widths
-     - SAVE button font size increased
-     - Safe area support
+   - FIXED: Bubble overflow on iPhone - optimized grid for 4 columns
+   - INCREASED: Bubble font size to 0.7rem (more readable)
+   - ADJUSTED: Min bubble width to 55px (fits "OCB 3" perfectly)
+   - All clinch logic and other features preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -119,7 +113,7 @@ STATUS: Ready for integration
         .player-card {
             background: #111;
             border-radius: 16px;
-            padding: 16px;
+            padding: 14px;
             margin-bottom: 12px;
             border: 1px solid #333;
             position: relative;
@@ -133,27 +127,27 @@ STATUS: Ready for integration
         }
         .player-name { font-size: 1rem; font-weight: 600; }
         .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
-        .score-control { display: flex; gap: 12px; align-items: center; }
-        .score-btn { background: #1a3a1a; border: none; width: 40px; height: 40px; border-radius: 30px; font-size: 1.2rem; color: #fff; cursor: pointer; }
+        .score-control { display: flex; gap: 10px; align-items: center; }
+        .score-btn { background: #1a3a1a; border: none; width: 38px; height: 38px; border-radius: 30px; font-size: 1.1rem; color: #fff; cursor: pointer; }
         .score-btn:active { transform: scale(0.95); }
         .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
+        .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
         
-        /* Bubbles - CSS Grid forces exactly 4 columns */
+        /* Bubbles - optimized for iPhone (4 columns, min 55px) */
         .bubbles {
             display: grid;
-            grid-template-columns: repeat(4, minmax(65px, 1fr));
-            gap: 6px;
-            margin-top: 12px;
+            grid-template-columns: repeat(4, minmax(55px, 1fr));
+            gap: 5px;
+            margin-top: 10px;
         }
         .bubble {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             text-align: center;
-            padding: 6px 4px;
+            padding: 5px 3px;
             border-radius: 20px;
-            font-size: 0.65rem;
+            font-size: 0.7rem;
             font-weight: 600;
         }
         .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
@@ -371,7 +365,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.02</div>
+<div class="version-tag">v4.03</div>
 
 <script>
 // ============================================================
@@ -1029,7 +1023,7 @@ function showCelebrationAndHandicap() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS (FIXED v4.02)
+// RENDER FUNCTIONS
 // ============================================================
 
 function updatePlayerNamesToShortform() {
@@ -1057,7 +1051,6 @@ function renderAll() {
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
     
-    // Pass original players (with real names) for proper match lookup
     GameUI.renderPlayerCards(
         "playerCards",
         currentPlayers,
@@ -1086,7 +1079,6 @@ function renderAll() {
         }
     );
     
-    // Update player names to shortform after rendering
     updatePlayerNamesToShortform();
     
     GameUI.updateFlightBadge(editableFlight);
@@ -1291,7 +1283,6 @@ async function init() {
             GameUI.addFlightBadge(editableFlight);
         }, 100);
         
-        // Render bottom menu (Back to Main Menu)
         GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
         
         var playOrder = getPlayOrder();
@@ -1324,18 +1315,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.02
+VERSION: 4.03
 KEY CHANGES:
-   - FIXED: Uses original player objects (with real names) for match lookup
-   - FIXED: Player names displayed as shortform labels (ACH, CK, etc.)
-   - Clinch logic fully working with getBubbleClassWithClinch
-   - All working features preserved:
-     - Ticker margin-top 30px
-     - Bubbles grid layout (4 columns)
-     - Navigation buttons rounded rectangle
-     - Scorecard consistent column widths
-     - SAVE button font size increased
-     - Safe area support
+   - FIXED: Bubble overflow on iPhone - optimized grid for 4 columns
+   - INCREASED: Bubble font size to 0.7rem (more readable)
+   - ADJUSTED: Min bubble width to 55px (fits "OCB 3" perfectly)
+   - All clinch logic and other features preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
