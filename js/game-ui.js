@@ -1,14 +1,10 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.25
+VERSION: 2.26
 KEY CHANGES:
-   - RESPONSIVE: Updated compact header to use CSS Grid + clamp() for all screen sizes
-   - Changed fixed pixel widths to responsive min-width + clamp
-   - Navigation buttons now scale with screen size (min 44px, max 52px)
-   - SAVE button now uses 1fr grid column - adapts to available space
-   - P/N button and navigation group now auto-sized
-   - All JavaScript logic unchanged from v2.24
-   - Backward compatible with all existing pages
+   - REMOVED: "vs " prefix from match bubbles (saves space, prevents wrapping)
+   - Bubble format: "JG AS" instead of "vs JG AS"
+   - All other functions unchanged from v2.25
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -320,7 +316,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Render Compact Header - RESPONSIVE VERSION (v2.25)
+    // Render Compact Header
     // ============================================================
     
     function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
@@ -614,6 +610,7 @@ var GameUI = (function() {
     
     // ============================================================
     // Player Cards with Bubbles
+    // FIXED v2.26: Removed "vs " prefix from bubbles
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -632,7 +629,8 @@ var GameUI = (function() {
                 var opp = opponents[j];
                 var bubbleClass = getBubbleClass(player, opp);
                 var bubbleValue = getBubbleValue(player, opp);
-                bubblesHtml += '<div class="bubble ' + bubbleClass + '">vs ' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
+                // FIXED v2.26: Removed "vs " prefix
+                bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
             }
             bubblesHtml += '</div>';
             
@@ -1171,15 +1169,11 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.25
+VERSION: 2.26
 KEY CHANGES:
-   - RESPONSIVE: Updated compact header to use CSS Grid + clamp() for all screen sizes
-   - Changed fixed pixel widths to responsive min-width + clamp
-   - Navigation buttons now scale with screen size (min 44px, max 52px)
-   - SAVE button now uses 1fr grid column - adapts to available space
-   - P/N button and navigation group now auto-sized
-   - All JavaScript logic unchanged from v2.24
-   - Backward compatible with all existing pages
+   - REMOVED: "vs " prefix from match bubbles (saves space, prevents wrapping)
+   - Bubble format: "JG AS" instead of "vs JG AS"
+   - All other functions unchanged from v2.25
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
