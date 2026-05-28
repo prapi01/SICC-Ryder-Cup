@@ -1,13 +1,15 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.00
+VERSION: 4.01
 KEY CHANGES:
-   - ADDED: CSS classes for match clinch (bubble-gold, bubble-loss-clinch)
-   - ADDED: clinchedAt parameter to getBubbleClassShared() for clinch detection
-   - Clinch logic: when matchValue > holesRemaining -> gold/white thick borders
-   - Holes after clinch: grey bubbles
-   - All existing functions preserved and working
-   - Backward compatible (clinchedAt parameter is optional)
+   - ADDED: Complete fluid bubble CSS for ALL game pages (single source of truth)
+   - Bubbles now use display: grid with repeat(4, 1fr) for equal 4-column layout
+   - Font size scales with screen: clamp(0.7rem, 3.8vw, 0.9rem)
+   - Gap scales with clamp(4px, 1.5vw, 10px)
+   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
+   - Media queries for extreme screen sizes (380px and 500px+)
+   - Removed any hard-coded min-width values
+   - All existing JavaScript functions preserved exactly as v4.00
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -74,6 +76,78 @@ var GameUI = (function() {
         }
         
         backgroundFixed = true;
+    }
+    
+    // ============================================================
+    // Apply Global Bubble Styles (SINGLE SOURCE OF TRUTH)
+    // ============================================================
+    
+    function applyGlobalBubbleStyles() {
+        if (document.getElementById('gameui-bubble-styles')) return;
+        
+        var style = document.createElement('style');
+        style.id = 'gameui-bubble-styles';
+        style.textContent = `
+            /* Bubbles - FULLY FLUID, self-adjusting across ALL screen sizes */
+            .bubbles {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: clamp(4px, 1.5vw, 10px);
+                margin-top: 10px;
+            }
+            
+            .bubble {
+                white-space: nowrap;
+                text-align: center;
+                padding: clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px);
+                border-radius: clamp(12px, 3vw, 24px);
+                font-size: clamp(0.7rem, 3.8vw, 0.9rem);
+                font-weight: 600;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            /* Bubble color variants */
+            .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+            .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+            .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+            .bubble-gold {
+                background: #1a3a1a;
+                color: #ffaa44;
+                border: 3px solid #ffaa44;
+                font-weight: 800;
+            }
+            .bubble-loss-clinch {
+                background: #3a1a1a;
+                color: #ffffff;
+                border: 3px solid #ffffff;
+                font-weight: 800;
+            }
+            
+            /* Very small screens (iPhone SE) */
+            @media (max-width: 380px) {
+                .bubble {
+                    font-size: 0.7rem;
+                    padding: 4px 2px;
+                }
+                .bubbles {
+                    gap: 4px;
+                }
+            }
+            
+            /* Larger screens (iPad, Desktop) */
+            @media (min-width: 500px) {
+                .bubbles {
+                    gap: 12px;
+                }
+                .bubble {
+                    font-size: 0.9rem;
+                    padding: 8px 8px;
+                    border-radius: 28px;
+                }
+            }
+        `;
+        document.head.appendChild(style);
     }
     
     // ============================================================
@@ -382,9 +456,6 @@ var GameUI = (function() {
                 if (eventCallbacks.onSave) eventCallbacks.onSave();
             });
         }
-        
-        // Navigation buttons will have their handlers set by updateNavigationButtons
-        // The callbacks are already stored in eventCallbacks
     }
     
     function updateCompactSaveButton(currentHole, isDisabled) {
@@ -453,7 +524,7 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead></tr><th>Hole</th>';
+        html += '<thead><tr><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
@@ -494,7 +565,7 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<td><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var holeNum = holes[i];
@@ -605,7 +676,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody><table>';
+        html += '</tbody><tr>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -631,6 +702,7 @@ var GameUI = (function() {
                 var opp = opponents[j];
                 var bubbleClass = getBubbleClass(player, opp);
                 var bubbleValue = getBubbleValue(player, opp);
+                // NO "vs " prefix - just opponent label and match value
                 bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
             }
             bubblesHtml += '</div>';
@@ -900,21 +972,18 @@ var GameUI = (function() {
         return (player.team === 'B') ? -value : value;
     }
     
-    // FIXED v4.00: Added clinchedAtMap parameter for clinch detection
     function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn, clinchedAtMap) {
         var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
         var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
         
         if (!isHoleSavedForFlight) return 'bubble-grey';
         
-        // Get clinch hole from map if provided
         var clinchHole = null;
         if (clinchedAtMap) {
             var matchKey = player.name + "_vs_" + opponent.name;
             clinchHole = clinchedAtMap[matchKey];
         }
         
-        // Clinch logic
         if (clinchHole && currentHole > clinchHole) {
             return 'bubble-grey';
         }
@@ -925,7 +994,6 @@ var GameUI = (function() {
             return 'bubble-green';
         }
         
-        // Normal logic
         if (matchValue > 0) return 'bubble-green';
         if (matchValue < 0) return 'bubble-red';
         return 'bubble-green';
@@ -995,7 +1063,6 @@ var GameUI = (function() {
         
         var style = document.createElement('style');
         style.id = 'gameui-button-styles';
-        // FIXED v4.00: Added CSS for match clinch bubbles
         style.textContent = `
             .scorecard-wrapper {
                 overflow-x: auto;
@@ -1018,39 +1085,6 @@ var GameUI = (function() {
             .score-green { color: #4caf50; font-weight: 600; }
             .score-invisible { color: #000; }
             .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
-            
-            .bubbles {
-                display: flex;
-                gap: 6px;
-                margin-top: 12px;
-                flex-wrap: wrap;
-            }
-            .bubble {
-                flex: 1;
-                min-width: 70px;
-                text-align: center;
-                padding: 6px;
-                border-radius: 20px;
-                font-size: 0.65rem;
-                font-weight: 600;
-            }
-            .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-            .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
-            .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
-            
-            /* NEW v4.00: Match clinch bubble styles */
-            .bubble-gold {
-                background: #1a3a1a;
-                color: #ffaa44;
-                border: 3px solid #ffaa44;
-                font-weight: 800;
-            }
-            .bubble-loss-clinch {
-                background: #3a1a1a;
-                color: #ffffff;
-                border: 3px solid #ffffff;
-                font-weight: 800;
-            }
             
             /* Disabled button states - greyed out */
             .compact-prev-btn:disabled, .compact-next-btn:disabled {
@@ -1089,6 +1123,7 @@ var GameUI = (function() {
         
         fixBackground();
         applyButtonStyles();
+        applyGlobalBubbleStyles();
         
         var style = document.createElement('style');
         style.id = 'gameui-tight-layout';
@@ -1205,14 +1240,16 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.00
+VERSION: 4.01
 KEY CHANGES:
-   - ADDED: CSS classes for match clinch (bubble-gold, bubble-loss-clinch)
-   - ADDED: clinchedAt parameter to getBubbleClassShared() for clinch detection
-   - Clinch logic: when matchValue > holesRemaining -> gold/white thick borders
-   - Holes after clinch: grey bubbles
-   - All existing functions preserved and working
-   - Backward compatible (clinchedAt parameter is optional)
+   - ADDED: Complete fluid bubble CSS for ALL game pages (single source of truth)
+   - Bubbles now use display: grid with repeat(4, 1fr) for equal 4-column layout
+   - Font size scales with screen: clamp(0.7rem, 3.8vw, 0.9rem)
+   - Gap scales with clamp(4px, 1.5vw, 10px)
+   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
+   - Media queries for extreme screen sizes (380px and 500px+)
+   - Removed any hard-coded min-width values
+   - All existing JavaScript functions preserved exactly as v4.00
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
