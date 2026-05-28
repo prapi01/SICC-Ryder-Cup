@@ -1,14 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 4.00
+VERSION: 4.02
 KEY CHANGES:
-   - ADDED: getBubbleClassWithClinch() - uses GameLoader.getClinchedAt() for clinch detection
-   - Clinch hole: Gold border (winner) / White border (loser)
-   - Holes after clinch: Grey bubbles
-   - All working features from v3.23 preserved:
+   - FIXED: Uses original player objects (with real names) for match lookup
+   - FIXED: Player names displayed as shortform labels (ACH, CK, etc.)
+   - Clinch logic fully working with getBubbleClassWithClinch
+   - All working features preserved:
      - Ticker margin-top 30px
      - Bubbles grid layout (4 columns)
-     - Player names use shortform (JO, KF, etc.)
      - Navigation buttons rounded rectangle
      - Scorecard consistent column widths
      - SAVE button font size increased
@@ -372,7 +371,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.00</div>
+<div class="version-tag">v4.02</div>
 
 <script>
 // ============================================================
@@ -557,7 +556,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE VALUE FUNCTION (unchanged)
+// BUBBLE FUNCTIONS
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -567,10 +566,6 @@ function getBubbleValue(player, opponent) {
     return absValue.toString();
 }
 
-// ============================================================
-// CLINCH-AWARE BUBBLE CLASS FUNCTION (NEW v4.00)
-// ============================================================
-
 function getBubbleClassWithClinch(player, opponent) {
     var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
     var cache = GameLoader.getLocalCache();
@@ -579,7 +574,6 @@ function getBubbleClassWithClinch(player, opponent) {
     var matchKey = player.name + "_vs_" + opponent.name;
     var clinchHole = clinchedAt[matchKey];
     
-    // Check if hole is saved for this flight
     if (player.flight === opponent.flight) {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         if (!isHoleSavedForFlight) return 'bubble-grey';
@@ -588,18 +582,13 @@ function getBubbleClassWithClinch(player, opponent) {
         if (!isSynced) return 'bubble-grey';
     }
     
-    // CLINCH LOGIC
-    if (clinchHole && currentHole > clinchHole) {
-        return 'bubble-grey';
-    }
-    
+    if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
     if (clinchHole && currentHole === clinchHole) {
         if (matchValue > 0) return 'bubble-gold';
         if (matchValue < 0) return 'bubble-loss-clinch';
         return 'bubble-green';
     }
     
-    // NORMAL LOGIC
     if (matchValue > 0) return 'bubble-green';
     if (matchValue < 0) return 'bubble-red';
     return 'bubble-green';
@@ -1040,8 +1029,22 @@ function showCelebrationAndHandicap() {
 }
 
 // ============================================================
-// Render Functions
+// RENDER FUNCTIONS (FIXED v4.02)
 // ============================================================
+
+function updatePlayerNamesToShortform() {
+    var playerCards = document.querySelectorAll('.player-card');
+    for (var i = 0; i < playerCards.length; i++) {
+        var nameSpan = playerCards[i].querySelector('.player-name');
+        if (nameSpan) {
+            var originalName = nameSpan.innerText;
+            var player = allPlayers.find(p => p.name === originalName);
+            if (player && player.label) {
+                nameSpan.innerText = player.label;
+            }
+        }
+    }
+}
 
 function renderAll() {
     var cache = GameLoader.getLocalCache();
@@ -1054,33 +1057,20 @@ function renderAll() {
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
     
-    // Modify player display to use shortform only
-    var modifiedPlayers = currentPlayers.map(function(p) {
-        return {
-            name: p.label,  // Use shortform (JO, KF, etc.)
-            label: p.label,
-            handicap: p.handicap,
-            team: p.team,
-            flight: p.flight,
-            originalName: p.name
-        };
-    });
-    
-    // Use the clinch-aware bubble class function
+    // Pass original players (with real names) for proper match lookup
     GameUI.renderPlayerCards(
         "playerCards",
-        modifiedPlayers,
+        currentPlayers,
         getAllOpponents,
-        getBubbleClassWithClinch,  // NEW v4.00 - clinch-aware
+        getBubbleClassWithClinch,
         getBubbleValue,
         getCurrentScore,
         canEdit && !isGameCompleteFlag,
         function(playerName, flight, delta) {
             if (isGameCompleteFlag) return;
-            // Find original player by shortform name
             var player = null;
             for (var i = 0; i < allPlayers.length; i++) {
-                if (allPlayers[i].label === playerName && allPlayers[i].flight === flight) {
+                if (allPlayers[i].name === playerName && allPlayers[i].flight === flight) {
                     player = allPlayers[i];
                     break;
                 }
@@ -1095,6 +1085,9 @@ function renderAll() {
             renderAll();
         }
     );
+    
+    // Update player names to shortform after rendering
+    updatePlayerNamesToShortform();
     
     GameUI.updateFlightBadge(editableFlight);
     
@@ -1113,7 +1106,6 @@ function renderAll() {
         courseSi
     );
     
-    // SINGLE SOURCE OF TRUTH: Update navigation buttons
     var playOrder = getPlayOrder();
     var isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) {
         return key.startsWith(editableFlight + "_" + currentHole + "_");
@@ -1332,15 +1324,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.00
+VERSION: 4.02
 KEY CHANGES:
-   - ADDED: getBubbleClassWithClinch() - uses GameLoader.getClinchedAt() for clinch detection
-   - Clinch hole: Gold border (winner) / White border (loser)
-   - Holes after clinch: Grey bubbles
-   - All working features from v3.23 preserved:
+   - FIXED: Uses original player objects (with real names) for match lookup
+   - FIXED: Player names displayed as shortform labels (ACH, CK, etc.)
+   - Clinch logic fully working with getBubbleClassWithClinch
+   - All working features preserved:
      - Ticker margin-top 30px
      - Bubbles grid layout (4 columns)
-     - Player names use shortform (JO, KF, etc.)
      - Navigation buttons rounded rectangle
      - Scorecard consistent column widths
      - SAVE button font size increased
