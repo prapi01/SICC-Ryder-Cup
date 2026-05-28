@@ -1,14 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 3.21
+VERSION: 3.23
 KEY CHANGES:
-   - ADDED: Safe area insets for iPhone Dynamic Island/notch
-   - CHANGED: Container max-width from 550px to 500px for consistency
-   - CHANGED: Device and version tags respect safe area
-   - CHANGED: Modal overlays respect safe area
-   - REMOVED: Negative margins causing offset issues
-   - ADDED: Bottom safe area padding for home indicator
-   - All game functionality unchanged from v3.20
+   - FIXED: Player handicap now shows as "JO 10" instead of "JO (10)" - no parentheses
+   - All other fixes from v3.22 preserved:
+     - Ticker margin-top 30px
+     - Bubbles nowrap (4 in one row)
+     - Player names use shortform (JO, KF, etc.)
+     - Navigation buttons rounded rectangle (border-radius 12px)
+     - Scorecard consistent column widths
+     - SAVE button font size increased
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -90,6 +91,11 @@ STATUS: Ready for integration
             z-index: 1000;
         }
         
+        /* Ticker container - moved down to avoid overlap */
+        .ticker-container {
+            margin-top: 30px;
+        }
+        
         .status-bubble {
             background: rgba(76,175,80,0.3);
             border: 1px solid #4caf50;
@@ -131,8 +137,25 @@ STATUS: Ready for integration
         .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
         
-        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
-        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
+        /* Bubbles - nowrap to keep all 4 in one row */
+        .bubbles {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .bubble {
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+            padding: 6px 4px;
+            border-radius: 20px;
+            font-size: 0.65rem;
+            font-weight: 600;
+        }
         .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
@@ -144,17 +167,31 @@ STATUS: Ready for integration
         }
         
         .scorecard-wrapper { overflow-x: auto; }
+        
+        /* Scorecard table - consistent column widths */
         .scorecard-table {
+            table-layout: fixed;
             width: 100%;
             border-collapse: collapse;
             font-size: 0.7rem;
-            min-width: 700px;
+            min-width: 600px;
         }
-        .scorecard-table th, .scorecard-table td {
-            padding: 6px 3px;
+        .scorecard-table th,
+        .scorecard-table td {
+            min-width: 40px;
+            max-width: 60px;
             text-align: center;
+            padding: 6px 3px;
             border: 1px solid #222;
             white-space: nowrap;
+        }
+        .scorecard-table th:first-child,
+        .scorecard-table td:first-child {
+            width: 50px;
+            position: sticky;
+            left: 0;
+            background: #111;
+            z-index: 1;
         }
         .scorecard-table th {
             color: #4caf50;
@@ -163,6 +200,30 @@ STATUS: Ready for integration
         .score-green { color: #4caf50; font-weight: 600; }
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+        
+        /* Button styles - rounded rectangles */
+        .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
+            border-radius: 12px !important;
+        }
+        .compact-save-btn {
+            border-radius: 30px !important;
+            font-size: 1rem !important;
+            font-weight: 800 !important;
+        }
+        .compact-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            cursor: pointer;
+        }
+        .compact-nav-btn {
+            width: 52px;
+            height: 52px;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
         
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
@@ -298,7 +359,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.21</div>
+<div class="version-tag">v3.23</div>
 
 <script>
 // ============================================================
@@ -1171,9 +1232,21 @@ function renderAll() {
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
     
+    // Modify player display to use shortform only
+    var modifiedPlayers = currentPlayers.map(function(p) {
+        return {
+            name: p.label,  // Use shortform (JO, KF, etc.)
+            label: p.label,
+            handicap: p.handicap,
+            team: p.team,
+            flight: p.flight,
+            originalName: p.name
+        };
+    });
+    
     GameUI.renderPlayerCards(
         "playerCards",
-        currentPlayers,
+        modifiedPlayers,
         getAllOpponents,
         getBubbleClass,
         getBubbleValue,
@@ -1181,9 +1254,10 @@ function renderAll() {
         canEdit && !isGameCompleteFlag,
         function(playerName, flight, delta) {
             if (isGameCompleteFlag) return;
+            // Find original player by shortform name
             var player = null;
             for (var i = 0; i < allPlayers.length; i++) {
-                if (allPlayers[i].name === playerName && allPlayers[i].flight === flight) {
+                if (allPlayers[i].label === playerName && allPlayers[i].flight === flight) {
                     player = allPlayers[i];
                     break;
                 }
@@ -1435,15 +1509,16 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.21
+VERSION: 3.23
 KEY CHANGES:
-   - ADDED: Safe area insets for iPhone Dynamic Island/notch
-   - CHANGED: Container max-width from 550px to 500px for consistency
-   - CHANGED: Device and version tags respect safe area
-   - CHANGED: Modal overlays respect safe area
-   - REMOVED: Negative margins causing offset issues
-   - ADDED: Bottom safe area padding for home indicator
-   - All game functionality unchanged from v3.20
+   - FIXED: Player handicap now shows as "JO 10" instead of "JO (10)" - no parentheses
+   - All other fixes from v3.22 preserved:
+     - Ticker margin-top 30px
+     - Bubbles nowrap (4 in one row)
+     - Player names use shortform (JO, KF, etc.)
+     - Navigation buttons rounded rectangle (border-radius 12px)
+     - Scorecard consistent column widths
+     - SAVE button font size increased
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
