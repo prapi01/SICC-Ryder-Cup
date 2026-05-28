@@ -1,10 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 3.20
+VERSION: 3.21
 KEY CHANGES:
-   - ADDED: Missing bottomMenuContainer div for Back to Main Menu button
-   - Menu button now appears correctly on page load
-   - All other functionality unchanged from v3.19
+   - ADDED: Safe area insets for iPhone Dynamic Island/notch
+   - CHANGED: Container max-width from 550px to 500px for consistency
+   - CHANGED: Device and version tags respect safe area
+   - CHANGED: Modal overlays respect safe area
+   - REMOVED: Negative margins causing offset issues
+   - ADDED: Bottom safe area padding for home indicator
+   - All game functionality unchanged from v3.20
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -33,26 +37,34 @@ STATUS: Ready for integration
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
-        .container { max-width: 550px; margin: 0 auto; }
         
-        .version-tag {
-            position: fixed;
-            top: 8px;
-            right: 8px;
-            font-size: 0.65rem;
-            color: #4caf50;
-            background: rgba(0,0,0,0.6);
-            padding: 2px 10px;
-            border-radius: 16px;
-            font-family: monospace;
-            z-index: 1000;
+        html, body {
+            min-height: 100vh;
+            background: #000;
         }
         
+        body {
+            background: #000;
+            font-family: system-ui, sans-serif;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+        .container {
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 16px;
+        }
+        
+        /* Device tag - respects safe area */
         .device-tag {
             position: fixed;
-            top: 8px;
-            left: 8px;
+            top: max(8px, env(safe-area-inset-top));
+            left: max(8px, env(safe-area-inset-left));
             font-size: 0.55rem;
             color: #4caf50;
             background: rgba(0,0,0,0.4);
@@ -64,6 +76,20 @@ STATUS: Ready for integration
             cursor: pointer;
         }
         
+        /* Version tag - respects safe area */
+        .version-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        
         .status-bubble {
             background: rgba(76,175,80,0.3);
             border: 1px solid #4caf50;
@@ -72,6 +98,8 @@ STATUS: Ready for integration
             border-radius: 20px;
             font-size: 0.7rem;
             color: #4caf50;
+            margin-bottom: 12px;
+            cursor: pointer;
         }
         
         .team-score-card {
@@ -139,6 +167,7 @@ STATUS: Ready for integration
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
+        /* Modal overlays - respect safe area */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -150,6 +179,7 @@ STATUS: Ready for integration
             align-items: center;
             justify-content: center;
             z-index: 10001;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
         .sign-modal-container {
@@ -268,7 +298,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.20</div>
+<div class="version-tag">v3.21</div>
 
 <script>
 // ============================================================
@@ -1405,11 +1435,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.20
+VERSION: 3.21
 KEY CHANGES:
-   - ADDED: Missing bottomMenuContainer div for Back to Main Menu button
-   - Menu button now appears correctly on page load
-   - All other functionality unchanged from v3.19
+   - ADDED: Safe area insets for iPhone Dynamic Island/notch
+   - CHANGED: Container max-width from 550px to 500px for consistency
+   - CHANGED: Device and version tags respect safe area
+   - CHANGED: Modal overlays respect safe area
+   - REMOVED: Negative margins causing offset issues
+   - ADDED: Bottom safe area padding for home indicator
+   - All game functionality unchanged from v3.20
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
