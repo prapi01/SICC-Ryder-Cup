@@ -1,19 +1,13 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - NEW: Interactive tutorial for SICC Ryder Cup app
-   - 6-step guided tutorial covering:
-     1. Main Menu (NGB inactive, DEMO button)
-     2. Role Selection (SCORER FLIGHT 1/2, VIEW ONLY)
-     3. Score Entry (Save then Next)
-     4. Correcting Previous Hole (◀ button)
-     5. Sign Card & Waiting (Gold ✍️ button)
-     6. Handicap Adjustment (table display)
-   - Uses mock data, no Firestore connection
-   - Clickable demo elements show informative alerts
-   - Step indicator shows progress
-   - Exit button returns to index.html
+   - REMOVED: Status bubble from all screens (Tutorial, Preview, Live labels removed)
+   - Step 1: Added "Button not active until actual game day" instruction
+   - Step 2: Removed "The other flight will wait" from tip
+   - Step 5: Added waiting screen after sign card
+   - Step 6: Removed "Anchor: Jeff Goh" line from handicap table
+   - All other functionality unchanged from v1.00
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
@@ -131,15 +125,6 @@ STATUS: Ready for integration
             padding: 12px;
             border-bottom: 1px solid #333;
             text-align: center;
-        }
-        .status-bubble {
-            background: rgba(76,175,80,0.3);
-            border: 1px solid #4caf50;
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            color: #4caf50;
         }
         .team-score-card {
             background: #111;
@@ -308,7 +293,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.00</div>
+<div class="version-tag">v1.01</div>
 
 <script>
 // ============================================================
@@ -353,7 +338,7 @@ function highlightElement(elementId) {
 function renderStep1() {
     var html = `
         <div class="demo-header">
-            <span class="status-bubble">TUTORIAL</span>
+            <!-- No status bubble -->
         </div>
         <div style="padding: 20px; text-align: center;">
             <div style="background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%); border: 2px solid #555; border-radius: 32px; padding: 24px; margin-bottom: 20px; opacity: 0.7;">
@@ -392,7 +377,7 @@ function renderStep1() {
 function renderStep2() {
     var html = `
         <div class="demo-header">
-            <span class="status-bubble">PREVIEW</span>
+            <!-- No status bubble -->
         </div>
         <div style="padding: 16px;">
             <div style="background:#111; border-radius:20px; padding:16px; margin-bottom:16px; text-align:center;">
@@ -474,7 +459,7 @@ function renderStep2() {
 function renderStep3() {
     var html = `
         <div class="demo-header">
-            <span class="status-bubble">LIVE</span>
+            <!-- No status bubble -->
             <div style="margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1.1rem; font-weight:800;">HOLE 7</span></div>
         </div>
         <div class="team-score-card">
@@ -570,7 +555,7 @@ function renderStep3() {
 function renderStep4() {
     var html = `
         <div class="demo-header">
-            <span class="status-bubble">LIVE</span>
+            <!-- No status bubble -->
             <div style="margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1.1rem; font-weight:800;">HOLE 3</span></div>
         </div>
         <div class="team-score-card">
@@ -616,13 +601,13 @@ function renderStep4() {
 }
 
 // ============================================================
-// Step 5: Sign Card & Waiting
+// Step 5: Sign Card & Waiting Screen
 // ============================================================
 
 function renderStep5() {
     var html = `
         <div class="demo-header">
-            <span class="status-bubble">LIVE</span>
+            <!-- No status bubble -->
             <div style="margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1.1rem; font-weight:800;">HOLE 18</span></div>
         </div>
         <div class="team-score-card">
@@ -671,38 +656,36 @@ function showSignModal() {
     
     document.getElementById('signConfirmBtn').addEventListener('click', function() {
         document.getElementById('signModal').remove();
-        showWaitingDemo();
+        showWaitingScreen();
     });
 }
 
-function showWaitingDemo() {
+function showWaitingScreen() {
     var html = `
         <div class="demo-header">
-            <span class="status-bubble">LIVE</span>
+            <!-- No status bubble -->
         </div>
         <div style="text-align:center; padding:40px 20px;">
-            <div style="font-size:1.3rem; margin-bottom:16px;">⌛ CARD SIGNED</div>
+            <div style="font-size:1.5rem; margin-bottom:16px;">⌛ CARD SIGNED</div>
             <div style="color:#ffaa44; margin-bottom:8px;">Waiting for Flight 2...</div>
-            <div style="color:#888; font-size:0.7rem;">The match will complete when both cards are signed.</div>
+            <div style="color:#888; font-size:0.75rem;">The match will complete when both cards are signed.</div>
             <div class="spin"></div>
         </div>
     `;
     document.getElementById('demoScreen').innerHTML = html;
-    alert("Demo: Card signed!\n\nIn the real app, you wait for the other flight to sign. Both must sign to complete.");
 }
 
 // ============================================================
-// Step 6: Handicap Adjustment
+// Step 6: Handicap Adjustment (no anchor line)
 // ============================================================
 
 function renderStep6() {
     var html = `
         <div class="demo-header">
-            <span class="status-bubble">COMPLETE</span>
+            <!-- No status bubble -->
         </div>
         <div style="background:#1a1a1a; border-radius:28px; padding:20px; margin:16px; border:2px solid #4caf50;">
             <div style="font-size:1.2rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:16px;">🏌️ HANDICAP ADJUSTMENT</div>
-            <div style="text-align:center; margin-bottom:12px;"><span style="color:#ffaa44;">✓ Anchor: Jeff Goh (Lowest handicap)</span></div>
             <div style="overflow-x:auto;">
                 <table style="width:100%; border-collapse:collapse; font-size:0.7rem;">
                     <thead><tr style="background:#1a3a1a;">
@@ -711,8 +694,7 @@ function renderStep6() {
                         <th style="padding:8px;">Anc</th>
                         <th style="padding:8px;">Perf</th>
                         <th style="padding:8px;">New</th>
-                    </tr>
-                    </thead>
+                    </tr></thead>
                     <tbody>
                         <tr style="border-bottom:1px solid #333;"><td style="padding:8px; text-align:left;">Jeff Goh</td><td style="padding:8px;">0</td><td style="padding:8px;">0</td><td style="padding:8px;">0</td><td style="padding:8px; color:#4caf50;">0</td></tr>
                         <tr style="border-bottom:1px solid #333;"><td style="padding:8px; text-align:left;">Ang C H</td><td style="padding:8px;">2</td><td style="padding:8px;">0</td><td style="padding:8px; color:#ff6b6b;">-1</td><td style="padding:8px; color:#4caf50;">1</td></tr>
@@ -740,14 +722,14 @@ function renderStep() {
         case 1:
             renderStep1();
             document.getElementById('instructionTitle').innerHTML = 'Step 1: Main Menu';
-            document.getElementById('instructionText').innerHTML = 'The app has three main sections:<br>• <strong>TODAY GAME / NEXT GAME</strong> - Shows scheduled game<br>• <strong>VIEW PREVIOUS GAMES</strong> - See past results<br>• <strong>DEMO & TUTORIAL</strong> - You are here!<br>• <strong>GAME SETTINGS</strong> - Admin functions';
+            document.getElementById('instructionText').innerHTML = 'The app has three main sections:<br>• <strong>TODAY GAME / NEXT GAME</strong> - Shows scheduled game<br>• <strong>VIEW PREVIOUS GAMES</strong> - See past results<br>• <strong>DEMO & TUTORIAL</strong> - You are here!<br>• <strong>GAME SETTINGS</strong> - Admin functions<br><br><span style="color:#ffaa44;">📌 Button not active until actual game day</span>';
             document.getElementById('instructionTip').innerHTML = '💡 Tip: The NEXT GAME button becomes TODAY GAME on match day.';
             break;
         case 2:
             renderStep2();
             document.getElementById('instructionTitle').innerHTML = 'Step 2: Select Your Role';
             document.getElementById('instructionText').innerHTML = 'Choose which flight you\'re scoring for:<br>• <strong>SCORER FLIGHT 1</strong> - Scores for Flight 1 players<br>• <strong>SCORER FLIGHT 2</strong> - Scores for Flight 2 players<br>• <strong>VIEW ONLY</strong> - Watch without scoring<br><br>Then tap <strong>TEE OFF</strong> to enter the game.';
-            document.getElementById('instructionTip').innerHTML = '💡 Tip: Only one device per flight can score. The other flight will wait.';
+            document.getElementById('instructionTip').innerHTML = '💡 Tip: Only one device per flight can score.';
             break;
         case 3:
             renderStep3();
@@ -764,7 +746,7 @@ function renderStep() {
         case 5:
             renderStep5();
             document.getElementById('instructionTitle').innerHTML = 'Step 5: Sign Your Scorecard';
-            document.getElementById('instructionText').innerHTML = 'At hole 18, after saving:<br>• The <strong>▶</strong> button turns <span style="color:#ffaa44;">GOLD ✍️</span><br>• Tap it to open the signature modal<br>• Confirm and sign<br>• Wait for the other flight to sign';
+            document.getElementById('instructionText').innerHTML = 'At hole 18, after saving:<br>• The <strong>▶</strong> button turns <span style="color:#ffaa44;">GOLD ✍️</span><br>• Tap it to open the signature modal<br>• Confirm and sign<br>• Then you see the waiting screen';
             document.getElementById('instructionTip').innerHTML = '💡 Tip: Both flights must sign to complete the match.';
             break;
         case 6:
@@ -819,20 +801,14 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.00
+VERSION: 1.01
 KEY CHANGES:
-   - NEW: Interactive tutorial for SICC Ryder Cup app
-   - 6-step guided tutorial covering:
-     1. Main Menu (NGB inactive, DEMO button)
-     2. Role Selection (SCORER FLIGHT 1/2, VIEW ONLY)
-     3. Score Entry (Save then Next)
-     4. Correcting Previous Hole (◀ button)
-     5. Sign Card & Waiting (Gold ✍️ button)
-     6. Handicap Adjustment (table display)
-   - Uses mock data, no Firestore connection
-   - Clickable demo elements show informative alerts
-   - Step indicator shows progress
-   - Exit button returns to index.html
+   - REMOVED: Status bubble from all screens (Tutorial, Preview, Live labels removed)
+   - Step 1: Added "Button not active until actual game day" instruction
+   - Step 2: Removed "The other flight will wait" from tip
+   - Step 5: Added waiting screen after sign card
+   - Step 6: Removed "Anchor: Jeff Goh" line from handicap table
+   - All other functionality unchanged from v1.00
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
