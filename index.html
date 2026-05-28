@@ -1,13 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.10
+VERSION: 3.11
 KEY CHANGES:
-   - FIXED: All buttons now have same width (95% of title width)
-   - NGB button is square (width × height)
-   - VIEW PREVIOUS GAMES button: single line, same width
-   - GAME SETTINGS button: same width
-   - All buttons centered in container
-   - Maintained all splash screen and session functionality
+   - REMOVED: Preview mode from NGB button
+   - NGB now shows "NEXT GAME" for future games (inactive, no action)
+   - NGB shows "TODAY GAME" for current day (active)
+   - ADDED: DEMO & TUTORIAL button below VIEW PREVIOUS GAMES
+   - Demo button opens tutorial.html
+   - All other functionality unchanged
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -219,9 +219,14 @@ STATUS: Ready for deployment
             justify-content: center;
             align-items: center;
             text-align: center;
-            cursor: pointer;
             transition: all 0.3s ease;
             box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+        .ngb-inactive {
+            background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
+            border: 2px solid #555;
+            opacity: 0.7;
+            cursor: default;
         }
         .ngb:active { transform: scale(0.98); }
         .ngb .icon { font-size: 3rem; margin-bottom: 16px; display: block; }
@@ -241,7 +246,7 @@ STATUS: Ready for deployment
             width: 100%;
         }
         
-        /* VIEW PREVIOUS GAMES button - same width as NGB, single line */
+        /* VIEW PREVIOUS GAMES and DEMO buttons - same width as NGB */
         .menu-btn {
             background: linear-gradient(145deg, #1a1a1a, #111);
             border: 1px solid #4caf50;
@@ -253,6 +258,7 @@ STATUS: Ready for deployment
             box-sizing: border-box;
             white-space: nowrap;
         }
+        .menu-btn:active { transform: scale(0.98); }
         .menu-btn .label {
             font-size: 0.95rem;
             font-weight: 600;
@@ -292,7 +298,7 @@ STATUS: Ready for deployment
         function setButtonWidths() {
             var title = document.querySelector('.title');
             var ngb = document.querySelector('.ngb');
-            var menuBtn = document.querySelector('.menu-btn');
+            var menuBtns = document.querySelectorAll('.menu-btn');
             var gsb = document.querySelector('.gsb');
             
             if (!title || !ngb) return;
@@ -303,9 +309,9 @@ STATUS: Ready for deployment
             ngb.style.width = buttonWidth + 'px';
             ngb.style.height = buttonWidth + 'px';
             
-            if (menuBtn) {
-                menuBtn.style.width = buttonWidth + 'px';
-            }
+            menuBtns.forEach(function(btn) {
+                btn.style.width = buttonWidth + 'px';
+            });
             
             if (gsb) {
                 gsb.style.width = buttonWidth + 'px';
@@ -334,12 +340,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.10</div>
+<div class="version-tag">v3.11</div>
 
 <script>
-// FILE: index.html - VERSION 3.10
+// FILE: index.html - VERSION 3.11
 
-var APP_VERSION = "3.10";
+var APP_VERSION = "3.11";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -518,104 +524,6 @@ function getGameStatus(gameDateStr) {
     return "past";
 }
 
-function checkExistingPreviewData(gameId) {
-    return db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
-        if (doc.exists) {
-            var data = doc.data();
-            var f1HasData = data.f1 && data.f1.d && data.f1.d.indexOf('T') !== -1;
-            var f2HasData = data.f2 && data.f2.d && data.f2.d.indexOf('T') !== -1;
-            var hasLocks = data.locks && (data.locks.f1 !== null || data.locks.f2 !== null);
-            return f1HasData || f2HasData || hasLocks;
-        }
-        return false;
-    }).catch(function() { return false; });
-}
-
-function showResumeModal(gameId, gameDate, callback) {
-    var modalHtml = `
-        <div class="modal-overlay" id="resumeModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:2000;">
-            <div style="background:#1a1a1a; border-radius:24px; padding:28px; max-width:380px; width:90%; border:1px solid #4caf50; text-align:center;">
-                <div style="font-size:1.3rem; font-weight:700; color:#4caf50; margin-bottom:20px;">⚠️ Existing Game Data Found</div>
-                <div style="font-size:0.9rem; color:#ccc; margin-bottom:8px;">This game already has saved scores.</div>
-                <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:20px;">📅 ${formatDisplayDate(gameDate)}</div>
-                <div style="display:flex; gap:12px; justify-content:center;">
-                    <button id="resumeContinueBtn" style="background:#1a3a1a; color:#4caf50; border:1px solid #4caf50; padding:10px 20px; border-radius:40px; font-weight:600; cursor:pointer;">Continue</button>
-                    <button id="resumeResetBtn" style="background:#3a1a1a; color:#ff6b6b; border:1px solid #ff6b6b; padding:10px 20px; border-radius:40px; font-weight:600; cursor:pointer;">Reset (Start Over)</button>
-                    <button id="resumeCancelBtn" style="background:#333; color:#ccc; padding:10px 20px; border-radius:40px; font-weight:600; cursor:pointer;">Cancel</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    document.getElementById("resumeContinueBtn").addEventListener('click', function() {
-        document.getElementById("resumeModal").remove();
-        callback("continue");
-    });
-    
-    document.getElementById("resumeResetBtn").addEventListener('click', function() {
-        document.getElementById("resumeModal").remove();
-        callback("reset");
-    });
-    
-    document.getElementById("resumeCancelBtn").addEventListener('click', function() {
-        document.getElementById("resumeModal").remove();
-        callback("cancel");
-    });
-}
-
-function resetGameData(gameId) {
-    return db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
-        if (!doc.exists) return false;
-        var gameData = doc.data();
-        var startingHole = gameData.startingHole || 1;
-        
-        function generateDefaultDataNatural(parArray) {
-            var result = "";
-            for (var h = 0; h < 18; h++) {
-                var par = parArray[h];
-                var parStr = par.toString().padStart(2, '0');
-                result += "F" + parStr + parStr + parStr + parStr;
-            }
-            return result;
-        }
-        
-        function rotateDataString(naturalData, startHole) {
-            if (startHole === 1) return naturalData;
-            var blocks = [];
-            for (var i = 0; i < 18; i++) {
-                blocks.push(naturalData.substr(i * 9, 9));
-            }
-            var rotated = [];
-            for (var i = startHole - 1; i < 18; i++) rotated.push(blocks[i]);
-            for (var i = 0; i < startHole - 1; i++) rotated.push(blocks[i]);
-            return rotated.join('');
-        }
-        
-        var naturalData = generateDefaultDataNatural(gameData.course.par);
-        var rotatedData = rotateDataString(naturalData, startingHole);
-        
-        var resetData = {
-            "f1.d": rotatedData,
-            "f1.se": false,
-            "f1.x": false,
-            "f2.d": rotatedData,
-            "f2.se": false,
-            "f2.x": false,
-            "locks.f1": null,
-            "locks.f2": null,
-            "currentHoleF1": 1,
-            "currentHoleF2": 1,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        
-        return db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
-            return true;
-        });
-    });
-}
-
 function handleTodayGame() {
     if (!firestoreReady) {
         alert("Connecting to server... Please wait.");
@@ -644,50 +552,25 @@ function handleTodayGame() {
         
         var gameId = todayGame.id;
         var gameDate = todayGame.date;
-        var gameStatus = getGameStatus(gameDate);
         
-        if (gameStatus === "today") {
-            if (typeof displayGameId === 'function') {
-                displayGameId(gameId);
-            }
-            proceedToRealGame(gameId, "real");
+        if (typeof displayGameId === 'function') {
+            displayGameId(gameId);
         }
+        proceedToRealGame(gameId, "real");
     }).catch(function(e) {
         console.error("Error loading games:", e);
         alert("Error loading games: " + e.message);
     });
 }
 
-function handlePreviewGame() {
-    if (!firestoreReady) {
-        alert("Connecting to server... Please wait.");
-        return;
-    }
-    
-    db.collection("scheduledGames").get().then(function(snapshot) {
-        var games = [];
-        snapshot.forEach(function(doc) {
-            games.push({ id: doc.id, date: doc.data().date, course: doc.data().course });
-        });
-        
-        var nextGame = findNextGame(games);
-        if (!nextGame) {
-            alert("No scheduled game found. Please set up a game first.");
-            return;
-        }
-        
-        var gameId = nextGame.id;
-        var gameDate = nextGame.date;
-        
-        if (typeof displayGameId === 'function') {
-            displayGameId(gameId);
-        }
-        
-        window.location.href = 'preview-game.html?gameId=' + gameId + '&date=' + gameDate;
-    }).catch(function(e) {
-        console.error("Error loading games:", e);
-        alert("Error loading games: " + e.message);
-    });
+// NEXT GAME button - inactive, just shows info
+function handleNextGame() {
+    alert("This is the next scheduled game.\n\nOn the game day, this button will become 'TODAY GAME' and allow you to start scoring.");
+}
+
+// DEMO & TUTORIAL button
+function goToDemo() {
+    window.location.href = "tutorial.html";
 }
 
 function proceedToRealGame(gameId, gameType) {
@@ -751,7 +634,7 @@ function loadAndRender() {
             var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
             
             if (status === "today") {
-                // TODAY GAME button - square layout
+                // TODAY GAME button - ACTIVE
                 ngbHtml = `
                     <div class="ngb" onclick="handleTodayGame()">
                         <div class="icon">⛳</div>
@@ -761,20 +644,19 @@ function loadAndRender() {
                     </div>
                 `;
             } else {
-                // PREVIEW button - square layout
+                // NEXT GAME button - INACTIVE (shows info on click)
                 ngbHtml = `
-                    <div class="ngb" onclick="handlePreviewGame()">
-                        <div class="icon">🔍</div>
-                        <div class="title">PREVIEW</div>
-                        <div class="subtitle-text">NEXT GAME</div>
-                        <div class="date">${formattedDate}</div>
+                    <div class="ngb ngb-inactive" onclick="handleNextGame()">
+                        <div class="icon">📅</div>
+                        <div class="title">NEXT GAME</div>
+                        <div class="subtitle-text">${formattedDate}</div>
                         <div class="course-name">${escapeHtml(courseName)}</div>
                     </div>
                 `;
             }
         } else {
             ngbHtml = `
-                <div class="ngb" style="opacity:0.7; cursor:default;">
+                <div class="ngb ngb-inactive" style="opacity:0.7; cursor:default;">
                     <div class="icon">🏌️</div>
                     <div class="title">NO GAME</div>
                     <div class="no-game">No scheduled games found</div>
@@ -795,6 +677,9 @@ function loadAndRender() {
                 <div class="menu-buttons">
                     <div class="menu-btn" id="previousGamesBtn">
                         <span class="label">📋 VIEW PREVIOUS GAMES</span>
+                    </div>
+                    <div class="menu-btn" id="demoBtn">
+                        <span class="label">🎮 DEMO & TUTORIAL</span>
                     </div>
                 </div>
                 
@@ -827,6 +712,7 @@ function loadAndRender() {
         }
         
         document.getElementById("previousGamesBtn").addEventListener("click", goToPreviousGames);
+        document.getElementById("demoBtn").addEventListener("click", goToDemo);
         document.getElementById("adminBtn").addEventListener("click", goToAdmin);
         
         if (typeof initHiddenAdmin === 'function') {
@@ -854,14 +740,14 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.10
+VERSION: 3.11
 KEY CHANGES:
-   - FIXED: All buttons now have same width (95% of title width)
-   - NGB button is square (width × height)
-   - VIEW PREVIOUS GAMES button: single line, same width
-   - GAME SETTINGS button: same width
-   - All buttons centered in container
-   - Maintained all splash screen and session functionality
+   - REMOVED: Preview mode from NGB button
+   - NGB now shows "NEXT GAME" for future games (inactive, no action)
+   - NGB shows "TODAY GAME" for current day (active)
+   - ADDED: DEMO & TUTORIAL button below VIEW PREVIOUS GAMES
+   - Demo button opens tutorial.html
+   - All other functionality unchanged
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
