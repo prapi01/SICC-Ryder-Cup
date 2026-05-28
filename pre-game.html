@@ -1,11 +1,11 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - REMOVED: Calendar icon (📅) from course card - unnecessary visual
-   - CHANGED: "SCORER FLIGHT 1" → "SCORE F1" (prevents text truncation)
-   - CHANGED: "SCORER FLIGHT 2" → "SCORE F2" (prevents text truncation)
-   - All other gold standard features unchanged from v3.07
+   - CHANGED: "(YOU)" indicator replaced with gold "*" (saves space, prevents truncation)
+   - "✓ SCORE F1 (YOU)" → "✓ SCORE F1 *"
+   - "SCORE F1 (YOU)" → "SCORE F1 *"
+   - All other features unchanged from v3.08
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 -->
@@ -260,6 +260,13 @@ STATUS: Ready for integration
             min-height: 44px;
         }
         
+        /* Gold star indicator for "you" role */
+        .gold-star {
+            color: #ffaa44;
+            display: inline-block;
+            margin-left: 2px;
+        }
+        
         .role-btn-available {
             background: #1a3a1a;
             border: 1px solid #4caf50;
@@ -433,12 +440,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.08</div>
+<div class="version-tag">v3.09</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.08
+// FILE: pre-game.html - VERSION 3.09
 
-var VERSION = "3.08";
+var VERSION = "3.09";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -1136,7 +1143,7 @@ function render() {
     var update2Selected = (tempSelectedRole === "update2");
     var viewSelected = (tempSelectedRole === "view");
     
-    // SCORE F1 / SCORE F2 button text (shorter, no truncation)
+    // SCORE F1 / SCORE F2 button text with gold star (*) for "you"
     var update1Class = "role-btn";
     var update1Text = "SCORE F1";
     if (update1Selected) {
@@ -1147,7 +1154,7 @@ function render() {
         update1Text = "SCORE F1 (LOCKED)";
     } else if (isF1Locked && isF1LockedByMe) {
         update1Class = "role-btn role-btn-selected";
-        update1Text = "✓ SCORE F1 (YOU)";
+        update1Text = "✓ SCORE F1 *";
     } else {
         update1Class = "role-btn role-btn-available";
         update1Text = "SCORE F1";
@@ -1163,7 +1170,7 @@ function render() {
         update2Text = "SCORE F2 (LOCKED)";
     } else if (isF2Locked && isF2LockedByMe) {
         update2Class = "role-btn role-btn-selected";
-        update2Text = "✓ SCORE F2 (YOU)";
+        update2Text = "✓ SCORE F2 *";
     } else {
         update2Class = "role-btn role-btn-available";
         update2Text = "SCORE F2";
@@ -1181,11 +1188,11 @@ function render() {
     
     if (deviceHasFlight1 && tempSelectedRole !== "update1") {
         update1Class = "role-btn role-btn-selected";
-        update1Text = "✓ SCORE F1 (YOU)";
+        update1Text = "✓ SCORE F1 *";
     }
     if (deviceHasFlight2 && tempSelectedRole !== "update2") {
         update2Class = "role-btn role-btn-selected";
-        update2Text = "✓ SCORE F2 (YOU)";
+        update2Text = "✓ SCORE F2 *";
     }
     
     var isTeeOffDisabled = !tempSelectedRole && !deviceHasFlight1 && !deviceHasFlight2;
@@ -1338,12 +1345,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.08
+VERSION: 3.09
 KEY CHANGES:
-   - REMOVED: Calendar icon (📅) from course card - unnecessary visual
-   - CHANGED: "SCORER FLIGHT 1" → "SCORE F1" (prevents text truncation)
-   - CHANGED: "SCORER FLIGHT 2" → "SCORE F2" (prevents text truncation)
-   - All other gold standard features unchanged from v3.07
+   - CHANGED: "(YOU)" indicator replaced with gold "*" (saves space, prevents truncation)
+   - "✓ SCORE F1 (YOU)" → "✓ SCORE F1 *"
+   - "SCORE F1 (YOU)" → "SCORE F1 *"
+   - All other features unchanged from v3.08
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 -->
