@@ -1,15 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 4.04
+VERSION: 4.05
 KEY CHANGES:
-   - COMPLETE REWRITE: Bubble CSS now FULLY FLUID and self-adjusting
-   - NO hard-coded min-width values - uses repeat(4, 1fr) for equal distribution
-   - Font size scales with screen width using clamp(0.7rem, 3.8vw, 0.9rem)
-   - Gap scales with clamp(4px, 1.5vw, 10px)
-   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
-   - Added media queries for extreme screen sizes (380px and 500px+)
-   - Removed "vs " prefix from bubbles (saves space)
-   - All clinch logic and other features preserved from v4.03
+   - REMOVED: All duplicate bubble CSS (now exclusively in game-ui.js)
+   - REMOVED: .bubbles and .bubble CSS rules from this file
+   - REMOVED: Media queries for bubbles from this file
+   - Now relies entirely on game-ui.js v4.01 for bubble styling
+   - All JavaScript functionality unchanged from v4.04
+   - Container max-width: 500px
+   - Safe area support preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -91,7 +90,7 @@ STATUS: Ready for integration
             z-index: 1000;
         }
         
-        /* Ticker container - moved down to avoid overlap */
+        /* Ticker container */
         .ticker-container {
             margin-top: 30px;
         }
@@ -137,64 +136,7 @@ STATUS: Ready for integration
         .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
         
-        /* Bubbles - FULLY FLUID, self-adjusting across ALL screen sizes (v4.04) */
-        .bubbles {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: clamp(4px, 1.5vw, 10px);
-            margin-top: 10px;
-        }
-        
-        .bubble {
-            white-space: nowrap;
-            text-align: center;
-            padding: clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px);
-            border-radius: clamp(12px, 3vw, 24px);
-            font-size: clamp(0.7rem, 3.8vw, 0.9rem);
-            font-weight: 600;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        /* Bubble color variants */
-        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
-        .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
-        .bubble-gold {
-            background: #1a3a1a;
-            color: #ffaa44;
-            border: 3px solid #ffaa44;
-            font-weight: 800;
-        }
-        .bubble-loss-clinch {
-            background: #3a1a1a;
-            color: #ffffff;
-            border: 3px solid #ffffff;
-            font-weight: 800;
-        }
-        
-        /* Very small screens (iPhone SE) - ensure text doesn't get crushed */
-        @media (max-width: 380px) {
-            .bubble {
-                font-size: 0.7rem;
-                padding: 4px 2px;
-            }
-            .bubbles {
-                gap: 4px;
-            }
-        }
-        
-        /* Larger screens (iPad, Desktop) - give more breathing room */
-        @media (min-width: 500px) {
-            .bubbles {
-                gap: 12px;
-            }
-            .bubble {
-                font-size: 0.9rem;
-                padding: 8px 8px;
-                border-radius: 28px;
-            }
-        }
+        /* NOTE: Bubble CSS is now in game-ui.js - DO NOT ADD HERE */
         
         .scorecard-section { margin: 20px 0; }
         
@@ -395,7 +337,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.04</div>
+<div class="version-tag">v4.05</div>
 
 <script>
 // ============================================================
@@ -1345,16 +1287,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.04
+VERSION: 4.05
 KEY CHANGES:
-   - COMPLETE REWRITE: Bubble CSS now FULLY FLUID and self-adjusting
-   - NO hard-coded min-width values - uses repeat(4, 1fr) for equal distribution
-   - Font size scales with screen width using clamp(0.7rem, 3.8vw, 0.9rem)
-   - Gap scales with clamp(4px, 1.5vw, 10px)
-   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
-   - Added media queries for extreme screen sizes (380px and 500px+)
-   - Removed "vs " prefix from bubbles (saves space)
-   - All clinch logic and other features preserved from v4.03
+   - REMOVED: All duplicate bubble CSS (now exclusively in game-ui.js)
+   - REMOVED: .bubbles and .bubble CSS rules from this file
+   - REMOVED: Media queries for bubbles from this file
+   - Now relies entirely on game-ui.js v4.01 for bubble styling
+   - All JavaScript functionality unchanged from v4.04
+   - Container max-width: 500px
+   - Safe area support preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
