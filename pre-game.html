@@ -1,17 +1,15 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.10
+VERSION: 3.11
 KEY CHANGES:
-   - CHANGED: Role button states based on selection/lock status
-   - Default: Green border + Green text
-   - Selected by you (active): Gold border + Gold text
-   - Your role from previous session (rejoin): Green border + Gold text
-   - Locked by another device: Grey border + Grey text + disabled
-   - VIEW ONLY: Green border + Green text (default), Gold when selected
-   - Removed checkmark (✓) from all buttons
-   - Removed "(LOCKED)" text from locked buttons
-   - All gold standard features preserved
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
+   - ADDED: Background pre-loading of game data while user reads screen
+   - GameLoader loads full game data silently after page renders
+   - Data stored in sessionStorage for instant transition to real-game
+   - User sees no loading indicators (happens silently)
+   - When user clicks TEE OFF, data is already cached and ready
+   - Eliminates freeze during transition to real-game.html
+   - All existing role selection and lock logic preserved
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
 
@@ -29,6 +27,7 @@ STATUS: Ready for integration
     <script src="js/game-match.js"></script>
     <script src="js/game-team.js"></script>
     <script src="js/game-stroke.js"></script>
+    <script src="js/game-loader.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -354,6 +353,11 @@ STATUS: Ready for integration
         .role-status-selected { background: #1a3a1a; color: #4caf50; }
         .role-status-warning { background: #2a2a1a; color: #ffaa44; }
         
+        /* Pre-loading status - hidden, user never sees it */
+        .preload-status {
+            display: none;
+        }
+        
         .footer { text-align: center; margin-top: 16px; font-size: 0.55rem; color: #444; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
@@ -439,12 +443,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.10</div>
+<div class="version-tag">v3.11</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.10
+// FILE: pre-game.html - VERSION 3.11
 
-var VERSION = "3.10";
+var VERSION = "3.11";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -490,6 +494,11 @@ var isPreviewSandbox = false;
 
 var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
+
+// NEW v3.11: Track pre-loading status
+var preloadCompleted = false;
+var preloadInProgress = false;
+var cachedGameData = null;
 
 function displayDeviceId() {
     var shortName = SessionManager.getShortNameOnly();
@@ -654,6 +663,83 @@ function startGameListener() {
             console.warn("Game listener error:", error);
         });
 }
+
+// ============================================================
+// NEW v3.11: Background Pre-loading
+// ============================================================
+
+function startBackgroundPreload() {
+    if (preloadInProgress || preloadCompleted) {
+        console.log("Preload already in progress or completed");
+        return;
+    }
+    
+    if (!gameId) {
+        console.log("No gameId available for preload");
+        return;
+    }
+    
+    console.log("Starting background preload for game:", gameId);
+    preloadInProgress = true;
+    
+    var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
+    
+    // Load the full game data using GameLoader
+    GameLoader.loadGame(gameId, collection, function(result) {
+        if (result.success) {
+            var cache = result.cache;
+            
+            // Store essential data in sessionStorage for instant use
+            var preloadData = {
+                gameId: gameId,
+                course: cache.course,
+                players: cache.players,
+                startingHole: cache.startingHole,
+                teamGameFormat: cache.teamGameFormat,
+                f1DataString: cache.f1DataString,
+                f2DataString: cache.f2DataString,
+                results: cache.results,
+                savedHoles: cache.savedHoles,
+                t1Row: cache.t1Row,
+                t2Row: cache.t2Row,
+                strkRow: cache.strkRow,
+                lastSyncedHole: cache.lastSyncedHole,
+                clinchedAt: cache.clinchedAt,
+                preloadTimestamp: Date.now()
+            };
+            
+            sessionStorage.setItem("preloadedGameData", JSON.stringify(preloadData));
+            preloadCompleted = true;
+            console.log("Background preload complete. Data cached for instant transition.");
+        } else {
+            console.warn("Background preload failed:", result.error);
+        }
+        preloadInProgress = false;
+    });
+}
+
+function getPreloadedGameData() {
+    var stored = sessionStorage.getItem("preloadedGameData");
+    if (stored) {
+        try {
+            var data = JSON.parse(stored);
+            // Check if preload is less than 5 minutes old
+            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
+                return data;
+            } else {
+                console.log("Preloaded data expired");
+                sessionStorage.removeItem("preloadedGameData");
+            }
+        } catch(e) {
+            console.warn("Failed to parse preloaded data:", e);
+        }
+    }
+    return null;
+}
+
+// ============================================================
+// End of NEW v3.11 code
+// ============================================================
 
 function canTakeRole(role) {
     var now = Date.now();
@@ -866,15 +952,19 @@ function loadGame() {
                             resetLocksOnly(function() {
                                 startGameListener();
                                 render();
+                                // Start background preload after render
+                                setTimeout(startBackgroundPreload, 500);
                             });
                         } else {
                             startGameListener();
                             render();
+                            setTimeout(startBackgroundPreload, 500);
                         }
                     });
                 } else {
                     startGameListener();
                     render();
+                    setTimeout(startBackgroundPreload, 500);
                 }
             } else {
                 alert("Preview session not found");
@@ -924,15 +1014,20 @@ function loadGame() {
                         }
                         startGameListener();
                         render();
+                        // Start background preload after render
+                        setTimeout(startBackgroundPreload, 500);
                     }).catch(function() {
                         startGameListener();
                         render();
+                        setTimeout(startBackgroundPreload, 500);
                     });
                 });
             } else {
                 console.log("REAL mode - Game already started or not today, loading existing data");
                 startGameListener();
                 render();
+                // Start background preload after render
+                setTimeout(startBackgroundPreload, 500);
             }
         } else {
             alert("Game not found");
@@ -944,10 +1039,20 @@ function loadGame() {
     });
 }
 
+// MODIFIED v3.11: Store preloaded data flag before navigation
 function startGame() {
     if (!tempSelectedRole) {
         alert("Please select a role first");
         return;
+    }
+    
+    // Store preload completion status in sessionStorage
+    if (preloadCompleted) {
+        sessionStorage.setItem("gameDataPreloaded", "true");
+        console.log("Preloaded data available for real-game.html");
+    } else {
+        sessionStorage.removeItem("gameDataPreloaded");
+        console.log("No preloaded data available, real-game will load normally");
     }
     
     // VIEW ONLY role
@@ -1095,22 +1200,18 @@ function getButtonClass(flight) {
     var isLockedByMe = isLocked && (flight === 1 ? locks.f1.did : locks.f2.did) === myDeviceIdFull;
     var isSelected = (flight === 1 && tempSelectedRole === "update1") || (flight === 2 && tempSelectedRole === "update2");
     
-    // Locked by another device
     if (isLocked && !isLockedByMe) {
         return "role-btn-locked";
     }
     
-    // Selected in this session
     if (isSelected) {
         return "role-btn-gold";
     }
     
-    // Your role from previous session (rejoin) - green border, gold text
     if (isLockedByMe && !isSelected) {
         return "role-btn-rejoin";
     }
     
-    // Default available
     return "role-btn-default";
 }
 
@@ -1131,7 +1232,6 @@ function render() {
     var teamGameFormat = gameData.teamGameFormat || "tournament";
     var formatDisplayName = getFormatDisplayName(teamGameFormat);
     
-    // Date display - no calendar icon
     var dateDisplay = '';
     if (gameData.date && gameMode !== "preview") {
         dateDisplay = '<div class="course-date">' + formatDisplayDate(gameData.date) + '</div>';
@@ -1172,7 +1272,6 @@ function render() {
     var isF1LockedByMe = isF1Locked && locks.f1.did === myDeviceIdFull;
     var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
     
-    // Get button classes using new helper functions
     var f1ButtonClass = getButtonClass(1);
     var f2ButtonClass = getButtonClass(2);
     var viewButtonClass = getViewButtonClass();
@@ -1181,10 +1280,8 @@ function render() {
     var f2ButtonText = "SCORE F2";
     var viewButtonText = "VIEW ONLY";
     
-    // Determine if Tee Off should be disabled
     var isTeeOffDisabled = !tempSelectedRole && !isF1LockedByMe && !isF2LockedByMe;
     
-    // Role status text
     var roleStatusText = "";
     var roleStatusClass = "";
     if (tempSelectedRole === "update1") {
@@ -1298,7 +1395,6 @@ function render() {
     
     document.getElementById("app").innerHTML = html;
     
-    // Make status bubble clickable for refresh
     var statusBubble = document.getElementById("statusBubble");
     if (statusBubble) {
         statusBubble.onclick = function() {
@@ -1335,17 +1431,15 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.10
+VERSION: 3.11
 KEY CHANGES:
-   - CHANGED: Role button states based on selection/lock status
-   - Default: Green border + Green text
-   - Selected by you (active): Gold border + Gold text
-   - Your role from previous session (rejoin): Green border + Gold text
-   - Locked by another device: Grey border + Grey text + disabled
-   - VIEW ONLY: Green border + Green text (default), Gold when selected
-   - Removed checkmark (✓) from all buttons
-   - Removed "(LOCKED)" text from locked buttons
-   - All gold standard features preserved
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
+   - ADDED: Background pre-loading of game data while user reads screen
+   - GameLoader loads full game data silently after page renders
+   - Data stored in sessionStorage for instant transition to real-game
+   - User sees no loading indicators (happens silently)
+   - When user clicks TEE OFF, data is already cached and ready
+   - Eliminates freeze during transition to real-game.html
+   - All existing role selection and lock logic preserved
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
