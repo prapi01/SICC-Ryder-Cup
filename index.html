@@ -1,10 +1,12 @@
 <!--
 FILE: index.html
-VERSION: 3.14
+VERSION: 3.15
 KEY CHANGES:
-   - FIXED: Device tag and version tag now respect safe-area-inset-top
-   - Tags now appear below iPhone status bar / dynamic island
-   - All other functionality unchanged from v3.13
+   - FIXED: Proper safe area handling for all screen elements
+   - Content now centers within available screen area (below dynamic island)
+   - Splash screen also respects safe area
+   - Removed negative margins causing offset issues
+   - All functionality unchanged from v3.14
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
@@ -38,40 +40,37 @@ STATUS: Ready for deployment
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        html {
+        html, body {
             background: #000000;
-        }
-        
-        /* Container - max-width 500px for consistent display */
-        .container {
-            display: none;
-            max-width: 500px;
-            width: 100%;
-            margin: 0 auto;
-            padding-top: max(60px, env(safe-area-inset-top));
-            padding-bottom: env(safe-area-inset-bottom, 20px);
+            min-height: 100vh;
         }
         
         body {
             background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
             font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
             color: #ffffff;
-            min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
-            padding-bottom: max(20px, env(safe-area-inset-bottom));
-            margin-top: -60px;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        /* Splash overlay */
+        /* Container - centered within safe area */
+        .container {
+            display: none;
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 16px;
+        }
+        
+        /* Splash overlay - respects safe area */
         #splashOverlay {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            right: 0;
+            bottom: 0;
             background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
             display: flex;
             flex-direction: column;
@@ -80,6 +79,7 @@ STATUS: Ready for deployment
             z-index: 10000;
             opacity: 1;
             transition: opacity 0.8s ease;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
         /* Golf icon container */
@@ -150,7 +150,7 @@ STATUS: Ready for deployment
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
-            left: 8px;
+            left: max(8px, env(safe-area-inset-left));
             font-size: 0.55rem;
             color: #4caf50;
             background: rgba(0,0,0,0.4);
@@ -166,7 +166,7 @@ STATUS: Ready for deployment
         .version-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
-            right: 8px;
+            right: max(8px, env(safe-area-inset-right));
             font-size: 0.65rem;
             color: #4caf50;
             background: rgba(0,0,0,0.6);
@@ -340,12 +340,12 @@ STATUS: Ready for deployment
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.14</div>
+<div class="version-tag">v3.15</div>
 
 <script>
-// FILE: index.html - VERSION 3.14
+// FILE: index.html - VERSION 3.15
 
-var APP_VERSION = "3.14";
+var APP_VERSION = "3.15";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -740,11 +740,13 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.14
+VERSION: 3.15
 KEY CHANGES:
-   - FIXED: Device tag and version tag now respect safe-area-inset-top
-   - Tags now appear below iPhone status bar / dynamic island
-   - All other functionality unchanged from v3.13
+   - FIXED: Proper safe area handling for all screen elements
+   - Content now centers within available screen area (below dynamic island)
+   - Splash screen also respects safe area
+   - Removed negative margins causing offset issues
+   - All functionality unchanged from v3.14
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for deployment
 -->
