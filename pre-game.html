@@ -1,11 +1,16 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.09
+VERSION: 3.10
 KEY CHANGES:
-   - CHANGED: "(YOU)" indicator replaced with gold "*" (saves space, prevents truncation)
-   - "✓ SCORE F1 (YOU)" → "✓ SCORE F1 *"
-   - "SCORE F1 (YOU)" → "SCORE F1 *"
-   - All other features unchanged from v3.08
+   - CHANGED: Role button states based on selection/lock status
+   - Default: Green border + Green text
+   - Selected by you (active): Gold border + Gold text
+   - Your role from previous session (rejoin): Green border + Gold text
+   - Locked by another device: Grey border + Grey text + disabled
+   - VIEW ONLY: Green border + Green text (default), Gold when selected
+   - Removed checkmark (✓) from all buttons
+   - Removed "(LOCKED)" text from locked buttons
+   - All gold standard features preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 -->
@@ -252,60 +257,54 @@ STATUS: Ready for integration
             font-size: clamp(0.7rem, 2.5vw, 0.85rem);
             text-align: center;
             cursor: pointer;
-            border: none;
+            border: 2px solid;
             transition: all 0.2s ease;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             min-height: 44px;
-        }
-        
-        /* Gold star indicator for "you" role */
-        .gold-star {
-            color: #ffaa44;
-            display: inline-block;
-            margin-left: 2px;
-        }
-        
-        .role-btn-available {
             background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
         }
         
-        .role-btn-selected {
-            background: #0d3b0d;
-            border: 2px solid #4caf50;
+        /* Default state - Green */
+        .role-btn-default {
+            border-color: #4caf50;
             color: #4caf50;
-            box-shadow: 0 0 8px rgba(76,175,80,0.5);
-            cursor: default;
+            background: #1a3a1a;
         }
         
+        /* Selected by you (active session) - Gold */
+        .role-btn-gold {
+            border-color: #ffaa44;
+            color: #ffaa44;
+            background: #1a3a1a;
+        }
+        
+        /* Your role from previous session - Green border, Gold text */
+        .role-btn-rejoin {
+            border-color: #4caf50;
+            color: #ffaa44;
+            background: #1a3a1a;
+        }
+        
+        /* Locked by another device - Grey */
         .role-btn-locked {
-            opacity: 0.7;
-            cursor: pointer;
-            background: #2a2a2a;
-            border: 1px solid #ffaa44;
-            color: #ffaa44;
-        }
-        
-        .role-btn-disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            background: #1a1a1a;
-            border: 1px solid #555;
+            border-color: #555;
             color: #888;
+            background: #2a2a2a;
+            cursor: not-allowed;
+            opacity: 0.6;
         }
         
+        /* VIEW ONLY specific - same as default */
         .role-btn-view {
-            background: #1a1a1a;
-            border: 1px solid #ffaa44;
-            color: #ffaa44;
+            border-color: #4caf50;
+            color: #4caf50;
+            background: #1a3a1a;
         }
         
-        .role-btn-view.role-btn-selected {
-            background: #2a1a1a;
-            border: 2px solid #ffaa44;
+        .role-btn-view.role-btn-gold {
+            border-color: #ffaa44;
             color: #ffaa44;
         }
         
@@ -440,12 +439,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.09</div>
+<div class="version-tag">v3.10</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.09
+// FILE: pre-game.html - VERSION 3.10
 
-var VERSION = "3.09";
+var VERSION = "3.10";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -1089,6 +1088,40 @@ function getFormatDisplayName(format) {
     return "Tournament";
 }
 
+function getButtonClass(flight) {
+    var now = Date.now();
+    var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
+    var isLocked = (flight === 1 ? locks.f1 : locks.f2) && (flight === 1 ? locks.f1.ex : locks.f2.ex) > now;
+    var isLockedByMe = isLocked && (flight === 1 ? locks.f1.did : locks.f2.did) === myDeviceIdFull;
+    var isSelected = (flight === 1 && tempSelectedRole === "update1") || (flight === 2 && tempSelectedRole === "update2");
+    
+    // Locked by another device
+    if (isLocked && !isLockedByMe) {
+        return "role-btn-locked";
+    }
+    
+    // Selected in this session
+    if (isSelected) {
+        return "role-btn-gold";
+    }
+    
+    // Your role from previous session (rejoin) - green border, gold text
+    if (isLockedByMe && !isSelected) {
+        return "role-btn-rejoin";
+    }
+    
+    // Default available
+    return "role-btn-default";
+}
+
+function getViewButtonClass() {
+    var isSelected = (tempSelectedRole === "view");
+    if (isSelected) {
+        return "role-btn-gold";
+    }
+    return "role-btn-default";
+}
+
 function render() {
     if (!gameData) return;
     
@@ -1098,7 +1131,7 @@ function render() {
     var teamGameFormat = gameData.teamGameFormat || "tournament";
     var formatDisplayName = getFormatDisplayName(teamGameFormat);
     
-    // Date display - removed calendar icon
+    // Date display - no calendar icon
     var dateDisplay = '';
     if (gameData.date && gameMode !== "preview") {
         dateDisplay = '<div class="course-date">' + formatDisplayDate(gameData.date) + '</div>';
@@ -1139,72 +1172,29 @@ function render() {
     var isF1LockedByMe = isF1Locked && locks.f1.did === myDeviceIdFull;
     var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
     
-    var update1Selected = (tempSelectedRole === "update1");
-    var update2Selected = (tempSelectedRole === "update2");
-    var viewSelected = (tempSelectedRole === "view");
+    // Get button classes using new helper functions
+    var f1ButtonClass = getButtonClass(1);
+    var f2ButtonClass = getButtonClass(2);
+    var viewButtonClass = getViewButtonClass();
     
-    // SCORE F1 / SCORE F2 button text with gold star (*) for "you"
-    var update1Class = "role-btn";
-    var update1Text = "SCORE F1";
-    if (update1Selected) {
-        update1Class = "role-btn role-btn-selected";
-        update1Text = "✓ SCORE F1";
-    } else if (isF1Locked && !isF1LockedByMe) {
-        update1Class = "role-btn role-btn-locked";
-        update1Text = "SCORE F1 (LOCKED)";
-    } else if (isF1Locked && isF1LockedByMe) {
-        update1Class = "role-btn role-btn-selected";
-        update1Text = "✓ SCORE F1 *";
-    } else {
-        update1Class = "role-btn role-btn-available";
-        update1Text = "SCORE F1";
-    }
+    var f1ButtonText = "SCORE F1";
+    var f2ButtonText = "SCORE F2";
+    var viewButtonText = "VIEW ONLY";
     
-    var update2Class = "role-btn";
-    var update2Text = "SCORE F2";
-    if (update2Selected) {
-        update2Class = "role-btn role-btn-selected";
-        update2Text = "✓ SCORE F2";
-    } else if (isF2Locked && !isF2LockedByMe) {
-        update2Class = "role-btn role-btn-locked";
-        update2Text = "SCORE F2 (LOCKED)";
-    } else if (isF2Locked && isF2LockedByMe) {
-        update2Class = "role-btn role-btn-selected";
-        update2Text = "✓ SCORE F2 *";
-    } else {
-        update2Class = "role-btn role-btn-available";
-        update2Text = "SCORE F2";
-    }
+    // Determine if Tee Off should be disabled
+    var isTeeOffDisabled = !tempSelectedRole && !isF1LockedByMe && !isF2LockedByMe;
     
-    var viewClass = "role-btn role-btn-view";
-    var viewText = "VIEW ONLY";
-    if (viewSelected) {
-        viewClass = "role-btn role-btn-view role-btn-selected";
-        viewText = "✓ VIEW ONLY";
-    }
-    
-    var deviceHasFlight1 = isF1Locked && isF1LockedByMe;
-    var deviceHasFlight2 = isF2Locked && isF2LockedByMe;
-    
-    if (deviceHasFlight1 && tempSelectedRole !== "update1") {
-        update1Class = "role-btn role-btn-selected";
-        update1Text = "✓ SCORE F1 *";
-    }
-    if (deviceHasFlight2 && tempSelectedRole !== "update2") {
-        update2Class = "role-btn role-btn-selected";
-        update2Text = "✓ SCORE F2 *";
-    }
-    
-    var isTeeOffDisabled = !tempSelectedRole && !deviceHasFlight1 && !deviceHasFlight2;
-    
+    // Role status text
     var roleStatusText = "";
     var roleStatusClass = "";
     if (tempSelectedRole === "update1") {
         roleStatusText = "✓ Score F1 selected. Click TEE OFF to lock this role.";
         roleStatusClass = "role-status-selected";
+        isTeeOffDisabled = false;
     } else if (tempSelectedRole === "update2") {
         roleStatusText = "✓ Score F2 selected. Click TEE OFF to lock this role.";
         roleStatusClass = "role-status-selected";
+        isTeeOffDisabled = false;
     } else if (tempSelectedRole === "view") {
         if (isGameCompleted(gameData)) {
             roleStatusText = "⚠️ This game is already completed. Click TEE OFF to see final results.";
@@ -1213,11 +1203,11 @@ function render() {
         }
         roleStatusClass = "role-status-selected";
         isTeeOffDisabled = false;
-    } else if (deviceHasFlight1) {
+    } else if (isF1LockedByMe) {
         roleStatusText = "✓ You already have Flight 1. Click TEE OFF to enter the game.";
         roleStatusClass = "role-status-selected";
         isTeeOffDisabled = false;
-    } else if (deviceHasFlight2) {
+    } else if (isF2LockedByMe) {
         roleStatusText = "✓ You already have Flight 2. Click TEE OFF to enter the game.";
         roleStatusClass = "role-status-selected";
         isTeeOffDisabled = false;
@@ -1291,9 +1281,9 @@ function render() {
         <div class="role-section">
             <div class="role-title">🎮 SELECT YOUR ROLE</div>
             <div class="role-buttons">
-                <button class="${update1Class}" onclick="toggleRole('update1')">${update1Text}</button>
-                <button class="${update2Class}" onclick="toggleRole('update2')">${update2Text}</button>
-                <button class="${viewClass}" onclick="toggleRole('view')">${viewText}</button>
+                <button class="role-btn ${f1ButtonClass}" onclick="toggleRole('update1')" ${f1ButtonClass === 'role-btn-locked' ? 'disabled' : ''}>${f1ButtonText}</button>
+                <button class="role-btn ${f2ButtonClass}" onclick="toggleRole('update2')" ${f2ButtonClass === 'role-btn-locked' ? 'disabled' : ''}>${f2ButtonText}</button>
+                <button class="role-btn ${viewButtonClass}" onclick="toggleRole('view')">${viewButtonText}</button>
             </div>
             <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
         </div>
@@ -1345,12 +1335,17 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.09
+VERSION: 3.10
 KEY CHANGES:
-   - CHANGED: "(YOU)" indicator replaced with gold "*" (saves space, prevents truncation)
-   - "✓ SCORE F1 (YOU)" → "✓ SCORE F1 *"
-   - "SCORE F1 (YOU)" → "SCORE F1 *"
-   - All other features unchanged from v3.08
+   - CHANGED: Role button states based on selection/lock status
+   - Default: Green border + Green text
+   - Selected by you (active): Gold border + Gold text
+   - Your role from previous session (rejoin): Green border + Gold text
+   - Locked by another device: Grey border + Grey text + disabled
+   - VIEW ONLY: Green border + Green text (default), Gold when selected
+   - Removed checkmark (✓) from all buttons
+   - Removed "(LOCKED)" text from locked buttons
+   - All gold standard features preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 -->
