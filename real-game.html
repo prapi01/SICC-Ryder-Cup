@@ -1,11 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 3.24
+VERSION: 3.25
 KEY CHANGES:
-   - FIXED: Bubbles now use CSS Grid (repeat(4, minmax(70px, 1fr)))
-   - This guarantees exactly 4 columns on all screen sizes (never wraps)
-   - Added text-overflow: ellipsis for very small screens
-   - All other fixes from v3.23 preserved
+   - REMOVED: "vs " prefix from all match bubbles (saves space, prevents wrapping)
+   - Bubble format: "JG AS" instead of "vs JG AS"
+   - All other fixes from v3.24 preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -136,7 +135,7 @@ STATUS: Ready for integration
         /* Bubbles - CSS Grid forces exactly 4 columns, never wraps */
         .bubbles {
             display: grid;
-            grid-template-columns: repeat(4, minmax(70px, 1fr));
+            grid-template-columns: repeat(4, minmax(65px, 1fr));
             gap: 6px;
             margin-top: 12px;
         }
@@ -353,7 +352,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.24</div>
+<div class="version-tag">v3.25</div>
 
 <script>
 // ============================================================
@@ -1238,6 +1237,7 @@ function renderAll() {
         };
     });
     
+    // FIXED v3.25: Removed "vs " prefix from bubbles
     GameUI.renderPlayerCards(
         "playerCards",
         modifiedPlayers,
@@ -1503,12 +1503,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.24
+VERSION: 3.25
 KEY CHANGES:
-   - FIXED: Bubbles now use CSS Grid (repeat(4, minmax(70px, 1fr)))
-   - This guarantees exactly 4 columns on all screen sizes (never wraps)
-   - Added text-overflow: ellipsis for very small screens
-   - All other fixes from v3.23 preserved
+   - REMOVED: "vs " prefix from all match bubbles (saves space, prevents wrapping)
+   - Bubble format: "JG AS" instead of "vs JG AS"
+   - All other fixes from v3.24 preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
