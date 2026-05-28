@@ -2,13 +2,15 @@
 FILE: real-game.html
 VERSION: 4.05
 KEY CHANGES:
-   - REMOVED: All duplicate bubble CSS (now exclusively in game-ui.js)
-   - REMOVED: .bubbles and .bubble CSS rules from this file
-   - REMOVED: Media queries for bubbles from this file
-   - Now relies entirely on game-ui.js v4.01 for bubble styling
-   - All JavaScript functionality unchanged from v4.04
-   - Container max-width: 500px
-   - Safe area support preserved
+   - ADDED: Support for preloaded data from pre-game.html (instant render)
+   - Checks sessionStorage for preloadedGameData before fetching from Firestore
+   - REMOVED: All previewSandboxes references (preview mode deprecated)
+   - REMOVED: isPreviewSandbox logic and related code
+   - REMOVED: preview-game.html redirect references
+   - Uses cached data when available for instant page render
+   - Falls back to Firestore fetch if no preloaded data exists
+   - All bubble CSS now managed exclusively by game-ui.js
+   - Container max-width: 500px with safe area support
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -314,7 +316,7 @@ STATUS: Ready for integration
     <div class="status-bubble" id="statusBubble">LIVE</div>
     
     <div class="ticker-container" id="tickerContainer">
-        <div class="ticker-content" id="tickerContent">Loading scores...</div>
+        <div class="ticker-content" id="tickerContent">&nbsp;</div>
     </div>
     
     <div style="text-align:center; margin-bottom:8px;" id="courseName">Loading...</div>
@@ -382,6 +384,75 @@ var saveInProgress = false;
 
 var activeWaitModal = null;
 var activeCompleteModal = null;
+
+// NEW v4.05: Track if we used preloaded data
+var usedPreloadedData = false;
+
+// ============================================================
+// Preloaded Data Support (v4.05)
+// ============================================================
+
+function getPreloadedGameData() {
+    var stored = sessionStorage.getItem("preloadedGameData");
+    if (stored) {
+        try {
+            var data = JSON.parse(stored);
+            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
+                return data;
+            } else {
+                sessionStorage.removeItem("preloadedGameData");
+            }
+        } catch(e) {
+            console.warn("Failed to parse preloaded data:", e);
+        }
+    }
+    return null;
+}
+
+function applyPreloadedData(preloadData) {
+    console.log("Applying preloaded data for instant render");
+    
+    courseName = preloadData.course?.name || "Unknown Course";
+    coursePar = preloadData.course?.par || [];
+    courseSi = preloadData.course?.si || [];
+    allPlayers = preloadData.players || [];
+    startingHole = preloadData.startingHole || 1;
+    teamGameFormat = preloadData.teamGameFormat || "tournament";
+    
+    // Build a mock cache object for GameLoader
+    var mockCache = {
+        course: preloadData.course,
+        players: preloadData.players,
+        startingHole: preloadData.startingHole,
+        teamGameFormat: preloadData.teamGameFormat,
+        f1DataString: preloadData.f1DataString || "",
+        f2DataString: preloadData.f2DataString || "",
+        results: preloadData.results || null,
+        savedHoles: preloadData.savedHoles || { 1: [], 2: [] },
+        t1Row: preloadData.t1Row || new Array(18).fill('_'),
+        t2Row: preloadData.t2Row || new Array(18).fill('_'),
+        strkRow: preloadData.strkRow || new Array(18).fill('0'),
+        lastSyncedHole: preloadData.lastSyncedHole || 0,
+        clinchedAt: preloadData.clinchedAt || {},
+        signatures: { f1: false, f2: false },
+        submitted: { f1: false, f2: false },
+        locks: { f1: null, f2: null },
+        gameStarted: true
+    };
+    
+    // Manually set the localCache in GameLoader
+    if (typeof GameLoader !== 'undefined' && GameLoader._setLocalCache) {
+        GameLoader._setLocalCache(mockCache);
+    } else {
+        // Fallback: store in a global variable for GameLoader to use
+        window._preloadedGameCache = mockCache;
+    }
+    
+    document.getElementById("courseName").innerHTML = courseName;
+    
+    usedPreloadedData = true;
+    return true;
+}
 
 // ============================================================
 // Ticker Functions
@@ -1205,37 +1276,21 @@ async function init() {
     }
     
     var collection = "scheduledGames";
-    if (session.activeGame && session.activeGame.collection === "previewSandboxes") {
-        collection = "previewSandboxes";
-    }
     
     GameLoader.addDataCallback(onCacheUpdate);
     
-    GameLoader.loadGame(gameId, collection, async function(result) {
-        if (!result.success) {
-            document.getElementById("debug").innerHTML = "Error: " + result.error;
-            return;
-        }
+    // NEW v4.05: Check for preloaded data first
+    var preloadData = getPreloadedGameData();
+    var gameDataPreloaded = sessionStorage.getItem("gameDataPreloaded") === "true";
+    
+    if (preloadData && gameDataPreloaded) {
+        console.log("Using preloaded data for instant render");
+        applyPreloadedData(preloadData);
         
-        var cache = result.cache;
-        courseName = cache.course?.name || "Unknown Course";
-        coursePar = cache.course?.par || [];
-        courseSi = cache.course?.si || [];
-        allPlayers = cache.players || [];
-        startingHole = cache.startingHole;
+        // Clear the preload flag to prevent reuse on refresh
+        sessionStorage.removeItem("gameDataPreloaded");
         
-        if (cache.teamGameFormat) {
-            teamGameFormat = cache.teamGameFormat;
-        }
-        
-        document.getElementById("courseName").innerHTML = courseName;
-        
-        var initSuccess = await initializeGameData(collection, cache);
-        if (!initSuccess) {
-            document.getElementById("debug").innerHTML = "Error: Failed to initialize game data";
-            return;
-        }
-        
+        // Apply UI layout and render immediately
         GameUI.applyTightLayout();
         
         GameUI.renderCompactHeader(
@@ -1274,7 +1329,90 @@ async function init() {
         
         renderAll();
         setSaveButtonIdle();
-    });
+        
+        // Still attach Firestore listener for real-time updates
+        GameLoader.loadGame(gameId, collection, async function(result) {
+            if (result.success) {
+                console.log("Firestore sync attached for real-time updates");
+                var cache = result.cache;
+                if (cache.course) {
+                    courseName = cache.course.name;
+                    coursePar = cache.course.par;
+                    courseSi = cache.course.si;
+                }
+                allPlayers = cache.players;
+                startingHole = cache.startingHole;
+                renderAll();
+            }
+        });
+        
+    } else {
+        console.log("No preloaded data available, loading from Firestore");
+        GameLoader.loadGame(gameId, collection, async function(result) {
+            if (!result.success) {
+                document.getElementById("debug").innerHTML = "Error: " + result.error;
+                return;
+            }
+            
+            var cache = result.cache;
+            courseName = cache.course?.name || "Unknown Course";
+            coursePar = cache.course?.par || [];
+            courseSi = cache.course?.si || [];
+            allPlayers = cache.players || [];
+            startingHole = cache.startingHole;
+            
+            if (cache.teamGameFormat) {
+                teamGameFormat = cache.teamGameFormat;
+            }
+            
+            document.getElementById("courseName").innerHTML = courseName;
+            
+            var initSuccess = await initializeGameData(collection, cache);
+            if (!initSuccess) {
+                document.getElementById("debug").innerHTML = "Error: Failed to initialize game data";
+                return;
+            }
+            
+            GameUI.applyTightLayout();
+            
+            GameUI.renderCompactHeader(
+                "compactHeaderContainer",
+                editableFlight,
+                currentHole,
+                saveHole,
+                prevHole,
+                nextHole,
+                onToggleFlight,
+                null
+            );
+            
+            GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
+            
+            setTimeout(function() {
+                GameUI.addFlightBadge(editableFlight);
+            }, 100);
+            
+            GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+            
+            var playOrder = getPlayOrder();
+            for (var i = 0; i < playOrder.length; i++) {
+                var hole = playOrder[i];
+                if (!isHoleSaved(editableFlight, hole)) {
+                    currentHole = hole;
+                    break;
+                }
+            }
+            updateHoleNumberDisplay();
+            
+            initTicker();
+            if (allPlayers && allPlayers.length) {
+                Ticker.setPlayers(allPlayers);
+            }
+            
+            renderAll();
+            setSaveButtonIdle();
+        });
+    }
     
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
@@ -1289,13 +1427,15 @@ init();
 FILE: real-game.html
 VERSION: 4.05
 KEY CHANGES:
-   - REMOVED: All duplicate bubble CSS (now exclusively in game-ui.js)
-   - REMOVED: .bubbles and .bubble CSS rules from this file
-   - REMOVED: Media queries for bubbles from this file
-   - Now relies entirely on game-ui.js v4.01 for bubble styling
-   - All JavaScript functionality unchanged from v4.04
-   - Container max-width: 500px
-   - Safe area support preserved
+   - ADDED: Support for preloaded data from pre-game.html (instant render)
+   - Checks sessionStorage for preloadedGameData before fetching from Firestore
+   - REMOVED: All previewSandboxes references (preview mode deprecated)
+   - REMOVED: isPreviewSandbox logic and related code
+   - REMOVED: preview-game.html redirect references
+   - Uses cached data when available for instant page render
+   - Falls back to Firestore fetch if no preloaded data exists
+   - All bubble CSS now managed exclusively by game-ui.js
+   - Container max-width: 500px with safe area support
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
