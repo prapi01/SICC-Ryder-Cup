@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>SICC Ryder Cup - Tutorial</title>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
+        .container { max-width: 550px; margin: 0 auto; padding-top: 20px; }
+        
+        .version-tag {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            font-size: 0.65rem;
+            color: #ffaa44;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            font-size: 0.55rem;
+            color: #ffaa44;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+        }
+        
+        /* Tutorial Step Indicator */
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .step-dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #888;
+            transition: all 0.3s;
+        }
+        .step-dot.active {
+            background: #4caf50;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(76,175,80,0.5);
+        }
+        .step-dot.completed {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        
+        /* Instruction Panel */
+        .instruction-panel {
+            background: #1a1a1a;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ffaa44;
+        }
+        .instruction-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 8px;
+        }
+        .instruction-text {
+            font-size: 0.85rem;
+            color: #ccc;
+            line-height: 1.4;
+        }
+        .instruction-tip {
+            background: #1a3a1a;
+            padding: 8px 12px;
+            border-radius: 12px;
+            margin-top: 10px;
+            font-size: 0.75rem;
+            color: #4caf50;
+        }
+        
+        /* Demo Game Screen (looks like real app) */
+        .demo-screen {
+            background: #000;
+            border-radius: 24px;
+            border: 1px solid #333;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .demo-header {
+            background: #0a0a0a;
+            padding: 12px;
+            border-bottom: 1px solid #333;
+        }
+        .status-bubble {
+            background: rgba(76,175,80,0.3);
+            border: 1px solid #4caf50;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            color: #4caf50;
+        }
+        .team-score-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            margin: 16px;
+        }
+        .player-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px;
+            margin: 0 16px 12px 16px;
+            border: 1px solid #333;
+            position: relative;
+        }
+        .player-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .player-name { font-size: 1rem; font-weight: 600; }
+        .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
+        .score-control { display: flex; gap: 12px; align-items: center; }
+        .score-btn { background: #1a3a1a; border: none; width: 40px; height: 40px; border-radius: 30px; font-size: 1.2rem; color: #fff; cursor: pointer; }
+        .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
+        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
+        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        
+        .compact-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 16px;
+            gap: 10px;
+        }
+        .compact-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            border-radius: 30px;
+            padding: 0 16px;
+            height: 52px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .compact-save-btn { flex: 1; }
+        .compact-nav-group { display: flex; align-items: center; gap: 8px; }
+        .compact-nav-btn { width: 52px; height: 52px; border-radius: 30px; font-size: 1.3rem; cursor: pointer; background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .compact-hole-display { font-size: 1.2rem; font-weight: 700; color: #4caf50; min-width: 44px; text-align: center; }
+        
+        .navigation-buttons {
+            display: flex;
+            gap: 12px;
+            margin: 20px 16px;
+        }
+        .nav-btn {
+            flex: 1;
+            padding: 14px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+        .nav-btn-prev { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
+        .nav-btn-next { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .nav-btn-skip { background: #3a1a1a; color: #ffaa44; border: 1px solid #ffaa44; }
+        
+        .highlight {
+            animation: pulse 0.5s ease-in-out 3;
+            box-shadow: 0 0 0 4px #ffaa44;
+            border-radius: 30px;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 #ffaa44; }
+            70% { box-shadow: 0 0 0 10px rgba(255,170,68,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,170,68,0); }
+        }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 28px;
+            max-width: 340px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        .modal-title { font-size: 1.3rem; font-weight: 700; color: #4caf50; margin-bottom: 16px; }
+        .modal-message { font-size: 0.85rem; color: #ccc; margin-bottom: 20px; }
+        .modal-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .celebration-modal {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
+            border-radius: 48px;
+            padding: 32px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            border: 3px solid #ffaa44;
+        }
+        .celebration-title { font-size: 1.5rem; font-weight: 700; color: #ffaa44; margin-bottom: 16px; }
+        .celebration-beer { font-size: 2rem; font-weight: 800; color: #4caf50; margin-bottom: 20px; }
+        .celebration-winner { font-size: 1.3rem; font-weight: 800; margin-bottom: 16px; padding: 12px; background: rgba(76,175,80,0.2); border-radius: 60px; color: #4caf50; }
+        .handicap-table {
+            background: #1a1a1a;
+            border-radius: 16px;
+            padding: 12px;
+            margin: 16px 0;
+            font-size: 0.7rem;
+        }
+        .handicap-table table { width: 100%; border-collapse: collapse; }
+        .handicap-table th, .handicap-table td { padding: 6px 4px; text-align: center; border-bottom: 1px solid #333; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Step Indicator -->
+    <div class="step-indicator" id="stepIndicator"></div>
+    
+    <!-- Demo Screen (changes per step) -->
+    <div id="demoScreen" class="demo-screen"></div>
+    
+    <!-- Instruction Panel -->
+    <div class="instruction-panel" id="instructionPanel">
+        <div class="instruction-title" id="instructionTitle">Step 1: Select Your Role</div>
+        <div class="instruction-text" id="instructionText">
+            Choose which flight you're scoring for:
+            <br>• <strong>SCORER FLIGHT 1</strong> - Scores for Flight 1 players
+            <br>• <strong>SCORER FLIGHT 2</strong> - Scores for Flight 2 players
+            <br>• <strong>VIEW ONLY</strong> - Watch the game without scoring
+            <br><br>After selecting, tap <strong>TEE OFF</strong> to enter the game.
+        </div>
+        <div class="instruction-tip" id="instructionTip">
+            💡 Tip: Only one device per flight can score. The other flight will wait.
+        </div>
+    </div>
+    
+    <!-- Navigation Buttons -->
+    <div class="navigation-buttons">
+        <button class="nav-btn nav-btn-prev" id="prevBtn" disabled>← PREV</button>
+        <button class="nav-btn nav-btn-skip" id="skipBtn">SKIP TUTORIAL</button>
+        <button class="nav-btn nav-btn-next" id="nextBtn">NEXT →</button>
+    </div>
+</div>
+
+<div class="device-tag" id="deviceTag">📖 TUTORIAL MODE</div>
+<div class="version-tag">tutorial v1.00</div>
+
+<script>
+// ============================================================
+// Tutorial Data
+// ============================================================
+
+var currentStep = 1;
+var totalSteps = 6;
+
+// Mock player data
+var mockPlayers = {
+    flight1: {
+        teamA: [{ name: "Ang C H", label: "ACH", handicap: 2, score: 5 },
+                { name: "Chenh Hoe", label: "CH", handicap: 10, score: 6 }],
+        teamB: [{ name: "Jeff Goh", label: "JG", handicap: 0, score: 4 },
+                { name: "Ong C B", label: "OCB", handicap: 1, score: 5 }]
+    },
+    flight2: {
+        teamA: [{ name: "C K", label: "CK", handicap: 8, score: 5 },
+                { name: "Yip H M", label: "YHM", handicap: 12, score: 7 }],
+        teamB: [{ name: "Piti", label: "P", handicap: 8, score: 4 },
+                { name: "James Ong", label: "JO", handicap: 10, score: 6 }]
+    }
+};
+
+var currentFlight = 1;
+var currentHole = 1;
+var scores = {
+    1: { a1: 5, a2: 6, b1: 4, b2: 5 },
+    2: { a1: 4, a2: 5, b1: 3, b2: 4 },
+    3: { a1: 5, a2: 6, b1: 4, b2: 5 }
+};
+var savedHoles = [1];
+var localChanges = {};
+
+// ============================================================
+// Helper Functions
+// ============================================================
+
+function updateStepIndicator() {
+    var container = document.getElementById('stepIndicator');
+    var html = '';
+    for (var i = 1; i <= totalSteps; i++) {
+        var status = '';
+        if (i === currentStep) status = 'active';
+        else if (i < currentStep) status = 'completed';
+        html += '<div class="step-dot ' + status + '">' + i + '</div>';
+    }
+    container.innerHTML = html;
+}
+
+function highlightElement(elementId) {
+    setTimeout(function() {
+        var el = document.getElementById(elementId);
+        if (el) {
+            el.classList.add('highlight');
+            setTimeout(function() {
+                el.classList.remove('highlight');
+            }, 1500);
+        }
+    }, 500);
+}
+
+// ============================================================
+// Step 1: Role Selection Screen
+// ============================================================
+
+function renderStep1() {
+    var html = `
+        <div class="demo-header">
+            <span class="status-bubble">PREVIEW</span>
+        </div>
+        <div style="padding: 16px;">
+            <div style="background:#111; border-radius:20px; padding:20px; margin-bottom:16px; text-align:center;">
+                <div style="font-size:1.2rem; font-weight:700; color:#4caf50;">⛳ SICC Bukit Course</div>
+                <div style="font-size:0.7rem; color:#888;">Starting Hole: 1 | Tournament Format</div>
+            </div>
+            
+            <div style="background:#0a0a0a; border-radius:16px; margin-bottom:16px; overflow:hidden;">
+                <div style="background:#1a3a1a; padding:10px 16px; display:flex; justify-content:space-between;">
+                    <span style="font-weight:700; color:#4caf50;">FLIGHT 1</span>
+                    <span style="font-size:0.65rem; color:#4caf50;">🔓 Available</span>
+                </div>
+                <div style="display:flex; padding:12px; gap:12px;">
+                    <div style="flex:1;"><div style="color:#4caf50; font-weight:700;">TEAM A</div>
+                        <div>Ang C H (2)</div><div>Chenh Hoe (10)</div>
+                    </div>
+                    <div style="flex:1;"><div style="color:#4caf50; font-weight:700;">TEAM B</div>
+                        <div>Jeff Goh (0)</div><div>Ong C B (1)</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background:#0a0a0a; border-radius:16px; margin-bottom:16px; overflow:hidden;">
+                <div style="background:#1a3a1a; padding:10px 16px; display:flex; justify-content:space-between;">
+                    <span style="font-weight:700; color:#4caf50;">FLIGHT 2</span>
+                    <span style="font-size:0.65rem; color:#4caf50;">🔓 Available</span>
+                </div>
+                <div style="display:flex; padding:12px; gap:12px;">
+                    <div style="flex:1;"><div style="color:#4caf50; font-weight:700;">TEAM A</div>
+                        <div>C K (8)</div><div>Yip H M (12)</div>
+                    </div>
+                    <div style="flex:1;"><div style="color:#4caf50; font-weight:700;">TEAM B</div>
+                        <div>Piti (8)</div><div>James Ong (10)</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background:#111; border-radius:20px; padding:16px;">
+                <div style="text-align:center; color:#ffaa44; margin-bottom:12px;">🎮 SELECT YOUR ROLE</div>
+                <div style="display:flex; gap:10px;">
+                    <button id="demoFlight1Btn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; border-radius:40px; padding:12px; font-weight:700;">SCORER FLIGHT 1</button>
+                    <button id="demoFlight2Btn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; border-radius:40px; padding:12px; font-weight:700;">SCORER FLIGHT 2</button>
+                    <button id="demoViewBtn" style="flex:1; background:#1a1a1a; border:1px solid #ffaa44; color:#ffaa44; border-radius:40px; padding:12px; font-weight:700;">VIEW ONLY</button>
+                </div>
+                <div style="display:flex; gap:12px; margin-top:16px;">
+                    <button id="demoBackBtn" style="flex:1; background:#1a1a1a; border:1px solid #333; color:#ccc; border-radius:40px; padding:12px;">← BACK</button>
+                    <button id="demoTeeOffBtn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; border-radius:40px; padding:12px;">⛳ TEE OFF →</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('demoScreen').innerHTML = html;
+    
+    // Highlight role buttons after render
+    setTimeout(function() {
+        highlightElement('demoFlight1Btn');
+    }, 800);
+}
+
+// ============================================================
+// Step 2: Score Entry Screen
+// ============================================================
+
+function renderStep2() {
+    var teamA = mockPlayers.flight1.teamA;
+    var teamB = mockPlayers.flight1.teamB;
+    
+    var html = `
+        <div class="demo-header">
+            <span class="status-bubble">LIVE</span>
+            <div style="text-align:center; margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1.2rem; font-weight:800;">HOLE 1</span></div>
+        </div>
+        <div class="team-score-card">
+            <div style="display:flex; justify-content:center; gap:16px;">
+                <div><div style="font-size:0.85rem;">TEAM A</div><div style="font-size:1.5rem; font-weight:800;">0</div></div>
+                <div style="font-size:1.2rem;">│</div>
+                <div><div style="font-size:0.85rem;">TEAM B</div><div style="font-size:1.5rem; font-weight:800;">0</div></div>
+            </div>
+        </div>
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">${teamA[0].name}</span><span class="player-handicap">${teamA[0].label} ${teamA[0].handicap}</span></div>
+                <div class="score-control">
+                    <button class="score-btn dec-btn" data-player="a1">-</button>
+                    <span class="score-value" id="score_a1">${scores[currentHole].a1}</span>
+                    <button class="score-btn inc-btn" data-player="a1">+</button>
+                </div>
+            </div>
+            <div class="bubbles"><div class="bubble bubble-green">vs OCB AS</div><div class="bubble bubble-green">vs JO AS</div></div>
+        </div>
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">${teamA[1].name}</span><span class="player-handicap">${teamA[1].label} ${teamA[1].handicap}</span></div>
+                <div class="score-control">
+                    <button class="score-btn dec-btn" data-player="a2">-</button>
+                    <span class="score-value" id="score_a2">${scores[currentHole].a2}</span>
+                    <button class="score-btn inc-btn" data-player="a2">+</button>
+                </div>
+            </div>
+            <div class="bubbles"><div class="bubble bubble-green">vs OCB AS</div><div class="bubble bubble-green">vs JO AS</div></div>
+        </div>
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">${teamB[0].name}</span><span class="player-handicap">${teamB[0].label} ${teamB[0].handicap}</span></div>
+                <div class="score-control">
+                    <button class="score-btn dec-btn" data-player="b1">-</button>
+                    <span class="score-value" id="score_b1">${scores[currentHole].b1}</span>
+                    <button class="score-btn inc-btn" data-player="b1">+</button>
+                </div>
+            </div>
+            <div class="bubbles"><div class="bubble bubble-green">vs ACH AS</div><div class="bubble bubble-green">vs CK AS</div></div>
+        </div>
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">${teamB[1].name}</span><span class="player-handicap">${teamB[1].label} ${teamB[1].handicap}</span></div>
+                <div class="score-control">
+                    <button class="score-btn dec-btn" data-player="b2">-</button>
+                    <span class="score-value" id="score_b2">${scores[currentHole].b2}</span>
+                    <button class="score-btn inc-btn" data-player="b2">+</button>
+                </div>
+            </div>
+            <div class="bubbles"><div class="bubble bubble-green">vs ACH AS</div><div class="bubble bubble-green">vs CK AS</div></div>
+        </div>
+        <div class="compact-header">
+            <button class="compact-btn" id="demoPnBtn" style="min-width:60px;">P</button>
+            <button class="compact-btn compact-save-btn" id="demoSaveBtn">SAVE H${currentHole}</button>
+            <div class="compact-nav-group">
+                <button class="compact-nav-btn" id="demoPrevBtn">◀</button>
+                <span class="compact-hole-display">${currentHole}</span>
+                <button class="compact-nav-btn" id="demoNextBtn">▶</button>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('demoScreen').innerHTML = html;
+    
+    // Attach score button events
+    document.querySelectorAll('.dec-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var player = this.dataset.player;
+            var span = document.getElementById('score_' + player);
+            var val = parseInt(span.innerText);
+            if (val > 1) span.innerText = val - 1;
+        });
+    });
+    document.querySelectorAll('.inc-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var player = this.dataset.player;
+            var span = document.getElementById('score_' + player);
+            var val = parseInt(span.innerText);
+            if (val < 12) span.innerText = val + 1;
+        });
+    });
+    
+    // Save button demo
+    var saveBtn = document.getElementById('demoSaveBtn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function() {
+            var originalText = this.innerText;
+            this.innerText = 'SAVED ✓';
+            this.style.background = '#2a4a2a';
+            setTimeout(function() {
+                saveBtn.innerText = originalText;
+                saveBtn.style.background = '#1a3a1a';
+            }, 1000);
+            // Mark hole as saved
+            if (savedHoles.indexOf(currentHole) === -1) savedHoles.push(currentHole);
+            // Update next button if hole 1
+            var nextBtn = document.getElementById('demoNextBtn');
+            if (nextBtn && currentHole === 1) {
+                nextBtn.disabled = false;
+                nextBtn.style.opacity = '1';
+            }
+        });
+    }
+    
+    // Highlight SAVE button
+    setTimeout(function() {
+        highlightElement('demoSaveBtn');
+    }, 800);
+}
+
+// ============================================================
+// Step 3: Correcting Scores (◀ button)
+// ============================================================
+
+function renderStep3() {
+    var teamA = mockPlayers.flight1.teamA;
+    var teamB = mockPlayers.flight1.teamB;
+    currentHole = 2;
+    
+    var html = `
+        <div class="demo-header">
+            <span class="status-bubble">LIVE</span>
+            <div style="text-align:center; margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1.2rem; font-weight:800;">HOLE 2</span></div>
+        </div>
+        <div class="team-score-card">
+            <div style="display:flex; justify-content:center; gap:16px;">
+                <div><div style="font-size:0.85rem;">TEAM A</div><div style="font-size:1.5rem; font-weight:800;">1</div></div>
+                <div style="font-size:1.2rem;">│</div>
+                <div><div style="font-size:0.85rem;">TEAM B</div><div style="font-size:1.5rem; font-weight:800;">0</div></div>
+            </div>
+        </div>
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">${teamA[0].name}</span><span class="player-handicap">${teamA[0].label} ${teamA[0].handicap}</span></div>
+                <div class="score-value" style="background:#1a3a1a;">4</div>
+            </div>
+            <div class="bubbles"><div class="bubble bubble-green">vs OCB 1</div><div class="bubble bubble-green">vs JO 1</div></div>
+        </div>
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">${teamA[1].name}</span><span class="player-handicap">${teamA[1].label} ${teamA[1].handicap}</span></div>
+                <div class="score-value" style="background:#1a3a1a;">5</div>
+            </div>
+            <div class="bubbles"><div class="bubble bubble-green">vs OCB 1</div><div class="bubble bubble-green">vs JO 1</div></div>
+        </div>
+        <div class="compact-header">
+            <button class="compact-btn" style="min-width:60px;">P</button>
+            <button class="compact-btn compact-save-btn" id="demoSaveBtn2">SAVE H2</button>
+            <div class="compact-nav-group">
+                <button class="compact-nav-btn" id="demoPrevBtn2" style="background:#ffaa44; color:#1a3a1a; border-color:#ffaa44;">◀</button>
+                <span class="compact-hole-display">2</span>
+                <button class="compact-nav-btn" id="demoNextBtn2">▶</button>
+            </div>
+        </div>
+        <div style="margin: 12px 16px; padding: 12px; background:#1a3a1a; border-radius:12px; text-align:center;">
+            <span style="color:#ffaa44;">✓ Hole 1 was saved. You can go back to edit it.</span>
+        </div>
+    `;
+    
+    document.getElementById('demoScreen').innerHTML = html;
+    
+    // Highlight PREV button
+    setTimeout(function() {
+        highlightElement('demoPrevBtn2');
+    }, 800);
+}
+
+// ============================================================
+// Step 4: Sign Card (Gold button at hole 18)
+// ============================================================
+
+function renderStep4() {
+    var teamA = mockPlayers.flight1.teamA;
+    var teamB = mockPlayers.flight1.teamB;
+    currentHole = 18;
+    
+    var html = `
+        <div class="demo-header">
+            <span class="status-bubble">LIVE</span>
+            <div style="text-align:center; margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1.2rem; font-weight:800;">HOLE 18</span></div>
+        </div>
+        <div class="team-score-card">
+            <div style="display:flex; justify-content:center; gap:16px;">
+                <div><div style="font-size:0.85rem;">TEAM A</div><div style="font-size:1.5rem; font-weight:800;">11</div></div>
+                <div style="font-size:1.2rem;">│</div>
+                <div><div style="font-size:0.85rem;">TEAM B</div><div style="font-size:1.5rem; font-weight:800;">7</div></div>
+            </div>
+        </div>
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">${teamA[0].name}</span><span class="player-handicap">${teamA[0].label} ${teamA[0].handicap}</span></div>
+                <div class="score-value">4</div>
+            </div>
+            <div class="bubbles"><div class="bubble bubble-green">vs OCB 3</div><div class="bubble bubble-green">vs JO 2</div></div>
+        </div>
+        <div class="compact-header">
+            <button class="compact-btn" style="min-width:60px;">P</button>
+            <button class="compact-btn compact-save-btn" id="demoSaveBtn18">SAVE H18</button>
+            <div class="compact-nav-group">
+                <button class="compact-nav-btn">◀</button>
+                <span class="compact-hole-display">18</span>
+                <button class="compact-nav-btn" id="demoSignBtn" style="background:#ffaa44; color:#1a3a1a; border-color:#ffaa44;">✍️</button>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('demoScreen').innerHTML = html;
+    
+    // Add sign button demo
+    var signBtn = document.getElementById('demoSignBtn');
+    if (signBtn) {
+        signBtn.addEventListener('click', function() {
+            showSignModal();
+        });
+    }
+    
+    // Highlight SIGN button
+    setTimeout(function() {
+        highlightElement('demoSignBtn');
+    }, 800);
+}
+
+function showSignModal() {
+    var modalHtml = `
+        <div class="modal-overlay" id="signModal">
+            <div class="modal-content">
+                <div class="modal-title">✍️ SIGN SCORECARD</div>
+                <div class="modal-message">Confirm that all scores are correct before signing.</div>
+                <button class="modal-btn" id="signConfirmBtn">✓ SIGN CARD</button>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    document.getElementById('signConfirmBtn').addEventListener('click', function() {
+        document.getElementById('signModal').remove();
+        alert("✓ Card signed! Waiting for other flight...");
+    });
+}
+
+// ============================================================
+// Step 5: Waiting Screen
+// ============================================================
+
+function renderStep5() {
+    var html = `
+        <div class="demo-header">
+            <span class="status-bubble">LIVE</span>
+        </div>
+        <div style="text-align:center; padding:40px 20px;">
+            <div style="font-size:1.5rem; margin-bottom:16px;">⌛ CARD SIGNED</div>
+            <div style="color:#ffaa44; margin-bottom:8px;">Waiting for Flight 2...</div>
+            <div style="color:#888; font-size:0.75rem;">The match will complete when both cards are signed.</div>
+            <div style="width:32px; height:32px; border:2px solid #333; border-top-color:#4caf50; border-radius:50%; margin:24px auto 0; animation: spin 1s linear infinite;"></div>
+        </div>
+        <style>
+            @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+    `;
+    
+    document.getElementById('demoScreen').innerHTML = html;
+}
+
+// ============================================================
+// Step 6: Celebration & Handicap Adjustment
+// ============================================================
+
+function renderStep6() {
+    var html = `
+        <div class="celebration-modal" style="margin: 0 auto;">
+            <div class="celebration-title">🏆 MATCH COMPLETE! 🏆</div>
+            <div class="celebration-beer">🍺 BEER TIME! 🍺</div>
+            <div class="celebration-winner">🎉 TEAM A WINS! 11 - 7 🎉</div>
+            <button id="showHcpBtn" class="modal-btn" style="margin-top:16px;">🏌️ HANDICAP ADJUSTMENT</button>
+        </div>
+        <div id="hcpTable" style="display:none; margin-top:16px;" class="handicap-table">
+            <table>
+                <thead><tr><th>Player</th><th>Current</th><th>Anc</th><th>Perf</th><th>New</th></tr></thead>
+                <tbody>
+                    <tr><td>Jeff Goh</td><td>0</td><td>0</td><td>0</td><td style="color:#4caf50;">0</td></tr>
+                    <tr><td>Ang C H</td><td>2</td><td>0</td><td>-1</td><td style="color:#4caf50;">1</td></tr>
+                    <tr><td>Ong C B</td><td>1</td><td>0</td><td>0</td><td style="color:#4caf50;">1</td></tr>
+                    <tr><td>C K</td><td>10</td><td>-2</td><td>-1</td><td style="color:#4caf50;">7</td></tr>
+                    <tr><td>Piti</td><td>8</td><td>-1</td><td>0</td><td style="color:#4caf50;">7</td></tr>
+                </tbody>
+            </table>
+            <div style="text-align:center; margin-top:12px;"><span style="color:#ffaa44;">✓ Anchor: Jeff Goh</span></div>
+        </div>
+    `;
+    
+    document.getElementById('demoScreen').innerHTML = html;
+    
+    var hcpBtn = document.getElementById('showHcpBtn');
+    if (hcpBtn) {
+        hcpBtn.addEventListener('click', function() {
+            var table = document.getElementById('hcpTable');
+            if (table.style.display === 'none') {
+                table.style.display = 'block';
+                hcpBtn.innerText = '🏌️ HIDE HANDICAP ADJUSTMENT';
+            } else {
+                table.style.display = 'none';
+                hcpBtn.innerText = '🏌️ HANDICAP ADJUSTMENT';
+            }
+        });
+    }
+}
+
+// ============================================================
+// Main Render Function
+// ============================================================
+
+function renderStep() {
+    switch(currentStep) {
+        case 1:
+            renderStep1();
+            document.getElementById('instructionTitle').innerHTML = 'Step 1: Select Your Role';
+            document.getElementById('instructionText').innerHTML = 'Choose which flight you\'re scoring for:<br>• <strong>SCORER FLIGHT 1</strong> - Scores for Flight 1 players<br>• <strong>SCORER FLIGHT 2</strong> - Scores for Flight 2 players<br>• <strong>VIEW ONLY</strong> - Watch the game without scoring<br><br>After selecting, tap <strong>TEE OFF</strong> to enter the game.';
+            document.getElementById('instructionTip').innerHTML = '💡 Tip: Only one device per flight can score. The other flight will wait.';
+            break;
+        case 2:
+            renderStep2();
+            document.getElementById('instructionTitle').innerHTML = 'Step 2: Enter Scores (Save then Next)';
+            document.getElementById('instructionText').innerHTML = 'For each player:<br>1. Use <strong>-</strong> and <strong>+</strong> buttons to set gross score<br>2. Tap <strong>SAVE H[X]</strong> - button turns green briefly<br>3. Tap <strong>▶</strong> to move to next hole<br><br>You cannot advance until current hole is saved.';
+            document.getElementById('instructionTip').innerHTML = '💡 Tip: Scores start at Par. Adjust up or down as needed.';
+            break;
+        case 3:
+            renderStep3();
+            document.getElementById('instructionTitle').innerHTML = 'Step 3: Correct a Previous Hole';
+            document.getElementById('instructionText').innerHTML = 'Made a mistake?<br>1. Tap <strong>◀</strong> to go back to previous holes<br>2. Adjust scores using <strong>-</strong> and <strong>+</strong><br>3. Tap <strong>SAVE</strong> to overwrite<br>4. Tap <strong>▶</strong> to return to current hole';
+            document.getElementById('instructionTip').innerHTML = '💡 Tip: You can edit ANY hole that hasn\'t been signed yet.';
+            break;
+        case 4:
+            renderStep4();
+            document.getElementById('instructionTitle').innerHTML = 'Step 4: Sign Your Scorecard';
+            document.getElementById('instructionText').innerHTML = 'At hole 18, after saving:<br>• The <strong>▶</strong> button turns <span style="color:#ffaa44;">GOLD ✍️</span><br>• Tap it to open the signature modal<br>• Confirm and sign<br>• Wait for the other flight to sign';
+            document.getElementById('instructionTip').innerHTML = '💡 Tip: Both flights must sign to complete the match.';
+            break;
+        case 5:
+            renderStep5();
+            document.getElementById('instructionTitle').innerHTML = 'Step 5: Waiting for Other Flight';
+            document.getElementById('instructionText').innerHTML = 'After signing:<br>• You\'ll see a waiting screen<br>• The match completes when BOTH flights sign<br>• No further action needed from you';
+            document.getElementById('instructionTip').innerHTML = '💡 Tip: Use VIEW ONLY on another device to watch the waiting flight.';
+            break;
+        case 6:
+            renderStep6();
+            document.getElementById('instructionTitle').innerHTML = 'Step 6: Results & Handicap Adjustment';
+            document.getElementById('instructionText').innerHTML = 'After both flights sign:<br>• Celebration screen with winner and BEER TIME! 🍺<br>• Tap <strong>HANDICAP ADJUSTMENT</strong><br>• View calculated handicap changes<br>• Anchor player (lowest handicap) is automatically selected';
+            document.getElementById('instructionTip').innerHTML = '💡 Tip: Handicap adjustments are saved to player profiles automatically.';
+            break;
+    }
+    updateStepIndicator();
+    
+    // Update prev/next buttons
+    document.getElementById('prevBtn').disabled = (currentStep === 1);
+    if (currentStep === totalSteps) {
+        document.getElementById('nextBtn').innerHTML = 'FINISH →';
+    } else {
+        document.getElementById('nextBtn').innerHTML = 'NEXT →';
+    }
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+
+document.getElementById('prevBtn').addEventListener('click', function() {
+    if (currentStep > 1) {
+        currentStep--;
+        renderStep();
+    }
+});
+
+document.getElementById('nextBtn').addEventListener('click', function() {
+    if (currentStep < totalSteps) {
+        currentStep++;
+        renderStep();
+    } else {
+        // Tutorial complete - go back to index
+        window.location.href = 'index.html';
+    }
+});
+
+document.getElementById('skipBtn').addEventListener('click', function() {
+    if (confirm('Skip tutorial and return to main menu?')) {
+        window.location.href = 'index.html';
+    }
+});
+
+// Initialize
+renderStep();
+</script>
+
+</body>
+</html>
