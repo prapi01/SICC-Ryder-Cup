@@ -1,13 +1,14 @@
 <!--
 FILE: view-history.html
-VERSION: 4.00
+VERSION: 4.01
 KEY CHANGES:
-   - COMPLETE REWRITE: One schema only - reads data strings directly
-   - NO reconstruction, NO conversion, NO recalculation
-   - Uses same display logic as view-game.html
-   - Reads from historyGames collection (f1DataString, f2DataString, results)
-   - Two modes: Final Result + Scorecard viewer
-   - Handicap Adjustment opens readonly mode
+   - CHANGED: Container max-width from 550px to 500px (consistent with main app)
+   - REMOVED: Ticker (not needed for static history viewer)
+   - REMOVED: ticker.js dependency
+   - CHANGED: Handicap Adjustment now uses stored adjustedHandicaps from archive
+   - Uses hcp-adjust.js initForHistory() for historically accurate display
+   - No recalculation - displays immutable recorded data
+   - All other functionality preserved from v4.00
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -28,13 +29,13 @@ STATUS: Ready for integration
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
-        .container { max-width: 550px; margin: 0 auto; padding-top: 20px; }
+        body { background: #000; font-family: system-ui, sans-serif; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+        .container { max-width: 500px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
         .version-tag {
             position: fixed;
-            top: 8px;
-            right: 8px;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
             font-size: 0.65rem;
             color: #4caf50;
             background: rgba(0,0,0,0.6);
@@ -46,8 +47,8 @@ STATUS: Ready for integration
         
         .device-tag {
             position: fixed;
-            top: 8px;
-            left: 8px;
+            top: max(8px, env(safe-area-inset-top));
+            left: max(8px, env(safe-area-inset-left));
             font-size: 0.55rem;
             color: #4caf50;
             background: rgba(0,0,0,0.4);
@@ -242,7 +243,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.00</div>
+<div class="version-tag">v4.01</div>
 
 <script>
 // ============================================================
@@ -268,6 +269,7 @@ var db = firebase.firestore();
 var currentGameData = null;
 var currentGameId = null;
 var currentOriginalGameId = null;
+var currentArchiveId = null;
 var allPlayersCache = null;
 var courseCache = null;
 var f1DataString = null;
@@ -468,7 +470,7 @@ function renderPlayerCards() {
             var opp = opponents[j];
             var bubbleClass = getBubbleClass(p, opp);
             var bubbleValue = getBubbleValue(p, opp);
-            bubblesHtml += '<div class="bubble ' + bubbleClass + '">vs ' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
+            bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
         }
         bubblesHtml += '</div>';
         
@@ -653,13 +655,39 @@ function showScorecardMode() {
     document.getElementById("scorecardPage").style.display = "block";
 }
 
+// ============================================================
+// Handicap Adjustment (using stored data)
+// ============================================================
+
 function showHCPMode() {
-    if (currentOriginalGameId) {
-        window.location.href = "hcp-adjust.html?gameId=" + currentOriginalGameId + "&mode=readonly&returnTo=history";
-    } else if (currentGameData && currentGameData.originalGameId) {
-        window.location.href = "hcp-adjust.html?gameId=" + currentGameData.originalGameId + "&mode=readonly&returnTo=history";
+    if (currentArchiveId) {
+        // Use stored handicaps from archive (v4.01)
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForHistory) {
+            HandicapAdjustment.initForHistory(currentOriginalGameId, currentArchiveId, 'view-history.html?gameId=' + currentOriginalGameId);
+        } else {
+            alert("Handicap adjustment module not available");
+        }
+    } else if (currentOriginalGameId) {
+        // Fallback: try to find archive by originalGameId
+        db.collection("historyGames").where("originalGameId", "==", currentOriginalGameId).limit(1).get()
+            .then(function(snapshot) {
+                if (!snapshot.empty) {
+                    var archiveId = snapshot.docs[0].id;
+                    if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForHistory) {
+                        HandicapAdjustment.initForHistory(currentOriginalGameId, archiveId, 'view-history.html?gameId=' + currentOriginalGameId);
+                    } else {
+                        alert("Handicap adjustment module not available");
+                    }
+                } else {
+                    alert("Unable to load handicap data for this completed game.");
+                }
+            })
+            .catch(function(err) {
+                console.error("Error finding archive:", err);
+                alert("Unable to load handicap data.");
+            });
     } else {
-        alert("Unable to load handicap data");
+        alert("Unable to load handicap data.");
     }
 }
 
@@ -726,6 +754,7 @@ function loadGame(gameId) {
             currentGameData = gameData;
             currentGameId = gameId;
             currentOriginalGameId = gameData.originalGameId || null;
+            currentArchiveId = gameId;
             allPlayersCache = gameData.players || [];
             courseCache = gameData.gameInfo?.course || {};
             f1DataString = gameData.f1DataString || "";
@@ -798,14 +827,15 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 4.00
+VERSION: 4.01
 KEY CHANGES:
-   - COMPLETE REWRITE: One schema only - reads data strings directly
-   - NO reconstruction, NO conversion, NO recalculation
-   - Uses same display logic as view-game.html
-   - Reads from historyGames collection (f1DataString, f2DataString, results)
-   - Two modes: Final Result + Scorecard viewer
-   - Handicap Adjustment opens readonly mode
+   - CHANGED: Container max-width from 550px to 500px (consistent with main app)
+   - REMOVED: Ticker (not needed for static history viewer)
+   - REMOVED: ticker.js dependency
+   - CHANGED: Handicap Adjustment now uses stored adjustedHandicaps from archive
+   - Uses hcp-adjust.js initForHistory() for historically accurate display
+   - No recalculation - displays immutable recorded data
+   - All other functionality preserved from v4.00
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
