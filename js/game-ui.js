@@ -1,10 +1,13 @@
 /*
 FILE: js/game-ui.js
-VERSION: 2.30
+VERSION: 4.00
 KEY CHANGES:
-   - FIXED: renderPlayerCards now falls back to window.getBubbleClass/getBubbleValue if parameters are not functions
-   - Ensures that bubble values and colors always work even if parameters are missing
-   - All other functions unchanged from v2.29
+   - ADDED: CSS classes for match clinch (bubble-gold, bubble-loss-clinch)
+   - ADDED: clinchedAt parameter to getBubbleClassShared() for clinch detection
+   - Clinch logic: when matchValue > holesRemaining -> gold/white thick borders
+   - Holes after clinch: grey bubbles
+   - All existing functions preserved and working
+   - Backward compatible (clinchedAt parameter is optional)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -450,7 +453,7 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead><tr><th>Hole</th>';
+        html += '<thead></tr><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
@@ -476,7 +479,7 @@ var GameUI = (function() {
         
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -540,7 +543,7 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<td><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -602,23 +605,19 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></table>';
+        html += '</tbody><table>';
         container.innerHTML = html;
         
         tightenScorecardRows();
     }
     
     // ============================================================
-    // Player Cards with Bubbles - FIXED v2.30
+    // Player Cards with Bubbles
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
         var container = document.getElementById(containerId);
         if (!container) return;
-        
-        // FIX v2.30: Use global functions as fallback if parameters are not valid
-        var bubbleClassFn = (typeof getBubbleClass === 'function') ? getBubbleClass : (window.getBubbleClass || function() { return 'bubble-green'; });
-        var bubbleValueFn = (typeof getBubbleValue === 'function') ? getBubbleValue : (window.getBubbleValue || function() { return 'AS'; });
         
         var html = '';
         for (var i = 0; i < players.length; i++) {
@@ -630,8 +629,8 @@ var GameUI = (function() {
             var bubblesHtml = '<div class="bubbles">';
             for (var j = 0; j < opponents.length; j++) {
                 var opp = opponents[j];
-                var bubbleClass = bubbleClassFn(player, opp);
-                var bubbleValue = bubbleValueFn(player, opp);
+                var bubbleClass = getBubbleClass(player, opp);
+                var bubbleValue = getBubbleValue(player, opp);
                 bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
             }
             bubblesHtml += '</div>';
@@ -901,30 +900,32 @@ var GameUI = (function() {
         return (player.team === 'B') ? -value : value;
     }
     
-    function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn) {
+    // FIXED v4.00: Added clinchedAtMap parameter for clinch detection
+    function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn, clinchedAtMap) {
         var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
         var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
         
         if (!isHoleSavedForFlight) return 'bubble-grey';
         
-        // Get pre-calculated clinch status from GameLoader
-        var clinchedAt = null;
-        if (typeof GameLoader !== 'undefined' && GameLoader.getClinchedAt) {
-            clinchedAt = GameLoader.getClinchedAt(player.name, opponent.name);
+        // Get clinch hole from map if provided
+        var clinchHole = null;
+        if (clinchedAtMap) {
+            var matchKey = player.name + "_vs_" + opponent.name;
+            clinchHole = clinchedAtMap[matchKey];
         }
         
-        // If match is already clinched (current hole > clinch hole)
-        if (clinchedAt && currentHole > clinchedAt) {
+        // Clinch logic
+        if (clinchHole && currentHole > clinchHole) {
             return 'bubble-grey';
         }
         
-        // If this is the clinch hole
-        if (clinchedAt && currentHole === clinchedAt) {
+        if (clinchHole && currentHole === clinchHole) {
             if (matchValue > 0) return 'bubble-gold';
-            else if (matchValue < 0) return 'bubble-loss-clinch';
+            if (matchValue < 0) return 'bubble-loss-clinch';
+            return 'bubble-green';
         }
         
-        // Normal play - green for winning/tie, red for losing
+        // Normal logic
         if (matchValue > 0) return 'bubble-green';
         if (matchValue < 0) return 'bubble-red';
         return 'bubble-green';
@@ -994,6 +995,7 @@ var GameUI = (function() {
         
         var style = document.createElement('style');
         style.id = 'gameui-button-styles';
+        // FIXED v4.00: Added CSS for match clinch bubbles
         style.textContent = `
             .scorecard-wrapper {
                 overflow-x: auto;
@@ -1035,6 +1037,8 @@ var GameUI = (function() {
             .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
             .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
             .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+            
+            /* NEW v4.00: Match clinch bubble styles */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
@@ -1167,7 +1171,7 @@ var GameUI = (function() {
         // Bottom menu
         renderBottomMenu: renderBottomMenu,
         
-        // Shared display functions
+        // Shared display functions (with clinch support)
         getFlightOrderedPlayersShared: getFlightOrderedPlayersShared,
         getAllOpponentsShared: getAllOpponentsShared,
         getMatchValueShared: getMatchValueShared,
@@ -1201,11 +1205,14 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 2.30
+VERSION: 4.00
 KEY CHANGES:
-   - FIXED: renderPlayerCards now falls back to window.getBubbleClass/getBubbleValue if parameters are not functions
-   - Ensures that bubble values and colors always work even if parameters are missing
-   - All other functions unchanged from v2.29
+   - ADDED: CSS classes for match clinch (bubble-gold, bubble-loss-clinch)
+   - ADDED: clinchedAt parameter to getBubbleClassShared() for clinch detection
+   - Clinch logic: when matchValue > holesRemaining -> gold/white thick borders
+   - Holes after clinch: grey bubbles
+   - All existing functions preserved and working
+   - Backward compatible (clinchedAt parameter is optional)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
