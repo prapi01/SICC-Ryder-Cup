@@ -1,14 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 4.03
+VERSION: 4.04
 KEY CHANGES:
-   - FIXED: Bubble overflow on iPhone - uniform size across all screen sizes
-   - CHANGED: grid-template-columns: repeat(4, minmax(70px, 1fr)) - ensures all bubbles same width
-   - CHANGED: gap uses clamp(4px, 1.5vw, 8px) for proportionate spacing
-   - CHANGED: font-size uses clamp(0.7rem, 3.5vw, 0.85rem) for readability on all devices
-   - CHANGED: padding uses clamp(4px, 1.5vh, 6px) clamp(2px, 1vw, 4px)
+   - COMPLETE REWRITE: Bubble CSS now FULLY FLUID and self-adjusting
+   - NO hard-coded min-width values - uses repeat(4, 1fr) for equal distribution
+   - Font size scales with screen width using clamp(0.7rem, 3.8vw, 0.9rem)
+   - Gap scales with clamp(4px, 1.5vw, 10px)
+   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
+   - Added media queries for extreme screen sizes (380px and 500px+)
    - Removed "vs " prefix from bubbles (saves space)
-   - All clinch logic and other features preserved
+   - All clinch logic and other features preserved from v4.03
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -136,23 +137,26 @@ STATUS: Ready for integration
         .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
         
-        /* Bubbles - UNIFORM SIZE across ALL screen sizes (v4.03) */
+        /* Bubbles - FULLY FLUID, self-adjusting across ALL screen sizes (v4.04) */
         .bubbles {
             display: grid;
-            grid-template-columns: repeat(4, minmax(70px, 1fr));
-            gap: clamp(4px, 1.5vw, 8px);
+            grid-template-columns: repeat(4, 1fr);
+            gap: clamp(4px, 1.5vw, 10px);
             margin-top: 10px;
         }
+        
         .bubble {
             white-space: nowrap;
+            text-align: center;
+            padding: clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px);
+            border-radius: clamp(12px, 3vw, 24px);
+            font-size: clamp(0.7rem, 3.8vw, 0.9rem);
+            font-weight: 600;
             overflow: hidden;
             text-overflow: ellipsis;
-            text-align: center;
-            padding: clamp(4px, 1.5vh, 6px) clamp(2px, 1vw, 4px);
-            border-radius: 20px;
-            font-size: clamp(0.7rem, 3.5vw, 0.85rem);
-            font-weight: 600;
         }
+        
+        /* Bubble color variants */
         .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
@@ -167,6 +171,29 @@ STATUS: Ready for integration
             color: #ffffff;
             border: 3px solid #ffffff;
             font-weight: 800;
+        }
+        
+        /* Very small screens (iPhone SE) - ensure text doesn't get crushed */
+        @media (max-width: 380px) {
+            .bubble {
+                font-size: 0.7rem;
+                padding: 4px 2px;
+            }
+            .bubbles {
+                gap: 4px;
+            }
+        }
+        
+        /* Larger screens (iPad, Desktop) - give more breathing room */
+        @media (min-width: 500px) {
+            .bubbles {
+                gap: 12px;
+            }
+            .bubble {
+                font-size: 0.9rem;
+                padding: 8px 8px;
+                border-radius: 28px;
+            }
         }
         
         .scorecard-section { margin: 20px 0; }
@@ -368,7 +395,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.03</div>
+<div class="version-tag">v4.04</div>
 
 <script>
 // ============================================================
@@ -553,7 +580,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS (without "vs " prefix)
+// BUBBLE FUNCTIONS - WITHOUT "vs " PREFIX
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -723,7 +750,7 @@ function retrySave() {
 }
 
 // ============================================================
-// Results Calculation and Storage (simplified for brevity)
+// Results Calculation and Storage
 // ============================================================
 
 function initializeEmptyResults() {
@@ -1318,15 +1345,16 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.03
+VERSION: 4.04
 KEY CHANGES:
-   - FIXED: Bubble overflow on iPhone - uniform size across all screen sizes
-   - CHANGED: grid-template-columns: repeat(4, minmax(70px, 1fr)) - ensures all bubbles same width
-   - CHANGED: gap uses clamp(4px, 1.5vw, 8px) for proportionate spacing
-   - CHANGED: font-size uses clamp(0.7rem, 3.5vw, 0.85rem) for readability on all devices
-   - CHANGED: padding uses clamp(4px, 1.5vh, 6px) clamp(2px, 1vw, 4px)
+   - COMPLETE REWRITE: Bubble CSS now FULLY FLUID and self-adjusting
+   - NO hard-coded min-width values - uses repeat(4, 1fr) for equal distribution
+   - Font size scales with screen width using clamp(0.7rem, 3.8vw, 0.9rem)
+   - Gap scales with clamp(4px, 1.5vw, 10px)
+   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
+   - Added media queries for extreme screen sizes (380px and 500px+)
    - Removed "vs " prefix from bubbles (saves space)
-   - All clinch logic and other features preserved
+   - All clinch logic and other features preserved from v4.03
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
