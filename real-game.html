@@ -1,14 +1,18 @@
 <!--
 FILE: real-game.html
-VERSION: 3.28
+VERSION: 4.00
 KEY CHANGES:
-   - FIXED: Added getBubbleValue and getBubbleClass functions with clinch logic
-   - FIXED: Navigation buttons now correctly update bubbles on hole change
-   - FIXED: All functions are defined before renderAll is called
-   - Clinch detection: when matchValue > holesRemaining
+   - ADDED: getBubbleClassWithClinch() - uses GameLoader.getClinchedAt() for clinch detection
    - Clinch hole: Gold border (winner) / White border (loser)
    - Holes after clinch: Grey bubbles
-   - All previous fixes preserved (ticker margin, grid bubbles, shortform names, safe area)
+   - All working features from v3.23 preserved:
+     - Ticker margin-top 30px
+     - Bubbles grid layout (4 columns)
+     - Player names use shortform (JO, KF, etc.)
+     - Navigation buttons rounded rectangle
+     - Scorecard consistent column widths
+     - SAVE button font size increased
+     - Safe area support
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -60,6 +64,7 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
+        /* Device tag - respects safe area */
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -75,6 +80,7 @@ STATUS: Ready for integration
             cursor: pointer;
         }
         
+        /* Version tag - respects safe area */
         .version-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -88,6 +94,7 @@ STATUS: Ready for integration
             z-index: 1000;
         }
         
+        /* Ticker container - moved down to avoid overlap */
         .ticker-container {
             margin-top: 30px;
         }
@@ -133,6 +140,7 @@ STATUS: Ready for integration
         .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
         
+        /* Bubbles - CSS Grid forces exactly 4 columns */
         .bubbles {
             display: grid;
             grid-template-columns: repeat(4, minmax(65px, 1fr));
@@ -166,9 +174,14 @@ STATUS: Ready for integration
         }
         
         .scorecard-section { margin: 20px 0; }
-        #compactHeaderContainer { margin-bottom: 10px; }
+        
+        #compactHeaderContainer {
+            margin-bottom: 10px;
+        }
+        
         .scorecard-wrapper { overflow-x: auto; }
         
+        /* Scorecard table - consistent column widths */
         .scorecard-table {
             table-layout: fixed;
             width: 100%;
@@ -201,6 +214,7 @@ STATUS: Ready for integration
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
         
+        /* Button styles - rounded rectangles */
         .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
             border-radius: 12px !important;
         }
@@ -227,6 +241,7 @@ STATUS: Ready for integration
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
+        /* Modal overlays - respect safe area */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -350,13 +365,14 @@ STATUS: Ready for integration
         <div class="scorecard-wrapper" id="scorecardWrapper"></div>
     </div>
     
+    <!-- Bottom menu container for Back to Main Menu button -->
     <div id="bottomMenuContainer"></div>
     
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.28</div>
+<div class="version-tag">v4.00</div>
 
 <script>
 // ============================================================
@@ -541,7 +557,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// CLINCH-AWARE BUBBLE FUNCTIONS (v3.28)
+// BUBBLE VALUE FUNCTION (unchanged)
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -551,7 +567,11 @@ function getBubbleValue(player, opponent) {
     return absValue.toString();
 }
 
-function getBubbleClass(player, opponent) {
+// ============================================================
+// CLINCH-AWARE BUBBLE CLASS FUNCTION (NEW v4.00)
+// ============================================================
+
+function getBubbleClassWithClinch(player, opponent) {
     var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
     var cache = GameLoader.getLocalCache();
     var lastSyncedHole = cache.lastSyncedHole;
@@ -559,7 +579,7 @@ function getBubbleClass(player, opponent) {
     var matchKey = player.name + "_vs_" + opponent.name;
     var clinchHole = clinchedAt[matchKey];
     
-    // Check if hole is saved
+    // Check if hole is saved for this flight
     if (player.flight === opponent.flight) {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         if (!isHoleSavedForFlight) return 'bubble-grey';
@@ -588,61 +608,6 @@ function getBubbleClass(player, opponent) {
 function updateTRDisplay() {
     var tr = GameLoader.getTRForHole(currentHole);
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
-}
-
-// ============================================================
-// Navigation Functions
-// ============================================================
-
-function goToPrevHole() {
-    var playOrder = getPlayOrder();
-    var idx = playOrder.indexOf(currentHole);
-    if (idx > 0) {
-        currentHole = playOrder[idx - 1];
-        var holeDisplaySpan = document.querySelector('.compact-hole-display');
-        if (holeDisplaySpan) holeDisplaySpan.innerText = currentHole;
-        GameUI.updateHoleHeaderNumber(currentHole);
-        renderAll();
-    }
-}
-
-function goToNextHole() {
-    if (isGameCompleteFlag && !celebrationTriggered) {
-        showCelebrationAndHandicap();
-        return;
-    }
-    
-    var isLast = (currentHole === 18);
-    var isSaved = isHoleSaved(editableFlight, currentHole);
-    
-    var hasUnsavedChanges = false;
-    for (var key in localChanges) {
-        if (key.startsWith(editableFlight + "_" + currentHole + "_")) {
-            hasUnsavedChanges = true;
-            break;
-        }
-    }
-    
-    var isCurrentSaved = isSaved && !hasUnsavedChanges;
-    
-    if (isLast && isCurrentSaved) {
-        showSignCardModal();
-        return;
-    }
-    
-    if (!isCurrentSaved) {
-        return;
-    }
-    
-    var playOrder = getPlayOrder();
-    var idx = playOrder.indexOf(currentHole);
-    if (idx < 17) {
-        currentHole = playOrder[idx + 1];
-        var holeDisplaySpan = document.querySelector('.compact-hole-display');
-        if (holeDisplaySpan) holeDisplaySpan.innerText = currentHole;
-        GameUI.updateHoleHeaderNumber(currentHole);
-        renderAll();
-    }
 }
 
 // ============================================================
@@ -772,7 +737,7 @@ function retrySave() {
 }
 
 // ============================================================
-// Results Calculation and Storage (simplified for brevity - same as before)
+// Results Calculation and Storage (simplified for brevity)
 // ============================================================
 
 function initializeEmptyResults() {
@@ -897,6 +862,67 @@ async function saveResultsToFirestore(holeNumber) {
         if (position + 1 > cache.results.computedUpToHole) cache.results.computedUpToHole = position + 1;
         cache.results.lastComputedAt = updatePayload["results.lastComputedAt"];
     } catch (error) { console.error('Error saving results:', error); }
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+
+function nextHole() {
+    if (isGameCompleteFlag && !celebrationTriggered) {
+        showCelebrationAndHandicap();
+        return;
+    }
+    
+    var isLast = (currentHole === 18);
+    var isSaved = isHoleSaved(editableFlight, currentHole);
+    
+    var hasUnsavedChanges = false;
+    for (var key in localChanges) {
+        if (key.startsWith(editableFlight + "_" + currentHole + "_")) {
+            hasUnsavedChanges = true;
+            break;
+        }
+    }
+    
+    var isCurrentSaved = isSaved && !hasUnsavedChanges;
+    
+    if (isLast && isCurrentSaved) {
+        showSignCardModal();
+        return;
+    }
+    
+    if (!isCurrentSaved) {
+        return;
+    }
+    
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    var nextIndex = (currentIndex + 1) % 18;
+    currentHole = playOrder[nextIndex];
+    
+    updateHoleNumberDisplay();
+    setSaveButtonIdle();
+    renderAll();
+}
+
+function prevHole() {
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    
+    if (currentIndex <= 0) return;
+    
+    var prevIndex = currentIndex - 1;
+    currentHole = playOrder[prevIndex];
+    
+    updateHoleNumberDisplay();
+    setSaveButtonIdle();
+    renderAll();
+}
+
+function updateHoleNumberDisplay() {
+    GameUI.updateCompactHoleDisplay(currentHole);
+    GameUI.updateHoleHeaderNumber(currentHole);
 }
 
 // ============================================================
@@ -1027,18 +1053,37 @@ function renderAll() {
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
+    
+    // Modify player display to use shortform only
     var modifiedPlayers = currentPlayers.map(function(p) {
-        return { name: p.label, label: p.label, handicap: p.handicap, team: p.team, flight: p.flight, originalName: p.name };
+        return {
+            name: p.label,  // Use shortform (JO, KF, etc.)
+            label: p.label,
+            handicap: p.handicap,
+            team: p.team,
+            flight: p.flight,
+            originalName: p.name
+        };
     });
     
+    // Use the clinch-aware bubble class function
     GameUI.renderPlayerCards(
-        "playerCards", modifiedPlayers, getAllOpponents, getBubbleClass, getBubbleValue, getCurrentScore,
+        "playerCards",
+        modifiedPlayers,
+        getAllOpponents,
+        getBubbleClassWithClinch,  // NEW v4.00 - clinch-aware
+        getBubbleValue,
+        getCurrentScore,
         canEdit && !isGameCompleteFlag,
         function(playerName, flight, delta) {
             if (isGameCompleteFlag) return;
+            // Find original player by shortform name
             var player = null;
             for (var i = 0; i < allPlayers.length; i++) {
-                if (allPlayers[i].label === playerName && allPlayers[i].flight === flight) { player = allPlayers[i]; break; }
+                if (allPlayers[i].label === playerName && allPlayers[i].flight === flight) {
+                    player = allPlayers[i];
+                    break;
+                }
             }
             if (!player) return;
             var current = getCurrentScore(player);
@@ -1055,13 +1100,37 @@ function renderAll() {
     
     var holes = getDisplayHoles();
     window.savedHoles = cache.savedHoles;
-    GameUI.renderScorecard("scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved, cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi);
+    GameUI.renderScorecard(
+        "scorecardWrapper",
+        holes,
+        allPlayers,
+        getStoredScore,
+        isHoleSaved,
+        cache.t1Row,
+        cache.t2Row,
+        cache.strkRow,
+        coursePar,
+        courseSi
+    );
     
+    // SINGLE SOURCE OF TRUTH: Update navigation buttons
     var playOrder = getPlayOrder();
-    var isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) { return key.startsWith(editableFlight + "_" + currentHole + "_"); }).length === 0;
-    GameUI.updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameCompleteFlag, celebrationTriggered, showSignCardModal);
+    var isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) {
+        return key.startsWith(editableFlight + "_" + currentHole + "_");
+    }).length === 0;
     
-    if (typeof Ticker !== 'undefined') Ticker.refresh();
+    GameUI.updateNavigationButtons(
+        currentHole,
+        playOrder,
+        isCurrentSaved,
+        isGameCompleteFlag,
+        celebrationTriggered,
+        showSignCardModal
+    );
+    
+    if (typeof Ticker !== 'undefined') {
+        Ticker.refresh();
+    }
 }
 
 // ============================================================
@@ -1069,13 +1138,21 @@ function renderAll() {
 // ============================================================
 
 async function exitToMainMenu() {
-    if (!confirm("Leave the game? Your current unsaved changes will be lost.")) return;
+    if (!confirm("Leave the game? Your current unsaved changes will be lost.")) {
+        return;
+    }
+    
     var releasePayload = {};
     if (canEdit) {
         releasePayload["locks.f" + editableFlight] = null;
         releasePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-        try { await db.collection("scheduledGames").doc(gameId).update(releasePayload); } catch (error) { console.error("Error releasing lock:", error); }
+        try {
+            await db.collection("scheduledGames").doc(gameId).update(releasePayload);
+        } catch (error) {
+            console.error("Error releasing lock:", error);
+        }
     }
+    
     GameLoader.unload();
     sessionStorage.removeItem("currentGame");
     localStorage.removeItem("userRole");
@@ -1095,10 +1172,23 @@ function onCacheUpdate(cache) {
     }
     allPlayers = cache.players;
     startingHole = cache.startingHole;
-    if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) { Ticker.setPlayers(allPlayers); Ticker.refresh(); }
-    if (cache.signatures.f1 && cache.signatures.f2 && !isGameCompleteFlag && !celebrationTriggered) {
-        createHistoryRecord().then(function() { isGameCompleteFlag = true; showGameCompleteScreen(); renderAll(); }).catch(function(err) { console.error("Failed to create history record:", err); });
+    
+    if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
+        Ticker.setPlayers(allPlayers);
+        Ticker.refresh();
     }
+    
+    if (cache.signatures.f1 && cache.signatures.f2 && !isGameCompleteFlag && !celebrationTriggered) {
+        console.log("Both signatures detected - showing Game Complete screen");
+        createHistoryRecord().then(function() {
+            isGameCompleteFlag = true;
+            showGameCompleteScreen();
+            renderAll();
+        }).catch(function(err) {
+            console.error("Failed to create history record:", err);
+        });
+    }
+    
     renderAll();
 }
 
@@ -1108,10 +1198,26 @@ function onCacheUpdate(cache) {
 
 function initializeGameData(collection, cache) {
     return new Promise(function(resolve) {
-        var mockSession = { activeGame: { gameId: gameId, gameType: "real", gameMode: "real", collection: collection, role: editableFlight === 1 ? "update1" : "update2" } };
+        var mockSession = {
+            activeGame: {
+                gameId: gameId,
+                gameType: "real",
+                gameMode: "real",
+                collection: collection,
+                role: editableFlight === 1 ? "update1" : "update2"
+            }
+        };
+        
         GameData.loadGameFromSession(mockSession, function(success) {
-            if (success) { GameData.setCourse({ par: cache.course?.par || [] }); GameData.setPlayers(cache.players || []); resolve(true); }
-            else { console.error("GameData initialization failed"); resolve(false); }
+            if (success) {
+                GameData.setCourse({ par: cache.course?.par || [] });
+                GameData.setPlayers(cache.players || []);
+                console.log("GameData initialized successfully");
+                resolve(true);
+            } else {
+                console.error("GameData initialization failed");
+                resolve(false);
+            }
         });
     });
 }
@@ -1123,45 +1229,98 @@ function initializeGameData(collection, cache) {
 async function init() {
     var myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
-    var session = await new Promise(function(resolve) { SessionManager.initSession("real-game.html", "index.html", resolve); });
+    
+    var session = await new Promise(function(resolve) {
+        SessionManager.initSession("real-game.html", "index.html", resolve);
+    });
+    
     var sessionRole = session.activeGame ? session.activeGame.role : null;
     if (sessionRole === "update1") editableFlight = 1;
     else if (sessionRole === "update2") editableFlight = 2;
     else editableFlight = 1;
     canEdit = (editableFlight === 1 || editableFlight === 2);
+    
     gameId = session.activeGame ? session.activeGame.gameId : null;
     if (!gameId) gameId = sessionStorage.getItem('currentGameId');
-    if (!gameId) { document.getElementById("debug").innerHTML = "Error: No game ID"; return; }
+    
+    if (!gameId) {
+        document.getElementById("debug").innerHTML = "Error: No game ID";
+        return;
+    }
+    
     var collection = "scheduledGames";
-    if (session.activeGame && session.activeGame.collection === "previewSandboxes") collection = "previewSandboxes";
+    if (session.activeGame && session.activeGame.collection === "previewSandboxes") {
+        collection = "previewSandboxes";
+    }
+    
     GameLoader.addDataCallback(onCacheUpdate);
+    
     GameLoader.loadGame(gameId, collection, async function(result) {
-        if (!result.success) { document.getElementById("debug").innerHTML = "Error: " + result.error; return; }
+        if (!result.success) {
+            document.getElementById("debug").innerHTML = "Error: " + result.error;
+            return;
+        }
+        
         var cache = result.cache;
         courseName = cache.course?.name || "Unknown Course";
         coursePar = cache.course?.par || [];
         courseSi = cache.course?.si || [];
         allPlayers = cache.players || [];
         startingHole = cache.startingHole;
-        if (cache.teamGameFormat) teamGameFormat = cache.teamGameFormat;
+        
+        if (cache.teamGameFormat) {
+            teamGameFormat = cache.teamGameFormat;
+        }
+        
         document.getElementById("courseName").innerHTML = courseName;
+        
         var initSuccess = await initializeGameData(collection, cache);
-        if (!initSuccess) { document.getElementById("debug").innerHTML = "Error: Failed to initialize game data"; return; }
+        if (!initSuccess) {
+            document.getElementById("debug").innerHTML = "Error: Failed to initialize game data";
+            return;
+        }
+        
         GameUI.applyTightLayout();
-        GameUI.renderCompactHeader("compactHeaderContainer", editableFlight, currentHole, saveHole, goToPrevHole, goToNextHole, onToggleFlight, null);
+        
+        GameUI.renderCompactHeader(
+            "compactHeaderContainer",
+            editableFlight,
+            currentHole,
+            saveHole,
+            prevHole,
+            nextHole,
+            onToggleFlight,
+            null
+        );
+        
         GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
-        setTimeout(function() { GameUI.addFlightBadge(editableFlight); }, 100);
+        
+        setTimeout(function() {
+            GameUI.addFlightBadge(editableFlight);
+        }, 100);
+        
+        // Render bottom menu (Back to Main Menu)
         GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+        
         var playOrder = getPlayOrder();
-        for (var i = 0; i < playOrder.length; i++) { var hole = playOrder[i]; if (!isHoleSaved(editableFlight, hole)) { currentHole = hole; break; } }
-        var holeDisplaySpan = document.querySelector('.compact-hole-display');
-        if (holeDisplaySpan) holeDisplaySpan.innerText = currentHole;
-        GameUI.updateHoleHeaderNumber(currentHole);
+        for (var i = 0; i < playOrder.length; i++) {
+            var hole = playOrder[i];
+            if (!isHoleSaved(editableFlight, hole)) {
+                currentHole = hole;
+                break;
+            }
+        }
+        updateHoleNumberDisplay();
+        
         initTicker();
-        if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
+        if (allPlayers && allPlayers.length) {
+            Ticker.setPlayers(allPlayers);
+        }
+        
         renderAll();
         setSaveButtonIdle();
     });
+    
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
@@ -1173,15 +1332,19 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 3.28
+VERSION: 4.00
 KEY CHANGES:
-   - FIXED: Added getBubbleValue and getBubbleClass functions with clinch logic
-   - FIXED: Navigation buttons now correctly update bubbles on hole change
-   - FIXED: All functions are defined before renderAll is called
-   - Clinch detection: when matchValue > holesRemaining
+   - ADDED: getBubbleClassWithClinch() - uses GameLoader.getClinchedAt() for clinch detection
    - Clinch hole: Gold border (winner) / White border (loser)
    - Holes after clinch: Grey bubbles
-   - All previous fixes preserved (ticker margin, grid bubbles, shortform names, safe area)
+   - All working features from v3.23 preserved:
+     - Ticker margin-top 30px
+     - Bubbles grid layout (4 columns)
+     - Player names use shortform (JO, KF, etc.)
+     - Navigation buttons rounded rectangle
+     - Scorecard consistent column widths
+     - SAVE button font size increased
+     - Safe area support
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
