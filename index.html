@@ -1,13 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.17
+VERSION: 3.18
 KEY CHANGES:
-   - ADDED: Preload completion tracking before enabling TODAY GAME button
-   - TODAY GAME button shows "Loading..." and is disabled until preload complete
-   - Preload must complete before user can navigate to pre-game
-   - Ensures cache is guaranteed to exist before transition
-   - Shows loading state on button (replaces spinner)
-   - All existing functionality preserved from v3.16
+   - FIXED: gameDataPreloaded flag now set in sessionStorage when preload completes
+   - Ensures view-game.html can detect cached data correctly
+   - All other preload logic preserved from v3.17
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -56,7 +53,6 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        /* Container - centered within safe area */
         .container {
             display: none;
             max-width: 500px;
@@ -65,7 +61,6 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
-        /* Splash overlay - respects safe area */
         #splashOverlay {
             position: fixed;
             top: 0;
@@ -83,7 +78,6 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        /* Golf icon container */
         .splash-icon-container {
             text-align: center;
             margin-bottom: 20px;
@@ -147,7 +141,6 @@ STATUS: Ready for integration
             100% { transform: translate(0, 0); }
         }
         
-        /* Device tag - respects safe area */
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -163,7 +156,6 @@ STATUS: Ready for integration
             letter-spacing: 0.5px;
         }
         
-        /* Version tag - respects safe area */
         .version-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -201,7 +193,6 @@ STATUS: Ready for integration
         }
         .subtitle { font-size: 0.75rem; color: #888; margin-top: 4px; margin-bottom: 16px; letter-spacing: 1px; }
         
-        /* Container for centering all content */
         .app-content {
             display: flex;
             flex-direction: column;
@@ -209,7 +200,6 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* SQUARE NGB BUTTONS - 95% of title width */
         .ngb {
             background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
             border: 2px solid #4caf50;
@@ -259,7 +249,6 @@ STATUS: Ready for integration
             to { transform: rotate(360deg); }
         }
         
-        /* Menu buttons container - centered */
         .menu-buttons {
             display: flex;
             flex-direction: column;
@@ -269,7 +258,6 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* VIEW PREVIOUS GAMES and DEMO buttons - same width as NGB */
         .menu-btn {
             background: linear-gradient(145deg, #1a1a1a, #111);
             border: 1px solid #4caf50;
@@ -288,7 +276,6 @@ STATUS: Ready for integration
             color: #4caf50;
         }
         
-        /* GAME SETTINGS button - same width as NGB */
         .gsb {
             background: rgba(17,17,17,0.9);
             border: 1px solid rgba(255,255,255,0.15);
@@ -317,7 +304,6 @@ STATUS: Ready for integration
     </style>
     
     <script>
-        // Dynamically set button widths based on title width
         function setButtonWidths() {
             var title = document.querySelector('.title');
             var ngb = document.querySelector('.ngb');
@@ -341,14 +327,12 @@ STATUS: Ready for integration
             }
         }
         
-        // Run after page loads and after any resize
         window.addEventListener('load', setButtonWidths);
         window.addEventListener('resize', setButtonWidths);
     </script>
 </head>
 <body>
 
-<!-- Splash Overlay - Created Immediately -->
 <div id="splashOverlay">
     <div class="splash-icon-container">
         <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
@@ -357,18 +341,17 @@ STATUS: Ready for integration
     <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
 </div>
 
-<!-- Main Container - Hidden Initially -->
 <div class="container" id="app">
     <div class="loading">Loading...</div>
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.17</div>
+<div class="version-tag">v3.18</div>
 
 <script>
-// FILE: index.html - VERSION 3.17
+// FILE: index.html - VERSION 3.18
 
-var APP_VERSION = "3.17";
+var APP_VERSION = "3.18";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -390,20 +373,16 @@ var db = null;
 var firestoreReady = false;
 var currentSession = null;
 
-// NEW v3.17: Preload tracking
 var preloadComplete = false;
 var preloadInProgress = false;
 var pendingGameId = null;
 
-// Get splash elements
 var splashOverlay = document.getElementById('splashOverlay');
 var splashGolfIcon = document.getElementById('splashGolfIcon');
 var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
 
-// Check if splash already shown in this session
 if (sessionStorage.getItem('splashShown') === 'true') {
-    // Skip splash - show container immediately
     splashOverlay.style.display = 'none';
     var container = document.querySelector('.container');
     if (container) {
@@ -411,16 +390,13 @@ if (sessionStorage.getItem('splashShown') === 'true') {
     }
     initApp();
 } else {
-    // Mark splash as shown
     sessionStorage.setItem('splashShown', 'true');
     
-    // Animate splash
     setTimeout(function() {
         splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
         splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
     }, 100);
     
-    // Fade in title and subtitle
     setTimeout(function() {
         splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
         splashTitle.style.opacity = '1';
@@ -433,7 +409,6 @@ if (sessionStorage.getItem('splashShown') === 'true') {
         splashSubtitle.style.transform = 'translateY(0)';
     }, 600);
     
-    // Thump ring effect
     setTimeout(function() {
         var thumpRing = document.createElement('div');
         thumpRing.style.cssText = `
@@ -454,19 +429,16 @@ if (sessionStorage.getItem('splashShown') === 'true') {
         thumpRing.style.animation = 'splashThumpRing 0.4s ease-out forwards';
     }, 700);
     
-    // Shake effect
     setTimeout(function() {
         splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
     }, 700);
     
-    // Vibrate if supported
     if (navigator.vibrate) {
         setTimeout(function() {
             navigator.vibrate(50);
         }, 700);
     }
     
-    // Fade out splash and show main content
     setTimeout(function() {
         splashOverlay.style.opacity = '0';
         setTimeout(function() {
@@ -527,10 +499,6 @@ function getTodayString() {
     return year + "-" + month + "-" + day;
 }
 
-// ============================================================
-// NEW v3.17: Preload with completion tracking
-// ============================================================
-
 function getPreloadedRawGameData() {
     var stored = sessionStorage.getItem("preloadedRawGameData");
     if (stored) {
@@ -549,11 +517,12 @@ function getPreloadedRawGameData() {
 }
 
 function startBackgroundPreload(gameId, onComplete) {
-    // Check if already preloaded and fresh
     var existing = getPreloadedRawGameData();
     if (existing && existing.gameId === gameId) {
         console.log("Preload: Data already cached for game", gameId);
         preloadComplete = true;
+        // v3.18: Set the flag even when data already exists
+        sessionStorage.setItem("gameDataPreloaded", "true");
         if (onComplete) onComplete(true);
         return;
     }
@@ -582,6 +551,8 @@ function startBackgroundPreload(gameId, onComplete) {
                     preloadTimestamp: Date.now()
                 };
                 sessionStorage.setItem("preloadedRawGameData", JSON.stringify(preloadData));
+                // v3.18: CRITICAL - Set the flag so view-game.html can detect cached data
+                sessionStorage.setItem("gameDataPreloaded", "true");
                 preloadComplete = true;
                 console.log("Preload: Complete for game", gameId);
                 if (onComplete) onComplete(true);
@@ -597,10 +568,6 @@ function startBackgroundPreload(gameId, onComplete) {
             if (onComplete) onComplete(false);
         });
 }
-
-// ============================================================
-// End of NEW v3.17 code
-// ============================================================
 
 function findNextGame(scheduledGames) {
     var today = getTodayString();
@@ -627,7 +594,6 @@ function getGameStatus(gameDateStr) {
     return "past";
 }
 
-// MODIFIED v3.17: Wait for preload before proceeding
 function handleTodayGame() {
     if (!firestoreReady) {
         alert("Connecting to server... Please wait.");
@@ -672,12 +638,10 @@ function handleTodayGame() {
     });
 }
 
-// NEXT GAME button - inactive, just shows info
 function handleNextGame() {
     alert("This is the next scheduled game.\n\nOn the game day, this button will become 'TODAY GAME' and allow you to start scoring.");
 }
 
-// DEMO & TUTORIAL button
 function goToDemo() {
     window.location.href = "tutorial.html";
 }
@@ -736,7 +700,6 @@ function loadAndRender() {
             displayGameId(todayGame.id);
         }
         
-        // NEW v3.17: Start preload and show loading state on button
         var preloadStarted = false;
         
         var ngbHtml = '';
@@ -746,11 +709,9 @@ function loadAndRender() {
             var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
             
             if (status === "today") {
-                // Check if we need to preload
                 var cachedData = getPreloadedRawGameData();
                 if (cachedData && cachedData.gameId === nextGame.id) {
                     preloadComplete = true;
-                    // TODAY GAME button - ACTIVE (preload already done)
                     ngbHtml = `
                         <div class="ngb" onclick="handleTodayGame()">
                             <div class="icon">⛳</div>
@@ -762,7 +723,6 @@ function loadAndRender() {
                 } else {
                     preloadComplete = false;
                     preloadStarted = true;
-                    // TODAY GAME button - LOADING state (disabled during preload)
                     ngbHtml = `
                         <div class="ngb ngb-loading" id="todayGameBtn">
                             <div class="icon">⛳</div>
@@ -771,7 +731,6 @@ function loadAndRender() {
                             <div class="course-name">${escapeHtml(courseName)}</div>
                         </div>
                     `;
-                    // Start preload
                     startBackgroundPreload(nextGame.id, function(success) {
                         if (success) {
                             console.log("Preload complete, enabling TODAY GAME button");
@@ -785,7 +744,6 @@ function loadAndRender() {
                                         <div class="course-name">${escapeHtml(courseName)}</div>
                                     </div>
                                 `;
-                                // Re-apply button widths
                                 setTimeout(setButtonWidths, 10);
                             }
                         } else {
@@ -805,7 +763,6 @@ function loadAndRender() {
                     });
                 }
             } else {
-                // NEXT GAME button - INACTIVE (shows info on click)
                 ngbHtml = `
                     <div class="ngb ngb-inactive" onclick="handleNextGame()">
                         <div class="icon">🏆</div>
@@ -855,7 +812,6 @@ function loadAndRender() {
         
         document.getElementById("app").innerHTML = html;
         
-        // Apply dynamic button widths
         setTimeout(setButtonWidths, 10);
         
         var golfIcon = document.getElementById("golfIcon");
@@ -880,7 +836,6 @@ function loadAndRender() {
             initHiddenAdmin();
         }
         
-        // If preload wasn't started in this render, check if we need to start it
         if (!preloadStarted && todayGame && !preloadComplete) {
             var cachedData = getPreloadedRawGameData();
             if (!cachedData || cachedData.gameId !== todayGame.id) {
@@ -913,14 +868,11 @@ function escapeHtml(str) {
 
 <!--
 FILE: index.html
-VERSION: 3.17
+VERSION: 3.18
 KEY CHANGES:
-   - ADDED: Preload completion tracking before enabling TODAY GAME button
-   - TODAY GAME button shows "Loading..." and is disabled until preload complete
-   - Preload must complete before user can navigate to pre-game
-   - Ensures cache is guaranteed to exist before transition
-   - Shows loading state on button (replaces spinner)
-   - All existing functionality preserved from v3.16
+   - FIXED: gameDataPreloaded flag now set in sessionStorage when preload completes
+   - Ensures view-game.html can detect cached data correctly
+   - All other preload logic preserved from v3.17
 DEPENDS ON: js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
