@@ -1,479 +1,27 @@
+<!--
+FILE: view-game.html
+VERSION: 4.11
+KEY CHANGES (based on v4.10):
+   - FIXED: Added 'players' field to mockCache in applyPreloadedData()
+   - Without this, GameLoader cache had empty players array
+   - All other functionality identical to v4.10
+   - Status bubble text: "VIEWER"
+   - No edit buttons (canEdit = false)
+   - FLIGHT toggle button (buttonMode = "flight")
+   - Uses GameUI.renderCompactHeader() for unified control bar
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+STATUS: Ready for integration
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>SICC Ryder Cup - View Game</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: linear-gradient(135deg, #1a472a 0%, #0d2818 100%);
-            min-height: 100vh;
-            padding: env(safe-area-inset-top) 0 0 0;
-        }
-
-        .app-container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: #f5f5f5;
-            min-height: 100vh;
-            border-radius: 0;
-            overflow-x: hidden;
-        }
-
-        /* Header */
-        .header {
-            background: linear-gradient(135deg, #2d6a4f 0%, #1b4332 100%);
-            color: white;
-            padding: 1rem;
-            text-align: center;
-            position: relative;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .version {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.75rem;
-            font-size: 0.7rem;
-            opacity: 0.6;
-            color: #a8e6cf;
-        }
-
-        .back-btn {
-            position: absolute;
-            left: 0.75rem;
-            top: 0.75rem;
-            background: rgba(255,255,255,0.2);
-            border: none;
-            color: white;
-            padding: 0.4rem 0.8rem;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }
-
-        h1 {
-            font-size: 1.4rem;
-            margin: 0;
-        }
-
-        /* Role badge - HIDDEN initially, shown after data loads */
-        .role-badge {
-            background: #ffd700;
-            color: #1b4332;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            display: none;
-            position: absolute;
-            top: 0.75rem;
-            right: 4rem;
-        }
-
-        /* Course name - HIDDEN initially, shown after data loads */
-        .course-name {
-            background: rgba(255,255,255,0.15);
-            padding: 0.35rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            margin-top: 0.5rem;
-            display: none;
-        }
-
-        /* Flight toggle buttons */
-        .flight-toggle-container {
-            display: flex;
-            gap: 0.5rem;
-            padding: 0.75rem;
-            background: white;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .flight-btn {
-            flex: 1;
-            padding: 0.6rem;
-            border: 1px solid #ddd;
-            background: #f8f9fa;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .flight-btn.active {
-            background: #2d6a4f;
-            color: white;
-            border-color: #2d6a4f;
-        }
-
-        /* Display mode buttons */
-        .display-mode-container {
-            display: flex;
-            gap: 0.5rem;
-            padding: 0.75rem;
-            background: white;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .mode-btn {
-            flex: 1;
-            padding: 0.6rem;
-            border: 1px solid #ddd;
-            background: #f8f9fa;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .mode-btn.active {
-            background: #2d6a4f;
-            color: white;
-            border-color: #2d6a4f;
-        }
-
-        /* TR Display */
-        #tr-display {
-            background: white;
-            padding: 0.75rem;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .tr-container {
-            text-align: center;
-        }
-
-        .tr-header {
-            font-size: 0.7rem;
-            color: #666;
-            letter-spacing: 1px;
-            margin-bottom: 0.5rem;
-        }
-
-        .tr-row {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .tr-team {
-            text-align: center;
-            padding: 0.5rem 1rem;
-            border-radius: 12px;
-            min-width: 100px;
-        }
-
-        .tr-team.winning {
-            background: #2d6a4f;
-            color: white;
-        }
-
-        .tr-team.losing {
-            background: #e9ecef;
-            color: #6c757d;
-        }
-
-        .tr-team.tie {
-            background: #ffd700;
-            color: #1b4332;
-        }
-
-        .team-name {
-            display: block;
-            font-size: 0.85rem;
-            font-weight: 500;
-        }
-
-        .team-score {
-            display: block;
-            font-size: 1.8rem;
-            font-weight: bold;
-        }
-
-        .tr-vs {
-            font-size: 0.9rem;
-            color: #999;
-            font-weight: bold;
-        }
-
-        /* Hole header */
-        #hole-header {
-            background: white;
-            padding: 0.5rem;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .hole-header-container {
-            text-align: center;
-        }
-
-        .hole-number {
-            font-size: 1.1rem;
-            font-weight: bold;
-            color: #2d6a4f;
-        }
-
-        .hole-details {
-            font-size: 0.75rem;
-            color: #666;
-        }
-
-        /* Scorecard */
-        #scorecard-container {
-            background: white;
-            margin: 0.75rem;
-            border-radius: 12px;
-            overflow-x: auto;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .scorecard-wrapper {
-            overflow-x: auto;
-        }
-
-        .scorecard {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.75rem;
-            min-width: 600px;
-        }
-
-        .scorecard th,
-        .scorecard td {
-            border: 1px solid #e0e0e0;
-            padding: 0.5rem 0.25rem;
-            text-align: center;
-        }
-
-        .player-name-col {
-            position: sticky;
-            left: 0;
-            background: white;
-            font-weight: 600;
-            text-align: left;
-            padding-left: 0.75rem;
-        }
-
-        .hole-col {
-            min-width: 35px;
-        }
-
-        .par-row,
-        .si-row {
-            background: #f8f9fa;
-            font-weight: 500;
-        }
-
-        .flight1-row {
-            background: #e8f5e9;
-        }
-
-        .flight2-row {
-            background: #fff3e0;
-        }
-
-        /* Player cards */
-        #player-cards-container {
-            padding: 0.75rem;
-        }
-
-        .player-cards-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .flight-section h3 {
-            font-size: 0.9rem;
-            color: #2d6a4f;
-            margin-bottom: 0.5rem;
-            padding-left: 0.25rem;
-        }
-
-        .cards-container {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .player-card {
-            background: white;
-            border-radius: 12px;
-            padding: 0.75rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .player-card.clinched {
-            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
-            border: 2px solid #d4a000;
-        }
-
-        .player-info {
-            flex: 2;
-        }
-
-        .player-name {
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-
-        .player-flight {
-            font-size: 0.7rem;
-            color: #666;
-        }
-
-        .player-score {
-            text-align: center;
-            flex: 1;
-        }
-
-        .total-label {
-            font-size: 0.65rem;
-            color: #666;
-            display: block;
-        }
-
-        .total-value {
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: #2d6a4f;
-        }
-
-        /* Ticker */
-        .ticker-container {
-            background: #1b4332;
-            color: #a8e6cf;
-            padding: 0.5rem;
-            overflow: hidden;
-            white-space: nowrap;
-            font-size: 0.75rem;
-            margin-top: 0.5rem;
-        }
-
-        .ticker-content {
-            display: inline-block;
-            animation: scroll 20s linear infinite;
-        }
-
-        @keyframes scroll {
-            0% { transform: translateX(100%); }
-            100% { transform: translateX(-100%); }
-        }
-
-        /* Refresh button */
-        .refresh-btn {
-            background: #2d6a4f;
-            color: white;
-            border: none;
-            padding: 0.6rem 1.2rem;
-            border-radius: 25px;
-            font-size: 0.85rem;
-            margin: 0.75rem;
-            width: calc(100% - 1.5rem);
-            cursor: pointer;
-        }
-
-        /* Loading overlay */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: #f5f5f5;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            transition: opacity 0.3s;
-        }
-
-        .loading-spinner {
-            text-align: center;
-        }
-
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid #e0e0e0;
-            border-top-color: #2d6a4f;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 1rem;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .error-message {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 1rem;
-            margin: 1rem;
-            border-radius: 8px;
-            text-align: center;
-        }
-
-        .error-message button {
-            background: #2d6a4f;
-            color: white;
-            border: none;
-            padding: 0.6rem 1.2rem;
-            border-radius: 25px;
-            margin-top: 0.75rem;
-            cursor: pointer;
-        }
-
-        /* Utility */
-        .hidden {
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="app-container">
-        <div class="header">
-            <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
-            <div class="version">v4.13</div>
-            <h1>SICC Ryder Cup</h1>
-            <div class="role-badge" id="role-badge">VIEWER</div>
-            <div class="course-name" id="course-name">Loading...</div>
-        </div>
-
-        <div id="flight-toggles"></div>
-        <div id="display-mode-buttons"></div>
-        <div id="tr-display"></div>
-        <div id="hole-header"></div>
-        <div id="scorecard-container"></div>
-        <div id="player-cards-container"></div>
-        
-        <button class="refresh-btn" onclick="location.reload()">↻ Refresh</button>
-        
-        <div class="ticker-container" id="ticker-container">
-            <div class="ticker-content" id="ticker-content">Loading scores...</div>
-        </div>
-    </div>
-
-    <div class="loading-overlay" id="loading-overlay">
-        <div class="loading-spinner">
-            <div class="spinner"></div>
-            <p>Loading game data...</p>
-        </div>
-    </div>
-
+    <title>SICC Ryder Cup - VIEWER</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     <script src="js/game-data.js"></script>
     <script src="js/game-match.js"></script>
@@ -481,315 +29,982 @@
     <script src="js/game-stroke.js"></script>
     <script src="js/game-ui.js"></script>
     <script src="js/game-loader.js"></script>
+    <script src="js/card-submit.js"></script>
+    <script src="js/sign-card.js"></script>
+    <script src="js/hcp-adjust.js"></script>
     <script src="js/ticker.js"></script>
-    <script>
-        /*
-        FILE: view-game.html (inline script)
-        VERSION: 4.13
-        KEY CHANGES:
-           - FIXED: Now uses game-loader.js functions (loadGameData, getGameIdFromSession)
-           - FIXED: Reads gameId from sessionStorage.cachedGameId, NOT URL params
-           - FIXED: Proper session-first loading architecture
-           - FIXED: renderPlayerCards(true) to hide non-functional +/- buttons
-           - FIXED: updateAllUI() now passes hideButtons=true as 8th parameter
-           - FIXED: Role badge and course name hidden until data loads
-           - ADDED: Proper error handling with user-friendly error message
-           - ADDED: Fallback to URL params only if sessionStorage fails (backward compat)
-           - UPDATED: Version number to v4.13
-        DEPENDS ON: game-loader.js v1.04+, game-ui.js v4.05+
-        STATUS: Ready for integration
-        */
+    <script src="js/history-record.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        let gameData = null;
-        let currentHole = 1;
-        let activeFlight = 'all';
-        let activeMode = 'player';
-        let unsubscribeListener = null;
-        
-        // Hide loading overlay and show UI elements when data is ready
-        function showUIAndHideLoading() {
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.style.opacity = '0';
-                setTimeout(() => {
-                    overlay.style.display = 'none';
-                }, 300);
-            }
-            
-            const roleBadge = document.getElementById('role-badge');
-            const courseNameElem = document.getElementById('course-name');
-            
-            if (roleBadge) roleBadge.style.display = 'inline-block';
-            if (courseNameElem && gameData) {
-                courseNameElem.style.display = 'inline-block';
-                courseNameElem.textContent = gameData.courseName || gameData.course?.name || 'SICC Course';
-            }
+        html, body {
+            min-height: 100vh;
+            background: #000;
         }
         
-        // Show error message and hide loading
-        function showError(message) {
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.innerHTML = `
-                    <div class="error-message">
-                        <strong>⚠️ Error Loading Game</strong>
-                        <p>${message}</p>
-                        <button onclick="window.location.href='index.html'">Return to Home</button>
-                    </div>
-                `;
-            }
+        body {
+            background: #000;
+            font-family: system-ui, sans-serif;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        // Initialize the view mode using game-loader.js
-        async function initViewMode() {
-            try {
-                console.log('[view-game] Initializing...');
-                
-                // METHOD 1: Get gameId from sessionStorage using game-loader.js
-                let gameId = null;
-                
-                if (typeof getGameIdFromSession === 'function') {
-                    gameId = getGameIdFromSession();
-                    console.log('[view-game] getGameIdFromSession() returned:', gameId);
-                }
-                
-                // METHOD 2: Fallback to sessionStorage directly if game-loader function not available
-                if (!gameId && sessionStorage.getItem('cachedGameId')) {
-                    gameId = sessionStorage.getItem('cachedGameId');
-                    console.log('[view-game] Fallback: cachedGameId from sessionStorage:', gameId);
-                }
-                
-                // METHOD 3: Fallback to sessionStorage.gameData.id
-                if (!gameId) {
-                    const storedGame = sessionStorage.getItem('gameData');
-                    if (storedGame) {
-                        try {
-                            const parsed = JSON.parse(storedGame);
-                            if (parsed && parsed.id) {
-                                gameId = parsed.id;
-                                console.log('[view-game] Fallback: gameData.id from sessionStorage:', gameId);
-                            }
-                        } catch (e) {
-                            console.warn('[view-game] Failed to parse gameData:', e);
-                        }
-                    }
-                }
-                
-                // METHOD 4: Last resort - check URL params (backward compatibility)
-                if (!gameId) {
-                    const urlParams = new URLSearchParams(window.location.search);
-                    gameId = urlParams.get('gameId');
-                    if (gameId) {
-                        console.log('[view-game] Last resort: gameId from URL params:', gameId);
-                    }
-                }
-                
-                if (!gameId) {
-                    console.error('[view-game] No gameId found in sessionStorage or URL');
-                    showError('No game selected. Please return to home and select a game.');
-                    return;
-                }
-                
-                console.log('[view-game] Using gameId:', gameId);
-                
-                // Load game data using game-loader.js
-                if (typeof loadGameData !== 'function') {
-                    throw new Error('game-loader.js not loaded properly. loadGameData function not found.');
-                }
-                
-                gameData = await loadGameData(gameId, 'view');
-                console.log('[view-game] loadGameData returned:', gameData ? 'success' : 'null');
-                
-                if (!gameData) {
-                    throw new Error('Failed to load game data from session or Firestore');
-                }
-                
-                // Set initial values
-                currentHole = gameData.currentHole || 1;
-                activeFlight = 'all';
-                activeMode = 'player';
-                
-                // Calculate TR
-                let tr = { teamA: 0, teamB: 0 };
-                if (typeof calculateMatchPlay === 'function' && gameData.scores && gameData.players) {
-                    const matchResult = calculateMatchPlay(gameData.scores, gameData.players, gameData.course);
-                    tr = { teamA: matchResult.teamA, teamB: matchResult.teamB };
-                }
-                
-                // Update UI with hideButtons = true (view mode - no +/- buttons)
-                if (typeof updateAllUI === 'function') {
-                    updateAllUI(
-                        gameData, 
-                        gameData.scores, 
-                        gameData.players, 
-                        tr, 
-                        currentHole, 
-                        activeFlight, 
-                        activeMode,
-                        true  // hideButtons - CRITICAL for view mode
-                    );
-                } else {
-                    console.error('[view-game] updateAllUI function not found');
-                }
-                
-                // Start ticker
-                if (typeof startTicker === 'function' && gameData.scores && gameData.players) {
-                    startTicker(gameData.scores, gameData.players, gameData.course);
-                }
-                
-                // Show UI and hide loading
-                showUIAndHideLoading();
-                
-                // Set up Firestore listener for real-time updates using game-loader.js
-                if (typeof setupGameDataListener === 'function' && gameData.id) {
-                    unsubscribeListener = setupGameDataListener(gameData.id, (updatedData) => {
-                        if (updatedData) {
-                            console.log('[view-game] Real-time update received');
-                            gameData = updatedData;
-                            currentHole = gameData.currentHole || currentHole;
-                            
-                            // Recalculate TR
-                            if (typeof calculateMatchPlay === 'function') {
-                                const matchResult = calculateMatchPlay(gameData.scores, gameData.players, gameData.course);
-                                tr = { teamA: matchResult.teamA, teamB: matchResult.teamB };
-                            }
-                            
-                            // Update UI with new data
-                            updateAllUI(
-                                gameData, 
-                                gameData.scores, 
-                                gameData.players, 
-                                tr, 
-                                currentHole, 
-                                activeFlight, 
-                                activeMode,
-                                true  // hideButtons
-                            );
-                            
-                            // Update ticker
-                            if (typeof updateTicker === 'function') {
-                                updateTicker(gameData.scores, gameData.players, gameData.course);
-                            }
-                        }
-                    });
-                } else if (typeof firebase !== 'undefined' && gameData.id) {
-                    // Fallback to manual Firestore listener if game-loader function not available
-                    console.warn('[view-game] setupGameDataListener not found, using manual Firestore listener');
-                    const db = firebase.firestore();
-                    unsubscribeListener = db.collection('games').doc(gameData.id)
-                        .onSnapshot((doc) => {
-                            if (doc.exists) {
-                                const updatedData = doc.data();
-                                gameData.scores = updatedData.scores;
-                                gameData.currentHole = updatedData.currentHole || currentHole;
-                                currentHole = gameData.currentHole;
-                                
-                                if (typeof calculateMatchPlay === 'function') {
-                                    const matchResult = calculateMatchPlay(gameData.scores, gameData.players, gameData.course);
-                                    tr = { teamA: matchResult.teamA, teamB: matchResult.teamB };
-                                }
-                                
-                                updateAllUI(
-                                    gameData, 
-                                    gameData.scores, 
-                                    gameData.players, 
-                                    tr, 
-                                    currentHole, 
-                                    activeFlight, 
-                                    activeMode,
-                                    true
-                                );
-                                
-                                if (typeof updateTicker === 'function') {
-                                    updateTicker(gameData.scores, gameData.players, gameData.course);
-                                }
-                            }
-                        });
-                }
-                
-            } catch (error) {
-                console.error('[view-game] Error initializing view mode:', error);
-                showError(error.message || 'Failed to load game data. Please return to home and try again.');
-            }
+        .container {
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 16px;
         }
         
-        // Event listeners for flight toggles and display modes (delegation)
-        document.addEventListener('click', function(e) {
-            // Flight toggle
-            if (e.target.classList && e.target.classList.contains('flight-btn')) {
-                const flight = e.target.getAttribute('data-flight');
-                if (flight) {
-                    activeFlight = flight;
-                    // Re-render with current data
-                    if (typeof updateAllUI === 'function' && gameData) {
-                        let tr = { teamA: 0, teamB: 0 };
-                        if (typeof calculateMatchPlay === 'function' && gameData.scores && gameData.players) {
-                            const matchResult = calculateMatchPlay(gameData.scores, gameData.players, gameData.course);
-                            tr = { teamA: matchResult.teamA, teamB: matchResult.teamB };
-                        }
-                        updateAllUI(
-                            gameData, 
-                            gameData.scores, 
-                            gameData.players, 
-                            tr, 
-                            currentHole, 
-                            activeFlight, 
-                            activeMode,
-                            true  // hideButtons
-                        );
-                    }
-                }
+        /* Hide elements until data is ready - NO FLASH */
+        .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
+            visibility: hidden;
+        }
+        
+        /* Show when data is ready */
+        .data-ready .status-bubble,
+        .data-ready #courseName,
+        .data-ready #holeHeader,
+        .data-ready #trDisplay,
+        .data-ready #playerCards,
+        .data-ready .scorecard-section,
+        .data-ready #bottomMenuContainer {
+            visibility: visible;
+        }
+        
+        /* Ticker container always visible but empty initially */
+        .ticker-container {
+            visibility: visible;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            left: max(8px, env(safe-area-inset-left));
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            cursor: pointer;
+        }
+        
+        .version-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        
+        .ticker-container {
+            margin-top: 30px;
+        }
+        
+        .status-bubble {
+            background: rgba(76,175,80,0.3);
+            border: 1px solid #4caf50;
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            color: #4caf50;
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+        
+        .team-score-card {
+            background: #111;
+            border-radius: 16px;
+            text-align: center;
+        }
+        
+        .player-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 14px;
+            margin-bottom: 12px;
+            border: 1px solid #333;
+            position: relative;
+        }
+        .player-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .player-name { font-size: 1rem; font-weight: 600; }
+        .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
+        .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
+        
+        .scorecard-section { margin: 20px 0; }
+        
+        #compactHeaderContainer {
+            margin-bottom: 10px;
+        }
+        
+        .scorecard-wrapper { overflow-x: auto; }
+        
+        .scorecard-table {
+            table-layout: fixed;
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.7rem;
+            min-width: 600px;
+        }
+        .scorecard-table th,
+        .scorecard-table td {
+            min-width: 40px;
+            max-width: 60px;
+            text-align: center;
+            padding: 6px 3px;
+            border: 1px solid #222;
+            white-space: nowrap;
+        }
+        .scorecard-table th:first-child,
+        .scorecard-table td:first-child {
+            width: 50px;
+            position: sticky;
+            left: 0;
+            background: #111;
+            z-index: 1;
+        }
+        .scorecard-table th {
+            color: #4caf50;
+            background: #111;
+        }
+        .score-green { color: #4caf50; font-weight: 600; }
+        .score-invisible { color: #000; }
+        .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+        
+        .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
+            border-radius: 12px !important;
+        }
+        .compact-action-btn {
+            border-radius: 30px !important;
+            font-size: 1rem !important;
+            font-weight: 800 !important;
+        }
+        .compact-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            cursor: pointer;
+        }
+        .compact-nav-btn {
+            width: 52px;
+            height: 52px;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+        .sign-modal-container {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 28px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+            z-index: 10002;
+        }
+        .sign-modal-title { font-size: 1.5rem; font-weight: 700; color: #4caf50; margin-bottom: 16px; }
+        .sign-modal-message { font-size: 0.9rem; color: #ccc; margin-bottom: 24px; }
+        .sign-modal-buttons { display: flex; gap: 12px; }
+        .sign-btn-back {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .sign-btn-confirm {
+            flex: 1;
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        
+        .waiting-modal-container {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        .waiting-title { font-size: 1.3rem; font-weight: 700; color: #4caf50; margin-bottom: 20px; }
+        .waiting-message { font-size: 0.95rem; color: #ffaa44; margin-bottom: 8px; }
+        .waiting-submessage { font-size: 0.75rem; color: #888; }
+        .waiting-spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid #333;
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            margin: 24px auto 0;
+            animation: spin 1s linear infinite;
+        }
+        
+        .complete-modal-container {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        .complete-title { font-size: 1.5rem; font-weight: 700; color: #4caf50; margin-bottom: 12px; }
+        .complete-emojis { font-size: 1.2rem; margin-bottom: 20px; }
+        .complete-message { font-size: 0.85rem; color: #ccc; margin-bottom: 28px; }
+        .complete-btn {
+            background: #ffaa44;
+            color: #1a3a1a;
+            border: none;
+            width: 180px;
+            height: 56px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        .celebration-modal {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
+            border-radius: 48px;
+            padding: 32px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            border: 3px solid #ffaa44;
+        }
+        .celebration-image { max-width: 100%; max-height: 200px; border-radius: 24px; }
+        .celebration-title { font-size: 1.5rem; font-weight: 700; color: #ffaa44; margin-bottom: 16px; }
+        .celebration-beer { font-size: 2rem; font-weight: 800; color: #4caf50; margin-bottom: 20px; }
+        .celebration-winner { font-size: 1.5rem; font-weight: 800; margin-bottom: 16px; padding: 12px; border-radius: 60px; }
+        .winner-a { background: rgba(76,175,80,0.2); color: #4caf50; }
+        .winner-b { background: rgba(76,175,80,0.2); color: #4caf50; }
+        .celebration-btn {
+            background: #1a3a1a;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            padding: 14px 28px;
+            border-radius: 60px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="mainContainer">
+    <div class="ticker-container" id="tickerContainer">
+        <div class="ticker-content" id="tickerContent">&nbsp;</div>
+    </div>
+    
+    <div class="status-bubble" id="statusBubble">VIEWER</div>
+    
+    <div style="text-align:center; margin-bottom:8px;" id="courseName"></div>
+    
+    <div id="holeHeader"></div>
+    
+    <div id="trDisplay" class="team-score-card"></div>
+    <div id="playerCards" class="player-cards"></div>
+    
+    <div class="scorecard-section">
+        <div id="compactHeaderContainer"></div>
+        <div class="scorecard-wrapper" id="scorecardWrapper"></div>
+    </div>
+    
+    <div id="bottomMenuContainer"></div>
+    
+    <div class="debug" id="debug"></div>
+</div>
+
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v4.11</div>
+
+<script>
+// ============================================================
+// Firebase Config
+// ============================================================
+
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+if (!firebase.apps.length) {
+    firebase.initializeApp(FIREBASE_CONFIG);
+}
+var db = firebase.firestore();
+
+// ============================================================
+// Game State
+// ============================================================
+
+var gameId = null;
+var displayFlight = 1;
+var currentHole = 1;
+var startingHole = 1;
+var teamGameFormat = "tournament";
+
+var courseName = "";
+var coursePar = [];
+var courseSi = [];
+var allPlayers = [];
+
+var isGameCompleteFlag = false;
+var celebrationTriggered = false;
+
+var saveInProgress = false;
+var unsubscribe = null;
+
+// ============================================================
+// Preloaded Data Support
+// ============================================================
+
+function getPreloadedRawGameData() {
+    var stored = sessionStorage.getItem("preloadedRawGameData");
+    if (stored) {
+        try {
+            var data = JSON.parse(stored);
+            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
+                return data;
+            } else {
+                sessionStorage.removeItem("preloadedRawGameData");
+            }
+        } catch(e) {
+            console.warn("Failed to parse preloaded raw data:", e);
+        }
+    }
+    return null;
+}
+
+function applyPreloadedData(preloadData) {
+    console.log("Applying preloaded data for instant render");
+    
+    // Extract data from preloadData.rawData
+    var rawData = preloadData.rawData;
+    
+    courseName = rawData?.course?.name || "Unknown Course";
+    coursePar = rawData?.course?.par || [];
+    courseSi = rawData?.course?.si || [];
+    allPlayers = rawData?.players || [];
+    startingHole = rawData?.startingHole || 1;
+    teamGameFormat = rawData?.teamGameFormat || "tournament";
+    
+    // v4.11 FIX: Include 'players' in mockCache
+    var mockCache = {
+        course: rawData?.course,
+        players: rawData?.players,           // ← CRITICAL FIX
+        startingHole: rawData?.startingHole || 1,
+        teamGameFormat: rawData?.teamGameFormat || "tournament",
+        f1DataString: rawData?.f1?.d || "",
+        f2DataString: rawData?.f2?.d || "",
+        results: rawData?.results || null,
+        savedHoles: { 1: [], 2: [] },
+        t1Row: new Array(18).fill('_'),
+        t2Row: new Array(18).fill('_'),
+        strkRow: new Array(18).fill('0'),
+        lastSyncedHole: 0,
+        clinchedAt: {},
+        signatures: { f1: false, f2: false },
+        submitted: { f1: false, f2: false },
+        locks: { f1: null, f2: null },
+        gameStarted: true
+    };
+    
+    if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
+        GameLoader.setLocalCache(mockCache);
+        console.log("GameLoader cache set with players:", mockCache.players?.length);
+    }
+    
+    document.getElementById("courseName").innerHTML = courseName;
+    
+    // Reveal content after data is applied
+    document.getElementById("mainContainer").classList.add("data-ready");
+    
+    return true;
+}
+
+// ============================================================
+// Helper Functions
+// ============================================================
+
+function getPlayOrder() {
+    var order = [];
+    for (var i = startingHole; i <= 18; i++) order.push(i);
+    for (var i = 1; i < startingHole; i++) order.push(i);
+    return order;
+}
+
+function getHolePosition(holeNumber) {
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        if (playOrder[i] === holeNumber) return i;
+    }
+    return holeNumber - 1;
+}
+
+function getDisplayHoles() {
+    var mode = GameUI.getDisplayMode();
+    if (mode === "natural") {
+        var natural = [];
+        for (var i = 1; i <= 18; i++) natural.push(i);
+        return natural;
+    } else {
+        return getPlayOrder();
+    }
+}
+
+function getFlightOrderedPlayers(flight) {
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    return teamA.concat(teamB);
+}
+
+function getStoredScore(player, hole) {
+    var cache = GameLoader.getLocalCache();
+    var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+    var holeData = GameData.parseHoleData(flightDataStr, hole);
+    if (!holeData || !holeData.saved) return coursePar[hole - 1];
+    
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    if (player.team === 'A') {
+        if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
+        if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
+    } else {
+        if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
+        if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
+    }
+    return coursePar[hole - 1];
+}
+
+function isHoleSaved(flight, hole) {
+    var cache = GameLoader.getLocalCache();
+    return cache.savedHoles[flight] && cache.savedHoles[flight].indexOf(hole) !== -1;
+}
+
+function getFirstUnsavedHole(flight) {
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        var hole = playOrder[i];
+        if (!isHoleSaved(flight, hole)) return hole;
+    }
+    return 18;
+}
+
+function getAllOpponents(player) {
+    var opponents = allPlayers.filter(function(op) { return op.team !== player.team; });
+    opponents.sort(function(a, b) {
+        var aIsIntra = (a.flight === player.flight);
+        var bIsIntra = (b.flight === player.flight);
+        if (aIsIntra && !bIsIntra) return -1;
+        if (!aIsIntra && bIsIntra) return 1;
+        return 0;
+    });
+    return opponents;
+}
+
+function getMatchValueFromStoredResults(player, opponent, holeNumber) {
+    var cache = GameLoader.getLocalCache();
+    var results = cache.results;
+    if (!results) return 0;
+    
+    return GameData.getMatchValueFromResults(results, player, opponent, holeNumber, allPlayers, getHolePosition);
+}
+
+// ============================================================
+// BUBBLE FUNCTIONS - WITHOUT "vs " PREFIX
+// ============================================================
+
+function getBubbleValue(player, opponent) {
+    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
+    var absValue = Math.abs(matchValue);
+    if (absValue === 0) return 'AS';
+    return absValue.toString();
+}
+
+function getBubbleClassWithClinch(player, opponent) {
+    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
+    var cache = GameLoader.getLocalCache();
+    var lastSyncedHole = cache.lastSyncedHole;
+    var clinchedAt = cache.clinchedAt || {};
+    var matchKey = player.name + "_vs_" + opponent.name;
+    var clinchHole = clinchedAt[matchKey];
+    
+    if (player.flight === opponent.flight) {
+        var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
+        if (!isHoleSavedForFlight) return 'bubble-grey';
+    } else {
+        var isSynced = (lastSyncedHole >= currentHole);
+        if (!isSynced) return 'bubble-grey';
+    }
+    
+    if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
+    if (clinchHole && currentHole === clinchHole) {
+        if (matchValue > 0) return 'bubble-gold';
+        if (matchValue < 0) return 'bubble-loss-clinch';
+        return 'bubble-green';
+    }
+    
+    if (matchValue > 0) return 'bubble-green';
+    if (matchValue < 0) return 'bubble-red';
+    return 'bubble-green';
+}
+
+function updateTRDisplay() {
+    var tr = GameLoader.getTRForHole(currentHole);
+    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+}
+
+// ============================================================
+// Ticker Functions
+// ============================================================
+
+function calculatePlayerScoreRelativeToPar(player) {
+    var cache = GameLoader.getLocalCache();
+    var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+    var totalGross = 0;
+    var totalPar = 0;
+    
+    for (var h = 1; h <= 18; h++) {
+        var par = coursePar[h - 1];
+        totalPar += par;
+        
+        var holeData = GameData.parseHoleData(flightDataStr, h);
+        if (holeData && holeData.saved) {
+            var score = 0;
+            var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+            var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            if (player.team === 'A') {
+                if (teamA[0] && teamA[0].name === player.name) score = holeData.scores.a1;
+                else if (teamA[1] && teamA[1].name === player.name) score = holeData.scores.a2;
+            } else {
+                if (teamB[0] && teamB[0].name === player.name) score = holeData.scores.b1;
+                else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
+            }
+            totalGross += score;
+        } else {
+            totalGross += par;
+        }
+    }
+    
+    return totalGross - totalPar;
+}
+
+function getPlayerScoreForTicker(player) {
+    return calculatePlayerScoreRelativeToPar(player);
+}
+
+function initTicker() {
+    if (typeof Ticker !== 'undefined') {
+        Ticker.init('tickerContainer', 'tickerContent', getPlayerScoreForTicker);
+        if (allPlayers && allPlayers.length) {
+            Ticker.setPlayers(allPlayers);
+        }
+    }
+}
+
+// ============================================================
+// Render Functions
+// ============================================================
+
+function renderHoleHeader() {
+    var currentPar = coursePar[currentHole - 1];
+    var currentSi = courseSi[currentHole - 1];
+    GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+}
+
+function renderPlayerCards() {
+    var currentPlayers = getFlightOrderedPlayers(displayFlight);
+    
+    // VIEW mode: canEdit = false (no edit buttons)
+    GameUI.renderPlayerCards(
+        "playerCards",
+        currentPlayers,
+        getAllOpponents,
+        getBubbleClassWithClinch,
+        getBubbleValue,
+        getStoredScore,
+        false,  // canEdit = false - NO edit buttons
+        null    // no onScoreChange callback
+    );
+}
+
+function renderScorecard() {
+    var holes = getDisplayHoles();
+    var cache = GameLoader.getLocalCache();
+    window.savedHoles = cache.savedHoles;
+    
+    var t1Row = cache.results ? (cache.results.game2?.flight1?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
+    var t2Row = cache.results ? (cache.results.game2?.flight2?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
+    var strkRow = cache.results ? (cache.results.game3?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
+    
+    GameUI.renderScorecard("scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi);
+}
+
+function renderAll() {
+    var cache = GameLoader.getLocalCache();
+    if (!cache.f1DataString || !cache.f2DataString) return;
+    
+    renderHoleHeader();
+    updateTRDisplay();
+    renderPlayerCards();
+    renderScorecard();
+    updateNavButtons();
+    if (typeof Ticker !== 'undefined') Ticker.refresh();
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+
+function updateNavButtons() {
+    var playOrder = getPlayOrder();
+    var isCurrentSaved = isHoleSaved(displayFlight, currentHole);
+    
+    GameUI.updateNavigationButtons(
+        currentHole,
+        playOrder,
+        isCurrentSaved,
+        isGameCompleteFlag,
+        celebrationTriggered,
+        showSignCardModal
+    );
+}
+
+function goToPrevHole() {
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex > 0) {
+        currentHole = playOrder[currentIndex - 1];
+        GameUI.updateCompactHoleDisplay(currentHole);
+        renderAll();
+    }
+}
+
+function goToNextHole() {
+    if (isGameCompleteFlag && !celebrationTriggered) {
+        showCelebrationAndHandicap();
+        return;
+    }
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    if (currentIndex < 17) {
+        currentHole = playOrder[currentIndex + 1];
+        GameUI.updateCompactHoleDisplay(currentHole);
+        renderAll();
+    }
+}
+
+function toggleDisplayMode() {
+    var newMode = GameUI.getDisplayMode() === 'play' ? 'natural' : 'play';
+    GameUI.setDisplayMode(newMode, null);
+    renderAll();
+}
+
+function toggleFlight() {
+    displayFlight = displayFlight === 1 ? 2 : 1;
+    GameUI.updateCompactActionButton("flight", displayFlight, currentHole);
+    GameUI.updateFlightBadge(displayFlight);
+    renderAll();
+}
+
+function exitToMainMenu() {
+    if (unsubscribe) unsubscribe();
+    window.location.href = "index.html";
+}
+
+// ============================================================
+// Game Completion Flow
+// ============================================================
+
+function showSignCardModal() {
+    if (typeof GameUI.ensureNoStuckModals === 'function') GameUI.ensureNoStuckModals();
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="signModalView" style="z-index: 10001; display: flex !important;">
+            <div class="sign-modal-container">
+                <div class="sign-modal-title">✍️ VIEW ONLY</div>
+                <div class="sign-modal-message">Waiting for both flights to sign their cards.</div>
+                <div class="sign-modal-buttons">
+                    <button class="sign-btn-back" id="signBackBtnView">← BACK</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById('signBackBtnView')?.addEventListener('click', function() {
+        document.getElementById('signModalView')?.remove();
+    });
+}
+
+function showCelebrationAndHandicap() {
+    if (celebrationTriggered) return;
+    celebrationTriggered = true;
+    var tr = GameLoader.getTRForHole(currentHole);
+    var winner = tr.teamA > tr.teamB ? "A" : (tr.teamB > tr.teamA ? "B" : "Tie");
+    var winningPlayers = {
+        teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
+        teamB: allPlayers.filter(function(p) { return p.team === "B"; })
+    };
+    SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
+        if (typeof HandicapAdjustment !== 'undefined') {
+            HandicapAdjustment.initForViewer(gameId, allPlayers,
+                GameLoader.getLocalCache().f1DataString,
+                GameLoader.getLocalCache().f2DataString,
+                courseSi, coursePar, startingHole, null);
+        }
+    });
+}
+
+function enableCelebrationMode() {
+    var nextBtn = document.getElementById('compactNextBtn');
+    if (nextBtn && !celebrationTriggered && isGameCompleteFlag) {
+        nextBtn.innerHTML = '🏆';
+        nextBtn.style.background = '#ffaa44';
+        nextBtn.style.color = '#1a3a1a';
+        nextBtn.style.border = '1px solid #ffaa44';
+        nextBtn.disabled = false;
+        var newBtn = nextBtn.cloneNode(true);
+        nextBtn.parentNode.replaceChild(newBtn, nextBtn);
+        newBtn.onclick = showCelebrationAndHandicap;
+    }
+}
+
+// ============================================================
+// Build UI Components
+// ============================================================
+
+function buildCompactHeader() {
+    GameUI.renderCompactHeader(
+        "compactHeaderContainer",
+        displayFlight,
+        currentHole,
+        goToPrevHole,
+        goToNextHole,
+        toggleFlight,
+        toggleDisplayMode,
+        "flight",
+        null
+    );
+}
+
+function buildBottomMenu() {
+    GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+}
+
+// ============================================================
+// Firestore Listener
+// ============================================================
+
+function startGameListener() {
+    if (unsubscribe) unsubscribe();
+    unsubscribe = db.collection("scheduledGames").doc(gameId).onSnapshot(function(doc) {
+        if (doc.exists) {
+            var data = doc.data();
+            courseName = data.course?.name || "Unknown Course";
+            coursePar = data.course?.par || [];
+            courseSi = data.course?.si || [];
+            allPlayers = data.players || [];
+            startingHole = data.startingHole || 1;
+            
+            document.getElementById("courseName").innerHTML = courseName;
+            
+            var signatures = data.signatures || {};
+            var bothSigned = signatures.f1?.signed === true && signatures.f2?.signed === true;
+            if (bothSigned && !isGameCompleteFlag && !celebrationTriggered) {
+                isGameCompleteFlag = true;
+                enableCelebrationMode();
             }
             
-            // Display mode toggle
-            if (e.target.classList && e.target.classList.contains('mode-btn')) {
-                const mode = e.target.getAttribute('data-mode');
-                if (mode) {
-                    activeMode = mode;
-                    // Re-render with current data
-                    if (typeof updateAllUI === 'function' && gameData) {
-                        let tr = { teamA: 0, teamB: 0 };
-                        if (typeof calculateMatchPlay === 'function' && gameData.scores && gameData.players) {
-                            const matchResult = calculateMatchPlay(gameData.scores, gameData.players, gameData.course);
-                            tr = { teamA: matchResult.teamA, teamB: matchResult.teamB };
-                        }
-                        updateAllUI(
-                            gameData, 
-                            gameData.scores, 
-                            gameData.players, 
-                            tr, 
-                            currentHole, 
-                            activeFlight, 
-                            activeMode,
-                            true  // hideButtons
-                        );
-                    }
-                }
+            if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
+                Ticker.setPlayers(allPlayers);
+                Ticker.refresh();
             }
-        });
+            
+            renderAll();
+        }
+    }, function(error) {
+        document.getElementById("debug").innerHTML = "Sync error: " + error.message;
+    });
+}
+
+// ============================================================
+// Data Callback from GameLoader
+// ============================================================
+
+function onCacheUpdate(cache) {
+    if (cache.course) {
+        courseName = cache.course.name;
+        coursePar = cache.course.par;
+        courseSi = cache.course.si;
+        document.getElementById("courseName").innerHTML = courseName;
+    }
+    allPlayers = cache.players;
+    startingHole = cache.startingHole;
+    
+    if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
+        Ticker.setPlayers(allPlayers);
+        Ticker.refresh();
+    }
+    
+    renderAll();
+}
+
+// ============================================================
+// Initialization
+// ============================================================
+
+async function init() {
+    var myDeviceShortName = await SessionManager.getShortNameOnly();
+    document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
+    
+    var session = await new Promise(function(resolve) {
+        SessionManager.initSession("view-game.html", "index.html", resolve);
+    });
+    
+    gameId = session.activeGame ? session.activeGame.gameId : null;
+    if (!gameId) gameId = sessionStorage.getItem('currentGameId');
+    
+    if (!gameId) {
+        document.getElementById("debug").innerHTML = "Error: No game ID";
+        return;
+    }
+    
+    var bubble = document.getElementById('statusBubble');
+    if (bubble) bubble.onclick = function() { location.reload(); };
+    
+    var preloadData = getPreloadedRawGameData();
+    var gameDataPreloaded = sessionStorage.getItem("gameDataPreloaded") === "true";
+    
+    if (preloadData && gameDataPreloaded) {
+        console.log("Using preloaded data for instant render");
+        applyPreloadedData(preloadData);
         
-        // Clean up listener on page unload
-        window.addEventListener('beforeunload', function() {
-            if (unsubscribeListener && typeof unsubscribeListener === 'function') {
-                unsubscribeListener();
-            }
-        });
+        sessionStorage.removeItem("gameDataPreloaded");
         
-        // Start the app
-        initViewMode();
-    </script>
+        GameUI.applyTightLayout();
+        
+        buildCompactHeader();
+        buildBottomMenu();
+        
+        // Calculate first unsaved hole after cache is loaded
+        var cache = GameLoader.getLocalCache();
+        window.savedHoles = cache.savedHoles || { 1: [], 2: [] };
+        var firstUnsaved = getFirstUnsavedHole(displayFlight);
+        if (firstUnsaved && firstUnsaved !== currentHole) {
+            currentHole = firstUnsaved;
+            console.log("Setting currentHole to first unsaved hole:", currentHole);
+        }
+        GameUI.updateCompactHoleDisplay(currentHole);
+        
+        initTicker();
+        if (allPlayers && allPlayers.length) {
+            Ticker.setPlayers(allPlayers);
+        }
+        
+        renderAll();
+        
+        // Attach Firestore listener for real-time updates
+        GameLoader.addDataCallback(onCacheUpdate);
+        startGameListener();
+        
+    } else {
+        console.log("No cached data available - redirecting to index.html");
+        alert("Game data not loaded. Returning to main menu.");
+        window.location.href = "index.html";
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
+    });
+}
+
+init();
+</script>
+
 </body>
 </html>
 
-/*
-FOOTER: view-game.html
-VERSION: 4.13
-LAST UPDATED: 2026-05-29
-COMPATIBLE WITH: game-loader.js v1.04+, game-ui.js v4.05+
-NEXT STEPS: Test view mode - verify:
-   - Loads gameId from sessionStorage (not URL params)
-   - No +/- buttons appear
-   - Role badge and course name only appear after data loads
-   - F2 scorecard alignment correct (from game-ui.js v4.05)
-   - Real-time updates work via Firestore listener
-*/
+<!--
+FILE: view-game.html
+VERSION: 4.11
+KEY CHANGES (based on v4.10):
+   - FIXED: Added 'players' field to mockCache in applyPreloadedData()
+   - Without this, GameLoader cache had empty players array
+   - All other functionality identical to v4.10
+   - Status bubble text: "VIEWER"
+   - No edit buttons (canEdit = false)
+   - FLIGHT toggle button (buttonMode = "flight")
+   - Uses GameUI.renderCompactHeader() for unified control bar
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+STATUS: Ready for integration
+-->
