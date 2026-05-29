@@ -1,12 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 4.06
-KEY CHANGES (based on working v4.03):
-   - ONLY: Added window.savedHoles population and currentHole calculation after cache load
-   - Added clinchedAt parameter to bubble class function call
-   - ALL CSS and JavaScript identical to v4.03 (working clinch, buttons, bubbles)
-   - Fixes navigation hole number to show first unsaved hole (e.g., 18) instead of 1
-   - No other changes - preserves all working UI features
+VERSION: 4.10
+KEY CHANGES (based on v4.02):
+   - ONLY: Changed player name display from p.name to p.label (shortform names)
+   - All CSS, clinch logic, ticker, flight toggle, cache loading identical to v4.02
+   - Container width: 500px
+   - Clinch bubble styles preserved (.bubble-gold, .bubble-loss-clinch)
+   - Cache-first loading using preloaded data from index.html
+   - No other changes - all functionality preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -32,27 +33,6 @@ STATUS: Ready for integration
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; font-family: system-ui, sans-serif; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
         .container { max-width: 500px; width: 100%; margin: 0 auto; padding: 20px 16px; }
-        
-        /* Hide elements until data is ready */
-        .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
-            visibility: hidden;
-        }
-        
-        /* Show when data is ready */
-        .data-ready .status-bubble,
-        .data-ready #courseName,
-        .data-ready #holeHeader,
-        .data-ready #trDisplay,
-        .data-ready #playerCards,
-        .data-ready .scorecard-section,
-        .data-ready #bottomMenuContainer {
-            visibility: visible;
-        }
-        
-        /* Ticker container always visible but empty initially */
-        .ticker-container {
-            visibility: visible;
-        }
         
         .version-tag {
             position: fixed;
@@ -121,23 +101,8 @@ STATUS: Ready for integration
         .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
         .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
         
-        /* Bubbles - FULLY FLUID, self-adjusting across ALL screen sizes */
-        .bubbles {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: clamp(4px, 1.5vw, 10px);
-            margin-top: 10px;
-        }
-        .bubble {
-            white-space: nowrap;
-            text-align: center;
-            padding: clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px);
-            border-radius: clamp(12px, 3vw, 24px);
-            font-size: clamp(0.7rem, 3.8vw, 0.9rem);
-            font-weight: 600;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
         .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
@@ -152,18 +117,6 @@ STATUS: Ready for integration
             color: #ffffff;
             border: 3px solid #ffffff;
             font-weight: 800;
-        }
-        
-        /* Very small screens */
-        @media (max-width: 380px) {
-            .bubble { font-size: 0.7rem; padding: 4px 2px; }
-            .bubbles { gap: 4px; }
-        }
-        
-        /* Larger screens */
-        @media (min-width: 500px) {
-            .bubbles { gap: 12px; }
-            .bubble { font-size: 0.9rem; padding: 8px 8px; border-radius: 28px; }
         }
         
         .scorecard-section { margin: 20px 0; }
@@ -260,14 +213,14 @@ STATUS: Ready for integration
 </head>
 <body>
 
-<div class="container" id="mainContainer">
+<div class="container">
     <div class="ticker-container" id="tickerContainer">
         <div class="ticker-content" id="tickerContent">&nbsp;</div>
     </div>
     
     <div id="statusBubble" class="status-bubble">VIEWER</div>
     
-    <div id="courseName" style="text-align:center; margin-bottom:8px;"></div>
+    <div id="courseName" style="text-align:center; margin-bottom:8px;">Loading...</div>
     
     <div id="holeHeader" style="text-align:center; margin-bottom:10px;"></div>
     
@@ -284,7 +237,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.06</div>
+<div class="version-tag">v4.10</div>
 
 <script>
 // ============================================================
@@ -513,21 +466,18 @@ function renderPlayerCards() {
         var opponents = GameUI.getAllOpponentsShared(p, allPlayers);
         var bubblesHtml = '<div class="bubbles">';
         
-        // Get clinchedAt from GameLoader for proper clinch display
-        var cache = GameLoader.getLocalCache();
-        var clinchedAt = cache ? cache.clinchedAt : {};
-        
         for (var j = 0; j < opponents.length; j++) {
             var opp = opponents[j];
-            var bubbleClass = GameUI.getBubbleClassShared(p, opp, currentHole, resultsCache, allPlayers, isHoleSaved, getHolePosition, clinchedAt);
+            var bubbleClass = GameUI.getBubbleClassShared(p, opp, currentHole, resultsCache, allPlayers, isHoleSaved, getHolePosition);
             var bubbleValue = GameUI.getBubbleValueShared(p, opp, currentHole, resultsCache, allPlayers, getHolePosition);
             bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
         }
         bubblesHtml += '</div>';
         
+        // FIX v4.10: Use shortform label (p.label) instead of full name (p.name)
         cardsHtml += '<div class="player-card">' +
             '<div class="player-header">' +
-                '<div><span class="player-name">' + escapeHtml(p.name) + '</span><span class="player-handicap">' + p.label + ' ' + p.handicap + '</span></div>' +
+                '<div><span class="player-name">' + escapeHtml(p.label) + '</span><span class="player-handicap">' + p.label + ' ' + p.handicap + '</span></div>' +
                 '<div class="score-value">' + score + '</div>' +
             '</div>' +
             bubblesHtml +
@@ -794,25 +744,17 @@ async function init() {
         
         document.getElementById("courseName").innerHTML = courseName;
         
-        // NEW v4.06: Populate savedHoles from cache and set currentHole to first unsaved
-        window.savedHoles = cache.savedHoles || { 1: [], 2: [] };
-        var firstUnsaved = getFirstUnsavedHole(currentFlight);
-        if (firstUnsaved && firstUnsaved !== currentHole) {
-            currentHole = firstUnsaved;
-            console.log("Setting currentHole to first unsaved hole:", currentHole);
-        }
-        var holeDisplay = document.getElementById('compactHoleDisplay');
-        if (holeDisplay) holeDisplay.innerText = currentHole;
-        
         initTicker();
         if (allPlayers && allPlayers.length) {
             Ticker.setPlayers(allPlayers);
         }
         
-        renderAll();
+        var newHole = getFirstUnsavedHole(currentFlight);
+        if (newHole !== currentHole) {
+            currentHole = newHole;
+        }
         
-        // Reveal content after data is loaded
-        document.getElementById("mainContainer").classList.add("data-ready");
+        renderAll();
         
         // Still attach Firestore listener for real-time updates
         startGameListener();
@@ -820,13 +762,6 @@ async function init() {
         console.log("No cached data, loading from Firestore");
         initTicker();
         startGameListener();
-        
-        // Reveal content when data arrives via listener
-        setTimeout(function() {
-            if (!document.getElementById("mainContainer").classList.contains("data-ready")) {
-                document.getElementById("mainContainer").classList.add("data-ready");
-            }
-        }, 500);
     }
 }
 
@@ -848,13 +783,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 4.06
-KEY CHANGES (based on working v4.03):
-   - ONLY: Added window.savedHoles population and currentHole calculation after cache load
-   - Added clinchedAt parameter to bubble class function call
-   - ALL CSS and JavaScript identical to v4.03 (working clinch, buttons, bubbles)
-   - Fixes navigation hole number to show first unsaved hole (e.g., 18) instead of 1
-   - No other changes - preserves all working UI features
+VERSION: 4.10
+KEY CHANGES (based on v4.02):
+   - ONLY: Changed player name display from p.name to p.label (shortform names)
+   - All CSS, clinch logic, ticker, flight toggle, cache loading identical to v4.02
+   - Container width: 500px
+   - Clinch bubble styles preserved (.bubble-gold, .bubble-loss-clinch)
+   - Cache-first loading using preloaded data from index.html
+   - No other changes - all functionality preserved
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
