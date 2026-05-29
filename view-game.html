@@ -1,14 +1,16 @@
 <!--
 FILE: view-game.html
-VERSION: 5.01
-KEY CHANGES:
-   - FIXED: Correctly extract f1DataString and f2DataString from preloaded rawData
-   - f1DataString: preloadData.rawData?.f1?.d (was preloadData.f1DataString)
-   - f2DataString: preloadData.rawData?.f2?.d (was preloadData.f2DataString)
-   - All other functionality identical to v5.00
-   - Uses GameLoader.setLocalCache() with properly populated mockCache
-   - No local variables needed - relies on GameLoader.getLocalCache()
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
+VERSION: 4.10
+KEY CHANGES (based on real-game.html v4.07 working):
+   - Status bubble text: "VIEWER" (instead of "LIVE")
+   - No edit buttons (-/+) - canEdit = false
+   - FLIGHT toggle button instead of SAVE button (buttonMode = "flight")
+   - All other functionality IDENTICAL to real-game.html v4.07
+   - Includes clinch support, first unsaved hole calculation, shortform player names
+   - Uses GameUI.renderCompactHeader() for unified control bar
+   - Cache-first loading with redirect on missing cache
+   - Hidden until data-ready (no flash)
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -16,18 +18,23 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SICC Ryder Cup - VIEWER</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
     <script src="js/game-data.js"></script>
+    <script src="js/game-match.js"></script>
+    <script src="js/game-team.js"></script>
+    <script src="js/game-stroke.js"></script>
     <script src="js/game-ui.js"></script>
-    <script src="js/ticker.js"></script>
+    <script src="js/game-loader.js"></script>
+    <script src="js/card-submit.js"></script>
     <script src="js/sign-card.js"></script>
     <script src="js/hcp-adjust.js"></script>
-    <script src="js/game-loader.js"></script>
+    <script src="js/ticker.js"></script>
+    <script src="js/history-record.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -54,10 +61,12 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
+        /* Hide elements until data is ready - NO FLASH */
         .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
             visibility: hidden;
         }
         
+        /* Show when data is ready */
         .data-ready .status-bubble,
         .data-ready #courseName,
         .data-ready #holeHeader,
@@ -68,6 +77,7 @@ STATUS: Ready for integration
             visibility: visible;
         }
         
+        /* Ticker container always visible but empty initially */
         .ticker-container {
             visibility: visible;
         }
@@ -347,6 +357,7 @@ STATUS: Ready for integration
     
     <div id="holeHeader"></div>
     
+    <div id="flightTab" class="flight-tab"></div>
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
     
@@ -361,7 +372,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.01</div>
+<div class="version-tag">v4.10</div>
 
 <script>
 // ============================================================
@@ -387,7 +398,7 @@ var db = firebase.firestore();
 // ============================================================
 
 var gameId = null;
-var displayFlight = 1;
+var displayFlight = 1;        // VIEW mode tracks which flight to display
 var currentHole = 1;
 var startingHole = 1;
 var teamGameFormat = "tournament";
@@ -400,6 +411,7 @@ var allPlayers = [];
 var isGameCompleteFlag = false;
 var celebrationTriggered = false;
 
+var saveInProgress = false;
 var unsubscribe = null;
 
 // ============================================================
@@ -426,28 +438,27 @@ function getPreloadedRawGameData() {
 function applyPreloadedData(preloadData) {
     console.log("Applying preloaded data for instant render");
     
-    courseName = preloadData.rawData?.course?.name || "Unknown Course";
-    coursePar = preloadData.rawData?.course?.par || [];
-    courseSi = preloadData.rawData?.course?.si || [];
-    allPlayers = preloadData.rawData?.players || [];
-    startingHole = preloadData.rawData?.startingHole || 1;
-    teamGameFormat = preloadData.rawData?.teamGameFormat || "tournament";
+    courseName = preloadData.course?.name || "Unknown Course";
+    coursePar = preloadData.course?.par || [];
+    courseSi = preloadData.course?.si || [];
+    allPlayers = preloadData.players || [];
+    startingHole = preloadData.startingHole || 1;
+    teamGameFormat = preloadData.teamGameFormat || "tournament";
     
-    // v5.01 FIX: Extract data strings from rawData.f1.d and rawData.f2.d
     var mockCache = {
-        course: preloadData.rawData?.course,
-        players: preloadData.rawData?.players,
-        startingHole: preloadData.rawData?.startingHole || 1,
-        teamGameFormat: preloadData.rawData?.teamGameFormat || "tournament",
-        f1DataString: preloadData.rawData?.f1?.d || "",
-        f2DataString: preloadData.rawData?.f2?.d || "",
-        results: preloadData.rawData?.results || null,
-        savedHoles: { 1: [], 2: [] },
-        t1Row: new Array(18).fill('_'),
-        t2Row: new Array(18).fill('_'),
-        strkRow: new Array(18).fill('0'),
-        lastSyncedHole: 0,
-        clinchedAt: {},
+        course: preloadData.course,
+        players: preloadData.players,
+        startingHole: preloadData.startingHole,
+        teamGameFormat: preloadData.teamGameFormat,
+        f1DataString: preloadData.f1DataString || preloadData.rawData?.f1?.d || "",
+        f2DataString: preloadData.f2DataString || preloadData.rawData?.f2?.d || "",
+        results: preloadData.results || preloadData.rawData?.results || null,
+        savedHoles: preloadData.savedHoles || { 1: [], 2: [] },
+        t1Row: preloadData.t1Row || new Array(18).fill('_'),
+        t2Row: preloadData.t2Row || new Array(18).fill('_'),
+        strkRow: preloadData.strkRow || new Array(18).fill('0'),
+        lastSyncedHole: preloadData.lastSyncedHole || 0,
+        clinchedAt: preloadData.clinchedAt || {},
         signatures: { f1: false, f2: false },
         submitted: { f1: false, f2: false },
         locks: { f1: null, f2: null },
@@ -456,168 +467,33 @@ function applyPreloadedData(preloadData) {
     
     if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
         GameLoader.setLocalCache(mockCache);
-        console.log("GameLoader cache set with data strings");
     }
     
     document.getElementById("courseName").innerHTML = courseName;
+    
+    // Reveal content after data is applied
+    document.getElementById("mainContainer").classList.add("data-ready");
     
     return true;
 }
 
 // ============================================================
-// Helper Functions (using game-ui.js shared calculations)
+// Helper Functions
 // ============================================================
 
 function getPlayOrder() {
-    return GameUI.getPlayOrder(startingHole);
+    var order = [];
+    for (var i = startingHole; i <= 18; i++) order.push(i);
+    for (var i = 1; i < startingHole; i++) order.push(i);
+    return order;
 }
 
 function getHolePosition(holeNumber) {
-    return GameUI.getHolePosition(holeNumber, startingHole);
-}
-
-function isHoleSaved(flight, hole) {
-    var cache = GameLoader.getLocalCache();
-    return GameUI.isHoleSaved(flight, hole, cache);
-}
-
-function getFirstUnsavedHole(flight) {
-    var cache = GameLoader.getLocalCache();
-    return GameUI.getFirstUnsavedHole(flight, startingHole, cache);
-}
-
-function getStoredScore(player, hole) {
-    var cache = GameLoader.getLocalCache();
-    return GameUI.getStoredScore(player, hole, cache, coursePar, allPlayers);
-}
-
-function getMatchValueFromResults(player, opponent, holeNumber) {
-    var cache = GameLoader.getLocalCache();
-    var results = cache.results;
-    if (!results) return 0;
-    return GameUI.getMatchValueFromStoredResults(results, player, opponent, holeNumber, allPlayers, startingHole);
-}
-
-function getFlightOrderedPlayers(flight) {
-    return GameUI.getFlightOrderedPlayersShared(flight, allPlayers);
-}
-
-function getAllOpponents(player) {
-    return GameUI.getAllOpponentsShared(player, allPlayers);
-}
-
-function getBubbleValue(player, opponent) {
-    var matchValue = getMatchValueFromResults(player, opponent, currentHole);
-    return GameUI.getBubbleValueFromMatch(matchValue);
-}
-
-function getBubbleClassWithClinch(player, opponent) {
-    var cache = GameLoader.getLocalCache();
-    return GameUI.getBubbleClassWithClinchCalc(player, opponent, currentHole, cache, allPlayers, cache.results, startingHole, coursePar);
-}
-
-function getTRForHole(holeNumber) {
-    var cache = GameLoader.getLocalCache();
-    if (!cache.results || !cache.results.tr) {
-        return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        if (playOrder[i] === holeNumber) return i;
     }
-    var position = getHolePosition(holeNumber);
-    return {
-        teamA: cache.results.tr.teamA[position] !== undefined ? cache.results.tr.teamA[position] : 9.5,
-        teamB: cache.results.tr.teamB[position] !== undefined ? cache.results.tr.teamB[position] : 9.5,
-        teamAGreen: cache.results.tr.teamAGreen[position] !== undefined ? cache.results.tr.teamAGreen[position] : true,
-        teamBGreen: cache.results.tr.teamBGreen[position] !== undefined ? cache.results.tr.teamBGreen[position] : true
-    };
-}
-
-function calculatePlayerScoreForTicker(player) {
-    var cache = GameLoader.getLocalCache();
-    return GameUI.calculatePlayerScoreRelativeToPar(player, cache, coursePar, allPlayers);
-}
-
-// ============================================================
-// Ticker
-// ============================================================
-
-function initTicker() {
-    if (typeof Ticker !== 'undefined') {
-        Ticker.init('tickerContainer', 'tickerContent', calculatePlayerScoreForTicker);
-        if (allPlayers && allPlayers.length) {
-            Ticker.setPlayers(allPlayers);
-        }
-    }
-}
-
-// ============================================================
-// Render Functions
-// ============================================================
-
-function renderHoleHeader() {
-    var header = document.getElementById('holeHeader');
-    if (header) {
-        header.innerHTML = '<div style="display:inline-block; background:#111; padding:4px 20px; border-radius:40px; font-size:1.5rem; font-weight:800;">HOLE ' + currentHole + '</div>';
-    }
-}
-
-function updateTRDisplay() {
-    var tr = getTRForHole(currentHole);
-    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
-}
-
-function renderPlayerCards() {
-    var players = getFlightOrderedPlayers(displayFlight);
-    var cardsHtml = '';
-    
-    for (var i = 0; i < players.length; i++) {
-        var p = players[i];
-        var score = getStoredScore(p, currentHole);
-        var opponents = getAllOpponents(p);
-        var bubblesHtml = '<div class="bubbles">';
-        
-        for (var j = 0; j < opponents.length; j++) {
-            var opp = opponents[j];
-            var bubbleClass = getBubbleClassWithClinch(p, opp);
-            var bubbleValue = getBubbleValue(p, opp);
-            bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
-        }
-        bubblesHtml += '</div>';
-        
-        cardsHtml += '<div class="player-card">' +
-            '<div class="player-header">' +
-                '<div>' +
-                    '<span class="player-name">' + escapeHtml(p.label) + '</span>' +
-                    '<span class="player-handicap">' + p.label + ' ' + p.handicap + '</span>' +
-                '</div>' +
-                '<div class="score-value">' + score + '</div>' +
-            '</div>' +
-            bubblesHtml +
-        '</div>';
-    }
-    document.getElementById('playerCards').innerHTML = cardsHtml;
-    
-    setTimeout(function() {
-        var firstCard = document.querySelector('.player-card');
-        if (firstCard && !document.querySelector('.flight-badge')) {
-            var badge = document.createElement('div');
-            badge.className = 'flight-badge';
-            badge.innerText = 'FLIGHT ' + displayFlight;
-            badge.style.cssText = 'position:absolute; top:-18px; left:50%; transform:translateX(-50%); background:#1a3a1a; border:2px solid #4caf50; color:#4caf50; font-size:0.8rem; font-weight:700; padding:4px 16px; border-radius:30px; z-index:100; white-space:nowrap;';
-            firstCard.style.position = 'relative';
-            firstCard.appendChild(badge);
-        }
-    }, 50);
-}
-
-function renderScorecard() {
-    var holes = getDisplayHoles();
-    var cache = GameLoader.getLocalCache();
-    window.savedHoles = cache.savedHoles;
-    
-    var t1Row = cache.results ? (cache.results.game2?.flight1?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
-    var t2Row = cache.results ? (cache.results.game2?.flight2?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
-    var strkRow = cache.results ? (cache.results.game3?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
-    
-    GameUI.renderScorecard('scorecardWrapper', holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi);
+    return holeNumber - 1;
 }
 
 function getDisplayHoles() {
@@ -631,12 +507,203 @@ function getDisplayHoles() {
     }
 }
 
+function getFlightOrderedPlayers(flight) {
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    return teamA.concat(teamB);
+}
+
+function getStoredScore(player, hole) {
+    var cache = GameLoader.getLocalCache();
+    var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+    var holeData = GameData.parseHoleData(flightDataStr, hole);
+    if (!holeData || !holeData.saved) return coursePar[hole - 1];
+    
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    if (player.team === 'A') {
+        if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
+        if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
+    } else {
+        if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
+        if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
+    }
+    return coursePar[hole - 1];
+}
+
+function isHoleSaved(flight, hole) {
+    var cache = GameLoader.getLocalCache();
+    return cache.savedHoles[flight] && cache.savedHoles[flight].indexOf(hole) !== -1;
+}
+
+function getFirstUnsavedHole(flight) {
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        var hole = playOrder[i];
+        if (!isHoleSaved(flight, hole)) return hole;
+    }
+    return 18;
+}
+
+function getAllOpponents(player) {
+    var opponents = allPlayers.filter(function(op) { return op.team !== player.team; });
+    opponents.sort(function(a, b) {
+        var aIsIntra = (a.flight === player.flight);
+        var bIsIntra = (b.flight === player.flight);
+        if (aIsIntra && !bIsIntra) return -1;
+        if (!aIsIntra && bIsIntra) return 1;
+        return 0;
+    });
+    return opponents;
+}
+
+function getMatchValueFromStoredResults(player, opponent, holeNumber) {
+    var cache = GameLoader.getLocalCache();
+    var results = cache.results;
+    if (!results) return 0;
+    
+    return GameData.getMatchValueFromResults(results, player, opponent, holeNumber, allPlayers, getHolePosition);
+}
+
+// ============================================================
+// BUBBLE FUNCTIONS - WITHOUT "vs " PREFIX
+// ============================================================
+
+function getBubbleValue(player, opponent) {
+    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
+    var absValue = Math.abs(matchValue);
+    if (absValue === 0) return 'AS';
+    return absValue.toString();
+}
+
+function getBubbleClassWithClinch(player, opponent) {
+    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
+    var cache = GameLoader.getLocalCache();
+    var lastSyncedHole = cache.lastSyncedHole;
+    var clinchedAt = cache.clinchedAt || {};
+    var matchKey = player.name + "_vs_" + opponent.name;
+    var clinchHole = clinchedAt[matchKey];
+    
+    if (player.flight === opponent.flight) {
+        var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
+        if (!isHoleSavedForFlight) return 'bubble-grey';
+    } else {
+        var isSynced = (lastSyncedHole >= currentHole);
+        if (!isSynced) return 'bubble-grey';
+    }
+    
+    if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
+    if (clinchHole && currentHole === clinchHole) {
+        if (matchValue > 0) return 'bubble-gold';
+        if (matchValue < 0) return 'bubble-loss-clinch';
+        return 'bubble-green';
+    }
+    
+    if (matchValue > 0) return 'bubble-green';
+    if (matchValue < 0) return 'bubble-red';
+    return 'bubble-green';
+}
+
+function updateTRDisplay() {
+    var tr = GameLoader.getTRForHole(currentHole);
+    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+}
+
+// ============================================================
+// Ticker Functions
+// ============================================================
+
+function calculatePlayerScoreRelativeToPar(player) {
+    var cache = GameLoader.getLocalCache();
+    var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+    var totalGross = 0;
+    var totalPar = 0;
+    
+    for (var h = 1; h <= 18; h++) {
+        var par = coursePar[h - 1];
+        totalPar += par;
+        
+        var holeData = GameData.parseHoleData(flightDataStr, h);
+        if (holeData && holeData.saved) {
+            var score = 0;
+            var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+            var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            if (player.team === 'A') {
+                if (teamA[0] && teamA[0].name === player.name) score = holeData.scores.a1;
+                else if (teamA[1] && teamA[1].name === player.name) score = holeData.scores.a2;
+            } else {
+                if (teamB[0] && teamB[0].name === player.name) score = holeData.scores.b1;
+                else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
+            }
+            totalGross += score;
+        } else {
+            totalGross += par;
+        }
+    }
+    
+    return totalGross - totalPar;
+}
+
+function getPlayerScoreForTicker(player) {
+    return calculatePlayerScoreRelativeToPar(player);
+}
+
+function initTicker() {
+    if (typeof Ticker !== 'undefined') {
+        Ticker.init('tickerContainer', 'tickerContent', getPlayerScoreForTicker);
+        if (allPlayers && allPlayers.length) {
+            Ticker.setPlayers(allPlayers);
+        }
+    }
+}
+
+// ============================================================
+// Render Functions
+// ============================================================
+
+function renderHoleHeader() {
+    var currentPar = coursePar[currentHole - 1];
+    var currentSi = courseSi[currentHole - 1];
+    GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+}
+
+function renderPlayerCards() {
+    var currentPlayers = getFlightOrderedPlayers(displayFlight);
+    
+    // VIEW mode: canEdit = false (no edit buttons)
+    GameUI.renderPlayerCards(
+        "playerCards",
+        currentPlayers,
+        getAllOpponents,
+        getBubbleClassWithClinch,
+        getBubbleValue,
+        getStoredScore,
+        false,  // canEdit = false - NO edit buttons
+        null    // no onScoreChange callback
+    );
+}
+
+function renderScorecard() {
+    var holes = getDisplayHoles();
+    var cache = GameLoader.getLocalCache();
+    window.savedHoles = cache.savedHoles;
+    
+    var t1Row = cache.results ? (cache.results.game2?.flight1?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
+    var t2Row = cache.results ? (cache.results.game2?.flight2?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
+    var strkRow = cache.results ? (cache.results.game3?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
+    
+    GameUI.renderScorecard("scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi);
+}
+
 function renderAll() {
     var cache = GameLoader.getLocalCache();
-    if (!cache.f1DataString || !cache.f2DataString) {
-        console.log("Waiting for data strings to load...");
-        return;
-    }
+    if (!cache.f1DataString || !cache.f2DataString) return;
+    
     renderHoleHeader();
     updateTRDisplay();
     renderPlayerCards();
@@ -645,29 +712,27 @@ function renderAll() {
     if (typeof Ticker !== 'undefined') Ticker.refresh();
 }
 
+function updatePlayerNamesToShortform() {
+    // This is handled by GameUI.renderPlayerCards which uses player.label
+    // No additional conversion needed
+}
+
 // ============================================================
 // Navigation
 // ============================================================
 
 function updateNavButtons() {
     var playOrder = getPlayOrder();
-    var currentIndex = playOrder.indexOf(currentHole);
-    var prevBtn = document.getElementById('compactPrevBtn');
-    var nextBtn = document.getElementById('compactNextBtn');
     var isCurrentSaved = isHoleSaved(displayFlight, currentHole);
-    var isLastHole = (currentIndex === 17);
     
-    if (prevBtn) prevBtn.disabled = (currentIndex === 0);
-    
-    if (nextBtn) {
-        if (isLastHole && !isCurrentSaved) {
-            nextBtn.disabled = true;
-            nextBtn.style.opacity = '0.6';
-        } else {
-            nextBtn.disabled = false;
-            nextBtn.style.opacity = '1';
-        }
-    }
+    GameUI.updateNavigationButtons(
+        currentHole,
+        playOrder,
+        isCurrentSaved,
+        isGameCompleteFlag,
+        celebrationTriggered,
+        showSignCardModal
+    );
 }
 
 function goToPrevHole() {
@@ -675,7 +740,7 @@ function goToPrevHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex > 0) {
         currentHole = playOrder[currentIndex - 1];
-        document.getElementById('compactHoleDisplay').innerText = currentHole;
+        GameUI.updateCompactHoleDisplay(currentHole);
         renderAll();
     }
 }
@@ -689,7 +754,7 @@ function goToNextHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex < 17) {
         currentHole = playOrder[currentIndex + 1];
-        document.getElementById('compactHoleDisplay').innerText = currentHole;
+        GameUI.updateCompactHoleDisplay(currentHole);
         renderAll();
     }
 }
@@ -702,10 +767,8 @@ function toggleDisplayMode() {
 
 function toggleFlight() {
     displayFlight = displayFlight === 1 ? 2 : 1;
-    var actionBtn = document.getElementById('compactActionBtn');
-    if (actionBtn) {
-        actionBtn.innerText = 'FLIGHT ' + displayFlight;
-    }
+    GameUI.updateCompactActionButton("flight", displayFlight, currentHole);
+    GameUI.updateFlightBadge(displayFlight);
     renderAll();
 }
 
@@ -742,7 +805,7 @@ function showSignCardModal() {
 function showCelebrationAndHandicap() {
     if (celebrationTriggered) return;
     celebrationTriggered = true;
-    var tr = getTRForHole(currentHole);
+    var tr = GameLoader.getTRForHole(currentHole);
     var winner = tr.teamA > tr.teamB ? "A" : (tr.teamB > tr.teamA ? "B" : "Tie");
     var winningPlayers = {
         teamA: allPlayers.filter(function(p) { return p.team === "A"; }),
@@ -785,8 +848,8 @@ function buildCompactHeader() {
         goToNextHole,
         toggleFlight,
         toggleDisplayMode,
-        "flight",
-        null
+        "flight",  // VIEW mode uses FLIGHT button
+        null       // no save callback
     );
 }
 
@@ -831,12 +894,34 @@ function startGameListener() {
 }
 
 // ============================================================
+// Data Callback from GameLoader
+// ============================================================
+
+function onCacheUpdate(cache) {
+    if (cache.course) {
+        courseName = cache.course.name;
+        coursePar = cache.course.par;
+        courseSi = cache.course.si;
+        document.getElementById("courseName").innerHTML = courseName;
+    }
+    allPlayers = cache.players;
+    startingHole = cache.startingHole;
+    
+    if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
+        Ticker.setPlayers(allPlayers);
+        Ticker.refresh();
+    }
+    
+    renderAll();
+}
+
+// ============================================================
 // Initialization
 // ============================================================
 
 async function init() {
-    var shortName = await SessionManager.getShortNameOnly();
-    document.getElementById("deviceTag").innerHTML = "🖥️ " + shortName;
+    var myDeviceShortName = await SessionManager.getShortNameOnly();
+    document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
     
     var session = await new Promise(function(resolve) {
         SessionManager.initSession("view-game.html", "index.html", resolve);
@@ -867,6 +952,7 @@ async function init() {
         buildCompactHeader();
         buildBottomMenu();
         
+        // Calculate first unsaved hole after cache is loaded
         var cache = GameLoader.getLocalCache();
         window.savedHoles = cache.savedHoles || { 1: [], 2: [] };
         var firstUnsaved = getFirstUnsavedHole(displayFlight);
@@ -874,8 +960,7 @@ async function init() {
             currentHole = firstUnsaved;
             console.log("Setting currentHole to first unsaved hole:", currentHole);
         }
-        var holeDisplay = document.getElementById('compactHoleDisplay');
-        if (holeDisplay) holeDisplay.innerText = currentHole;
+        GameUI.updateCompactHoleDisplay(currentHole);
         
         initTicker();
         if (allPlayers && allPlayers.length) {
@@ -884,8 +969,8 @@ async function init() {
         
         renderAll();
         
-        document.getElementById("mainContainer").classList.add("data-ready");
-        
+        // Attach Firestore listener for real-time updates
+        GameLoader.addDataCallback(onCacheUpdate);
         startGameListener();
         
     } else {
@@ -913,14 +998,16 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 5.01
-KEY CHANGES:
-   - FIXED: Correctly extract f1DataString and f2DataString from preloaded rawData
-   - f1DataString: preloadData.rawData?.f1?.d (was preloadData.f1DataString)
-   - f2DataString: preloadData.rawData?.f2?.d (was preloadData.f2DataString)
-   - All other functionality identical to v5.00
-   - Uses GameLoader.setLocalCache() with properly populated mockCache
-   - No local variables needed - relies on GameLoader.getLocalCache()
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
+VERSION: 4.10
+KEY CHANGES (based on real-game.html v4.07 working):
+   - Status bubble text: "VIEWER" (instead of "LIVE")
+   - No edit buttons (-/+) - canEdit = false
+   - FLIGHT toggle button instead of SAVE button (buttonMode = "flight")
+   - All other functionality IDENTICAL to real-game.html v4.07
+   - Includes clinch support, first unsaved hole calculation, shortform player names
+   - Uses GameUI.renderCompactHeader() for unified control bar
+   - Cache-first loading with redirect on missing cache
+   - Hidden until data-ready (no flash)
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
