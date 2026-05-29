@@ -1,15 +1,14 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.01
+VERSION: 4.02
 KEY CHANGES:
-   - ADDED: Complete fluid bubble CSS for ALL game pages (single source of truth)
-   - Bubbles now use display: grid with repeat(4, 1fr) for equal 4-column layout
-   - Font size scales with screen: clamp(0.7rem, 3.8vw, 0.9rem)
-   - Gap scales with clamp(4px, 1.5vw, 10px)
-   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
-   - Media queries for extreme screen sizes (380px and 500px+)
-   - Removed any hard-coded min-width values
-   - All existing JavaScript functions preserved exactly as v4.00
+   - ADDED: Unified renderCompactHeader() function for all game pages
+   - Accepts parameters: containerId, flightNumber, currentHole, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay, buttonMode
+   - buttonMode: "save" (real-game) or "flight" (view-game)
+   - Includes P/N button, action button (SAVE or FLIGHT), navigation buttons
+   - All existing functions preserved from v4.01
+   - Maintains fluid responsive design with clamp() values
+   - Single source of truth for compact header across all game pages
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -36,6 +35,9 @@ var GameUI = (function() {
     var currentFlight = 1;
     var currentDisplayMode = "play";
     var currentHoleNumber = 1;
+    
+    // Track button mode for action button
+    var currentButtonMode = "save"; // "save" or "flight"
     
     // Callback registry for shared UI events
     var eventCallbacks = {
@@ -245,6 +247,150 @@ var GameUI = (function() {
     }
     
     // ============================================================
+    // UNIFIED RENDER COMPACT HEADER (v4.02)
+    // ============================================================
+    // Parameters:
+    //   containerId - DOM element ID to render into
+    //   flightNumber - current flight (1 or 2)
+    //   currentHole - current hole number
+    //   onPrevHole - callback for ◀ button
+    //   onNextHole - callback for ▶ button
+    //   onToggleFlight - callback for FLIGHT button (view-game only)
+    //   onToggleDisplay - callback for P/N button
+    //   buttonMode - "save" (real-game) or "flight" (view-game)
+    //   onSaveCallback - callback for SAVE button (real-game only)
+    // ============================================================
+    
+    function renderCompactHeader(containerId, flightNumber, currentHole, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay, buttonMode, onSaveCallback) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        // Store callbacks
+        if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
+        if (onNextHole) eventCallbacks.onNextHole = onNextHole;
+        if (onToggleFlight) eventCallbacks.onToggleFlight = onToggleFlight;
+        if (onToggleDisplay) eventCallbacks.onToggleDisplay = onToggleDisplay;
+        if (onSaveCallback) eventCallbacks.onSave = onSaveCallback;
+        
+        currentFlight = flightNumber;
+        currentHoleNumber = currentHole;
+        currentButtonMode = buttonMode || "save";
+        
+        var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
+        
+        // Determine action button text and handler
+        var actionButtonText = "";
+        var actionButtonHandler = null;
+        
+        if (currentButtonMode === "save") {
+            actionButtonText = "SAVE H" + currentHole;
+            actionButtonHandler = function() {
+                if (eventCallbacks.onSave) eventCallbacks.onSave();
+            };
+        } else {
+            // Flight toggle button for view-game
+            actionButtonText = "FLIGHT " + flightNumber;
+            actionButtonHandler = function() {
+                if (eventCallbacks.onToggleFlight) {
+                    var newFlight = flightNumber === 1 ? 2 : 1;
+                    eventCallbacks.onToggleFlight(newFlight);
+                }
+            };
+        }
+        
+        // RESPONSIVE: CSS Grid + clamp for all screen sizes
+        var html = `
+            <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
+                <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
+                    ${pnText}
+                </button>
+                <button class="compact-action-btn" id="compactActionBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
+                    ${actionButtonText}
+                </button>
+                <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
+                    <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                        ◀
+                    </button>
+                    <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">${currentHole}</span>
+                    <button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                        ▶
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        
+        // Attach event listeners
+        var pnBtn = document.getElementById('compactPnBtn');
+        var actionBtn = document.getElementById('compactActionBtn');
+        var prevBtn = document.getElementById('compactPrevBtn');
+        var nextBtn = document.getElementById('compactNextBtn');
+        
+        if (pnBtn && eventCallbacks.onToggleDisplay) {
+            pnBtn.onclick = function() {
+                var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
+                setDisplayMode(newMode, null);
+                updateCompactPnButton();
+                if (eventCallbacks.onToggleDisplay) eventCallbacks.onToggleDisplay(newMode);
+            };
+        }
+        
+        if (actionBtn && actionButtonHandler) {
+            actionBtn.onclick = actionButtonHandler;
+        }
+        
+        if (prevBtn && eventCallbacks.onPrevHole) {
+            prevBtn.onclick = function() {
+                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
+            };
+        }
+        
+        if (nextBtn && eventCallbacks.onNextHole) {
+            nextBtn.onclick = function() {
+                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+            };
+        }
+    }
+    
+    function updateCompactActionButton(buttonMode, flightNumber, currentHole) {
+        var actionBtn = document.getElementById('compactActionBtn');
+        if (!actionBtn) return;
+        
+        if (buttonMode === "save") {
+            actionBtn.innerText = "SAVE H" + currentHole;
+        } else {
+            actionBtn.innerText = "FLIGHT " + flightNumber;
+        }
+    }
+    
+    function updateCompactSaveButton(currentHole, isDisabled) {
+        var saveBtn = document.getElementById('compactActionBtn');
+        if (saveBtn && currentButtonMode === "save") {
+            saveBtn.innerText = "SAVE H" + currentHole;
+            saveBtn.disabled = isDisabled;
+        }
+    }
+    
+    function updateCompactPnButton() {
+        var pnBtn = document.getElementById('compactPnBtn');
+        if (pnBtn) {
+            pnBtn.innerText = currentDisplayMode === 'play' ? 'P' : 'N';
+        }
+    }
+    
+    function updateCompactHoleDisplay(holeNumber) {
+        currentHoleNumber = holeNumber;
+        var holeDisplay = document.querySelector('.compact-hole-display');
+        if (holeDisplay) {
+            holeDisplay.innerText = holeNumber;
+        }
+        if (currentButtonMode === "save") {
+            updateCompactSaveButton(holeNumber, false);
+        }
+    }
+    
+    // ============================================================
     // SINGLE SOURCE OF TRUTH: Navigation Buttons
     // ============================================================
     
@@ -254,27 +400,12 @@ var GameUI = (function() {
         
         if (!prevBtn || !nextBtn) return;
         
-        // Store original navigation handlers if not already stored
-        if (!prevBtn._originalOnClick && eventCallbacks.onPrevHole) {
-            prevBtn._originalOnClick = function() {
-                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
-            };
-        }
-        if (!nextBtn._originalOnClick && eventCallbacks.onNextHole) {
-            nextBtn._originalOnClick = function() {
-                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
-            };
-        }
-        
         var currentIndex = playOrder.indexOf(currentHole);
         var isFirstHole = (currentIndex === 0);
         var isLastHole = (currentIndex === 17);
         
         // Prev button: disabled only at first hole
         prevBtn.disabled = isFirstHole;
-        if (prevBtn._originalOnClick) {
-            prevBtn.onclick = prevBtn._originalOnClick;
-        }
         
         // Next button logic
         if (isGameComplete && !celebrationTriggered) {
@@ -304,8 +435,10 @@ var GameUI = (function() {
             nextBtn.style.color = '#4caf50';
             nextBtn.style.border = '1px solid #4caf50';
             nextBtn.disabled = !isCurrentSaved;
-            if (nextBtn._originalOnClick) {
-                nextBtn.onclick = nextBtn._originalOnClick;
+            if (eventCallbacks.onNextHole) {
+                nextBtn.onclick = function() {
+                    if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+                };
             }
         }
     }
@@ -365,7 +498,28 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Tighten Scorecard Rows
+    // Legacy Functions
+    // ============================================================
+    
+    function updateFlightToggleButton(flightNumber) {
+        updateFlightBadge(flightNumber);
+    }
+    
+    function toggleFlight() {
+        var newFlight = currentFlight === 1 ? 2 : 1;
+        currentFlight = newFlight;
+        updateFlightBadge(currentFlight);
+        if (eventCallbacks.onToggleFlight) {
+            eventCallbacks.onToggleFlight(currentFlight);
+        }
+    }
+    
+    function getCurrentFlight() {
+        return currentFlight;
+    }
+    
+    // ============================================================
+    // Scorecard Rendering
     // ============================================================
     
     function tightenScorecardRows() {
@@ -391,121 +545,6 @@ var GameUI = (function() {
             }
         }
     }
-    
-    // ============================================================
-    // Render Compact Header
-    // ============================================================
-    
-    function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
-        var container = document.getElementById(containerId);
-        if (!container) return;
-        
-        // Store callbacks
-        if (onSave) eventCallbacks.onSave = onSave;
-        if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
-        if (onNextHole) eventCallbacks.onNextHole = onNextHole;
-        if (onToggleFlight) eventCallbacks.onToggleFlight = onToggleFlight;
-        if (onToggleDisplay) eventCallbacks.onToggleDisplay = onToggleDisplay;
-        
-        currentFlight = flightNumber;
-        currentHoleNumber = currentHole;
-        
-        var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
-        
-        setTimeout(function() {
-            addFlightBadge(flightNumber);
-        }, 50);
-        
-        // RESPONSIVE: CSS Grid + clamp for all screen sizes
-        var html = `
-            <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
-                <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
-                    ${pnText}
-                </button>
-                <button class="compact-save-btn" id="compactSaveBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
-                    SAVE H${currentHole}
-                </button>
-                <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
-                    <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                        ◀
-                    </button>
-                    <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">${currentHole}</span>
-                    <button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                        ▶
-                    </button>
-                </div>
-            </div>
-        `;
-        
-        container.innerHTML = html;
-        
-        var pnBtn = document.getElementById('compactPnBtn');
-        var saveBtn = document.getElementById('compactSaveBtn');
-        
-        if (pnBtn && eventCallbacks.onToggleDisplay) {
-            pnBtn.addEventListener('click', function() {
-                var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
-                setDisplayMode(newMode, null);
-                updateCompactPnButton();
-                if (eventCallbacks.onToggleDisplay) eventCallbacks.onToggleDisplay(newMode);
-            });
-        }
-        
-        if (saveBtn && eventCallbacks.onSave) {
-            saveBtn.addEventListener('click', function() {
-                if (eventCallbacks.onSave) eventCallbacks.onSave();
-            });
-        }
-    }
-    
-    function updateCompactSaveButton(currentHole, isDisabled) {
-        var saveBtn = document.getElementById('compactSaveBtn');
-        if (saveBtn) {
-            saveBtn.innerText = 'SAVE H' + currentHole;
-            saveBtn.disabled = isDisabled;
-        }
-    }
-    
-    function updateCompactPnButton() {
-        var pnBtn = document.getElementById('compactPnBtn');
-        if (pnBtn) {
-            pnBtn.innerText = currentDisplayMode === 'play' ? 'P' : 'N';
-        }
-    }
-    
-    function updateCompactHoleDisplay(holeNumber) {
-        currentHoleNumber = holeNumber;
-        var holeDisplay = document.querySelector('.compact-hole-display');
-        if (holeDisplay) {
-            holeDisplay.innerText = holeNumber;
-        }
-        updateCompactSaveButton(holeNumber, false);
-    }
-    
-    // ============================================================
-    // Legacy Functions
-    // ============================================================
-    
-    function updateFlightToggleButton(flightNumber) {
-        updateFlightBadge(flightNumber);
-    }
-    
-    function toggleFlight() {
-        var newFlight = currentFlight === 1 ? 2 : 1;
-        currentFlight = newFlight;
-        updateFlightBadge(currentFlight);
-        if (eventCallbacks.onToggleFlight) {
-            eventCallbacks.onToggleFlight(currentFlight);
-        }
-    }
-    
-    function getCurrentFlight() {
-        return currentFlight;
-    }
-    
-    // ============================================================
-    // Scorecard Rendering
-    // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
         var container = document.getElementById(containerId);
@@ -599,7 +638,7 @@ var GameUI = (function() {
         
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -676,7 +715,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody><tr>';
+        html += '</tbody><td>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -711,7 +750,7 @@ var GameUI = (function() {
                 <div class="player-card" data-player-name="${escapeHtml(player.name)}" data-player-flight="${player.flight}">
                     <div class="player-header">
                         <div>
-                            <span class="player-name">${escapeHtml(player.name)}</span>
+                            <span class="player-name">${escapeHtml(player.label)}</span>
                             <span class="player-handicap">${player.label} ${player.handicap}</span>
                         </div>
                         <div class="score-control">
@@ -1168,8 +1207,9 @@ var GameUI = (function() {
         updateHoleHeaderNumber: updateHoleHeaderNumber,
         updateFlightTab: updateFlightTab,
         
-        // Compact header
+        // Compact header (UNIFIED v4.02)
         renderCompactHeader: renderCompactHeader,
+        updateCompactActionButton: updateCompactActionButton,
         updateCompactSaveButton: updateCompactSaveButton,
         updateCompactPnButton: updateCompactPnButton,
         updateCompactHoleDisplay: updateCompactHoleDisplay,
@@ -1240,16 +1280,15 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.01
+VERSION: 4.02
 KEY CHANGES:
-   - ADDED: Complete fluid bubble CSS for ALL game pages (single source of truth)
-   - Bubbles now use display: grid with repeat(4, 1fr) for equal 4-column layout
-   - Font size scales with screen: clamp(0.7rem, 3.8vw, 0.9rem)
-   - Gap scales with clamp(4px, 1.5vw, 10px)
-   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
-   - Media queries for extreme screen sizes (380px and 500px+)
-   - Removed any hard-coded min-width values
-   - All existing JavaScript functions preserved exactly as v4.00
+   - ADDED: Unified renderCompactHeader() function for all game pages
+   - Accepts parameters: containerId, flightNumber, currentHole, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay, buttonMode
+   - buttonMode: "save" (real-game) or "flight" (view-game)
+   - Includes P/N button, action button (SAVE or FLIGHT), navigation buttons
+   - All existing functions preserved from v4.01
+   - Maintains fluid responsive design with clamp() values
+   - Single source of truth for compact header across all game pages
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
