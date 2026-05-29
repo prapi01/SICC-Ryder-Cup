@@ -1,13 +1,15 @@
 <!--
 FILE: view-game.html
-VERSION: 4.10
-KEY CHANGES (based on v4.02):
-   - ONLY: Changed player name display from p.name to p.label (shortform names)
-   - All CSS, clinch logic, ticker, flight toggle, cache loading identical to v4.02
-   - Container width: 500px
-   - Clinch bubble styles preserved (.bubble-gold, .bubble-loss-clinch)
-   - Cache-first loading using preloaded data from index.html
-   - No other changes - all functionality preserved
+VERSION: 4.02
+KEY CHANGES:
+   - CHANGED: Container max-width from 550px to 500px (consistent with main app)
+   - ADDED: Cache-first loading using preloaded data from index.html
+   - READS: "preloadedRawGameData" from sessionStorage for instant render
+   - FALLBACK: Firestore fetch only if no cache exists
+   - REMOVED: All previewSandboxes references (deprecated)
+   - REMOVED: isPreviewSandbox logic and related code
+   - All existing viewer functionality preserved from v4.00
+   - Uses GameLoader for real-time sync after initial render
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -237,7 +239,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.10</div>
+<div class="version-tag">v4.02</div>
 
 <script>
 // ============================================================
@@ -272,7 +274,7 @@ var currentFlight = 1;
 var currentHole = 1;
 
 // ============================================================
-// Cache Loading
+// Cache Loading (v4.02)
 // ============================================================
 
 function getPreloadedRawGameData() {
@@ -301,6 +303,7 @@ function applyCachedDataToGameLoader() {
     console.log("Applying cached data to GameLoader (viewer mode)");
     var rawData = cached.rawData;
     
+    // Build cache object for GameLoader.setLocalCache()
     var cacheData = {
         course: rawData.course,
         players: rawData.players,
@@ -474,10 +477,9 @@ function renderPlayerCards() {
         }
         bubblesHtml += '</div>';
         
-        // FIX v4.10: Use shortform label (p.label) instead of full name (p.name)
         cardsHtml += '<div class="player-card">' +
             '<div class="player-header">' +
-                '<div><span class="player-name">' + escapeHtml(p.label) + '</span><span class="player-handicap">' + p.label + ' ' + p.handicap + '</span></div>' +
+                '<div><span class="player-name">' + escapeHtml(p.name) + '</span><span class="player-handicap">' + p.label + ' ' + p.handicap + '</span></div>' +
                 '<div class="score-value">' + score + '</div>' +
             '</div>' +
             bubblesHtml +
@@ -727,7 +729,7 @@ async function init() {
     buildCompactHeader();
     buildBottomMenu();
     
-    // Try to use cached data first
+    // Try to use cached data first (v4.02)
     var cacheApplied = applyCachedDataToGameLoader();
     
     if (cacheApplied) {
@@ -783,14 +785,16 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 4.10
-KEY CHANGES (based on v4.02):
-   - ONLY: Changed player name display from p.name to p.label (shortform names)
-   - All CSS, clinch logic, ticker, flight toggle, cache loading identical to v4.02
-   - Container width: 500px
-   - Clinch bubble styles preserved (.bubble-gold, .bubble-loss-clinch)
-   - Cache-first loading using preloaded data from index.html
-   - No other changes - all functionality preserved
+VERSION: 4.02
+KEY CHANGES:
+   - CHANGED: Container max-width from 550px to 500px (consistent with main app)
+   - ADDED: Cache-first loading using preloaded data from index.html
+   - READS: "preloadedRawGameData" from sessionStorage for instant render
+   - FALLBACK: Firestore fetch only if no cache exists
+   - REMOVED: All previewSandboxes references (deprecated)
+   - REMOVED: isPreviewSandbox logic and related code
+   - All existing viewer functionality preserved from v4.00
+   - Uses GameLoader for real-time sync after initial render
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
