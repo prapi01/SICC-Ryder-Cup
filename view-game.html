@@ -3,10 +3,10 @@ FILE: view-game.html
 VERSION: 5.00
 KEY CHANGES from v3.14:
    - Control Bar now uses GameUI.renderCompactHeader() (identical to real-game)
-   - Save button hidden (view mode has no save)
+   - Save button replaced with FLIGHT toggle button (same position, same style)
    - Bubbles now use GameUI.getBubbleClassShared() and GameUI.getBubbleValueShared()
    - Clinch effect: grey bubbles for unsaved holes, gold/white for clinch holes
-   - Match bubble order IDENTICAL to real-game (intra-flight first)
+   - Added CSS for .bubble-gold and .bubble-loss-clinch
    - Flight toggle ONLY changes flight, NEVER changes hole
    - All other functionality preserved from v3.14
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
@@ -100,6 +100,25 @@ STATUS: Ready for integration
         .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
         .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
         
+        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
+        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+        .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        /* NEW v5.00: Clinch bubble styles */
+        .bubble-gold {
+            background: #1a3a1a;
+            color: #ffaa44;
+            border: 3px solid #ffaa44;
+            font-weight: 800;
+        }
+        .bubble-loss-clinch {
+            background: #3a1a1a;
+            color: #ffffff;
+            border: 3px solid #ffffff;
+            font-weight: 800;
+        }
+        
         .scorecard-section { margin: 20px 0; }
         .scorecard-wrapper { overflow-x: auto; }
         .scorecard-table {
@@ -122,7 +141,7 @@ STATUS: Ready for integration
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Compact header styles (from game-ui, kept for compatibility) */
+        /* Compact header styles */
         .compact-header {
             display: grid;
             grid-template-columns: auto 1fr auto;
@@ -134,10 +153,18 @@ STATUS: Ready for integration
         .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
             border-radius: 12px !important;
         }
-        .compact-save-btn {
+        .compact-save-btn, .compact-flight-btn {
             border-radius: 30px !important;
             font-size: 1rem !important;
             font-weight: 800 !important;
+            height: clamp(44px, 8vh, 52px);
+            width: 100%;
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            cursor: pointer;
+            text-align: center;
+            white-space: nowrap;
         }
         .compact-btn {
             background: #1a3a1a;
@@ -161,14 +188,6 @@ STATUS: Ready for integration
             font-weight: 700;
             flex-shrink: 0;
         }
-        .compact-save-btn {
-            height: clamp(44px, 8vh, 52px);
-            width: 100%;
-            font-size: clamp(0.8rem, 3vw, 1rem);
-            font-weight: 700;
-            text-align: center;
-            white-space: nowrap;
-        }
         .compact-nav-group {
             display: flex;
             align-items: center;
@@ -183,7 +202,6 @@ STATUS: Ready for integration
             text-align: center;
         }
         
-        /* Disabled button states */
         .compact-prev-btn:disabled, .compact-next-btn:disabled {
             background: #2a2a2a !important;
             color: #666666 !important;
@@ -321,7 +339,6 @@ function getDisplayHoles() {
     return getPlayOrder();
 }
 
-// Get players in correct order: A1, A2, B1, B2 (sorted by handicap)
 function getFlightOrderedPlayers(flight) {
     var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
     var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -329,7 +346,6 @@ function getFlightOrderedPlayers(flight) {
     return teamA.concat(teamB);
 }
 
-// Get opponents: intra-flight first, then cross-flight (SAME as real-game)
 function getAllOpponents(player) {
     var opponents = allPlayers.filter(function(op) { return op.team !== player.team; });
     opponents.sort(function(a, b) {
@@ -369,10 +385,9 @@ function isHoleSaved(flight, hole) {
 }
 
 // ============================================================
-// CLINCH BUBBLE FUNCTIONS (identical to real-game)
+// CLINCH BUBBLE FUNCTIONS - Using GameUI (v5.00)
 // ============================================================
 
-// Wrapper for GameUI.getMatchValueShared - uses resultsCache
 function getMatchValueFromResults(player, opponent, holeNumber) {
     if (!resultsCache || !resultsCache.matchResults) return 0;
     var position = getHolePosition(holeNumber);
@@ -404,34 +419,18 @@ function getMatchValueFromResults(player, opponent, holeNumber) {
     return (player.team === 'B') ? -value : value;
 }
 
-// Wrapper for GameUI.getBubbleValueShared
+// NEW v5.00: Use GameUI.getBubbleValueShared
 function getBubbleValue(player, opponent) {
     return GameUI.getBubbleValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePosition);
 }
 
-// Wrapper for GameUI.getBubbleClassShared (includes clinch logic)
+// NEW v5.00: Use GameUI.getBubbleClassShared for clinch support
 function getBubbleClassWithClinch(player, opponent) {
-    var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
     var clinchedAt = resultsCache ? (resultsCache.clinchedAt || {}) : {};
-    var matchKey = player.name + "_vs_" + opponent.name;
-    var clinchHole = clinchedAt[matchKey];
-    
-    // Grey bubble if hole not saved
-    if (!isHoleSavedForFlight) return 'bubble-grey';
-    
-    // Grey bubble if already clinched (hole > clinchHole)
-    if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
-    
-    // Gold bubble for clinch hole when winning
-    if (clinchHole && currentHole === clinchHole) {
-        var matchVal = getMatchValueFromResults(player, opponent, currentHole);
-        if (matchVal > 0) return 'bubble-gold';
-        if (matchVal < 0) return 'bubble-loss-clinch';
-        return 'bubble-green';
-    }
-    
-    // Normal green/red based on match value
-    return GameUI.getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSaved, getHolePosition, clinchedAt);
+    return GameUI.getBubbleClassShared(
+        player, opponent, currentHole, resultsCache, allPlayers,
+        isHoleSaved, getHolePosition, clinchedAt
+    );
 }
 
 function getTRForHole(holeNumber) {
@@ -447,7 +446,6 @@ function getTRForHole(holeNumber) {
     };
 }
 
-// Find first unsaved hole for a flight
 function getFirstUnsavedHole(flight) {
     var playOrder = getPlayOrder();
     for (var i = 0; i < playOrder.length; i++) {
@@ -499,7 +497,6 @@ function renderTR() {
 function renderPlayerCards() {
     var players = getFlightOrderedPlayers(currentFlight);
     
-    // canEdit = false (view only), onScoreChange = null
     GameUI.renderPlayerCards(
         "playerCards",
         players,
@@ -511,7 +508,7 @@ function renderPlayerCards() {
         null    // onScoreChange = null
     );
     
-    // Add flight badge (GameUI might not add it in view mode)
+    // Add flight badge
     setTimeout(function() {
         var firstCard = document.querySelector('.player-card');
         var existingBadge = document.querySelector('.flight-badge');
@@ -560,14 +557,13 @@ function updateNavButtons() {
     var isCurrentSaved = isHoleSaved(currentFlight, currentHole);
     var gameComplete = isGameCompleteFlag && !celebrationTriggered;
     
-    // Use GameUI.updateNavigationButtons for consistent behavior
     GameUI.updateNavigationButtons(
         currentHole,
         playOrder,
         isCurrentSaved,
         gameComplete,
         celebrationTriggered,
-        null  // No sign card callback (viewer doesn't sign)
+        null
     );
 }
 
@@ -599,17 +595,14 @@ function goToNextHole() {
 
 function toggleDisplayMode() {
     currentDisplayMode = currentDisplayMode === 'play' ? 'natural' : 'play';
-    // Update P/N button text via GameUI
     GameUI.updateCompactPnButton();
     renderAll();
 }
 
 function toggleFlight() {
     currentFlight = currentFlight === 1 ? 2 : 1;
-    // Update flight badge
     var flightBtn = document.getElementById('compactFlightBtn');
     if (flightBtn) flightBtn.innerText = 'FLIGHT ' + currentFlight;
-    // DO NOT change currentHole - only change the displayed flight
     renderAll();
 }
 
@@ -619,38 +612,35 @@ function exitToMainMenu() {
 }
 
 // ============================================================
-// Control Bar (NEW v5.00: Uses GameUI.renderCompactHeader)
+// Control Bar - NEW v5.00: Uses GameUI.renderCompactHeader
 // ============================================================
 
 function buildCompactHeader() {
     var container = document.getElementById('compactHeaderContainer');
     if (!container) return;
     
-    // Use GameUI to render the compact header (identical to real-game)
     GameUI.renderCompactHeader(
         "compactHeaderContainer",
         currentFlight,
         currentHole,
-        null,           // No save callback (view mode has no save)
+        null,
         goToPrevHole,
         goToNextHole,
         toggleFlight,
         toggleDisplayMode
     );
     
-    // Hide the save button since view mode has no save
+    // Replace save button with flight toggle button
     var saveBtn = document.getElementById('compactSaveBtn');
-    if (saveBtn) {
-        saveBtn.style.display = 'none';
-    }
-    
-    // Update flight button text to show current flight
-    var flightBtn = document.getElementById('compactFlightBtn');
-    if (flightBtn) {
+    if (saveBtn && saveBtn.parentNode) {
+        var flightBtn = document.createElement('button');
+        flightBtn.id = 'compactFlightBtn';
+        flightBtn.className = 'compact-flight-btn';
         flightBtn.innerText = 'FLIGHT ' + currentFlight;
+        flightBtn.onclick = toggleFlight;
+        saveBtn.parentNode.replaceChild(flightBtn, saveBtn);
     }
     
-    // Ensure P/N button reflects current mode
     GameUI.updateCompactPnButton();
 }
 
@@ -728,7 +718,6 @@ function startGameListener() {
                 Ticker.refresh();
             }
             
-            // Initialize currentHole to first unsaved hole for current flight
             var newHole = getFirstUnsavedHole(currentFlight);
             if (newHole !== currentHole) {
                 currentHole = newHole;
@@ -762,11 +751,9 @@ async function init() {
         return;
     }
     
-    // Make status bubble clickable
     var bubble = document.getElementById('statusBubble');
     if (bubble) bubble.onclick = function() { location.reload(); };
     
-    // Apply tight layout via GameUI
     GameUI.applyTightLayout();
     
     buildCompactHeader();
@@ -796,10 +783,10 @@ FILE: view-game.html
 VERSION: 5.00
 KEY CHANGES from v3.14:
    - Control Bar now uses GameUI.renderCompactHeader() (identical to real-game)
-   - Save button hidden (view mode has no save)
+   - Save button replaced with FLIGHT toggle button (same position, same style)
    - Bubbles now use GameUI.getBubbleClassShared() and GameUI.getBubbleValueShared()
    - Clinch effect: grey bubbles for unsaved holes, gold/white for clinch holes
-   - Match bubble order IDENTICAL to real-game (intra-flight first)
+   - Added CSS for .bubble-gold and .bubble-loss-clinch
    - Flight toggle ONLY changes flight, NEVER changes hole
    - All other functionality preserved from v3.14
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
