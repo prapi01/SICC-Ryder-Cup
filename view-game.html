@@ -1,17 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 4.00
+VERSION: 3.14
 KEY CHANGES:
-   - COMPLETE REWRITE: Uses shared display functions from game-ui.js
-   - Player order: A1, A2, B1, B2 (identical to real-game)
-   - Opponent order: intra-flight first, then cross-flight (identical to real-game)
-   - Match bubbles: uses getBubbleClassShared and getBubbleValueShared
-   - Flight toggle: changes flight only, hole number stays the same
-   - Navigation: ◀ and ▶ change hole, update both center number and hole header
-   - Next button: grey when at last unsaved hole
-   - Status bubble: green VIEWER below ticker, clickable refresh
-   - No SAVE button - replaced with FLIGHT toggle button
-   - All display logic now centralized in game-ui.js
+   - COMPLETE REWRITE: Clean, simple viewer mode
+   - Match bubble order IDENTICAL to real-game (A1,A2,B1,B2, intra-flight first)
+   - Flight toggle ONLY changes flight, NEVER changes hole
+   - Next button grey when at last unsaved hole
+   - Refresh preserves state (reads from Firestore, finds first unsaved hole)
+   - No dependencies on broken GameUI functions for core display
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -131,6 +127,7 @@ STATUS: Ready for integration
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
+        /* Compact header */
         .compact-header {
             display: flex;
             justify-content: space-between;
@@ -172,6 +169,7 @@ STATUS: Ready for integration
             justify-content: center;
             z-index: 3000;
         }
+        
         .celebration-modal {
             background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
             border-radius: 48px;
@@ -226,7 +224,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.00</div>
+<div class="version-tag">v3.14</div>
 
 <script>
 // ============================================================
@@ -261,7 +259,7 @@ var currentFlight = 1;
 var currentHole = 1;
 
 // ============================================================
-// Helper Functions
+// Helper Functions (IDENTICAL to real-game)
 // ============================================================
 
 function getPlayOrder() {
@@ -286,6 +284,28 @@ function getDisplayHoles() {
         return natural;
     }
     return getPlayOrder();
+}
+
+// Get players in correct order: A1, A2, B1, B2 (sorted by handicap)
+function getFlightOrderedPlayers(flight) {
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    return teamA.concat(teamB);
+}
+
+// Get opponents: intra-flight first, then cross-flight
+function getAllOpponents(player) {
+    var opponents = allPlayers.filter(function(op) { return op.team !== player.team; });
+    opponents.sort(function(a, b) {
+        var aIntra = (a.flight === player.flight);
+        var bIntra = (b.flight === player.flight);
+        if (aIntra && !bIntra) return -1;
+        if (!aIntra && bIntra) return 1;
+        if (aIntra && bIntra) return a.handicap - b.handicap;
+        return a.flight - b.flight;
+    });
+    return opponents;
 }
 
 function getStoredScore(player, hole) {
@@ -313,13 +333,35 @@ function isHoleSaved(flight, hole) {
     return holeData && holeData.saved;
 }
 
-function getFirstUnsavedHole(flight) {
-    var playOrder = getPlayOrder();
-    for (var i = 0; i < playOrder.length; i++) {
-        var hole = playOrder[i];
-        if (!isHoleSaved(flight, hole)) return hole;
+function getMatchValueFromResults(player, opponent, holeNumber) {
+    if (!resultsCache || !resultsCache.matchResults) return 0;
+    var position = getHolePosition(holeNumber);
+    var matchArray = resultsCache.matchResults[position];
+    if (!matchArray) return 0;
+    
+    var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var aIdx = -1, bIdx = -1;
+    if (player.team === 'A') {
+        for (var i = 0; i < teamAPlayers.length; i++) {
+            if (teamAPlayers[i].name === player.name) aIdx = i;
+        }
+        for (var i = 0; i < teamBPlayers.length; i++) {
+            if (teamBPlayers[i].name === opponent.name) bIdx = i;
+        }
+    } else {
+        for (var i = 0; i < teamAPlayers.length; i++) {
+            if (teamAPlayers[i].name === opponent.name) aIdx = i;
+        }
+        for (var i = 0; i < teamBPlayers.length; i++) {
+            if (teamBPlayers[i].name === player.name) bIdx = i;
+        }
     }
-    return 18;
+    if (aIdx === -1 || bIdx === -1) return 0;
+    var matchIndex = aIdx * teamBPlayers.length + bIdx;
+    var value = matchArray[matchIndex] || 0;
+    return (player.team === 'B') ? -value : value;
 }
 
 function getTRForHole(holeNumber) {
@@ -335,6 +377,16 @@ function getTRForHole(holeNumber) {
     };
 }
 
+// Find first unsaved hole for a flight
+function getFirstUnsavedHole(flight) {
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        var hole = playOrder[i];
+        if (!isHoleSaved(flight, hole)) return hole;
+    }
+    return 18;
+}
+
 // ============================================================
 // Ticker
 // ============================================================
@@ -344,7 +396,8 @@ function calculatePlayerScoreRelativeToPar(player) {
     for (var h = 1; h <= 18; h++) {
         var par = coursePar[h - 1];
         totalPar += par;
-        totalGross += getStoredScore(player, h);
+        var score = getStoredScore(player, h);
+        totalGross += score;
     }
     return totalGross - totalPar;
 }
@@ -357,13 +410,13 @@ function initTicker() {
 }
 
 // ============================================================
-// Render Functions (using shared GameUI functions)
+// Render Functions
 // ============================================================
 
 function renderHoleHeader() {
     var header = document.getElementById('holeHeader');
     if (header) {
-        header.innerHTML = '<div style="display:inline-block; background:#111; padding:4px 20px; border-radius:40px; font-size:1.5rem; font-weight:800;">HOLE ' + currentHole + '</div>';
+        header.innerHTML = `<div style="display:inline-block; background:#111; padding:4px 20px; border-radius:40px; font-size:1.5rem; font-weight:800;">HOLE ${currentHole}</div>`;
     }
 }
 
@@ -376,39 +429,43 @@ function renderTR() {
     
     var trDiv = document.getElementById('trDisplay');
     if (trDiv) {
-        trDiv.innerHTML = '<div style="text-align:center;"><div style="display:flex; justify-content:center; align-items:center; gap:16px;">' +
-            '<div><div style="font-size:0.85rem; font-weight:600; color:' + teamAColor + ';">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:' + teamAColor + ';">' + teamADisplay + '</div></div>' +
-            '<div style="font-size:1.5rem; color:#888;">│</div>' +
-            '<div><div style="font-size:0.85rem; font-weight:600; color:' + teamBColor + ';">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:' + teamBColor + ';">' + teamBDisplay + '</div></div>' +
-        '</div></div>';
+        trDiv.innerHTML = `<div style="text-align:center;"><div style="display:flex; justify-content:center; align-items:center; gap:16px;">
+            <div><div style="font-size:0.85rem; font-weight:600; color:${teamAColor};">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:${teamAColor};">${teamADisplay}</div></div>
+            <div style="font-size:1.5rem; color:#888;">│</div>
+            <div><div style="font-size:0.85rem; font-weight:600; color:${teamBColor};">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:${teamBColor};">${teamBDisplay}</div></div>
+        </div></div>`;
     }
 }
 
 function renderPlayerCards() {
-    var players = GameUI.getFlightOrderedPlayersShared(currentFlight, allPlayers);
+    var players = getFlightOrderedPlayers(currentFlight);
     var cardsHtml = '';
     
     for (var i = 0; i < players.length; i++) {
         var p = players[i];
         var score = getStoredScore(p, currentHole);
-        var opponents = GameUI.getAllOpponentsShared(p, allPlayers);
+        var opponents = getAllOpponents(p);
         var bubblesHtml = '<div class="bubbles">';
         
         for (var j = 0; j < opponents.length; j++) {
             var opp = opponents[j];
-            var bubbleClass = GameUI.getBubbleClassShared(p, opp, currentHole, resultsCache, allPlayers, isHoleSaved, getHolePosition);
-            var bubbleValue = GameUI.getBubbleValueShared(p, opp, currentHole, resultsCache, allPlayers, getHolePosition);
-            bubblesHtml += '<div class="bubble ' + bubbleClass + '">vs ' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
+            var matchVal = getMatchValueFromResults(p, opp, currentHole);
+            var absVal = Math.abs(matchVal);
+            var displayVal = absVal === 0 ? 'AS' : absVal.toString();
+            var isGreen = (matchVal > 0 && p.team === 'A') || (matchVal < 0 && p.team === 'B') || matchVal === 0;
+            bubblesHtml += `<div class="bubble ${isGreen ? 'bubble-green' : 'bubble-red'}">vs ${opp.label} ${displayVal}</div>`;
         }
         bubblesHtml += '</div>';
         
-        cardsHtml += '<div class="player-card">' +
-            '<div class="player-header">' +
-                '<div><span class="player-name">' + escapeHtml(p.name) + '</span><span class="player-handicap">' + p.label + ' ' + p.handicap + '</span></div>' +
-                '<div class="score-value">' + score + '</div>' +
-            '</div>' +
-            bubblesHtml +
-        '</div>';
+        cardsHtml += `
+            <div class="player-card">
+                <div class="player-header">
+                    <div><span class="player-name">${escapeHtml(p.name)}</span><span class="player-handicap">${p.label} ${p.handicap}</span></div>
+                    <div class="score-value">${score}</div>
+                </div>
+                ${bubblesHtml}
+            </div>
+        `;
     }
     document.getElementById('playerCards').innerHTML = cardsHtml;
     
@@ -463,7 +520,9 @@ function updateNavButtons() {
     var isCurrentSaved = isHoleSaved(currentFlight, currentHole);
     var isLastHole = (currentIndex === 17);
     
-    if (prevBtn) prevBtn.disabled = (currentIndex === 0);
+    if (prevBtn) {
+        prevBtn.disabled = (currentIndex === 0);
+    }
     
     if (nextBtn) {
         if (isLastHole && !isCurrentSaved) {
@@ -509,6 +568,7 @@ function toggleDisplayMode() {
 function toggleFlight() {
     currentFlight = currentFlight === 1 ? 2 : 1;
     document.getElementById('compactFlightBtn').innerText = 'FLIGHT ' + currentFlight;
+    // DO NOT change currentHole - only change the displayed flight
     renderAll();
 }
 
@@ -552,38 +612,6 @@ function enableCelebrationMode() {
 }
 
 // ============================================================
-// Build UI Components
-// ============================================================
-
-function buildCompactHeader() {
-    var container = document.getElementById('compactHeaderContainer');
-    if (!container) return;
-    
-    var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
-    container.innerHTML = '<div class="compact-header">' +
-        '<button class="compact-btn compact-pn-btn" id="compactPnBtn">' + pnText + '</button>' +
-        '<button class="compact-btn compact-flight-btn" id="compactFlightBtn">FLIGHT ' + currentFlight + '</button>' +
-        '<div class="compact-nav-group">' +
-            '<button class="compact-btn compact-nav-btn" id="compactPrevBtn">◀</button>' +
-            '<span class="compact-hole-display" id="compactHoleDisplay">' + currentHole + '</span>' +
-            '<button class="compact-btn compact-nav-btn" id="compactNextBtn">▶</button>' +
-        '</div>' +
-    '</div>';
-    
-    document.getElementById('compactPnBtn').onclick = toggleDisplayMode;
-    document.getElementById('compactFlightBtn').onclick = toggleFlight;
-    document.getElementById('compactPrevBtn').onclick = goToPrevHole;
-    document.getElementById('compactNextBtn').onclick = goToNextHole;
-}
-
-function buildBottomMenu() {
-    var container = document.getElementById('bottomMenuContainer');
-    if (container) {
-        GameUI.renderBottomMenu('bottomMenuContainer', exitToMainMenu);
-    }
-}
-
-// ============================================================
 // Firestore Listener
 // ============================================================
 
@@ -615,7 +643,7 @@ function startGameListener() {
                 Ticker.refresh();
             }
             
-            // Initialize currentHole to first unsaved hole
+            // Initialize currentHole to first unsaved hole for current flight
             var newHole = getFirstUnsavedHole(currentFlight);
             if (newHole !== currentHole) {
                 currentHole = newHole;
@@ -628,6 +656,41 @@ function startGameListener() {
     }, function(error) {
         document.getElementById("debug").innerHTML = "Sync error: " + error.message;
     });
+}
+
+// ============================================================
+// Build Compact Header
+// ============================================================
+
+function buildCompactHeader() {
+    var container = document.getElementById('compactHeaderContainer');
+    if (!container) return;
+    
+    var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
+    container.innerHTML = `
+        <div class="compact-header">
+            <button class="compact-btn compact-pn-btn" id="compactPnBtn">${pnText}</button>
+            <button class="compact-btn compact-flight-btn" id="compactFlightBtn">FLIGHT ${currentFlight}</button>
+            <div class="compact-nav-group">
+                <button class="compact-btn compact-nav-btn" id="compactPrevBtn">◀</button>
+                <span class="compact-hole-display" id="compactHoleDisplay">${currentHole}</span>
+                <button class="compact-btn compact-nav-btn" id="compactNextBtn">▶</button>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('compactPnBtn').onclick = toggleDisplayMode;
+    document.getElementById('compactFlightBtn').onclick = toggleFlight;
+    document.getElementById('compactPrevBtn').onclick = goToPrevHole;
+    document.getElementById('compactNextBtn').onclick = goToNextHole;
+}
+
+function buildBottomMenu() {
+    var container = document.getElementById('bottomMenuContainer');
+    if (container) {
+        container.innerHTML = '<button id="menuBtn" style="width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;">← Back to Main Menu</button>';
+        document.getElementById('menuBtn').onclick = exitToMainMenu;
+    }
 }
 
 // ============================================================
@@ -677,18 +740,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 4.00
+VERSION: 3.14
 KEY CHANGES:
-   - COMPLETE REWRITE: Uses shared display functions from game-ui.js
-   - Player order: A1, A2, B1, B2 (identical to real-game)
-   - Opponent order: intra-flight first, then cross-flight (identical to real-game)
-   - Match bubbles: uses getBubbleClassShared and getBubbleValueShared
-   - Flight toggle: changes flight only, hole number stays the same
-   - Navigation: ◀ and ▶ change hole, update both center number and hole header
-   - Next button: grey when at last unsaved hole
-   - Status bubble: green VIEWER below ticker, clickable refresh
-   - No SAVE button - replaced with FLIGHT toggle button
-   - All display logic now centralized in game-ui.js
+   - COMPLETE REWRITE: Clean, simple viewer mode
+   - Match bubble order IDENTICAL to real-game (A1,A2,B1,B2, intra-flight first)
+   - Flight toggle ONLY changes flight, NEVER changes hole
+   - Next button grey when at last unsaved hole
+   - Refresh preserves state (reads from Firestore, finds first unsaved hole)
+   - No dependencies on broken GameUI functions for core display
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
