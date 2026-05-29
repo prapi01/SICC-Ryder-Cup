@@ -418,6 +418,25 @@
             to { transform: rotate(360deg); }
         }
 
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            margin: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .error-message button {
+            background: #2d6a4f;
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 25px;
+            margin-top: 0.75rem;
+            cursor: pointer;
+        }
+
         /* Utility */
         .hidden {
             display: none;
@@ -428,7 +447,7 @@
     <div class="app-container">
         <div class="header">
             <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
-            <div class="version">v4.12</div>
+            <div class="version">v4.13</div>
             <h1>SICC Ryder Cup</h1>
             <div class="role-badge" id="role-badge">VIEWER</div>
             <div class="course-name" id="course-name">Loading...</div>
@@ -466,16 +485,18 @@
     <script>
         /*
         FILE: view-game.html (inline script)
-        VERSION: 4.12
+        VERSION: 4.13
         KEY CHANGES:
+           - FIXED: Now uses game-loader.js functions (loadGameData, getGameIdFromSession)
+           - FIXED: Reads gameId from sessionStorage.cachedGameId, NOT URL params
+           - FIXED: Proper session-first loading architecture
            - FIXED: renderPlayerCards(true) to hide non-functional +/- buttons
            - FIXED: updateAllUI() now passes hideButtons=true as 8th parameter
-           - FIXED: Role badge and course name now hidden by default (display: none)
-           - FIXED: Elements only shown after data is fully loaded
-           - ADDED: Loading overlay that disappears when data ready
-           - ADDED: Proper footer comment block
-           - UPDATED: Version number to v4.12
-        DEPENDS ON: game-ui.js v4.05+, game-loader.js v1.04+
+           - FIXED: Role badge and course name hidden until data loads
+           - ADDED: Proper error handling with user-friendly error message
+           - ADDED: Fallback to URL params only if sessionStorage fails (backward compat)
+           - UPDATED: Version number to v4.13
+        DEPENDS ON: game-loader.js v1.04+, game-ui.js v4.05+
         STATUS: Ready for integration
         */
         
@@ -483,10 +504,10 @@
         let currentHole = 1;
         let activeFlight = 'all';
         let activeMode = 'player';
+        let unsubscribeListener = null;
         
         // Hide loading overlay and show UI elements when data is ready
         function showUIAndHideLoading() {
-            // Hide loading overlay
             const overlay = document.getElementById('loading-overlay');
             if (overlay) {
                 overlay.style.opacity = '0';
@@ -495,7 +516,6 @@
                 }, 300);
             }
             
-            // Show role badge and course name (now that data is loaded)
             const roleBadge = document.getElementById('role-badge');
             const courseNameElem = document.getElementById('course-name');
             
@@ -506,30 +526,82 @@
             }
         }
         
-        // Initialize the view mode
+        // Show error message and hide loading
+        function showError(message) {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.innerHTML = `
+                    <div class="error-message">
+                        <strong>⚠️ Error Loading Game</strong>
+                        <p>${message}</p>
+                        <button onclick="window.location.href='index.html'">Return to Home</button>
+                    </div>
+                `;
+            }
+        }
+        
+        // Initialize the view mode using game-loader.js
         async function initViewMode() {
             try {
-                // Get gameId from URL params
-                const urlParams = new URLSearchParams(window.location.search);
-                const gameId = urlParams.get('gameId');
+                console.log('[view-game] Initializing...');
+                
+                // METHOD 1: Get gameId from sessionStorage using game-loader.js
+                let gameId = null;
+                
+                if (typeof getGameIdFromSession === 'function') {
+                    gameId = getGameIdFromSession();
+                    console.log('[view-game] getGameIdFromSession() returned:', gameId);
+                }
+                
+                // METHOD 2: Fallback to sessionStorage directly if game-loader function not available
+                if (!gameId && sessionStorage.getItem('cachedGameId')) {
+                    gameId = sessionStorage.getItem('cachedGameId');
+                    console.log('[view-game] Fallback: cachedGameId from sessionStorage:', gameId);
+                }
+                
+                // METHOD 3: Fallback to sessionStorage.gameData.id
+                if (!gameId) {
+                    const storedGame = sessionStorage.getItem('gameData');
+                    if (storedGame) {
+                        try {
+                            const parsed = JSON.parse(storedGame);
+                            if (parsed && parsed.id) {
+                                gameId = parsed.id;
+                                console.log('[view-game] Fallback: gameData.id from sessionStorage:', gameId);
+                            }
+                        } catch (e) {
+                            console.warn('[view-game] Failed to parse gameData:', e);
+                        }
+                    }
+                }
+                
+                // METHOD 4: Last resort - check URL params (backward compatibility)
+                if (!gameId) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    gameId = urlParams.get('gameId');
+                    if (gameId) {
+                        console.log('[view-game] Last resort: gameId from URL params:', gameId);
+                    }
+                }
                 
                 if (!gameId) {
-                    alert('No game selected. Redirecting to home...');
-                    window.location.href = 'index.html';
+                    console.error('[view-game] No gameId found in sessionStorage or URL');
+                    showError('No game selected. Please return to home and select a game.');
                     return;
                 }
                 
-                // Load game data using game-loader
-                if (typeof loadGameData === 'function') {
-                    gameData = await loadGameData(gameId, 'view');
-                } else {
-                    throw new Error('game-loader.js not loaded');
+                console.log('[view-game] Using gameId:', gameId);
+                
+                // Load game data using game-loader.js
+                if (typeof loadGameData !== 'function') {
+                    throw new Error('game-loader.js not loaded properly. loadGameData function not found.');
                 }
+                
+                gameData = await loadGameData(gameId, 'view');
+                console.log('[view-game] loadGameData returned:', gameData ? 'success' : 'null');
                 
                 if (!gameData) {
-                    alert('Failed to load game data. Redirecting to home...');
-                    window.location.href = 'index.html';
-                    return;
+                    throw new Error('Failed to load game data from session or Firestore');
                 }
                 
                 // Set initial values
@@ -556,6 +628,8 @@
                         activeMode,
                         true  // hideButtons - CRITICAL for view mode
                     );
+                } else {
+                    console.error('[view-game] updateAllUI function not found');
                 }
                 
                 // Start ticker
@@ -566,10 +640,43 @@
                 // Show UI and hide loading
                 showUIAndHideLoading();
                 
-                // Set up Firestore listener for real-time updates
-                if (typeof firebase !== 'undefined' && gameData.id) {
+                // Set up Firestore listener for real-time updates using game-loader.js
+                if (typeof setupGameDataListener === 'function' && gameData.id) {
+                    unsubscribeListener = setupGameDataListener(gameData.id, (updatedData) => {
+                        if (updatedData) {
+                            console.log('[view-game] Real-time update received');
+                            gameData = updatedData;
+                            currentHole = gameData.currentHole || currentHole;
+                            
+                            // Recalculate TR
+                            if (typeof calculateMatchPlay === 'function') {
+                                const matchResult = calculateMatchPlay(gameData.scores, gameData.players, gameData.course);
+                                tr = { teamA: matchResult.teamA, teamB: matchResult.teamB };
+                            }
+                            
+                            // Update UI with new data
+                            updateAllUI(
+                                gameData, 
+                                gameData.scores, 
+                                gameData.players, 
+                                tr, 
+                                currentHole, 
+                                activeFlight, 
+                                activeMode,
+                                true  // hideButtons
+                            );
+                            
+                            // Update ticker
+                            if (typeof updateTicker === 'function') {
+                                updateTicker(gameData.scores, gameData.players, gameData.course);
+                            }
+                        }
+                    });
+                } else if (typeof firebase !== 'undefined' && gameData.id) {
+                    // Fallback to manual Firestore listener if game-loader function not available
+                    console.warn('[view-game] setupGameDataListener not found, using manual Firestore listener');
                     const db = firebase.firestore();
-                    const unsubscribe = db.collection('games').doc(gameData.id)
+                    unsubscribeListener = db.collection('games').doc(gameData.id)
                         .onSnapshot((doc) => {
                             if (doc.exists) {
                                 const updatedData = doc.data();
@@ -577,13 +684,11 @@
                                 gameData.currentHole = updatedData.currentHole || currentHole;
                                 currentHole = gameData.currentHole;
                                 
-                                // Recalculate TR
                                 if (typeof calculateMatchPlay === 'function') {
                                     const matchResult = calculateMatchPlay(gameData.scores, gameData.players, gameData.course);
                                     tr = { teamA: matchResult.teamA, teamB: matchResult.teamB };
                                 }
                                 
-                                // Update UI with new data
                                 updateAllUI(
                                     gameData, 
                                     gameData.scores, 
@@ -592,10 +697,9 @@
                                     currentHole, 
                                     activeFlight, 
                                     activeMode,
-                                    true  // hideButtons
+                                    true
                                 );
                                 
-                                // Update ticker
                                 if (typeof updateTicker === 'function') {
                                     updateTicker(gameData.scores, gameData.players, gameData.course);
                                 }
@@ -604,9 +708,8 @@
                 }
                 
             } catch (error) {
-                console.error('Error initializing view mode:', error);
-                alert('Error loading game. Redirecting to home...');
-                window.location.href = 'index.html';
+                console.error('[view-game] Error initializing view mode:', error);
+                showError(error.message || 'Failed to load game data. Please return to home and try again.');
             }
         }
         
@@ -665,6 +768,13 @@
             }
         });
         
+        // Clean up listener on page unload
+        window.addEventListener('beforeunload', function() {
+            if (unsubscribeListener && typeof unsubscribeListener === 'function') {
+                unsubscribeListener();
+            }
+        });
+        
         // Start the app
         initViewMode();
     </script>
@@ -673,12 +783,13 @@
 
 /*
 FOOTER: view-game.html
-VERSION: 4.12
+VERSION: 4.13
 LAST UPDATED: 2026-05-29
-COMPATIBLE WITH: game-ui.js v4.05+, game-loader.js v1.04+
+COMPATIBLE WITH: game-loader.js v1.04+, game-ui.js v4.05+
 NEXT STEPS: Test view mode - verify:
+   - Loads gameId from sessionStorage (not URL params)
    - No +/- buttons appear
    - Role badge and course name only appear after data loads
    - F2 scorecard alignment correct (from game-ui.js v4.05)
-   - No loading artifacts during transition
+   - Real-time updates work via Firestore listener
 */
