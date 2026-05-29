@@ -1,376 +1,1453 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.05
+VERSION: 4.04
 KEY CHANGES:
-   - FIXED: F2 scorecard right-shift bug - player names now display in column 0
-   - FIXED: Loop structure for F2 rows now uses holeIndex starting at 0 for name column
-   - FIXED: Scores now correctly align from column 1 onward (Hole 1)
-   - ADDED: hideButtons parameter to renderPlayerCards() and renderSinglePlayerCard()
-   - ADDED: Conditional button rendering - +/- buttons only when hideButtons === false
-   - UPDATED: updateAllUI() and refreshUI() with hideButtons parameter
-DEPENDS ON: None (pure display)
+   - ADDED: Shared calculation functions for use across game pages
+   - getPlayOrder(startingHole) - returns play order array
+   - getHolePosition(holeNumber, startingHole) - returns storage position
+   - isHoleSaved(flight, hole, cache) - checks if hole is saved
+   - getFirstUnsavedHole(flight, startingHole, cache) - finds first unsaved hole
+   - getStoredScore(player, hole, cache, coursePar, allPlayers) - gets stored score
+   - getMatchValueFromStoredResults() - gets match value from results cache
+   - getBubbleValue(matchValue) - returns bubble value string (AS or number)
+   - getBubbleClassWithClinch() - returns bubble CSS class with clinch support
+   - calculatePlayerScoreRelativeToPar() - calculates player's +/- score
+   - ALL existing functions preserved exactly as v4.03
+   - No changes to any existing functions - real-game.html unaffected
+DEPENDS ON: None (pure display and calculations)
 STATUS: Ready for integration
 */
 
-// Global state
-let currentGameData = null;
-let currentScores = null;
-let currentPlayers = null;
-let currentTeamNames = { teamA: 'Team A', teamB: 'Team B' };
-let currentDisplayMode = 'player'; // 'player', 'team', 'stroke'
-let currentTR = { teamA: 0, teamB: 0 };
-let clinchedData = null; // Store clinch information
-
-/**
- * Set the clinch data for display
- * @param {Object} clinched - Clinch status object
- */
-function setClinchedData(clinched) {
-    clinchedData = clinched;
-}
-
-/**
- * Render the scorecard for the current game
- */
-function renderScorecard() {
-    if (!currentGameData || !currentScores || !currentPlayers) {
-        console.warn('Missing data for scorecard rendering');
-        return;
-    }
+var GameUI = (function() {
     
-    const container = document.getElementById('scorecard-container');
-    if (!container) return;
+    // ============================================================
+    // Constants
+    // ============================================================
     
-    // Sort players by flight then name/label
-    const flight1Players = currentPlayers.filter(p => p.flight === 'F1').sort((a, b) => a.name.localeCompare(b.name));
-    const flight2Players = currentPlayers.filter(p => p.flight === 'F2').sort((a, b) => a.name.localeCompare(b.name));
-    
-    // Build scorecard HTML
-    let html = '<div class="scorecard-wrapper"><table class="scorecard">';
-    
-    // Header row: Hole numbers and Par/SI
-    html += '<thead><tr>';
-    html += '<th class="player-name-col">Player</th>';
-    for (let i = 1; i <= 18; i++) {
-        html += `<th class="hole-col">${i}</th>`;
-    }
-    html += '</tr>';
-    
-    // Par row
-    html += '<tr class="par-row">';
-    html += '<td class="player-name-col">Par</td>';
-    for (let i = 1; i <= 18; i++) {
-        const par = currentGameData.course.holes[i-1].par;
-        html += `<td class="hole-col">${par}</td>`;
-    }
-    html += '</tr>';
-    
-    // SI row
-    html += '<tr class="si-row">';
-    html += '<td class="player-name-col">SI</td>';
-    for (let i = 1; i <= 18; i++) {
-        const si = currentGameData.course.holes[i-1].si;
-        html += `<td class="hole-col">${si}</td>`;
-    }
-    html += '</tr>';
-    html += '</thead><tbody>';
-    
-    // Flight 1 players (4 rows)
-    flight1Players.forEach(player => {
-        html += '<tr class="flight1-row">';
-        html += `<td class="player-name-col">${player.label || player.name}</td>`;
-        for (let i = 1; i <= 18; i++) {
-            const score = currentScores[player.id] && currentScores[player.id][i] ? currentScores[player.id][i] : '-';
-            html += `<td class="hole-col">${score}</td>`;
-        }
-        html += '</tr>';
-    });
-    
-    // Flight 2 players (4 rows) - FIXED: proper alignment starting with name column at index 0
-    flight2Players.forEach(player => {
-        html += '<tr class="flight2-row">';
-        // Column 0: Player name
-        html += `<td class="player-name-col">${player.label || player.name}</td>`;
-        // Columns 1-18: Hole scores
-        for (let i = 1; i <= 18; i++) {
-            const score = currentScores[player.id] && currentScores[player.id][i] ? currentScores[player.id][i] : '-';
-            html += `<td class="hole-col">${score}</td>`;
-        }
-        html += '</tr>';
-    });
-    
-    html += '</tbody></table></div>';
-    container.innerHTML = html;
-}
-
-/**
- * Render player cards for the current game
- * @param {boolean} hideButtons - If true, hides +/- scoring buttons (for view mode)
- */
-function renderPlayerCards(hideButtons = false) {
-    if (!currentGameData || !currentPlayers) {
-        console.warn('Missing data for player cards rendering');
-        return;
-    }
-    
-    const container = document.getElementById('player-cards-container');
-    if (!container) return;
-    
-    // Sort players by flight then name/label
-    const flight1Players = currentPlayers.filter(p => p.flight === 'F1').sort((a, b) => a.name.localeCompare(b.name));
-    const flight2Players = currentPlayers.filter(p => p.flight === 'F2').sort((a, b) => a.name.localeCompare(b.name));
-    
-    let html = '<div class="player-cards-grid">';
-    
-    // Flight 1
-    html += '<div class="flight-section"><h3>Flight 1</h3><div class="cards-container">';
-    flight1Players.forEach(player => {
-        html += renderSinglePlayerCard(player, hideButtons);
-    });
-    html += '</div></div>';
-    
-    // Flight 2
-    html += '<div class="flight-section"><h3>Flight 2</h3><div class="cards-container">';
-    flight2Players.forEach(player => {
-        html += renderSinglePlayerCard(player, hideButtons);
-    });
-    html += '</div></div>';
-    
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-/**
- * Render a single player card
- * @param {Object} player - Player object
- * @param {boolean} hideButtons - If true, hides +/- scoring buttons
- */
-function renderSinglePlayerCard(player, hideButtons = false) {
-    const totalScore = calculateTotalScore(player.id);
-    const isClinched = clinchedData && clinchedData[player.id];
-    const clinchClass = isClinched ? 'clinched' : '';
-    
-    let html = `<div class="player-card ${clinchClass}" data-player-id="${player.id}">`;
-    html += `<div class="player-info">`;
-    html += `<div class="player-name">${player.label || player.name}</div>`;
-    html += `<div class="player-flight">${player.flight}</div>`;
-    html += `</div>`;
-    html += `<div class="player-score">`;
-    html += `<span class="total-label">Total</span>`;
-    html += `<span class="total-value">${totalScore}</span>`;
-    html += `</div>`;
-    
-    // Only show +/- buttons if hideButtons is false (scoring mode)
-    if (!hideButtons) {
-        html += `<div class="score-buttons">`;
-        html += `<button class="score-btn minus" data-player="${player.id}" data-hole="current">-</button>`;
-        html += `<button class="score-btn plus" data-player="${player.id}" data-hole="current">+</button>`;
-        html += `</div>`;
-    }
-    
-    html += `</div>`;
-    return html;
-}
-
-/**
- * Calculate total score for a player
- * @param {string} playerId - Player ID
- * @returns {number} Total score
- */
-function calculateTotalScore(playerId) {
-    if (!currentScores || !currentScores[playerId]) return 0;
-    
-    let total = 0;
-    for (let i = 1; i <= 18; i++) {
-        const score = currentScores[playerId][i];
-        if (score && !isNaN(score)) {
-            total += parseInt(score);
-        }
-    }
-    return total;
-}
-
-/**
- * Update the TR (Team Result) display
- * @param {Object} tr - Team results {teamA, teamB}
- */
-function updateTR(tr) {
-    currentTR = tr;
-    const container = document.getElementById('tr-display');
-    if (!container) return;
-    
-    const teamAName = currentTeamNames.teamA || 'Team A';
-    const teamBName = currentTeamNames.teamB || 'Team B';
-    
-    let html = '<div class="tr-container">';
-    html += '<div class="tr-header">TEAM RESULT</div>';
-    html += '<div class="tr-row">';
-    html += `<div class="tr-team ${tr.teamA > tr.teamB ? 'winning' : (tr.teamA < tr.teamB ? 'losing' : 'tie')}">`;
-    html += `<span class="team-name">${teamAName}</span>`;
-    html += `<span class="team-score">${tr.teamA}</span>`;
-    html += `</div>`;
-    html += '<div class="tr-vs">VS</div>';
-    html += `<div class="tr-team ${tr.teamB > tr.teamA ? 'winning' : (tr.teamB < tr.teamA ? 'losing' : 'tie')}">`;
-    html += `<span class="team-name">${teamBName}</span>`;
-    html += `<span class="team-score">${tr.teamB}</span>`;
-    html += `</div>`;
-    html += '</div>';
-    html += '</div>';
-    
-    container.innerHTML = html;
-}
-
-/**
- * Update the hole header display
- * @param {number} currentHole - Current hole number (1-18)
- */
-function updateHoleHeader(currentHole) {
-    const container = document.getElementById('hole-header');
-    if (!container || !currentGameData) return;
-    
-    const hole = currentGameData.course.holes[currentHole - 1];
-    let html = '<div class="hole-header-container">';
-    html += `<div class="hole-number">Hole ${currentHole}</div>`;
-    html += `<div class="hole-details">Par ${hole.par} | SI ${hole.si}</div>`;
-    html += '</div>';
-    
-    container.innerHTML = html;
-}
-
-/**
- * Render flight toggle buttons
- * @param {string} activeFlight - Currently active flight ('F1', 'F2', or 'all')
- */
-function renderFlightToggles(activeFlight = 'all') {
-    const container = document.getElementById('flight-toggles');
-    if (!container) return;
-    
-    let html = '<div class="flight-toggle-container">';
-    html += `<button class="flight-btn ${activeFlight === 'all' ? 'active' : ''}" data-flight="all">All Flights</button>`;
-    html += `<button class="flight-btn ${activeFlight === 'F1' ? 'active' : ''}" data-flight="F1">Flight 1</button>`;
-    html += `<button class="flight-btn ${activeFlight === 'F2' ? 'active' : ''}" data-flight="F2">Flight 2</button>`;
-    html += '</div>';
-    
-    container.innerHTML = html;
-}
-
-/**
- * Render display mode buttons
- * @param {string} activeMode - Currently active mode ('player', 'team', 'stroke')
- */
-function renderDisplayModes(activeMode = 'player') {
-    const container = document.getElementById('display-mode-buttons');
-    if (!container) return;
-    
-    let html = '<div class="display-mode-container">';
-    html += `<button class="mode-btn ${activeMode === 'player' ? 'active' : ''}" data-mode="player">Player</button>`;
-    html += `<button class="mode-btn ${activeMode === 'team' ? 'active' : ''}" data-mode="team">Team</button>`;
-    html += `<button class="mode-btn ${activeMode === 'stroke' ? 'active' : ''}" data-mode="stroke">Stroke</button>`;
-    html += '</div>';
-    
-    container.innerHTML = html;
-}
-
-/**
- * Update all UI components
- * @param {Object} gameData - Game data object
- * @param {Object} scores - Scores object
- * @param {Array} players - Players array
- * @param {Object} tr - Team results
- * @param {number} currentHole - Current hole number
- * @param {string} activeFlight - Active flight filter
- * @param {string} activeMode - Active display mode
- * @param {boolean} hideButtons - If true, hides +/- buttons (for view mode)
- */
-function updateAllUI(gameData, scores, players, tr, currentHole, activeFlight = 'all', activeMode = 'player', hideButtons = false) {
-    currentGameData = gameData;
-    currentScores = scores;
-    currentPlayers = players;
-    currentTeamNames = {
-        teamA: gameData.teamAName || 'Team A',
-        teamB: gameData.teamBName || 'Team B'
+    var Z_INDEX = {
+        STATUS_BUBBLE: 999,
+        MODAL_OVERLAY: 10001,
+        MODAL_CONTENT: 10002
     };
-    currentDisplayMode = activeMode;
     
-    updateTR(tr);
-    updateHoleHeader(currentHole);
-    renderFlightToggles(activeFlight);
-    renderDisplayModes(activeMode);
-    renderPlayerCards(hideButtons);
-    renderScorecard();
-}
-
-/**
- * Set game data from external source
- * @param {Object} gameData - Game data object
- */
-function setGameData(gameData) {
-    currentGameData = gameData;
-}
-
-/**
- * Set scores data from external source
- * @param {Object} scores - Scores object
- */
-function setScores(scores) {
-    currentScores = scores;
-}
-
-/**
- * Set players data from external source
- * @param {Array} players - Players array
- */
-function setPlayers(players) {
-    currentPlayers = players;
-}
-
-/**
- * Set team names from external source
- * @param {string} teamAName - Team A name
- * @param {string} teamBName - Team B name
- */
-function setTeamNames(teamAName, teamBName) {
-    currentTeamNames = { teamA: teamAName, teamB: teamBName };
-}
-
-/**
- * Refresh all UI components with current data
- * @param {boolean} hideButtons - If true, hides +/- buttons
- */
-function refreshUI(hideButtons = false) {
-    if (!currentGameData || !currentScores || !currentPlayers) {
-        console.warn('Missing data for UI refresh');
-        return;
+    // Track if styles have been applied
+    var tightLayoutApplied = false;
+    var buttonStylesApplied = false;
+    var backgroundFixed = false;
+    var holeHeaderRendered = false;
+    
+    // Track current state for UI updates
+    var currentFlight = 1;
+    var currentDisplayMode = "play";
+    var currentHoleNumber = 1;
+    var currentButtonMode = "save";
+    
+    // Callback registry for shared UI events
+    var eventCallbacks = {
+        onSave: null,
+        onMenu: null,
+        onPrevHole: null,
+        onNextHole: null,
+        onToggleFlight: null,
+        onToggleDisplay: null,
+        onSignCard: null
+    };
+    
+    // ============================================================
+    // Fix Background for All Pages
+    // ============================================================
+    
+    function fixBackground() {
+        if (backgroundFixed) return;
+        
+        var htmlElem = document.documentElement;
+        htmlElem.style.margin = '0';
+        htmlElem.style.padding = '0';
+        htmlElem.style.backgroundColor = '#000000';
+        htmlElem.style.minHeight = '100vh';
+        
+        document.body.style.margin = '0';
+        document.body.style.padding = '20px';
+        document.body.style.backgroundColor = '#000000';
+        document.body.style.minHeight = '100vh';
+        document.body.style.position = 'relative';
+        
+        var viewport = document.querySelector('meta[name="viewport"]');
+        if (viewport) {
+            var content = viewport.getAttribute('content');
+            if (content && !content.includes('viewport-fit=cover')) {
+                viewport.setAttribute('content', content + ', viewport-fit=cover');
+            }
+        }
+        
+        backgroundFixed = true;
     }
     
-    // Recalculate TR if needed (should be provided externally)
-    renderPlayerCards(hideButtons);
-    renderScorecard();
-}
-
-// Export functions for use in other files (if using modules)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        setClinchedData,
-        renderScorecard,
-        renderPlayerCards,
-        updateTR,
-        updateHoleHeader,
-        renderFlightToggles,
-        renderDisplayModes,
-        updateAllUI,
-        setGameData,
-        setScores,
-        setPlayers,
-        setTeamNames,
-        refreshUI
+    // ============================================================
+    // Apply Global Bubble Styles (SINGLE SOURCE OF TRUTH)
+    // ============================================================
+    
+    function applyGlobalBubbleStyles() {
+        if (document.getElementById('gameui-bubble-styles')) return;
+        
+        var style = document.createElement('style');
+        style.id = 'gameui-bubble-styles';
+        style.textContent = `
+            /* Bubbles - FULLY FLUID, self-adjusting across ALL screen sizes */
+            .bubbles {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: clamp(4px, 1.5vw, 10px);
+                margin-top: 10px;
+            }
+            
+            .bubble {
+                white-space: nowrap;
+                text-align: center;
+                padding: clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px);
+                border-radius: clamp(12px, 3vw, 24px);
+                font-size: clamp(0.7rem, 3.8vw, 0.9rem);
+                font-weight: 600;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            
+            /* Bubble color variants */
+            .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+            .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+            .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+            .bubble-gold {
+                background: #1a3a1a;
+                color: #ffaa44;
+                border: 3px solid #ffaa44;
+                font-weight: 800;
+            }
+            .bubble-loss-clinch {
+                background: #3a1a1a;
+                color: #ffffff;
+                border: 3px solid #ffffff;
+                font-weight: 800;
+            }
+            
+            /* Very small screens (iPhone SE) */
+            @media (max-width: 380px) {
+                .bubble {
+                    font-size: 0.7rem;
+                    padding: 4px 2px;
+                }
+                .bubbles {
+                    gap: 4px;
+                }
+            }
+            
+            /* Larger screens (iPad, Desktop) */
+            @media (min-width: 500px) {
+                .bubbles {
+                    gap: 12px;
+                }
+                .bubble {
+                    font-size: 0.9rem;
+                    padding: 8px 8px;
+                    border-radius: 28px;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // ============================================================
+    // Make Status Bubble Clickable (Refresh)
+    // ============================================================
+    
+    function makeStatusBubbleClickable() {
+        var statusBubble = document.getElementById('statusBubble');
+        if (!statusBubble) return;
+        
+        statusBubble.style.cursor = 'pointer';
+        statusBubble.title = 'Click to refresh page';
+        statusBubble.style.transition = 'opacity 0.2s, transform 0.2s';
+        
+        statusBubble.onmouseenter = function() {
+            this.style.opacity = '0.8';
+        };
+        statusBubble.onmouseleave = function() {
+            this.style.opacity = '1';
+        };
+        statusBubble.onclick = function() {
+            location.reload();
+        };
+    }
+    
+    // ============================================================
+    // Render Hole Header (LIVE left, HOLE centered)
+    // ============================================================
+    
+    function renderHoleHeader(containerId, currentHole, currentPar, currentSi) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        var holeText = 'HOLE ' + currentHole;
+        var statusBubble = document.getElementById('statusBubble');
+        
+        var statusText = 'LIVE';
+        var statusColor = '#4caf50';
+        var statusBg = 'rgba(76,175,80,0.3)';
+        var statusBorder = '1px solid #4caf50';
+        
+        if (statusBubble) {
+            statusText = statusBubble.innerText;
+            var computedStyle = window.getComputedStyle(statusBubble);
+            statusColor = computedStyle.color;
+            statusBg = computedStyle.backgroundColor;
+            statusBorder = computedStyle.border;
+        }
+        
+        var html = `
+            <div class="hole-header-grid" style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: -2px; width: 100%;">
+                <div class="hole-header-left" style="justify-self: start;">
+                    <span class="status-bubble-new" style="display: inline-block; background: ${statusBg}; border: ${statusBorder}; color: ${statusColor}; border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; cursor: pointer;">
+                        ${statusText}
+                    </span>
+                </div>
+                <div class="hole-number-display" style="font-size: 1.5rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; margin: 0; justify-self: center;">
+                    ${holeText}
+                </div>
+                <div class="hole-header-right" style="justify-self: end;"></div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        
+        if (statusBubble) {
+            statusBubble.style.display = 'none';
+        }
+        
+        var newStatusBubble = container.querySelector('.status-bubble-new');
+        if (newStatusBubble) {
+            newStatusBubble.onclick = function() {
+                location.reload();
+            };
+        }
+        
+        holeHeaderRendered = true;
+        currentHoleNumber = currentHole;
+    }
+    
+    function updateHoleHeaderNumber(holeNumber) {
+        currentHoleNumber = holeNumber;
+        var holeDisplay = document.querySelector('.hole-header-grid .hole-number-display');
+        if (holeDisplay) {
+            holeDisplay.innerText = 'HOLE ' + holeNumber;
+        }
+    }
+    
+    // ============================================================
+    // Legacy updateHoleHeader
+    // ============================================================
+    
+    function updateHoleHeader(containerId, currentHole, currentPar, currentSi) {
+        renderHoleHeader(containerId, currentHole, currentPar, currentSi);
+    }
+    
+    // ============================================================
+    // SINGLE SOURCE OF TRUTH: Navigation Buttons
+    // ============================================================
+    
+    function updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameComplete, celebrationTriggered, onSignCardCallback) {
+        var prevBtn = document.getElementById('compactPrevBtn');
+        var nextBtn = document.getElementById('compactNextBtn');
+        
+        if (!prevBtn || !nextBtn) return;
+        
+        if (!prevBtn._originalOnClick && eventCallbacks.onPrevHole) {
+            prevBtn._originalOnClick = function() {
+                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
+            };
+        }
+        if (!nextBtn._originalOnClick && eventCallbacks.onNextHole) {
+            nextBtn._originalOnClick = function() {
+                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+            };
+        }
+        
+        var currentIndex = playOrder.indexOf(currentHole);
+        var isFirstHole = (currentIndex === 0);
+        var isLastHole = (currentIndex === 17);
+        
+        prevBtn.disabled = isFirstHole;
+        if (prevBtn._originalOnClick) {
+            prevBtn.onclick = prevBtn._originalOnClick;
+        }
+        
+        if (isGameComplete && !celebrationTriggered) {
+            nextBtn.innerHTML = '🏆';
+            nextBtn.style.background = '#ffaa44';
+            nextBtn.style.color = '#1a3a1a';
+            nextBtn.style.border = '1px solid #ffaa44';
+            nextBtn.disabled = false;
+            nextBtn.onclick = function() {
+                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+            };
+        } else if (isLastHole && isCurrentSaved) {
+            nextBtn.innerHTML = '✍️';
+            nextBtn.style.background = '#ffaa44';
+            nextBtn.style.color = '#1a3a1a';
+            nextBtn.style.border = '1px solid #ffaa44';
+            nextBtn.disabled = false;
+            nextBtn.onclick = function() {
+                if (onSignCardCallback) onSignCardCallback();
+            };
+        } else {
+            nextBtn.innerHTML = '▶';
+            nextBtn.style.background = '#1a3a1a';
+            nextBtn.style.color = '#4caf50';
+            nextBtn.style.border = '1px solid #4caf50';
+            nextBtn.disabled = !isCurrentSaved;
+            if (nextBtn._originalOnClick) {
+                nextBtn.onclick = nextBtn._originalOnClick;
+            }
+        }
+    }
+    
+    // ============================================================
+    // Add Flight Badge to First Player Card
+    // ============================================================
+    
+    function addFlightBadge(flightNumber) {
+        var existingBadge = document.querySelector('.flight-badge');
+        if (existingBadge) existingBadge.remove();
+        
+        var playerCards = document.getElementById('playerCards');
+        if (!playerCards || playerCards.children.length === 0) return;
+        
+        var firstCard = playerCards.children[0];
+        
+        var badge = document.createElement('div');
+        badge.className = 'flight-badge';
+        badge.innerText = 'FLIGHT ' + flightNumber;
+        badge.style.cssText = `
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a3a1a;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 4px 16px;
+            border-radius: 30px;
+            z-index: 100;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        `;
+        
+        firstCard.style.position = 'relative';
+        firstCard.appendChild(badge);
+        
+        currentFlight = flightNumber;
+    }
+    
+    function updateFlightBadge(flightNumber) {
+        var badge = document.querySelector('.flight-badge');
+        if (badge) {
+            badge.innerText = 'FLIGHT ' + flightNumber;
+        } else {
+            addFlightBadge(flightNumber);
+        }
+        currentFlight = flightNumber;
+    }
+    
+    function removeFlightBadge() {
+        var badge = document.querySelector('.flight-badge');
+        if (badge) badge.remove();
+    }
+    
+    // ============================================================
+    // Tighten Scorecard Rows
+    // ============================================================
+    
+    function tightenScorecardRows() {
+        var table = document.querySelector('.scorecard-table');
+        if (!table) return;
+        
+        var allRows = table.querySelectorAll('tr');
+        for (var i = 0; i < allRows.length; i++) {
+            allRows[i].style.lineHeight = '1.2';
+        }
+        
+        var allCells = table.querySelectorAll('th, td');
+        for (var i = 0; i < allCells.length; i++) {
+            allCells[i].style.padding = '4px 2px';
+            allCells[i].style.lineHeight = '1.2';
+        }
+        
+        var headerRow = table.querySelector('thead tr');
+        if (headerRow) {
+            var headerCells = headerRow.querySelectorAll('th');
+            for (var i = 0; i < headerCells.length; i++) {
+                headerCells[i].style.padding = '6px 2px';
+            }
+        }
+    }
+    
+    // ============================================================
+    // UNIFIED RENDER COMPACT HEADER
+    // ============================================================
+    
+    function renderCompactHeader(containerId, flightNumber, currentHole, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay, buttonMode, onSaveCallback) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
+        if (onNextHole) eventCallbacks.onNextHole = onNextHole;
+        if (onToggleFlight) eventCallbacks.onToggleFlight = onToggleFlight;
+        if (onToggleDisplay) eventCallbacks.onToggleDisplay = onToggleDisplay;
+        if (onSaveCallback) eventCallbacks.onSave = onSaveCallback;
+        
+        currentFlight = flightNumber;
+        currentHoleNumber = currentHole;
+        currentButtonMode = buttonMode || "save";
+        
+        var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
+        
+        var actionButtonText = "";
+        var actionButtonHandler = null;
+        
+        if (currentButtonMode === "save") {
+            actionButtonText = "SAVE H" + currentHole;
+            actionButtonHandler = function() {
+                if (eventCallbacks.onSave) eventCallbacks.onSave();
+            };
+        } else {
+            actionButtonText = "FLIGHT " + flightNumber;
+            actionButtonHandler = function() {
+                if (eventCallbacks.onToggleFlight) {
+                    var newFlight = flightNumber === 1 ? 2 : 1;
+                    eventCallbacks.onToggleFlight(newFlight);
+                }
+            };
+        }
+        
+        var html = `
+            <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
+                <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
+                    ${pnText}
+                </button>
+                <button class="compact-action-btn" id="compactActionBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
+                    ${actionButtonText}
+                </button>
+                <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
+                    <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                        ◀
+                    </button>
+                    <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">${currentHole}</span>
+                    <button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                        ▶
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        
+        var pnBtn = document.getElementById('compactPnBtn');
+        var actionBtn = document.getElementById('compactActionBtn');
+        var prevBtn = document.getElementById('compactPrevBtn');
+        var nextBtn = document.getElementById('compactNextBtn');
+        
+        if (pnBtn && eventCallbacks.onToggleDisplay) {
+            pnBtn.onclick = function() {
+                var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
+                setDisplayMode(newMode, null);
+                updateCompactPnButton();
+                if (eventCallbacks.onToggleDisplay) eventCallbacks.onToggleDisplay(newMode);
+            };
+        }
+        
+        if (actionBtn && actionButtonHandler) {
+            actionBtn.onclick = actionButtonHandler;
+        }
+        
+        if (prevBtn && eventCallbacks.onPrevHole) {
+            prevBtn.onclick = function() {
+                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
+            };
+        }
+        
+        if (nextBtn && eventCallbacks.onNextHole) {
+            nextBtn.onclick = function() {
+                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+            };
+        }
+    }
+    
+    function updateCompactActionButton(buttonMode, flightNumber, currentHole) {
+        var actionBtn = document.getElementById('compactActionBtn');
+        if (!actionBtn) return;
+        
+        if (buttonMode === "save") {
+            actionBtn.innerText = "SAVE H" + currentHole;
+        } else {
+            actionBtn.innerText = "FLIGHT " + flightNumber;
+        }
+    }
+    
+    function updateCompactSaveButton(currentHole, isDisabled) {
+        var saveBtn = document.getElementById('compactActionBtn');
+        if (saveBtn && currentButtonMode === "save") {
+            saveBtn.innerText = "SAVE H" + currentHole;
+            saveBtn.disabled = isDisabled;
+        }
+    }
+    
+    function updateCompactPnButton() {
+        var pnBtn = document.getElementById('compactPnBtn');
+        if (pnBtn) {
+            pnBtn.innerText = currentDisplayMode === 'play' ? 'P' : 'N';
+        }
+    }
+    
+    function updateCompactHoleDisplay(holeNumber) {
+        currentHoleNumber = holeNumber;
+        var holeDisplay = document.querySelector('.compact-hole-display');
+        if (holeDisplay) {
+            holeDisplay.innerText = holeNumber;
+        }
+        if (currentButtonMode === "save") {
+            updateCompactSaveButton(holeNumber, false);
+        }
+    }
+    
+    // ============================================================
+    // Legacy Functions
+    // ============================================================
+    
+    function updateFlightToggleButton(flightNumber) {
+        updateFlightBadge(flightNumber);
+    }
+    
+    function toggleFlight() {
+        var newFlight = currentFlight === 1 ? 2 : 1;
+        currentFlight = newFlight;
+        updateFlightBadge(currentFlight);
+        if (eventCallbacks.onToggleFlight) {
+            eventCallbacks.onToggleFlight(currentFlight);
+        }
+    }
+    
+    function getCurrentFlight() {
+        return currentFlight;
+    }
+    
+    // ============================================================
+    // Scorecard Rendering
+    // ============================================================
+    
+    function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        var flight1Players = players.filter(function(p) { return p.flight === 1; });
+        var flight2Players = players.filter(function(p) { return p.flight === 2; });
+        
+        function sortFlightPlayers(flightPlayers) {
+            var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+            return teamA.concat(teamB);
+        }
+        
+        flight1Players = sortFlightPlayers(flight1Players);
+        flight2Players = sortFlightPlayers(flight2Players);
+        
+        var html = '<table class="scorecard-table">';
+        html += '<thead><tr><th>Hole</th>';
+        for (var i = 0; i < holes.length; i++) {
+            html += '<th>' + holes[i] + '</th>';
+        }
+        html += '<th>Tot</th> </thead><tbody>';
+        
+        html += '<tr><td style="font-weight:700;">Par<\/td>';
+        var totalPar = 0;
+        for (var i = 0; i < holes.length; i++) {
+            var par = coursePar[holes[i] - 1];
+            totalPar += par;
+            html += '<td>' + par + '<\/td>';
+        }
+        html += '<td>' + totalPar + '<\/td><\/tr>';
+        
+        html += '<tr><td style="font-weight:700;">SI<\/td>';
+        for (var i = 0; i < holes.length; i++) {
+            var si = courseSi[holes[i] - 1];
+            html += '<td>' + si + '<\/td>';
+        }
+        html += '<td>-<\/td><\/tr>';
+        
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        
+        for (var p = 0; p < flight1Players.length; p++) {
+            var player = flight1Players[p];
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            var playerTotal = 0;
+            for (var i = 0; i < holes.length; i++) {
+                var hole = holes[i];
+                var score = getStoredScore(player, hole);
+                playerTotal += score;
+                var saved = isHoleSaved(player.flight, hole);
+                var cellClass = saved ? 'score-green' : 'score-invisible';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
+            }
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
+        }
+        
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        for (var i = 0; i < holes.length; i++) {
+            var val = t1Row[i] || '_';
+            var holeNum = holes[i];
+            var isSynced = (savedHoles && savedHoles[1] && savedHoles[2]) ?
+                (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1) : false;
+            
+            var displayVal = '';
+            var cellClass = 'score-invisible';
+            
+            if (val === '0' || val === 0) {
+                if (isSynced) {
+                    displayVal = 'AS';
+                    cellClass = 'score-green';
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
+            } else if (val === 'A' || val === 'B') {
+                displayVal = val;
+                cellClass = 'score-green';
+            } else if (val && val !== '_') {
+                displayVal = val;
+                cellClass = 'score-green';
+            }
+            
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+        }
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        
+        for (var p = 0; p < flight2Players.length; p++) {
+            var player = flight2Players[p];
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            var playerTotal = 0;
+            for (var i = 0; i < holes.length; i++) {
+                var hole = holes[i];
+                var score = getStoredScore(player, hole);
+                playerTotal += score;
+                var saved = isHoleSaved(player.flight, hole);
+                var cellClass = saved ? 'score-green' : 'score-invisible';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
+            }
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
+        }
+        
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        for (var i = 0; i < holes.length; i++) {
+            var val = t2Row[i] || '_';
+            var holeNum = holes[i];
+            var isSynced = (savedHoles && savedHoles[1] && savedHoles[2]) ?
+                (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1) : false;
+            
+            var displayVal = '';
+            var cellClass = 'score-invisible';
+            
+            if (val === '0' || val === 0) {
+                if (isSynced) {
+                    displayVal = 'AS';
+                    cellClass = 'score-green';
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
+            } else if (val === 'A' || val === 'B') {
+                displayVal = val;
+                cellClass = 'score-green';
+            } else if (val && val !== '_') {
+                displayVal = val;
+                cellClass = 'score-green';
+            }
+            
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+        }
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
+        
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        for (var i = 0; i < holes.length; i++) {
+            var val = strkRow[i] || '_';
+            var holeNum = holes[i];
+            var isSynced = (savedHoles && savedHoles[1] && savedHoles[2]) ?
+                (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1) : false;
+            
+            var displayVal = '';
+            var cellClass = 'score-invisible';
+            
+            if (val === '0' || val === 0) {
+                if (isSynced) {
+                    displayVal = 'AS';
+                    cellClass = 'score-green';
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
+            } else if (val === 'A' || val === 'B') {
+                displayVal = val;
+                cellClass = 'score-green';
+            } else if (val && val !== '_') {
+                displayVal = val;
+                cellClass = 'score-green';
+            }
+            
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
+        }
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
+        
+        html += '</tbody><tr>';
+        container.innerHTML = html;
+        
+        tightenScorecardRows();
+    }
+    
+    // ============================================================
+    // Player Cards with Bubbles
+    // ============================================================
+    
+    function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        var html = '';
+        for (var i = 0; i < players.length; i++) {
+            var player = players[i];
+            var currentScore = getCurrentScore(player);
+            var btnDisabled = !canEdit ? 'disabled' : '';
+            
+            var opponents = getOpponents(player);
+            var bubblesHtml = '<div class="bubbles">';
+            for (var j = 0; j < opponents.length; j++) {
+                var opp = opponents[j];
+                var bubbleClass = getBubbleClass(player, opp);
+                var bubbleValue = getBubbleValue(player, opp);
+                bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
+            }
+            bubblesHtml += '</div>';
+            
+            html += `
+                <div class="player-card" data-player-name="${escapeHtml(player.name)}" data-player-flight="${player.flight}">
+                    <div class="player-header">
+                        <div>
+                            <span class="player-name">${escapeHtml(player.name)}</span>
+                            <span class="player-handicap">${player.label} ${player.handicap}</span>
+                        </div>
+                        <div class="score-control">
+                            <button class="score-btn dec-btn" ${btnDisabled} data-delta="-1">-</button>
+                            <span class="score-value">${currentScore}</span>
+                            <button class="score-btn inc-btn" ${btnDisabled} data-delta="1">+</button>
+                        </div>
+                    </div>
+                    ${bubblesHtml}
+                </div>
+            `;
+        }
+        
+        container.innerHTML = html;
+        
+        if (canEdit && onScoreChange) {
+            var playerCards = container.querySelectorAll('.player-card');
+            for (var i = 0; i < playerCards.length; i++) {
+                var card = playerCards[i];
+                var playerName = card.getAttribute('data-player-name');
+                var playerFlight = parseInt(card.getAttribute('data-player-flight'));
+                
+                var decBtn = card.querySelector('.dec-btn');
+                var incBtn = card.querySelector('.inc-btn');
+                
+                if (decBtn) {
+                    decBtn.addEventListener('click', (function(pName, pFlight) {
+                        return function() {
+                            onScoreChange(pName, pFlight, -1);
+                        };
+                    })(playerName, playerFlight));
+                }
+                
+                if (incBtn) {
+                    incBtn.addEventListener('click', (function(pName, pFlight) {
+                        return function() {
+                            onScoreChange(pName, pFlight, 1);
+                        };
+                    })(playerName, playerFlight));
+                }
+            }
+        }
+    }
+    
+    // ============================================================
+    // TR (Title Result) Display
+    // ============================================================
+    
+    function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        var teamADisplay = teamAPoints % 1 === 0 ? teamAPoints : teamAPoints.toFixed(1);
+        var teamBDisplay = teamBPoints % 1 === 0 ? teamBPoints : teamBPoints.toFixed(1);
+        
+        var isTie = (teamAPoints === teamBPoints);
+        var teamAColor = (isTie || teamAGreen) ? '#4caf50' : '#ff6b6b';
+        var teamBColor = (isTie || teamBGreen) ? '#4caf50' : '#ff6b6b';
+        var separatorColor = '#888';
+        
+        var html = `
+            <div style="text-align: center;">
+                <div style="display: flex; justify-content: center; align-items: center; gap: 16px;">
+                    <div style="text-align: center; min-width: 100px;">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamAColor};">TEAM A</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamAColor};">${teamADisplay}</div>
+                    </div>
+                    <div style="font-size: 1.5rem; color: ${separatorColor};">│</div>
+                    <div style="text-align: center; min-width: 100px;">
+                        <div style="font-size: 0.85rem; font-weight: 600; color: ${teamBColor};">TEAM B</div>
+                        <div style="font-size: 1.8rem; font-weight: 800; color: ${teamBColor};">${teamBDisplay}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = html;
+    }
+    
+    // ============================================================
+    // Flight Tab Display (legacy)
+    // ============================================================
+    
+    function updateFlightTab(containerId, flightNumber, canEdit) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        var pencilIcon = canEdit ? ' ✏️' : '';
+        container.innerHTML = 'Flight ' + flightNumber + pencilIcon;
+    }
+    
+    // ============================================================
+    // Display Mode Management
+    // ============================================================
+    
+    function getDisplayMode() {
+        var saved = localStorage.getItem("scorecardDisplay");
+        if (saved === "natural" || saved === "play") {
+            currentDisplayMode = saved;
+        } else {
+            currentDisplayMode = "play";
+        }
+        return currentDisplayMode;
+    }
+    
+    function updateToggleButtons(mode) {
+        var playBtn = document.getElementById('playOrderBtn');
+        var naturalBtn = document.getElementById('naturalOrderBtn');
+        if (playBtn && naturalBtn) {
+            if (mode === 'play') {
+                playBtn.classList.add('active');
+                naturalBtn.classList.remove('active');
+            } else {
+                playBtn.classList.remove('active');
+                naturalBtn.classList.add('active');
+            }
+        }
+        updateCompactPnButton();
+    }
+    
+    function setDisplayMode(mode, onModeChanged) {
+        if (mode !== "play" && mode !== "natural") return;
+        currentDisplayMode = mode;
+        localStorage.setItem("scorecardDisplay", mode);
+        updateToggleButtons(mode);
+        updateCompactPnButton();
+        if (onModeChanged && typeof onModeChanged === 'function') {
+            onModeChanged(mode);
+        }
+        if (eventCallbacks.onToggleDisplay) {
+            eventCallbacks.onToggleDisplay(mode);
+        }
+    }
+    
+    function toggleDisplayMode() {
+        var newMode = currentDisplayMode === "play" ? "natural" : "play";
+        setDisplayMode(newMode, null);
+    }
+    
+    function getDisplayHoles(startingHole, preference) {
+        var useNatural = (preference === "natural");
+        if (useNatural) {
+            var natural = [];
+            for (var i = 1; i <= 18; i++) natural.push(i);
+            return natural;
+        } else {
+            var playOrder = [];
+            for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+            for (var i = 1; i < startingHole; i++) playOrder.push(i);
+            return playOrder;
+        }
+    }
+    
+    // ============================================================
+    // Action Button Rendering (legacy)
+    // ============================================================
+    
+    function renderActionButtons(containerId, currentHole, isSaveDisabled, onSaveCallback) {
+        if (onSaveCallback) {
+            eventCallbacks.onSave = onSaveCallback;
+        }
+        var container = document.getElementById(containerId);
+        if (container) {
+            container.style.display = 'none';
+        }
+    }
+    
+    function updateSaveButton(currentHole, isDisabled) {
+        updateCompactSaveButton(currentHole, isDisabled);
+    }
+    
+    function resetSaveButton(currentHole) {
+        updateCompactSaveButton(currentHole, false);
+    }
+    
+    // ============================================================
+    // Bottom Menu Button Rendering
+    // ============================================================
+    
+    function renderBottomMenu(containerId, onMenuCallback) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        
+        if (onMenuCallback) {
+            eventCallbacks.onMenu = onMenuCallback;
+        }
+        
+        container.innerHTML = '';
+        
+        var btn = document.createElement('button');
+        btn.id = 'menuBtn';
+        btn.textContent = '← Back to Main Menu';
+        btn.style.cssText = 'width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;';
+        
+        btn.onclick = function() {
+            if (eventCallbacks.onMenu && typeof eventCallbacks.onMenu === 'function') {
+                eventCallbacks.onMenu();
+            } else if (onMenuCallback && typeof onMenuCallback === 'function') {
+                onMenuCallback();
+            }
+        };
+        
+        container.appendChild(btn);
+    }
+    
+    // ============================================================
+    // SHARED DISPLAY FUNCTIONS
+    // ============================================================
+    
+    function getFlightOrderedPlayersShared(flight, allPlayers) {
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        return teamA.concat(teamB);
+    }
+    
+    function getAllOpponentsShared(player, allPlayers) {
+        var opponents = allPlayers.filter(function(op) { return op.team !== player.team; });
+        opponents.sort(function(a, b) {
+            var aIntra = (a.flight === player.flight);
+            var bIntra = (b.flight === player.flight);
+            if (aIntra && !bIntra) return -1;
+            if (!aIntra && bIntra) return 1;
+            if (aIntra && bIntra) return a.handicap - b.handicap;
+            return a.flight - b.flight;
+        });
+        return opponents;
+    }
+    
+    function getMatchValueShared(player, opponent, holeNumber, resultsCache, allPlayers, getHolePositionFn) {
+        if (!resultsCache || !resultsCache.matchResults) return 0;
+        var position = getHolePositionFn(holeNumber);
+        var matchArray = resultsCache.matchResults[position];
+        if (!matchArray) return 0;
+        
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        var aIdx = -1, bIdx = -1;
+        if (player.team === 'A') {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === player.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === opponent.name) bIdx = i;
+            }
+        } else {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === opponent.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === player.name) bIdx = i;
+            }
+        }
+        if (aIdx === -1 || bIdx === -1) return 0;
+        var matchIndex = aIdx * teamBPlayers.length + bIdx;
+        var value = matchArray[matchIndex] || 0;
+        return (player.team === 'B') ? -value : value;
+    }
+    
+    function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn, clinchedAtMap) {
+        var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
+        var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
+        
+        if (!isHoleSavedForFlight) return 'bubble-grey';
+        
+        var clinchHole = null;
+        if (clinchedAtMap) {
+            var matchKey = player.name + "_vs_" + opponent.name;
+            clinchHole = clinchedAtMap[matchKey];
+        }
+        
+        if (clinchHole && currentHole > clinchHole) {
+            return 'bubble-grey';
+        }
+        
+        if (clinchHole && currentHole === clinchHole) {
+            if (matchValue > 0) return 'bubble-gold';
+            if (matchValue < 0) return 'bubble-loss-clinch';
+            return 'bubble-green';
+        }
+        
+        if (matchValue > 0) return 'bubble-green';
+        if (matchValue < 0) return 'bubble-red';
+        return 'bubble-green';
+    }
+    
+    function getBubbleValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn) {
+        var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
+        var absValue = Math.abs(matchValue);
+        if (absValue === 0) return 'AS';
+        return absValue.toString();
+    }
+    
+    // ============================================================
+    // NEW v4.04: SHARED CALCULATION FUNCTIONS
+    // ============================================================
+    
+    function getPlayOrder(startingHole) {
+        var order = [];
+        for (var i = startingHole; i <= 18; i++) order.push(i);
+        for (var i = 1; i < startingHole; i++) order.push(i);
+        return order;
+    }
+    
+    function getHolePosition(holeNumber, startingHole) {
+        var playOrder = getPlayOrder(startingHole);
+        for (var i = 0; i < playOrder.length; i++) {
+            if (playOrder[i] === holeNumber) return i;
+        }
+        return holeNumber - 1;
+    }
+    
+    function isHoleSaved(flight, hole, cache) {
+        return cache.savedHoles[flight] && cache.savedHoles[flight].indexOf(hole) !== -1;
+    }
+    
+    function getFirstUnsavedHole(flight, startingHole, cache) {
+        var playOrder = getPlayOrder(startingHole);
+        for (var i = 0; i < playOrder.length; i++) {
+            var hole = playOrder[i];
+            if (!isHoleSaved(flight, hole, cache)) return hole;
+        }
+        return 18;
+    }
+    
+    function getStoredScore(player, hole, cache, coursePar, allPlayers) {
+        var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+        var holeData = GameData.parseHoleData(flightDataStr, hole);
+        if (!holeData || !holeData.saved) return coursePar[hole - 1];
+        
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        if (player.team === 'A') {
+            if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
+            if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
+        } else {
+            if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
+            if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
+        }
+        return coursePar[hole - 1];
+    }
+    
+    function getMatchValueFromStoredResults(results, player, opponent, holeNumber, allPlayers, startingHole) {
+        if (!results || !results.matchResults) return 0;
+        var position = getHolePosition(holeNumber, startingHole);
+        var matchArray = results.matchResults[position];
+        if (!matchArray) return 0;
+        
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        var aIdx = -1, bIdx = -1;
+        if (player.team === 'A') {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === player.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === opponent.name) bIdx = i;
+            }
+        } else {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === opponent.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === player.name) bIdx = i;
+            }
+        }
+        if (aIdx === -1 || bIdx === -1) return 0;
+        var matchIndex = aIdx * teamBPlayers.length + bIdx;
+        var value = matchArray[matchIndex] || 0;
+        return (player.team === 'B') ? -value : value;
+    }
+    
+    function getBubbleValueFromMatch(matchValue) {
+        var absValue = Math.abs(matchValue);
+        if (absValue === 0) return 'AS';
+        return absValue.toString();
+    }
+    
+    function getBubbleClassWithClinchCalc(player, opponent, currentHole, cache, allPlayers, resultsCache, startingHole, coursePar) {
+        var matchValue = getMatchValueFromStoredResults(resultsCache, player, opponent, currentHole, allPlayers, startingHole);
+        var lastSyncedHole = cache.lastSyncedHole;
+        var clinchedAt = cache.clinchedAt || {};
+        var matchKey = player.name + "_vs_" + opponent.name;
+        var clinchHole = clinchedAt[matchKey];
+        
+        if (player.flight === opponent.flight) {
+            var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole, cache);
+            if (!isHoleSavedForFlight) return 'bubble-grey';
+        } else {
+            var isSynced = (lastSyncedHole >= currentHole);
+            if (!isSynced) return 'bubble-grey';
+        }
+        
+        if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
+        if (clinchHole && currentHole === clinchHole) {
+            if (matchValue > 0) return 'bubble-gold';
+            if (matchValue < 0) return 'bubble-loss-clinch';
+            return 'bubble-green';
+        }
+        
+        if (matchValue > 0) return 'bubble-green';
+        if (matchValue < 0) return 'bubble-red';
+        return 'bubble-green';
+    }
+    
+    function calculatePlayerScoreRelativeToPar(player, cache, coursePar, allPlayers) {
+        var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+        var totalGross = 0;
+        var totalPar = 0;
+        
+        for (var h = 1; h <= 18; h++) {
+            var par = coursePar[h - 1];
+            totalPar += par;
+            
+            var holeData = GameData.parseHoleData(flightDataStr, h);
+            if (holeData && holeData.saved) {
+                var score = 0;
+                var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+                var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+                var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+                
+                if (player.team === 'A') {
+                    if (teamA[0] && teamA[0].name === player.name) score = holeData.scores.a1;
+                    else if (teamA[1] && teamA[1].name === player.name) score = holeData.scores.a2;
+                } else {
+                    if (teamB[0] && teamB[0].name === player.name) score = holeData.scores.b1;
+                    else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
+                }
+                totalGross += score;
+            } else {
+                totalGross += par;
+            }
+        }
+        
+        return totalGross - totalPar;
+    }
+    
+    // ============================================================
+    // Navigation Logic (legacy wrappers)
+    // ============================================================
+    
+    function updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameComplete, celebrationTriggered) {
+        // Deprecated - use updateNavigationButtons instead
+    }
+    
+    function updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, onSignCardCallback) {
+        // Deprecated - use updateNavigationButtons instead
+    }
+    
+    function setNextButtonToSignMode() {
+        var nextBtn = document.getElementById('compactNextBtn');
+        if (nextBtn) {
+            nextBtn.innerHTML = '✍️';
+            nextBtn.style.background = '#ffaa44';
+            nextBtn.style.color = '#1a3a1a';
+            nextBtn.disabled = false;
+        }
+    }
+    
+    function setNextButtonToSeeResults() {
+        var nextBtn = document.getElementById('compactNextBtn');
+        if (nextBtn) {
+            nextBtn.innerHTML = '🏆';
+            nextBtn.style.background = '#ffaa44';
+            nextBtn.style.color = '#1a3a1a';
+            nextBtn.disabled = false;
+        }
+    }
+    
+    function ensureNoStuckModals() {
+        var modals = document.querySelectorAll('.modal-overlay');
+        for (var i = 0; i < modals.length; i++) {
+            modals[i].remove();
+        }
+    }
+    
+    // ============================================================
+    // Centralized Event Listener Attachment
+    // ============================================================
+    
+    function attachGlobalEventListeners(onPrevHole, onNextHole) {
+        if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
+        if (onNextHole) eventCallbacks.onNextHole = onNextHole;
+    }
+    
+    // ============================================================
+    // Button Styles (with disabled states)
+    // ============================================================
+    
+    function applyButtonStyles() {
+        if (buttonStylesApplied) return;
+        
+        var style = document.createElement('style');
+        style.id = 'gameui-button-styles';
+        style.textContent = `
+            .scorecard-wrapper {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .scorecard-table {
+                border-collapse: collapse;
+                font-size: 0.7rem;
+                min-width: 700px;
+            }
+            .scorecard-table th, .scorecard-table td {
+                text-align: center;
+                border: 1px solid #222;
+                white-space: nowrap;
+            }
+            .scorecard-table th {
+                color: #4caf50;
+                background: #111;
+            }
+            .score-green { color: #4caf50; font-weight: 600; }
+            .score-invisible { color: #000; }
+            .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
+            
+            .compact-prev-btn:disabled, .compact-next-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
+            .compact-save-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
+            .compact-pn-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        buttonStylesApplied = true;
+    }
+    
+    // ============================================================
+    // Tight Layout Functions
+    // ============================================================
+    
+    function applyTightLayout() {
+        if (tightLayoutApplied) return;
+        
+        fixBackground();
+        applyButtonStyles();
+        applyGlobalBubbleStyles();
+        
+        var style = document.createElement('style');
+        style.id = 'gameui-tight-layout';
+        style.textContent = `
+            #courseName { display: none !important; }
+            .hole-par { display: none !important; }
+            #flightTab { display: none !important; }
+            .team-score-card { margin-top: 0 !important; margin-bottom: 8px !important; padding: 8px !important; }
+            .container { padding-top: 30px !important; }
+            .player-card { position: relative; }
+        `;
+        document.head.appendChild(style);
+        
+        tightLayoutApplied = true;
+    }
+    
+    // ============================================================
+    // Helper
+    // ============================================================
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
+    // ============================================================
+    // Public API
+    // ============================================================
+    
+    return {
+        // Core rendering
+        renderScorecard: renderScorecard,
+        renderPlayerCards: renderPlayerCards,
+        updateTR: updateTR,
+        updateHoleHeader: updateHoleHeader,
+        renderHoleHeader: renderHoleHeader,
+        updateHoleHeaderNumber: updateHoleHeaderNumber,
+        updateFlightTab: updateFlightTab,
+        
+        // Compact header
+        renderCompactHeader: renderCompactHeader,
+        updateCompactActionButton: updateCompactActionButton,
+        updateCompactSaveButton: updateCompactSaveButton,
+        updateCompactPnButton: updateCompactPnButton,
+        updateCompactHoleDisplay: updateCompactHoleDisplay,
+        
+        // Flight badge
+        addFlightBadge: addFlightBadge,
+        updateFlightBadge: updateFlightBadge,
+        removeFlightBadge: removeFlightBadge,
+        
+        // Navigation
+        updateNavigationButtons: updateNavigationButtons,
+        
+        // Legacy compatibility
+        updateFlightToggleButton: updateFlightBadge,
+        updateFlightButtonText: updateFlightBadge,
+        updatePnButtonText: updateCompactPnButton,
+        
+        // Display mode
+        getDisplayMode: getDisplayMode,
+        setDisplayMode: setDisplayMode,
+        updateToggleButtons: updateToggleButtons,
+        toggleDisplayMode: toggleDisplayMode,
+        getDisplayHoles: getDisplayHoles,
+        
+        // Flight toggle
+        toggleFlight: toggleFlight,
+        getCurrentFlight: getCurrentFlight,
+        
+        // Action buttons (legacy)
+        renderActionButtons: renderActionButtons,
+        updateSaveButton: updateSaveButton,
+        resetSaveButton: resetSaveButton,
+        
+        // Bottom menu
+        renderBottomMenu: renderBottomMenu,
+        
+        // Shared display functions
+        getFlightOrderedPlayersShared: getFlightOrderedPlayersShared,
+        getAllOpponentsShared: getAllOpponentsShared,
+        getMatchValueShared: getMatchValueShared,
+        getBubbleClassShared: getBubbleClassShared,
+        getBubbleValueShared: getBubbleValueShared,
+        
+        // NEW v4.04: Shared calculation functions
+        getPlayOrder: getPlayOrder,
+        getHolePosition: getHolePosition,
+        isHoleSaved: isHoleSaved,
+        getFirstUnsavedHole: getFirstUnsavedHole,
+        getStoredScore: getStoredScore,
+        getMatchValueFromStoredResults: getMatchValueFromStoredResults,
+        getBubbleValueFromMatch: getBubbleValueFromMatch,
+        getBubbleClassWithClinchCalc: getBubbleClassWithClinchCalc,
+        calculatePlayerScoreRelativeToPar: calculatePlayerScoreRelativeToPar,
+        
+        // Navigation logic (deprecated legacy wrappers)
+        updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
+        updateNextButtonForLastHole: updateNextButtonForLastHole,
+        setNextButtonToSignMode: setNextButtonToSignMode,
+        setNextButtonToSeeResults: setNextButtonToSeeResults,
+        ensureNoStuckModals: ensureNoStuckModals,
+        
+        // Event listeners
+        attachGlobalEventListeners: attachGlobalEventListeners,
+        
+        // Layout and styles
+        applyButtonStyles: applyButtonStyles,
+        applyTightLayout: applyTightLayout,
+        tightenScorecardRows: tightenScorecardRows,
+        makeStatusBubbleClickable: makeStatusBubbleClickable,
+        fixBackground: fixBackground,
+        
+        // Flight indicator (DEPRECATED)
+        addFlightIndicator: function() {},
+        removeFlightIndicator: function() {},
+        updateFlightIndicator: updateFlightBadge
     };
-}
+    
+})();
 
 /*
-FOOTER: js/game-ui.js
-VERSION: 4.05
-LAST UPDATED: 2026-05-29
-COMPATIBLE WITH: real-game.html v4.07+, view-game.html v4.12+
-NEXT STEPS: Update view-game.html to call updateAllUI() with hideButtons=true
+FILE: js/game-ui.js
+VERSION: 4.04
+KEY CHANGES:
+   - ADDED: Shared calculation functions for use across game pages
+   - getPlayOrder(startingHole) - returns play order array
+   - getHolePosition(holeNumber, startingHole) - returns storage position
+   - isHoleSaved(flight, hole, cache) - checks if hole is saved
+   - getFirstUnsavedHole(flight, startingHole, cache) - finds first unsaved hole
+   - getStoredScore(player, hole, cache, coursePar, allPlayers) - gets stored score
+   - getMatchValueFromStoredResults() - gets match value from results cache
+   - getBubbleValueFromMatch(matchValue) - returns bubble value string (AS or number)
+   - getBubbleClassWithClinchCalc() - returns bubble CSS class with clinch support
+   - calculatePlayerScoreRelativeToPar() - calculates player's +/- score
+   - ALL existing functions preserved exactly as v4.03
+   - No changes to any existing functions - real-game.html unaffected
+DEPENDS ON: None (pure display and calculations)
+STATUS: Ready for integration
 */
