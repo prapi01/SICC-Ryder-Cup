@@ -1,14 +1,14 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.61
+VERSION: 4.62
 KEY CHANGES from v4.01:
-   - ADDED: ONE LINE ONLY - window.GameUI = window.gameUI (dual export)
+   - ADDED: ONE LINE ONLY - window.GameUI = window.gameUI = GameUI (dual export)
    - ALL existing functions preserved exactly as v4.01 (working)
    - No stubs, no rewrites, no console.log placeholders
    - REAL-GAME.html now uses GameUI (capital)
    - VIEW-GAME.html now uses GameUI (capital)
 DEPENDS ON: None (pure display)
-STATUS: Ready for integration - Restored from working v4.01 backup
+STATUS: Ready for integration
 */
 
 var GameUI = (function() {
@@ -521,33 +521,33 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead></tr><th>Hole</th>';
+        html += '<thead><tr><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
         html += '<th>Tot</th> </thead><tbody>';
         
-        html += '<tr><td style="font-weight:700;">Par</td>';
+        html += '<tr><td style="font-weight:700;">Par<\/td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
             totalPar += par;
-            html += '<td>' + par + '</td>';
+            html += '<td>' + par + '<\/td>';
         }
-        html += '<td>' + totalPar + '</td></tr>';
+        html += '<td>' + totalPar + '<\/td><\/tr>';
         
-        html += '<tr><td style="font-weight:700;">SI</td>';
+        html += '<tr><td style="font-weight:700;">SI<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
-            html += '<td>' + si + '</td>';
+            html += '<td>' + si + '<\/td>';
         }
-        html += '<td>-</td></tr>';
+        html += '<td>-<\/td><\/tr>';
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -555,14 +555,14 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t1Row[i] || '_';
             var holeNum = holes[i];
@@ -588,15 +588,15 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -604,14 +604,14 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = t2Row[i] || '_';
             var holeNum = holes[i];
@@ -637,13 +637,13 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -669,9 +669,9 @@ var GameUI = (function() {
                 cellClass = 'score-green';
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
         html += '</tbody></table>';
         container.innerHTML = html;
@@ -1236,16 +1236,13 @@ var GameUI = (function() {
 })();
 
 // ============================================================
-// DUAL EXPORT - ONE LINE ADDED (v4.61)
+// DUAL EXPORT - ONE LINE ADDED (v4.62)
 // ============================================================
-// Export BOTH for compatibility:
-// - window.gameUI (lowercase) - exists from v4.01
-// - window.GameUI (capital) - added for real-game.html and view-game.html
 window.GameUI = window.gameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.61
+VERSION: 4.62
 KEY CHANGES from v4.01:
    - ADDED: ONE LINE ONLY - window.GameUI = window.gameUI = GameUI (dual export)
    - ALL existing functions preserved exactly as v4.01 (working)
@@ -1253,5 +1250,5 @@ KEY CHANGES from v4.01:
    - REAL-GAME.html now uses GameUI (capital)
    - VIEW-GAME.html now uses GameUI (capital)
 DEPENDS ON: None (pure display)
-STATUS: Ready for integration - Restored from working v4.01 backup
+STATUS: Ready for integration
 */
