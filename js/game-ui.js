@@ -1,12 +1,15 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.62
-KEY CHANGES from v4.01:
-   - ADDED: ONE LINE ONLY - window.GameUI = window.gameUI = GameUI (dual export)
-   - ALL existing functions preserved exactly as v4.01 (working)
-   - No stubs, no rewrites, no console.log placeholders
-   - REAL-GAME.html now uses GameUI (capital)
-   - VIEW-GAME.html now uses GameUI (capital)
+VERSION: 4.01
+KEY CHANGES:
+   - ADDED: Complete fluid bubble CSS for ALL game pages (single source of truth)
+   - Bubbles now use display: grid with repeat(4, 1fr) for equal 4-column layout
+   - Font size scales with screen: clamp(0.7rem, 3.8vw, 0.9rem)
+   - Gap scales with clamp(4px, 1.5vw, 10px)
+   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
+   - Media queries for extreme screen sizes (380px and 500px+)
+   - Removed any hard-coded min-width values
+   - All existing JavaScript functions preserved exactly as v4.00
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -673,7 +676,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></table>';
+        html += '</tbody><tr>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -1235,20 +1238,18 @@ var GameUI = (function() {
     
 })();
 
-// ============================================================
-// DUAL EXPORT - ONE LINE ADDED (v4.62)
-// ============================================================
-window.GameUI = window.gameUI = GameUI;
-
 /*
 FILE: js/game-ui.js
-VERSION: 4.62
-KEY CHANGES from v4.01:
-   - ADDED: ONE LINE ONLY - window.GameUI = window.gameUI = GameUI (dual export)
-   - ALL existing functions preserved exactly as v4.01 (working)
-   - No stubs, no rewrites, no console.log placeholders
-   - REAL-GAME.html now uses GameUI (capital)
-   - VIEW-GAME.html now uses GameUI (capital)
+VERSION: 4.01
+KEY CHANGES:
+   - ADDED: Complete fluid bubble CSS for ALL game pages (single source of truth)
+   - Bubbles now use display: grid with repeat(4, 1fr) for equal 4-column layout
+   - Font size scales with screen: clamp(0.7rem, 3.8vw, 0.9rem)
+   - Gap scales with clamp(4px, 1.5vw, 10px)
+   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
+   - Media queries for extreme screen sizes (380px and 500px+)
+   - Removed any hard-coded min-width values
+   - All existing JavaScript functions preserved exactly as v4.00
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
