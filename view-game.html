@@ -2,11 +2,11 @@
 FILE: view-game.html
 VERSION: 5.00
 KEY CHANGES from v3.14:
-   - Control Bar now uses GameUI.renderCompactHeader() (identical to real-game)
-   - Save button replaced with FLIGHT toggle button (same position, same style)
-   - Bubbles now use GameUI.getBubbleClassShared() and GameUI.getBubbleValueShared()
+   - Control Bar now uses GameUI.renderCompactHeader()
+   - Save button replaced with FLIGHT toggle button (same position)
+   - Bubbles use GameUI.getBubbleClassShared() and GameUI.getBubbleValueShared()
    - Clinch effect: grey bubbles for unsaved holes, gold/white for clinch holes
-   - Added CSS for .bubble-gold and .bubble-loss-clinch
+   - T-1/T-2 rows show GOLD text when flight is clinched
    - Flight toggle ONLY changes flight, NEVER changes hole
    - All other functionality preserved from v3.14
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
@@ -100,25 +100,6 @@ STATUS: Ready for integration
         .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
         .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
         
-        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
-        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
-        .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-        .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
-        .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
-        /* NEW v5.00: Clinch bubble styles */
-        .bubble-gold {
-            background: #1a3a1a;
-            color: #ffaa44;
-            border: 3px solid #ffaa44;
-            font-weight: 800;
-        }
-        .bubble-loss-clinch {
-            background: #3a1a1a;
-            color: #ffffff;
-            border: 3px solid #ffffff;
-            font-weight: 800;
-        }
-        
         .scorecard-section { margin: 20px 0; }
         .scorecard-wrapper { overflow-x: auto; }
         .scorecard-table {
@@ -135,6 +116,7 @@ STATUS: Ready for integration
         }
         .scorecard-table th { color: #4caf50; background: #111; }
         .score-green { color: #4caf50; font-weight: 600; }
+        .score-gold { color: #ffaa44; font-weight: 800; }
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
         
@@ -312,7 +294,7 @@ var currentFlight = 1;
 var currentHole = 1;
 
 // ============================================================
-// Helper Functions (IDENTICAL to real-game)
+// Helper Functions
 // ============================================================
 
 function getPlayOrder() {
@@ -385,7 +367,7 @@ function isHoleSaved(flight, hole) {
 }
 
 // ============================================================
-// CLINCH BUBBLE FUNCTIONS - Using GameUI (v5.00)
+// Bubble Functions - Using GameUI
 // ============================================================
 
 function getMatchValueFromResults(player, opponent, holeNumber) {
@@ -419,12 +401,10 @@ function getMatchValueFromResults(player, opponent, holeNumber) {
     return (player.team === 'B') ? -value : value;
 }
 
-// NEW v5.00: Use GameUI.getBubbleValueShared
 function getBubbleValue(player, opponent) {
     return GameUI.getBubbleValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePosition);
 }
 
-// NEW v5.00: Use GameUI.getBubbleClassShared for clinch support
 function getBubbleClassWithClinch(player, opponent) {
     var clinchedAt = resultsCache ? (resultsCache.clinchedAt || {}) : {};
     return GameUI.getBubbleClassShared(
@@ -493,7 +473,6 @@ function renderTR() {
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
 }
 
-// NEW v5.00: Uses GameUI.renderPlayerCards with clinch support
 function renderPlayerCards() {
     var players = getFlightOrderedPlayers(currentFlight);
     
@@ -504,11 +483,10 @@ function renderPlayerCards() {
         getBubbleClassWithClinch,
         getBubbleValue,
         function(player) { return getStoredScore(player, currentHole); },
-        false,  // canEdit = false (no +/- buttons)
-        null    // onScoreChange = null
+        false,
+        null
     );
     
-    // Add flight badge
     setTimeout(function() {
         var firstCard = document.querySelector('.player-card');
         var existingBadge = document.querySelector('.flight-badge');
@@ -535,7 +513,11 @@ function renderScorecard() {
     var t2Row = resultsCache ? (resultsCache.game2?.flight2?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
     var strkRow = resultsCache ? (resultsCache.game3?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
     
-    GameUI.renderScorecard('scorecardWrapper', holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi);
+    // Get clinch data from Firestore (if exists)
+    var t1Clinched = resultsCache?.game2?.flight1?.clinched || {};
+    var t2Clinched = resultsCache?.game2?.flight2?.clinched || {};
+    
+    GameUI.renderScorecard('scorecardWrapper', holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1Clinched, t2Clinched);
 }
 
 function renderAll() {
@@ -612,7 +594,7 @@ function exitToMainMenu() {
 }
 
 // ============================================================
-// Control Bar - NEW v5.00: Uses GameUI.renderCompactHeader
+// Control Bar - Uses GameUI.renderCompactHeader
 // ============================================================
 
 function buildCompactHeader() {
@@ -738,7 +720,7 @@ function startGameListener() {
 
 async function init() {
     var shortName = await SessionManager.getShortNameOnly();
-    document.getElementById("deviceTag").innerHTML = "🖥️ " + shortName;
+    document.getElementById("deviceTag").innerHTML = "👁️ " + shortName;
     
     var session = await new Promise(function(resolve) {
         SessionManager.initSession("view-game.html", "index.html", resolve);
@@ -782,11 +764,10 @@ init();
 FILE: view-game.html
 VERSION: 5.00
 KEY CHANGES from v3.14:
-   - Control Bar now uses GameUI.renderCompactHeader() (identical to real-game)
-   - Save button replaced with FLIGHT toggle button (same position, same style)
-   - Bubbles now use GameUI.getBubbleClassShared() and GameUI.getBubbleValueShared()
-   - Clinch effect: grey bubbles for unsaved holes, gold/white for clinch holes
-   - Added CSS for .bubble-gold and .bubble-loss-clinch
+   - Control Bar now uses GameUI.renderCompactHeader()
+   - Save button replaced with FLIGHT toggle button
+   - Bubbles use GameUI.getBubbleClassShared() and GameUI.getBubbleValueShared()
+   - T-1/T-2 rows read clinched data from Firestore and show GOLD when clinched
    - Flight toggle ONLY changes flight, NEVER changes hole
    - All other functionality preserved from v3.14
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
