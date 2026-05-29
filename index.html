@@ -274,7 +274,7 @@
     <div class="app-container" id="app-container">
         <div class="header">
             <div class="device-id" id="device-id">DEV-XX</div>
-            <div class="version">v3.19</div>
+            <div class="version">v3.20</div>
             <h1>SICC Ryder Cup</h1>
             <div class="subtitle">Team Competition</div>
         </div>
@@ -303,13 +303,15 @@
     <script>
         /*
         FILE: index.html (inline script)
-        VERSION: 3.19
+        VERSION: 3.20
         KEY CHANGES:
-           - FIXED: Added sessionStorage.setItem('currentGameId', gameId) in preloadTodayGame()
+           - FIXED: Changed initSession() to SessionManager.initSession()
+           - FIXED: Changed getShortDeviceName() to SessionManager.getShortDeviceName()
+           - FIXED: Changed getDeviceIdDisplay() to SessionManager.getDeviceIdDisplay()
+           - Added sessionStorage.setItem('currentGameId', game.id) in preloadTodayGame()
            - This ensures single source of truth for active game ID
-           - All downstream pages (pre-game, real-game, view-game) can now read currentGameId
            - All other functions unchanged from v3.18
-        DEPENDS ON: session.js, Firebase
+        DEPENDS ON: session.js v1.01+, Firebase
         STATUS: Ready for integration
         */
 
@@ -337,14 +339,22 @@
             // Show splash screen
             const splash = document.getElementById('splash-screen');
             
-            // Initialize session
-            await initSession('index.html', 'index.html');
+            // Initialize session using SessionManager
+            if (typeof SessionManager !== 'undefined' && SessionManager.initSession) {
+                await SessionManager.initSession('index.html', 'index.html');
+            } else {
+                console.error('SessionManager not loaded');
+            }
             
-            // Get device ID for display
-            if (typeof getShortDeviceName === 'function') {
-                deviceId = getShortDeviceName();
-            } else if (typeof getDeviceIdDisplay === 'function') {
-                deviceId = getDeviceIdDisplay();
+            // Get device ID for display using SessionManager
+            if (typeof SessionManager !== 'undefined') {
+                if (SessionManager.getShortDeviceName) {
+                    deviceId = SessionManager.getShortDeviceName();
+                } else if (SessionManager.getDeviceIdDisplay) {
+                    deviceId = SessionManager.getDeviceIdDisplay();
+                } else {
+                    deviceId = 'DEV';
+                }
             } else {
                 deviceId = 'DEV';
             }
@@ -458,6 +468,7 @@
                     f1: game.f1 || { d: '', se: false, x: false },
                     f2: game.f2 || { d: '', se: false, x: false },
                     locks: game.locks || { f1: null, f2: null },
+                    results: game.results || null,
                     gameStarted: game.gameStarted || false,
                     status: game.status,
                     createdAt: game.createdAt,
@@ -571,13 +582,16 @@
 
 /*
 FOOTER: index.html
-VERSION: 3.19
+VERSION: 3.20
 LAST UPDATED: 2026-05-29
-COMPATIBLE WITH: game-loader.js v1.06+, pre-game.html v3.12+, real-game.html v4.07+, view-game.html v4.13+
+COMPATIBLE WITH: session.js v1.01+, game-loader.js v1.06+, pre-game.html v3.12+, real-game.html v4.07+, view-game.html v4.13+
 KEY FIXES:
+   - Fixed SessionManager function calls (initSession → SessionManager.initSession)
+   - Fixed device ID functions (getShortDeviceName → SessionManager.getShortDeviceName)
    - Added sessionStorage.setItem('currentGameId', game.id) in preloadTodayGame()
-   - Ensures single source of truth for active game ID across all pages
+   - Added results field to preloadData for completed games
 NEXT STEPS:
-   - Test index.html preload and verify currentGameId is set
-   - Proceed to view-game.html v4.13 if cache is valid
+   - Test index.html loads correctly
+   - Verify currentGameId is set in sessionStorage
+   - Proceed to view-game.html v4.13
 */
