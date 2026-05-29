@@ -1,11 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 4.07
+VERSION: 4.06
 KEY CHANGES:
-   - CHANGED: renderCompactHeader() call now includes buttonMode = "save" parameter
-   - All other functionality identical to v4.06 (working)
-   - No UI changes - compact header looks and behaves exactly the same
-   - Prepares for view-game.html to use same function with buttonMode = "flight"
+   - REMOVED: "LIVE" status bubble flash during transition (hidden until data ready)
+   - REMOVED: "Loading..." text flash during transition (hidden until data ready)
+   - Elements now hidden by default, shown only when cached data is applied
+   - Uses CSS class "data-ready" to reveal content after cache loads
+   - All existing preload/cache functionality preserved from v4.05
+   - Smooth, no-flash transition from pre-game to real-game
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -57,7 +59,7 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
-        /* Hide elements until data is ready */
+        /* NEW v4.06: Hide elements until data is ready */
         .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
             visibility: hidden;
         }
@@ -354,7 +356,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.07</div>
+<div class="version-tag">v4.06</div>
 
 <script>
 // ============================================================
@@ -462,7 +464,7 @@ function applyPreloadedData(preloadData) {
     
     document.getElementById("courseName").innerHTML = courseName;
     
-    // Reveal content after data is applied
+    // NEW v4.06: Reveal content after data is applied
     document.getElementById("mainContainer").classList.add("data-ready");
     
     usedPreloadedData = true;
@@ -661,7 +663,7 @@ function setSaveButtonIdle() {
 }
 
 function setSaveButtonPending() {
-    var saveBtn = document.getElementById('compactActionBtn');
+    var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.classList.remove('btn-save', 'btn-save-retry');
         saveBtn.classList.add('btn-save-pending');
@@ -672,7 +674,7 @@ function setSaveButtonPending() {
 }
 
 function setSaveButtonRetry() {
-    var saveBtn = document.getElementById('compactActionBtn');
+    var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.classList.remove('btn-save', 'btn-save-pending');
         saveBtn.classList.add('btn-save-retry');
@@ -683,7 +685,7 @@ function setSaveButtonRetry() {
 }
 
 function flashSaveButtonSuccess() {
-    var saveBtn = document.getElementById('compactActionBtn');
+    var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.classList.add('btn-save-flash');
         setTimeout(function() {
@@ -1308,17 +1310,15 @@ async function init() {
         // Apply UI layout and render immediately
         GameUI.applyTightLayout();
         
-        // v4.07: Updated to use buttonMode = "save"
         GameUI.renderCompactHeader(
             "compactHeaderContainer",
             editableFlight,
             currentHole,
+            saveHole,
             prevHole,
             nextHole,
             onToggleFlight,
-            null,
-            "save",
-            saveHole
+            null
         );
         
         GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
@@ -1392,17 +1392,15 @@ async function init() {
             
             GameUI.applyTightLayout();
             
-            // v4.07: Updated to use buttonMode = "save"
             GameUI.renderCompactHeader(
                 "compactHeaderContainer",
                 editableFlight,
                 currentHole,
+                saveHole,
                 prevHole,
                 nextHole,
                 onToggleFlight,
-                null,
-                "save",
-                saveHole
+                null
             );
             
             GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
@@ -1447,12 +1445,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.07
+VERSION: 4.06
 KEY CHANGES:
-   - CHANGED: renderCompactHeader() call now includes buttonMode = "save" parameter
-   - All other functionality identical to v4.06 (working)
-   - No UI changes - compact header looks and behaves exactly the same
-   - Prepares for view-game.html to use same function with buttonMode = "flight"
+   - REMOVED: "LIVE" status bubble flash during transition (hidden until data ready)
+   - REMOVED: "Loading..." text flash during transition (hidden until data ready)
+   - Elements now hidden by default, shown only when cached data is applied
+   - Uses CSS class "data-ready" to reveal content after cache loads
+   - All existing preload/cache functionality preserved from v4.05
+   - Smooth, no-flash transition from pre-game to real-game
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
