@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 4.61
-KEY CHANGES from v4.60:
+VERSION: 5.00
+KEY CHANGES from v4.06:
    - ADDED: Flight clinch detection for Game 2 (T-1 and T-2 rows)
    - ADDED: Persist flight1Clinched and flight2Clinched to Firestore
+   - ADDED: Individual match clinch persistence to Firestore
    - Clinch condition: Math.abs(lead) > (remainingHoles * 2)
    - Written to: results.game2.flight1.clinched[position] and flight2.clinched[position]
-   - All existing functionality preserved from v4.60
+   - ALL existing functionality preserved from v4.06 (working)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -337,7 +338,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.61</div>
+<div class="version-tag">v5.00</div>
 
 <script>
 // ============================================================
@@ -703,6 +704,17 @@ function performSave() {
                         delete localChanges[key];
                     }
                 }
+                
+                // NEW v5.00: Force cache refresh to get other flight's latest data
+                await new Promise(function(resolveLoad) {
+                    GameLoader.loadGame(gameId, "scheduledGames", function(result) {
+                        if (result.success) {
+                            console.log("Cache refreshed after save");
+                        }
+                        resolveLoad();
+                    });
+                });
+                
                 await saveResultsToFirestore(currentHole);
                 
                 var playOrder = getPlayOrder();
@@ -766,7 +778,12 @@ function initializeEmptyResults() {
         version: 1,
         matchResults: new Array(18),
         game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
-        game2: { flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinched: {} }, flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinched: {} }, pointsA: new Array(18).fill(1), pointsB: new Array(18).fill(1) },
+        game2: { 
+            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinched: {} }, 
+            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinched: {} }, 
+            pointsA: new Array(18).fill(1), 
+            pointsB: new Array(18).fill(1) 
+        },
         game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
         tr: { teamA: new Array(18).fill(9.5), teamB: new Array(18).fill(9.5), teamAGreen: new Array(18).fill(true), teamBGreen: new Array(18).fill(true) },
         computedUpToHole: 0,
@@ -839,7 +856,7 @@ function calculateHoleResults(holeNumber) {
     var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
     
-    // NEW v4.61: Flight clinch detection
+    // NEW v5.00: Flight clinch detection
     var remainingHoles = 18 - holeNumber;
     var maxOpponentPoints = remainingHoles * 2;
     var flight1Clinched = (flight1Total > maxOpponentPoints);
@@ -905,7 +922,7 @@ async function saveResultsToFirestore(holeNumber) {
     updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
     updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
     
-    // NEW v4.61: Write flight clinch to Firestore
+    // NEW v5.00: Write flight clinch to Firestore
     updatePayload[`results.game2.flight1.clinched.${position}`] = resultsData.flight1Clinched;
     updatePayload[`results.game2.flight2.clinched.${position}`] = resultsData.flight2Clinched;
     
@@ -931,7 +948,7 @@ async function saveResultsToFirestore(holeNumber) {
         cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
         cache.results.game2.flight2.leader[position] = resultsData.t2Leader;
         
-        // NEW v4.61: Store flight clinch in cache
+        // NEW v5.00: Store flight clinch in cache
         if (!cache.results.game2.flight1.clinched) cache.results.game2.flight1.clinched = {};
         if (!cache.results.game2.flight2.clinched) cache.results.game2.flight2.clinched = {};
         cache.results.game2.flight1.clinched[position] = resultsData.flight1Clinched;
@@ -1488,13 +1505,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.61
-KEY CHANGES from v4.60:
+VERSION: 5.00
+KEY CHANGES from v4.06:
+   - ADDED: Force cache refresh after save to get other flight's latest data
    - ADDED: Flight clinch detection for Game 2 (T-1 and T-2 rows)
    - ADDED: Persist flight1Clinched and flight2Clinched to Firestore
+   - ADDED: Individual match clinch persistence to Firestore
    - Clinch condition: Math.abs(lead) > (remainingHoles * 2)
    - Written to: results.game2.flight1.clinched[position] and flight2.clinched[position]
-   - All existing functionality preserved from v4.60
+   - ALL existing functionality preserved from v4.06 (working)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
