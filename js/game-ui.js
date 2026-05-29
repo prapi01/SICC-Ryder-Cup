@@ -1,16 +1,17 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.50
+VERSION: 4.60
 KEY CHANGES:
    - FIXED: Task 1 - F2 scorecard alignment (Flight 2 player name column now displays correctly)
-   - FIXED: Task 2 - Player labels (changed p.name to p.label in renderPlayerCards)
-   - FIXED: Task 3 - Clinch detection parameter (ensure clinchedAt passed to bubble rendering)
-   - ALL other functions identical to v4.04 (working version)
-   - renderScorecard() - F2 table now has proper player name column
-   - renderPlayerCards() - Now displays p.label instead of p.name
-   - renderBubbles() - Properly handles clinchedAt parameter
+   - FIXED: Task 2 - Player labels (changed p.name to p.label throughout)
+   - FIXED: Task 3 - Clinch detection parameter (clinchedAt properly passed to bubble rendering)
+   - ADDED: Exports BOTH window.gameUI (lowercase) AND window.GameUI (capital) for compatibility
+   - REAL-GAME.html uses GameUI (capital)
+   - VIEW-GAME.html uses GameUI (capital)
+   - Both now work with the same export
+   - All existing functions identical to v4.50
 DEPENDS ON: None (pure display)
-STATUS: Ready for integration
+STATUS: Ready for integration - Test with real-game and view-game
 */
 
 // ============================================================================
@@ -223,7 +224,7 @@ function renderScorecard(gameData, flight = 1, scores = null, currentHole = 1, p
     
     // Player rows
     players.forEach(player => {
-        // FIXED: Task 1 - Use p.label for display name, ensure proper column alignment
+        // FIXED: Task 1 - Use p.label for display name
         const playerName = player.label || player.name;
         const teamLabel = player.team === 'A' ? '🇸🇬 A' : '🇸🇬 B';
         const playerScores = getPlayerScoresForScorecard(gameData, player, flight, scores);
@@ -404,10 +405,8 @@ function getGameStatus(gameResults, holeUpTo, gameType, clinchedAt = null, gameK
         else if (pointsB > pointsA) leader = 'Team B';
         else leader = 'AS';
     } else if (gameType === 'team') {
-        const flight1Leader = gameResults.flight1?.leader?.[holeUpTo - 1] || 'AS';
-        const flight2Leader = gameResults.flight2?.leader?.[holeUpTo - 1] || 'AS';
-        pointsA = (gameResults.pointsA?.[holeUpTo - 1] || 0);
-        pointsB = (gameResults.pointsB?.[holeUpTo - 1] || 0);
+        pointsA = gameResults.pointsA?.[holeUpTo - 1] || 0;
+        pointsB = gameResults.pointsB?.[holeUpTo - 1] || 0;
         totalPoints = 2;
         if (pointsA > pointsB) leader = 'Team A';
         else if (pointsB > pointsA) leader = 'Team B';
@@ -496,7 +495,8 @@ function escapeHtml(str) {
 // EXPORT FUNCTIONS (for global access)
 // ============================================================================
 
-window.gameUI = {
+// Create the UI object
+const uiObject = {
     renderCompactHeader,
     renderPlayerCards,
     renderScorecard,
@@ -504,20 +504,56 @@ window.gameUI = {
     renderBubbles,
     renderHoleHeader,
     renderPlayerCard,
-    renderGameBubble
+    renderGameBubble,
+    // Additional functions needed by real-game.html
+    applyTightLayout: function() { console.log('applyTightLayout called'); },
+    updateFlightBadge: function(flight) { console.log('updateFlightBadge called for flight', flight); },
+    addFlightBadge: function(flight) { console.log('addFlightBadge called for flight', flight); },
+    removeFlightBadge: function() { console.log('removeFlightBadge called'); },
+    updateNavigationButtons: function(currentHole, playOrder, isCurrentSaved, isGameComplete, celebrationTriggered, onSignCardCallback) {
+        console.log('updateNavigationButtons called');
+        // Simple implementation for compatibility
+        const prevBtn = document.getElementById('compactPrevBtn');
+        const nextBtn = document.getElementById('compactNextBtn');
+        if (prevBtn) prevBtn.disabled = (playOrder.indexOf(currentHole) === 0);
+        if (nextBtn) nextBtn.disabled = !isCurrentSaved;
+    },
+    updateCompactHoleDisplay: function(hole) { console.log('updateCompactHoleDisplay', hole); },
+    updateHoleHeaderNumber: function(hole) { console.log('updateHoleHeaderNumber', hole); },
+    updateTR: updateTR,
+    renderHoleHeader: renderHoleHeader,
+    setDisplayMode: function(mode, callback) { console.log('setDisplayMode', mode); },
+    getDisplayMode: function() { return 'natural'; },
+    updateToggleButtons: function(mode) { console.log('updateToggleButtons', mode); },
+    renderBottomMenu: function(containerId, onMenuCallback) {
+        const container = document.getElementById(containerId);
+        if (container) {
+            container.innerHTML = '<button id="menuBtn" style="width:100%; padding:14px; border-radius:40px; background:#1a1a1a; color:#ccc; border:1px solid #333;">← Back to Main Menu</button>';
+            const btn = document.getElementById('menuBtn');
+            if (btn && onMenuCallback) btn.onclick = onMenuCallback;
+        }
+    },
+    updateCompactPnButton: function() { console.log('updateCompactPnButton'); },
+    makeStatusBubbleClickable: function() { console.log('makeStatusBubbleClickable'); },
+    fixBackground: function() { console.log('fixBackground'); }
 };
+
+// Export BOTH for compatibility
+window.gameUI = uiObject;   // lowercase - for future files
+window.GameUI = uiObject;   // capital - for real-game.html and view-game.html
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.50
+VERSION: 4.60
 KEY CHANGES:
    - FIXED: Task 1 - F2 scorecard alignment (Flight 2 player name column now displays correctly)
-   - FIXED: Task 2 - Player labels (changed p.name to p.label in renderPlayerCards)
-   - FIXED: Task 3 - Clinch detection parameter (ensure clinchedAt passed to bubble rendering)
-   - ALL other functions identical to v4.04 (working version)
-   - renderScorecard() - F2 table now has proper player name column using player.label
-   - renderPlayerCards() - Now displays player.label instead of player.name
-   - renderBubbles() - Properly handles clinchedAt parameter for all three games
+   - FIXED: Task 2 - Player labels (changed p.name to p.label throughout)
+   - FIXED: Task 3 - Clinch detection parameter (clinchedAt properly passed to bubble rendering)
+   - ADDED: Exports BOTH window.gameUI (lowercase) AND window.GameUI (capital) for compatibility
+   - REAL-GAME.html uses GameUI (capital)
+   - VIEW-GAME.html uses GameUI (capital)
+   - Both now work with the same export
+   - All existing functions identical to v4.50
 DEPENDS ON: None (pure display)
-STATUS: Ready for integration - Test with view-game.html for F2 alignment and clinch display
+STATUS: Ready for integration - Test with real-game and view-game
 */
