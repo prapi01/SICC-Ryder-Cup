@@ -1,17 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 5.00
+VERSION: 5.01
 KEY CHANGES:
-   - COMPLETE REWRITE - uses shared calculation functions from game-ui.js v4.04
-   - NO duplicate calculation functions - all call GameUI.getXxx()
-   - Shortform player names (label instead of full name)
-   - No "vs " prefix in bubbles
-   - Cache missing redirects to index.html
-   - All UI hidden until data-ready (no flash)
-   - FLIGHT toggle button (replaces SAVE button)
-   - No edit buttons (-/+)
-   - Same celebration and handicap flow as real-game (readonly)
-   - Uses game-ui.js v4.04 for all UI rendering and calculations
+   - FIXED: Correctly extract f1DataString and f2DataString from preloaded rawData
+   - f1DataString: preloadData.rawData?.f1?.d (was preloadData.f1DataString)
+   - f2DataString: preloadData.rawData?.f2?.d (was preloadData.f2DataString)
+   - All other functionality identical to v5.00
+   - Uses GameLoader.setLocalCache() with properly populated mockCache
+   - No local variables needed - relies on GameLoader.getLocalCache()
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -58,12 +54,10 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
-        /* Hide elements until data is ready - NO FLASH */
         .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
             visibility: hidden;
         }
         
-        /* Show when data is ready */
         .data-ready .status-bubble,
         .data-ready #courseName,
         .data-ready #holeHeader,
@@ -74,7 +68,6 @@ STATUS: Ready for integration
             visibility: visible;
         }
         
-        /* Ticker container always visible but empty initially */
         .ticker-container {
             visibility: visible;
         }
@@ -147,8 +140,6 @@ STATUS: Ready for integration
         .player-name { font-size: 1rem; font-weight: 600; }
         .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
         .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
-        
-        /* NOTE: Bubble CSS is in game-ui.js - DO NOT ADD HERE */
         
         .scorecard-section { margin: 20px 0; }
         
@@ -370,7 +361,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.00</div>
+<div class="version-tag">v5.01</div>
 
 <script>
 // ============================================================
@@ -435,27 +426,28 @@ function getPreloadedRawGameData() {
 function applyPreloadedData(preloadData) {
     console.log("Applying preloaded data for instant render");
     
-    courseName = preloadData.course?.name || "Unknown Course";
-    coursePar = preloadData.course?.par || [];
-    courseSi = preloadData.course?.si || [];
-    allPlayers = preloadData.players || [];
-    startingHole = preloadData.startingHole || 1;
-    teamGameFormat = preloadData.teamGameFormat || "tournament";
+    courseName = preloadData.rawData?.course?.name || "Unknown Course";
+    coursePar = preloadData.rawData?.course?.par || [];
+    courseSi = preloadData.rawData?.course?.si || [];
+    allPlayers = preloadData.rawData?.players || [];
+    startingHole = preloadData.rawData?.startingHole || 1;
+    teamGameFormat = preloadData.rawData?.teamGameFormat || "tournament";
     
+    // v5.01 FIX: Extract data strings from rawData.f1.d and rawData.f2.d
     var mockCache = {
-        course: preloadData.course,
-        players: preloadData.players,
-        startingHole: preloadData.startingHole,
-        teamGameFormat: preloadData.teamGameFormat,
-        f1DataString: preloadData.f1DataString || "",
-        f2DataString: preloadData.f2DataString || "",
-        results: preloadData.results || null,
-        savedHoles: preloadData.savedHoles || { 1: [], 2: [] },
-        t1Row: preloadData.t1Row || new Array(18).fill('_'),
-        t2Row: preloadData.t2Row || new Array(18).fill('_'),
-        strkRow: preloadData.strkRow || new Array(18).fill('0'),
-        lastSyncedHole: preloadData.lastSyncedHole || 0,
-        clinchedAt: preloadData.clinchedAt || {},
+        course: preloadData.rawData?.course,
+        players: preloadData.rawData?.players,
+        startingHole: preloadData.rawData?.startingHole || 1,
+        teamGameFormat: preloadData.rawData?.teamGameFormat || "tournament",
+        f1DataString: preloadData.rawData?.f1?.d || "",
+        f2DataString: preloadData.rawData?.f2?.d || "",
+        results: preloadData.rawData?.results || null,
+        savedHoles: { 1: [], 2: [] },
+        t1Row: new Array(18).fill('_'),
+        t2Row: new Array(18).fill('_'),
+        strkRow: new Array(18).fill('0'),
+        lastSyncedHole: 0,
+        clinchedAt: {},
         signatures: { f1: false, f2: false },
         submitted: { f1: false, f2: false },
         locks: { f1: null, f2: null },
@@ -464,6 +456,7 @@ function applyPreloadedData(preloadData) {
     
     if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
         GameLoader.setLocalCache(mockCache);
+        console.log("GameLoader cache set with data strings");
     }
     
     document.getElementById("courseName").innerHTML = courseName;
@@ -585,12 +578,10 @@ function renderPlayerCards() {
             var opp = opponents[j];
             var bubbleClass = getBubbleClassWithClinch(p, opp);
             var bubbleValue = getBubbleValue(p, opp);
-            // NO "vs " prefix - just opponent label and match value
             bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
         }
         bubblesHtml += '</div>';
         
-        // Shortform player name (label)
         cardsHtml += '<div class="player-card">' +
             '<div class="player-header">' +
                 '<div>' +
@@ -641,7 +632,11 @@ function getDisplayHoles() {
 }
 
 function renderAll() {
-    if (!GameLoader.getLocalCache().f1DataString || !GameLoader.getLocalCache().f2DataString) return;
+    var cache = GameLoader.getLocalCache();
+    if (!cache.f1DataString || !cache.f2DataString) {
+        console.log("Waiting for data strings to load...");
+        return;
+    }
     renderHoleHeader();
     updateTRDisplay();
     renderPlayerCards();
@@ -872,7 +867,6 @@ async function init() {
         buildCompactHeader();
         buildBottomMenu();
         
-        // CRITICAL: Calculate first unsaved hole after cache is loaded
         var cache = GameLoader.getLocalCache();
         window.savedHoles = cache.savedHoles || { 1: [], 2: [] };
         var firstUnsaved = getFirstUnsavedHole(displayFlight);
@@ -895,7 +889,6 @@ async function init() {
         startGameListener();
         
     } else {
-        // CRITICAL: No cache - redirect to index.html
         console.log("No cached data available - redirecting to index.html");
         alert("Game data not loaded. Returning to main menu.");
         window.location.href = "index.html";
@@ -920,18 +913,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 5.00
+VERSION: 5.01
 KEY CHANGES:
-   - COMPLETE REWRITE - uses shared calculation functions from game-ui.js v4.04
-   - NO duplicate calculation functions - all call GameUI.getXxx()
-   - Shortform player names (label instead of full name)
-   - No "vs " prefix in bubbles
-   - Cache missing redirects to index.html
-   - All UI hidden until data-ready (no flash)
-   - FLIGHT toggle button (replaces SAVE button)
-   - No edit buttons (-/+)
-   - Same celebration and handicap flow as real-game (readonly)
-   - Uses game-ui.js v4.04 for all UI rendering and calculations
+   - FIXED: Correctly extract f1DataString and f2DataString from preloaded rawData
+   - f1DataString: preloadData.rawData?.f1?.d (was preloadData.f1DataString)
+   - f2DataString: preloadData.rawData?.f2?.d (was preloadData.f2DataString)
+   - All other functionality identical to v5.00
+   - Uses GameLoader.setLocalCache() with properly populated mockCache
+   - No local variables needed - relies on GameLoader.getLocalCache()
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
