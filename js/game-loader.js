@@ -1,11 +1,11 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.05
+VERSION: 1.06
 KEY CHANGES:
-   - FIXED: getGameIdFromSession() now reads from 'currentGameId' (not 'cachedGameId')
-   - FIXED: getGameDataFromSession() now reads from 'preloadedRawGameData.rawData' (not 'gameData')
-   - ADDED: Proper parsing of preloadedRawGameData structure
-   - ADDED: Fallback to Firestore if session data is invalid
+   - FIXED: getGameIdFromSession() now reads from 'currentGameId' (matches index.html preload)
+   - FIXED: getGameDataFromSession() now reads from 'preloadedRawGameData.rawData' directly
+   - FIXED: No double JSON.parse() - rawData is already an object
+   - ADDED: Proper error handling for missing session data
    - ADDED: Console logging for debugging session loading
    - All other functions unchanged from v1.04
 DEPENDS ON: Firebase Firestore
@@ -25,11 +25,11 @@ let activeListenerUnsubscribe = null;
 function getGameIdFromSession() {
     try {
         const gameId = sessionStorage.getItem('currentGameId');
-        if (gameId) {
+        if (gameId && gameId !== 'null' && gameId !== 'undefined') {
             console.log('[game-loader] getGameIdFromSession: found', gameId);
             return gameId;
         }
-        console.log('[game-loader] getGameIdFromSession: no gameId found');
+        console.log('[game-loader] getGameIdFromSession: no valid gameId found');
         return null;
     } catch (e) {
         console.error('[game-loader] Error reading gameId from session:', e);
@@ -40,6 +40,7 @@ function getGameIdFromSession() {
 /**
  * Get full game data from session storage
  * Reads from the actual structure used by index.html: preloadedRawGameData.rawData
+ * rawData is already an object - NO additional JSON.parse()
  * @returns {Object|null} Game data object or null if not found/invalid
  */
 function getGameDataFromSession() {
@@ -56,13 +57,16 @@ function getGameDataFromSession() {
             return null;
         }
         
-        const gameData = JSON.parse(parsed.rawData);
-        if (gameData && gameData.id) {
-            console.log('[game-loader] getGameDataFromSession: found game', gameData.id);
+        // rawData is already an object - return it directly
+        const gameData = parsed.rawData;
+        
+        if (gameData && (gameData.id || gameData.gameId)) {
+            const id = gameData.id || gameData.gameId;
+            console.log('[game-loader] getGameDataFromSession: found game', id);
             return gameData;
         }
         
-        console.log('[game-loader] getGameDataFromSession: invalid game data');
+        console.log('[game-loader] getGameDataFromSession: invalid game data structure');
         return null;
     } catch (e) {
         console.error('[game-loader] Error reading gameData from session:', e);
@@ -94,18 +98,32 @@ async function loadGameData(gameId = null, mode = 'view') {
     let gameData = getGameDataFromSession();
     
     // If session has data and IDs match, use it
-    if (gameData && gameData.id === gameId) {
-        console.log('[game-loader] Using game data from session');
-        activeGameData = gameData;
-        return gameData;
+    if (gameData) {
+        const dataId = gameData.id || gameData.gameId;
+        if (dataId === gameId) {
+            console.log('[game-loader] Using game data from session');
+            activeGameData = gameData;
+            return gameData;
+        } else {
+            console.log('[game-loader] Session game ID mismatch: dataId=', dataId, 'requested=', gameId);
+        }
     }
     
     // Otherwise load from Firestore
-    console.log('[game-loader] Loading game data from Firestore');
+    console.log('[game-loader] Loading game data from Firestore for ID:', gameId);
     
     try {
         const db = firebase.firestore();
-        const doc = await db.collection('games').doc(gameId).get();
+        
+        // Try scheduledGames first
+        let doc = await db.collection('scheduledGames').doc(gameId).get();
+        let collection = 'scheduledGames';
+        
+        // If not found, try previewSandboxes
+        if (!doc.exists) {
+            doc = await db.collection('previewSandboxes').doc(gameId).get();
+            collection = 'previewSandboxes';
+        }
         
         if (!doc.exists) {
             console.error('[game-loader] Game not found in Firestore:', gameId);
@@ -114,23 +132,25 @@ async function loadGameData(gameId = null, mode = 'view') {
         
         gameData = doc.data();
         gameData.id = doc.id;
+        gameData.gameId = doc.id;
+        gameData._collection = collection;
         
-        // Load scores subcollection
-        const scoresSnapshot = await db.collection('games').doc(gameId).collection('scores').get();
-        const scores = {};
-        scoresSnapshot.forEach(doc => {
-            scores[doc.id] = doc.data();
-        });
-        gameData.scores = scores;
-        
-        // Load players
-        if (gameData.players && Array.isArray(gameData.players)) {
-            // Players already in game data
-            console.log('[game-loader] Players loaded from game data:', gameData.players.length);
+        // Load scores subcollection if it exists (for backward compatibility)
+        try {
+            const scoresSnapshot = await db.collection(collection).doc(gameId).collection('scores').get();
+            if (!scoresSnapshot.empty) {
+                const scores = {};
+                scoresSnapshot.forEach(doc => {
+                    scores[doc.id] = doc.data();
+                });
+                gameData.scores = scores;
+            }
+        } catch (e) {
+            console.log('[game-loader] No scores subcollection or error loading:', e.message);
         }
         
         activeGameData = gameData;
-        console.log('[game-loader] Successfully loaded from Firestore');
+        console.log('[game-loader] Successfully loaded from Firestore (collection:', collection, ')');
         return gameData;
         
     } catch (error) {
@@ -160,20 +180,36 @@ function setupGameDataListener(gameId, callback) {
     try {
         const db = firebase.firestore();
         
+        // Determine which collection to listen to
+        let collectionName = 'scheduledGames';
+        if (activeGameData && activeGameData._collection) {
+            collectionName = activeGameData._collection;
+        }
+        
+        console.log('[game-loader] Setting up listener on:', collectionName, gameId);
+        
         // Listen to main game document
-        const unsubscribe = db.collection('games').doc(gameId)
+        const unsubscribe = db.collection(collectionName).doc(gameId)
             .onSnapshot(async (doc) => {
                 if (doc.exists) {
                     const gameData = doc.data();
                     gameData.id = doc.id;
+                    gameData.gameId = doc.id;
+                    gameData._collection = collectionName;
                     
-                    // Get latest scores
-                    const scoresSnapshot = await db.collection('games').doc(gameId).collection('scores').get();
-                    const scores = {};
-                    scoresSnapshot.forEach(doc => {
-                        scores[doc.id] = doc.data();
-                    });
-                    gameData.scores = scores;
+                    // Try to load scores subcollection if it exists
+                    try {
+                        const scoresSnapshot = await db.collection(collectionName).doc(gameId).collection('scores').get();
+                        if (!scoresSnapshot.empty) {
+                            const scores = {};
+                            scoresSnapshot.forEach(doc => {
+                                scores[doc.id] = doc.data();
+                            });
+                            gameData.scores = scores;
+                        }
+                    } catch (e) {
+                        // No scores subcollection - ignore
+                    }
                     
                     activeGameData = gameData;
                     
@@ -237,8 +273,9 @@ function isSessionDataValid() {
         return false;
     }
     
-    if (gameData.id !== gameId) {
-        console.warn('[game-loader] Session data mismatch: id=', gameData.id, 'gameId=', gameId);
+    const dataId = gameData.id || gameData.gameId;
+    if (dataId !== gameId) {
+        console.warn('[game-loader] Session data mismatch: dataId=', dataId, 'gameId=', gameId);
         return false;
     }
     
@@ -261,12 +298,15 @@ if (typeof module !== 'undefined' && module.exports) {
 
 /*
 FOOTER: js/game-loader.js
-VERSION: 1.05
+VERSION: 1.06
 LAST UPDATED: 2026-05-29
 COMPATIBLE WITH: index.html v3.18+, pre-game.html v3.12+, real-game.html v4.07+, view-game.html v4.13+
-NEXT STEPS: 
-   - Test session loading from index.html
-   - Verify pre-game.html reads correctly
-   - Verify view-game.html loads without URL params
-   - Test real-time updates via Firestore listener
+KEY FIXES:
+   - Reads 'currentGameId' from sessionStorage (not 'cachedGameId')
+   - Reads 'preloadedRawGameData.rawData' as object (no double JSON.parse)
+   - Properly handles both scheduledGames and previewSandboxes collections
+NEXT STEPS:
+   - Update view-game.html v4.13 to use loadGameData() and getGameIdFromSession()
+   - Test loading from sessionStorage on index page
+   - Verify real-game.html still works (backward compatible)
 */
