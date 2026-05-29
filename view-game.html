@@ -67,4 +67,347 @@ STATUS: Production Ready
         .compact-prev-btn:disabled, .compact-next-btn:disabled { background: #2a2a2a !important; color: #666 !important; border-color: #444 !important; opacity: 0.6; cursor: not-allowed; }
         
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; align-items: center; justify-content: center; z-index: 3000; backdrop-filter: blur(8px); }
-        .celebration-modal { background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%); border-radius: 48px; padding: 
+        .celebration-modal { background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%); border-radius: 48px; padding: 32px; max-width: 400px; width: 90%; text-align: center; border: 3px solid #ffaa44; }
+        .celebration-title { font-size: 1.5rem; font-weight: 700; color: #ffaa44; margin-bottom: 16px; }
+        .celebration-beer { font-size: 2rem; font-weight: 800; color: #4caf50; margin-bottom: 20px; }
+        .celebration-winner { font-size: 1.5rem; font-weight: 800; margin-bottom: 16px; padding: 12px; border-radius: 60px; }
+        .winner-a { background: rgba(76,175,80,0.2); color: #4caf50; }
+        .winner-b { background: rgba(76,175,80,0.2); color: #4caf50; }
+        .celebration-btn { background: #1a3a1a; border: 2px solid #4caf50; color: #4caf50; padding: 14px 28px; border-radius: 60px; font-size: 1.1rem; font-weight: 700; cursor: pointer; width: 100%; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="ticker-container" id="tickerContainer">
+        <div class="ticker-content" id="tickerContent">Loading scores...</div>
+    </div>
+    
+    <div id="statusBubble" class="status-bubble">👁️ VIEWER</div>
+    
+    <div id="courseName" style="text-align:center; margin-bottom:8px; font-size:0.85rem; color:#aaa;">Loading...</div>
+    
+    <div id="holeHeader" style="text-align:center; margin-bottom:10px;"></div>
+    
+    <div id="trDisplay" class="team-score-card"></div>
+    <div id="playerCards" class="player-cards"></div>
+    
+    <div class="scorecard-section">
+        <div id="compactHeaderContainer"></div>
+        <div class="scorecard-wrapper" id="scorecardWrapper"></div>
+    </div>
+    
+    <div id="bottomMenuContainer"></div>
+    <div class="debug" id="debug"></div>
+</div>
+
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v6.00</div>
+
+<script>
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+var db = firebase.firestore();
+
+var gameId = null, courseName = "", coursePar = [], courseSi = [], allPlayers = [], startingHole = 1;
+var f1DataString = "", f2DataString = "", resultsCache = null;
+var unsubscribe = null;
+var isGameCompleteFlag = false, celebrationTriggered = false;
+var currentDisplayMode = "play", currentFlight = 1, currentHole = 1;
+
+function getPlayOrder() {
+    var order = [];
+    for (var i = startingHole; i <= 18; i++) order.push(i);
+    for (var i = 1; i < startingHole; i++) order.push(i);
+    return order;
+}
+
+function getHolePosition(holeNumber) {
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        if (playOrder[i] === holeNumber) return i;
+    }
+    return holeNumber - 1;
+}
+
+function getDisplayHoles() {
+    if (currentDisplayMode === "natural") {
+        var natural = [];
+        for (var i = 1; i <= 18; i++) natural.push(i);
+        return natural;
+    }
+    return getPlayOrder();
+}
+
+function getFlightOrderedPlayers(flight) {
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    return teamA.concat(teamB);
+}
+
+function getAllOpponents(player) {
+    var opponents = allPlayers.filter(function(op) { return op.team !== player.team; });
+    opponents.sort(function(a, b) {
+        var aIntra = (a.flight === player.flight);
+        var bIntra = (b.flight === player.flight);
+        if (aIntra && !bIntra) return -1;
+        if (!aIntra && bIntra) return 1;
+        if (aIntra && bIntra) return a.handicap - b.handicap;
+        return a.flight - b.flight;
+    });
+    return opponents;
+}
+
+function getStoredScore(player, hole) {
+    var flightDataStr = player.flight === 1 ? f1DataString : f2DataString;
+    var holeData = GameData.parseHoleData(flightDataStr, hole);
+    if (!holeData || !holeData.saved) return coursePar[hole - 1] || 4;
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    if (player.team === 'A') {
+        if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
+        if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
+    } else {
+        if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
+        if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
+    }
+    return coursePar[hole - 1] || 4;
+}
+
+function isHoleSaved(flight, hole) {
+    var flightDataStr = flight === 1 ? f1DataString : f2DataString;
+    var holeData = GameData.parseHoleData(flightDataStr, hole);
+    return holeData && holeData.saved;
+}
+
+function getMatchValueFromResults(player, opponent, holeNumber) {
+    if (!resultsCache || !resultsCache.matchResults) return 0;
+    var position = getHolePosition(holeNumber);
+    var matchArray = resultsCache.matchResults[position];
+    if (!matchArray) return 0;
+    var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var aIdx = -1, bIdx = -1;
+    if (player.team === 'A') {
+        for (var i = 0; i < teamAPlayers.length; i++) { if (teamAPlayers[i].name === player.name) aIdx = i; }
+        for (var i = 0; i < teamBPlayers.length; i++) { if (teamBPlayers[i].name === opponent.name) bIdx = i; }
+    } else {
+        for (var i = 0; i < teamAPlayers.length; i++) { if (teamAPlayers[i].name === opponent.name) aIdx = i; }
+        for (var i = 0; i < teamBPlayers.length; i++) { if (teamBPlayers[i].name === player.name) bIdx = i; }
+    }
+    if (aIdx === -1 || bIdx === -1) return 0;
+    var matchIndex = aIdx * teamBPlayers.length + bIdx;
+    var value = matchArray[matchIndex] || 0;
+    return (player.team === 'B') ? -value : value;
+}
+
+function getBubbleValue(player, opponent) {
+    return GameUI.getBubbleValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePosition);
+}
+
+function getBubbleClassWithClinch(player, opponent) {
+    var clinchedAt = resultsCache ? (resultsCache.clinchedAt || {}) : {};
+    return GameUI.getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSaved, getHolePosition, clinchedAt);
+}
+
+function getTRForHole(holeNumber) {
+    if (!resultsCache || !resultsCache.tr) return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+    var position = getHolePosition(holeNumber);
+    return {
+        teamA: resultsCache.tr.teamA[position] !== undefined ? resultsCache.tr.teamA[position] : 9.5,
+        teamB: resultsCache.tr.teamB[position] !== undefined ? resultsCache.tr.teamB[position] : 9.5,
+        teamAGreen: resultsCache.tr.teamAGreen[position] !== undefined ? resultsCache.tr.teamAGreen[position] : true,
+        teamBGreen: resultsCache.tr.teamBGreen[position] !== undefined ? resultsCache.tr.teamBGreen[position] : true
+    };
+}
+
+function getFirstUnsavedHole(flight) {
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        if (!isHoleSaved(flight, playOrder[i])) return playOrder[i];
+    }
+    return 18;
+}
+
+function calculatePlayerScoreRelativeToPar(player) {
+    var totalGross = 0, totalPar = 0;
+    for (var h = 1; h <= 18; h++) {
+        totalPar += coursePar[h - 1];
+        totalGross += getStoredScore(player, h);
+    }
+    return totalGross - totalPar;
+}
+
+function initTicker() {
+    if (typeof Ticker !== 'undefined') {
+        Ticker.init('tickerContainer', 'tickerContent', calculatePlayerScoreRelativeToPar);
+        if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
+    }
+}
+
+function renderHoleHeader() {
+    document.getElementById('holeHeader').innerHTML = '<div style="display:inline-block; background:#111; padding:6px 24px; border-radius:40px; font-size:1.4rem; font-weight:800;">HOLE ' + currentHole + '</div>';
+}
+
+function renderTR() { var tr = getTRForHole(currentHole); GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen); }
+
+function renderPlayerCards() {
+    var players = getFlightOrderedPlayers(currentFlight);
+    GameUI.renderPlayerCards("playerCards", players, getAllOpponents, getBubbleClassWithClinch, getBubbleValue, function(p) { return getStoredScore(p, currentHole); }, false, null);
+    setTimeout(function() {
+        var firstCard = document.querySelector('.player-card');
+        if (firstCard && !document.querySelector('.flight-badge')) {
+            var badge = document.createElement('div');
+            badge.className = 'flight-badge';
+            badge.innerText = 'FLIGHT ' + currentFlight;
+            badge.style.cssText = 'position:absolute; top:-18px; left:50%; transform:translateX(-50%); background:#1a3a1a; border:2px solid #4caf50; color:#4caf50; font-size:0.8rem; font-weight:700; padding:4px 16px; border-radius:30px; z-index:100; white-space:nowrap;';
+            firstCard.style.position = 'relative';
+            firstCard.appendChild(badge);
+        }
+    }, 50);
+}
+
+function renderScorecard() {
+    var holes = getDisplayHoles();
+    window.savedHoles = { 1: [], 2: [] };
+    for (var h = 1; h <= 18; h++) { if (isHoleSaved(1, h)) savedHoles[1].push(h); if (isHoleSaved(2, h)) savedHoles[2].push(h); }
+    var t1Row = resultsCache ? (resultsCache.game2?.flight1?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
+    var t2Row = resultsCache ? (resultsCache.game2?.flight2?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
+    var strkRow = resultsCache ? (resultsCache.game3?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
+    var t1Clinched = resultsCache?.game2?.flight1?.clinched || {};
+    var t2Clinched = resultsCache?.game2?.flight2?.clinched || {};
+    GameUI.renderScorecard('scorecardWrapper', holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1Clinched, t2Clinched);
+}
+
+function renderAll() {
+    if (!f1DataString || !f2DataString) return;
+    renderHoleHeader();
+    renderTR();
+    renderPlayerCards();
+    renderScorecard();
+    updateNavButtons();
+    if (typeof Ticker !== 'undefined') Ticker.refresh();
+}
+
+function updateNavButtons() {
+    var playOrder = getPlayOrder();
+    var isCurrentSaved = isHoleSaved(currentFlight, currentHole);
+    GameUI.updateNavigationButtons(currentHole, playOrder, isCurrentSaved, false, false, null);
+}
+
+function goToPrevHole() {
+    var playOrder = getPlayOrder();
+    var idx = playOrder.indexOf(currentHole);
+    if (idx > 0) { currentHole = playOrder[idx - 1]; document.querySelector('.compact-hole-display').innerText = currentHole; renderAll(); }
+}
+
+function goToNextHole() {
+    if (isGameCompleteFlag && !celebrationTriggered) { showCelebrationAndHandicap(); return; }
+    var playOrder = getPlayOrder();
+    var idx = playOrder.indexOf(currentHole);
+    if (idx < 17) { currentHole = playOrder[idx + 1]; document.querySelector('.compact-hole-display').innerText = currentHole; renderAll(); }
+}
+
+function toggleDisplayMode() {
+    currentDisplayMode = currentDisplayMode === 'play' ? 'natural' : 'play';
+    GameUI.updateCompactPnButton();
+    renderAll();
+}
+
+function toggleFlight() {
+    currentFlight = currentFlight === 1 ? 2 : 1;
+    var btn = document.getElementById('compactFlightBtn');
+    if (btn) btn.innerText = 'FLIGHT ' + currentFlight;
+    renderAll();
+}
+
+function exitToMainMenu() { if (unsubscribe) unsubscribe(); window.location.href = "index.html"; }
+
+function buildCompactHeader() {
+    var container = document.getElementById('compactHeaderContainer');
+    if (!container) return;
+    GameUI.renderCompactHeader("compactHeaderContainer", currentFlight, currentHole, null, goToPrevHole, goToNextHole, toggleFlight, toggleDisplayMode);
+    var saveBtn = document.getElementById('compactSaveBtn');
+    if (saveBtn && saveBtn.parentNode) {
+        var flightBtn = document.createElement('button');
+        flightBtn.id = 'compactFlightBtn';
+        flightBtn.className = 'compact-flight-btn';
+        flightBtn.innerText = 'FLIGHT ' + currentFlight;
+        flightBtn.onclick = toggleFlight;
+        saveBtn.parentNode.replaceChild(flightBtn, saveBtn);
+    }
+    GameUI.updateCompactPnButton();
+}
+
+function buildBottomMenu() {
+    var container = document.getElementById('bottomMenuContainer');
+    if (container) {
+        container.innerHTML = '<button id="menuBtn" style="width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;">← Back to Main Menu</button>';
+        document.getElementById('menuBtn').onclick = exitToMainMenu;
+    }
+}
+
+function showCelebrationAndHandicap() {
+    if (celebrationTriggered) return;
+    celebrationTriggered = true;
+    var tr = getTRForHole(currentHole);
+    var winner = tr.teamA > tr.teamB ? "A" : (tr.teamB > tr.teamA ? "B" : "Tie");
+    var winningPlayers = { teamA: allPlayers.filter(function(p) { return p.team === "A"; }), teamB: allPlayers.filter(function(p) { return p.team === "B"; }) };
+    SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() { if (typeof HandicapAdjustment !== 'undefined') HandicapAdjustment.init(gameId, gameId + "_history", winningPlayers, {}, {}, true); });
+}
+
+function startGameListener() {
+    if (unsubscribe) unsubscribe();
+    unsubscribe = db.collection("scheduledGames").doc(gameId).onSnapshot(function(doc) {
+        if (doc.exists) {
+            var data = doc.data();
+            courseName = data.course?.name || "Unknown Course";
+            coursePar = data.course?.par || [];
+            courseSi = data.course?.si || [];
+            allPlayers = data.players || [];
+            startingHole = data.startingHole || 1;
+            f1DataString = data.f1?.d || "";
+            f2DataString = data.f2?.d || "";
+            resultsCache = data.results || null;
+            document.getElementById("courseName").innerHTML = courseName;
+            if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) { Ticker.setPlayers(allPlayers); Ticker.refresh(); }
+            var newHole = getFirstUnsavedHole(currentFlight);
+            if (newHole !== currentHole) { currentHole = newHole; var hd = document.querySelector('.compact-hole-display'); if (hd) hd.innerText = currentHole; }
+            renderAll();
+        }
+    }, function(e) { document.getElementById("debug").innerHTML = "Sync error: " + e.message; });
+}
+
+async function init() {
+    var shortName = await SessionManager.getShortNameOnly();
+    document.getElementById("deviceTag").innerHTML = "👁️ " + shortName;
+    var session = await new Promise(function(r) { SessionManager.initSession("view-game.html", "index.html", r); });
+    gameId = session.activeGame ? session.activeGame.gameId : sessionStorage.getItem('currentGameId');
+    if (!gameId) { document.getElementById("debug").innerHTML = "Error: No game ID"; return; }
+    document.getElementById('statusBubble').onclick = function() { location.reload(); };
+    GameUI.applyTightLayout();
+    buildCompactHeader();
+    buildBottomMenu();
+    initTicker();
+    startGameListener();
+}
+
+init();
+</script>
+</body>
+</html>
+<!--
+FILE: view-game.html
+VERSION: 6.00
+STATUS: Production Ready
+-->
