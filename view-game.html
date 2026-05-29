@@ -1,12 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 4.50
+VERSION: 4.51
 KEY CHANGES:
+   - FIXED: Removed variable redeclaration conflicts (currentGameData already exists globally)
    - FIXED: Changed all GameUI references to gameUI (lowercase) to match game-ui.js v4.50 export
    - FIXED: Added loading overlay with spinner to hide artifacts until render complete
-   - FIXED: UI elements fade in only after all data loaded (removes viewer bubble/course name flash)
-   - ADDED: showUI() function with 'ready' class transitions
-   - ALL other functionality identical to previous working version
+   - FIXED: UI elements fade in only after all data loaded
+   - CHANGED: Use window.* variables to avoid redeclaration errors
+   - ALL other functionality identical to v4.50
 DEPENDS ON: game-ui.js (v4.50), game-loader.js, ticker.js, hcp-adjust.js, session.js
 STATUS: Ready for integration
 -->
@@ -121,12 +122,16 @@ STATUS: Ready for integration
     <script src="js/hcp-adjust.js"></script>
 
     <script>
-        // v4.50 - gameUI (lowercase) references only, loading overlay prevents artifact flash
+        // v4.51 - No variable redeclaration conflicts
+        // Use existing globals from game-loader.js (currentGameData already defined)
         
-        let currentGameData = null;
-        let currentFlight = 1;
-        let unsubscribeListener = null;
-        let currentGameId = null;
+        // Only declare if not already defined globally
+        if (typeof window.viewCurrentFlight === 'undefined') window.viewCurrentFlight = 1;
+        if (typeof window.viewUnsubscribeListener === 'undefined') window.viewUnsubscribeListener = null;
+        if (typeof window.viewGameId === 'undefined') window.viewGameId = null;
+        
+        // Reference to existing global currentGameData (from game-loader.js)
+        // Do NOT redeclare - use as is
         
         // Get game ID from URL or cache
         function getGameId() {
@@ -175,7 +180,7 @@ STATUS: Ready for integration
             if (overlay) {
                 overlay.classList.add('hide');
                 setTimeout(() => {
-                    overlay.remove();
+                    if (overlay.parentNode) overlay.remove();
                 }, 300);
             }
             
@@ -188,12 +193,13 @@ STATUS: Ready for integration
         
         // Render all UI components - uses gameUI (lowercase)
         function renderUI() {
+            // Use existing currentGameData from game-loader.js
             if (!currentGameData) return;
             
             const container = document.getElementById('viewerContent');
             if (!container) return;
             
-            const currentHole = currentFlight === 1 ? (currentGameData.currentHoleF1 || 1) : (currentGameData.currentHoleF2 || 1);
+            const currentHole = window.viewCurrentFlight === 1 ? (currentGameData.currentHoleF1 || 1) : (currentGameData.currentHoleF2 || 1);
             
             // Build HTML using gameUI functions
             let html = '';
@@ -215,12 +221,12 @@ STATUS: Ready for integration
             
             // Scorecard
             html += '<div class="scorecard-container">';
-            html += gameUI.renderScorecard(currentGameData, currentFlight, null, currentHole);
+            html += gameUI.renderScorecard(currentGameData, window.viewCurrentFlight, null, currentHole);
             html += '</div>';
             
             // Player cards
             html += '<div class="player-cards-container">';
-            html += gameUI.renderPlayerCards(currentGameData, currentFlight, null, currentHole);
+            html += gameUI.renderPlayerCards(currentGameData, window.viewCurrentFlight, null, currentHole);
             html += '</div>';
             
             container.innerHTML = html;
@@ -242,7 +248,7 @@ STATUS: Ready for integration
         
         // Initialize with game data
         async function init() {
-            console.log('Initializing view-game v4.50');
+            console.log('Initializing view-game v4.51');
             
             // Show loading overlay
             const overlay = document.getElementById('loadingOverlay');
@@ -264,36 +270,53 @@ STATUS: Ready for integration
                 return;
             }
             
-            currentGameId = gameId;
+            window.viewGameId = gameId;
             
-            // Try to get cached data first
-            let gameData = null;
-            const cachedData = sessionStorage.getItem('cachedGameData');
-            if (cachedData && cachedData !== '{}') {
-                try {
-                    gameData = JSON.parse(cachedData);
-                    if (gameData && gameData.id === gameId) {
-                        console.log('Using cached game data');
-                        currentGameData = gameData;
-                        renderUI();
+            // Try to get cached data first (currentGameData may already have it)
+            if (!currentGameData || currentGameData.id !== gameId) {
+                const cachedData = sessionStorage.getItem('cachedGameData');
+                if (cachedData && cachedData !== '{}') {
+                    try {
+                        const game = JSON.parse(cachedData);
+                        if (game && game.id === gameId) {
+                            console.log('Using cached game data');
+                            // Update global currentGameData (from game-loader.js)
+                            if (typeof setGameData === 'function') {
+                                setGameData(game);
+                            } else {
+                                window.currentGameData = game;
+                            }
+                            renderUI();
+                        }
+                    } catch(e) {
+                        console.warn('Failed to parse cached data:', e);
                     }
-                } catch(e) {
-                    console.warn('Failed to parse cached data:', e);
                 }
+            } else {
+                // currentGameData already has the right game
+                renderUI();
             }
             
             // Set up Firestore listener for real-time updates
-            if (typeof loadGame === 'function') {
+            if (typeof loadGame === 'function' && window.viewGameId) {
                 try {
-                    unsubscribeListener = loadGame(gameId, (updatedGame) => {
+                    if (window.viewUnsubscribeListener && typeof window.viewUnsubscribeListener === 'function') {
+                        window.viewUnsubscribeListener();
+                    }
+                    window.viewUnsubscribeListener = loadGame(window.viewGameId, (updatedGame) => {
                         console.log('Game updated from Firestore');
-                        currentGameData = updatedGame;
+                        // Update global currentGameData
+                        if (typeof setGameData === 'function') {
+                            setGameData(updatedGame);
+                        } else {
+                            window.currentGameData = updatedGame;
+                        }
                         renderUI();
                     });
                 } catch(e) {
                     console.error('Failed to attach Firestore listener:', e);
                 }
-            } else if (!gameData) {
+            } else if (!currentGameData) {
                 console.error('No game data and loadGame function not available');
                 alert('Failed to load game data. Redirecting...');
                 window.location.href = 'index.html';
@@ -307,7 +330,7 @@ STATUS: Ready for integration
             
             if (flight1Btn) {
                 flight1Btn.addEventListener('click', () => {
-                    currentFlight = 1;
+                    window.viewCurrentFlight = 1;
                     flight1Btn.classList.add('active');
                     flight2Btn.classList.remove('active');
                     renderUI();
@@ -316,7 +339,7 @@ STATUS: Ready for integration
             
             if (flight2Btn) {
                 flight2Btn.addEventListener('click', () => {
-                    currentFlight = 2;
+                    window.viewCurrentFlight = 2;
                     flight2Btn.classList.add('active');
                     flight1Btn.classList.remove('active');
                     renderUI();
@@ -343,8 +366,8 @@ STATUS: Ready for integration
         
         // Clean up listener on page unload
         window.addEventListener('beforeunload', () => {
-            if (unsubscribeListener && typeof unsubscribeListener === 'function') {
-                unsubscribeListener();
+            if (window.viewUnsubscribeListener && typeof window.viewUnsubscribeListener === 'function') {
+                window.viewUnsubscribeListener();
             }
         });
         
@@ -357,12 +380,13 @@ STATUS: Ready for integration
 </html>
 <!--
 FILE: view-game.html
-VERSION: 4.50
+VERSION: 4.51
 KEY CHANGES:
+   - FIXED: Variable redeclaration error (currentGameData already exists globally)
    - FIXED: All GameUI references changed to gameUI (lowercase)
    - FIXED: Loading overlay prevents viewer bubble/course name flash
    - FIXED: UI elements fade in only after data loaded
-   - ALL other functionality unchanged from working version
+   - CHANGED: Uses window.viewCurrentFlight, window.viewUnsubscribeListener, window.viewGameId to avoid conflicts
 DEPENDS ON: game-ui.js (v4.50), game-loader.js, ticker.js, hcp-adjust.js, session.js
-STATUS: Ready for integration
+STATUS: Ready for integration - Test Flight 1/2 toggle, ticker display, and clinch bubbles
 -->
