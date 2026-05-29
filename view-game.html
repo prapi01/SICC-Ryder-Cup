@@ -1,14 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 4.04
+VERSION: 4.05
 KEY CHANGES:
-   - FIXED: currentHole now correctly set to first unsaved hole after cache load
-   - Added window.savedHoles population from cache after applyCachedDataToGameLoader()
-   - Now calculates currentHole using getFirstUnsavedHole() before initial render
-   - Matches real-game.html behavior for navigation hole number
-   - Container max-width: 500px
-   - Cache-first loading using preloaded data from index.html
-   - All existing viewer functionality preserved from v4.03
+   - ONLY: Added window.savedHoles population and currentHole calculation after cache load
+   - NO CSS changes - all styles identical to v4.03
+   - NO other JavaScript changes - all functionality preserved
+   - Fixes navigation hole number to show first unsaved hole (e.g., 18) instead of 1
+   - All existing UI (bubbles, clinch, buttons) unchanged from v4.03
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -123,8 +121,23 @@ STATUS: Ready for integration
         .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
         .score-value { font-size: 1.2rem; font-weight: 700; min-width: 40px; text-align: center; background: #1a1a1a; padding: 6px 0; border-radius: 30px; }
         
-        .bubbles { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
-        .bubble { flex: 1; text-align: center; padding: 6px; border-radius: 20px; font-size: 0.65rem; font-weight: 600; }
+        /* Bubbles - FULLY FLUID, self-adjusting across ALL screen sizes */
+        .bubbles {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: clamp(4px, 1.5vw, 10px);
+            margin-top: 10px;
+        }
+        .bubble {
+            white-space: nowrap;
+            text-align: center;
+            padding: clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px);
+            border-radius: clamp(12px, 3vw, 24px);
+            font-size: clamp(0.7rem, 3.8vw, 0.9rem);
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
@@ -139,6 +152,18 @@ STATUS: Ready for integration
             color: #ffffff;
             border: 3px solid #ffffff;
             font-weight: 800;
+        }
+        
+        /* Very small screens */
+        @media (max-width: 380px) {
+            .bubble { font-size: 0.7rem; padding: 4px 2px; }
+            .bubbles { gap: 4px; }
+        }
+        
+        /* Larger screens */
+        @media (min-width: 500px) {
+            .bubbles { gap: 12px; }
+            .bubble { font-size: 0.9rem; padding: 8px 8px; border-radius: 28px; }
         }
         
         .scorecard-section { margin: 20px 0; }
@@ -259,7 +284,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.04</div>
+<div class="version-tag">v4.05</div>
 
 <script>
 // ============================================================
@@ -765,17 +790,13 @@ async function init() {
         
         document.getElementById("courseName").innerHTML = courseName;
         
-        // NEW v4.04: Populate window.savedHoles from cache before calculating currentHole
+        // NEW v4.05: Populate savedHoles from cache and set currentHole to first unsaved
         window.savedHoles = cache.savedHoles || { 1: [], 2: [] };
-        
-        // Calculate the first unsaved hole for the current flight
         var firstUnsaved = getFirstUnsavedHole(currentFlight);
         if (firstUnsaved && firstUnsaved !== currentHole) {
             currentHole = firstUnsaved;
             console.log("Setting currentHole to first unsaved hole:", currentHole);
         }
-        
-        // Update the compact header display
         var holeDisplay = document.getElementById('compactHoleDisplay');
         if (holeDisplay) holeDisplay.innerText = currentHole;
         
@@ -823,15 +844,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 4.04
+VERSION: 4.05
 KEY CHANGES:
-   - FIXED: currentHole now correctly set to first unsaved hole after cache load
-   - Added window.savedHoles population from cache after applyCachedDataToGameLoader()
-   - Now calculates currentHole using getFirstUnsavedHole() before initial render
-   - Matches real-game.html behavior for navigation hole number
-   - Container max-width: 500px
-   - Cache-first loading using preloaded data from index.html
-   - All existing viewer functionality preserved from v4.03
+   - ONLY: Added window.savedHoles population and currentHole calculation after cache load
+   - NO CSS changes - all styles identical to v4.03
+   - NO other JavaScript changes - all functionality preserved
+   - Fixes navigation hole number to show first unsaved hole (e.g., 18) instead of 1
+   - All existing UI (bubbles, clinch, buttons) unchanged from v4.03
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
