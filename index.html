@@ -1,627 +1,878 @@
+<!--
+FILE: index.html
+VERSION: 3.18
+KEY CHANGES:
+   - FIXED: gameDataPreloaded flag now set in sessionStorage when preload completes
+   - Ensures view-game.html can detect cached data correctly
+   - All other preload logic preserved from v3.17
+DEPENDS ON: js/session.js, js/index-hidden.js
+STATUS: Ready for integration
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <title>SICC Ryder Cup</title>
+    
+    <!-- iOS / iPadOS Web App Settings -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SICC Ryder Cup">
+    <meta name="theme-color" content="#0a1a0a">
+    
+    <!-- Apple Touch Icons for Add to Home Screen -->
+    <link rel="apple-touch-icon" href="/images/ICON.png">
+    <link rel="apple-touch-icon-precomposed" href="/images/ICON.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/ICON.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/images/ICON.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="/images/ICON.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="/images/ICON.png">
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/index-hidden.js"></script>
+    
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html, body {
+            background: #000000;
+            min-height: 100vh;
         }
-
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: linear-gradient(135deg, #1a472a 0%, #0d2818 100%);
-            min-height: 100vh;
-            padding: env(safe-area-inset-top) 0 0 0;
+            background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
+            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
-
+        
         .container {
+            display: none;
             max-width: 500px;
-            margin: 0 auto;
-            background: #f5f5f5;
-            min-height: 100vh;
-            border-radius: 0;
-            overflow-x: hidden;
-        }
-
-        /* Header */
-        .header {
-            background: linear-gradient(135deg, #2d6a4f 0%, #1b4332 100%);
-            color: white;
-            padding: 1rem;
-            text-align: center;
-            position: relative;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .version {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.75rem;
-            font-size: 0.7rem;
-            opacity: 0.6;
-            color: #a8e6cf;
-        }
-
-        .device-id {
-            position: absolute;
-            top: 0.5rem;
-            left: 0.75rem;
-            font-size: 0.65rem;
-            opacity: 0.5;
-            color: #a8e6cf;
-            cursor: pointer;
-        }
-
-        h1 {
-            font-size: 1.4rem;
-            margin: 0;
-        }
-
-        .subtitle {
-            font-size: 0.7rem;
-            opacity: 0.7;
-            margin-top: 0.25rem;
-        }
-
-        /* Main content */
-        .main-content {
-            padding: 1rem;
-        }
-
-        /* Game card */
-        .game-card {
-            background: white;
-            border-radius: 16px;
-            padding: 1.25rem;
-            margin-bottom: 1rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            transition: all 0.2s;
-        }
-
-        .game-card.today {
-            border-left: 4px solid #2d6a4f;
-        }
-
-        .game-card.preview {
-            border-left: 4px solid #ffd700;
-            opacity: 0.8;
-        }
-
-        .game-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #1b4332;
-            margin-bottom: 0.5rem;
-        }
-
-        .game-date {
-            font-size: 0.8rem;
-            color: #666;
-            margin-bottom: 0.5rem;
-        }
-
-        .game-course {
-            font-size: 0.8rem;
-            color: #2d6a4f;
-            margin-bottom: 1rem;
-        }
-
-        .game-button {
             width: 100%;
-            padding: 0.75rem;
-            background: #2d6a4f;
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
+            margin: 0 auto;
+            padding: 20px 16px;
         }
-
-        .game-button:active {
-            transform: scale(0.98);
-        }
-
-        .game-button.disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        .game-button.disabled:active {
-            transform: none;
-        }
-
-        /* Navigation buttons */
-        .nav-buttons {
+        
+        #splashOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
             display: flex;
             flex-direction: column;
-            gap: 0.75rem;
-            margin-top: 1rem;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            opacity: 1;
+            transition: opacity 0.8s ease;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
-
-        .nav-btn {
-            background: white;
-            border: 1px solid #ddd;
-            padding: 0.75rem;
+        
+        .splash-icon-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .splash-golf-icon {
+            font-size: 6rem;
+            display: inline-block;
+            transform: translateY(-300px);
+            filter: drop-shadow(0 0 20px rgba(76,175,80,0.5));
+        }
+        
+        .splash-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            text-align: center;
+            letter-spacing: 2px;
+            opacity: 0;
+        }
+        
+        .splash-subtitle {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 8px;
+            letter-spacing: 1px;
+            opacity: 0;
+        }
+        
+        @keyframes splashDropDown {
+            0% { transform: translateY(-300px) rotate(0deg); }
+            55% { transform: translateY(10px) rotate(180deg); }
+            75% { transform: translateY(-5px) rotate(270deg); }
+            100% { transform: translateY(0) rotate(360deg); }
+        }
+        
+        @keyframes splashFadeInUp {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes splashThumpRing {
+            0% { transform: scale(0); opacity: 0.8; }
+            100% { transform: scale(4); opacity: 0; }
+        }
+        
+        @keyframes splashShake {
+            0% { transform: translate(1px, 1px); }
+            10% { transform: translate(-1px, -2px); }
+            20% { transform: translate(-3px, 0px); }
+            30% { transform: translate(3px, 2px); }
+            40% { transform: translate(1px, -1px); }
+            50% { transform: translate(-1px, 2px); }
+            60% { transform: translate(-3px, 1px); }
+            70% { transform: translate(3px, 1px); }
+            80% { transform: translate(-1px, -1px); }
+            90% { transform: translate(1px, 2px); }
+            100% { transform: translate(0, 0); }
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            left: max(8px, env(safe-area-inset-left));
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
             border-radius: 12px;
-            font-size: 0.9rem;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            letter-spacing: 0.5px;
+        }
+        
+        .version-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.8;
+        }
+        
+        .header { text-align: center; margin-bottom: 20px; }
+        .golf-icon {
+            font-size: 4rem;
+            margin-bottom: 4px;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+        .golf-icon:active { transform: scale(0.98); }
+        .title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: inline-block;
+            white-space: nowrap;
+        }
+        .subtitle { font-size: 0.75rem; color: #888; margin-top: 4px; margin-bottom: 16px; letter-spacing: 1px; }
+        
+        .app-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+        
+        .ngb {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
+            border: 2px solid #4caf50;
+            border-radius: 32px;
+            margin: 0 auto 24px auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+        .ngb-inactive {
+            background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
+            border: 2px solid #555;
+            opacity: 0.7;
+            cursor: default;
+        }
+        .ngb-loading {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
+            border: 2px solid #ffaa44;
+            opacity: 0.8;
+            cursor: wait;
+        }
+        .ngb:active { transform: scale(0.98); }
+        .ngb .icon { font-size: 3rem; margin-bottom: 16px; display: block; }
+        .ngb .title { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 12px; background: none; -webkit-background-clip: unset; color: #4caf50; white-space: normal; }
+        .ngb-loading .title { color: #ffaa44; }
+        .ngb .subtitle-text { font-size: 1rem; font-weight: 500; color: #ccc; margin-bottom: 8px; }
+        .ngb .date { font-size: 0.9rem; font-weight: 400; color: #aaa; margin-bottom: 8px; }
+        .ngb .course-name { font-size: 0.85rem; font-weight: 400; color: #888; margin-top: 4px; }
+        .ngb .no-game { font-size: 1rem; font-weight: 500; color: #888; }
+        .ngb-loading .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ffaa44;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .menu-buttons {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+        
+        .menu-btn {
+            background: linear-gradient(145deg, #1a1a1a, #111);
+            border: 1px solid #4caf50;
+            border-radius: 60px;
+            padding: 14px 20px;
+            text-align: center;
             cursor: pointer;
             transition: all 0.2s;
-            text-align: center;
-            color: #1b4332;
+            box-sizing: border-box;
+            white-space: nowrap;
         }
-
-        .nav-btn:active {
-            transform: scale(0.98);
-            background: #f0f0f0;
-        }
-
-        /* Modal */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .modal-content {
-            background: white;
-            border-radius: 20px;
-            padding: 1.5rem;
-            max-width: 320px;
-            width: 90%;
-            text-align: center;
-        }
-
-        .modal-title {
-            font-size: 1.2rem;
+        .menu-btn:active { transform: scale(0.98); }
+        .menu-btn .label {
+            font-size: 0.95rem;
             font-weight: 600;
-            margin-bottom: 1rem;
-            color: #1b4332;
+            color: #4caf50;
         }
-
-        .modal-buttons {
-            display: flex;
-            gap: 1rem;
-            margin-top: 1.5rem;
-        }
-
-        .modal-btn {
-            flex: 1;
-            padding: 0.6rem;
-            border: none;
-            border-radius: 10px;
-            font-size: 0.9rem;
+        
+        .gsb {
+            background: rgba(17,17,17,0.9);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 60px;
+            padding: 12px 24px;
+            text-align: center;
             cursor: pointer;
+            transition: all 0.2s ease;
+            margin: 0 auto;
+            backdrop-filter: blur(4px);
+            box-sizing: border-box;
         }
-
-        .modal-btn.primary {
-            background: #2d6a4f;
-            color: white;
-        }
-
-        .modal-btn.secondary {
-            background: #e9ecef;
-            color: #1b4332;
-        }
-
-        /* Splash screen */
-        .splash-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, #1a472a 0%, #0d2818 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 2000;
-            transition: opacity 0.5s;
-        }
-
-        .splash-content {
+        .gsb:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
+        .gsb .icon { font-size: 1rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
+        .gsb .label { font-size: 0.85rem; font-weight: 600; color: #ccc; display: inline-block; vertical-align: middle; }
+        
+        .footer {
             text-align: center;
-            animation: fadeInUp 0.8s ease-out;
+            font-size: 0.65rem;
+            color: #555;
+            margin-top: 20px;
+            padding-bottom: env(safe-area-inset-bottom, 10px);
         }
-
-        .splash-logo {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-        }
-
-        .splash-title {
-            color: white;
-            font-size: 1.8rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-        }
-
-        .splash-subtitle {
-            color: #a8e6cf;
-            font-size: 0.9rem;
-        }
-
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .hidden {
-            display: none;
-        }
+        
+        .loading { text-align: center; padding: 40px; color: #888; }
     </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="device-id" id="device-id">DEV-XX</div>
-            <div class="version">v3.21</div>
-            <h1>SICC Ryder Cup</h1>
-            <div class="subtitle">Team Competition</div>
-        </div>
-
-        <div class="main-content">
-            <div id="today-game-container"></div>
-            <div id="preview-games-container"></div>
-            
-            <div class="nav-buttons">
-                <button class="nav-btn" id="view-history-btn">📋 VIEW PREVIOUS GAMES</button>
-                <button class="nav-btn" id="settings-btn">⚙️ GAME SETTINGS</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="splash-screen" id="splash-screen">
-        <div class="splash-content">
-            <div class="splash-logo">🏌️</div>
-            <div class="splash-title">SICC Ryder Cup</div>
-            <div class="splash-subtitle">Loading...</div>
-        </div>
-    </div>
-
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="js/session.js"></script>
+    
     <script>
-        /*
-        FILE: index.html (inline script)
-        VERSION: 3.21
-        KEY CHANGES:
-           - v3.21: ADDED ONE LINE: sessionStorage.setItem('currentGameId', game.id) in preloadTodayGame()
-           - ALL other code IDENTICAL to v3.18 (working version)
-           - No CSS changes, no HTML structure changes, no other function changes
-        DEPENDS ON: session.js v1.01+, Firebase
-        STATUS: Ready for integration
-        */
-
-        // Firebase configuration
-        const firebaseConfig = {
-            apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-            authDomain: "sicc-ryder-cup.firebaseapp.com",
-            projectId: "sicc-ryder-cup",
-            storageBucket: "sicc-ryder-cup.firebasestorage.app",
-            messagingSenderId: "137641493845",
-            appId: "1:137641493845:web:32399940bce639b01ddbdc"
-        };
-
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-
-        // Global state
-        let currentGameId = null;
-        let previewGames = [];
-
-        // Initialize
-        async function init() {
-            // Show splash screen
-            const splash = document.getElementById('splash-screen');
+        function setButtonWidths() {
+            var title = document.querySelector('.title');
+            var ngb = document.querySelector('.ngb');
+            var menuBtns = document.querySelectorAll('.menu-btn');
+            var gsb = document.querySelector('.gsb');
             
-            // Initialize session
-            if (typeof SessionManager !== 'undefined') {
-                await SessionManager.initSession('index.html', 'index.html');
-                const deviceId = SessionManager.getShortDeviceName() || SessionManager.getDeviceIdDisplay() || 'DEV';
-                document.getElementById('device-id').textContent = deviceId;
-            }
+            if (!title || !ngb) return;
             
-            // Add double-tap reset handler
-            let tapCount = 0;
-            let tapTimer = null;
-            document.getElementById('device-id').addEventListener('click', () => {
-                tapCount++;
-                if (tapTimer) clearTimeout(tapTimer);
-                tapTimer = setTimeout(() => { tapCount = 0; }, 500);
-                if (tapCount === 2) {
-                    tapCount = 0;
-                    showAdminResetModal();
-                }
+            var titleWidth = title.offsetWidth;
+            var buttonWidth = Math.floor(titleWidth * 1.05);
+            
+            ngb.style.width = buttonWidth + 'px';
+            ngb.style.height = buttonWidth + 'px';
+            
+            menuBtns.forEach(function(btn) {
+                btn.style.width = buttonWidth + 'px';
             });
             
-            // Clean up old games (date < today)
-            await cleanupOldGames();
-            
-            // Load games
-            await loadGames();
-            
-            // Hide splash screen
-            setTimeout(() => {
-                splash.style.opacity = '0';
-                setTimeout(() => {
-                    splash.style.display = 'none';
-                }, 500);
-            }, 500);
-        }
-
-        // Clean up old games
-        async function cleanupOldGames() {
-            try {
-                const today = new Date().toISOString().split('T')[0];
-                const snapshot = await db.collection('scheduledGames').where('date', '<', today).get();
-                const batch = db.batch();
-                snapshot.forEach(doc => batch.delete(doc.ref));
-                await batch.commit();
-                if (!snapshot.empty) console.log(`Cleaned up ${snapshot.size} old games`);
-            } catch (e) {
-                console.error('Cleanup error:', e);
+            if (gsb) {
+                gsb.style.width = buttonWidth + 'px';
             }
         }
+        
+        window.addEventListener('load', setButtonWidths);
+        window.addEventListener('resize', setButtonWidths);
+    </script>
+</head>
+<body>
 
-        // Load games from Firestore
-        async function loadGames() {
-            try {
-                const today = new Date().toISOString().split('T')[0];
-                const snapshot = await db.collection('scheduledGames').where('date', '>=', today).orderBy('date').get();
-                
-                const games = [];
-                snapshot.forEach(doc => {
-                    const game = doc.data();
-                    game.id = doc.id;
-                    games.push(game);
-                });
-                
-                const todayGame = games.find(g => g.date === today);
-                previewGames = games.filter(g => g.date !== today);
-                
-                // Preload today's game if it exists
-                if (todayGame) {
-                    await preloadTodayGame(todayGame);
-                }
-                
-                renderTodayGame(todayGame);
-                renderPreviewGames();
-                
-            } catch (e) {
-                console.error('Load games error:', e);
-                renderTodayGame(null);
-                renderPreviewGames();
+<div id="splashOverlay">
+    <div class="splash-icon-container">
+        <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
+    </div>
+    <div class="splash-title" id="splashTitle">SICC RYDER CUP</div>
+    <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
+</div>
+
+<div class="container" id="app">
+    <div class="loading">Loading...</div>
+</div>
+
+<div class="device-tag" id="deviceTag">🖥️ ---</div>
+<div class="version-tag">v3.18</div>
+
+<script>
+// FILE: index.html - VERSION 3.18
+
+var APP_VERSION = "3.18";
+var CACHE_KEY = "index_version";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
+    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+}
+
+var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+var db = null;
+var firestoreReady = false;
+var currentSession = null;
+
+var preloadComplete = false;
+var preloadInProgress = false;
+var pendingGameId = null;
+
+var splashOverlay = document.getElementById('splashOverlay');
+var splashGolfIcon = document.getElementById('splashGolfIcon');
+var splashTitle = document.getElementById('splashTitle');
+var splashSubtitle = document.getElementById('splashSubtitle');
+
+if (sessionStorage.getItem('splashShown') === 'true') {
+    splashOverlay.style.display = 'none';
+    var container = document.querySelector('.container');
+    if (container) {
+        container.style.display = 'block';
+    }
+    initApp();
+} else {
+    sessionStorage.setItem('splashShown', 'true');
+    
+    setTimeout(function() {
+        splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+        splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
+    }, 100);
+    
+    setTimeout(function() {
+        splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+        splashTitle.style.opacity = '1';
+        splashTitle.style.transform = 'translateY(0)';
+    }, 400);
+    
+    setTimeout(function() {
+        splashSubtitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+        splashSubtitle.style.opacity = '1';
+        splashSubtitle.style.transform = 'translateY(0)';
+    }, 600);
+    
+    setTimeout(function() {
+        var thumpRing = document.createElement('div');
+        thumpRing.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            margin-left: -25px;
+            margin-top: -25px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(76,175,80,0.5) 0%, transparent 70%);
+            transform: scale(0);
+            pointer-events: none;
+            z-index: 10001;
+        `;
+        splashOverlay.appendChild(thumpRing);
+        thumpRing.style.animation = 'splashThumpRing 0.4s ease-out forwards';
+    }, 700);
+    
+    setTimeout(function() {
+        splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
+    }, 700);
+    
+    if (navigator.vibrate) {
+        setTimeout(function() {
+            navigator.vibrate(50);
+        }, 700);
+    }
+    
+    setTimeout(function() {
+        splashOverlay.style.opacity = '0';
+        setTimeout(function() {
+            splashOverlay.remove();
+            var container = document.querySelector('.container');
+            if (container) {
+                container.style.display = 'block';
             }
-        }
+            initApp();
+        }, 800);
+    }, 2800);
+}
 
-        // Preload today's game data into sessionStorage
-        async function preloadTodayGame(game) {
-            try {
-                console.log('Preload: Starting for game', game.id);
-                
-                // ===== ONLY ONE LINE ADDED IN v3.21 =====
-                sessionStorage.setItem('currentGameId', game.id);
-                // ========================================
-                
-                const preloadData = {
-                    id: game.id,
-                    date: game.date,
-                    course: game.course,
-                    players: game.players,
-                    startingHole: game.startingHole || 1,
-                    teamGameFormat: game.teamGameFormat || 'tournament',
-                    f1: game.f1,
-                    f2: game.f2,
-                    locks: game.locks,
-                    gameStarted: game.gameStarted || false,
-                    status: game.status,
-                    createdAt: game.createdAt,
-                    updatedAt: game.updatedAt,
-                    lastActive: game.lastActive
-                };
-                
-                const storageData = {
-                    gameId: game.id,
-                    rawData: preloadData,
+function initApp() {
+    try {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(FIREBASE_CONFIG);
+        }
+        db = firebase.firestore();
+        firestoreReady = true;
+        console.log("Firebase ready - v" + APP_VERSION);
+    } catch(e) {
+        console.warn(e);
+    }
+    
+    SessionManager.initSession("index.html", "index.html", function(session) {
+        console.log("Session initialized:", session);
+        currentSession = session;
+        displayDeviceId();
+        loadAndRender();
+    });
+}
+
+function displayDeviceId() {
+    var deviceDisplay = SessionManager.getDeviceIdDisplay();
+    document.getElementById("deviceTag").innerHTML = deviceDisplay;
+}
+
+function formatDisplayDate(dateString) {
+    if (!dateString) return "";
+    var parts = dateString.split('-');
+    if (parts.length === 3) {
+        var day = parts[2];
+        var month = parts[1];
+        var year = parts[0];
+        var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        var monthIndex = parseInt(month) - 1;
+        return day + ' ' + monthNames[monthIndex] + ' ' + year;
+    }
+    return dateString;
+}
+
+function getTodayString() {
+    var today = new Date();
+    var year = today.getFullYear();
+    var month = String(today.getMonth() + 1).padStart(2, '0');
+    var day = String(today.getDate()).padStart(2, '0');
+    return year + "-" + month + "-" + day;
+}
+
+function getPreloadedRawGameData() {
+    var stored = sessionStorage.getItem("preloadedRawGameData");
+    if (stored) {
+        try {
+            var data = JSON.parse(stored);
+            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
+                return data;
+            } else {
+                sessionStorage.removeItem("preloadedRawGameData");
+            }
+        } catch(e) {
+            console.warn("Failed to parse preloaded raw data:", e);
+        }
+    }
+    return null;
+}
+
+function startBackgroundPreload(gameId, onComplete) {
+    var existing = getPreloadedRawGameData();
+    if (existing && existing.gameId === gameId) {
+        console.log("Preload: Data already cached for game", gameId);
+        preloadComplete = true;
+        // v3.18: Set the flag even when data already exists
+        sessionStorage.setItem("gameDataPreloaded", "true");
+        if (onComplete) onComplete(true);
+        return;
+    }
+    
+    if (preloadInProgress) {
+        console.log("Preload already in progress");
+        return;
+    }
+    
+    if (!db || !gameId) {
+        console.log("Preload: No db or gameId");
+        if (onComplete) onComplete(false);
+        return;
+    }
+    
+    console.log("Preload: Starting for game", gameId);
+    preloadInProgress = true;
+    pendingGameId = gameId;
+    
+    db.collection("scheduledGames").doc(gameId).get()
+        .then(function(doc) {
+            if (doc.exists) {
+                var preloadData = {
+                    gameId: gameId,
+                    rawData: doc.data(),
                     preloadTimestamp: Date.now()
                 };
-                
-                sessionStorage.setItem('preloadedRawGameData', JSON.stringify(storageData));
-                sessionStorage.setItem('gameDataPreloaded', 'true');
-                
-                console.log('Preload: Complete for game', game.id);
-            } catch (e) {
-                console.error('Preload: Error', e);
+                sessionStorage.setItem("preloadedRawGameData", JSON.stringify(preloadData));
+                // v3.18: CRITICAL - Set the flag so view-game.html can detect cached data
+                sessionStorage.setItem("gameDataPreloaded", "true");
+                preloadComplete = true;
+                console.log("Preload: Complete for game", gameId);
+                if (onComplete) onComplete(true);
+            } else {
+                console.log("Preload: Game not found", gameId);
+                if (onComplete) onComplete(false);
+            }
+            preloadInProgress = false;
+        })
+        .catch(function(err) {
+            console.warn("Preload: Failed", err);
+            preloadInProgress = false;
+            if (onComplete) onComplete(false);
+        });
+}
+
+function findNextGame(scheduledGames) {
+    var today = getTodayString();
+    
+    var futureGames = scheduledGames.filter(function(game) {
+        return game.date >= today;
+    });
+    
+    if (futureGames.length === 0) return null;
+    
+    futureGames.sort(function(a, b) {
+        if (a.date < b.date) return -1;
+        if (a.date > b.date) return 1;
+        return 0;
+    });
+    
+    return futureGames[0];
+}
+
+function getGameStatus(gameDateStr) {
+    var today = getTodayString();
+    if (gameDateStr === today) return "today";
+    if (gameDateStr > today) return "future";
+    return "past";
+}
+
+function handleTodayGame() {
+    if (!firestoreReady) {
+        alert("Connecting to server... Please wait.");
+        return;
+    }
+    
+    if (!preloadComplete) {
+        alert("Still loading game data. Please wait a moment.");
+        return;
+    }
+    
+    db.collection("scheduledGames").get().then(function(snapshot) {
+        var games = [];
+        snapshot.forEach(function(doc) {
+            games.push({ id: doc.id, date: doc.data().date, course: doc.data().course });
+        });
+        
+        var todayGame = null;
+        var todayStr = getTodayString();
+        for (var i = 0; i < games.length; i++) {
+            if (games[i].date === todayStr) {
+                todayGame = games[i];
+                break;
             }
         }
+        
+        if (!todayGame) {
+            alert("No game scheduled for today. Please set up a game first.");
+            return;
+        }
+        
+        var gameId = todayGame.id;
+        var gameDate = todayGame.date;
+        
+        if (typeof displayGameId === 'function') {
+            displayGameId(gameId);
+        }
+        proceedToRealGame(gameId, "real");
+    }).catch(function(e) {
+        console.error("Error loading games:", e);
+        alert("Error loading games: " + e.message);
+    });
+}
 
-        // Render today's game section
-        function renderTodayGame(game) {
-            const container = document.getElementById('today-game-container');
-            if (!container) return;
+function handleNextGame() {
+    alert("This is the next scheduled game.\n\nOn the game day, this button will become 'TODAY GAME' and allow you to start scoring.");
+}
+
+function goToDemo() {
+    window.location.href = "tutorial.html";
+}
+
+function proceedToRealGame(gameId, gameType) {
+    var gameMode = (gameType === "preview") ? "preview" : "real";
+    
+    SessionManager.addNavigationHistory("pre-game.html", "click_ngb", { gameId: gameId, gameType: gameType });
+    SessionManager.updateSession({
+        returnDestination: "index.html",
+        activeGame: {
+            gameId: gameId,
+            gameType: gameType,
+            gameMode: gameMode,
+            role: null,
+            collection: "scheduledGames"
+        }
+    });
+    sessionStorage.setItem("currentGameId", gameId);
+    window.location.href = "pre-game.html";
+}
+
+function goToPreviousGames() {
+    SessionManager.addNavigationHistory("view-history.html", "previous_games");
+    SessionManager.updateSession({
+        returnDestination: "index.html"
+    });
+    window.location.href = "view-history.html";
+}
+
+function goToAdmin() {
+    SessionManager.addNavigationHistory("admin.html", "game_settings");
+    SessionManager.updateSession({
+        returnDestination: "index.html"
+    });
+    window.location.href = "admin.html";
+}
+
+function loadAndRender() {
+    if (!firestoreReady) {
+        document.getElementById("app").innerHTML = '<div class="loading">Connecting to server...</div>';
+        return;
+    }
+    
+    db.collection("scheduledGames").get().then(function(snapshot) {
+        var games = [];
+        snapshot.forEach(function(doc) {
+            games.push({ id: doc.id, date: doc.data().date, course: doc.data().course, startingHole: doc.data().startingHole });
+        });
+        
+        var nextGame = findNextGame(games);
+        
+        var today = getTodayString();
+        var todayGame = games.find(function(g) { return g.date === today; });
+        if (todayGame && typeof displayGameId === 'function') {
+            displayGameId(todayGame.id);
+        }
+        
+        var preloadStarted = false;
+        
+        var ngbHtml = '';
+        if (nextGame) {
+            var status = getGameStatus(nextGame.date);
+            var formattedDate = formatDisplayDate(nextGame.date);
+            var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
             
-            if (game) {
-                const isPreloaded = sessionStorage.getItem('gameDataPreloaded') === 'true';
-                container.innerHTML = `
-                    <div class="game-card today">
-                        <div class="game-title">⛳ TODAY GAME</div>
-                        <div class="game-date">${game.date}</div>
-                        <div class="game-course">${game.course?.name || 'Unknown Course'}</div>
-                        <button class="game-button" id="todayGameBtn" ${!isPreloaded ? 'disabled' : ''}>
-                            ${!isPreloaded ? 'Loading...' : 'TEE OFF →'}
-                        </button>
-                    </div>
-                `;
-                const btn = document.getElementById('todayGameBtn');
-                if (btn && isPreloaded) {
-                    btn.addEventListener('click', () => {
-                        window.location.href = 'pre-game.html?mode=real';
+            if (status === "today") {
+                var cachedData = getPreloadedRawGameData();
+                if (cachedData && cachedData.gameId === nextGame.id) {
+                    preloadComplete = true;
+                    ngbHtml = `
+                        <div class="ngb" onclick="handleTodayGame()">
+                            <div class="icon">⛳</div>
+                            <div class="title">TODAY GAME</div>
+                            <div class="date">${formattedDate}</div>
+                            <div class="course-name">${escapeHtml(courseName)}</div>
+                        </div>
+                    `;
+                } else {
+                    preloadComplete = false;
+                    preloadStarted = true;
+                    ngbHtml = `
+                        <div class="ngb ngb-loading" id="todayGameBtn">
+                            <div class="icon">⛳</div>
+                            <div class="title"><span class="loading-spinner"></span> LOADING...</div>
+                            <div class="date">${formattedDate}</div>
+                            <div class="course-name">${escapeHtml(courseName)}</div>
+                        </div>
+                    `;
+                    startBackgroundPreload(nextGame.id, function(success) {
+                        if (success) {
+                            console.log("Preload complete, enabling TODAY GAME button");
+                            var btnContainer = document.getElementById('todayGameBtn');
+                            if (btnContainer) {
+                                btnContainer.outerHTML = `
+                                    <div class="ngb" onclick="handleTodayGame()">
+                                        <div class="icon">⛳</div>
+                                        <div class="title">TODAY GAME</div>
+                                        <div class="date">${formattedDate}</div>
+                                        <div class="course-name">${escapeHtml(courseName)}</div>
+                                    </div>
+                                `;
+                                setTimeout(setButtonWidths, 10);
+                            }
+                        } else {
+                            console.log("Preload failed, showing error state");
+                            var btnContainer = document.getElementById('todayGameBtn');
+                            if (btnContainer) {
+                                btnContainer.outerHTML = `
+                                    <div class="ngb ngb-inactive" onclick="alert('Failed to load game data. Please refresh.')">
+                                        <div class="icon">⚠️</div>
+                                        <div class="title">LOAD FAILED</div>
+                                        <div class="date">${formattedDate}</div>
+                                        <div class="course-name">${escapeHtml(courseName)}</div>
+                                    </div>
+                                `;
+                            }
+                        }
                     });
                 }
             } else {
-                container.innerHTML = `
-                    <div class="game-card">
-                        <div class="game-title">⛳ TODAY GAME</div>
-                        <div class="game-date">No game scheduled for today</div>
-                        <button class="game-button disabled" disabled>NO GAME</button>
+                ngbHtml = `
+                    <div class="ngb ngb-inactive" onclick="handleNextGame()">
+                        <div class="icon">🏆</div>
+                        <div class="title">NEXT GAME</div>
+                        <div class="subtitle-text">${formattedDate}</div>
+                        <div class="course-name">${escapeHtml(courseName)}</div>
                     </div>
                 `;
             }
-        }
-
-        // Render preview games section
-        function renderPreviewGames() {
-            const container = document.getElementById('preview-games-container');
-            if (!container) return;
-            
-            if (previewGames.length === 0) {
-                container.innerHTML = `
-                    <div class="game-card">
-                        <div class="game-title">🔮 PREVIEW</div>
-                        <div>No upcoming games scheduled</div>
-                    </div>
-                `;
-                return;
-            }
-            
-            let html = '';
-            previewGames.forEach(game => {
-                html += `
-                    <div class="game-card preview">
-                        <div class="game-title">🔮 PREVIEW</div>
-                        <div class="game-date">${game.date}</div>
-                        <div class="game-course">${game.course?.name || 'Unknown Course'}</div>
-                        <button class="game-button preview-btn" data-id="${game.id}" data-date="${game.date}">
-                            PREVIEW →
-                        </button>
-                    </div>
-                `;
-            });
-            container.innerHTML = html;
-            
-            document.querySelectorAll('.preview-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const gameId = btn.getAttribute('data-id');
-                    const gameDate = btn.getAttribute('data-date');
-                    sessionStorage.setItem('currentGameId', gameId);
-                    window.location.href = `pre-game.html?mode=preview&date=${gameDate}`;
-                });
-            });
-        }
-
-        // Admin reset modal
-        function showAdminResetModal() {
-            const modal = document.createElement('div');
-            modal.className = 'modal-overlay';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-title">⚠️ ADMIN RESET</div>
-                    <p>Reset all scores and locks for the current game?</p>
-                    <div class="modal-buttons">
-                        <button class="modal-btn secondary" id="cancelReset">CANCEL</button>
-                        <button class="modal-btn primary" id="confirmReset">RESET</button>
-                    </div>
+        } else {
+            ngbHtml = `
+                <div class="ngb ngb-inactive" style="opacity:0.7; cursor:default;">
+                    <div class="icon">🏌️</div>
+                    <div class="title">NO GAME</div>
+                    <div class="no-game">No scheduled games found</div>
                 </div>
             `;
-            document.body.appendChild(modal);
+        }
+        
+        var html = `
+            <div class="header">
+                <div class="golf-icon" id="golfIcon">⛳</div>
+                <div class="title">SICC RYDER CUP</div>
+                <div class="subtitle">Match Play · Team Game · Net Stroke</div>
+            </div>
             
-            document.getElementById('cancelReset').addEventListener('click', () => modal.remove());
-            document.getElementById('confirmReset').addEventListener('click', async () => {
-                modal.remove();
-                await resetCurrentGame();
+            <div class="app-content">
+                ${ngbHtml}
+                
+                <div class="menu-buttons">
+                    <div class="menu-btn" id="previousGamesBtn">
+                        <span class="label">📋 VIEW PREVIOUS GAMES</span>
+                    </div>
+                    <div class="menu-btn" id="demoBtn">
+                        <span class="label">🎮 DEMO & TUTORIAL</span>
+                    </div>
+                </div>
+                
+                <div class="gsb" id="adminBtn">
+                    <span class="icon">⚙️</span>
+                    <span class="label">GAME SETTINGS</span>
+                </div>
+            </div>
+            
+            <div class="footer">SICC Ryder Cup App v${APP_VERSION}<br>© 2026 Piti Pramotedham - piti@pramotedham.com</div>
+        `;
+        
+        document.getElementById("app").innerHTML = html;
+        
+        setTimeout(setButtonWidths, 10);
+        
+        var golfIcon = document.getElementById("golfIcon");
+        if (golfIcon) {
+            golfIcon.addEventListener('dblclick', function(e) {
+                e.stopPropagation();
+                if (confirm("⚠️ ADMIN FUNCTION\n\nDuplicate Master Record to today's date?")) {
+                    if (typeof duplicateMasterRecord === 'function') {
+                        duplicateMasterRecord();
+                    } else {
+                        alert("Error: Admin function not available. Please refresh.");
+                    }
+                }
             });
         }
-
-        // Reset current game
-        async function resetCurrentGame() {
-            const gameId = sessionStorage.getItem('currentGameId');
-            if (!gameId) {
-                alert('No active game to reset');
-                return;
-            }
-            
-            try {
-                const gameRef = db.collection('scheduledGames').doc(gameId);
-                const gameDoc = await gameRef.get();
-                if (!gameDoc.exists) return;
-                
-                const game = gameDoc.data();
-                const defaultString = generateDefaultString(game.course.par);
-                
-                await gameRef.update({
-                    'f1.d': defaultString,
-                    'f2.d': defaultString,
-                    'f1.se': false,
-                    'f2.se': false,
-                    'f1.x': false,
-                    'f2.x': false,
-                    'locks.f1': null,
-                    'locks.f2': null,
-                    gameStarted: false,
-                    updatedAt: new Date().toISOString()
-                });
-                
-                alert('Game has been reset');
-                window.location.reload();
-            } catch (e) {
-                console.error('Reset error:', e);
-                alert('Reset failed: ' + e.message);
-            }
-        }
-
-        // Generate default data string
-        function generateDefaultString(parArray) {
-            let result = '';
-            for (let i = 0; i < 18; i++) {
-                const par = parArray[i];
-                const parStr = par.toString().padStart(2, '0');
-                result += `F${parStr}${parStr}${parStr}${parStr}`;
-            }
-            return result;
-        }
-
-        // Event listeners
-        document.getElementById('view-history-btn')?.addEventListener('click', () => {
-            window.location.href = 'view-history.html';
-        });
         
-        document.getElementById('settings-btn')?.addEventListener('click', () => {
-            window.location.href = 'admin.html';
-        });
+        document.getElementById("previousGamesBtn").addEventListener("click", goToPreviousGames);
+        document.getElementById("demoBtn").addEventListener("click", goToDemo);
+        document.getElementById("adminBtn").addEventListener("click", goToAdmin);
+        
+        if (typeof initHiddenAdmin === 'function') {
+            initHiddenAdmin();
+        }
+        
+        if (!preloadStarted && todayGame && !preloadComplete) {
+            var cachedData = getPreloadedRawGameData();
+            if (!cachedData || cachedData.gameId !== todayGame.id) {
+                startBackgroundPreload(todayGame.id, function(success) {
+                    if (success) {
+                        console.log("Background preload completed");
+                    }
+                });
+            }
+        }
+        
+    }).catch(function(e) {
+        console.warn(e);
+        document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
+    });
+}
 
-        // Start the app
-        init();
-    </script>
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
+    });
+}
+</script>
 </body>
 </html>
 
-/*
-FOOTER: index.html
-VERSION: 3.21
-LAST UPDATED: 2026-05-29
-COMPATIBLE WITH: session.js v1.01+, game-loader.js v1.06+
-KEY FIXES:
-   - v3.21: ADDED ONE LINE: sessionStorage.setItem('currentGameId', game.id) in preloadTodayGame()
-   - ALL other code IDENTICAL to v3.18 (working version)
-*/
+<!--
+FILE: index.html
+VERSION: 3.18
+KEY CHANGES:
+   - FIXED: gameDataPreloaded flag now set in sessionStorage when preload completes
+   - Ensures view-game.html can detect cached data correctly
+   - All other preload logic preserved from v3.17
+DEPENDS ON: js/session.js, js/index-hidden.js
+STATUS: Ready for integration
+-->
