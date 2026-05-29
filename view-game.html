@@ -1,14 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 4.03
+VERSION: 4.04
 KEY CHANGES:
-   - ADDED: Hidden-by-default CSS (no flash of "VIEWER" or content)
-   - Uses CSS class "data-ready" to reveal content after cache loads
-   - Removed "VIEWER" status bubble flash during transition
-   - Container max-width: 500px (consistent with main app)
+   - FIXED: currentHole now correctly set to first unsaved hole after cache load
+   - Added window.savedHoles population from cache after applyCachedDataToGameLoader()
+   - Now calculates currentHole using getFirstUnsavedHole() before initial render
+   - Matches real-game.html behavior for navigation hole number
+   - Container max-width: 500px
    - Cache-first loading using preloaded data from index.html
-   - All existing viewer functionality preserved from v4.02
-   - Smooth, no-flash transition from pre-game to view-game
+   - All existing viewer functionality preserved from v4.03
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -35,7 +35,7 @@ STATUS: Ready for integration
         body { background: #000; font-family: system-ui, sans-serif; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
         .container { max-width: 500px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
-        /* NEW v4.03: Hide elements until data is ready */
+        /* Hide elements until data is ready */
         .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
             visibility: hidden;
         }
@@ -259,7 +259,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.03</div>
+<div class="version-tag">v4.04</div>
 
 <script>
 // ============================================================
@@ -765,14 +765,23 @@ async function init() {
         
         document.getElementById("courseName").innerHTML = courseName;
         
+        // NEW v4.04: Populate window.savedHoles from cache before calculating currentHole
+        window.savedHoles = cache.savedHoles || { 1: [], 2: [] };
+        
+        // Calculate the first unsaved hole for the current flight
+        var firstUnsaved = getFirstUnsavedHole(currentFlight);
+        if (firstUnsaved && firstUnsaved !== currentHole) {
+            currentHole = firstUnsaved;
+            console.log("Setting currentHole to first unsaved hole:", currentHole);
+        }
+        
+        // Update the compact header display
+        var holeDisplay = document.getElementById('compactHoleDisplay');
+        if (holeDisplay) holeDisplay.innerText = currentHole;
+        
         initTicker();
         if (allPlayers && allPlayers.length) {
             Ticker.setPlayers(allPlayers);
-        }
-        
-        var newHole = getFirstUnsavedHole(currentFlight);
-        if (newHole !== currentHole) {
-            currentHole = newHole;
         }
         
         renderAll();
@@ -788,11 +797,8 @@ async function init() {
         startGameListener();
         
         // Reveal content when data arrives via listener
-        // The listener will call renderAll which will show content
-        // Add a small delay to ensure content appears
         setTimeout(function() {
             if (!document.getElementById("mainContainer").classList.contains("data-ready")) {
-                // Force reveal if data is already loaded via the first snapshot
                 document.getElementById("mainContainer").classList.add("data-ready");
             }
         }, 500);
@@ -817,15 +823,15 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 4.03
+VERSION: 4.04
 KEY CHANGES:
-   - ADDED: Hidden-by-default CSS (no flash of "VIEWER" or content)
-   - Uses CSS class "data-ready" to reveal content after cache loads
-   - Removed "VIEWER" status bubble flash during transition
-   - Container max-width: 500px (consistent with main app)
+   - FIXED: currentHole now correctly set to first unsaved hole after cache load
+   - Added window.savedHoles population from cache after applyCachedDataToGameLoader()
+   - Now calculates currentHole using getFirstUnsavedHole() before initial render
+   - Matches real-game.html behavior for navigation hole number
+   - Container max-width: 500px
    - Cache-first loading using preloaded data from index.html
-   - All existing viewer functionality preserved from v4.02
-   - Smooth, no-flash transition from pre-game to view-game
+   - All existing viewer functionality preserved from v4.03
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
