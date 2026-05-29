@@ -1,14 +1,20 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.03
+VERSION: 4.04
 KEY CHANGES:
-   - ADDED: buttonMode parameter to renderCompactHeader() - "save" (real-game) or "flight" (view-game)
-   - ADDED: updateCompactActionButton() to dynamically update action button text
-   - ALL existing functions preserved from v4.01 (working)
-   - renderPlayerCards() unchanged (uses player.name, NOT player.label)
-   - All bubble CSS, clinch styles, navigation logic identical to v4.01
-   - Single source of truth for compact header across all game pages
-DEPENDS ON: None (pure display)
+   - ADDED: Shared calculation functions for use across game pages
+   - getPlayOrder(startingHole) - returns play order array
+   - getHolePosition(holeNumber, startingHole) - returns storage position
+   - isHoleSaved(flight, hole, cache) - checks if hole is saved
+   - getFirstUnsavedHole(flight, startingHole, cache) - finds first unsaved hole
+   - getStoredScore(player, hole, cache, coursePar, allPlayers) - gets stored score
+   - getMatchValueFromStoredResults() - gets match value from results cache
+   - getBubbleValue(matchValue) - returns bubble value string (AS or number)
+   - getBubbleClassWithClinch() - returns bubble CSS class with clinch support
+   - calculatePlayerScoreRelativeToPar() - calculates player's +/- score
+   - ALL existing functions preserved exactly as v4.03
+   - No changes to any existing functions - real-game.html unaffected
+DEPENDS ON: None (pure display and calculations)
 STATUS: Ready for integration
 */
 
@@ -34,7 +40,7 @@ var GameUI = (function() {
     var currentFlight = 1;
     var currentDisplayMode = "play";
     var currentHoleNumber = 1;
-    var currentButtonMode = "save"; // "save" or "flight"
+    var currentButtonMode = "save";
     
     // Callback registry for shared UI events
     var eventCallbacks = {
@@ -253,7 +259,6 @@ var GameUI = (function() {
         
         if (!prevBtn || !nextBtn) return;
         
-        // Store original navigation handlers if not already stored
         if (!prevBtn._originalOnClick && eventCallbacks.onPrevHole) {
             prevBtn._originalOnClick = function() {
                 if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
@@ -269,15 +274,12 @@ var GameUI = (function() {
         var isFirstHole = (currentIndex === 0);
         var isLastHole = (currentIndex === 17);
         
-        // Prev button: disabled only at first hole
         prevBtn.disabled = isFirstHole;
         if (prevBtn._originalOnClick) {
             prevBtn.onclick = prevBtn._originalOnClick;
         }
         
-        // Next button logic
         if (isGameComplete && !celebrationTriggered) {
-            // Game complete - show trophy
             nextBtn.innerHTML = '🏆';
             nextBtn.style.background = '#ffaa44';
             nextBtn.style.color = '#1a3a1a';
@@ -287,7 +289,6 @@ var GameUI = (function() {
                 if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
             };
         } else if (isLastHole && isCurrentSaved) {
-            // Last hole AND saved - show sign button (gold)
             nextBtn.innerHTML = '✍️';
             nextBtn.style.background = '#ffaa44';
             nextBtn.style.color = '#1a3a1a';
@@ -297,7 +298,6 @@ var GameUI = (function() {
                 if (onSignCardCallback) onSignCardCallback();
             };
         } else {
-            // Normal mode - green arrow, disabled if not saved
             nextBtn.innerHTML = '▶';
             nextBtn.style.background = '#1a3a1a';
             nextBtn.style.color = '#4caf50';
@@ -392,25 +392,13 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // UNIFIED RENDER COMPACT HEADER (v4.03)
-    // ============================================================
-    // Parameters:
-    //   containerId - DOM element ID to render into
-    //   flightNumber - current flight (1 or 2)
-    //   currentHole - current hole number
-    //   onPrevHole - callback for ◀ button
-    //   onNextHole - callback for ▶ button
-    //   onToggleFlight - callback for FLIGHT button (view-game only)
-    //   onToggleDisplay - callback for P/N button
-    //   buttonMode - "save" (real-game) or "flight" (view-game)
-    //   onSaveCallback - callback for SAVE button (real-game only)
+    // UNIFIED RENDER COMPACT HEADER
     // ============================================================
     
     function renderCompactHeader(containerId, flightNumber, currentHole, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay, buttonMode, onSaveCallback) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Store callbacks
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
         if (onToggleFlight) eventCallbacks.onToggleFlight = onToggleFlight;
@@ -423,7 +411,6 @@ var GameUI = (function() {
         
         var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
         
-        // Determine action button text and handler
         var actionButtonText = "";
         var actionButtonHandler = null;
         
@@ -433,7 +420,6 @@ var GameUI = (function() {
                 if (eventCallbacks.onSave) eventCallbacks.onSave();
             };
         } else {
-            // Flight toggle button for view-game
             actionButtonText = "FLIGHT " + flightNumber;
             actionButtonHandler = function() {
                 if (eventCallbacks.onToggleFlight) {
@@ -443,7 +429,6 @@ var GameUI = (function() {
             };
         }
         
-        // RESPONSIVE: CSS Grid + clamp for all screen sizes
         var html = `
             <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
                 <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
@@ -466,7 +451,6 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
-        // Attach event listeners
         var pnBtn = document.getElementById('compactPnBtn');
         var actionBtn = document.getElementById('compactActionBtn');
         var prevBtn = document.getElementById('compactPrevBtn');
@@ -652,7 +636,7 @@ var GameUI = (function() {
         
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -699,7 +683,7 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<td><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var val = strkRow[i] || '_';
             var holeNum = holes[i];
@@ -729,7 +713,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></table>';
+        html += '</tbody><tr>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -755,7 +739,6 @@ var GameUI = (function() {
                 var opp = opponents[j];
                 var bubbleClass = getBubbleClass(player, opp);
                 var bubbleValue = getBubbleValue(player, opp);
-                // NO "vs " prefix - just opponent label and match value
                 bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
             }
             bubblesHtml += '</div>';
@@ -1060,6 +1043,153 @@ var GameUI = (function() {
     }
     
     // ============================================================
+    // NEW v4.04: SHARED CALCULATION FUNCTIONS
+    // ============================================================
+    
+    function getPlayOrder(startingHole) {
+        var order = [];
+        for (var i = startingHole; i <= 18; i++) order.push(i);
+        for (var i = 1; i < startingHole; i++) order.push(i);
+        return order;
+    }
+    
+    function getHolePosition(holeNumber, startingHole) {
+        var playOrder = getPlayOrder(startingHole);
+        for (var i = 0; i < playOrder.length; i++) {
+            if (playOrder[i] === holeNumber) return i;
+        }
+        return holeNumber - 1;
+    }
+    
+    function isHoleSaved(flight, hole, cache) {
+        return cache.savedHoles[flight] && cache.savedHoles[flight].indexOf(hole) !== -1;
+    }
+    
+    function getFirstUnsavedHole(flight, startingHole, cache) {
+        var playOrder = getPlayOrder(startingHole);
+        for (var i = 0; i < playOrder.length; i++) {
+            var hole = playOrder[i];
+            if (!isHoleSaved(flight, hole, cache)) return hole;
+        }
+        return 18;
+    }
+    
+    function getStoredScore(player, hole, cache, coursePar, allPlayers) {
+        var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+        var holeData = GameData.parseHoleData(flightDataStr, hole);
+        if (!holeData || !holeData.saved) return coursePar[hole - 1];
+        
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        if (player.team === 'A') {
+            if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
+            if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
+        } else {
+            if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
+            if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
+        }
+        return coursePar[hole - 1];
+    }
+    
+    function getMatchValueFromStoredResults(results, player, opponent, holeNumber, allPlayers, startingHole) {
+        if (!results || !results.matchResults) return 0;
+        var position = getHolePosition(holeNumber, startingHole);
+        var matchArray = results.matchResults[position];
+        if (!matchArray) return 0;
+        
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        var aIdx = -1, bIdx = -1;
+        if (player.team === 'A') {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === player.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === opponent.name) bIdx = i;
+            }
+        } else {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === opponent.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === player.name) bIdx = i;
+            }
+        }
+        if (aIdx === -1 || bIdx === -1) return 0;
+        var matchIndex = aIdx * teamBPlayers.length + bIdx;
+        var value = matchArray[matchIndex] || 0;
+        return (player.team === 'B') ? -value : value;
+    }
+    
+    function getBubbleValueFromMatch(matchValue) {
+        var absValue = Math.abs(matchValue);
+        if (absValue === 0) return 'AS';
+        return absValue.toString();
+    }
+    
+    function getBubbleClassWithClinchCalc(player, opponent, currentHole, cache, allPlayers, resultsCache, startingHole, coursePar) {
+        var matchValue = getMatchValueFromStoredResults(resultsCache, player, opponent, currentHole, allPlayers, startingHole);
+        var lastSyncedHole = cache.lastSyncedHole;
+        var clinchedAt = cache.clinchedAt || {};
+        var matchKey = player.name + "_vs_" + opponent.name;
+        var clinchHole = clinchedAt[matchKey];
+        
+        if (player.flight === opponent.flight) {
+            var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole, cache);
+            if (!isHoleSavedForFlight) return 'bubble-grey';
+        } else {
+            var isSynced = (lastSyncedHole >= currentHole);
+            if (!isSynced) return 'bubble-grey';
+        }
+        
+        if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
+        if (clinchHole && currentHole === clinchHole) {
+            if (matchValue > 0) return 'bubble-gold';
+            if (matchValue < 0) return 'bubble-loss-clinch';
+            return 'bubble-green';
+        }
+        
+        if (matchValue > 0) return 'bubble-green';
+        if (matchValue < 0) return 'bubble-red';
+        return 'bubble-green';
+    }
+    
+    function calculatePlayerScoreRelativeToPar(player, cache, coursePar, allPlayers) {
+        var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+        var totalGross = 0;
+        var totalPar = 0;
+        
+        for (var h = 1; h <= 18; h++) {
+            var par = coursePar[h - 1];
+            totalPar += par;
+            
+            var holeData = GameData.parseHoleData(flightDataStr, h);
+            if (holeData && holeData.saved) {
+                var score = 0;
+                var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+                var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+                var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+                
+                if (player.team === 'A') {
+                    if (teamA[0] && teamA[0].name === player.name) score = holeData.scores.a1;
+                    else if (teamA[1] && teamA[1].name === player.name) score = holeData.scores.a2;
+                } else {
+                    if (teamB[0] && teamB[0].name === player.name) score = holeData.scores.b1;
+                    else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
+                }
+                totalGross += score;
+            } else {
+                totalGross += par;
+            }
+        }
+        
+        return totalGross - totalPar;
+    }
+    
+    // ============================================================
     // Navigation Logic (legacy wrappers)
     // ============================================================
     
@@ -1139,7 +1269,6 @@ var GameUI = (function() {
             .score-invisible { color: #000; }
             .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
             
-            /* Disabled button states - greyed out */
             .compact-prev-btn:disabled, .compact-next-btn:disabled {
                 background: #2a2a2a !important;
                 color: #666666 !important;
@@ -1221,7 +1350,7 @@ var GameUI = (function() {
         updateHoleHeaderNumber: updateHoleHeaderNumber,
         updateFlightTab: updateFlightTab,
         
-        // Compact header (UNIFIED v4.03)
+        // Compact header
         renderCompactHeader: renderCompactHeader,
         updateCompactActionButton: updateCompactActionButton,
         updateCompactSaveButton: updateCompactSaveButton,
@@ -1233,7 +1362,7 @@ var GameUI = (function() {
         updateFlightBadge: updateFlightBadge,
         removeFlightBadge: removeFlightBadge,
         
-        // SINGLE SOURCE OF TRUTH - Navigation
+        // Navigation
         updateNavigationButtons: updateNavigationButtons,
         
         // Legacy compatibility
@@ -1260,12 +1389,23 @@ var GameUI = (function() {
         // Bottom menu
         renderBottomMenu: renderBottomMenu,
         
-        // Shared display functions (with clinch support)
+        // Shared display functions
         getFlightOrderedPlayersShared: getFlightOrderedPlayersShared,
         getAllOpponentsShared: getAllOpponentsShared,
         getMatchValueShared: getMatchValueShared,
         getBubbleClassShared: getBubbleClassShared,
         getBubbleValueShared: getBubbleValueShared,
+        
+        // NEW v4.04: Shared calculation functions
+        getPlayOrder: getPlayOrder,
+        getHolePosition: getHolePosition,
+        isHoleSaved: isHoleSaved,
+        getFirstUnsavedHole: getFirstUnsavedHole,
+        getStoredScore: getStoredScore,
+        getMatchValueFromStoredResults: getMatchValueFromStoredResults,
+        getBubbleValueFromMatch: getBubbleValueFromMatch,
+        getBubbleClassWithClinchCalc: getBubbleClassWithClinchCalc,
+        calculatePlayerScoreRelativeToPar: calculatePlayerScoreRelativeToPar,
         
         // Navigation logic (deprecated legacy wrappers)
         updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
@@ -1294,14 +1434,20 @@ var GameUI = (function() {
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.03
+VERSION: 4.04
 KEY CHANGES:
-   - ADDED: buttonMode parameter to renderCompactHeader() - "save" (real-game) or "flight" (view-game)
-   - ADDED: updateCompactActionButton() to dynamically update action button text
-   - ALL existing functions preserved from v4.01 (working)
-   - renderPlayerCards() unchanged (uses player.name, NOT player.label)
-   - All bubble CSS, clinch styles, navigation logic identical to v4.01
-   - Single source of truth for compact header across all game pages
-DEPENDS ON: None (pure display)
+   - ADDED: Shared calculation functions for use across game pages
+   - getPlayOrder(startingHole) - returns play order array
+   - getHolePosition(holeNumber, startingHole) - returns storage position
+   - isHoleSaved(flight, hole, cache) - checks if hole is saved
+   - getFirstUnsavedHole(flight, startingHole, cache) - finds first unsaved hole
+   - getStoredScore(player, hole, cache, coursePar, allPlayers) - gets stored score
+   - getMatchValueFromStoredResults() - gets match value from results cache
+   - getBubbleValueFromMatch(matchValue) - returns bubble value string (AS or number)
+   - getBubbleClassWithClinchCalc() - returns bubble CSS class with clinch support
+   - calculatePlayerScoreRelativeToPar() - calculates player's +/- score
+   - ALL existing functions preserved exactly as v4.03
+   - No changes to any existing functions - real-game.html unaffected
+DEPENDS ON: None (pure display and calculations)
 STATUS: Ready for integration
 */
