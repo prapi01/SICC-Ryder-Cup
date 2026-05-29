@@ -1,12 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 4.05
-KEY CHANGES:
+VERSION: 4.06
+KEY CHANGES (based on working v4.03):
    - ONLY: Added window.savedHoles population and currentHole calculation after cache load
-   - NO CSS changes - all styles identical to v4.03
-   - NO other JavaScript changes - all functionality preserved
+   - Added clinchedAt parameter to bubble class function call
+   - ALL CSS and JavaScript identical to v4.03 (working clinch, buttons, bubbles)
    - Fixes navigation hole number to show first unsaved hole (e.g., 18) instead of 1
-   - All existing UI (bubbles, clinch, buttons) unchanged from v4.03
+   - No other changes - preserves all working UI features
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -284,7 +284,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.05</div>
+<div class="version-tag">v4.06</div>
 
 <script>
 // ============================================================
@@ -513,9 +513,13 @@ function renderPlayerCards() {
         var opponents = GameUI.getAllOpponentsShared(p, allPlayers);
         var bubblesHtml = '<div class="bubbles">';
         
+        // Get clinchedAt from GameLoader for proper clinch display
+        var cache = GameLoader.getLocalCache();
+        var clinchedAt = cache ? cache.clinchedAt : {};
+        
         for (var j = 0; j < opponents.length; j++) {
             var opp = opponents[j];
-            var bubbleClass = GameUI.getBubbleClassShared(p, opp, currentHole, resultsCache, allPlayers, isHoleSaved, getHolePosition);
+            var bubbleClass = GameUI.getBubbleClassShared(p, opp, currentHole, resultsCache, allPlayers, isHoleSaved, getHolePosition, clinchedAt);
             var bubbleValue = GameUI.getBubbleValueShared(p, opp, currentHole, resultsCache, allPlayers, getHolePosition);
             bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
         }
@@ -790,7 +794,7 @@ async function init() {
         
         document.getElementById("courseName").innerHTML = courseName;
         
-        // NEW v4.05: Populate savedHoles from cache and set currentHole to first unsaved
+        // NEW v4.06: Populate savedHoles from cache and set currentHole to first unsaved
         window.savedHoles = cache.savedHoles || { 1: [], 2: [] };
         var firstUnsaved = getFirstUnsavedHole(currentFlight);
         if (firstUnsaved && firstUnsaved !== currentHole) {
@@ -844,13 +848,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 4.05
-KEY CHANGES:
+VERSION: 4.06
+KEY CHANGES (based on working v4.03):
    - ONLY: Added window.savedHoles population and currentHole calculation after cache load
-   - NO CSS changes - all styles identical to v4.03
-   - NO other JavaScript changes - all functionality preserved
+   - Added clinchedAt parameter to bubble class function call
+   - ALL CSS and JavaScript identical to v4.03 (working clinch, buttons, bubbles)
    - Fixes navigation hole number to show first unsaved hole (e.g., 18) instead of 1
-   - All existing UI (bubbles, clinch, buttons) unchanged from v4.03
+   - No other changes - preserves all working UI features
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
 STATUS: Ready for integration
 -->
