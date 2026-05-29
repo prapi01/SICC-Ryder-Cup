@@ -1,16 +1,18 @@
 <!--
 FILE: view-game.html
-VERSION: 4.02
+VERSION: 4.00
 KEY CHANGES:
-   - CHANGED: Container max-width from 550px to 500px (consistent with main app)
-   - ADDED: Cache-first loading using preloaded data from index.html
-   - READS: "preloadedRawGameData" from sessionStorage for instant render
-   - FALLBACK: Firestore fetch only if no cache exists
-   - REMOVED: All previewSandboxes references (deprecated)
-   - REMOVED: isPreviewSandbox logic and related code
-   - All existing viewer functionality preserved from v4.00
-   - Uses GameLoader for real-time sync after initial render
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
+   - COMPLETE REWRITE: Uses shared display functions from game-ui.js
+   - Player order: A1, A2, B1, B2 (identical to real-game)
+   - Opponent order: intra-flight first, then cross-flight (identical to real-game)
+   - Match bubbles: uses getBubbleClassShared and getBubbleValueShared
+   - Flight toggle: changes flight only, hole number stays the same
+   - Navigation: ◀ and ▶ change hole, update both center number and hole header
+   - Next button: grey when at last unsaved hole
+   - Status bubble: green VIEWER below ticker, clickable refresh
+   - No SAVE button - replaced with FLIGHT toggle button
+   - All display logic now centralized in game-ui.js
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
 
@@ -29,17 +31,16 @@ STATUS: Ready for integration
     <script src="js/ticker.js"></script>
     <script src="js/sign-card.js"></script>
     <script src="js/hcp-adjust.js"></script>
-    <script src="js/game-loader.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000; font-family: system-ui, sans-serif; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-        .container { max-width: 500px; width: 100%; margin: 0 auto; padding: 20px 16px; }
+        body { background: #000; font-family: system-ui, sans-serif; color: #fff; padding: 20px; }
+        .container { max-width: 550px; margin: 0 auto; padding-top: 20px; }
         
         .version-tag {
             position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            right: max(8px, env(safe-area-inset-right));
+            top: 8px;
+            right: 8px;
             font-size: 0.65rem;
             color: #4caf50;
             background: rgba(0,0,0,0.6);
@@ -51,8 +52,8 @@ STATUS: Ready for integration
         
         .device-tag {
             position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            left: max(8px, env(safe-area-inset-left));
+            top: 8px;
+            left: 8px;
             font-size: 0.55rem;
             color: #4caf50;
             background: rgba(0,0,0,0.4);
@@ -61,7 +62,6 @@ STATUS: Ready for integration
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
-            cursor: pointer;
         }
         
         .status-bubble {
@@ -108,18 +108,6 @@ STATUS: Ready for integration
         .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
-        .bubble-gold {
-            background: #1a3a1a;
-            color: #ffaa44;
-            border: 3px solid #ffaa44;
-            font-weight: 800;
-        }
-        .bubble-loss-clinch {
-            background: #3a1a1a;
-            color: #ffffff;
-            border: 3px solid #ffffff;
-            font-weight: 800;
-        }
         
         .scorecard-section { margin: 20px 0; }
         .scorecard-wrapper { overflow-x: auto; }
@@ -183,7 +171,6 @@ STATUS: Ready for integration
             align-items: center;
             justify-content: center;
             z-index: 3000;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         .celebration-modal {
             background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
@@ -217,7 +204,7 @@ STATUS: Ready for integration
 
 <div class="container">
     <div class="ticker-container" id="tickerContainer">
-        <div class="ticker-content" id="tickerContent">&nbsp;</div>
+        <div class="ticker-content" id="tickerContent">Loading scores...</div>
     </div>
     
     <div id="statusBubble" class="status-bubble">VIEWER</div>
@@ -239,7 +226,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.02</div>
+<div class="version-tag">v4.00</div>
 
 <script>
 // ============================================================
@@ -272,68 +259,6 @@ var isGameCompleteFlag = false, celebrationTriggered = false;
 var currentDisplayMode = "play";
 var currentFlight = 1;
 var currentHole = 1;
-
-// ============================================================
-// Cache Loading (v4.02)
-// ============================================================
-
-function getPreloadedRawGameData() {
-    var stored = sessionStorage.getItem("preloadedRawGameData");
-    if (stored) {
-        try {
-            var data = JSON.parse(stored);
-            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
-                return data;
-            } else {
-                sessionStorage.removeItem("preloadedRawGameData");
-            }
-        } catch(e) {
-            console.warn("Failed to parse preloaded raw data:", e);
-        }
-    }
-    return null;
-}
-
-function applyCachedDataToGameLoader() {
-    var cached = getPreloadedRawGameData();
-    if (!cached || !cached.rawData) {
-        return false;
-    }
-    
-    console.log("Applying cached data to GameLoader (viewer mode)");
-    var rawData = cached.rawData;
-    
-    // Build cache object for GameLoader.setLocalCache()
-    var cacheData = {
-        course: rawData.course,
-        players: rawData.players,
-        startingHole: rawData.startingHole || 1,
-        teamGameFormat: rawData.teamGameFormat || "tournament",
-        f1DataString: rawData.f1?.d || "",
-        f2DataString: rawData.f2?.d || "",
-        results: rawData.results || null,
-        savedHoles: { 1: [], 2: [] },
-        t1Row: new Array(18).fill('_'),
-        t2Row: new Array(18).fill('_'),
-        strkRow: new Array(18).fill('0'),
-        lastSyncedHole: 0,
-        clinchedAt: {},
-        signatures: rawData.signatures || { f1: false, f2: false },
-        submitted: rawData.submitted || { f1: false, f2: false },
-        locks: rawData.locks || { f1: null, f2: null },
-        gameStarted: rawData.gameStarted || false
-    };
-    
-    if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
-        GameLoader.setLocalCache(cacheData);
-    } else {
-        console.error("GameLoader.setLocalCache not available");
-        return false;
-    }
-    
-    gameId = cached.gameId;
-    return true;
-}
 
 // ============================================================
 // Helper Functions
@@ -432,7 +357,7 @@ function initTicker() {
 }
 
 // ============================================================
-// Render Functions
+// Render Functions (using shared GameUI functions)
 // ============================================================
 
 function renderHoleHeader() {
@@ -473,7 +398,7 @@ function renderPlayerCards() {
             var opp = opponents[j];
             var bubbleClass = GameUI.getBubbleClassShared(p, opp, currentHole, resultsCache, allPlayers, isHoleSaved, getHolePosition);
             var bubbleValue = GameUI.getBubbleValueShared(p, opp, currentHole, resultsCache, allPlayers, getHolePosition);
-            bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
+            bubblesHtml += '<div class="bubble ' + bubbleClass + '">vs ' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
         }
         bubblesHtml += '</div>';
         
@@ -487,6 +412,7 @@ function renderPlayerCards() {
     }
     document.getElementById('playerCards').innerHTML = cardsHtml;
     
+    // Add flight badge
     setTimeout(function() {
         var firstCard = document.querySelector('.player-card');
         if (firstCard && !document.querySelector('.flight-badge')) {
@@ -658,7 +584,7 @@ function buildBottomMenu() {
 }
 
 // ============================================================
-// Firestore Listener (for real-time updates)
+// Firestore Listener
 // ============================================================
 
 function startGameListener() {
@@ -689,6 +615,7 @@ function startGameListener() {
                 Ticker.refresh();
             }
             
+            // Initialize currentHole to first unsaved hole
             var newHole = getFirstUnsavedHole(currentFlight);
             if (newHole !== currentHole) {
                 currentHole = newHole;
@@ -728,43 +655,8 @@ async function init() {
     
     buildCompactHeader();
     buildBottomMenu();
-    
-    // Try to use cached data first (v4.02)
-    var cacheApplied = applyCachedDataToGameLoader();
-    
-    if (cacheApplied) {
-        console.log("Using cached data for viewer mode");
-        var cache = GameLoader.getLocalCache();
-        courseName = cache.course?.name || "Unknown Course";
-        coursePar = cache.course?.par || [];
-        courseSi = cache.course?.si || [];
-        allPlayers = cache.players || [];
-        startingHole = cache.startingHole || 1;
-        f1DataString = cache.f1DataString || "";
-        f2DataString = cache.f2DataString || "";
-        resultsCache = cache.results || null;
-        
-        document.getElementById("courseName").innerHTML = courseName;
-        
-        initTicker();
-        if (allPlayers && allPlayers.length) {
-            Ticker.setPlayers(allPlayers);
-        }
-        
-        var newHole = getFirstUnsavedHole(currentFlight);
-        if (newHole !== currentHole) {
-            currentHole = newHole;
-        }
-        
-        renderAll();
-        
-        // Still attach Firestore listener for real-time updates
-        startGameListener();
-    } else {
-        console.log("No cached data, loading from Firestore");
-        initTicker();
-        startGameListener();
-    }
+    initTicker();
+    startGameListener();
 }
 
 function escapeHtml(str) {
@@ -785,16 +677,18 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 4.02
+VERSION: 4.00
 KEY CHANGES:
-   - CHANGED: Container max-width from 550px to 500px (consistent with main app)
-   - ADDED: Cache-first loading using preloaded data from index.html
-   - READS: "preloadedRawGameData" from sessionStorage for instant render
-   - FALLBACK: Firestore fetch only if no cache exists
-   - REMOVED: All previewSandboxes references (deprecated)
-   - REMOVED: isPreviewSandbox logic and related code
-   - All existing viewer functionality preserved from v4.00
-   - Uses GameLoader for real-time sync after initial render
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js, js/game-loader.js
+   - COMPLETE REWRITE: Uses shared display functions from game-ui.js
+   - Player order: A1, A2, B1, B2 (identical to real-game)
+   - Opponent order: intra-flight first, then cross-flight (identical to real-game)
+   - Match bubbles: uses getBubbleClassShared and getBubbleValueShared
+   - Flight toggle: changes flight only, hole number stays the same
+   - Navigation: ◀ and ▶ change hole, update both center number and hole header
+   - Next button: grey when at last unsaved hole
+   - Status bubble: green VIEWER below ticker, clickable refresh
+   - No SAVE button - replaced with FLIGHT toggle button
+   - All display logic now centralized in game-ui.js
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
