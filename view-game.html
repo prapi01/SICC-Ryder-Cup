@@ -1,15 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 4.10
-KEY CHANGES (based on real-game.html v4.07 working):
-   - Status bubble text: "VIEWER" (instead of "LIVE")
-   - No edit buttons (-/+) - canEdit = false
-   - FLIGHT toggle button instead of SAVE button (buttonMode = "flight")
-   - All other functionality IDENTICAL to real-game.html v4.07
-   - Includes clinch support, first unsaved hole calculation, shortform player names
+VERSION: 4.11
+KEY CHANGES (based on v4.10):
+   - FIXED: Added 'players' field to mockCache in applyPreloadedData()
+   - Without this, GameLoader cache had empty players array
+   - All other functionality identical to v4.10
+   - Status bubble text: "VIEWER"
+   - No edit buttons (canEdit = false)
+   - FLIGHT toggle button (buttonMode = "flight")
    - Uses GameUI.renderCompactHeader() for unified control bar
-   - Cache-first loading with redirect on missing cache
-   - Hidden until data-ready (no flash)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -357,7 +356,6 @@ STATUS: Ready for integration
     
     <div id="holeHeader"></div>
     
-    <div id="flightTab" class="flight-tab"></div>
     <div id="trDisplay" class="team-score-card"></div>
     <div id="playerCards" class="player-cards"></div>
     
@@ -372,7 +370,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.10</div>
+<div class="version-tag">v4.11</div>
 
 <script>
 // ============================================================
@@ -398,7 +396,7 @@ var db = firebase.firestore();
 // ============================================================
 
 var gameId = null;
-var displayFlight = 1;        // VIEW mode tracks which flight to display
+var displayFlight = 1;
 var currentHole = 1;
 var startingHole = 1;
 var teamGameFormat = "tournament";
@@ -438,27 +436,31 @@ function getPreloadedRawGameData() {
 function applyPreloadedData(preloadData) {
     console.log("Applying preloaded data for instant render");
     
-    courseName = preloadData.course?.name || "Unknown Course";
-    coursePar = preloadData.course?.par || [];
-    courseSi = preloadData.course?.si || [];
-    allPlayers = preloadData.players || [];
-    startingHole = preloadData.startingHole || 1;
-    teamGameFormat = preloadData.teamGameFormat || "tournament";
+    // Extract data from preloadData.rawData
+    var rawData = preloadData.rawData;
     
+    courseName = rawData?.course?.name || "Unknown Course";
+    coursePar = rawData?.course?.par || [];
+    courseSi = rawData?.course?.si || [];
+    allPlayers = rawData?.players || [];
+    startingHole = rawData?.startingHole || 1;
+    teamGameFormat = rawData?.teamGameFormat || "tournament";
+    
+    // v4.11 FIX: Include 'players' in mockCache
     var mockCache = {
-        course: preloadData.course,
-        players: preloadData.players,
-        startingHole: preloadData.startingHole,
-        teamGameFormat: preloadData.teamGameFormat,
-        f1DataString: preloadData.f1DataString || preloadData.rawData?.f1?.d || "",
-        f2DataString: preloadData.f2DataString || preloadData.rawData?.f2?.d || "",
-        results: preloadData.results || preloadData.rawData?.results || null,
-        savedHoles: preloadData.savedHoles || { 1: [], 2: [] },
-        t1Row: preloadData.t1Row || new Array(18).fill('_'),
-        t2Row: preloadData.t2Row || new Array(18).fill('_'),
-        strkRow: preloadData.strkRow || new Array(18).fill('0'),
-        lastSyncedHole: preloadData.lastSyncedHole || 0,
-        clinchedAt: preloadData.clinchedAt || {},
+        course: rawData?.course,
+        players: rawData?.players,           // ← CRITICAL FIX
+        startingHole: rawData?.startingHole || 1,
+        teamGameFormat: rawData?.teamGameFormat || "tournament",
+        f1DataString: rawData?.f1?.d || "",
+        f2DataString: rawData?.f2?.d || "",
+        results: rawData?.results || null,
+        savedHoles: { 1: [], 2: [] },
+        t1Row: new Array(18).fill('_'),
+        t2Row: new Array(18).fill('_'),
+        strkRow: new Array(18).fill('0'),
+        lastSyncedHole: 0,
+        clinchedAt: {},
         signatures: { f1: false, f2: false },
         submitted: { f1: false, f2: false },
         locks: { f1: null, f2: null },
@@ -467,6 +469,7 @@ function applyPreloadedData(preloadData) {
     
     if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
         GameLoader.setLocalCache(mockCache);
+        console.log("GameLoader cache set with players:", mockCache.players?.length);
     }
     
     document.getElementById("courseName").innerHTML = courseName;
@@ -712,11 +715,6 @@ function renderAll() {
     if (typeof Ticker !== 'undefined') Ticker.refresh();
 }
 
-function updatePlayerNamesToShortform() {
-    // This is handled by GameUI.renderPlayerCards which uses player.label
-    // No additional conversion needed
-}
-
 // ============================================================
 // Navigation
 // ============================================================
@@ -848,8 +846,8 @@ function buildCompactHeader() {
         goToNextHole,
         toggleFlight,
         toggleDisplayMode,
-        "flight",  // VIEW mode uses FLIGHT button
-        null       // no save callback
+        "flight",
+        null
     );
 }
 
@@ -998,16 +996,15 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 4.10
-KEY CHANGES (based on real-game.html v4.07 working):
-   - Status bubble text: "VIEWER" (instead of "LIVE")
-   - No edit buttons (-/+) - canEdit = false
-   - FLIGHT toggle button instead of SAVE button (buttonMode = "flight")
-   - All other functionality IDENTICAL to real-game.html v4.07
-   - Includes clinch support, first unsaved hole calculation, shortform player names
+VERSION: 4.11
+KEY CHANGES (based on v4.10):
+   - FIXED: Added 'players' field to mockCache in applyPreloadedData()
+   - Without this, GameLoader cache had empty players array
+   - All other functionality identical to v4.10
+   - Status bubble text: "VIEWER"
+   - No edit buttons (canEdit = false)
+   - FLIGHT toggle button (buttonMode = "flight")
    - Uses GameUI.renderCompactHeader() for unified control bar
-   - Cache-first loading with redirect on missing cache
-   - Hidden until data-ready (no flash)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
