@@ -1,13 +1,12 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.04
+VERSION: 1.05 (DEBUG - temporary)
 KEY CHANGES:
-   - FIXED: setLocalCache() now calls recalculateDerivedData() to parse data strings
-   - This populates savedHoles, flight1Data, flight2Data, t1Row, t2Row, strkRow, clinchedAt
-   - Without this, savedHoles remains empty and first unsaved hole detection fails
-   - All other functionality identical to v1.03
+   - ADDED: Console logging in updateSavedHolesList() to debug empty savedHoles
+   - Logs each hole's saved status for Flight 1 and Flight 2
+   - REMOVE THIS VERSION AFTER DEBUGGING
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
-STATUS: Ready for integration
+STATUS: Debug only - do not use in production
 */
 
 var GameLoader = (function() {
@@ -34,7 +33,6 @@ var GameLoader = (function() {
         locks: { f1: null, f2: null },
         gameStarted: false,
         
-        // Derived data (recalculated on load and on cache update)
         t1Row: Array(18).fill('_'),
         t2Row: Array(18).fill('_'),
         strkRow: Array(18).fill('0'),
@@ -47,7 +45,6 @@ var GameLoader = (function() {
         flight2Cumulative: Array(18).fill(0),
         lastSyncedHole: 0,
         
-        // Clinch tracking
         clinchedAt: {}
     };
     
@@ -108,15 +105,31 @@ var GameLoader = (function() {
     }
     
     function updateSavedHolesList() {
+        console.log("=== updateSavedHolesList() called ===");
         localCache.savedHoles = { 1: [], 2: [] };
+        
         for (var h = 1; h <= 18; h++) {
-            if (localCache.flight1Data[h] && localCache.flight1Data[h].saved) {
+            var f1Data = localCache.flight1Data[h];
+            var f2Data = localCache.flight2Data[h];
+            var f1Saved = f1Data ? f1Data.saved : false;
+            var f2Saved = f2Data ? f2Data.saved : false;
+            
+            if (f1Saved) {
                 localCache.savedHoles[1].push(h);
             }
-            if (localCache.flight2Data[h] && localCache.flight2Data[h].saved) {
+            if (f2Saved) {
                 localCache.savedHoles[2].push(h);
             }
+            
+            // DEBUG: Log first few holes
+            if (h <= 5 || h === 18) {
+                console.log("Hole " + h + ": f1Data exists=" + !!f1Data + ", f1Saved=" + f1Saved + ", f2Saved=" + f2Saved);
+            }
         }
+        
+        console.log("Saved holes F1:", localCache.savedHoles[1]);
+        console.log("Saved holes F2:", localCache.savedHoles[2]);
+        console.log("=== updateSavedHolesList() done ===");
     }
     
     function calculateLastSyncedHole() {
@@ -175,7 +188,9 @@ var GameLoader = (function() {
     }
     
     function recalculateDerivedData() {
+        console.log("=== recalculateDerivedData() called ===");
         if (!localCache.players.length || !localCache.f1DataString || !localCache.f2DataString) {
+            console.log("recalculateDerivedData: missing data - players:" + localCache.players.length + ", f1String:" + !!localCache.f1DataString + ", f2String:" + !!localCache.f2DataString);
             return;
         }
         
@@ -187,11 +202,14 @@ var GameLoader = (function() {
         var flight2DataStr = localCache.f2DataString;
         var coursePar = localCache.course?.par || [];
         
+        console.log("recalculateDerivedData: startingHole=" + startingHole + ", f1String length=" + flight1DataStr.length);
+        
         // Update saved holes list
         updateSavedHolesList();
         
         // Calculate last synced hole
         localCache.lastSyncedHole = calculateLastSyncedHole();
+        console.log("lastSyncedHole:", localCache.lastSyncedHole);
         
         // ============================================================
         // Recalculate intra-flight results for both flights
@@ -201,6 +219,8 @@ var GameLoader = (function() {
         
         var maxHoleF1 = localCache.savedHoles[1].length > 0 ? Math.max.apply(null, localCache.savedHoles[1]) : 0;
         var maxHoleF2 = localCache.savedHoles[2].length > 0 ? Math.max.apply(null, localCache.savedHoles[2]) : 0;
+        
+        console.log("maxHoleF1:", maxHoleF1, "maxHoleF2:", maxHoleF2);
         
         // Flight 1 intra-flight
         if (maxHoleF1 > 0) {
@@ -224,7 +244,7 @@ var GameLoader = (function() {
             localCache.matchResults.intraF2 = {};
         }
         
-        // Cross-flight (only when both flights have saved the same holes)
+        // Cross-flight
         if (localCache.lastSyncedHole > 0) {
             try {
                 localCache.matchResults.cross = GameMatch.calculateCrossFlight(
@@ -236,7 +256,7 @@ var GameLoader = (function() {
             localCache.matchResults.cross = {};
         }
         
-        // Recalculate team game (T-1, T-2 rows)
+        // Recalculate team game
         try {
             var teamResults = GameTeam.calculate(
                 allPlayers, flight1DataStr, flight2DataStr, courseSi, startingHole, teamGameFormat
@@ -247,7 +267,7 @@ var GameLoader = (function() {
             localCache.flight2Cumulative = teamResults.flight2Cumulative;
         } catch(e) { console.warn("Team game recalc error:", e); }
         
-        // Recalculate stroke game (Strk row)
+        // Recalculate stroke game
         try {
             var strokeResults = GameStroke.calculate(
                 allPlayers, flight1DataStr, flight2DataStr, courseSi, startingHole
@@ -261,6 +281,8 @@ var GameLoader = (function() {
                 localCache.clinchedAt = calculateClinchedAt(localCache.results.matchResults, allPlayers);
             } catch(e) { console.warn("Clinch calculation error:", e); }
         }
+        
+        console.log("=== recalculateDerivedData() done ===");
     }
     
     // ============================================================
@@ -290,13 +312,18 @@ var GameLoader = (function() {
         return localCache;
     }
     
-    // v1.04 FIX: Added recalculateDerivedData() call
     function setLocalCache(cacheData) {
         if (!cacheData) return false;
         
-        console.log("Setting preloaded cache data");
+        console.log("setLocalCache called with:", {
+            hasCourse: !!cacheData.course,
+            hasPlayers: !!cacheData.players,
+            hasF1String: !!cacheData.f1DataString,
+            hasF2String: !!cacheData.f2DataString,
+            f1Length: cacheData.f1DataString ? cacheData.f1DataString.length : 0,
+            f2Length: cacheData.f2DataString ? cacheData.f2DataString.length : 0
+        });
         
-        // Copy all relevant fields from cacheData
         if (cacheData.course) localCache.course = cacheData.course;
         if (cacheData.players) localCache.players = cacheData.players;
         if (cacheData.startingHole) localCache.startingHole = cacheData.startingHole;
@@ -315,18 +342,20 @@ var GameLoader = (function() {
         if (cacheData.locks) localCache.locks = cacheData.locks;
         if (cacheData.gameStarted !== undefined) localCache.gameStarted = cacheData.gameStarted;
         
-        // Reparse flight data from strings (v1.04 FIX)
+        // Reparse flight data from strings
         if (localCache.f1DataString) {
             localCache.flight1Data = parseFlightData(localCache.f1DataString, localCache.startingHole);
+            console.log("Parsed flight1Data, holes with saved flag:", Object.keys(localCache.flight1Data).filter(function(h) { return localCache.flight1Data[h].saved; }).length);
         }
         if (localCache.f2DataString) {
             localCache.flight2Data = parseFlightData(localCache.f2DataString, localCache.startingHole);
+            console.log("Parsed flight2Data, holes with saved flag:", Object.keys(localCache.flight2Data).filter(function(h) { return localCache.flight2Data[h].saved; }).length);
         }
         
-        // CRITICAL v1.04: Recalculate all derived data (savedHoles, t1Row, t2Row, strkRow, clinchedAt)
+        // Recalculate all derived data
         recalculateDerivedData();
         
-        // Notify callbacks that data is ready
+        // Notify callbacks
         for (var i = 0; i < dataCallbacks.length; i++) {
             try { dataCallbacks[i](localCache); } catch(e) {}
         }
@@ -490,12 +519,11 @@ var GameLoader = (function() {
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.04
+VERSION: 1.05 (DEBUG - temporary)
 KEY CHANGES:
-   - FIXED: setLocalCache() now calls recalculateDerivedData() to parse data strings
-   - This populates savedHoles, flight1Data, flight2Data, t1Row, t2Row, strkRow, clinchedAt
-   - Without this, savedHoles remains empty and first unsaved hole detection fails
-   - All other functionality identical to v1.03
+   - ADDED: Console logging in updateSavedHolesList() to debug empty savedHoles
+   - Logs each hole's saved status for Flight 1 and Flight 2
+   - REMOVE THIS VERSION AFTER DEBUGGING
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
-STATUS: Ready for integration
+STATUS: Debug only - do not use in production
 */
