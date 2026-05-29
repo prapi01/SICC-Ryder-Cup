@@ -1,312 +1,490 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.06
+VERSION: 1.03
 KEY CHANGES:
-   - FIXED: getGameIdFromSession() now reads from 'currentGameId' (matches index.html preload)
-   - FIXED: getGameDataFromSession() now reads from 'preloadedRawGameData.rawData' directly
-   - FIXED: No double JSON.parse() - rawData is already an object
-   - ADDED: Proper error handling for missing session data
-   - ADDED: Console logging for debugging session loading
-   - All other functions unchanged from v1.04
-DEPENDS ON: Firebase Firestore
+   - ADDED: _setLocalCache() method for injecting preloaded data
+   - ADDED: Cache persistence support for instant page transitions
+   - Allows real-game.html to use preloaded data from pre-game.html
+   - Preserves all existing clinch detection and calculation logic
+   - Maintains backward compatibility with existing code
+   - All existing functionality unchanged from v1.02
+DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 */
 
-// Global loader state
-let activeGameData = null;
-let activeGameId = null;
-let activeListenerUnsubscribe = null;
-
-/**
- * Get game ID from session storage
- * Reads from the actual key used by index.html: 'currentGameId'
- * @returns {string|null} Game ID or null if not found
- */
-function getGameIdFromSession() {
-    try {
-        const gameId = sessionStorage.getItem('currentGameId');
-        if (gameId && gameId !== 'null' && gameId !== 'undefined') {
-            console.log('[game-loader] getGameIdFromSession: found', gameId);
-            return gameId;
-        }
-        console.log('[game-loader] getGameIdFromSession: no valid gameId found');
-        return null;
-    } catch (e) {
-        console.error('[game-loader] Error reading gameId from session:', e);
-        return null;
-    }
-}
-
-/**
- * Get full game data from session storage
- * Reads from the actual structure used by index.html: preloadedRawGameData.rawData
- * rawData is already an object - NO additional JSON.parse()
- * @returns {Object|null} Game data object or null if not found/invalid
- */
-function getGameDataFromSession() {
-    try {
-        const preloadedRaw = sessionStorage.getItem('preloadedRawGameData');
-        if (!preloadedRaw) {
-            console.log('[game-loader] getGameDataFromSession: no preloadedRawGameData found');
-            return null;
-        }
-        
-        const parsed = JSON.parse(preloadedRaw);
-        if (!parsed.rawData) {
-            console.log('[game-loader] getGameDataFromSession: rawData field missing');
-            return null;
-        }
-        
-        // rawData is already an object - return it directly
-        const gameData = parsed.rawData;
-        
-        if (gameData && (gameData.id || gameData.gameId)) {
-            const id = gameData.id || gameData.gameId;
-            console.log('[game-loader] getGameDataFromSession: found game', id);
-            return gameData;
-        }
-        
-        console.log('[game-loader] getGameDataFromSession: invalid game data structure');
-        return null;
-    } catch (e) {
-        console.error('[game-loader] Error reading gameData from session:', e);
-        return null;
-    }
-}
-
-/**
- * Load game data from session or Firestore
- * @param {string} gameId - Game ID to load (optional, will try session if not provided)
- * @param {string} mode - 'view' or 'score' mode
- * @returns {Promise<Object|null>} Game data object or null if failed
- */
-async function loadGameData(gameId = null, mode = 'view') {
-    console.log('[game-loader] loadGameData called with gameId:', gameId, 'mode:', mode);
+var GameLoader = (function() {
     
-    // If no gameId provided, try to get from session
-    if (!gameId) {
-        gameId = getGameIdFromSession();
-        if (!gameId) {
-            console.error('[game-loader] No gameId provided and none in session');
-            return null;
-        }
+    // ============================================================
+    // Private State
+    // ============================================================
+    
+    var localCache = {
+        gameId: null,
+        collection: null,
+        course: null,
+        players: [],
+        startingHole: 1,
+        teamGameFormat: "tournament",
+        f1DataString: "",
+        f2DataString: "",
+        flight1Data: {},
+        flight2Data: {},
+        savedHoles: { 1: [], 2: [] },
+        results: null,
+        signatures: { f1: false, f2: false },
+        submitted: { f1: false, f2: false },
+        locks: { f1: null, f2: null },
+        gameStarted: false,
+        
+        // Derived data (recalculated on load and on cache update)
+        t1Row: Array(18).fill('_'),
+        t2Row: Array(18).fill('_'),
+        strkRow: Array(18).fill('0'),
+        matchResults: {
+            intraF1: {},
+            intraF2: {},
+            cross: {}
+        },
+        flight1Cumulative: Array(18).fill(0),
+        flight2Cumulative: Array(18).fill(0),
+        lastSyncedHole: 0,
+        
+        // NEW v1.02: Clinch tracking
+        clinchedAt: {}
+    };
+    
+    var syncStatus = {
+        pending: false,
+        error: null
+    };
+    
+    var snapshotUnsubscribe = null;
+    var dataCallbacks = [];
+    
+    // ============================================================
+    // Helper Functions
+    // ============================================================
+    
+    function getPlayOrder(startingHole) {
+        var order = [];
+        for (var i = startingHole; i <= 18; i++) order.push(i);
+        for (var i = 1; i < startingHole; i++) order.push(i);
+        return order;
     }
     
-    activeGameId = gameId;
-    
-    // Try to get from session first
-    let gameData = getGameDataFromSession();
-    
-    // If session has data and IDs match, use it
-    if (gameData) {
-        const dataId = gameData.id || gameData.gameId;
-        if (dataId === gameId) {
-            console.log('[game-loader] Using game data from session');
-            activeGameData = gameData;
-            return gameData;
-        } else {
-            console.log('[game-loader] Session game ID mismatch: dataId=', dataId, 'requested=', gameId);
+    function getHolePosition(holeNumber, startingHole) {
+        var playOrder = getPlayOrder(startingHole);
+        for (var i = 0; i < playOrder.length; i++) {
+            if (playOrder[i] === holeNumber) return i;
         }
+        return holeNumber - 1;
     }
     
-    // Otherwise load from Firestore
-    console.log('[game-loader] Loading game data from Firestore for ID:', gameId);
+    function getHoleAtStoragePosition(position, startingHole) {
+        var playOrder = getPlayOrder(startingHole);
+        return playOrder[position];
+    }
     
-    try {
-        const db = firebase.firestore();
+    function parseFlightData(dataString, startingHole) {
+        var result = {};
+        var playOrder = getPlayOrder(startingHole);
         
-        // Try scheduledGames first
-        let doc = await db.collection('scheduledGames').doc(gameId).get();
-        let collection = 'scheduledGames';
-        
-        // If not found, try previewSandboxes
-        if (!doc.exists) {
-            doc = await db.collection('previewSandboxes').doc(gameId).get();
-            collection = 'previewSandboxes';
-        }
-        
-        if (!doc.exists) {
-            console.error('[game-loader] Game not found in Firestore:', gameId);
-            return null;
-        }
-        
-        gameData = doc.data();
-        gameData.id = doc.id;
-        gameData.gameId = doc.id;
-        gameData._collection = collection;
-        
-        // Load scores subcollection if it exists (for backward compatibility)
-        try {
-            const scoresSnapshot = await db.collection(collection).doc(gameId).collection('scores').get();
-            if (!scoresSnapshot.empty) {
-                const scores = {};
-                scoresSnapshot.forEach(doc => {
-                    scores[doc.id] = doc.data();
-                });
-                gameData.scores = scores;
+        for (var pos = 0; pos < 18; pos++) {
+            var actualHole = playOrder[pos];
+            var startIdx = pos * 9;
+            var segment = dataString.substring(startIdx, startIdx + 9);
+            
+            if (segment.length === 9) {
+                result[actualHole] = {
+                    saved: segment[0] === 'T',
+                    scores: {
+                        a1: parseInt(segment.substring(1, 3), 10),
+                        a2: parseInt(segment.substring(3, 5), 10),
+                        b1: parseInt(segment.substring(5, 7), 10),
+                        b2: parseInt(segment.substring(7, 9), 10)
+                    }
+                };
             }
-        } catch (e) {
-            console.log('[game-loader] No scores subcollection or error loading:', e.message);
         }
-        
-        activeGameData = gameData;
-        console.log('[game-loader] Successfully loaded from Firestore (collection:', collection, ')');
-        return gameData;
-        
-    } catch (error) {
-        console.error('[game-loader] Error loading from Firestore:', error);
-        return null;
-    }
-}
-
-/**
- * Set up real-time listener for game data updates
- * @param {string} gameId - Game ID to listen to
- * @param {Function} callback - Callback function called on each update
- * @returns {Function} Unsubscribe function
- */
-function setupGameDataListener(gameId, callback) {
-    if (!gameId) {
-        console.error('[game-loader] No gameId provided for listener');
-        return null;
+        return result;
     }
     
-    // Clean up existing listener
-    if (activeListenerUnsubscribe) {
-        activeListenerUnsubscribe();
-        activeListenerUnsubscribe = null;
+    function updateSavedHolesList() {
+        localCache.savedHoles = { 1: [], 2: [] };
+        for (var h = 1; h <= 18; h++) {
+            if (localCache.flight1Data[h] && localCache.flight1Data[h].saved) {
+                localCache.savedHoles[1].push(h);
+            }
+            if (localCache.flight2Data[h] && localCache.flight2Data[h].saved) {
+                localCache.savedHoles[2].push(h);
+            }
+        }
     }
     
-    try {
-        const db = firebase.firestore();
-        
-        // Determine which collection to listen to
-        let collectionName = 'scheduledGames';
-        if (activeGameData && activeGameData._collection) {
-            collectionName = activeGameData._collection;
+    function calculateLastSyncedHole() {
+        var playOrder = getPlayOrder(localCache.startingHole);
+        var lastSynced = 0;
+        for (var i = 0; i < playOrder.length; i++) {
+            var hole = playOrder[i];
+            var f1Saved = localCache.flight1Data[hole] && localCache.flight1Data[hole].saved;
+            var f2Saved = localCache.flight2Data[hole] && localCache.flight2Data[hole].saved;
+            if (f1Saved && f2Saved) {
+                lastSynced = hole;
+            } else {
+                break;
+            }
         }
+        return lastSynced;
+    }
+    
+    function calculateClinchedAt(matchResultsArray, allPlayers) {
+        var clinched = {};
         
-        console.log('[game-loader] Setting up listener on:', collectionName, gameId);
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // Listen to main game document
-        const unsubscribe = db.collection(collectionName).doc(gameId)
-            .onSnapshot(async (doc) => {
-                if (doc.exists) {
-                    const gameData = doc.data();
-                    gameData.id = doc.id;
-                    gameData.gameId = doc.id;
-                    gameData._collection = collectionName;
-                    
-                    // Try to load scores subcollection if it exists
-                    try {
-                        const scoresSnapshot = await db.collection(collectionName).doc(gameId).collection('scores').get();
-                        if (!scoresSnapshot.empty) {
-                            const scores = {};
-                            scoresSnapshot.forEach(doc => {
-                                scores[doc.id] = doc.data();
-                            });
-                            gameData.scores = scores;
-                        }
-                    } catch (e) {
-                        // No scores subcollection - ignore
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                var playerA = teamAPlayers[a];
+                var playerB = teamBPlayers[b];
+                var matchKey = playerA.name + "_vs_" + playerB.name;
+                
+                var matchIndex = a * teamBPlayers.length + b;
+                
+                var clinchedHole = null;
+                for (var pos = 0; pos < 18; pos++) {
+                    var holeNumber = getHoleAtStoragePosition(pos, localCache.startingHole);
+                    var matchValue = 0;
+                    if (localCache.results && localCache.results.matchResults && localCache.results.matchResults[pos]) {
+                        matchValue = localCache.results.matchResults[pos][matchIndex] || 0;
                     }
                     
-                    activeGameData = gameData;
+                    var absValue = Math.abs(matchValue);
+                    var holesRemaining = 18 - holeNumber;
                     
-                    if (callback) {
-                        callback(gameData);
+                    if (absValue > holesRemaining) {
+                        clinchedHole = holeNumber;
+                        break;
                     }
                 }
-            }, (error) => {
-                console.error('[game-loader] Firestore listener error:', error);
+                
+                clinched[matchKey] = clinchedHole;
+                clinched[playerB.name + "_vs_" + playerA.name] = clinchedHole;
+            }
+        }
+        
+        return clinched;
+    }
+    
+    function recalculateDerivedData() {
+        if (!localCache.players.length || !localCache.f1DataString || !localCache.f2DataString) {
+            return;
+        }
+        
+        var courseSi = localCache.course?.si || [];
+        var startingHole = localCache.startingHole;
+        var teamGameFormat = localCache.teamGameFormat;
+        var allPlayers = localCache.players;
+        var flight1DataStr = localCache.f1DataString;
+        var flight2DataStr = localCache.f2DataString;
+        var coursePar = localCache.course?.par || [];
+        
+        updateSavedHolesList();
+        localCache.lastSyncedHole = calculateLastSyncedHole();
+        
+        var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+        var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
+        
+        var maxHoleF1 = localCache.savedHoles[1].length > 0 ? Math.max.apply(null, localCache.savedHoles[1]) : 0;
+        var maxHoleF2 = localCache.savedHoles[2].length > 0 ? Math.max.apply(null, localCache.savedHoles[2]) : 0;
+        
+        if (maxHoleF1 > 0) {
+            try {
+                localCache.matchResults.intraF1 = GameMatch.calculateIntraFlight(
+                    1, flight1Players, flight1DataStr, courseSi, startingHole, maxHoleF1, coursePar
+                );
+            } catch(e) { console.warn("Intra-flight F1 recalc error:", e); }
+        } else {
+            localCache.matchResults.intraF1 = {};
+        }
+        
+        if (maxHoleF2 > 0) {
+            try {
+                localCache.matchResults.intraF2 = GameMatch.calculateIntraFlight(
+                    2, flight2Players, flight2DataStr, courseSi, startingHole, maxHoleF2, coursePar
+                );
+            } catch(e) { console.warn("Intra-flight F2 recalc error:", e); }
+        } else {
+            localCache.matchResults.intraF2 = {};
+        }
+        
+        if (localCache.lastSyncedHole > 0) {
+            try {
+                localCache.matchResults.cross = GameMatch.calculateCrossFlight(
+                    flight1DataStr, flight2DataStr, allPlayers, courseSi, startingHole,
+                    localCache.lastSyncedHole, coursePar
+                );
+            } catch(e) { console.warn("Cross-flight recalc error:", e); }
+        } else {
+            localCache.matchResults.cross = {};
+        }
+        
+        try {
+            var teamResults = GameTeam.calculate(
+                allPlayers, flight1DataStr, flight2DataStr, courseSi, startingHole, teamGameFormat
+            );
+            localCache.t1Row = teamResults.t1Row;
+            localCache.t2Row = teamResults.t2Row;
+            localCache.flight1Cumulative = teamResults.flight1Cumulative;
+            localCache.flight2Cumulative = teamResults.flight2Cumulative;
+        } catch(e) { console.warn("Team game recalc error:", e); }
+        
+        try {
+            var strokeResults = GameStroke.calculate(
+                allPlayers, flight1DataStr, flight2DataStr, courseSi, startingHole
+            );
+            localCache.strkRow = strokeResults;
+        } catch(e) { console.warn("Stroke game recalc error:", e); }
+        
+        if (localCache.results && localCache.results.matchResults) {
+            try {
+                localCache.clinchedAt = calculateClinchedAt(localCache.results.matchResults, allPlayers);
+            } catch(e) { console.warn("Clinch calculation error:", e); }
+        }
+    }
+    
+    // ============================================================
+    // Public Functions
+    // ============================================================
+    
+    function markWritePending() {
+        syncStatus.pending = true;
+        syncStatus.error = null;
+    }
+    
+    function markWriteComplete() {
+        syncStatus.pending = false;
+        syncStatus.error = null;
+    }
+    
+    function markWriteFailed(error) {
+        syncStatus.pending = true;
+        syncStatus.error = error;
+    }
+    
+    function getSyncStatus() {
+        return { pending: syncStatus.pending, error: syncStatus.error };
+    }
+    
+    function getLocalCache() {
+        return localCache;
+    }
+    
+    // NEW v1.03: Method to inject preloaded cache data
+    function setLocalCache(cacheData) {
+        if (!cacheData) return false;
+        
+        console.log("Setting preloaded cache data");
+        
+        // Copy all relevant fields from cacheData
+        if (cacheData.course) localCache.course = cacheData.course;
+        if (cacheData.players) localCache.players = cacheData.players;
+        if (cacheData.startingHole) localCache.startingHole = cacheData.startingHole;
+        if (cacheData.teamGameFormat) localCache.teamGameFormat = cacheData.teamGameFormat;
+        if (cacheData.f1DataString) localCache.f1DataString = cacheData.f1DataString;
+        if (cacheData.f2DataString) localCache.f2DataString = cacheData.f2DataString;
+        if (cacheData.results) localCache.results = cacheData.results;
+        if (cacheData.savedHoles) localCache.savedHoles = cacheData.savedHoles;
+        if (cacheData.t1Row) localCache.t1Row = cacheData.t1Row;
+        if (cacheData.t2Row) localCache.t2Row = cacheData.t2Row;
+        if (cacheData.strkRow) localCache.strkRow = cacheData.strkRow;
+        if (cacheData.lastSyncedHole !== undefined) localCache.lastSyncedHole = cacheData.lastSyncedHole;
+        if (cacheData.clinchedAt) localCache.clinchedAt = cacheData.clinchedAt;
+        if (cacheData.signatures) localCache.signatures = cacheData.signatures;
+        if (cacheData.submitted) localCache.submitted = cacheData.submitted;
+        if (cacheData.locks) localCache.locks = cacheData.locks;
+        if (cacheData.gameStarted !== undefined) localCache.gameStarted = cacheData.gameStarted;
+        
+        // Reparse flight data from strings
+        if (localCache.f1DataString) {
+            localCache.flight1Data = parseFlightData(localCache.f1DataString, localCache.startingHole);
+        }
+        if (localCache.f2DataString) {
+            localCache.flight2Data = parseFlightData(localCache.f2DataString, localCache.startingHole);
+        }
+        
+        // Notify callbacks that data is ready
+        for (var i = 0; i < dataCallbacks.length; i++) {
+            try { dataCallbacks[i](localCache); } catch(e) {}
+        }
+        
+        return true;
+    }
+    
+    function getTRForHole(holeNumber) {
+        if (!localCache.results || !localCache.results.tr) return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+        
+        var position = getHolePosition(holeNumber, localCache.startingHole);
+        var computedUpTo = localCache.results.computedUpToHole || 0;
+        
+        if (position >= computedUpTo) {
+            return { teamA: 9.5, teamB: 9.5, teamAGreen: true, teamBGreen: true };
+        }
+        
+        return {
+            teamA: localCache.results.tr.teamA[position],
+            teamB: localCache.results.tr.teamB[position],
+            teamAGreen: localCache.results.tr.teamAGreen[position],
+            teamBGreen: localCache.results.tr.teamBGreen[position]
+        };
+    }
+    
+    function getMatchValue(playerName, opponentName) {
+        var intraKey = playerName + "_vs_" + opponentName;
+        if (localCache.matchResults.intraF1[intraKey] !== undefined) return localCache.matchResults.intraF1[intraKey];
+        if (localCache.matchResults.intraF2[intraKey] !== undefined) return localCache.matchResults.intraF2[intraKey];
+        if (localCache.matchResults.cross[intraKey] !== undefined) return localCache.matchResults.cross[intraKey];
+        return 0;
+    }
+    
+    function getClinchedAt(playerName, opponentName) {
+        var key = playerName + "_vs_" + opponentName;
+        return localCache.clinchedAt[key] || null;
+    }
+    
+    function updateLocalCacheFromSnapshot(data) {
+        if (data.f1 && data.f1.d) localCache.f1DataString = data.f1.d;
+        if (data.f2 && data.f2.d) localCache.f2DataString = data.f2.d;
+        if (data.results) localCache.results = data.results;
+        if (data.signatures) {
+            localCache.signatures.f1 = data.signatures.f1?.signed === true;
+            localCache.signatures.f2 = data.signatures.f2?.signed === true;
+        }
+        if (data.submitted) {
+            localCache.submitted.f1 = data.submitted.f1 === true;
+            localCache.submitted.f2 = data.submitted.f2 === true;
+        }
+        if (data.locks) localCache.locks = data.locks;
+        if (data.gameStarted !== undefined) localCache.gameStarted = data.gameStarted;
+        
+        localCache.flight1Data = parseFlightData(localCache.f1DataString, localCache.startingHole);
+        localCache.flight2Data = parseFlightData(localCache.f2DataString, localCache.startingHole);
+        
+        recalculateDerivedData();
+        
+        for (var i = 0; i < dataCallbacks.length; i++) {
+            try { dataCallbacks[i](localCache); } catch(e) {}
+        }
+    }
+    
+    function loadGame(gameId, collection, callback) {
+        if (!gameId || !collection) {
+            if (callback) callback({ success: false, error: "Missing gameId or collection" });
+            return;
+        }
+        
+        localCache.gameId = gameId;
+        localCache.collection = collection;
+        
+        var db = firebase.firestore();
+        
+        db.collection(collection).doc(gameId).get().then(function(doc) {
+            if (!doc.exists) {
+                if (callback) callback({ success: false, error: "Game not found" });
+                return;
+            }
+            
+            var data = doc.data();
+            
+            localCache.course = data.course || null;
+            localCache.players = data.players || [];
+            localCache.startingHole = data.startingHole || 1;
+            localCache.teamGameFormat = data.teamGameFormat || "tournament";
+            localCache.f1DataString = data.f1?.d || "";
+            localCache.f2DataString = data.f2?.d || "";
+            localCache.results = data.results || null;
+            localCache.signatures = {
+                f1: data.signatures?.f1?.signed === true,
+                f2: data.signatures?.f2?.signed === true
+            };
+            localCache.submitted = {
+                f1: data.submitted?.f1 === true,
+                f2: data.submitted?.f2 === true
+            };
+            localCache.locks = data.locks || { f1: null, f2: null };
+            localCache.gameStarted = data.gameStarted === true;
+            
+            localCache.flight1Data = parseFlightData(localCache.f1DataString, localCache.startingHole);
+            localCache.flight2Data = parseFlightData(localCache.f2DataString, localCache.startingHole);
+            
+            recalculateDerivedData();
+            
+            markWriteComplete();
+            
+            if (snapshotUnsubscribe) snapshotUnsubscribe();
+            snapshotUnsubscribe = db.collection(collection).doc(gameId).onSnapshot(function(snapshot) {
+                if (snapshot.exists) {
+                    updateLocalCacheFromSnapshot(snapshot.data());
+                }
+            }, function(error) {
+                console.warn("Snapshot listener error:", error);
             });
-        
-        activeListenerUnsubscribe = unsubscribe;
-        console.log('[game-loader] Listener set up for game:', gameId);
-        return unsubscribe;
-        
-    } catch (error) {
-        console.error('[game-loader] Error setting up listener:', error);
-        return null;
-    }
-}
-
-/**
- * Get the currently loaded game data
- * @returns {Object|null} Current game data
- */
-function getCurrentGameData() {
-    return activeGameData;
-}
-
-/**
- * Get the currently loaded game ID
- * @returns {string|null} Current game ID
- */
-function getCurrentGameId() {
-    return activeGameId;
-}
-
-/**
- * Clear session storage game data
- */
-function clearSessionGameData() {
-    try {
-        sessionStorage.removeItem('currentGameId');
-        sessionStorage.removeItem('preloadedRawGameData');
-        sessionStorage.removeItem('gameDataPreloaded');
-        console.log('[game-loader] Session game data cleared');
-    } catch (e) {
-        console.error('[game-loader] Error clearing session data:', e);
-    }
-}
-
-/**
- * Validate that session data is current and valid
- * @returns {boolean} True if valid session data exists
- */
-function isSessionDataValid() {
-    const gameId = getGameIdFromSession();
-    const gameData = getGameDataFromSession();
-    
-    if (!gameId || !gameData) {
-        return false;
+            
+            if (callback) callback({ success: true, cache: localCache });
+            
+        }).catch(function(error) {
+            console.error("Load game error:", error);
+            if (callback) callback({ success: false, error: error.message });
+        });
     }
     
-    const dataId = gameData.id || gameData.gameId;
-    if (dataId !== gameId) {
-        console.warn('[game-loader] Session data mismatch: dataId=', dataId, 'gameId=', gameId);
-        return false;
+    function addDataCallback(callback) {
+        if (callback) dataCallbacks.push(callback);
     }
     
-    return true;
-}
-
-// Export functions for use in other files (if using modules)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        getGameIdFromSession,
-        getGameDataFromSession,
-        loadGameData,
-        setupGameDataListener,
-        getCurrentGameData,
-        getCurrentGameId,
-        clearSessionGameData,
-        isSessionDataValid
+    function unload() {
+        if (snapshotUnsubscribe) {
+            snapshotUnsubscribe();
+            snapshotUnsubscribe = null;
+        }
+        dataCallbacks = [];
+    }
+    
+    // ============================================================
+    // Public API
+    // ============================================================
+    
+    return {
+        loadGame: loadGame,
+        getLocalCache: getLocalCache,
+        setLocalCache: setLocalCache,  // NEW v1.03
+        getTRForHole: getTRForHole,
+        getMatchValue: getMatchValue,
+        getClinchedAt: getClinchedAt,
+        getSyncStatus: getSyncStatus,
+        markWritePending: markWritePending,
+        markWriteComplete: markWriteComplete,
+        markWriteFailed: markWriteFailed,
+        addDataCallback: addDataCallback,
+        unload: unload,
+        getPlayOrder: getPlayOrder,
+        getHolePosition: getHolePosition,
+        getHoleAtStoragePosition: getHoleAtStoragePosition,
+        recalculateDerivedData: recalculateDerivedData
     };
-}
+    
+})();
 
 /*
-FOOTER: js/game-loader.js
-VERSION: 1.06
-LAST UPDATED: 2026-05-29
-COMPATIBLE WITH: index.html v3.18+, pre-game.html v3.12+, real-game.html v4.07+, view-game.html v4.13+
-KEY FIXES:
-   - Reads 'currentGameId' from sessionStorage (not 'cachedGameId')
-   - Reads 'preloadedRawGameData.rawData' as object (no double JSON.parse)
-   - Properly handles both scheduledGames and previewSandboxes collections
-NEXT STEPS:
-   - Update view-game.html v4.13 to use loadGameData() and getGameIdFromSession()
-   - Test loading from sessionStorage on index page
-   - Verify real-game.html still works (backward compatible)
+FILE: js/game-loader.js
+VERSION: 1.03
+KEY CHANGES:
+   - ADDED: _setLocalCache() method for injecting preloaded data
+   - ADDED: Cache persistence support for instant page transitions
+   - Allows real-game.html to use preloaded data from pre-game.html
+   - Preserves all existing clinch detection and calculation logic
+   - Maintains backward compatibility with existing code
+   - All existing functionality unchanged from v1.02
+DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
+STATUS: Ready for integration
 */
