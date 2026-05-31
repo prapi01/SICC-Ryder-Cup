@@ -1,13 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 3.14
-KEY CHANGES:
-   - COMPLETE REWRITE: Clean, simple viewer mode
-   - Match bubble order IDENTICAL to real-game (A1,A2,B1,B2, intra-flight first)
-   - Flight toggle ONLY changes flight, NEVER changes hole
-   - Next button grey when at last unsaved hole
-   - Refresh preserves state (reads from Firestore, finds first unsaved hole)
-   - No dependencies on broken GameUI functions for core display
+VERSION: 5.00
+KEY CHANGES from v3.14:
+   - Control Bar CSS updated to match real-game (rounded rectangles, consistent sizing)
+   - Player cards now display short label (e.g., "ACH") instead of full name
+   - Added clinch display: reads clinchedAt from Firestore for gold bubbles
+   - Added clinch display: reads flight1.clinched and flight2.clinched for gold T-1/T-2 rows
+   - All existing functionality preserved (flight toggle, navigation, Firestore listener)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -104,6 +103,18 @@ STATUS: Ready for integration
         .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
         .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
         .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+        .bubble-gold {
+            background: #1a3a1a;
+            color: #ffaa44;
+            border: 3px solid #ffaa44;
+            font-weight: 800;
+        }
+        .bubble-loss-clinch {
+            background: #3a1a1a;
+            color: #ffffff;
+            border: 3px solid #ffffff;
+            font-weight: 800;
+        }
         
         .scorecard-section { margin: 20px 0; }
         .scorecard-wrapper { overflow-x: auto; }
@@ -121,13 +132,14 @@ STATUS: Ready for integration
         }
         .scorecard-table th { color: #4caf50; background: #111; }
         .score-green { color: #4caf50; font-weight: 600; }
+        .score-gold { color: #ffaa44; font-weight: 800; }
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
         
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Compact header */
+        /* Compact header - UPDATED to match real-game (rounded rectangles) */
         .compact-header {
             display: flex;
             justify-content: space-between;
@@ -139,10 +151,14 @@ STATUS: Ready for integration
             background: #1a3a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
-            border-radius: 30px;
+            border-radius: 12px !important;
             font-weight: 700;
             cursor: pointer;
             text-align: center;
+            transition: all 0.1s ease;
+        }
+        .compact-btn:active {
+            transform: scale(0.97);
         }
         .compact-btn:disabled {
             background: #2a2a2a !important;
@@ -151,11 +167,43 @@ STATUS: Ready for integration
             opacity: 0.6 !important;
             cursor: not-allowed !important;
         }
-        .compact-pn-btn { padding: 0 16px; min-width: 60px; height: 52px; font-size: 1rem; flex-shrink: 0; }
-        .compact-flight-btn { padding: 0 16px; height: 52px; font-size: 1rem; flex: 1; }
-        .compact-nav-group { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-        .compact-nav-btn { width: 52px; height: 52px; border-radius: 30px; font-size: 1.3rem; display: flex; align-items: center; justify-content: center; }
-        .compact-hole-display { font-size: 1.2rem; font-weight: 700; color: #4caf50; min-width: 44px; text-align: center; }
+        .compact-pn-btn {
+            padding: 0 16px;
+            min-width: 60px;
+            height: 52px;
+            font-size: 1rem;
+            flex-shrink: 0;
+            border-radius: 12px !important;
+        }
+        .compact-flight-btn {
+            padding: 0 16px;
+            height: 52px;
+            font-size: 1rem;
+            flex: 1;
+            border-radius: 12px !important;
+        }
+        .compact-nav-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .compact-nav-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 12px !important;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .compact-hole-display {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #4caf50;
+            min-width: 44px;
+            text-align: center;
+        }
         
         .modal-overlay {
             position: fixed;
@@ -224,7 +272,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.14</div>
+<div class="version-tag">v5.00</div>
 
 <script>
 // ============================================================
@@ -333,6 +381,7 @@ function isHoleSaved(flight, hole) {
     return holeData && holeData.saved;
 }
 
+// NEW v5.00: Get match value using GameUI.shared function
 function getMatchValueFromResults(player, opponent, holeNumber) {
     if (!resultsCache || !resultsCache.matchResults) return 0;
     var position = getHolePosition(holeNumber);
@@ -362,6 +411,20 @@ function getMatchValueFromResults(player, opponent, holeNumber) {
     var matchIndex = aIdx * teamBPlayers.length + bIdx;
     var value = matchArray[matchIndex] || 0;
     return (player.team === 'B') ? -value : value;
+}
+
+// NEW v5.00: Get bubble value using GameUI.shared (supports clinch)
+function getBubbleValue(player, opponent) {
+    return GameUI.getBubbleValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePosition);
+}
+
+// NEW v5.00: Get bubble class using GameUI.shared (supports clinch)
+function getBubbleClassWithClinch(player, opponent) {
+    var clinchedAt = resultsCache ? (resultsCache.clinchedAt || {}) : {};
+    return GameUI.getBubbleClassShared(
+        player, opponent, currentHole, resultsCache, allPlayers,
+        isHoleSaved, getHolePosition, clinchedAt
+    );
 }
 
 function getTRForHole(holeNumber) {
@@ -422,54 +485,26 @@ function renderHoleHeader() {
 
 function renderTR() {
     var tr = getTRForHole(currentHole);
-    var teamADisplay = tr.teamA % 1 === 0 ? tr.teamA : tr.teamA.toFixed(1);
-    var teamBDisplay = tr.teamB % 1 === 0 ? tr.teamB : tr.teamB.toFixed(1);
-    var teamAColor = tr.teamA > tr.teamB ? '#4caf50' : (tr.teamA < tr.teamB ? '#ff6b6b' : '#4caf50');
-    var teamBColor = tr.teamB > tr.teamA ? '#4caf50' : (tr.teamB < tr.teamA ? '#ff6b6b' : '#4caf50');
-    
-    var trDiv = document.getElementById('trDisplay');
-    if (trDiv) {
-        trDiv.innerHTML = `<div style="text-align:center;"><div style="display:flex; justify-content:center; align-items:center; gap:16px;">
-            <div><div style="font-size:0.85rem; font-weight:600; color:${teamAColor};">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:${teamAColor};">${teamADisplay}</div></div>
-            <div style="font-size:1.5rem; color:#888;">│</div>
-            <div><div style="font-size:0.85rem; font-weight:600; color:${teamBColor};">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:${teamBColor};">${teamBDisplay}</div></div>
-        </div></div>`;
-    }
+    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
 }
 
+// UPDATED v5.00: Uses GameUI.renderPlayerCards with clinch support and short labels
 function renderPlayerCards() {
     var players = getFlightOrderedPlayers(currentFlight);
-    var cardsHtml = '';
     
-    for (var i = 0; i < players.length; i++) {
-        var p = players[i];
-        var score = getStoredScore(p, currentHole);
-        var opponents = getAllOpponents(p);
-        var bubblesHtml = '<div class="bubbles">';
-        
-        for (var j = 0; j < opponents.length; j++) {
-            var opp = opponents[j];
-            var matchVal = getMatchValueFromResults(p, opp, currentHole);
-            var absVal = Math.abs(matchVal);
-            var displayVal = absVal === 0 ? 'AS' : absVal.toString();
-            var isGreen = (matchVal > 0 && p.team === 'A') || (matchVal < 0 && p.team === 'B') || matchVal === 0;
-            bubblesHtml += `<div class="bubble ${isGreen ? 'bubble-green' : 'bubble-red'}">vs ${opp.label} ${displayVal}</div>`;
-        }
-        bubblesHtml += '</div>';
-        
-        cardsHtml += `
-            <div class="player-card">
-                <div class="player-header">
-                    <div><span class="player-name">${escapeHtml(p.name)}</span><span class="player-handicap">${p.label} ${p.handicap}</span></div>
-                    <div class="score-value">${score}</div>
-                </div>
-                ${bubblesHtml}
-            </div>
-        `;
-    }
-    document.getElementById('playerCards').innerHTML = cardsHtml;
+    // Pass getCurrentScore function that returns stored score
+    GameUI.renderPlayerCards(
+        "playerCards",
+        players,
+        getAllOpponents,
+        getBubbleClassWithClinch,
+        getBubbleValue,
+        function(player) { return getStoredScore(player, currentHole); },
+        false,  // canEdit = false (view only)
+        null    // onScoreChange = null
+    );
     
-    // Add flight badge
+    // Flight badge (preserved from v3.14)
     setTimeout(function() {
         var firstCard = document.querySelector('.player-card');
         if (firstCard && !document.querySelector('.flight-badge')) {
@@ -483,6 +518,7 @@ function renderPlayerCards() {
     }, 50);
 }
 
+// UPDATED v5.00: Pass clinch data to renderScorecard
 function renderScorecard() {
     var holes = getDisplayHoles();
     window.savedHoles = { 1: [], 2: [] };
@@ -495,7 +531,11 @@ function renderScorecard() {
     var t2Row = resultsCache ? (resultsCache.game2?.flight2?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
     var strkRow = resultsCache ? (resultsCache.game3?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
     
-    GameUI.renderScorecard('scorecardWrapper', holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi);
+    // NEW v5.00: Read clinch data from Firestore
+    var t1Clinched = resultsCache?.game2?.flight1?.clinched || {};
+    var t2Clinched = resultsCache?.game2?.flight2?.clinched || {};
+    
+    GameUI.renderScorecard('scorecardWrapper', holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1Clinched, t2Clinched);
 }
 
 function renderAll() {
@@ -659,7 +699,7 @@ function startGameListener() {
 }
 
 // ============================================================
-// Build Compact Header
+// Build Compact Header (preserved from v3.14, CSS updated)
 // ============================================================
 
 function buildCompactHeader() {
@@ -740,14 +780,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 3.14
-KEY CHANGES:
-   - COMPLETE REWRITE: Clean, simple viewer mode
-   - Match bubble order IDENTICAL to real-game (A1,A2,B1,B2, intra-flight first)
-   - Flight toggle ONLY changes flight, NEVER changes hole
-   - Next button grey when at last unsaved hole
-   - Refresh preserves state (reads from Firestore, finds first unsaved hole)
-   - No dependencies on broken GameUI functions for core display
+VERSION: 5.00
+KEY CHANGES from v3.14:
+   - Control Bar CSS updated to match real-game (rounded rectangles, consistent sizing)
+   - Player cards now display short label via GameUI.renderPlayerCards (label already used)
+   - Added clinch display: reads clinchedAt from Firestore for gold bubbles
+   - Added clinch display: reads flight1.clinched and flight2.clinched for gold T-1/T-2 rows
+   - All existing functionality preserved (flight toggle, navigation, Firestore listener)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
