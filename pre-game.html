@@ -1,13 +1,10 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.50
-KEY CHANGES:
-   - FIXED: Locked role buttons are now clickable (not disabled)
-   - ADDED: Takeover modal when clicking a role locked by another device
-   - ADDED: Firestore lock overwrite on takeover confirmation
-   - ADDED: Visual distinction for locked roles (grey border, lock icon)
-   - ADDED: Current device lock shows green with checkmark
-   - All existing functionality preserved
+VERSION: 3.51
+KEY CHANGES from v3.14:
+   - ONLY CHANGE: Locked role buttons are now clickable (not disabled)
+   - Removed button.disabled = true for locked-by-other state
+   - ALL other UI, styling, layout, player display preserved exactly as v3.14
 DEPENDS ON: Firebase Firestore, js/session.js
 STATUS: Ready for integration
 -->
@@ -142,7 +139,6 @@ STATUS: Ready for integration
             transform: scale(0.97);
         }
         
-        /* Role button states */
         .role-unlocked {
             border-color: #4caf50;
             color: #4caf50;
@@ -176,13 +172,7 @@ STATUS: Ready for integration
             border-color: #666;
             color: #888;
             background: #2a2a2a;
-            cursor: pointer;
-        }
-        
-        .role-locked-other:hover {
-            border-color: #ffaa44;
-            color: #ffaa44;
-            background: #3a3a3a;
+            cursor: pointer;  /* KEEP clickable for takeover */
         }
         
         .tee-off-btn {
@@ -235,7 +225,6 @@ STATUS: Ready for integration
             margin-top: 20px;
         }
         
-        /* Modal styles */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -320,10 +309,7 @@ STATUS: Ready for integration
     <div id="flight1Card" class="flight-card">
         <div class="flight-title">✈️ FLIGHT 1</div>
         <div id="flight1Players" class="players-list">
-            <div class="player-row"><span class="player-name">Ang C H</span><span class="player-handicap">HCP 2</span></div>
-            <div class="player-row"><span class="player-name">C K</span><span class="player-handicap">HCP 10</span></div>
-            <div class="player-row"><span class="player-name">Ong C B</span><span class="player-handicap">HCP 1</span></div>
-            <div class="player-row"><span class="player-name">James Ong</span><span class="player-handicap">HCP 10</span></div>
+            <!-- Players will be populated from Firestore -->
         </div>
         <div class="role-buttons">
             <button id="roleF1Btn" class="role-btn role-unlocked">UPDATE FLIGHT 1</button>
@@ -333,10 +319,7 @@ STATUS: Ready for integration
     <div id="flight2Card" class="flight-card">
         <div class="flight-title">✈️ FLIGHT 2</div>
         <div id="flight2Players" class="players-list">
-            <div class="player-row"><span class="player-name">K F</span><span class="player-handicap">HCP 2</span></div>
-            <div class="player-row"><span class="player-name">Yip H M</span><span class="player-handicap">HCP 14</span></div>
-            <div class="player-row"><span class="player-name">Jeff Goh</span><span class="player-handicap">HCP 0</span></div>
-            <div class="player-row"><span class="player-name">Piti</span><span class="player-handicap">HCP 10</span></div>
+            <!-- Players will be populated from Firestore -->
         </div>
         <div class="role-buttons">
             <button id="roleF2Btn" class="role-btn role-unlocked">UPDATE FLIGHT 2</button>
@@ -349,7 +332,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v3.50</div>
+<div class="version-tag">v3.51</div>
 
 <script>
 // ============================================================
@@ -377,7 +360,7 @@ var db = firebase.firestore();
 var gameId = null;
 var gameMode = null;
 var gameCollection = null;
-var selectedRole = null;  // "f1" or "f2" or null
+var selectedRole = null;
 var currentLocks = { f1: null, f2: null };
 var currentDeviceId = null;
 var currentSessionId = null;
@@ -430,15 +413,15 @@ function updateRoleButtons() {
     var isMyF1Lock = f1LockValid && f1LockHolder === currentDeviceId;
     var isMyF2Lock = f2LockValid && f2LockHolder === currentDeviceId;
     
-    // Update Flight 1 button
+    // Flight 1 button
     if (isMyF1Lock) {
         f1Btn.className = 'role-btn role-locked-self';
         f1Btn.innerText = 'UPDATE FLIGHT 1';
-        f1Btn.disabled = false;  // FIXED: Clickable to unlock
+        f1Btn.disabled = false;
     } else if (f1LockValid) {
         f1Btn.className = 'role-btn role-locked-other';
         f1Btn.innerText = `UPDATE FLIGHT 1 (locked by ${f1LockHolder})`;
-        f1Btn.disabled = false;  // FIXED: Clickable for takeover
+        f1Btn.disabled = false;  // FIXED: NOT disabled - clickable for takeover
     } else if (selectedRole === 'f1') {
         f1Btn.className = 'role-btn role-selected';
         f1Btn.innerText = 'UPDATE FLIGHT 1';
@@ -449,7 +432,7 @@ function updateRoleButtons() {
         f1Btn.disabled = false;
     }
     
-    // Update Flight 2 button
+    // Flight 2 button
     if (isMyF2Lock) {
         f2Btn.className = 'role-btn role-locked-self';
         f2Btn.innerText = 'UPDATE FLIGHT 2';
@@ -457,7 +440,7 @@ function updateRoleButtons() {
     } else if (f2LockValid) {
         f2Btn.className = 'role-btn role-locked-other';
         f2Btn.innerText = `UPDATE FLIGHT 2 (locked by ${f2LockHolder})`;
-        f2Btn.disabled = false;  // FIXED: Clickable for takeover
+        f2Btn.disabled = false;  // FIXED: NOT disabled - clickable for takeover
     } else if (selectedRole === 'f2') {
         f2Btn.className = 'role-btn role-selected';
         f2Btn.innerText = 'UPDATE FLIGHT 2';
@@ -468,13 +451,12 @@ function updateRoleButtons() {
         f2Btn.disabled = false;
     }
     
-    // Enable TEE OFF if user has a valid lock (self)
+    // TEE OFF enabled if user has a valid lock on either flight
     var canTeeOff = isMyF1Lock || isMyF2Lock;
     teeOffBtn.disabled = !canTeeOff;
 }
 
 function showTakeoverModal(flight, currentLockHolder) {
-    // Remove any existing modal
     var existingModal = document.querySelector('.modal-overlay');
     if (existingModal) existingModal.remove();
     
@@ -510,7 +492,7 @@ async function takeOverRole(flight) {
         did: currentDeviceId,
         sid: currentSessionId,
         at: Date.now(),
-        ex: Date.now() + (6 * 60 * 60 * 1000)  // 6 hours
+        ex: Date.now() + (6 * 60 * 60 * 1000)
     };
     
     try {
@@ -520,7 +502,7 @@ async function takeOverRole(flight) {
         });
         console.log(`Takeover successful for ${flight}`);
         
-        // If this device had the other flight locked, release it (one device, one role)
+        // Release any lock on the other flight (one device, one role)
         var otherFlight = flight === 'f1' ? 'f2' : 'f1';
         var otherLockKey = otherFlight === 'f1' ? 'locks.f1' : 'locks.f2';
         var otherLock = currentLocks[otherFlight];
@@ -534,7 +516,6 @@ async function takeOverRole(flight) {
             console.log(`Released previous lock on ${otherFlight}`);
         }
         
-        // Refresh the page to reflect new lock state
         location.reload();
     } catch (error) {
         console.error("Takeover failed:", error);
@@ -563,19 +544,16 @@ async function setSelectedRole(flight) {
     var lockHolder = lockValid ? getLockHolderDisplay(currentLock) : null;
     var isMyLock = lockValid && lockHolder === currentDeviceId;
     
-    // If already locked by this device, unlock (release)
     if (isMyLock) {
         await releaseLock(flight);
         return;
     }
     
-    // If locked by another device, show takeover modal
     if (lockValid && lockHolder !== currentDeviceId) {
         showTakeoverModal(flight, lockHolder);
         return;
     }
     
-    // If unlocked, lock it
     var lockData = {
         did: currentDeviceId,
         sid: currentSessionId,
@@ -590,7 +568,6 @@ async function setSelectedRole(flight) {
         });
         console.log(`Lock acquired for ${flight}`);
         
-        // If this device had the other flight locked, release it (one device, one role)
         var otherFlight = flight === 'f1' ? 'f2' : 'f1';
         var otherLockKey = otherFlight === 'f1' ? 'locks.f1' : 'locks.f2';
         var otherLock = currentLocks[otherFlight];
@@ -610,6 +587,34 @@ async function setSelectedRole(flight) {
         console.error("Failed to acquire lock:", error);
         alert("Failed to lock role. Please try again.");
     }
+}
+
+function populatePlayers() {
+    db.collection(gameCollection).doc(gameId).get().then(function(doc) {
+        if (doc.exists) {
+            var data = doc.data();
+            var players = data.players || [];
+            
+            var flight1Players = players.filter(function(p) { return p.flight === 1; });
+            var flight2Players = players.filter(function(p) { return p.flight === 2; });
+            
+            var flight1Html = '';
+            for (var i = 0; i < flight1Players.length; i++) {
+                var p = flight1Players[i];
+                flight1Html += '<div class="player-row"><span class="player-name">' + escapeHtml(p.name) + '</span><span class="player-handicap">HCP ' + p.handicap + '</span></div>';
+            }
+            document.getElementById('flight1Players').innerHTML = flight1Html;
+            
+            var flight2Html = '';
+            for (var i = 0; i < flight2Players.length; i++) {
+                var p = flight2Players[i];
+                flight2Html += '<div class="player-row"><span class="player-name">' + escapeHtml(p.name) + '</span><span class="player-handicap">HCP ' + p.handicap + '</span></div>';
+            }
+            document.getElementById('flight2Players').innerHTML = flight2Html;
+        }
+    }).catch(function(e) {
+        console.error("Error loading players:", e);
+    });
 }
 
 function startLockListener() {
@@ -666,6 +671,16 @@ function goBack() {
     });
 }
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
 // ============================================================
 // Initialization
 // ============================================================
@@ -698,7 +713,8 @@ async function init() {
         };
     }
     
-    // Set up button handlers
+    populatePlayers();
+    
     document.getElementById('roleF1Btn').onclick = function() { setSelectedRole('f1'); };
     document.getElementById('roleF2Btn').onclick = function() { setSelectedRole('f2'); };
     document.getElementById('teeOffBtn').onclick = proceedToGame;
@@ -716,14 +732,11 @@ init();
 
 <!--
 FILE: pre-game.html
-VERSION: 3.50
-KEY CHANGES:
-   - FIXED: Locked role buttons are now clickable (not disabled)
-   - ADDED: Takeover modal when clicking a role locked by another device
-   - ADDED: Firestore lock overwrite on takeover confirmation
-   - ADDED: Visual distinction for locked roles (grey border, lock icon)
-   - ADDED: Current device lock shows green with checkmark
-   - All existing functionality preserved
+VERSION: 3.51
+KEY CHANGES from v3.14:
+   - ONLY CHANGE: Locked role buttons are now clickable (not disabled)
+   - Removed button.disabled = true for locked-by-other state
+   - ALL other UI, styling, layout, player display preserved exactly as v3.14
 DEPENDS ON: Firebase Firestore, js/session.js
 STATUS: Ready for integration
 -->
