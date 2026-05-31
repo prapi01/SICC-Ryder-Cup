@@ -1,13 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 4.61
-KEY CHANGES from v4.60:
-   - ADDED: Console logging for Firestore write verification
-   - FIXED: Clinch data merge to prevent overwriting earlier clinch holes
-   - FIXED: Flight clinch detection and write to Firestore
-   - FIXED: Individual match clinch now records earliest hole, not last
-   - ADDED: Force cache refresh before writing to ensure latest data
-   - All existing functionality preserved from v4.60
+VERSION: 4.62
+KEY CHANGES from v4.61:
+   - CHANGED: flight1.clinched now stores clinch HOLE NUMBER (not boolean per hole)
+   - CHANGED: flight2.clinched now stores clinch HOLE NUMBER
+   - Clinch detection: lead > (remainingHoles * 2)
+   - Only writes clinch hole ONCE (first time condition met)
+   - Preserves red flash save button (your modification)
+   - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -338,7 +338,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.61</div>
+<div class="version-tag">v4.62</div>
 
 <script>
 // ============================================================
@@ -768,8 +768,8 @@ function initializeEmptyResults() {
         matchResults: new Array(18),
         game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
         game2: { 
-            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinched: {} }, 
-            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinched: {} }, 
+            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null }, 
+            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null }, 
             pointsA: new Array(18).fill(1), 
             pointsB: new Array(18).fill(1) 
         },
@@ -848,11 +848,24 @@ function calculateHoleResults(holeNumber) {
     var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
     
-    // Flight clinch detection
+    // Flight clinch detection - store clinch HOLE NUMBER (not boolean per hole)
     var remainingHoles = 18 - holeNumber;
     var maxOpponentPoints = remainingHoles * 2;
-    var flight1Clinched = (flight1Total > maxOpponentPoints);
-    var flight2Clinched = (flight2Total > maxOpponentPoints);
+    var existingClinchedHole1 = cache.results?.game2?.flight1?.clinchedHole;
+    var existingClinchedHole2 = cache.results?.game2?.flight2?.clinchedHole;
+    
+    var flight1ClinchedHole = existingClinchedHole1;
+    var flight2ClinchedHole = existingClinchedHole2;
+    
+    // Only set if not already clinched
+    if (existingClinchedHole1 === null && flight1Total > maxOpponentPoints) {
+        flight1ClinchedHole = holeNumber;
+        console.log(`Flight 1 clinched at hole ${holeNumber} (lead: ${flight1Total}, remaining: ${remainingHoles})`);
+    }
+    if (existingClinchedHole2 === null && flight2Total > maxOpponentPoints) {
+        flight2ClinchedHole = holeNumber;
+        console.log(`Flight 2 clinched at hole ${holeNumber} (lead: ${flight2Total}, remaining: ${remainingHoles})`);
+    }
     
     // Individual match clinch - only record if not already clinched at an earlier hole
     var existingClinched = cache.results?.clinchedAt || {};
@@ -865,7 +878,6 @@ function calculateHoleResults(holeNumber) {
             var matchKey = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
             var matchValue = matchResultsArray[a * teamBPlayers.length + b];
             var lead = Math.abs(matchValue);
-            // Only record if clinched at this hole AND not already clinched earlier
             if (lead > remainingHoles && matchValue !== 0 && !existingClinched[matchKey]) {
                 clinchedAtUpdates[matchKey] = holeNumber;
                 console.log(`Clinch detected for ${matchKey} at hole ${holeNumber} (lead: ${lead}, remaining: ${remainingHoles})`);
@@ -891,8 +903,8 @@ function calculateHoleResults(holeNumber) {
         trBGreen: trBGreen,
         flight1Total: flight1Total,
         flight2Total: flight2Total,
-        flight1Clinched: flight1Clinched,
-        flight2Clinched: flight2Clinched,
+        flight1ClinchedHole: flight1ClinchedHole,
+        flight2ClinchedHole: flight2ClinchedHole,
         clinchedAtUpdates: clinchedAtUpdates
     };
 }
@@ -924,9 +936,13 @@ async function saveResultsToFirestore(holeNumber) {
     updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
     updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
     
-    // Flight clinch - write as map of position to boolean
-    updatePayload[`results.game2.flight1.clinched.${position}`] = resultsData.flight1Clinched;
-    updatePayload[`results.game2.flight2.clinched.${position}`] = resultsData.flight2Clinched;
+    // Flight clinch - store clinch HOLE NUMBER (not boolean per hole)
+    if (resultsData.flight1ClinchedHole !== null) {
+        updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
+    }
+    if (resultsData.flight2ClinchedHole !== null) {
+        updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
+    }
     
     // Individual match clinch - merge with existing (don't overwrite)
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
@@ -957,10 +973,8 @@ async function saveResultsToFirestore(holeNumber) {
         cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
         cache.results.game2.flight2.leader[position] = resultsData.t2Leader;
         
-        if (!cache.results.game2.flight1.clinched) cache.results.game2.flight1.clinched = {};
-        if (!cache.results.game2.flight2.clinched) cache.results.game2.flight2.clinched = {};
-        cache.results.game2.flight1.clinched[position] = resultsData.flight1Clinched;
-        cache.results.game2.flight2.clinched[position] = resultsData.flight2Clinched;
+        if (resultsData.flight1ClinchedHole !== null) cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
+        if (resultsData.flight2ClinchedHole !== null) cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
         
         cache.results.game3.leader[position] = resultsData.strkLeader;
         cache.results.game3.pointsA[position] = resultsData.game3PointsA;
@@ -1201,7 +1215,16 @@ function renderAll() {
     
     var holes = getDisplayHoles();
     window.savedHoles = cache.savedHoles;
-    GameUI.renderScorecard("scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved, cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi);
+    
+    // Pass clinch hole numbers to renderScorecard (new v4.62 format)
+    var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
+    var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
+    
+    GameUI.renderScorecard(
+        "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
+        cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
+        t1ClinchedHole, t2ClinchedHole
+    );
     
     var playOrder = getPlayOrder();
     var isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) { return key.startsWith(editableFlight + "_" + currentHole + "_"); }).length === 0;
@@ -1326,14 +1349,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.61
-KEY CHANGES from v4.60:
-   - ADDED: Console logging for Firestore write verification
-   - FIXED: Clinch data merge to prevent overwriting earlier clinch holes
-   - FIXED: Flight clinch detection and write to Firestore
-   - FIXED: Individual match clinch now records earliest hole, not last
-   - ADDED: Force cache refresh before writing to ensure latest data
-   - All existing functionality preserved from v4.60
+VERSION: 4.62
+KEY CHANGES from v4.61:
+   - CHANGED: flight1.clinched now stores clinch HOLE NUMBER (not boolean per hole)
+   - CHANGED: flight2.clinched now stores clinch HOLE NUMBER
+   - Clinch detection: lead > (remainingHoles * 2)
+   - Only writes clinch hole ONCE (first time condition met)
+   - Preserves red flash save button (your modification)
+   - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
