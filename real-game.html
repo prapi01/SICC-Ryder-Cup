@@ -1,14 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 4.66
-KEY CHANGES from v4.65:
-   - FIXED: Cache refresh before each hole in cascade loop
-   - FIXED: saveResultsToFirestoreWithCumulative now returns full object with flight clinch holes
-   - FIXED: Caller updates cumulativeFlight1ClinchedHole and cumulativeFlight2ClinchedHole after each hole
-   - FIXED: Prevents overwriting of first clinch hole by later holes
-   - All existing functionality preserved
+VERSION: 4.67
+KEY CHANGES from v4.66:
+   - ADDED: Extensive debug logging for cascade clinch detection
+   - Logs flight1Total, position, remainingHoles, maxOpponentPoints at each hole
+   - Logs cumulativeFlight1ClinchedHole before/after
+   - Logs f1DataString and f2DataString prefixes to detect changes
+   - Logs game-team.js call results
+   - ALL existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+STATUS: Debug version - for troubleshooting only
 -->
 
 <!DOCTYPE html>
@@ -16,7 +17,7 @@ STATUS: Ready for integration
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>SICC Ryder Cup - REAL Game</title>
+    <title>SICC Ryder Cup - REAL Game (DEBUG)</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -337,7 +338,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.66</div>
+<div class="version-tag">v4.67 DEBUG</div>
 
 <script>
 // ============================================================
@@ -727,11 +728,15 @@ function performSave() {
                     cumulativeFlight2ClinchedHole = cache.results.game2.flight2.clinchedHole;
                 }
                 
+                console.log("=== CASCADE START: cumulativeFlight1ClinchedHole =", cumulativeFlight1ClinchedHole);
+                
                 // Process current hole
                 var result = await saveResultsToFirestoreWithCumulative(currentHole, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
                 cumulativeClinched = result.updatedClinched;
                 cumulativeFlight1ClinchedHole = result.updatedFlight1ClinchedHole;
                 cumulativeFlight2ClinchedHole = result.updatedFlight2ClinchedHole;
+                
+                console.log("=== After hole " + currentHole + ": cumulativeFlight1ClinchedHole =", cumulativeFlight1ClinchedHole);
                 
                 // Process subsequent holes
                 var playOrder = getPlayOrder();
@@ -739,10 +744,13 @@ function performSave() {
                 for (var i = startPos + 1; i < 18; i++) {
                     var holeToUpdate = playOrder[i];
                     
+                    console.log("--- Processing hole " + holeToUpdate + " ---");
+                    console.log("  Before: cumulativeFlight1ClinchedHole =", cumulativeFlight1ClinchedHole);
+                    
                     // Refresh cache before each hole to ensure latest data
                     await new Promise(function(resolveLoad) {
                         GameLoader.loadGame(gameId, "scheduledGames", function(loadResult) {
-                            if (loadResult.success) console.log("Cache refreshed before hole " + holeToUpdate);
+                            if (loadResult.success) console.log("  Cache refreshed before hole " + holeToUpdate);
                             resolveLoad();
                         });
                     });
@@ -751,6 +759,8 @@ function performSave() {
                     cumulativeClinched = loopResult.updatedClinched;
                     cumulativeFlight1ClinchedHole = loopResult.updatedFlight1ClinchedHole;
                     cumulativeFlight2ClinchedHole = loopResult.updatedFlight2ClinchedHole;
+                    
+                    console.log("  After: cumulativeFlight1ClinchedHole =", cumulativeFlight1ClinchedHole);
                 }
                 
                 if (typeof Ticker !== 'undefined') {
@@ -838,14 +848,26 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var position = getHolePosition(holeNumber);
     var f1Hole = cache.flight1Data[holeNumber];
     var f2Hole = cache.flight2Data[holeNumber];
+    
+    console.log(`  calculateHoleResults(${holeNumber}) - position: ${position}`);
+    console.log(`    f1Hole.saved: ${f1Hole?.saved}, f2Hole.saved: ${f2Hole?.saved}`);
+    
     if (!f1Hole || !f1Hole.saved || !f2Hole || !f2Hole.saved) {
-        console.log(`calculateHoleResults(${holeNumber}) skipped - both flights not saved`);
+        console.log(`  calculateHoleResults(${holeNumber}) skipped - both flights not saved`);
         return null;
     }
+    
+    // DEBUG: Log data strings before GameTeam.calculate
+    console.log(`    f1DataString (first 50 chars): ${cache.f1DataString.substring(0, 50)}...`);
+    console.log(`    f2DataString (first 50 chars): ${cache.f2DataString.substring(0, 50)}...`);
     
     var teamResults = GameTeam.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, teamGameFormat);
     var flight1Total = teamResults.flight1Cumulative[position];
     var flight2Total = teamResults.flight2Cumulative[position];
+    
+    console.log(`    flight1Total from GameTeam: ${flight1Total}`);
+    console.log(`    flight2Total from GameTeam: ${flight2Total}`);
+    
     var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole);
     var strokeLeader = strokeResults[position];
     var matchResultsArray = calculateMatchResultsArray(holeNumber);
@@ -882,24 +904,27 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
     
-    // Flight clinch detection - use cumulative values passed from cascade
+    // Flight clinch detection
     var remainingHoles = 18 - holeNumber;
     var maxOpponentPoints = remainingHoles * 2;
     
     var flight1ClinchedHole = cumulativeFlight1ClinchedHole;
     var flight2ClinchedHole = cumulativeFlight2ClinchedHole;
     
-    // Check flight1ClinchedHole (which starts as cumulative value)
+    console.log(`    remainingHoles: ${remainingHoles}, maxOpponentPoints: ${maxOpponentPoints}`);
+    console.log(`    cumulativeFlight1ClinchedHole (input): ${cumulativeFlight1ClinchedHole}`);
+    console.log(`    flight1Total: ${flight1Total}, condition: ${flight1Total} > ${maxOpponentPoints} = ${flight1Total > maxOpponentPoints}`);
+    
     if (flight1ClinchedHole === null && flight1Total > maxOpponentPoints) {
         flight1ClinchedHole = holeNumber;
-        console.log(`Flight 1 clinched at hole ${holeNumber} (lead: ${flight1Total}, remaining: ${remainingHoles})`);
+        console.log(`    >>> SET flight1ClinchedHole to ${holeNumber}`);
     }
     if (flight2ClinchedHole === null && flight2Total > maxOpponentPoints) {
         flight2ClinchedHole = holeNumber;
-        console.log(`Flight 2 clinched at hole ${holeNumber} (lead: ${flight2Total}, remaining: ${remainingHoles})`);
+        console.log(`    >>> SET flight2ClinchedHole to ${holeNumber}`);
     }
     
-    // Individual match clinch - use cumulativeClinched passed from cascade
+    // Individual match clinch
     var clinchedAtUpdates = {};
     var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -911,12 +936,11 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
             var lead = Math.abs(matchValue);
             if (lead > remainingHoles && matchValue !== 0 && !cumulativeClinched[matchKey]) {
                 clinchedAtUpdates[matchKey] = holeNumber;
-                console.log(`Clinch detected for ${matchKey} at hole ${holeNumber} (lead: ${lead}, remaining: ${remainingHoles})`);
+                console.log(`    Clinch detected for ${matchKey} at hole ${holeNumber} (lead: ${lead}, remaining: ${remainingHoles})`);
             }
         }
     }
     
-    // Merge new clinches into cumulative for next iterations
     var updatedClinched = { ...cumulativeClinched, ...clinchedAtUpdates };
     
     return { 
@@ -977,19 +1001,18 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
     updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
     
-    // Flight clinch - store clinch HOLE NUMBER (only set if not null)
     if (resultsData.flight1ClinchedHole !== null) {
         updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
+        console.log(`  Writing flight1.clinchedHole = ${resultsData.flight1ClinchedHole}`);
     }
     if (resultsData.flight2ClinchedHole !== null) {
         updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
     }
     
-    // Individual match clinch - merge with cumulative
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
         var mergedClinched = { ...cumulativeClinched, ...resultsData.clinchedAtUpdates };
         updatePayload["results.clinchedAt"] = mergedClinched;
-        console.log(`Writing clinchedAt:`, mergedClinched);
+        console.log(`  Writing clinchedAt with ${Object.keys(resultsData.clinchedAtUpdates).length} entries`);
     }
     
     if (position + 1 > (GameLoader.getLocalCache().results?.computedUpToHole || 0)) {
@@ -1035,7 +1058,6 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         console.error('Error saving results:', error); 
     }
     
-    // Return updated cumulative clinch data for next iteration
     return { 
         updatedClinched: resultsData.updatedClinched,
         updatedFlight1ClinchedHole: resultsData.updatedFlight1ClinchedHole,
@@ -1262,7 +1284,6 @@ function renderAll() {
     var holes = getDisplayHoles();
     window.savedHoles = cache.savedHoles;
     
-    // Pass clinch hole numbers to renderScorecard
     var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
     var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
     
@@ -1395,13 +1416,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.66
-KEY CHANGES from v4.65:
-   - FIXED: Cache refresh before each hole in cascade loop
-   - FIXED: saveResultsToFirestoreWithCumulative now returns full object with flight clinch holes
-   - FIXED: Caller updates cumulativeFlight1ClinchedHole and cumulativeFlight2ClinchedHole after each hole
-   - FIXED: Prevents overwriting of first clinch hole by later holes
-   - All existing functionality preserved
+VERSION: 4.67
+KEY CHANGES from v4.66:
+   - ADDED: Extensive debug logging for cascade clinch detection
+   - Logs flight1Total, position, remainingHoles, maxOpponentPoints at each hole
+   - Logs cumulativeFlight1ClinchedHole before/after
+   - Logs f1DataString and f2DataString prefixes to detect changes
+   - Logs game-team.js call results
+   - ALL existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+STATUS: Debug version - for troubleshooting only
 -->
