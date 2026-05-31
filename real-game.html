@@ -1,13 +1,16 @@
 <!--
 FILE: real-game.html
-VERSION: 4.72
-KEY CHANGES from v4.68:
-   - NEW: computeDisplayStrings() function to calculate formatted margins
-   - MODIFIED: saveResultsToFirestoreWithCumulative() now writes displayT1, displayT2, displayStrk arrays
-   - MODIFIED: renderAll() passes new display arrays to GameUI.renderScorecard
-   - ALL other code identical to v4.68 (including cascade logic, init order, etc.)
+VERSION: 5.00
+KEY CHANGES from v4.72:
+   - REMOVED: computeDisplayStrings() function (no longer needed)
+   - ADDED: Display strings now come directly from game-team.js and game-stroke.js
+   - MODIFIED: calculateHoleResultsWithCumulative() now includes t1Display, t2Display, strkDisplay
+   - MODIFIED: saveResultsToFirestoreWithCumulative() now writes displayT1, displayT2, displayStrk to Firestore
+   - MODIFIED: renderAll() passes display arrays to GameUI.renderScorecard (already done in v4.72)
+   - ALL existing cascade logic preserved unchanged
+   - ALL existing Firestore writes for existing fields preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+STATUS: Ready for integration - MAJOR MILESTONE v5.00
 -->
 
 <!DOCTYPE html>
@@ -336,7 +339,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.72</div>
+<div class="version-tag">v5.00</div>
 
 <script>
 // ============================================================
@@ -631,23 +634,6 @@ function updateTRDisplay() {
 }
 
 // ============================================================
-// NEW v4.72: Compute formatted display strings for scorecard
-// ============================================================
-
-function computeDisplayStrings(position, pointsA, pointsB, nettA, nettB) {
-    var t1Margin = Math.abs(pointsA - pointsB);
-    var t1Leader = pointsA > pointsB ? "A" : (pointsB > pointsA ? "B" : "AS");
-    var t1Display = (t1Leader !== "AS") ? t1Leader + t1Margin : "AS";
-    var t2Display = t1Display;
-    
-    var strkMargin = Math.abs(nettA - nettB);
-    var strkLeader = nettA < nettB ? "A" : (nettB < nettA ? "B" : "AS");
-    var strkDisplay = (strkLeader !== "AS") ? strkLeader + strkMargin : "AS";
-    
-    return { t1Display: t1Display, t2Display: t2Display, strkDisplay: strkDisplay };
-}
-
-// ============================================================
 // Save Functions
 // ============================================================
 
@@ -816,11 +802,11 @@ function initializeEmptyResults() {
         version: 1,
         matchResults: new Array(18),
         game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
-        game2: { 
-            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null }, 
-            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null }, 
-            pointsA: new Array(18).fill(1), 
-            pointsB: new Array(18).fill(1) 
+        game2: {
+            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
+            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
+            pointsA: new Array(18).fill(1),
+            pointsB: new Array(18).fill(1)
         },
         game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
         tr: { teamA: new Array(18).fill(9.5), teamB: new Array(18).fill(9.5), teamAGreen: new Array(18).fill(true), teamBGreen: new Array(18).fill(true) },
@@ -873,7 +859,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     console.log(`    flight2Total from GameTeam: ${flight2Total}`);
     
     var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole);
-    var strokeLeader = strokeResults[position];
+    var strokeLeader = strokeResults.leader[position];
     var matchResultsArray = calculateMatchResultsArray(holeNumber);
     
     var tempMatchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
@@ -945,29 +931,26 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     
     var updatedClinched = { ...cumulativeClinched, ...clinchedAtUpdates };
     
-    // NEW v4.72: Get points and netts for display strings
-    var pointsA = (cache.results?.game1?.pointsA?.[position] !== undefined) ? cache.results.game1.pointsA[position] : game1PointsA;
-    var pointsB = (cache.results?.game1?.pointsB?.[position] !== undefined) ? cache.results.game1.pointsB[position] : game1PointsB;
-    var nettA = (cache.results?.game3?.nettA?.[position] !== undefined) ? cache.results.game3.nettA[position] : 0;
-    var nettB = (cache.results?.game3?.nettB?.[position] !== undefined) ? cache.results.game3.nettB[position] : 0;
+    // NEW v5.00: Get display strings directly from modules (no computeDisplayStrings)
+    var t1Display = teamResults.displayT1?.[position] || "AS";
+    var t2Display = teamResults.displayT2?.[position] || "AS";
+    var strkDisplay = strokeResults.displayStrk?.[position] || "AS";
     
-    var displays = computeDisplayStrings(position, pointsA, pointsB, nettA, nettB);
-    
-    return { 
-        position: position, 
-        matchResults: matchResultsArray, 
-        t1Leader: t1Leader, 
-        t2Leader: t2Leader, 
-        strkLeader: strkLeader, 
-        game1PointsA: game1PointsA, 
-        game1PointsB: game1PointsB, 
-        game2PointsA: game2PointsA, 
-        game2PointsB: game2PointsB, 
-        game3PointsA: game3PointsA, 
-        game3PointsB: game3PointsB, 
-        trA: trA, 
-        trB: trB, 
-        trAGreen: trAGreen, 
+    return {
+        position: position,
+        matchResults: matchResultsArray,
+        t1Leader: t1Leader,
+        t2Leader: t2Leader,
+        strkLeader: strkLeader,
+        game1PointsA: game1PointsA,
+        game1PointsB: game1PointsB,
+        game2PointsA: game2PointsA,
+        game2PointsB: game2PointsB,
+        game3PointsA: game3PointsA,
+        game3PointsB: game3PointsB,
+        trA: trA,
+        trB: trB,
+        trAGreen: trAGreen,
         trBGreen: trBGreen,
         flight1Total: flight1Total,
         flight2Total: flight2Total,
@@ -977,9 +960,10 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         updatedClinched: updatedClinched,
         updatedFlight1ClinchedHole: flight1ClinchedHole,
         updatedFlight2ClinchedHole: flight2ClinchedHole,
-        t1Display: displays.t1Display,
-        t2Display: displays.t2Display,
-        strkDisplay: displays.strkDisplay
+        // NEW v5.00: Display strings
+        t1Display: t1Display,
+        t2Display: t2Display,
+        strkDisplay: strkDisplay
     };
 }
 
@@ -988,7 +972,7 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     var resultsData = calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
     if (!resultsData) {
         console.log(`saveResultsToFirestore(${holeNumber}) skipped - calculateHoleResults returned null`);
-        return { 
+        return {
             updatedClinched: cumulativeClinched,
             updatedFlight1ClinchedHole: cumulativeFlight1ClinchedHole,
             updatedFlight2ClinchedHole: cumulativeFlight2ClinchedHole
@@ -1014,9 +998,9 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
     updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
     
-    // NEW v4.72: Write display strings
-    updatePayload[`results.game1.displayT1.${position}`] = resultsData.t1Display;
-    updatePayload[`results.game1.displayT2.${position}`] = resultsData.t2Display;
+    // NEW v5.00: Write display strings to Firestore
+    updatePayload[`results.game2.displayT1.${position}`] = resultsData.t1Display;
+    updatePayload[`results.game2.displayT2.${position}`] = resultsData.t2Display;
     updatePayload[`results.game3.displayStrk.${position}`] = resultsData.strkDisplay;
     
     if (resultsData.flight1ClinchedHole !== null) {
@@ -1052,12 +1036,12 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
         cache.results.game2.flight2.leader[position] = resultsData.t2Leader;
         
-        // NEW v4.72: Cache display strings
-        if (!cache.results.game1.displayT1) cache.results.game1.displayT1 = new Array(18).fill(null);
-        if (!cache.results.game1.displayT2) cache.results.game1.displayT2 = new Array(18).fill(null);
+        // NEW v5.00: Cache display strings
+        if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill(null);
+        if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill(null);
         if (!cache.results.game3.displayStrk) cache.results.game3.displayStrk = new Array(18).fill(null);
-        cache.results.game1.displayT1[position] = resultsData.t1Display;
-        cache.results.game1.displayT2[position] = resultsData.t2Display;
+        cache.results.game2.displayT1[position] = resultsData.t1Display;
+        cache.results.game2.displayT2[position] = resultsData.t2Display;
         cache.results.game3.displayStrk[position] = resultsData.strkDisplay;
         
         if (resultsData.flight1ClinchedHole !== null) cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
@@ -1079,11 +1063,11 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         if (position + 1 > cache.results.computedUpToHole) cache.results.computedUpToHole = position + 1;
         cache.results.lastComputedAt = updatePayload["results.lastComputedAt"];
         
-    } catch (error) { 
-        console.error('Error saving results:', error); 
+    } catch (error) {
+        console.error('Error saving results:', error);
     }
     
-    return { 
+    return {
         updatedClinched: resultsData.updatedClinched,
         updatedFlight1ClinchedHole: resultsData.updatedFlight1ClinchedHole,
         updatedFlight2ClinchedHole: resultsData.updatedFlight2ClinchedHole
@@ -1312,9 +1296,9 @@ function renderAll() {
     var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
     var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
     
-    // NEW v4.72: Get display arrays from cache
-    var t1Display = cache.results?.game1?.displayT1 || null;
-    var t2Display = cache.results?.game1?.displayT2 || null;
+    // NEW v5.00: Get display arrays from cache (written by cascade)
+    var t1Display = cache.results?.game2?.displayT1 || null;
+    var t2Display = cache.results?.game2?.displayT2 || null;
     var strkDisplay = cache.results?.game3?.displayStrk || null;
     
     GameUI.renderScorecard(
@@ -1447,12 +1431,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.72
-KEY CHANGES from v4.68:
-   - NEW: computeDisplayStrings() function to calculate formatted margins
-   - MODIFIED: saveResultsToFirestoreWithCumulative() now writes displayT1, displayT2, displayStrk arrays
-   - MODIFIED: renderAll() passes new display arrays to GameUI.renderScorecard
-   - ALL other code identical to v4.68 (including cascade logic, init order, etc.)
+VERSION: 5.00
+KEY CHANGES from v4.72:
+   - REMOVED: computeDisplayStrings() function (no longer needed)
+   - ADDED: Display strings now come directly from game-team.js and game-stroke.js
+   - MODIFIED: calculateHoleResultsWithCumulative() now includes t1Display, t2Display, strkDisplay
+   - MODIFIED: saveResultsToFirestoreWithCumulative() now writes displayT1, displayT2, displayStrk to Firestore
+   - MODIFIED: renderAll() passes display arrays to GameUI.renderScorecard (already done in v4.72)
+   - ALL existing cascade logic preserved unchanged
+   - ALL existing Firestore writes for existing fields preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+STATUS: Ready for integration - MAJOR MILESTONE v5.00
 -->
