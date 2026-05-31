@@ -1,14 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 5.00
-KEY CHANGES from v3.14:
-   - Control Bar CSS updated to match real-game (rounded rectangles, consistent sizing)
-   - Player cards now display short label (e.g., "ACH") instead of full name
-   - Added clinch display: reads clinchedAt from Firestore for gold bubbles
-   - Added clinch display: reads flight1.clinched and flight2.clinched for gold T-1/T-2 rows
-   - All existing functionality preserved (flight toggle, navigation, Firestore listener)
+VERSION: 5.01
+KEY CHANGES from v5.00:
+   - FIXED: getBubbleClassWithClinch() now normalizes clinchedAt keys
+   - Creates reverse keys (TeamB_vs_TeamA) from existing (TeamA_vs_TeamB)
+   - Fixes issue where Team B players showed incorrect bubble colors
+   - ALL other functions identical to v5.00
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
-STATUS: Ready for integration
+STATUS: Ready for deployment - fixes Team B clinch display bug
 -->
 
 <!DOCTYPE html>
@@ -272,7 +271,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.00</div>
+<div class="version-tag">v5.01</div>
 
 <script>
 // ============================================================
@@ -418,12 +417,25 @@ function getBubbleValue(player, opponent) {
     return GameUI.getBubbleValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePosition);
 }
 
-// NEW v5.00: Get bubble class using GameUI.shared (supports clinch)
+// FIXED v5.01: Normalize clinchedAt keys to work for both player orders
 function getBubbleClassWithClinch(player, opponent) {
     var clinchedAt = resultsCache ? (resultsCache.clinchedAt || {}) : {};
+    
+    // Normalize keys to work for both player orders (e.g., YHM_vs_P and P_vs_YHM)
+    var normalizedClinchedAt = { ...clinchedAt };
+    Object.keys(clinchedAt).forEach(function(key) {
+        var parts = key.split('_vs_');
+        if (parts.length === 2) {
+            var reverseKey = parts[1] + '_vs_' + parts[0];
+            if (!normalizedClinchedAt[reverseKey]) {
+                normalizedClinchedAt[reverseKey] = clinchedAt[key];
+            }
+        }
+    });
+    
     return GameUI.getBubbleClassShared(
         player, opponent, currentHole, resultsCache, allPlayers,
-        isHoleSaved, getHolePosition, clinchedAt
+        isHoleSaved, getHolePosition, normalizedClinchedAt
     );
 }
 
@@ -780,13 +792,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 5.00
-KEY CHANGES from v3.14:
-   - Control Bar CSS updated to match real-game (rounded rectangles, consistent sizing)
-   - Player cards now display short label via GameUI.renderPlayerCards (label already used)
-   - Added clinch display: reads clinchedAt from Firestore for gold bubbles
-   - Added clinch display: reads flight1.clinched and flight2.clinched for gold T-1/T-2 rows
-   - All existing functionality preserved (flight toggle, navigation, Firestore listener)
+VERSION: 5.01
+KEY CHANGES from v5.00:
+   - FIXED: getBubbleClassWithClinch() now normalizes clinchedAt keys
+   - Creates reverse keys (TeamB_vs_TeamA) from existing (TeamA_vs_TeamB)
+   - Fixes issue where Team B players showed incorrect bubble colors
+   - ALL other functions identical to v5.00
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
-STATUS: Ready for integration
+STATUS: Ready for deployment - fixes Team B clinch display bug
 -->
