@@ -1,13 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 4.06
-KEY CHANGES:
-   - REMOVED: "LIVE" status bubble flash during transition (hidden until data ready)
-   - REMOVED: "Loading..." text flash during transition (hidden until data ready)
-   - Elements now hidden by default, shown only when cached data is applied
-   - Uses CSS class "data-ready" to reveal content after cache loads
-   - All existing preload/cache functionality preserved from v4.05
-   - Smooth, no-flash transition from pre-game to real-game
+VERSION: 4.60
+KEY CHANGES from v4.06:
+   - ADDED: Clinch detection when saving hole results
+   - ADDED: Clinch data persisted to Firestore in results.clinchedAt
+   - Clinch calculated when lead > remaining holes
+   - Merged with existing clinchedAt data (no overwrite)
+   - Cascade updates all subsequent holes (existing behavior preserved)
+   - ALL other functionality identical to v4.06 (working)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -59,12 +59,10 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
-        /* NEW v4.06: Hide elements until data is ready */
         .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
             visibility: hidden;
         }
         
-        /* Show when data is ready */
         .data-ready .status-bubble,
         .data-ready #courseName,
         .data-ready #holeHeader,
@@ -75,12 +73,11 @@ STATUS: Ready for integration
             visibility: visible;
         }
         
-        /* Ticker container always visible but empty initially */
         .ticker-container {
             visibility: visible;
+            margin-top: 30px;
         }
         
-        /* Device tag - respects safe area */
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -96,7 +93,6 @@ STATUS: Ready for integration
             cursor: pointer;
         }
         
-        /* Version tag - respects safe area */
         .version-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -108,11 +104,6 @@ STATUS: Ready for integration
             border-radius: 16px;
             font-family: monospace;
             z-index: 1000;
-        }
-        
-        /* Ticker container */
-        .ticker-container {
-            margin-top: 30px;
         }
         
         .status-bubble {
@@ -156,17 +147,10 @@ STATUS: Ready for integration
         .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
         
-        /* NOTE: Bubble CSS is now in game-ui.js - DO NOT ADD HERE */
-        
         .scorecard-section { margin: 20px 0; }
-        
-        #compactHeaderContainer {
-            margin-bottom: 10px;
-        }
-        
+        #compactHeaderContainer { margin-bottom: 10px; }
         .scorecard-wrapper { overflow-x: auto; }
         
-        /* Scorecard table - consistent column widths */
         .scorecard-table {
             table-layout: fixed;
             width: 100%;
@@ -199,7 +183,6 @@ STATUS: Ready for integration
         .score-invisible { color: #000; }
         .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
         
-        /* Button styles - rounded rectangles */
         .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
             border-radius: 12px !important;
         }
@@ -226,7 +209,6 @@ STATUS: Ready for integration
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Modal overlays - respect safe area */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -356,7 +338,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.06</div>
+<div class="version-tag">v4.60</div>
 
 <script>
 // ============================================================
@@ -435,7 +417,6 @@ function applyPreloadedData(preloadData) {
     startingHole = preloadData.startingHole || 1;
     teamGameFormat = preloadData.teamGameFormat || "tournament";
     
-    // Build a mock cache object for GameLoader
     var mockCache = {
         course: preloadData.course,
         players: preloadData.players,
@@ -463,8 +444,6 @@ function applyPreloadedData(preloadData) {
     }
     
     document.getElementById("courseName").innerHTML = courseName;
-    
-    // NEW v4.06: Reveal content after data is applied
     document.getElementById("mainContainer").classList.add("data-ready");
     
     usedPreloadedData = true;
@@ -610,7 +589,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS - WITHOUT "vs " PREFIX
+// BUBBLE FUNCTIONS
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -792,7 +771,8 @@ function initializeEmptyResults() {
         game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
         tr: { teamA: new Array(18).fill(9.5), teamB: new Array(18).fill(9.5), teamAGreen: new Array(18).fill(true), teamBGreen: new Array(18).fill(true) },
         computedUpToHole: 0,
-        lastComputedAt: null
+        lastComputedAt: null,
+        clinchedAt: {}
     };
 }
 
@@ -860,7 +840,41 @@ function calculateHoleResults(holeNumber) {
     var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
     
-    return { position: position, matchResults: matchResultsArray, t1Leader: t1Leader, t2Leader: t2Leader, strkLeader: strkLeader, game1PointsA: game1PointsA, game1PointsB: game1PointsB, game2PointsA: game2PointsA, game2PointsB: game2PointsB, game3PointsA: game3PointsA, game3PointsB: game3PointsB, trA: trA, trB: trB, trAGreen: trAGreen, trBGreen: trBGreen };
+    // Clinch detection
+    var clinchedAtUpdates = {};
+    var remainingHoles = 18 - holeNumber;
+    var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    for (var a = 0; a < teamAPlayers.length; a++) {
+        for (var b = 0; b < teamBPlayers.length; b++) {
+            var matchKey = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
+            var matchValue = matchResultsArray[a * teamBPlayers.length + b];
+            var lead = Math.abs(matchValue);
+            if (lead > remainingHoles && matchValue !== 0) {
+                clinchedAtUpdates[matchKey] = holeNumber;
+            }
+        }
+    }
+    
+    return { 
+        position: position, 
+        matchResults: matchResultsArray, 
+        t1Leader: t1Leader, 
+        t2Leader: t2Leader, 
+        strkLeader: strkLeader, 
+        game1PointsA: game1PointsA, 
+        game1PointsB: game1PointsB, 
+        game2PointsA: game2PointsA, 
+        game2PointsB: game2PointsB, 
+        game3PointsA: game3PointsA, 
+        game3PointsB: game3PointsB, 
+        trA: trA, 
+        trB: trB, 
+        trAGreen: trAGreen, 
+        trBGreen: trBGreen,
+        clinchedAtUpdates: clinchedAtUpdates
+    };
 }
 
 async function saveResultsToFirestore(holeNumber) {
@@ -882,6 +896,14 @@ async function saveResultsToFirestore(holeNumber) {
     updatePayload[`results.tr.teamB.${position}`] = resultsData.trB;
     updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
     updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
+    
+    if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
+        var cache = GameLoader.getLocalCache();
+        var existingClinched = cache.results?.clinchedAt || {};
+        var mergedClinched = { ...existingClinched, ...resultsData.clinchedAtUpdates };
+        updatePayload["results.clinchedAt"] = mergedClinched;
+    }
+    
     if (position + 1 > (GameLoader.getLocalCache().results?.computedUpToHole || 0)) updatePayload["results.computedUpToHole"] = position + 1;
     updatePayload["results.lastComputedAt"] = new Date().toISOString();
     try {
@@ -902,6 +924,12 @@ async function saveResultsToFirestore(holeNumber) {
         cache.results.tr.teamB[position] = resultsData.trB;
         cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
         cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
+        
+        if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
+            if (!cache.results.clinchedAt) cache.results.clinchedAt = {};
+            Object.assign(cache.results.clinchedAt, resultsData.clinchedAtUpdates);
+        }
+        
         if (position + 1 > cache.results.computedUpToHole) cache.results.computedUpToHole = position + 1;
         cache.results.lastComputedAt = updatePayload["results.lastComputedAt"];
     } catch (error) { console.error('Error saving results:', error); }
@@ -1296,7 +1324,6 @@ async function init() {
     
     GameLoader.addDataCallback(onCacheUpdate);
     
-    // Check for preloaded data
     var preloadData = getPreloadedRawGameData();
     var gameDataPreloaded = sessionStorage.getItem("gameDataPreloaded") === "true";
     
@@ -1304,10 +1331,8 @@ async function init() {
         console.log("Using preloaded data for instant render");
         applyPreloadedData(preloadData);
         
-        // Clear the preload flag to prevent reuse on refresh
         sessionStorage.removeItem("gameDataPreloaded");
         
-        // Apply UI layout and render immediately
         GameUI.applyTightLayout();
         
         GameUI.renderCompactHeader(
@@ -1347,7 +1372,6 @@ async function init() {
         renderAll();
         setSaveButtonIdle();
         
-        // Still attach Firestore listener for real-time updates
         GameLoader.loadGame(gameId, collection, async function(result) {
             if (result.success) {
                 console.log("Firestore sync attached for real-time updates");
@@ -1429,7 +1453,6 @@ async function init() {
             renderAll();
             setSaveButtonIdle();
             
-            // Reveal content after data is loaded (fallback case)
             document.getElementById("mainContainer").classList.add("data-ready");
         });
     }
@@ -1445,14 +1468,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.06
-KEY CHANGES:
-   - REMOVED: "LIVE" status bubble flash during transition (hidden until data ready)
-   - REMOVED: "Loading..." text flash during transition (hidden until data ready)
-   - Elements now hidden by default, shown only when cached data is applied
-   - Uses CSS class "data-ready" to reveal content after cache loads
-   - All existing preload/cache functionality preserved from v4.05
-   - Smooth, no-flash transition from pre-game to real-game
+VERSION: 4.60
+KEY CHANGES from v4.06:
+   - ADDED: Clinch detection when saving hole results
+   - ADDED: Clinch data persisted to Firestore in results.clinchedAt
+   - Clinch calculated when lead > remaining holes
+   - Merged with existing clinchedAt data (no overwrite)
+   - Cascade updates all subsequent holes (existing behavior preserved)
+   - ALL other functionality identical to v4.06 (working)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
