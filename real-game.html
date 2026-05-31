@@ -1,10 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 4.65
-KEY CHANGES from v4.64:
-   - FIXED: Flight clinch condition now checks flight1ClinchedHole (not cumulativeFlight1ClinchedHole)
+VERSION: 4.66
+KEY CHANGES from v4.65:
+   - FIXED: Cache refresh before each hole in cascade loop
+   - FIXED: saveResultsToFirestoreWithCumulative now returns full object with flight clinch holes
+   - FIXED: Caller updates cumulativeFlight1ClinchedHole and cumulativeFlight2ClinchedHole after each hole
    - FIXED: Prevents overwriting of first clinch hole by later holes
-   - Same fix applied to Flight 2
    - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -336,7 +337,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.65</div>
+<div class="version-tag">v4.66</div>
 
 <script>
 // ============================================================
@@ -726,13 +727,30 @@ function performSave() {
                     cumulativeFlight2ClinchedHole = cache.results.game2.flight2.clinchedHole;
                 }
                 
-                await saveResultsToFirestoreWithCumulative(currentHole, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
+                // Process current hole
+                var result = await saveResultsToFirestoreWithCumulative(currentHole, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
+                cumulativeClinched = result.updatedClinched;
+                cumulativeFlight1ClinchedHole = result.updatedFlight1ClinchedHole;
+                cumulativeFlight2ClinchedHole = result.updatedFlight2ClinchedHole;
                 
+                // Process subsequent holes
                 var playOrder = getPlayOrder();
                 var startPos = playOrder.indexOf(currentHole);
                 for (var i = startPos + 1; i < 18; i++) {
                     var holeToUpdate = playOrder[i];
-                    await saveResultsToFirestoreWithCumulative(holeToUpdate, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
+                    
+                    // Refresh cache before each hole to ensure latest data
+                    await new Promise(function(resolveLoad) {
+                        GameLoader.loadGame(gameId, "scheduledGames", function(loadResult) {
+                            if (loadResult.success) console.log("Cache refreshed before hole " + holeToUpdate);
+                            resolveLoad();
+                        });
+                    });
+                    
+                    var loopResult = await saveResultsToFirestoreWithCumulative(holeToUpdate, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
+                    cumulativeClinched = loopResult.updatedClinched;
+                    cumulativeFlight1ClinchedHole = loopResult.updatedFlight1ClinchedHole;
+                    cumulativeFlight2ClinchedHole = loopResult.updatedFlight2ClinchedHole;
                 }
                 
                 if (typeof Ticker !== 'undefined') {
@@ -864,14 +882,14 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
     
-    // Flight clinch detection - FIXED v4.65: check flight1ClinchedHole (not cumulative)
+    // Flight clinch detection - use cumulative values passed from cascade
     var remainingHoles = 18 - holeNumber;
     var maxOpponentPoints = remainingHoles * 2;
     
     var flight1ClinchedHole = cumulativeFlight1ClinchedHole;
     var flight2ClinchedHole = cumulativeFlight2ClinchedHole;
     
-    // FIXED: Check flight1ClinchedHole (which starts as cumulative value)
+    // Check flight1ClinchedHole (which starts as cumulative value)
     if (flight1ClinchedHole === null && flight1Total > maxOpponentPoints) {
         flight1ClinchedHole = holeNumber;
         console.log(`Flight 1 clinched at hole ${holeNumber} (lead: ${flight1Total}, remaining: ${remainingHoles})`);
@@ -933,7 +951,11 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     var resultsData = calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
     if (!resultsData) {
         console.log(`saveResultsToFirestore(${holeNumber}) skipped - calculateHoleResults returned null`);
-        return cumulativeClinched;
+        return { 
+            updatedClinched: cumulativeClinched,
+            updatedFlight1ClinchedHole: cumulativeFlight1ClinchedHole,
+            updatedFlight2ClinchedHole: cumulativeFlight2ClinchedHole
+        };
     }
     
     var position = resultsData.position;
@@ -1014,7 +1036,11 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     }
     
     // Return updated cumulative clinch data for next iteration
-    return resultsData.updatedClinched;
+    return { 
+        updatedClinched: resultsData.updatedClinched,
+        updatedFlight1ClinchedHole: resultsData.updatedFlight1ClinchedHole,
+        updatedFlight2ClinchedHole: resultsData.updatedFlight2ClinchedHole
+    };
 }
 
 // ============================================================
@@ -1369,11 +1395,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.65
-KEY CHANGES from v4.64:
-   - FIXED: Flight clinch condition now checks flight1ClinchedHole (not cumulativeFlight1ClinchedHole)
+VERSION: 4.66
+KEY CHANGES from v4.65:
+   - FIXED: Cache refresh before each hole in cascade loop
+   - FIXED: saveResultsToFirestoreWithCumulative now returns full object with flight clinch holes
+   - FIXED: Caller updates cumulativeFlight1ClinchedHole and cumulativeFlight2ClinchedHole after each hole
    - FIXED: Prevents overwriting of first clinch hole by later holes
-   - Same fix applied to Flight 2
    - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
