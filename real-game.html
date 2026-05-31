@@ -1,11 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 4.63
-KEY CHANGES from v4.62:
-   - FIXED: Cascade now preserves existingClinched across loop iterations
-   - FIXED: Match clinch recorded at earliest hole, not overwritten by later holes
-   - FIXED: Flight clinch recorded at earliest hole
-   - Added cumulativeClinched object that persists through cascade
+VERSION: 4.64
+KEY CHANGES from v4.63:
+   - FIXED: Flight clinch now uses cumulativeFlight1ClinchedHole (not local variable)
+   - FIXED: Flight clinch now uses cumulativeFlight2ClinchedHole (not local variable)
+   - Prevents overwriting of first clinch hole by later holes
    - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -337,7 +336,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.63</div>
+<div class="version-tag">v4.64</div>
 
 <script>
 // ============================================================
@@ -710,7 +709,7 @@ function performSave() {
                     });
                 });
                 
-                // FIXED v4.63: Maintain cumulative clinch data across cascade
+                // Maintain cumulative clinch data across cascade
                 var cumulativeClinched = {};
                 var cumulativeFlight1ClinchedHole = null;
                 var cumulativeFlight2ClinchedHole = null;
@@ -865,18 +864,19 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
     
-    // Flight clinch detection - use cumulative values passed from cascade
+    // Flight clinch detection - use cumulative values passed from cascade (FIXED v4.64)
     var remainingHoles = 18 - holeNumber;
     var maxOpponentPoints = remainingHoles * 2;
     
     var flight1ClinchedHole = cumulativeFlight1ClinchedHole;
     var flight2ClinchedHole = cumulativeFlight2ClinchedHole;
     
-    if (flight1ClinchedHole === null && flight1Total > maxOpponentPoints) {
+    // FIXED: Use cumulativeFlight1ClinchedHole (not local flight1ClinchedHole)
+    if (cumulativeFlight1ClinchedHole === null && flight1Total > maxOpponentPoints) {
         flight1ClinchedHole = holeNumber;
         console.log(`Flight 1 clinched at hole ${holeNumber} (lead: ${flight1Total}, remaining: ${remainingHoles})`);
     }
-    if (flight2ClinchedHole === null && flight2Total > maxOpponentPoints) {
+    if (cumulativeFlight2ClinchedHole === null && flight2Total > maxOpponentPoints) {
         flight2ClinchedHole = holeNumber;
         console.log(`Flight 2 clinched at hole ${holeNumber} (lead: ${flight2Total}, remaining: ${remainingHoles})`);
     }
@@ -955,7 +955,7 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
     updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
     
-    // Flight clinch - store clinch HOLE NUMBER
+    // Flight clinch - store clinch HOLE NUMBER (only set if not null)
     if (resultsData.flight1ClinchedHole !== null) {
         updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
     }
@@ -1369,12 +1369,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.63
-KEY CHANGES from v4.62:
-   - FIXED: Cascade now preserves existingClinched across loop iterations
-   - FIXED: Match clinch recorded at earliest hole, not overwritten by later holes
-   - FIXED: Flight clinch recorded at earliest hole
-   - Added cumulativeClinched object that persists through cascade
+VERSION: 4.64
+KEY CHANGES from v4.63:
+   - FIXED: Flight clinch now uses cumulativeFlight1ClinchedHole (not local variable)
+   - FIXED: Flight clinch now uses cumulativeFlight2ClinchedHole (not local variable)
+   - Prevents overwriting of first clinch hole by later holes
    - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
