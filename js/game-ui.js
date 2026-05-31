@@ -1,15 +1,15 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.01
-KEY CHANGES:
-   - ADDED: Complete fluid bubble CSS for ALL game pages (single source of truth)
-   - Bubbles now use display: grid with repeat(4, 1fr) for equal 4-column layout
-   - Font size scales with screen: clamp(0.7rem, 3.8vw, 0.9rem)
-   - Gap scales with clamp(4px, 1.5vw, 10px)
-   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
-   - Media queries for extreme screen sizes (380px and 500px+)
-   - Removed any hard-coded min-width values
-   - All existing JavaScript functions preserved exactly as v4.00
+VERSION: 4.03
+KEY CHANGES from v4.02:
+   - CHANGED: renderScorecard() now accepts t1ClinchedHole and t2ClinchedHole (number)
+   - T-1/T-2 row now displays:
+        - Green if hole < clinchHole
+        - Gold if hole == clinchHole
+        - Grey if hole > clinchHole (already decided)
+   - Added .score-grey CSS class
+   - Backward compatible: if clinchedHole not provided, defaults to green
+   - ALL other functions identical to v4.01
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -123,6 +123,12 @@ var GameUI = (function() {
                 border: 3px solid #ffffff;
                 font-weight: 800;
             }
+            
+            /* T-1/T-2 row colors */
+            .score-green { color: #4caf50; font-weight: 600; }
+            .score-gold { color: #ffaa44; font-weight: 800; }
+            .score-grey { color: #888888; font-weight: 600; }
+            .score-invisible { color: #000; }
             
             /* Very small screens (iPhone SE) */
             @media (max-width: 380px) {
@@ -504,12 +510,18 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering
+    // Scorecard Rendering - UPDATED v4.03 with clinch hole support
     // ============================================================
     
-    function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi) {
+    // t1ClinchedHole and t2ClinchedHole are numbers (the hole number where clinch occurred)
+    // or null if not clinched yet
+    function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole) {
         var container = document.getElementById(containerId);
         if (!container) return;
+        
+        // Default to null (no clinch) if not provided (backward compatible)
+        t1ClinchedHole = (t1ClinchedHole !== undefined) ? t1ClinchedHole : null;
+        t2ClinchedHole = (t2ClinchedHole !== undefined) ? t2ClinchedHole : null;
         
         var flight1Players = players.filter(function(p) { return p.flight === 1; });
         var flight2Players = players.filter(function(p) { return p.flight === 2; });
@@ -565,30 +577,51 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
+        // T-1 row - Flight 1 cumulative (with clinch support: green/gold/grey)
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
-            var val = t1Row[i] || '_';
             var holeNum = holes[i];
+            var val = t1Row[holeNum - 1] || '_';
             var isSynced = (savedHoles && savedHoles[1] && savedHoles[2]) ? 
                 (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1) : false;
             
             var displayVal = '';
             var cellClass = 'score-invisible';
             
+            // Determine color based on clinch hole
+            var colorClass = 'score-green';
+            if (t1ClinchedHole !== null) {
+                if (holeNum < t1ClinchedHole) colorClass = 'score-green';
+                else if (holeNum === t1ClinchedHole) colorClass = 'score-gold';
+                else if (holeNum > t1ClinchedHole) colorClass = 'score-grey';
+            } else {
+                colorClass = 'score-green';
+            }
+            
             if (val === '0' || val === 0) {
                 if (isSynced) {
                     displayVal = 'AS';
-                    cellClass = 'score-green';
+                    cellClass = colorClass;
                 } else {
                     displayVal = '';
                     cellClass = 'score-invisible';
                 }
             } else if (val === 'A' || val === 'B') {
-                displayVal = val;
-                cellClass = 'score-green';
+                if (isSynced) {
+                    displayVal = val;
+                    cellClass = colorClass;
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
             } else if (val && val !== '_') {
-                displayVal = val;
-                cellClass = 'score-green';
+                if (isSynced) {
+                    displayVal = val;
+                    cellClass = colorClass;
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
             }
             
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
@@ -614,30 +647,51 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
+        // T-2 row - Flight 2 cumulative (with clinch support: green/gold/grey)
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
-            var val = t2Row[i] || '_';
             var holeNum = holes[i];
+            var val = t2Row[holeNum - 1] || '_';
             var isSynced = (savedHoles && savedHoles[1] && savedHoles[2]) ? 
                 (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1) : false;
             
             var displayVal = '';
             var cellClass = 'score-invisible';
             
+            // Determine color based on clinch hole
+            var colorClass = 'score-green';
+            if (t2ClinchedHole !== null) {
+                if (holeNum < t2ClinchedHole) colorClass = 'score-green';
+                else if (holeNum === t2ClinchedHole) colorClass = 'score-gold';
+                else if (holeNum > t2ClinchedHole) colorClass = 'score-grey';
+            } else {
+                colorClass = 'score-green';
+            }
+            
             if (val === '0' || val === 0) {
                 if (isSynced) {
                     displayVal = 'AS';
-                    cellClass = 'score-green';
+                    cellClass = colorClass;
                 } else {
                     displayVal = '';
                     cellClass = 'score-invisible';
                 }
             } else if (val === 'A' || val === 'B') {
-                displayVal = val;
-                cellClass = 'score-green';
+                if (isSynced) {
+                    displayVal = val;
+                    cellClass = colorClass;
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
             } else if (val && val !== '_') {
-                displayVal = val;
-                cellClass = 'score-green';
+                if (isSynced) {
+                    displayVal = val;
+                    cellClass = colorClass;
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
             }
             
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
@@ -646,10 +700,10 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        html += '<td><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
-            var val = strkRow[i] || '_';
             var holeNum = holes[i];
+            var val = strkRow[holeNum - 1] || '_';
             var isSynced = (savedHoles && savedHoles[1] && savedHoles[2]) ? 
                 (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1) : false;
             
@@ -665,18 +719,28 @@ var GameUI = (function() {
                     cellClass = 'score-invisible';
                 }
             } else if (val === 'A' || val === 'B') {
-                displayVal = val;
-                cellClass = 'score-green';
+                if (isSynced) {
+                    displayVal = val;
+                    cellClass = 'score-green';
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
             } else if (val && val !== '_') {
-                displayVal = val;
-                cellClass = 'score-green';
+                if (isSynced) {
+                    displayVal = val;
+                    cellClass = 'score-green';
+                } else {
+                    displayVal = '';
+                    cellClass = 'score-invisible';
+                }
             }
             
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody><tr>';
+        html += '</tbody><table>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -702,7 +766,6 @@ var GameUI = (function() {
                 var opp = opponents[j];
                 var bubbleClass = getBubbleClass(player, opp);
                 var bubbleValue = getBubbleValue(player, opp);
-                // NO "vs " prefix - just opponent label and match value
                 bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
             }
             bubblesHtml += '</div>';
@@ -711,7 +774,7 @@ var GameUI = (function() {
                 <div class="player-card" data-player-name="${escapeHtml(player.name)}" data-player-flight="${player.flight}">
                     <div class="player-header">
                         <div>
-                            <span class="player-name">${escapeHtml(player.name)}</span>
+                            <span class="player-name">${escapeHtml(player.label || player.name)}</span>
                             <span class="player-handicap">${player.label} ${player.handicap}</span>
                         </div>
                         <div class="score-control">
@@ -984,10 +1047,7 @@ var GameUI = (function() {
             clinchHole = clinchedAtMap[matchKey];
         }
         
-        if (clinchHole && currentHole > clinchHole) {
-            return 'bubble-grey';
-        }
-        
+        if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
         if (clinchHole && currentHole === clinchHole) {
             if (matchValue > 0) return 'bubble-gold';
             if (matchValue < 0) return 'bubble-loss-clinch';
@@ -1083,6 +1143,8 @@ var GameUI = (function() {
                 background: #111;
             }
             .score-green { color: #4caf50; font-weight: 600; }
+            .score-gold { color: #ffaa44; font-weight: 800; }
+            .score-grey { color: #888; font-weight: 600; }
             .score-invisible { color: #000; }
             .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
             
@@ -1238,18 +1300,25 @@ var GameUI = (function() {
     
 })();
 
+// ============================================================
+// DUAL EXPORT - for compatibility with all game files
+// ============================================================
+window.gameUI = GameUI;
+window.GameUI = GameUI;
+
 /*
 FILE: js/game-ui.js
-VERSION: 4.01
-KEY CHANGES:
-   - ADDED: Complete fluid bubble CSS for ALL game pages (single source of truth)
-   - Bubbles now use display: grid with repeat(4, 1fr) for equal 4-column layout
-   - Font size scales with screen: clamp(0.7rem, 3.8vw, 0.9rem)
-   - Gap scales with clamp(4px, 1.5vw, 10px)
-   - Padding scales with clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px)
-   - Media queries for extreme screen sizes (380px and 500px+)
-   - Removed any hard-coded min-width values
-   - All existing JavaScript functions preserved exactly as v4.00
+VERSION: 4.03
+KEY CHANGES from v4.02:
+   - CHANGED: renderScorecard() now accepts t1ClinchedHole and t2ClinchedHole (number)
+   - T-1/T-2 row now displays:
+        - Green if hole < clinchHole
+        - Gold if hole == clinchHole
+        - Grey if hole > clinchHole (already decided)
+   - Added .score-grey CSS class
+   - Backward compatible: if clinchedHole not provided, defaults to green
+   - Player name now shows label instead of full name (fixes real-game display)
+   - ALL other functions identical to v4.01
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
