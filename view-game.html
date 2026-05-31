@@ -1,13 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 5.01
-KEY CHANGES from v5.00:
-   - FIXED: getBubbleClassWithClinch() now normalizes clinchedAt keys
-   - Creates reverse keys (TeamB_vs_TeamA) from existing (TeamA_vs_TeamB)
-   - Fixes issue where Team B players showed incorrect bubble colors
-   - ALL other functions identical to v5.00
+VERSION: 5.02
+KEY CHANGES from v5.01:
+   - FIXED: T-1/T-2 clinch display now reads clinchedHole from Firestore
+   - Converts clinchedHole (e.g., 15) to clinched object format {15: true}
+   - Enables GOLD at clinch hole and GREY for subsequent holes
+   - Bubble class key normalization retained from v5.01
+   - ALL other functions identical to v5.01
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
-STATUS: Ready for deployment - fixes Team B clinch display bug
+STATUS: Ready for deployment - fixes T-1/T-2 clinch display bug
 -->
 
 <!DOCTYPE html>
@@ -271,7 +272,7 @@ STATUS: Ready for deployment - fixes Team B clinch display bug
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.01</div>
+<div class="version-tag">v5.02</div>
 
 <script>
 // ============================================================
@@ -530,7 +531,7 @@ function renderPlayerCards() {
     }, 50);
 }
 
-// UPDATED v5.00: Pass clinch data to renderScorecard
+// FIXED v5.02: Convert clinchedHole to clinched object format for T-1/T-2 display
 function renderScorecard() {
     var holes = getDisplayHoles();
     window.savedHoles = { 1: [], 2: [] };
@@ -543,9 +544,15 @@ function renderScorecard() {
     var t2Row = resultsCache ? (resultsCache.game2?.flight2?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
     var strkRow = resultsCache ? (resultsCache.game3?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
     
-    // NEW v5.00: Read clinch data from Firestore
-    var t1Clinched = resultsCache?.game2?.flight1?.clinched || {};
-    var t2Clinched = resultsCache?.game2?.flight2?.clinched || {};
+    // FIXED v5.02: Convert clinchedHole to clinched object format
+    var t1Clinched = {};
+    if (resultsCache?.game2?.flight1?.clinchedHole) {
+        t1Clinched[resultsCache.game2.flight1.clinchedHole] = true;
+    }
+    var t2Clinched = {};
+    if (resultsCache?.game2?.flight2?.clinchedHole) {
+        t2Clinched[resultsCache.game2.flight2.clinchedHole] = true;
+    }
     
     GameUI.renderScorecard('scorecardWrapper', holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1Clinched, t2Clinched);
 }
@@ -792,12 +799,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 5.01
-KEY CHANGES from v5.00:
-   - FIXED: getBubbleClassWithClinch() now normalizes clinchedAt keys
-   - Creates reverse keys (TeamB_vs_TeamA) from existing (TeamA_vs_TeamB)
-   - Fixes issue where Team B players showed incorrect bubble colors
-   - ALL other functions identical to v5.00
+VERSION: 5.02
+KEY CHANGES from v5.01:
+   - FIXED: T-1/T-2 clinch display now reads clinchedHole from Firestore
+   - Converts clinchedHole (e.g., 15) to clinched object format {15: true}
+   - Enables GOLD at clinch hole and GREY for subsequent holes
+   - Bubble class key normalization retained from v5.01
+   - ALL other functions identical to v5.01
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
-STATUS: Ready for deployment - fixes Team B clinch display bug
+STATUS: Ready for deployment - fixes T-1/T-2 clinch display bug
 -->
