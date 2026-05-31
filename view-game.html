@@ -1,12 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 5.02
-KEY CHANGES from v5.01:
-   - FIXED: T-1/T-2 clinch display now reads clinchedHole from Firestore
-   - Converts clinchedHole (e.g., 15) to clinched object format {15: true}
+VERSION: 5.03
+KEY CHANGES from v5.02:
+   - FIXED: T-1/T-2 clinch display now passes clinchedHole as NUMBER (not object)
+   - GameUI.renderScorecard expects t1ClinchedHole and t2ClinchedHole as numbers
+   - Passes raw clinchedHole value (e.g., 15) directly to render function
    - Enables GOLD at clinch hole and GREY for subsequent holes
    - Bubble class key normalization retained from v5.01
-   - ALL other functions identical to v5.01
+   - ALL other functions identical to v5.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for deployment - fixes T-1/T-2 clinch display bug
 -->
@@ -272,7 +273,7 @@ STATUS: Ready for deployment - fixes T-1/T-2 clinch display bug
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.02</div>
+<div class="version-tag">v5.03</div>
 
 <script>
 // ============================================================
@@ -531,7 +532,7 @@ function renderPlayerCards() {
     }, 50);
 }
 
-// FIXED v5.02: Convert clinchedHole to clinched object format for T-1/T-2 display
+// FIXED v5.03: Pass clinchedHole as NUMBER (not object) to GameUI.renderScorecard
 function renderScorecard() {
     var holes = getDisplayHoles();
     window.savedHoles = { 1: [], 2: [] };
@@ -544,15 +545,9 @@ function renderScorecard() {
     var t2Row = resultsCache ? (resultsCache.game2?.flight2?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
     var strkRow = resultsCache ? (resultsCache.game3?.leader || new Array(18).fill('_')) : new Array(18).fill('_');
     
-    // FIXED v5.02: Convert clinchedHole to clinched object format
-    var t1Clinched = {};
-    if (resultsCache?.game2?.flight1?.clinchedHole) {
-        t1Clinched[resultsCache.game2.flight1.clinchedHole] = true;
-    }
-    var t2Clinched = {};
-    if (resultsCache?.game2?.flight2?.clinchedHole) {
-        t2Clinched[resultsCache.game2.flight2.clinchedHole] = true;
-    }
+    // FIXED v5.03: Pass clinchedHole as NUMBER (not object)
+    var t1Clinched = resultsCache?.game2?.flight1?.clinchedHole || null;
+    var t2Clinched = resultsCache?.game2?.flight2?.clinchedHole || null;
     
     GameUI.renderScorecard('scorecardWrapper', holes, allPlayers, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1Clinched, t2Clinched);
 }
@@ -799,13 +794,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 5.02
-KEY CHANGES from v5.01:
-   - FIXED: T-1/T-2 clinch display now reads clinchedHole from Firestore
-   - Converts clinchedHole (e.g., 15) to clinched object format {15: true}
+VERSION: 5.03
+KEY CHANGES from v5.02:
+   - FIXED: T-1/T-2 clinch display now passes clinchedHole as NUMBER (not object)
+   - GameUI.renderScorecard expects t1ClinchedHole and t2ClinchedHole as numbers
+   - Passes raw clinchedHole value (e.g., 15) directly to render function
    - Enables GOLD at clinch hole and GREY for subsequent holes
    - Bubble class key normalization retained from v5.01
-   - ALL other functions identical to v5.01
+   - ALL other functions identical to v5.02
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for deployment - fixes T-1/T-2 clinch display bug
 -->
