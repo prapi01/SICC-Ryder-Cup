@@ -1,15 +1,14 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.12
+VERSION: 3.50
 KEY CHANGES:
-   - ASSUMES cache exists (index.html guarantees preload complete)
-   - Reads "preloadedRawGameData" directly from sessionStorage
-   - Passes cached data to GameLoader.setLocalCache()
-   - NO fallback Firestore fetch (cache guaranteed by index)
-   - Instant render, no "Loading Data" message
-   - All existing role selection and lock logic preserved from v3.11
-   - previewSandboxes references removed (deprecated)
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+   - FIXED: Locked role buttons are now clickable (not disabled)
+   - ADDED: Takeover modal when clicking a role locked by another device
+   - ADDED: Firestore lock overwrite on takeover confirmation
+   - ADDED: Visual distinction for locked roles (grey border, lock icon)
+   - ADDED: Current device lock shows green with checkmark
+   - All existing functionality preserved
+DEPENDS ON: Firebase Firestore, js/session.js
 STATUS: Ready for integration
 -->
 
@@ -17,30 +16,25 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-    <title>Ready to Play - SICC Ryder Cup</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>SICC Ryder Cup - PRE GAME</title>
+    
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/session.js"></script>
-    
-    <script src="js/game-data.js"></script>
-    <script src="js/game-match.js"></script>
-    <script src="js/game-team.js"></script>
-    <script src="js/game-stroke.js"></script>
-    <script src="js/game-loader.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         html, body {
             min-height: 100vh;
-            background: #000000;
+            background: #000;
         }
         
-        body { 
+        body {
             background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
-            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif; 
-            color: #ffffff; 
+            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            color: #fff;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -54,7 +48,19 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
-        /* Device tag - respects safe area */
+        .version-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -70,293 +76,166 @@ STATUS: Ready for integration
             cursor: pointer;
         }
         
-        /* Version tag - respects safe area */
-        .version-tag {
-            position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            right: max(8px, env(safe-area-inset-right));
-            font-size: 0.65rem;
-            color: #4caf50;
-            background: rgba(0,0,0,0.6);
-            padding: 2px 10px;
-            border-radius: 16px;
-            font-family: monospace;
-            z-index: 1000;
-            opacity: 0.8;
-        }
-        
-        .status-bubble {
-            background: rgba(76,175,80,0.3);
-            border: 1px solid #4caf50;
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            color: #4caf50;
-            margin-bottom: 12px;
-            cursor: pointer;
-        }
-        
-        .header { text-align: center; margin-bottom: 20px; }
-        .title { font-size: 1.6rem; font-weight: 800; color: #4caf50; }
-        .subtitle { font-size: 0.7rem; color: #888; margin-top: 4px; }
-        
-        /* Course Card */
-        .course-card {
-            background: linear-gradient(135deg, #111 0%, #0a0a0a 100%);
-            border: 1px solid rgba(76,175,80,0.3);
-            border-radius: 16px;
-            padding: 12px 16px;
+        .flight-card {
+            background: #111;
+            border-radius: 24px;
+            padding: 20px;
             margin-bottom: 20px;
-            text-align: center;
-        }
-        .course-name { font-size: 1.2rem; font-weight: 700; color: #4caf50; }
-        .course-date { font-size: 0.7rem; color: #888; margin-top: 2px; }
-        .course-info-row {
-            font-size: 0.65rem;
-            color: #ffaa44;
-            margin-top: 6px;
-            padding-top: 4px;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            display: flex;
-            justify-content: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-        .course-info-item {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .course-info-label { color: #888; }
-        .course-info-value { color: #ffaa44; font-weight: 600; }
-        
-        /* Ultra-tight flight boxes - RESPONSIVE */
-        .flight-box {
-            background: rgba(10,10,10,0.8);
-            border: 1px solid rgba(76,175,80,0.2);
-            border-radius: 12px;
-            margin-bottom: 12px;
-            overflow: hidden;
+            border: 1px solid #2a2a2a;
         }
         
-        .flight-header {
-            background: linear-gradient(90deg, #1a3a1a 0%, #0d2a0d 100%);
-            padding: clamp(6px, 2vw, 12px) clamp(8px, 3vw, 12px);
-            border-bottom: 1px solid rgba(76,175,80,0.3);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            min-height: 36px;
-        }
-        
-        .flight-header h3 { 
-            font-size: clamp(14px, 4vw, 16px); 
-            font-weight: 700; 
-            color: #4caf50; 
-            letter-spacing: 1px;
-            margin: 0;
-            line-height: 1.3;
-        }
-        
-        .flight-lock-info {
-            font-size: clamp(9px, 2.5vw, 11px);
-            color: #ffaa44;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        
-        .teams-grid {
-            display: flex;
-            padding: clamp(6px, 2vw, 8px);
-            gap: clamp(6px, 2vw, 8px);
-        }
-        
-        .team {
-            flex: 1;
-            background: rgba(0,0,0,0.3);
-            border-radius: 10px;
-            padding: clamp(4px, 1.5vw, 6px);
-            min-width: 0;
-        }
-        
-        .team-title {
-            font-size: clamp(12px, 3.5vw, 14px);
+        .flight-title {
+            font-size: 1.3rem;
             font-weight: 700;
-            text-align: center;
-            padding-bottom: 2px;
-            margin-bottom: 4px;
-            border-bottom: 1px solid #4caf50;
             color: #4caf50;
-            letter-spacing: 1px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            margin-bottom: 16px;
+            text-align: center;
         }
         
-        /* Single-line player rows - RESPONSIVE */
+        .players-list {
+            margin-bottom: 20px;
+        }
+        
         .player-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: clamp(2px, 1vh, 3px) 0;
-            margin-bottom: 0;
-            gap: 4px;
-        }
-        
-        .player-name { 
-            font-size: clamp(11px, 3.5vw, 13px); 
-            font-weight: 500; 
-            color: #fff;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            flex: 1;
-        }
-        
-        .player-handicap { 
-            font-size: clamp(10px, 3vw, 11px); 
-            font-weight: 600; 
-            background: rgba(76,175,80,0.2);
-            padding: 1px clamp(4px, 2vw, 6px);
+            padding: 8px 12px;
+            background: #1a1a1a;
             border-radius: 12px;
+            margin-bottom: 8px;
+        }
+        
+        .player-name {
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        
+        .player-handicap {
+            font-size: 0.8rem;
             color: #4caf50;
-            flex-shrink: 0;
-        }
-        
-        /* Role Section - CSS Grid (3 equal columns, no wrapping) */
-        .role-section {
-            margin: 20px 0;
-            padding: 16px;
-            background: #111;
+            background: #1a3a1a;
+            padding: 2px 8px;
             border-radius: 20px;
-            border: 1px solid #333;
-        }
-        
-        .role-title { 
-            font-size: 0.9rem; 
-            font-weight: 600; 
-            margin-bottom: 12px; 
-            color: #ffaa44; 
-            text-align: center;
         }
         
         .role-buttons {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-            margin-top: 8px;
-        }
-        
-        .role-btn {
-            padding: clamp(10px, 2vh, 14px) clamp(6px, 2vw, 12px);
-            border-radius: 40px;
-            font-weight: 700;
-            font-size: clamp(0.7rem, 2.5vw, 0.85rem);
-            text-align: center;
-            cursor: pointer;
-            border: 2px solid;
-            transition: all 0.2s ease;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            min-height: 44px;
-            background: #1a3a1a;
-        }
-        
-        /* Default state - Green */
-        .role-btn-default {
-            border-color: #4caf50;
-            color: #4caf50;
-            background: #1a3a1a;
-        }
-        
-        /* Selected by you (active session) - Gold */
-        .role-btn-gold {
-            border-color: #ffaa44;
-            color: #ffaa44;
-            background: #1a3a1a;
-        }
-        
-        /* Your role from previous session - Green border, Gold text */
-        .role-btn-rejoin {
-            border-color: #4caf50;
-            color: #ffaa44;
-            background: #1a3a1a;
-        }
-        
-        /* Locked by another device - Grey */
-        .role-btn-locked {
-            border-color: #555;
-            color: #888;
-            background: #2a2a2a;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-        
-        /* VIEW ONLY specific - same as default */
-        .role-btn-view {
-            border-color: #4caf50;
-            color: #4caf50;
-            background: #1a3a1a;
-        }
-        
-        .role-btn-view.role-btn-gold {
-            border-color: #ffaa44;
-            color: #ffaa44;
-        }
-        
-        /* Action Buttons */
-        .action-buttons {
             display: flex;
             gap: 12px;
             margin-top: 16px;
-            margin-bottom: 16px;
         }
         
-        .btn {
+        .role-btn {
             flex: 1;
-            padding: clamp(12px, 2vh, 14px) 16px;
+            padding: 14px;
             border-radius: 40px;
             font-weight: 700;
-            font-size: 0.9rem;
-            text-align: center;
+            font-size: 1rem;
             cursor: pointer;
-            border: none;
-            transition: all 0.2s ease;
-            min-height: 48px;
+            transition: all 0.1s ease;
+            border: 2px solid;
+            background: #1a1a1a;
+            text-align: center;
         }
         
-        .btn-back {
-            background: rgba(26,26,26,0.9);
-            border: 1px solid #333;
-            color: #ccc;
+        .role-btn:active {
+            transform: scale(0.97);
         }
         
-        .btn-teeoff {
-            background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
+        /* Role button states */
+        .role-unlocked {
+            border-color: #4caf50;
+            color: #4caf50;
+            background: #1a3a1a;
+        }
+        
+        .role-selected {
+            border-color: #4caf50;
+            color: #4caf50;
+            background: #1a3a1a;
+            position: relative;
+        }
+        
+        .role-selected::after {
+            content: " ✓";
+            font-weight: 800;
+        }
+        
+        .role-locked-self {
+            border-color: #4caf50;
+            color: #4caf50;
+            background: #1a3a1a;
+            position: relative;
+        }
+        
+        .role-locked-self::after {
+            content: " 🔒";
+        }
+        
+        .role-locked-other {
+            border-color: #666;
+            color: #888;
+            background: #2a2a2a;
+            cursor: pointer;
+        }
+        
+        .role-locked-other:hover {
+            border-color: #ffaa44;
+            color: #ffaa44;
+            background: #3a3a3a;
+        }
+        
+        .tee-off-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(145deg, #1a3a1a, #0d2a0d);
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            font-size: 1.2rem;
+            font-weight: 800;
+            border-radius: 60px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.1s ease;
+            margin-top: 20px;
+        }
+        
+        .tee-off-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .tee-off-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .back-btn {
+            width: 100%;
+            padding: 14px;
+            background: #1a1a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
-        }
-        
-        .btn-teeoff-disabled { opacity: 0.4; cursor: not-allowed; }
-        
-        .role-status {
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 40px;
+            cursor: pointer;
             text-align: center;
-            font-size: 0.7rem;
             margin-top: 12px;
-            padding: 5px;
-            border-radius: 20px;
+            transition: all 0.1s ease;
         }
         
-        .role-status-selected { background: #1a3a1a; color: #4caf50; }
-        .role-status-warning { background: #2a2a1a; color: #ffaa44; }
+        .back-btn:active {
+            transform: scale(0.98);
+        }
         
-        .footer { text-align: center; margin-top: 16px; font-size: 0.55rem; color: #444; }
-        .loading { text-align: center; padding: 40px; color: #888; }
+        .debug {
+            text-align: center;
+            font-size: 0.6rem;
+            color: #444;
+            margin-top: 20px;
+        }
         
-        /* Modal Styles */
+        /* Modal styles */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -367,92 +246,115 @@ STATUS: Ready for integration
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 2000;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            z-index: 10001;
+            backdrop-filter: blur(8px);
         }
         
-        .modal {
+        .takeover-modal-container {
             background: #1a1a1a;
-            border-radius: 24px;
-            padding: 24px;
+            border-radius: 32px;
+            padding: 32px;
             max-width: 340px;
             width: 90%;
-            border: 1px solid #ffaa44;
             text-align: center;
+            border: 2px solid #ffaa44;
         }
         
-        .modal-title {
-            font-size: 1.1rem;
-            font-weight: 700;
+        .takeover-title {
+            font-size: 1.5rem;
+            font-weight: 800;
             color: #ffaa44;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }
         
-        .modal-message {
-            font-size: 0.8rem;
+        .takeover-message {
+            font-size: 0.9rem;
             color: #ccc;
-            margin-bottom: 6px;
-            line-height: 1.4;
+            margin-bottom: 24px;
         }
         
-        .modal-device {
-            font-family: monospace;
-            font-size: 0.75rem;
-            color: #4caf50;
-            margin: 6px 0;
+        .takeover-device {
+            font-size: 0.8rem;
+            color: #ffaa44;
+            margin-bottom: 20px;
+            padding: 8px;
+            background: #2a2a2a;
+            border-radius: 20px;
         }
         
-        .modal-buttons {
+        .takeover-buttons {
             display: flex;
             gap: 12px;
-            justify-content: center;
-            margin-top: 16px;
         }
         
-        .modal-btn {
-            padding: 8px 16px;
+        .takeover-btn-no {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #888;
+            padding: 12px;
             border-radius: 40px;
             font-weight: 600;
-            font-size: 0.8rem;
             cursor: pointer;
+        }
+        
+        .takeover-btn-yes {
+            flex: 1;
+            background: #ffaa44;
             border: none;
+            color: #1a3a1a;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 800;
+            cursor: pointer;
         }
         
-        .modal-btn-confirm {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        
-        .modal-btn-cancel {
-            background: #1a1a1a;
-            color: #ccc;
-            border: 1px solid #333;
+        .takeover-btn-yes:active, .takeover-btn-no:active {
+            transform: scale(0.97);
         }
     </style>
 </head>
 <body>
 
-<div class="container" id="app">
-    <div class="loading">Loading game data...</div>
+<div class="container">
+    <div id="flight1Card" class="flight-card">
+        <div class="flight-title">✈️ FLIGHT 1</div>
+        <div id="flight1Players" class="players-list">
+            <div class="player-row"><span class="player-name">Ang C H</span><span class="player-handicap">HCP 2</span></div>
+            <div class="player-row"><span class="player-name">C K</span><span class="player-handicap">HCP 10</span></div>
+            <div class="player-row"><span class="player-name">Ong C B</span><span class="player-handicap">HCP 1</span></div>
+            <div class="player-row"><span class="player-name">James Ong</span><span class="player-handicap">HCP 10</span></div>
+        </div>
+        <div class="role-buttons">
+            <button id="roleF1Btn" class="role-btn role-unlocked">UPDATE FLIGHT 1</button>
+        </div>
+    </div>
+    
+    <div id="flight2Card" class="flight-card">
+        <div class="flight-title">✈️ FLIGHT 2</div>
+        <div id="flight2Players" class="players-list">
+            <div class="player-row"><span class="player-name">K F</span><span class="player-handicap">HCP 2</span></div>
+            <div class="player-row"><span class="player-name">Yip H M</span><span class="player-handicap">HCP 14</span></div>
+            <div class="player-row"><span class="player-name">Jeff Goh</span><span class="player-handicap">HCP 0</span></div>
+            <div class="player-row"><span class="player-name">Piti</span><span class="player-handicap">HCP 10</span></div>
+        </div>
+        <div class="role-buttons">
+            <button id="roleF2Btn" class="role-btn role-unlocked">UPDATE FLIGHT 2</button>
+        </div>
+    </div>
+    
+    <button id="teeOffBtn" class="tee-off-btn" disabled>🏌️ TEE OFF</button>
+    <button id="backBtn" class="back-btn">← BACK TO MAIN MENU</button>
+    <div class="debug" id="debug"></div>
 </div>
 
-<div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.12</div>
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v3.50</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.12
-
-var VERSION = "3.12";
-var CACHE_KEY = "pre_game_version";
-var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
-var STALE_THRESHOLD_MS = 60 * 60 * 1000;
-
-var storedVersion = localStorage.getItem(CACHE_KEY);
-if (storedVersion !== VERSION) {
-    localStorage.setItem(CACHE_KEY, VERSION);
-    window.location.href = window.location.pathname + "?v=" + VERSION;
-}
+// ============================================================
+// Firebase Config
+// ============================================================
 
 var FIREBASE_CONFIG = {
     apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
@@ -463,835 +365,365 @@ var FIREBASE_CONFIG = {
     appId: "1:137641493845:web:32399940bce639b01ddbdc"
 };
 
-var db = null;
-var firestoreReady = false;
-var unsubcribeGame = null;
-
-try {
-    if (!firebase.apps.length) {
-        firebase.initializeApp(FIREBASE_CONFIG);
-    }
-    db = firebase.firestore();
-    firestoreReady = true;
-    console.log("Firebase ready - v" + VERSION);
-} catch(e) { 
-    console.warn(e);
+if (!firebase.apps.length) {
+    firebase.initializeApp(FIREBASE_CONFIG);
 }
+var db = firebase.firestore();
 
-var gameData = null;
+// ============================================================
+// Global State
+// ============================================================
+
 var gameId = null;
 var gameMode = null;
-var tempSelectedRole = null;
+var gameCollection = null;
+var selectedRole = null;  // "f1" or "f2" or null
+var currentLocks = { f1: null, f2: null };
 var currentDeviceId = null;
 var currentSessionId = null;
-var deviceSession = null;
-var isPreviewSandbox = false;  // Deprecated but kept for compatibility
-
-var locks = { f1: null, f2: null };
-var currentShortName = "DEV-??";
+var unsubscribeLocks = null;
 
 // ============================================================
-// NEW v3.12: Read cached data (assumes index.html preload complete)
+// Helper Functions
 // ============================================================
 
-function getPreloadedRawGameData() {
-    var stored = sessionStorage.getItem("preloadedRawGameData");
-    if (stored) {
-        try {
-            var data = JSON.parse(stored);
-            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
-                return data;
-            }
-        } catch(e) {
-            console.warn("Failed to parse preloaded raw data:", e);
-        }
+async function getGameId() {
+    var session = await new Promise(function(resolve) {
+        SessionManager.getSession(resolve);
+    });
+    if (session.activeGame && session.activeGame.gameId) {
+        return session.activeGame.gameId;
     }
-    return null;
+    return sessionStorage.getItem('currentGameId');
 }
 
-function applyCachedDataToGameLoader() {
-    var cached = getPreloadedRawGameData();
-    if (!cached || !cached.rawData) {
-        console.error("No cached data available - this should not happen");
-        return false;
-    }
+async function getDeviceInfo() {
+    currentDeviceId = await SessionManager.getShortNameOnly();
+    var session = await new Promise(function(resolve) {
+        SessionManager.getSession(resolve);
+    });
+    currentSessionId = session.sessionId;
+}
+
+function isLockExpired(lock) {
+    if (!lock) return true;
+    return lock.ex < Date.now();
+}
+
+function getLockHolderDisplay(lock) {
+    if (!lock) return null;
+    return lock.did || lock.deviceId || "Unknown";
+}
+
+function updateRoleButtons() {
+    var f1Btn = document.getElementById('roleF1Btn');
+    var f2Btn = document.getElementById('roleF2Btn');
+    var teeOffBtn = document.getElementById('teeOffBtn');
     
-    console.log("Applying cached data to GameLoader");
-    var rawData = cached.rawData;
+    var f1Lock = currentLocks.f1;
+    var f2Lock = currentLocks.f2;
     
-    // Build cache object for GameLoader.setLocalCache()
-    var cacheData = {
-        course: rawData.course,
-        players: rawData.players,
-        startingHole: rawData.startingHole || 1,
-        teamGameFormat: rawData.teamGameFormat || "tournament",
-        f1DataString: rawData.f1?.d || "",
-        f2DataString: rawData.f2?.d || "",
-        results: rawData.results || null,
-        savedHoles: { 1: [], 2: [] },
-        t1Row: new Array(18).fill('_'),
-        t2Row: new Array(18).fill('_'),
-        strkRow: new Array(18).fill('0'),
-        lastSyncedHole: 0,
-        clinchedAt: {},
-        signatures: rawData.signatures || { f1: false, f2: false },
-        submitted: rawData.submitted || { f1: false, f2: false },
-        locks: rawData.locks || { f1: null, f2: null },
-        gameStarted: rawData.gameStarted || false
-    };
+    var f1LockValid = f1Lock && !isLockExpired(f1Lock);
+    var f2LockValid = f2Lock && !isLockExpired(f2Lock);
+    var f1LockHolder = f1LockValid ? getLockHolderDisplay(f1Lock) : null;
+    var f2LockHolder = f2LockValid ? getLockHolderDisplay(f2Lock) : null;
+    var isMyF1Lock = f1LockValid && f1LockHolder === currentDeviceId;
+    var isMyF2Lock = f2LockValid && f2LockHolder === currentDeviceId;
     
-    // Inject into GameLoader
-    if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
-        GameLoader.setLocalCache(cacheData);
+    // Update Flight 1 button
+    if (isMyF1Lock) {
+        f1Btn.className = 'role-btn role-locked-self';
+        f1Btn.innerText = 'UPDATE FLIGHT 1';
+        f1Btn.disabled = false;  // FIXED: Clickable to unlock
+    } else if (f1LockValid) {
+        f1Btn.className = 'role-btn role-locked-other';
+        f1Btn.innerText = `UPDATE FLIGHT 1 (locked by ${f1LockHolder})`;
+        f1Btn.disabled = false;  // FIXED: Clickable for takeover
+    } else if (selectedRole === 'f1') {
+        f1Btn.className = 'role-btn role-selected';
+        f1Btn.innerText = 'UPDATE FLIGHT 1';
+        f1Btn.disabled = false;
     } else {
-        console.error("GameLoader.setLocalCache not available");
-        return false;
+        f1Btn.className = 'role-btn role-unlocked';
+        f1Btn.innerText = 'UPDATE FLIGHT 1';
+        f1Btn.disabled = false;
     }
     
-    // Also store gameId for later use
-    gameId = cached.gameId;
-    
-    return true;
-}
-
-// ============================================================
-// End of NEW v3.12 code
-// ============================================================
-
-function displayDeviceId() {
-    var shortName = SessionManager.getShortNameOnly();
-    currentShortName = shortName;
-    var deviceTag = document.getElementById("deviceTag");
-    deviceTag.innerHTML = "🖥️ " + shortName;
-    
-    var tapCount = 0;
-    var tapTimer = null;
-    deviceTag.addEventListener("click", function() {
-        tapCount++;
-        if (tapTimer) clearTimeout(tapTimer);
-        tapTimer = setTimeout(function() {
-            if (tapCount >= 2) {
-                showAdminResetModal();
-            }
-            tapCount = 0;
-        }, 300);
-    });
-}
-
-function showAdminResetModal() {
-    var modalHtml = `
-        <div class="modal-overlay" id="adminResetModal">
-            <div class="modal">
-                <div class="modal-title">⚠️ ADMIN RESET</div>
-                <div class="modal-message">This will reset ALL game data:</div>
-                <div class="modal-message" style="font-size:0.7rem; margin-top:4px;">• All scores</div>
-                <div class="modal-message" style="font-size:0.7rem;">• All locks</div>
-                <div class="modal-message" style="font-size:0.7rem;">• Game started flag</div>
-                <div class="modal-message" style="margin-top:10px; color:#ffaa44;">This action cannot be undone.</div>
-                <div class="modal-buttons">
-                    <button class="modal-btn modal-btn-cancel" id="adminResetCancelBtn">Cancel</button>
-                    <button class="modal-btn modal-btn-confirm" id="adminResetConfirmBtn">✓ Reset Game</button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    document.getElementById("adminResetCancelBtn").addEventListener("click", function() {
-        document.getElementById("adminResetModal").remove();
-    });
-    
-    document.getElementById("adminResetConfirmBtn").addEventListener("click", function() {
-        document.getElementById("adminResetModal").remove();
-        
-        var startingHoleVal = gameData.startingHole || 1;
-        var coursePar = gameData.course.par;
-        
-        GameData.resetFullGame(gameId, startingHoleVal, coursePar, function(success) {
-            if (success) {
-                alert("Game has been reset. Page will reload.");
-                window.location.reload();
-            } else {
-                alert("Reset failed. Please try again.");
-            }
-        });
-    });
-}
-
-function formatDisplayDate(dateStr) {
-    if (!dateStr) return "";
-    var parts = dateStr.split('-');
-    if (parts.length === 3) {
-        return parts[2] + '/' + parts[1] + '/' + parts[0];
-    }
-    return dateStr;
-}
-
-function getTodayString() {
-    var today = new Date();
-    var year = today.getFullYear();
-    var month = String(today.getMonth() + 1).padStart(2, '0');
-    var day = String(today.getDate()).padStart(2, '0');
-    return year + "-" + month + "-" + day;
-}
-
-function generateDefaultDataNatural(parArray) {
-    if (!parArray || parArray.length !== 18) {
-        var defaultPar = "04";
-        var result = "";
-        for (var i = 0; i < 18; i++) {
-            result += "F" + defaultPar + defaultPar + defaultPar + defaultPar;
-        }
-        return result;
+    // Update Flight 2 button
+    if (isMyF2Lock) {
+        f2Btn.className = 'role-btn role-locked-self';
+        f2Btn.innerText = 'UPDATE FLIGHT 2';
+        f2Btn.disabled = false;
+    } else if (f2LockValid) {
+        f2Btn.className = 'role-btn role-locked-other';
+        f2Btn.innerText = `UPDATE FLIGHT 2 (locked by ${f2LockHolder})`;
+        f2Btn.disabled = false;  // FIXED: Clickable for takeover
+    } else if (selectedRole === 'f2') {
+        f2Btn.className = 'role-btn role-selected';
+        f2Btn.innerText = 'UPDATE FLIGHT 2';
+        f2Btn.disabled = false;
+    } else {
+        f2Btn.className = 'role-btn role-unlocked';
+        f2Btn.innerText = 'UPDATE FLIGHT 2';
+        f2Btn.disabled = false;
     }
     
-    var result = "";
-    for (var h = 0; h < 18; h++) {
-        var par = parArray[h];
-        var parStr = par.toString().padStart(2, '0');
-        result += "F" + parStr + parStr + parStr + parStr;
-    }
-    return result;
+    // Enable TEE OFF if user has a valid lock (self)
+    var canTeeOff = isMyF1Lock || isMyF2Lock;
+    teeOffBtn.disabled = !canTeeOff;
 }
 
-function rotateDataString(naturalData, startingHoleVal) {
-    if (startingHoleVal === 1) return naturalData;
-    
-    var blocks = [];
-    for (var i = 0; i < 18; i++) {
-        blocks.push(naturalData.substr(i * 9, 9));
-    }
-    
-    var rotated = [];
-    for (var i = startingHoleVal - 1; i < 18; i++) rotated.push(blocks[i]);
-    for (var i = 0; i < startingHoleVal - 1; i++) rotated.push(blocks[i]);
-    
-    return rotated.join('');
-}
-
-function resetLocksOnly(callback) {
-    if (!db || !gameId) {
-        if (callback) callback(false);
-        return;
-    }
-    
-    var resetData = {
-        "locks.f1": null,
-        "locks.f2": null,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-    
-    db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
-        console.log("Locks reset only - scores preserved");
-        locks.f1 = null;
-        locks.f2 = null;
-        tempSelectedRole = null;
-        if (callback) callback(true);
-    }).catch(function(e) {
-        console.error("Reset locks error:", e);
-        if (callback) callback(false);
-    });
-}
-
-function hasAnyScores() {
-    if (!gameData) return false;
-    var f1HasT = gameData.f1?.d?.indexOf('T') !== -1;
-    var f2HasT = gameData.f2?.d?.indexOf('T') !== -1;
-    return f1HasT || f2HasT;
-}
-
-function startGameListener() {
-    if (!firestoreReady || !gameId) return;
-    if (unsubcribeGame) unsubcribeGame();
-    
-    var collection = "scheduledGames";
-    
-    unsubcribeGame = db.collection(collection).doc(gameId)
-        .onSnapshot(function(doc) {
-            if (doc.exists) {
-                var data = doc.data();
-                if (data.locks) {
-                    locks.f1 = data.locks.f1 || null;
-                    locks.f2 = data.locks.f2 || null;
-                }
-                render();
-            }
-        }, function(error) {
-            console.warn("Game listener error:", error);
-        });
-}
-
-function canTakeRole(role) {
-    var now = Date.now();
-    var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
-    
-    if (role === "update1") {
-        var otherLockValid = locks.f2 && locks.f2.ex && locks.f2.ex > now;
-        var otherLockIsMe = otherLockValid && locks.f2.did === myDeviceIdFull;
-        if (otherLockIsMe) {
-            alert("You already have Flight 2. Only one role per device.");
-            return false;
-        }
-    } else if (role === "update2") {
-        var otherLockValid2 = locks.f1 && locks.f1.ex && locks.f1.ex > now;
-        var otherLockIsMe2 = otherLockValid2 && locks.f1.did === myDeviceIdFull;
-        if (otherLockIsMe2) {
-            alert("You already have Flight 1. Only one role per device.");
-            return false;
-        }
-    }
-    
-    return true;
-}
-
-function toggleRole(role) {
-    if (tempSelectedRole === role) {
-        tempSelectedRole = null;
-        render();
-        return;
-    }
-    
-    var now = Date.now();
-    var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
-    var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
-    var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
-    var isF1LockedByMe = isF1Locked && locks.f1.did === myDeviceIdFull;
-    var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
-    
-    if (role === "update1" && isF1Locked && !isF1LockedByMe) {
-        showTakeoverModal(1);
-        return;
-    }
-    if (role === "update2" && isF2Locked && !isF2LockedByMe) {
-        showTakeoverModal(2);
-        return;
-    }
-    
-    if (!canTakeRole(role)) return;
-    
-    tempSelectedRole = role;
-    
-    if (deviceSession) {
-        SessionManager.updateSession({
-            activeGame: {
-                gameId: gameId,
-                gameType: gameMode,
-                gameMode: gameMode,
-                role: role,
-                collection: "scheduledGames"
-            }
-        });
-    }
-    
-    render();
-}
-
-function showTakeoverModal(flight) {
-    var lock = flight === 1 ? locks.f1 : locks.f2;
-    if (!lock) return;
-    
-    var deviceId = lock.did || "Unknown device";
+function showTakeoverModal(flight, currentLockHolder) {
+    // Remove any existing modal
+    var existingModal = document.querySelector('.modal-overlay');
+    if (existingModal) existingModal.remove();
     
     var modalHtml = `
         <div class="modal-overlay" id="takeoverModal">
-            <div class="modal">
-                <div class="modal-title">⚠️ ROLE TAKEOVER</div>
-                <div class="modal-message">Flight ${flight} is currently locked by:</div>
-                <div class="modal-device">${deviceId}</div>
-                <div class="modal-message">Take over this role? The current device will be notified.</div>
-                <div class="modal-buttons">
-                    <button class="modal-btn modal-btn-cancel" id="takeoverCancelBtn">Cancel</button>
-                    <button class="modal-btn modal-btn-confirm" id="takeoverConfirmBtn">✓ Take Over</button>
+            <div class="takeover-modal-container">
+                <div class="takeover-title">🔄 ROLE TAKEOVER</div>
+                <div class="takeover-message">This role is currently locked by another device.</div>
+                <div class="takeover-device">🔒 Locked by: ${currentLockHolder}</div>
+                <div class="takeover-message">Do you want to take over this role?</div>
+                <div class="takeover-buttons">
+                    <button class="takeover-btn-no" id="takeoverNoBtn">NO, CANCEL</button>
+                    <button class="takeover-btn-yes" id="takeoverYesBtn">YES, TAKE OVER</button>
                 </div>
             </div>
         </div>
     `;
-    
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    document.getElementById("takeoverCancelBtn").addEventListener("click", function() {
-        document.getElementById("takeoverModal").remove();
-    });
-    
-    document.getElementById("takeoverConfirmBtn").addEventListener("click", function() {
-        document.getElementById("takeoverModal").remove();
-        takeoverRole(flight);
-    });
-}
-
-function takeoverRole(flight) {
-    var now = Date.now();
-    var expiryTime = now + LOCK_DURATION_MS;
-    var collection = "scheduledGames";
-    var deviceId = SessionManager.getDeviceIdDisplay();
-    
-    var sessionId = deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown";
-    
-    var updatePayload = {};
-    var lockField = flight === 1 ? "locks.f1" : "locks.f2";
-    
-    updatePayload[lockField] = {
-        did: deviceId,
-        sid: sessionId,
-        at: now,
-        ex: expiryTime,
-        takeoverAt: now
+    document.getElementById('takeoverNoBtn').onclick = function() {
+        document.getElementById('takeoverModal').remove();
     };
-    updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
-    db.collection(collection).doc(gameId).update(updatePayload).then(function() {
-        console.log("Role takeover successful for Flight", flight);
-        if (flight === 1) {
-            locks.f1 = updatePayload["locks.f1"];
-        } else {
-            locks.f2 = updatePayload["locks.f2"];
+    document.getElementById('takeoverYesBtn').onclick = async function() {
+        document.getElementById('takeoverModal').remove();
+        await takeOverRole(flight);
+    };
+}
+
+async function takeOverRole(flight) {
+    var lockKey = flight === 'f1' ? 'locks.f1' : 'locks.f2';
+    var lockData = {
+        did: currentDeviceId,
+        sid: currentSessionId,
+        at: Date.now(),
+        ex: Date.now() + (6 * 60 * 60 * 1000)  // 6 hours
+    };
+    
+    try {
+        await db.collection(gameCollection).doc(gameId).update({
+            [lockKey]: lockData,
+            lastActive: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`Takeover successful for ${flight}`);
+        
+        // If this device had the other flight locked, release it (one device, one role)
+        var otherFlight = flight === 'f1' ? 'f2' : 'f1';
+        var otherLockKey = otherFlight === 'f1' ? 'locks.f1' : 'locks.f2';
+        var otherLock = currentLocks[otherFlight];
+        var otherLockValid = otherLock && !isLockExpired(otherLock);
+        var isOtherMyLock = otherLockValid && getLockHolderDisplay(otherLock) === currentDeviceId;
+        
+        if (isOtherMyLock) {
+            await db.collection(gameCollection).doc(gameId).update({
+                [otherLockKey]: null
+            });
+            console.log(`Released previous lock on ${otherFlight}`);
         }
-        tempSelectedRole = flight === 1 ? "update1" : "update2";
-        render();
-        alert(`You have taken over Flight ${flight}. Click TEE OFF to enter the game.`);
-    }).catch(function(e) {
-        alert("Error taking over role: " + e.message);
+        
+        // Refresh the page to reflect new lock state
+        location.reload();
+    } catch (error) {
+        console.error("Takeover failed:", error);
+        alert("Failed to take over role. Please try again.");
+    }
+}
+
+async function releaseLock(flight) {
+    var lockKey = flight === 'f1' ? 'locks.f1' : 'locks.f2';
+    try {
+        await db.collection(gameCollection).doc(gameId).update({
+            [lockKey]: null
+        });
+        console.log(`Lock released for ${flight}`);
+        selectedRole = null;
+        location.reload();
+    } catch (error) {
+        console.error("Failed to release lock:", error);
+    }
+}
+
+async function setSelectedRole(flight) {
+    var lockKey = flight === 'f1' ? 'locks.f1' : 'locks.f2';
+    var currentLock = currentLocks[flight];
+    var lockValid = currentLock && !isLockExpired(currentLock);
+    var lockHolder = lockValid ? getLockHolderDisplay(currentLock) : null;
+    var isMyLock = lockValid && lockHolder === currentDeviceId;
+    
+    // If already locked by this device, unlock (release)
+    if (isMyLock) {
+        await releaseLock(flight);
+        return;
+    }
+    
+    // If locked by another device, show takeover modal
+    if (lockValid && lockHolder !== currentDeviceId) {
+        showTakeoverModal(flight, lockHolder);
+        return;
+    }
+    
+    // If unlocked, lock it
+    var lockData = {
+        did: currentDeviceId,
+        sid: currentSessionId,
+        at: Date.now(),
+        ex: Date.now() + (6 * 60 * 60 * 1000)
+    };
+    
+    try {
+        await db.collection(gameCollection).doc(gameId).update({
+            [lockKey]: lockData,
+            lastActive: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`Lock acquired for ${flight}`);
+        
+        // If this device had the other flight locked, release it (one device, one role)
+        var otherFlight = flight === 'f1' ? 'f2' : 'f1';
+        var otherLockKey = otherFlight === 'f1' ? 'locks.f1' : 'locks.f2';
+        var otherLock = currentLocks[otherFlight];
+        var otherLockValid = otherLock && !isLockExpired(otherLock);
+        var isOtherMyLock = otherLockValid && getLockHolderDisplay(otherLock) === currentDeviceId;
+        
+        if (isOtherMyLock) {
+            await db.collection(gameCollection).doc(gameId).update({
+                [otherLockKey]: null
+            });
+            console.log(`Released previous lock on ${otherFlight}`);
+        }
+        
+        selectedRole = flight;
+        location.reload();
+    } catch (error) {
+        console.error("Failed to acquire lock:", error);
+        alert("Failed to lock role. Please try again.");
+    }
+}
+
+function startLockListener() {
+    if (unsubscribeLocks) unsubscribeLocks();
+    unsubscribeLocks = db.collection(gameCollection).doc(gameId).onSnapshot(function(doc) {
+        if (doc.exists) {
+            var data = doc.data();
+            currentLocks = {
+                f1: data.locks?.f1 || null,
+                f2: data.locks?.f2 || null
+            };
+            updateRoleButtons();
+        }
+    }, function(error) {
+        console.error("Lock listener error:", error);
     });
 }
 
-function isGameCompleted(gameData) {
-    if (!gameData) return false;
-    var signatures = gameData.signatures || {};
-    return signatures.f1?.signed === true && signatures.f2?.signed === true;
-}
+// ============================================================
+// Navigation
+// ============================================================
 
-// MODIFIED v3.12: Load from cache, no Firestore fetch
-function loadGame() {
-    var realGameId = sessionStorage.getItem("currentGameId");
-    var activeGame = deviceSession ? deviceSession.activeGame : null;
+async function proceedToGame() {
+    var isF1Locked = currentLocks.f1 && !isLockExpired(currentLocks.f1);
+    var isF2Locked = currentLocks.f2 && !isLockExpired(currentLocks.f2);
+    var isMyF1Lock = isF1Locked && getLockHolderDisplay(currentLocks.f1) === currentDeviceId;
+    var isMyF2Lock = isF2Locked && getLockHolderDisplay(currentLocks.f2) === currentDeviceId;
     
-    if (!realGameId) {
-        alert("No game selected. Please return to main menu.");
-        window.location.href = "index.html";
+    if (!isMyF1Lock && !isMyF2Lock) {
+        alert("Please select a role first.");
         return;
     }
     
-    gameId = realGameId;
-    gameMode = "real";
-    isPreviewSandbox = false;
+    var targetPage = (gameMode === "preview") ? "preview-game.html" : "real-game.html";
+    var role = isMyF1Lock ? "update1" : "update2";
     
-    // Apply cached data first (guaranteed to exist by index.html)
-    var cacheApplied = applyCachedDataToGameLoader();
-    
-    if (!cacheApplied) {
-        console.error("Failed to apply cached data - this should not happen");
-        alert("Error loading game data. Please return to main menu and try again.");
-        window.location.href = "index.html";
-        return;
-    }
-    
-    // Get the cache data to populate UI
-    var cached = getPreloadedRawGameData();
-    if (cached && cached.rawData) {
-        gameData = cached.rawData;
-        gameData.id = cached.gameId;
-        
-        if (gameData.locks) {
-            locks.f1 = gameData.locks.f1 || null;
-            locks.f2 = gameData.locks.f2 || null;
+    await SessionManager.updateSession({
+        activeGame: {
+            gameId: gameId,
+            gameType: gameMode,
+            gameMode: gameMode,
+            role: role,
+            collection: gameCollection
         }
-        
-        console.log("REAL mode - Data loaded from cache");
-        
-        startGameListener();
-        render();
-    } else {
-        console.error("No cache data available");
-        alert("Error loading game data. Please return to main menu and try again.");
-        window.location.href = "index.html";
-    }
-}
-
-function startGame() {
-    if (!tempSelectedRole) {
-        alert("Please select a role first");
-        return;
-    }
-    
-    // VIEW ONLY role
-    if (tempSelectedRole === "view") {
-        if (isGameCompleted(gameData)) {
-            console.log("Game is completed - redirecting to view-history.html");
-            window.location.href = "view-history.html?gameId=" + gameId;
-            return;
-        }
-        
-        localStorage.setItem("userRole", "view");
-        if (deviceSession) {
-            SessionManager.updateSession({
-                activeGame: {
-                    gameId: gameId,
-                    gameType: gameMode,
-                    gameMode: gameMode,
-                    role: "view",
-                    collection: "scheduledGames"
-                }
-            });
-            SessionManager.addNavigationHistory("view-game.html", "tee_off_view", { gameId: gameId });
-        }
-        window.location.href = "view-game.html";
-        return;
-    }
-    
-    var now = Date.now();
-    var expiryTime = now + LOCK_DURATION_MS;
-    var collection = "scheduledGames";
-    var updatePayload = {};
-    
-    var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
-    var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
-    var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
-    var isF1LockedByMe = isF1Locked && locks.f1.did === myDeviceIdFull;
-    var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
-    
-    if (tempSelectedRole === "update1" && isF1Locked && !isF1LockedByMe) {
-        alert("Flight 1 was locked by another device. Please take over the role.");
-        tempSelectedRole = null;
-        render();
-        return;
-    }
-    if (tempSelectedRole === "update2" && isF2Locked && !isF2LockedByMe) {
-        alert("Flight 2 was locked by another device. Please take over the role.");
-        tempSelectedRole = null;
-        render();
-        return;
-    }
-    
-    if (tempSelectedRole === "update1") {
-        var otherLockValid = locks.f2 && locks.f2.ex && locks.f2.ex > now;
-        var otherLockIsMe = otherLockValid && locks.f2.did === myDeviceIdFull;
-        if (otherLockIsMe) {
-            alert("You already have Flight 2. Only one role per device.");
-            tempSelectedRole = null;
-            render();
-            return;
-        }
-    } else if (tempSelectedRole === "update2") {
-        var otherLockValid2 = locks.f1 && locks.f1.ex && locks.f1.ex > now;
-        var otherLockIsMe2 = otherLockValid2 && locks.f1.did === myDeviceIdFull;
-        if (otherLockIsMe2) {
-            alert("You already have Flight 1. Only one role per device.");
-            tempSelectedRole = null;
-            render();
-            return;
-        }
-    }
-    
-    var deviceId = SessionManager.getDeviceIdDisplay();
-    var sessionId = deviceSession?.sessionId || SessionManager.getSession()?.sessionId || "unknown";
-    
-    if (tempSelectedRole === "update1") {
-        updatePayload["locks.f1"] = {
-            did: deviceId,
-            sid: sessionId,
-            at: now,
-            ex: expiryTime
-        };
-    } else if (tempSelectedRole === "update2") {
-        updatePayload["locks.f2"] = {
-            did: deviceId,
-            sid: sessionId,
-            at: now,
-            ex: expiryTime
-        };
-    }
-    
-    updatePayload["gameStarted"] = true;
-    updatePayload["lastActive"] = firebase.firestore.FieldValue.serverTimestamp();
-    updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-    
-    console.log("Writing lock with sessionId:", sessionId);
-    
-    db.collection(collection).doc(gameId).update(updatePayload).then(function() {
-        localStorage.setItem("userRole", tempSelectedRole);
-        
-        var targetPage = "real-game.html";
-        
-        console.log("Redirecting to:", targetPage, "gameMode:", gameMode);
-        
-        if (deviceSession) {
-            SessionManager.updateSession({
-                activeGame: {
-                    gameId: gameId,
-                    gameType: gameMode,
-                    gameMode: gameMode,
-                    role: tempSelectedRole,
-                    collection: collection
-                }
-            });
-            
-            SessionManager.addNavigationHistory(targetPage, "tee_off_" + tempSelectedRole, { gameId: gameId });
-            window.location.href = targetPage;
-        } else {
-            window.location.href = targetPage;
-        }
-    }).catch(function(e) {
-        console.error("Error locking role:", e);
-        alert("Error locking role: " + e.message);
     });
+    
+    window.location.href = targetPage;
 }
 
 function goBack() {
-    var returnDest = SessionManager.getReturnDestination();
-    window.location.href = returnDest;
-}
-
-function getFormatDisplayName(format) {
-    if (format === "relative") return "Relative";
-    return "Tournament";
-}
-
-function getButtonClass(flight) {
-    var now = Date.now();
-    var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
-    var isLocked = (flight === 1 ? locks.f1 : locks.f2) && (flight === 1 ? locks.f1.ex : locks.f2.ex) > now;
-    var isLockedByMe = isLocked && (flight === 1 ? locks.f1.did : locks.f2.did) === myDeviceIdFull;
-    var isSelected = (flight === 1 && tempSelectedRole === "update1") || (flight === 2 && tempSelectedRole === "update2");
-    
-    if (isLocked && !isLockedByMe) {
-        return "role-btn-locked";
-    }
-    
-    if (isSelected) {
-        return "role-btn-gold";
-    }
-    
-    if (isLockedByMe && !isSelected) {
-        return "role-btn-rejoin";
-    }
-    
-    return "role-btn-default";
-}
-
-function getViewButtonClass() {
-    var isSelected = (tempSelectedRole === "view");
-    if (isSelected) {
-        return "role-btn-gold";
-    }
-    return "role-btn-default";
-}
-
-function render() {
-    if (!gameData) return;
-    
-    var courseName = gameData.course ? gameData.course.name : "Unknown Course";
-    var players = gameData.players || [];
-    var startingHole = gameData.startingHole || 1;
-    var teamGameFormat = gameData.teamGameFormat || "tournament";
-    var formatDisplayName = getFormatDisplayName(teamGameFormat);
-    
-    var dateDisplay = '';
-    if (gameData.date) {
-        dateDisplay = '<div class="course-date">' + formatDisplayDate(gameData.date) + '</div>';
-    }
-    
-    var startingHoleText = "";
-    if (startingHole === 1) {
-        startingHoleText = "Hole 1";
-    } else if (startingHole === 10) {
-        startingHoleText = "Hole 10";
-    } else {
-        startingHoleText = "Shotgun " + startingHole;
-    }
-    
-    var flight1Players = players.filter(function(p) { return p.flight === 1; });
-    var flight1A = flight1Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var flight1B = flight1Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var flight2Players = players.filter(function(p) { return p.flight === 2; });
-    var flight2A = flight2Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var flight2B = flight2Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    function renderTeam(teamPlayers) {
-        var html = '';
-        for (var i = 0; i < teamPlayers.length; i++) {
-            var p = teamPlayers[i];
-            html += '<div class="player-row"><span class="player-name">' + escapeHtml(p.name) + '</span><span class="player-handicap">' + p.handicap + '</span></div>';
-        }
-        return html;
-    }
-    
-    var now = Date.now();
-    var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
-    var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
-    var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
-    var isF1LockedByMe = isF1Locked && locks.f1.did === myDeviceIdFull;
-    var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
-    
-    var f1ButtonClass = getButtonClass(1);
-    var f2ButtonClass = getButtonClass(2);
-    var viewButtonClass = getViewButtonClass();
-    
-    var f1ButtonText = "SCORE F1";
-    var f2ButtonText = "SCORE F2";
-    var viewButtonText = "VIEW ONLY";
-    
-    var isTeeOffDisabled = !tempSelectedRole && !isF1LockedByMe && !isF2LockedByMe;
-    
-    var roleStatusText = "";
-    var roleStatusClass = "";
-    if (tempSelectedRole === "update1") {
-        roleStatusText = "✓ Score F1 selected. Click TEE OFF to lock this role.";
-        roleStatusClass = "role-status-selected";
-        isTeeOffDisabled = false;
-    } else if (tempSelectedRole === "update2") {
-        roleStatusText = "✓ Score F2 selected. Click TEE OFF to lock this role.";
-        roleStatusClass = "role-status-selected";
-        isTeeOffDisabled = false;
-    } else if (tempSelectedRole === "view") {
-        if (isGameCompleted(gameData)) {
-            roleStatusText = "⚠️ This game is already completed. Click TEE OFF to see final results.";
-        } else {
-            roleStatusText = "✓ View Only selected. Click TEE OFF to continue.";
-        }
-        roleStatusClass = "role-status-selected";
-        isTeeOffDisabled = false;
-    } else if (isF1LockedByMe) {
-        roleStatusText = "✓ You already have Flight 1. Click TEE OFF to enter the game.";
-        roleStatusClass = "role-status-selected";
-        isTeeOffDisabled = false;
-    } else if (isF2LockedByMe) {
-        roleStatusText = "✓ You already have Flight 2. Click TEE OFF to enter the game.";
-        roleStatusClass = "role-status-selected";
-        isTeeOffDisabled = false;
-    } else {
-        roleStatusText = "⚠️ Select a role above, then click TEE OFF";
-        roleStatusClass = "role-status-warning";
-    }
-    
-    var flight1LockInfo = '';
-    var flight2LockInfo = '';
-    
-    if (isF1Locked) {
-        var lockHolder = locks.f1.did || 'Unknown';
-        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder}</span></div>`;
-    } else {
-        flight1LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
-    }
-    
-    if (isF2Locked) {
-        var lockHolder2 = locks.f2.did || 'Unknown';
-        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder2}</span></div>`;
-    } else {
-        flight2LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
-    }
-    
-    var html = `
-        <div class="status-bubble" id="statusBubble">LIVE</div>
-        
-        <div class="header">
-            <div class="title">🏌️ READY TO PLAY</div>
-            <div class="subtitle">Verify teams and handicaps before teeing off</div>
-        </div>
-        
-        <div class="course-card">
-            <div class="course-name">⛳ ${escapeHtml(courseName)}</div>
-            ${dateDisplay}
-            <div class="course-info-row">
-                <span class="course-info-item">
-                    <span class="course-info-label">Starting Hole:</span>
-                    <span class="course-info-value">${startingHoleText}</span>
-                </span>
-                <span class="course-info-item">
-                    <span class="course-info-label">Team Game Format:</span>
-                    <span class="course-info-value">${formatDisplayName}</span>
-                </span>
-            </div>
-        </div>
-        
-        <div class="flight-box">
-            <div class="flight-header">
-                <h3>FLIGHT 1</h3>
-                ${flight1LockInfo}
-            </div>
-            <div class="teams-grid">
-                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight1A)}</div>
-                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight1B)}</div>
-            </div>
-        </div>
-        
-        <div class="flight-box">
-            <div class="flight-header">
-                <h3>FLIGHT 2</h3>
-                ${flight2LockInfo}
-            </div>
-            <div class="teams-grid">
-                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight2A)}</div>
-                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight2B)}</div>
-            </div>
-        </div>
-        
-        <div class="role-section">
-            <div class="role-title">🎮 SELECT YOUR ROLE</div>
-            <div class="role-buttons">
-                <button class="role-btn ${f1ButtonClass}" onclick="toggleRole('update1')" ${f1ButtonClass === 'role-btn-locked' ? 'disabled' : ''}>${f1ButtonText}</button>
-                <button class="role-btn ${f2ButtonClass}" onclick="toggleRole('update2')" ${f2ButtonClass === 'role-btn-locked' ? 'disabled' : ''}>${f2ButtonText}</button>
-                <button class="role-btn ${viewButtonClass}" onclick="toggleRole('view')">${viewButtonText}</button>
-            </div>
-            <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
-        </div>
-        
-        <div class="action-buttons">
-            <button class="btn btn-back" onclick="goBack()">← BACK</button>
-            <button class="btn btn-teeoff ${isTeeOffDisabled ? 'btn-teeoff-disabled' : ''}" onclick="startGame()" ${isTeeOffDisabled ? 'disabled' : ''}>⛳ TEE OFF →</button>
-        </div>
-        
-        <div class="footer">SICC Ryder Cup v${VERSION}</div>
-    `;
-    
-    document.getElementById("app").innerHTML = html;
-    
-    var statusBubble = document.getElementById("statusBubble");
-    if (statusBubble) {
-        statusBubble.onclick = function() {
-            location.reload();
-        };
-    }
-}
-
-function escapeHtml(str) {
-    if (!str) return "";
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === "&") return "&amp;";
-        if (m === "<") return "&lt;";
-        if (m === ">") return "&gt;";
-        return m;
+    SessionManager.getSession(function(session) {
+        var returnDest = session.returnDestination || "index.html";
+        window.location.href = returnDest;
     });
 }
 
-window.toggleRole = toggleRole;
-window.startGame = startGame;
-window.goBack = goBack;
-window.showTakeoverModal = showTakeoverModal;
+// ============================================================
+// Initialization
+// ============================================================
 
-SessionManager.initSession("pre-game.html", "index.html", function(session) {
-    console.log("Session initialized:", session);
-    deviceSession = session;
-    currentDeviceId = session.deviceId;
-    displayDeviceId();
-    loadGame();
-});
+async function init() {
+    var shortName = await SessionManager.getShortNameOnly();
+    document.getElementById("deviceTag").innerHTML = "🖥️ " + shortName;
+    
+    await getDeviceInfo();
+    
+    gameId = await getGameId();
+    if (!gameId) {
+        document.getElementById("debug").innerHTML = "Error: No game ID";
+        return;
+    }
+    
+    var session = await new Promise(function(resolve) {
+        SessionManager.getSession(resolve);
+    });
+    gameMode = session.activeGame?.gameType || "real";
+    gameCollection = (gameMode === "preview") ? "previewSandboxes" : "scheduledGames";
+    
+    // Load initial locks
+    var doc = await db.collection(gameCollection).doc(gameId).get();
+    if (doc.exists) {
+        var data = doc.data();
+        currentLocks = {
+            f1: data.locks?.f1 || null,
+            f2: data.locks?.f2 || null
+        };
+    }
+    
+    // Set up button handlers
+    document.getElementById('roleF1Btn').onclick = function() { setSelectedRole('f1'); };
+    document.getElementById('roleF2Btn').onclick = function() { setSelectedRole('f2'); };
+    document.getElementById('teeOffBtn').onclick = proceedToGame;
+    document.getElementById('backBtn').onclick = goBack;
+    
+    updateRoleButtons();
+    startLockListener();
+}
+
+init();
 </script>
+
 </body>
 </html>
 
 <!--
 FILE: pre-game.html
-VERSION: 3.12
+VERSION: 3.50
 KEY CHANGES:
-   - ASSUMES cache exists (index.html guarantees preload complete)
-   - Reads "preloadedRawGameData" directly from sessionStorage
-   - Passes cached data to GameLoader.setLocalCache()
-   - NO fallback Firestore fetch (cache guaranteed by index)
-   - Instant render, no "Loading Data" message
-   - All existing role selection and lock logic preserved from v3.11
-   - previewSandboxes references removed (deprecated)
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+   - FIXED: Locked role buttons are now clickable (not disabled)
+   - ADDED: Takeover modal when clicking a role locked by another device
+   - ADDED: Firestore lock overwrite on takeover confirmation
+   - ADDED: Visual distinction for locked roles (grey border, lock icon)
+   - ADDED: Current device lock shows green with checkmark
+   - All existing functionality preserved
+DEPENDS ON: Firebase Firestore, js/session.js
 STATUS: Ready for integration
 -->
