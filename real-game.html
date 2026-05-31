@@ -1,15 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 4.67
-KEY CHANGES from v4.66:
-   - ADDED: Extensive debug logging for cascade clinch detection
-   - Logs flight1Total, position, remainingHoles, maxOpponentPoints at each hole
-   - Logs cumulativeFlight1ClinchedHole before/after
-   - Logs f1DataString and f2DataString prefixes to detect changes
-   - Logs game-team.js call results
-   - ALL existing functionality preserved
+VERSION: 4.68
+KEY CHANGES from v4.67:
+   - FIXED: Clear cumulative clinch data before cascade (do NOT preserve old values)
+   - Cascade now recalculates clinch from scratch using current scores
+   - Fixes issue where second cascade preserved stale clinch values
+   - Debug logging preserved for troubleshooting
+   - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Debug version - for troubleshooting only
+STATUS: Ready for integration
 -->
 
 <!DOCTYPE html>
@@ -17,7 +16,7 @@ STATUS: Debug version - for troubleshooting only
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>SICC Ryder Cup - REAL Game (DEBUG)</title>
+    <title>SICC Ryder Cup - REAL Game</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -338,7 +337,7 @@ STATUS: Debug version - for troubleshooting only
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.67 DEBUG</div>
+<div class="version-tag">v4.68 DEBUG</div>
 
 <script>
 // ============================================================
@@ -711,24 +710,14 @@ function performSave() {
                     });
                 });
                 
-                // Maintain cumulative clinch data across cascade
+                // FIXED v4.68: Clear cumulative clinch data before cascade
+                // Do NOT preserve old values - recalculate from scratch
                 var cumulativeClinched = {};
                 var cumulativeFlight1ClinchedHole = null;
                 var cumulativeFlight2ClinchedHole = null;
                 
-                // First, load existing clinch data from cache
-                var cache = GameLoader.getLocalCache();
-                if (cache.results?.clinchedAt) {
-                    cumulativeClinched = { ...cache.results.clinchedAt };
-                }
-                if (cache.results?.game2?.flight1?.clinchedHole) {
-                    cumulativeFlight1ClinchedHole = cache.results.game2.flight1.clinchedHole;
-                }
-                if (cache.results?.game2?.flight2?.clinchedHole) {
-                    cumulativeFlight2ClinchedHole = cache.results.game2.flight2.clinchedHole;
-                }
-                
                 console.log("=== CASCADE START: cumulativeFlight1ClinchedHole =", cumulativeFlight1ClinchedHole);
+                console.log("=== CASCADE START: cumulativeClinched cleared =", cumulativeClinched);
                 
                 // Process current hole
                 var result = await saveResultsToFirestoreWithCumulative(currentHole, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
@@ -857,7 +846,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         return null;
     }
     
-    // DEBUG: Log data strings before GameTeam.calculate
     console.log(`    f1DataString (first 50 chars): ${cache.f1DataString.substring(0, 50)}...`);
     console.log(`    f2DataString (first 50 chars): ${cache.f2DataString.substring(0, 50)}...`);
     
@@ -904,7 +892,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
     
-    // Flight clinch detection
     var remainingHoles = 18 - holeNumber;
     var maxOpponentPoints = remainingHoles * 2;
     
@@ -924,7 +911,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         console.log(`    >>> SET flight2ClinchedHole to ${holeNumber}`);
     }
     
-    // Individual match clinch
     var clinchedAtUpdates = {};
     var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -1024,7 +1010,6 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         await db.collection("scheduledGames").doc(gameId).update(updatePayload);
         console.log(`saveResultsToFirestore(${holeNumber}) - Firestore update successful`);
         
-        // Update local cache
         var cache = GameLoader.getLocalCache();
         if (!cache.results) cache.results = initializeEmptyResults();
         cache.results.matchResults[position] = resultsData.matchResults;
@@ -1416,14 +1401,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.67
-KEY CHANGES from v4.66:
-   - ADDED: Extensive debug logging for cascade clinch detection
-   - Logs flight1Total, position, remainingHoles, maxOpponentPoints at each hole
-   - Logs cumulativeFlight1ClinchedHole before/after
-   - Logs f1DataString and f2DataString prefixes to detect changes
-   - Logs game-team.js call results
-   - ALL existing functionality preserved
+VERSION: 4.68
+KEY CHANGES from v4.67:
+   - FIXED: Clear cumulative clinch data before cascade (do NOT preserve old values)
+   - Cascade now recalculates clinch from scratch using current scores
+   - Fixes issue where second cascade preserved stale clinch values
+   - Debug logging preserved for troubleshooting
+   - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Debug version - for troubleshooting only
+STATUS: Ready for integration
 -->
