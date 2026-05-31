@@ -1,16 +1,17 @@
-/*
+<!--
 FILE: real-game.html
-VERSION: 4.70
+VERSION: 4.71
 KEY CHANGES from v4.68:
    - NEW: computeDisplayStrings() function to calculate formatted margins
    - MODIFIED: saveResultsToFirestore() now writes displayT1, displayT2, displayStrk arrays
    - MODIFIED: performSave() calls computeDisplayStrings after points/netts updated
    - MODIFIED: renderScorecard() passes new display arrays to GameUI
-   - PRESERVED: Original init() order from v4.68 (no changes to execution flow)
+   - PRESERVED: Original init() order and safety checks from v4.68
+   - FIXED: HTML comment format (<!-- --> instead of /* */)
    - ALL existing functionality preserved (cascade, clinch, signing, celebration)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
-*/
+-->
 
 <!DOCTYPE html>
 <html lang="en">
@@ -318,7 +319,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.70</div>
+<div class="version-tag">v4.71</div>
 
 <script>
 // ============================================================
@@ -489,7 +490,7 @@ function getTRForHole(holeNumber) {
 }
 
 // ============================================================
-// NEW v4.70: Compute formatted display strings for scorecard
+// NEW v4.71: Compute formatted display strings for scorecard
 // ============================================================
 function computeDisplayStrings(position) {
     var pointsA = resultsCache.game1?.pointsA?.[position] || 0;
@@ -597,7 +598,7 @@ function updatePlayerScoreInCache(player, hole, newScore) {
     renderPlayerCards();
 }
 
-// MODIFIED v4.70: Pass display arrays to renderScorecard
+// MODIFIED v4.71: Pass display arrays to renderScorecard
 function renderScorecard() {
     var holes = getDisplayHoles();
     var t1Row = resultsCache?.game2?.flight1?.leader || new Array(18).fill('_');
@@ -674,7 +675,8 @@ function goToPrevHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex > 0) {
         currentHole = playOrder[currentIndex - 1];
-        document.getElementById('compactHoleDisplay').innerText = currentHole;
+        var holeDisplay = document.getElementById('compactHoleDisplay');
+        if (holeDisplay) holeDisplay.innerText = currentHole;
         renderAll();
     }
 }
@@ -688,14 +690,16 @@ function goToNextHole() {
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex < 17) {
         currentHole = playOrder[currentIndex + 1];
-        document.getElementById('compactHoleDisplay').innerText = currentHole;
+        var holeDisplay = document.getElementById('compactHoleDisplay');
+        if (holeDisplay) holeDisplay.innerText = currentHole;
         renderAll();
     }
 }
 
 function toggleDisplayMode() {
     currentDisplayMode = currentDisplayMode === 'play' ? 'natural' : 'play';
-    document.getElementById('compactPnBtn').innerText = currentDisplayMode === 'play' ? 'P' : 'N';
+    var pnBtn = document.getElementById('compactPnBtn');
+    if (pnBtn) pnBtn.innerText = currentDisplayMode === 'play' ? 'P' : 'N';
     renderAll();
 }
 
@@ -793,7 +797,7 @@ function performSave() {
                 resultsCache.game2.flight2.clinchedHole = clinchResults.flight2ClinchedHole;
             }
             
-            // NEW v4.70: Compute and store display strings
+            // NEW v4.71: Compute and store display strings
             var displays = computeDisplayStrings(position);
             if (!resultsCache.game1) resultsCache.game1 = {};
             if (!resultsCache.game1.displayT1) resultsCache.game1.displayT1 = new Array(18).fill(null);
@@ -825,7 +829,8 @@ function performSave() {
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex < 17) {
         currentHole = playOrder[currentIndex + 1];
-        document.getElementById('compactHoleDisplay').innerText = currentHole;
+        var holeDisplay = document.getElementById('compactHoleDisplay');
+        if (holeDisplay) holeDisplay.innerText = currentHole;
         renderAll();
     }
 }
@@ -851,7 +856,7 @@ function getStoredScoreByFlight(flight, hole) {
     };
 }
 
-// MODIFIED v4.70: Save display arrays to Firestore
+// MODIFIED v4.71: Save display arrays to Firestore
 function saveResultsToFirestore() {
     if (!gameId) return;
     
@@ -1008,31 +1013,39 @@ function buildCompactHeader() {
         </div>
     `;
     
-    document.getElementById('compactPnBtn').onclick = toggleDisplayMode;
-    document.getElementById('compactFlightBtn').onclick = function() {};
-    document.getElementById('compactPrevBtn').onclick = goToPrevHole;
-    document.getElementById('compactNextBtn').onclick = goToNextHole;
+    var pnBtn = document.getElementById('compactPnBtn');
+    var flightBtn = document.getElementById('compactFlightBtn');
+    var prevBtn = document.getElementById('compactPrevBtn');
+    var nextBtn = document.getElementById('compactNextBtn');
+    
+    if (pnBtn) pnBtn.onclick = toggleDisplayMode;
+    if (flightBtn) flightBtn.onclick = function() {};
+    if (prevBtn) prevBtn.onclick = goToPrevHole;
+    if (nextBtn) nextBtn.onclick = goToNextHole;
 }
 
 function buildBottomMenu() {
     var container = document.getElementById('bottomMenuContainer');
     if (container) {
         container.innerHTML = '<button id="menuBtn" style="width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;">← Back to Main Menu</button>';
-        document.getElementById('menuBtn').onclick = exitToMainMenu;
+        var menuBtn = document.getElementById('menuBtn');
+        if (menuBtn) menuBtn.onclick = exitToMainMenu;
     }
 }
 
 // ============================================================
-// Initialization (ORDER PRESERVED FROM v4.68)
+// Initialization (ORDER PRESERVED FROM v4.68 WITH SAFETY CHECKS)
 // ============================================================
 
 async function init() {
     var shortName = await SessionManager.getShortNameOnly();
-    document.getElementById("deviceTag").innerHTML = "🖥️ " + shortName;
+    var deviceTag = document.getElementById("deviceTag");
+    if (deviceTag) deviceTag.innerHTML = "🖥️ " + shortName;
     
     var gameIdFromSession = sessionStorage.getItem('currentGameId');
     if (!gameIdFromSession) {
-        document.getElementById("debug").innerHTML = "Error: No game ID";
+        var debugDiv = document.getElementById("debug");
+        if (debugDiv) debugDiv.innerHTML = "Error: No game ID";
         return;
     }
     
@@ -1049,9 +1062,12 @@ async function init() {
     initTicker();
     startGameListener();
     
-    // UPDATE FLIGHT BUTTON TEXT AFTER HEADER IS BUILT (PRESERVED ORDER FROM v4.68)
-    document.getElementById('compactFlightBtn').innerText = 'FLIGHT ' + editableFlight;
-    document.getElementById('saveButton').onclick = performSave;
+    // Update button text AFTER elements exist (with safety check)
+    var flightBtn = document.getElementById('compactFlightBtn');
+    if (flightBtn) flightBtn.innerText = 'FLIGHT ' + editableFlight;
+    
+    var saveBtn = document.getElementById('saveButton');
+    if (saveBtn) saveBtn.onclick = performSave;
 }
 
 init();
@@ -1060,16 +1076,17 @@ init();
 </body>
 </html>
 
-/*
+<!--
 FILE: real-game.html
-VERSION: 4.70
+VERSION: 4.71
 KEY CHANGES from v4.68:
    - NEW: computeDisplayStrings() function to calculate formatted margins
    - MODIFIED: saveResultsToFirestore() now writes displayT1, displayT2, displayStrk arrays
    - MODIFIED: performSave() calls computeDisplayStrings after points/netts updated
    - MODIFIED: renderScorecard() passes new display arrays to GameUI
-   - PRESERVED: Original init() order from v4.68 (no changes to execution flow)
+   - PRESERVED: Original init() order and safety checks from v4.68
+   - FIXED: HTML comment format (<!-- --> instead of /* */)
    - ALL existing functionality preserved (cascade, clinch, signing, celebration)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
-*/
+-->
