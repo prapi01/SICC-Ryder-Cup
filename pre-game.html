@@ -977,4 +977,310 @@ function startGame() {
     
     if (tempSelectedRole === "update1") {
         updatePayload["locks.f1"] = {
-            did
+            did: deviceId,
+            sid: sessionId,
+            at: now,
+            ex: expiryTime
+        };
+    } else if (tempSelectedRole === "update2") {
+        updatePayload["locks.f2"] = {
+            did: deviceId,
+            sid: sessionId,
+            at: now,
+            ex: expiryTime
+        };
+    }
+    
+    updatePayload["gameStarted"] = true;
+    updatePayload["lastActive"] = firebase.firestore.FieldValue.serverTimestamp();
+    updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    
+    console.log("Writing lock with sessionId:", sessionId);
+    
+    db.collection(collection).doc(gameId).update(updatePayload).then(function() {
+        localStorage.setItem("userRole", tempSelectedRole);
+        
+        var targetPage = "real-game.html";
+        
+        console.log("Redirecting to:", targetPage, "gameMode:", gameMode);
+        
+        if (deviceSession) {
+            SessionManager.updateSession({
+                activeGame: {
+                    gameId: gameId,
+                    gameType: gameMode,
+                    gameMode: gameMode,
+                    role: tempSelectedRole,
+                    collection: collection
+                }
+            });
+            
+            SessionManager.addNavigationHistory(targetPage, "tee_off_" + tempSelectedRole, { gameId: gameId });
+            window.location.href = targetPage;
+        } else {
+            window.location.href = targetPage;
+        }
+    }).catch(function(e) {
+        console.error("Error locking role:", e);
+        alert("Error locking role: " + e.message);
+    });
+}
+
+function goBack() {
+    var returnDest = SessionManager.getReturnDestination();
+    window.location.href = returnDest;
+}
+
+function getFormatDisplayName(format) {
+    if (format === "relative") return "Relative";
+    return "Tournament";
+}
+
+function getButtonClass(flight) {
+    var now = Date.now();
+    var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
+    var isLocked = (flight === 1 ? locks.f1 : locks.f2) && (flight === 1 ? locks.f1.ex : locks.f2.ex) > now;
+    var isLockedByMe = isLocked && (flight === 1 ? locks.f1.did : locks.f2.did) === myDeviceIdFull;
+    var isSelected = (flight === 1 && tempSelectedRole === "update1") || (flight === 2 && tempSelectedRole === "update2");
+    
+    if (isLocked && !isLockedByMe) {
+        return "role-btn-locked";
+    }
+    
+    if (isSelected) {
+        return "role-btn-gold";
+    }
+    
+    if (isLockedByMe && !isSelected) {
+        return "role-btn-rejoin";
+    }
+    
+    return "role-btn-default";
+}
+
+function getViewButtonClass() {
+    var isSelected = (tempSelectedRole === "view");
+    if (isSelected) {
+        return "role-btn-gold";
+    }
+    return "role-btn-default";
+}
+
+function render() {
+    if (!gameData) return;
+    
+    var courseName = gameData.course ? gameData.course.name : "Unknown Course";
+    var players = gameData.players || [];
+    var startingHole = gameData.startingHole || 1;
+    var teamGameFormat = gameData.teamGameFormat || "tournament";
+    var formatDisplayName = getFormatDisplayName(teamGameFormat);
+    
+    var dateDisplay = '';
+    if (gameData.date) {
+        dateDisplay = '<div class="course-date">' + formatDisplayDate(gameData.date) + '</div>';
+    }
+    
+    var startingHoleText = "";
+    if (startingHole === 1) {
+        startingHoleText = "Hole 1";
+    } else if (startingHole === 10) {
+        startingHoleText = "Hole 10";
+    } else {
+        startingHoleText = "Shotgun " + startingHole;
+    }
+    
+    var flight1Players = players.filter(function(p) { return p.flight === 1; });
+    var flight1A = flight1Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var flight1B = flight1Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var flight2Players = players.filter(function(p) { return p.flight === 2; });
+    var flight2A = flight2Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var flight2B = flight2Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    function renderTeam(teamPlayers) {
+        var html = '';
+        for (var i = 0; i < teamPlayers.length; i++) {
+            var p = teamPlayers[i];
+            html += '<div class="player-row"><span class="player-name">' + escapeHtml(p.name) + '</span><span class="player-handicap">' + p.handicap + '</span></div>';
+        }
+        return html;
+    }
+    
+    var now = Date.now();
+    var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
+    var isF2Locked = locks.f2 && locks.f2.ex && locks.f2.ex > now;
+    var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
+    var isF1LockedByMe = isF1Locked && locks.f1.did === myDeviceIdFull;
+    var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
+    
+    var f1ButtonClass = getButtonClass(1);
+    var f2ButtonClass = getButtonClass(2);
+    var viewButtonClass = getViewButtonClass();
+    
+    var f1ButtonText = "SCORE F1";
+    var f2ButtonText = "SCORE F2";
+    var viewButtonText = "VIEW ONLY";
+    
+    // FIXED v3.13: Locked buttons are NOT disabled - they remain clickable for takeover
+    var f1ButtonDisabled = false;  // Was: f1ButtonClass === 'role-btn-locked'
+    var f2ButtonDisabled = false;  // Was: f2ButtonClass === 'role-btn-locked'
+    
+    var isTeeOffDisabled = !tempSelectedRole && !isF1LockedByMe && !isF2LockedByMe;
+    
+    var roleStatusText = "";
+    var roleStatusClass = "";
+    if (tempSelectedRole === "update1") {
+        roleStatusText = "✓ Score F1 selected. Click TEE OFF to lock this role.";
+        roleStatusClass = "role-status-selected";
+        isTeeOffDisabled = false;
+    } else if (tempSelectedRole === "update2") {
+        roleStatusText = "✓ Score F2 selected. Click TEE OFF to lock this role.";
+        roleStatusClass = "role-status-selected";
+        isTeeOffDisabled = false;
+    } else if (tempSelectedRole === "view") {
+        if (isGameCompleted(gameData)) {
+            roleStatusText = "⚠️ This game is already completed. Click TEE OFF to see final results.";
+        } else {
+            roleStatusText = "✓ View Only selected. Click TEE OFF to continue.";
+        }
+        roleStatusClass = "role-status-selected";
+        isTeeOffDisabled = false;
+    } else if (isF1LockedByMe) {
+        roleStatusText = "✓ You already have Flight 1. Click TEE OFF to enter the game.";
+        roleStatusClass = "role-status-selected";
+        isTeeOffDisabled = false;
+    } else if (isF2LockedByMe) {
+        roleStatusText = "✓ You already have Flight 2. Click TEE OFF to enter the game.";
+        roleStatusClass = "role-status-selected";
+        isTeeOffDisabled = false;
+    } else {
+        roleStatusText = "⚠️ Select a role above, then click TEE OFF";
+        roleStatusClass = "role-status-warning";
+    }
+    
+    var flight1LockInfo = '';
+    var flight2LockInfo = '';
+    
+    if (isF1Locked) {
+        var lockHolder = locks.f1.did || 'Unknown';
+        flight1LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder}</span></div>`;
+    } else {
+        flight1LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
+    }
+    
+    if (isF2Locked) {
+        var lockHolder2 = locks.f2.did || 'Unknown';
+        flight2LockInfo = `<div class="flight-lock-info"><span>🔒 ${lockHolder2}</span></div>`;
+    } else {
+        flight2LockInfo = '<div class="flight-lock-info"><span>🔓 Available</span></div>';
+    }
+    
+    var html = `
+        <div class="status-bubble" id="statusBubble">LIVE</div>
+        
+        <div class="header">
+            <div class="title">🏌️ READY TO PLAY</div>
+            <div class="subtitle">Verify teams and handicaps before teeing off</div>
+        </div>
+        
+        <div class="course-card">
+            <div class="course-name">⛳ ${escapeHtml(courseName)}</div>
+            ${dateDisplay}
+            <div class="course-info-row">
+                <span class="course-info-item">
+                    <span class="course-info-label">Starting Hole:</span>
+                    <span class="course-info-value">${startingHoleText}</span>
+                </span>
+                <span class="course-info-item">
+                    <span class="course-info-label">Team Game Format:</span>
+                    <span class="course-info-value">${formatDisplayName}</span>
+                </span>
+            </div>
+        </div>
+        
+        <div class="flight-box">
+            <div class="flight-header">
+                <h3>FLIGHT 1</h3>
+                ${flight1LockInfo}
+            </div>
+            <div class="teams-grid">
+                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight1A)}</div>
+                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight1B)}</div>
+            </div>
+        </div>
+        
+        <div class="flight-box">
+            <div class="flight-header">
+                <h3>FLIGHT 2</h3>
+                ${flight2LockInfo}
+            </div>
+            <div class="teams-grid">
+                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight2A)}</div>
+                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight2B)}</div>
+            </div>
+        </div>
+        
+        <div class="role-section">
+            <div class="role-title">🎮 SELECT YOUR ROLE</div>
+            <div class="role-buttons">
+                <button class="role-btn ${f1ButtonClass}" onclick="toggleRole('update1')" ${f1ButtonDisabled ? 'disabled' : ''}>${f1ButtonText}</button>
+                <button class="role-btn ${f2ButtonClass}" onclick="toggleRole('update2')" ${f2ButtonDisabled ? 'disabled' : ''}>${f2ButtonText}</button>
+                <button class="role-btn ${viewButtonClass}" onclick="toggleRole('view')">${viewButtonText}</button>
+            </div>
+            <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
+        </div>
+        
+        <div class="action-buttons">
+            <button class="btn btn-back" onclick="goBack()">← BACK</button>
+            <button class="btn btn-teeoff ${isTeeOffDisabled ? 'btn-teeoff-disabled' : ''}" onclick="startGame()" ${isTeeOffDisabled ? 'disabled' : ''}>⛳ TEE OFF →</button>
+        </div>
+        
+        <div class="footer">SICC Ryder Cup v${VERSION}</div>
+    `;
+    
+    document.getElementById("app").innerHTML = html;
+    
+    var statusBubble = document.getElementById("statusBubble");
+    if (statusBubble) {
+        statusBubble.onclick = function() {
+            location.reload();
+        };
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === "&") return "&amp;";
+        if (m === "<") return "&lt;";
+        if (m === ">") return "&gt;";
+        return m;
+    });
+}
+
+window.toggleRole = toggleRole;
+window.startGame = startGame;
+window.goBack = goBack;
+window.showTakeoverModal = showTakeoverModal;
+
+SessionManager.initSession("pre-game.html", "index.html", function(session) {
+    console.log("Session initialized:", session);
+    deviceSession = session;
+    currentDeviceId = session.deviceId;
+    displayDeviceId();
+    loadGame();
+});
+</script>
+</body>
+</html>
+
+<!--
+FILE: pre-game.html
+VERSION: 3.13
+KEY CHANGES from v3.12:
+   - ONLY CHANGE: Locked role buttons are now clickable (removed disabled attribute)
+   - Takeover modal can now be triggered by clicking locked buttons
+   - ALL other UI, styling, logic preserved exactly as v3.12
+DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+STATUS: Ready for integration
+-->
