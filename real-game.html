@@ -1,11 +1,12 @@
 /*
 FILE: real-game.html
-VERSION: 4.69
-KEY CHANGES:
+VERSION: 4.70
+KEY CHANGES from v4.68:
    - NEW: computeDisplayStrings() function to calculate formatted margins
    - MODIFIED: saveResultsToFirestore() now writes displayT1, displayT2, displayStrk arrays
    - MODIFIED: performSave() calls computeDisplayStrings after points/netts updated
    - MODIFIED: renderScorecard() passes new display arrays to GameUI
+   - PRESERVED: Original init() order from v4.68 (no changes to execution flow)
    - ALL existing functionality preserved (cascade, clinch, signing, celebration)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
@@ -317,7 +318,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.69</div>
+<div class="version-tag">v4.70</div>
 
 <script>
 // ============================================================
@@ -488,24 +489,19 @@ function getTRForHole(holeNumber) {
 }
 
 // ============================================================
-// NEW v4.69: Compute formatted display strings for scorecard
+// NEW v4.70: Compute formatted display strings for scorecard
 // ============================================================
 function computeDisplayStrings(position) {
-    // Get current points and netts
     var pointsA = resultsCache.game1?.pointsA?.[position] || 0;
     var pointsB = resultsCache.game1?.pointsB?.[position] || 0;
     var nettA = resultsCache.game3?.nettA?.[position] || 0;
     var nettB = resultsCache.game3?.nettB?.[position] || 0;
     
-    // T-1 display (same as T-2 - same team game)
     var t1Margin = Math.abs(pointsA - pointsB);
     var t1Leader = pointsA > pointsB ? "A" : (pointsB > pointsA ? "B" : "AS");
     var t1Display = (t1Leader !== "AS") ? t1Leader + t1Margin : "AS";
-    
-    // T-2 display (same as T-1)
     var t2Display = t1Display;
     
-    // Strk display (net stroke difference)
     var strkMargin = Math.abs(nettA - nettB);
     var strkLeader = nettA < nettB ? "A" : (nettB < nettA ? "B" : "AS");
     var strkDisplay = (strkLeader !== "AS") ? strkLeader + strkMargin : "AS";
@@ -571,7 +567,6 @@ function renderPlayerCards() {
             var scoreSpan = document.getElementById('score-' + player.label);
             if (scoreSpan) scoreSpan.innerText = newScore;
             
-            // Update the score in the local cache
             updatePlayerScoreInCache(player, currentHole, newScore);
         }
     );
@@ -595,16 +590,14 @@ function updatePlayerScoreInCache(player, hole, newScore) {
     var scores = gameDataCache[flightKey];
     if (!scores || !scores.d) return;
     
-    // Update the score in the d string
     var newD = GameData.updateScoreInString(scores.d, player.name, hole, newScore);
     scores.d = newD;
-    scores.se = false; // Mark as not saved
+    scores.se = false;
     
-    // Update the display
     renderPlayerCards();
 }
 
-// MODIFIED v4.69: Pass display arrays to renderScorecard
+// MODIFIED v4.70: Pass display arrays to renderScorecard
 function renderScorecard() {
     var holes = getDisplayHoles();
     var t1Row = resultsCache?.game2?.flight1?.leader || new Array(18).fill('_');
@@ -614,7 +607,6 @@ function renderScorecard() {
     var t1Clinched = resultsCache?.game2?.flight1?.clinchedHole || null;
     var t2Clinched = resultsCache?.game2?.flight2?.clinchedHole || null;
     
-    // NEW v4.69: Get display arrays
     var t1Display = resultsCache?.game1?.displayT1 || null;
     var t2Display = resultsCache?.game1?.displayT2 || null;
     var strkDisplay = resultsCache?.game3?.displayStrk || null;
@@ -731,7 +723,6 @@ function performSave() {
         saveBtn.innerText = '💾 SAVING...';
     }
     
-    // Get the current scores from the UI
     var players = getFlightOrderedPlayers(editableFlight);
     var teamA = players.filter(function(p) { return p.team === 'A'; });
     var teamB = players.filter(function(p) { return p.team === 'B'; });
@@ -741,36 +732,29 @@ function performSave() {
     var b1Score = parseInt(document.getElementById('score-' + teamB[0].label)?.innerText) || coursePar[currentHole - 1];
     var b2Score = parseInt(document.getElementById('score-' + teamB[1].label)?.innerText) || coursePar[currentHole - 1];
     
-    // Save to local cache first
     var flightKey = 'f' + editableFlight;
     var currentD = gameDataCache[flightKey]?.d || "";
     var newD = GameData.saveHole(currentD, currentHole, a1Score, a2Score, b1Score, b2Score);
     gameDataCache[flightKey].d = newD;
     gameDataCache[flightKey].se = true;
     
-    // Also update the other flight's data if needed for cascade
     var otherFlight = editableFlight === 1 ? 2 : 1;
     var otherFlightKey = 'f' + otherFlight;
     
-    // Force recomputation of all results up to current hole
     var maxComputedHole = 0;
     
-    // Compute results for all holes up to current hole
     for (var h = 1; h <= currentHole; h++) {
         var bothSaved = isHoleSaved(1, h) && isHoleSaved(2, h);
         if (bothSaved) {
             maxComputedHole = h;
-            // Recompute match results for this hole
             var matchResults = GameMatch.computeMatchResults(allPlayers, 1, 2, h, 
                 function(flight, hole) { return getStoredScoreByFlight(flight, hole); },
                 coursePar[h - 1]);
             
-            // Update results cache
             var position = getHolePosition(h);
             if (!resultsCache.matchResults) resultsCache.matchResults = {};
             resultsCache.matchResults[position] = matchResults;
             
-            // Recompute team game and stroke game
             var teamGame = GameTeam.computeTeamGame(allPlayers, 1, 2, h,
                 function(flight, hole) { return getStoredScoreByFlight(flight, hole); },
                 coursePar[h - 1]);
@@ -778,7 +762,6 @@ function performSave() {
                 function(flight, hole) { return getStoredScoreByFlight(flight, hole); },
                 coursePar[h - 1]);
             
-            // Update cumulative points and leader
             if (!resultsCache.game2) resultsCache.game2 = { flight1: {}, flight2: {} };
             if (!resultsCache.game3) resultsCache.game3 = {};
             
@@ -799,7 +782,6 @@ function performSave() {
             resultsCache.game3.nettB[position] = strokeGame.nettB;
             resultsCache.game3.leader[position] = strokeGame.leader;
             
-            // Recompute clinch detection
             var clinchResults = GameMatch.detectClinches(allPlayers, resultsCache.matchResults, resultsCache.clinchedAt || {}, h);
             resultsCache.clinchedAt = clinchResults.clinchedAt;
             if (clinchResults.flight1ClinchedHole !== undefined) {
@@ -811,7 +793,7 @@ function performSave() {
                 resultsCache.game2.flight2.clinchedHole = clinchResults.flight2ClinchedHole;
             }
             
-            // NEW v4.69: Compute and store display strings
+            // NEW v4.70: Compute and store display strings
             var displays = computeDisplayStrings(position);
             if (!resultsCache.game1) resultsCache.game1 = {};
             if (!resultsCache.game1.displayT1) resultsCache.game1.displayT1 = new Array(18).fill(null);
@@ -827,10 +809,8 @@ function performSave() {
     resultsCache.computedUpToHole = maxComputedHole;
     resultsCache.lastComputedAt = new Date().toISOString();
     
-    // Save to Firestore
     saveResultsToFirestore();
     
-    // Update UI
     renderAll();
     
     isSaving = false;
@@ -841,7 +821,6 @@ function performSave() {
     
     showToast("Hole " + currentHole + " saved!");
     
-    // Auto-advance to next hole if not last hole
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     if (currentIndex < 17) {
@@ -872,13 +851,12 @@ function getStoredScoreByFlight(flight, hole) {
     };
 }
 
-// MODIFIED v4.69: Save display arrays to Firestore
+// MODIFIED v4.70: Save display arrays to Firestore
 function saveResultsToFirestore() {
     if (!gameId) return;
     
     var gameRef = db.collection("scheduledGames").doc(gameId);
     
-    // Initialize display arrays if they don't exist
     if (!resultsCache.game1.displayT1) resultsCache.game1.displayT1 = new Array(18).fill(null);
     if (!resultsCache.game1.displayT2) resultsCache.game1.displayT2 = new Array(18).fill(null);
     if (!resultsCache.game3.displayStrk) resultsCache.game3.displayStrk = new Array(18).fill(null);
@@ -1031,7 +1009,7 @@ function buildCompactHeader() {
     `;
     
     document.getElementById('compactPnBtn').onclick = toggleDisplayMode;
-    document.getElementById('compactFlightBtn').onclick = function() {}; // Flight fixed for scorer
+    document.getElementById('compactFlightBtn').onclick = function() {};
     document.getElementById('compactPrevBtn').onclick = goToPrevHole;
     document.getElementById('compactNextBtn').onclick = goToNextHole;
 }
@@ -1045,14 +1023,13 @@ function buildBottomMenu() {
 }
 
 // ============================================================
-// Initialization
+// Initialization (ORDER PRESERVED FROM v4.68)
 // ============================================================
 
 async function init() {
     var shortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "🖥️ " + shortName;
     
-    // Get gameId and flight from session
     var gameIdFromSession = sessionStorage.getItem('currentGameId');
     if (!gameIdFromSession) {
         document.getElementById("debug").innerHTML = "Error: No game ID";
@@ -1064,9 +1041,6 @@ async function init() {
     if (!editableFlight) editableFlight = 2;
     else editableFlight = parseInt(editableFlight);
     
-    document.getElementById('compactFlightBtn').innerText = 'FLIGHT ' + editableFlight;
-    
-    // Make status bubble clickable
     var bubble = document.getElementById('statusBubble');
     if (bubble) bubble.onclick = function() { location.reload(); };
     
@@ -1075,7 +1049,8 @@ async function init() {
     initTicker();
     startGameListener();
     
-    // Save button handler
+    // UPDATE FLIGHT BUTTON TEXT AFTER HEADER IS BUILT (PRESERVED ORDER FROM v4.68)
+    document.getElementById('compactFlightBtn').innerText = 'FLIGHT ' + editableFlight;
     document.getElementById('saveButton').onclick = performSave;
 }
 
@@ -1087,12 +1062,13 @@ init();
 
 /*
 FILE: real-game.html
-VERSION: 4.69
-KEY CHANGES:
+VERSION: 4.70
+KEY CHANGES from v4.68:
    - NEW: computeDisplayStrings() function to calculate formatted margins
    - MODIFIED: saveResultsToFirestore() now writes displayT1, displayT2, displayStrk arrays
    - MODIFIED: performSave() calls computeDisplayStrings after points/netts updated
    - MODIFIED: renderScorecard() passes new display arrays to GameUI
+   - PRESERVED: Original init() order from v4.68 (no changes to execution flow)
    - ALL existing functionality preserved (cascade, clinch, signing, celebration)
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-ui.js, js/ticker.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
