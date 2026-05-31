@@ -1,10 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 4.64
-KEY CHANGES from v4.63:
-   - FIXED: Flight clinch now uses cumulativeFlight1ClinchedHole (not local variable)
-   - FIXED: Flight clinch now uses cumulativeFlight2ClinchedHole (not local variable)
-   - Prevents overwriting of first clinch hole by later holes
+VERSION: 4.65
+KEY CHANGES from v4.64:
+   - FIXED: Flight clinch condition now checks flight1ClinchedHole (not cumulativeFlight1ClinchedHole)
+   - FIXED: Prevents overwriting of first clinch hole by later holes
+   - Same fix applied to Flight 2
    - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -336,7 +336,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v4.64</div>
+<div class="version-tag">v4.65</div>
 
 <script>
 // ============================================================
@@ -864,19 +864,19 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var t2Leader = (flight2Total > 0) ? "A" : (flight2Total < 0) ? "B" : "AS";
     var strkLeader = strokeLeader === "A" ? "A" : strokeLeader === "B" ? "B" : "AS";
     
-    // Flight clinch detection - use cumulative values passed from cascade (FIXED v4.64)
+    // Flight clinch detection - FIXED v4.65: check flight1ClinchedHole (not cumulative)
     var remainingHoles = 18 - holeNumber;
     var maxOpponentPoints = remainingHoles * 2;
     
     var flight1ClinchedHole = cumulativeFlight1ClinchedHole;
     var flight2ClinchedHole = cumulativeFlight2ClinchedHole;
     
-    // FIXED: Use cumulativeFlight1ClinchedHole (not local flight1ClinchedHole)
-    if (cumulativeFlight1ClinchedHole === null && flight1Total > maxOpponentPoints) {
+    // FIXED: Check flight1ClinchedHole (which starts as cumulative value)
+    if (flight1ClinchedHole === null && flight1Total > maxOpponentPoints) {
         flight1ClinchedHole = holeNumber;
         console.log(`Flight 1 clinched at hole ${holeNumber} (lead: ${flight1Total}, remaining: ${remainingHoles})`);
     }
-    if (cumulativeFlight2ClinchedHole === null && flight2Total > maxOpponentPoints) {
+    if (flight2ClinchedHole === null && flight2Total > maxOpponentPoints) {
         flight2ClinchedHole = holeNumber;
         console.log(`Flight 2 clinched at hole ${holeNumber} (lead: ${flight2Total}, remaining: ${remainingHoles})`);
     }
@@ -1369,11 +1369,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 4.64
-KEY CHANGES from v4.63:
-   - FIXED: Flight clinch now uses cumulativeFlight1ClinchedHole (not local variable)
-   - FIXED: Flight clinch now uses cumulativeFlight2ClinchedHole (not local variable)
-   - Prevents overwriting of first clinch hole by later holes
+VERSION: 4.65
+KEY CHANGES from v4.64:
+   - FIXED: Flight clinch condition now checks flight1ClinchedHole (not cumulativeFlight1ClinchedHole)
+   - FIXED: Prevents overwriting of first clinch hole by later holes
+   - Same fix applied to Flight 2
    - All existing functionality preserved
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
