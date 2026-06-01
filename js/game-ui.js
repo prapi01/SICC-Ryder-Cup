@@ -1,11 +1,10 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.09
-KEY CHANGES from v4.08:
-   - FIXED: Green separator lines now visible (border-bottom, proper height)
-   - ADJUSTED: Column widths for better fit (first column: 55px, data columns: 38px)
-   - Table min-width reduced to 850px
-   - ALL other functions identical to v4.08 (preserved all existing functionality)
+VERSION: 4.10
+KEY CHANGES from v4.09:
+   - FIXED: Save button now has 'compact-btn' class for green background
+   - Button now shows green when enabled (was white before due to missing class)
+   - ALL other functions identical to v4.09 (green lines, column widths, AS square)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -446,12 +445,13 @@ var GameUI = (function() {
         }, 50);
         
         // RESPONSIVE: CSS Grid + clamp for all screen sizes
+        // FIXED v4.10: Added 'compact-btn' class to save button for green background
         var html = `
             <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
                 <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
                     ${pnText}
                 </button>
-                <button class="compact-save-btn" id="compactSaveBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
+                <button class="compact-btn compact-save-btn" id="compactSaveBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
                     SAVE H${currentHole}
                 </button>
                 <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
@@ -740,7 +740,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Strk row - Stroke game (with margin display and gold at hole 18)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        html += '<td><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = strkRow[holeNum - 1] || '_';
@@ -785,7 +785,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></table>';
+        html += '</tbody><tr>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -1439,12 +1439,11 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.09
-KEY CHANGES from v4.08:
-   - FIXED: Green separator lines now visible (border-bottom, proper height)
-   - ADJUSTED: Column widths for better fit (first column: 55px, data columns: 38px)
-   - Table min-width reduced to 850px
-   - ALL other functions identical to v4.08 (preserved all existing functionality)
+VERSION: 4.10
+KEY CHANGES from v4.09:
+   - FIXED: Save button now has 'compact-btn' class for green background
+   - Button now shows green when enabled (was white before due to missing class)
+   - ALL other functions identical to v4.09 (green lines, column widths, AS square)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
