@@ -1,12 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.19
-KEY CHANGES:
-   - Added initialization of 'results' object for pre-computed game results
-   - Results object stores match play, team game, stroke game, and TR data
-   - Supports future Viewer and History modes (read from results, no recalculation)
-   - Backward compatible with existing games (results field will be added to new games only)
-STATUS: Ready for testing
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - Added env(safe-area-inset-top) to body padding for iPhone Dynamic Island support
+   - Updated .version-tag and .device-tag to use max(8px, env(safe-area-inset-top))
+   - Added margin-top:20px to .header for additional spacing below Dynamic Island
+   - ALL other functionality identical to v1.19 (results object, edit mode, etc.)
+DEPENDS ON: js/session.js, Firebase
+STATUS: Ready for integration
 -->
 
 <!DOCTYPE html>
@@ -20,13 +21,18 @@ STATUS: Ready for testing
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: 16px; }
+        body { 
+            background: #000000; 
+            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; 
+            color: #ffffff; 
+            padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 20px) 20px env(safe-area-inset-left, 20px);
+        }
         .container { max-width: 500px; margin: 0 auto; }
         
         .version-tag { 
             position: fixed; 
-            top: 8px; 
-            right: 8px; 
+            top: max(8px, env(safe-area-inset-top, 8px)); 
+            right: max(8px, env(safe-area-inset-right, 8px)); 
             font-size: 0.65rem; 
             color: #4caf50; 
             background: rgba(0,0,0,0.6); 
@@ -39,8 +45,8 @@ STATUS: Ready for testing
         
         .device-tag {
             position: fixed;
-            top: 8px;
-            left: 8px;
+            top: max(8px, env(safe-area-inset-top, 8px));
+            left: max(8px, env(safe-area-inset-left, 8px));
             font-size: 0.55rem;
             color: #4caf50;
             background: rgba(0,0,0,0.4);
@@ -52,7 +58,7 @@ STATUS: Ready for testing
             letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 24px; }
+        .header { text-align: center; margin-bottom: 24px; margin-top: 20px; }
         .title { font-size: 1.5rem; font-weight: 700; color: #4caf50; }
         .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
         
@@ -185,13 +191,13 @@ STATUS: Ready for testing
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.19</div>
+<div class="version-tag">v1.20</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.19
-// ADDED: results object initialization for pre-computed game results
+// FILE: setup-game.html - VERSION 1.20
+// CHANGED: Safe-area-inset-top for iPhone Dynamic Island support
 
-var VERSION = "1.19";
+var VERSION = "1.20";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -1013,11 +1019,12 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.19
-KEY CHANGES:
-   - Added initialization of 'results' object for pre-computed game results
-   - Results object stores match play, team game, stroke game, and TR data
-   - Supports future Viewer and History modes (read from results, no recalculation)
-   - Backward compatible with existing games (results field will be added to new games only)
-STATUS: Ready for testing
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - Added env(safe-area-inset-top) to body padding for iPhone Dynamic Island support
+   - Updated .version-tag and .device-tag to use max(8px, env(safe-area-inset-top))
+   - Added margin-top:20px to .header for additional spacing below Dynamic Island
+   - ALL other functionality identical to v1.19 (results object, edit mode, etc.)
+DEPENDS ON: js/session.js, Firebase
+STATUS: Ready for integration
 -->
