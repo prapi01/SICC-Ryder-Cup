@@ -1,11 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.07
-KEY CHANGES from v5.06:
-   - FIXED: setSaveButtonIdle() now restores button text to "SAVE H{hole}"
-   - Previously button text stayed as "SAVING..." after save completion
-   - Flash red success indicator now visible on correct button text
-   - ALL other functions identical to v5.06 (preserved all existing functionality)
+VERSION: 5.08
+KEY CHANGES from v5.07:
+   - ADDED: Visual feedback for save button during save (faint red background)
+   - setSaveButtonPending() now shows dark red background while saving
+   - setSaveButtonIdle() restores original button style
+   - setSaveButtonRetry() shows red background with yellow text for retry
+   - ALL other functions identical to v5.07 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -336,7 +337,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.07</div>
+<div class="version-tag">v5.08</div>
 
 <script>
 // ============================================================
@@ -655,30 +656,41 @@ function updateSaveButtonState() {
     saveBtn.style.cursor = shouldDisable ? 'not-allowed' : 'pointer';
 }
 
-// FIXED v5.07: Restore button text after save
+// FIXED v5.08: Restore button text and original style after save
 function setSaveButtonIdle() {
     var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.innerText = 'SAVE H' + currentHole;
+        saveBtn.style.background = '';
+        saveBtn.style.borderColor = '';
+        saveBtn.style.color = '';
     }
     updateSaveButtonState();
     saveInProgress = false;
 }
 
+// FIXED v5.08: Visual feedback - dark red background while saving
 function setSaveButtonPending() {
     var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.innerText = 'SAVING...';
         saveBtn.disabled = true;
+        saveBtn.style.background = '#8b0000';
+        saveBtn.style.borderColor = '#ff4444';
+        saveBtn.style.color = '#ffcccc';
     }
     saveInProgress = true;
 }
 
+// FIXED v5.08: Visual feedback for retry state
 function setSaveButtonRetry() {
     var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.innerText = 'RETRY';
         saveBtn.disabled = false;
+        saveBtn.style.background = '#8b0000';
+        saveBtn.style.borderColor = '#ffaa44';
+        saveBtn.style.color = '#ffaa44';
     }
     saveInProgress = false;
 }
@@ -1463,12 +1475,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.07
-KEY CHANGES from v5.06:
-   - FIXED: setSaveButtonIdle() now restores button text to "SAVE H{hole}"
-   - Previously button text stayed as "SAVING..." after save completion
-   - Flash red success indicator now visible on correct button text
-   - ALL other functions identical to v5.06 (preserved all existing functionality)
+VERSION: 5.08
+KEY CHANGES from v5.07:
+   - ADDED: Visual feedback for save button during save (faint red background)
+   - setSaveButtonPending() now shows dark red background while saving
+   - setSaveButtonIdle() restores original button style
+   - setSaveButtonRetry() shows red background with yellow text for retry
+   - ALL other functions identical to v5.07 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
