@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.03
-KEY CHANGES from v5.02:
-   - ADDED: Write flight1.cumulativePoints and flight2.cumulativePoints to Firestore
-   - Enables correct T-1/T-2 clinch detection (gold at clinch hole, grey thereafter)
-   - Previously cumulativePoints were not stored, causing incorrect clinch display
-   - ALL other functions identical to v5.02 (preserved all existing functionality)
+VERSION: 5.04
+KEY CHANGES from v5.03:
+   - FIXED: setSaveButtonIdle() now disables save button on already saved holes
+   - Previously always enabled button regardless of save status
+   - Now checks isHoleSaved() before calling updateCompactSaveButton
+   - ALL other functions identical to v5.03 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -336,7 +336,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.03</div>
+<div class="version-tag">v5.04</div>
 
 <script>
 // ============================================================
@@ -638,8 +638,10 @@ function updateTRDisplay() {
 // Save Functions
 // ============================================================
 
+// FIXED v5.04: Disable save button on already saved holes
 function setSaveButtonIdle() {
-    GameUI.updateCompactSaveButton(currentHole, false);
+    var isCurrentSaved = isHoleSaved(editableFlight, currentHole);
+    GameUI.updateCompactSaveButton(currentHole, isCurrentSaved);
     saveInProgress = false;
 }
 
@@ -1442,12 +1444,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.03
-KEY CHANGES from v5.02:
-   - ADDED: Write flight1.cumulativePoints and flight2.cumulativePoints to Firestore
-   - Enables correct T-1/T-2 clinch detection (gold at clinch hole, grey thereafter)
-   - Previously cumulativePoints were not stored, causing incorrect clinch display
-   - ALL other functions identical to v5.02 (preserved all existing functionality)
+VERSION: 5.04
+KEY CHANGES from v5.03:
+   - FIXED: setSaveButtonIdle() now disables save button on already saved holes
+   - Previously always enabled button regardless of save status
+   - Now checks isHoleSaved() before calling updateCompactSaveButton
+   - ALL other functions identical to v5.03 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
