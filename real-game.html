@@ -1,12 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.05
-KEY CHANGES from v5.04:
-   - ADDED: updateSaveButtonState() function to manage save button state
-   - Called after local changes (score edits) to enable save button
-   - Called after save completes to disable button on saved holes
-   - Fixes issue where save button stayed disabled after score changes
-   - ALL other functions identical to v5.04 (preserved all existing functionality)
+VERSION: 5.06
+KEY CHANGES from v5.05:
+   - FIXED: Always write flight1.clinchedHole and flight2.clinchedHole to Firestore (including null)
+   - Previously only wrote when not null, preventing clearing of stale clinch values
+   - Also updated cache writes to always set value (including null)
+   - ALL other functions identical to v5.05 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -337,7 +336,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.05</div>
+<div class="version-tag">v5.06</div>
 
 <script>
 // ============================================================
@@ -639,7 +638,6 @@ function updateTRDisplay() {
 // Save Functions
 // ============================================================
 
-// NEW v5.05: Centralized save button state management
 function updateSaveButtonState() {
     var saveBtn = document.getElementById('compactSaveBtn');
     if (!saveBtn) return;
@@ -1027,13 +1025,9 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload[`results.game2.flight1.cumulativePoints.${position}`] = resultsData.flight1Total;
     updatePayload[`results.game2.flight2.cumulativePoints.${position}`] = resultsData.flight2Total;
     
-    if (resultsData.flight1ClinchedHole !== null) {
-        updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
-        console.log(`  Writing flight1.clinchedHole = ${resultsData.flight1ClinchedHole}`);
-    }
-    if (resultsData.flight2ClinchedHole !== null) {
-        updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
-    }
+    // FIXED v5.06: Always write clinchedHole (including null) to allow clearing
+    updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
+    updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
     
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
         var mergedClinched = { ...cumulativeClinched, ...resultsData.clinchedAtUpdates };
@@ -1074,8 +1068,9 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         cache.results.game2.flight1.cumulativePoints[position] = resultsData.flight1Total;
         cache.results.game2.flight2.cumulativePoints[position] = resultsData.flight2Total;
         
-        if (resultsData.flight1ClinchedHole !== null) cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
-        if (resultsData.flight2ClinchedHole !== null) cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
+        // FIXED v5.06: Always cache clinchedHole (including null)
+        cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
+        cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
         
         cache.results.game3.leader[position] = resultsData.strkLeader;
         cache.results.game3.pointsA[position] = resultsData.game3PointsA;
@@ -1343,7 +1338,6 @@ function renderAll() {
     GameUI.updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameCompleteFlag, celebrationTriggered, showSignCardModal);
     if (typeof Ticker !== 'undefined') Ticker.refresh();
     
-    // NEW v5.05: Update save button state after any local changes
     updateSaveButtonState();
 }
 
@@ -1464,13 +1458,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.05
-KEY CHANGES from v5.04:
-   - ADDED: updateSaveButtonState() function to manage save button state
-   - Called after local changes (score edits) to enable save button
-   - Called after save completes to disable button on saved holes
-   - Fixes issue where save button stayed disabled after score changes
-   - ALL other functions identical to v5.04 (preserved all existing functionality)
+VERSION: 5.06
+KEY CHANGES from v5.05:
+   - FIXED: Always write flight1.clinchedHole and flight2.clinchedHole to Firestore (including null)
+   - Previously only wrote when not null, preventing clearing of stale clinch values
+   - Also updated cache writes to always set value (including null)
+   - ALL other functions identical to v5.05 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
