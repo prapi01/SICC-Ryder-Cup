@@ -1,12 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.12
-KEY CHANGES from v4.09:
-   - FIXED: T-1 row now displays when ONLY Flight 1 has saved (changed isSynced condition)
-   - FIXED: T-2 row now displays when ONLY Flight 2 has saved (changed isSynced condition)
-   - Strk row unchanged (still requires both flights) - from working v4.09
-   - Save button now has 'compact-btn' class for green background (from v4.10)
-   - ALL other functions identical to v4.09 (green lines, column widths, AS square)
+VERSION: 4.13
+KEY CHANGES from v4.12:
+   - FIXED: Clinch bubbles (gold and loss-clinch) no longer have bold text (font-weight: 800 -> 600)
+   - Clinch bubbles now match regular bubble font weight for consistent visual appearance
+   - Gold border and loss-clinch white border still distinguish clinch results
+   - All other functionality identical to v4.12 (T-1/T-2 independent sync, Strk unchanged)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -115,17 +114,19 @@ var GameUI = (function() {
             .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
             .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
             .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+            
+            /* FIXED v4.13: Removed bold font-weight (800 -> 600) for visual consistency */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
                 border: 3px solid #ffaa44;
-                font-weight: 800;
+                font-weight: 600;
             }
             .bubble-loss-clinch {
                 background: #3a1a1a;
                 color: #ffffff;
                 border: 3px solid #ffffff;
-                font-weight: 800;
+                font-weight: 600;
             }
             
             /* Green square for AS */
@@ -447,7 +448,6 @@ var GameUI = (function() {
         }, 50);
         
         // RESPONSIVE: CSS Grid + clamp for all screen sizes
-        // FIXED v4.10: Added 'compact-btn' class to save button for green background
         var html = `
             <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
                 <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
@@ -535,7 +535,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - FIXED v4.12: T-1/T-2 independent sync
+    // Scorecard Rendering - T-1/T-2 independent sync, Strk unchanged
     // ============================================================
     
     // t1ClinchedHole and t2ClinchedHole are numbers (the hole number where clinch occurred)
@@ -603,7 +603,7 @@ var GameUI = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -618,13 +618,11 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row - Flight 1 cumulative (with margin display support)
-        // FIXED v4.12: T-1 only requires Flight 1 saved
+        // T-1 row - Flight 1 cumulative (only requires Flight 1 saved)
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t1Row[holeNum - 1] || '_';
-            // FIXED v4.12: Only check Flight 1 saved for T-1
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1);
             
             var displayVal = '';
@@ -647,7 +645,6 @@ var GameUI = (function() {
                 }
             } else if (val === 'A' || val === 'B') {
                 if (isSynced) {
-                    // Use formatted display if available
                     if (t1Display && t1Display[holeNum - 1]) {
                         displayVal = t1Display[holeNum - 1];
                     } else {
@@ -662,7 +659,6 @@ var GameUI = (function() {
                 }
             }
             
-            // Replace "AS" with green square
             if (displayVal === 'AS') {
                 displayVal = getAsSquareHtml();
             }
@@ -676,7 +672,7 @@ var GameUI = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -691,13 +687,11 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row - Flight 2 cumulative (with margin display support)
-        // FIXED v4.12: T-2 only requires Flight 2 saved
+        // T-2 row - Flight 2 cumulative (only requires Flight 2 saved)
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t2Row[holeNum - 1] || '_';
-            // FIXED v4.12: Only check Flight 2 saved for T-2
             var isSynced = (savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
@@ -719,7 +713,6 @@ var GameUI = (function() {
                 }
             } else if (val === 'A' || val === 'B') {
                 if (isSynced) {
-                    // Use formatted display if available
                     if (t2Display && t2Display[holeNum - 1]) {
                         displayVal = t2Display[holeNum - 1];
                     } else {
@@ -734,7 +727,6 @@ var GameUI = (function() {
                 }
             }
             
-            // Replace "AS" with green square
             if (displayVal === 'AS') {
                 displayVal = getAsSquareHtml();
             }
@@ -745,13 +737,11 @@ var GameUI = (function() {
         
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - Stroke game (with margin display and gold at hole 18)
-        // UNCHANGED from v4.09 - requires BOTH flights saved
+        // Strk row - Stroke game (requires both flights saved)
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = strkRow[holeNum - 1] || '_';
-            // Strk requires BOTH flights saved (unchanged)
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
@@ -764,7 +754,6 @@ var GameUI = (function() {
                 }
             } else if (val === 'A' || val === 'B') {
                 if (isSynced) {
-                    // Use formatted display if available
                     if (strkDisplay && strkDisplay[holeNum - 1]) {
                         displayVal = strkDisplay[holeNum - 1];
                     } else {
@@ -772,7 +761,6 @@ var GameUI = (function() {
                     }
                     cellClass = 'score-green';
                     
-                    // Gold at hole 18 when winner is determined
                     if (holeNum === 18 && (val === 'A' || val === 'B')) {
                         cellClass = 'score-gold';
                     }
@@ -784,7 +772,6 @@ var GameUI = (function() {
                 }
             }
             
-            // Replace "AS" with green square
             if (displayVal === 'AS') {
                 displayVal = getAsSquareHtml();
             }
@@ -798,16 +785,13 @@ var GameUI = (function() {
         
         tightenScorecardRows();
         
-        // Apply improved CSS styles to the scorecard table
         var scorecardTable = container.querySelector('.scorecard-table');
         if (scorecardTable) {
-            // Remove fixed table layout, allow content to determine width
             scorecardTable.style.tableLayout = 'auto';
             scorecardTable.style.width = 'auto';
             scorecardTable.style.minWidth = '850px';
             scorecardTable.style.borderCollapse = 'collapse';
             
-            // Style all cells
             var allCells = scorecardTable.querySelectorAll('th, td');
             allCells.forEach(function(cell) {
                 cell.style.padding = '4px 6px';
@@ -816,7 +800,6 @@ var GameUI = (function() {
                 cell.style.border = 'none';
             });
             
-            // Make first column sticky and set width
             var firstColCells = scorecardTable.querySelectorAll('th:first-child, td:first-child');
             firstColCells.forEach(function(cell) {
                 cell.style.position = 'sticky';
@@ -830,7 +813,6 @@ var GameUI = (function() {
                 cell.style.padding = '4px 4px';
             });
             
-            // Center align score columns and set width
             var scoreCells = scorecardTable.querySelectorAll('th:not(:first-child), td:not(:first-child)');
             scoreCells.forEach(function(cell) {
                 cell.style.textAlign = 'center';
@@ -839,20 +821,17 @@ var GameUI = (function() {
                 cell.style.padding = '4px 2px';
             });
             
-            // Style header row
             var headerCells = scorecardTable.querySelectorAll('thead th');
             headerCells.forEach(function(cell) {
                 cell.style.fontWeight = '700';
                 cell.style.backgroundColor = '#1a1a1a';
             });
             
-            // Reduce row height
             var rows = scorecardTable.querySelectorAll('tr');
             rows.forEach(function(row) {
                 row.style.lineHeight = '1.2';
             });
             
-            // Ensure green separator lines are visible
             var greenLineRows = scorecardTable.querySelectorAll('.green-line');
             greenLineRows.forEach(function(row) {
                 row.style.height = '2px';
@@ -866,7 +845,6 @@ var GameUI = (function() {
                 });
             });
             
-            // Ensure wrapper allows horizontal scroll
             var wrapper = document.getElementById(containerId);
             if (wrapper) {
                 wrapper.style.overflowX = 'auto';
@@ -896,7 +874,6 @@ var GameUI = (function() {
                 var bubbleClass = getBubbleClass(player, opp);
                 var bubbleValue = getBubbleValue(player, opp);
                 
-                // Replace "AS" with green square in bubbles
                 var displayValue = bubbleValue;
                 if (displayValue === 'AS') {
                     displayValue = getAsSquareHtml();
@@ -1171,7 +1148,6 @@ var GameUI = (function() {
         return (player.team === 'B') ? -value : value;
     }
     
-    // Check both key orders for clinch lookup
     function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn, clinchedAtMap) {
         var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
         var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
@@ -1180,7 +1156,6 @@ var GameUI = (function() {
         
         var clinchHole = null;
         if (clinchedAtMap) {
-            // Check both key orders
             var matchKey1 = player.name + "_vs_" + opponent.name;
             var matchKey2 = opponent.name + "_vs_" + player.name;
             clinchHole = clinchedAtMap[matchKey1] || clinchedAtMap[matchKey2];
@@ -1447,13 +1422,12 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.12
-KEY CHANGES from v4.09:
-   - FIXED: T-1 row now displays when ONLY Flight 1 has saved (changed isSynced condition)
-   - FIXED: T-2 row now displays when ONLY Flight 2 has saved (changed isSynced condition)
-   - Strk row unchanged (still requires both flights) - from working v4.09
-   - Save button now has 'compact-btn' class for green background (from v4.10)
-   - ALL other functions identical to v4.09 (green lines, column widths, AS square)
+VERSION: 4.13
+KEY CHANGES from v4.12:
+   - FIXED: Clinch bubbles (gold and loss-clinch) no longer have bold text (font-weight: 800 -> 600)
+   - Clinch bubbles now match regular bubble font weight for consistent visual appearance
+   - Gold border and loss-clinch white border still distinguish clinch results
+   - All other functionality identical to v4.12 (T-1/T-2 independent sync, Strk unchanged)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
