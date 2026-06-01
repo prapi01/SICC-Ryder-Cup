@@ -1,14 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.13
-KEY CHANGES from v5.12:
-   - ADDED: Real-time Firestore listener for cross-device sync
-   - FIXED: F2 screen now updates automatically when F1 saves a hole (no manual refresh needed)
-   - Added setupRealtimeListener() function that watches Firestore document changes
-   - Listener updates local cache and re-renders UI when other flight saves data
-   - Listener works for ALL devices (both edit and view modes)
-   - Added cleanup on page unload to prevent memory leaks
-   - Preserves all v5.12 functionality (intra-flight bubbles, T-1/T-2 display, cascade logic)
+VERSION: 5.14
+KEY CHANGES from v5.13:
+   - FIXED: getMatchValueFromStoredResults() now correctly negates cross-flight match values
+   - When player.team === "B", the stored value is negated (since stored values are from Team A perspective)
+   - OCB vs KF now returns +1, KF vs OCB returns -1 (was returning +1 for both)
+   - This fixes match bubbles showing both players winning the same match
+   - Preserves all v5.13 functionality (real-time listener, intra-flight bubbles, T-1/T-2 display)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -339,7 +337,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.13</div>
+<div class="version-tag">v5.14</div>
 
 <script>
 // ============================================================
@@ -387,7 +385,7 @@ var activeCompleteModal = null;
 
 var usedPreloadedData = false;
 
-// NEW v5.13: Firestore real-time listener
+// Firestore real-time listener
 var firestoreUnsubscribe = null;
 
 // ============================================================
@@ -584,6 +582,7 @@ function getAllOpponents(player) {
     return opponents;
 }
 
+// FIXED v5.14: getMatchValueFromStoredResults now correctly negates cross-flight values for Team B players
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
@@ -626,7 +625,9 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
         }
         
         if (aIdx !== -1 && bIdx !== -1) {
-            return results.matchResults[position][aIdx * teamBPlayers.length + bIdx] || 0;
+            var storedValue = results.matchResults[position][aIdx * teamBPlayers.length + bIdx] || 0;
+            // FIXED v5.14: Negate value when player is from Team B (stored values are from Team A perspective)
+            return (player.team === "B") ? -storedValue : storedValue;
         }
     }
     return 0;
@@ -1070,7 +1071,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.game1PointsA = game1PointsA;
         result.game1PointsB = game1PointsB;
         
-        var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole);
+        var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, coursePar);
         result.strkLeader = strokeResults.leader[position] === "A" ? "A" : strokeResults.leader[position] === "B" ? "B" : "AS";
         result.strkDisplay = strokeResults.displayStrk?.[position] || "AS";
         
@@ -1255,7 +1256,7 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
 }
 
 // ============================================================
-// NEW v5.13: Real-time Firestore Listener
+// Real-time Firestore Listener
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1264,7 +1265,6 @@ function setupRealtimeListener() {
         return;
     }
     
-    // Clean up existing listener if any
     if (firestoreUnsubscribe) {
         firestoreUnsubscribe();
         firestoreUnsubscribe = null;
@@ -1279,7 +1279,6 @@ function setupRealtimeListener() {
             var data = doc.data();
             var currentCache = GameLoader.getLocalCache();
             
-            // Check if data has changed (compare f1 and f2 data strings)
             var f1Changed = (currentCache.f1DataString !== data.f1?.d);
             var f2Changed = (currentCache.f2DataString !== data.f2?.d);
             var locksChanged = (JSON.stringify(currentCache.locks) !== JSON.stringify(data.locks));
@@ -1293,12 +1292,10 @@ function setupRealtimeListener() {
                     resultsChanged: resultsChanged
                 });
                 
-                // Refresh the entire cache
                 GameLoader.loadGame(gameId, "scheduledGames", function(result) {
                     if (result.success) {
                         console.log("Cache refreshed from realtime update");
                         
-                        // Update local variables
                         if (result.cache.course) {
                             courseName = result.cache.course.name;
                             coursePar = result.cache.course.par;
@@ -1311,10 +1308,8 @@ function setupRealtimeListener() {
                             Ticker.setPlayers(allPlayers);
                         }
                         
-                        // Re-render UI
                         renderAll();
                         
-                        // Update status bubble to show sync
                         var statusBubble = document.getElementById("statusBubble");
                         if (statusBubble) {
                             var originalText = statusBubble.innerText;
@@ -1587,7 +1582,6 @@ async function exitToMainMenu() {
         try { await db.collection("scheduledGames").doc(gameId).update(releasePayload); } catch(e) {}
     }
     
-    // Clean up realtime listener
     if (firestoreUnsubscribe) {
         firestoreUnsubscribe();
         firestoreUnsubscribe = null;
@@ -1665,7 +1659,6 @@ async function init() {
                 renderAll();
             }
         });
-        // NEW v5.13: Setup realtime listener after initial load
         setupRealtimeListener();
     } else {
         GameLoader.loadGame(gameId, collection, async function(result) {
@@ -1693,7 +1686,6 @@ async function init() {
             renderAll();
             setSaveButtonIdle();
             document.getElementById("mainContainer").classList.add("data-ready");
-            // NEW v5.13: Setup realtime listener after initial load
             setupRealtimeListener();
         });
     }
@@ -1708,15 +1700,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.13
-KEY CHANGES from v5.12:
-   - ADDED: Real-time Firestore listener for cross-device sync
-   - FIXED: F2 screen now updates automatically when F1 saves a hole (no manual refresh needed)
-   - Added setupRealtimeListener() function that watches Firestore document changes
-   - Listener updates local cache and re-renders UI when other flight saves data
-   - Listener works for ALL devices (both edit and view modes)
-   - Added cleanup on page unload to prevent memory leaks
-   - Preserves all v5.12 functionality (intra-flight bubbles, T-1/T-2 display, cascade logic)
+VERSION: 5.14
+KEY CHANGES from v5.13:
+   - FIXED: getMatchValueFromStoredResults() now correctly negates cross-flight match values
+   - When player.team === "B", the stored value is negated (since stored values are from Team A perspective)
+   - OCB vs KF now returns +1, KF vs OCB returns -1 (was returning +1 for both)
+   - This fixes match bubbles showing both players winning the same match
+   - Preserves all v5.13 functionality (real-time listener, intra-flight bubbles, T-1/T-2 display)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
