@@ -1,11 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.04
-KEY CHANGES from v5.03:
-   - FIXED: setSaveButtonIdle() now disables save button on already saved holes
-   - Previously always enabled button regardless of save status
-   - Now checks isHoleSaved() before calling updateCompactSaveButton
-   - ALL other functions identical to v5.03 (preserved all existing functionality)
+VERSION: 5.05
+KEY CHANGES from v5.04:
+   - ADDED: updateSaveButtonState() function to manage save button state
+   - Called after local changes (score edits) to enable save button
+   - Called after save completes to disable button on saved holes
+   - Fixes issue where save button stayed disabled after score changes
+   - ALL other functions identical to v5.04 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -336,7 +337,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.04</div>
+<div class="version-tag">v5.05</div>
 
 <script>
 // ============================================================
@@ -638,10 +639,26 @@ function updateTRDisplay() {
 // Save Functions
 // ============================================================
 
-// FIXED v5.04: Disable save button on already saved holes
-function setSaveButtonIdle() {
+// NEW v5.05: Centralized save button state management
+function updateSaveButtonState() {
+    var saveBtn = document.getElementById('compactSaveBtn');
+    if (!saveBtn) return;
     var isCurrentSaved = isHoleSaved(editableFlight, currentHole);
-    GameUI.updateCompactSaveButton(currentHole, isCurrentSaved);
+    var hasUnsavedChanges = false;
+    for (var key in localChanges) {
+        if (key.startsWith(editableFlight + "_" + currentHole + "_")) {
+            hasUnsavedChanges = true;
+            break;
+        }
+    }
+    var shouldDisable = isCurrentSaved && !hasUnsavedChanges;
+    saveBtn.disabled = shouldDisable;
+    saveBtn.style.opacity = shouldDisable ? '0.5' : '1';
+    saveBtn.style.cursor = shouldDisable ? 'not-allowed' : 'pointer';
+}
+
+function setSaveButtonIdle() {
+    updateSaveButtonState();
     saveInProgress = false;
 }
 
@@ -1325,6 +1342,9 @@ function renderAll() {
     var isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) { return key.startsWith(editableFlight + "_" + currentHole + "_"); }).length === 0;
     GameUI.updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameCompleteFlag, celebrationTriggered, showSignCardModal);
     if (typeof Ticker !== 'undefined') Ticker.refresh();
+    
+    // NEW v5.05: Update save button state after any local changes
+    updateSaveButtonState();
 }
 
 async function exitToMainMenu() {
@@ -1444,12 +1464,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.04
-KEY CHANGES from v5.03:
-   - FIXED: setSaveButtonIdle() now disables save button on already saved holes
-   - Previously always enabled button regardless of save status
-   - Now checks isHoleSaved() before calling updateCompactSaveButton
-   - ALL other functions identical to v5.03 (preserved all existing functionality)
+VERSION: 5.05
+KEY CHANGES from v5.04:
+   - ADDED: updateSaveButtonState() function to manage save button state
+   - Called after local changes (score edits) to enable save button
+   - Called after save completes to disable button on saved holes
+   - Fixes issue where save button stayed disabled after score changes
+   - ALL other functions identical to v5.04 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
