@@ -1,12 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.08
-KEY CHANGES from v5.07:
-   - ADDED: Visual feedback for save button during save (faint red background)
-   - setSaveButtonPending() now shows dark red background while saving
-   - setSaveButtonIdle() restores original button style
-   - setSaveButtonRetry() shows red background with yellow text for retry
-   - ALL other functions identical to v5.07 (preserved all existing functionality)
+VERSION: 5.09
+KEY CHANGES from v5.08:
+   - FIXED: Save button during save now shows grey background (disabled state) with faint red text
+   - Removed red background change during save (keeps button background consistent)
+   - setSaveButtonPending() now sets grey background + faint red text + disabled
+   - setSaveButtonIdle() restores normal styles
+   - ALL other functions identical to v5.08 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -337,7 +337,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.08</div>
+<div class="version-tag">v5.09</div>
 
 <script>
 // ============================================================
@@ -656,7 +656,7 @@ function updateSaveButtonState() {
     saveBtn.style.cursor = shouldDisable ? 'not-allowed' : 'pointer';
 }
 
-// FIXED v5.08: Restore button text and original style after save
+// FIXED v5.09: Restore button text and styles after save
 function setSaveButtonIdle() {
     var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
@@ -669,15 +669,15 @@ function setSaveButtonIdle() {
     saveInProgress = false;
 }
 
-// FIXED v5.08: Visual feedback - dark red background while saving
+// FIXED v5.09: Visual feedback - grey background + faint red text while saving
 function setSaveButtonPending() {
     var saveBtn = document.getElementById('compactSaveBtn');
     if (saveBtn) {
         saveBtn.innerText = 'SAVING...';
         saveBtn.disabled = true;
-        saveBtn.style.background = '#8b0000';
-        saveBtn.style.borderColor = '#ff4444';
-        saveBtn.style.color = '#ffcccc';
+        saveBtn.style.background = '#2a2a2a';
+        saveBtn.style.borderColor = '#444444';
+        saveBtn.style.setProperty('color', '#ff6666', 'important');
     }
     saveInProgress = true;
 }
@@ -688,7 +688,7 @@ function setSaveButtonRetry() {
     if (saveBtn) {
         saveBtn.innerText = 'RETRY';
         saveBtn.disabled = false;
-        saveBtn.style.background = '#8b0000';
+        saveBtn.style.background = '#2a2a2a';
         saveBtn.style.borderColor = '#ffaa44';
         saveBtn.style.color = '#ffaa44';
     }
@@ -701,8 +701,8 @@ function flashSaveButtonSuccess() {
         saveBtn.style.background = '#ff4444';
         saveBtn.style.color = '#ffffff';
         setTimeout(function() {
-            saveBtn.style.background = '#1a3a1a';
-            saveBtn.style.color = '#4caf50';
+            saveBtn.style.background = '';
+            saveBtn.style.color = '';
         }, 300);
     }
 }
@@ -1475,13 +1475,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.08
-KEY CHANGES from v5.07:
-   - ADDED: Visual feedback for save button during save (faint red background)
-   - setSaveButtonPending() now shows dark red background while saving
-   - setSaveButtonIdle() restores original button style
-   - setSaveButtonRetry() shows red background with yellow text for retry
-   - ALL other functions identical to v5.07 (preserved all existing functionality)
+VERSION: 5.09
+KEY CHANGES from v5.08:
+   - FIXED: Save button during save now shows grey background (disabled state) with faint red text
+   - Removed red background change during save (keeps button background consistent)
+   - setSaveButtonPending() now sets grey background + faint red text + disabled
+   - setSaveButtonIdle() restores normal styles
+   - ALL other functions identical to v5.08 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
