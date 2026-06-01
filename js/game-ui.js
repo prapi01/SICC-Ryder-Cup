@@ -1,14 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.07
-KEY CHANGES from v4.06:
-   - FIXED: Scorecard table CSS for better readability
-   - Removed table-layout: fixed (allows columns to size based on content)
-   - Removed max-width constraints on cells
-   - Made first column sticky when scrolling horizontally
-   - Set consistent font sizes (0.85rem for scores, 0.85rem for labels)
-   - Tighter row spacing (line-height: 1.2)
-   - ALL other functions identical to v4.06 (preserved all existing functionality)
+VERSION: 4.08
+KEY CHANGES from v4.07:
+   - CHANGED: "AS" text replaced with green square (■) in scorecard rows
+   - CHANGED: "AS" text replaced with green square (■) in match bubbles
+   - Square size: 16x16px, green (#4caf50), rounded corners
+   - Maintains same layout as numbered bubbles (e.g., "OCB 1" → "OCB ■")
+   - ALL other functions identical to v4.07 (preserved all existing functionality)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -46,6 +44,13 @@ var GameUI = (function() {
         onToggleDisplay: null,
         onSignCard: null
     };
+    
+    // ============================================================
+    // Helper: Create green square HTML for AS
+    // ============================================================
+    function getAsSquareHtml() {
+        return '<span class="as-square"></span>';
+    }
     
     // ============================================================
     // Fix Background for All Pages
@@ -123,6 +128,18 @@ var GameUI = (function() {
                 font-weight: 800;
             }
             
+            /* Green square for AS */
+            .as-square {
+                display: inline-block;
+                width: 16px;
+                height: 16px;
+                background-color: #4caf50;
+                border-radius: 3px;
+                vertical-align: middle;
+                margin-left: 4px;
+                margin-top: -2px;
+            }
+            
             /* T-1/T-2 row colors */
             .score-green { color: #4caf50; font-weight: 600; }
             .score-gold { color: #ffaa44; font-weight: 800; }
@@ -138,6 +155,10 @@ var GameUI = (function() {
                 .bubbles {
                     gap: 4px;
                 }
+                .as-square {
+                    width: 14px;
+                    height: 14px;
+                }
             }
             
             /* Larger screens (iPad, Desktop) */
@@ -149,6 +170,10 @@ var GameUI = (function() {
                     font-size: 0.9rem;
                     padding: 8px 8px;
                     border-radius: 28px;
+                }
+                .as-square {
+                    width: 18px;
+                    height: 18px;
                 }
             }
         `;
@@ -509,7 +534,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - UPDATED v4.07 with improved CSS
+    // Scorecard Rendering - UPDATED v4.08 with green square for AS
     // ============================================================
     
     // t1ClinchedHole and t2ClinchedHole are numbers (the hole number where clinch occurred)
@@ -634,6 +659,11 @@ var GameUI = (function() {
                 }
             }
             
+            // NEW v4.08: Replace "AS" with green square
+            if (displayVal === 'AS') {
+                displayVal = getAsSquareHtml();
+            }
+            
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
@@ -699,6 +729,11 @@ var GameUI = (function() {
                 }
             }
             
+            // NEW v4.08: Replace "AS" with green square
+            if (displayVal === 'AS') {
+                displayVal = getAsSquareHtml();
+            }
+            
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
@@ -740,6 +775,11 @@ var GameUI = (function() {
                     displayVal = val;
                     cellClass = 'score-green';
                 }
+            }
+            
+            // NEW v4.08: Replace "AS" with green square
+            if (displayVal === 'AS') {
+                displayVal = getAsSquareHtml();
             }
             
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
@@ -811,7 +851,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Player Cards with Bubbles
+    // Player Cards with Bubbles - UPDATED v4.08 with green square for AS
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -830,7 +870,14 @@ var GameUI = (function() {
                 var opp = opponents[j];
                 var bubbleClass = getBubbleClass(player, opp);
                 var bubbleValue = getBubbleValue(player, opp);
-                bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + bubbleValue + '</div>';
+                
+                // NEW v4.08: Replace "AS" with green square in bubbles
+                var displayValue = bubbleValue;
+                if (displayValue === 'AS') {
+                    displayValue = getAsSquareHtml();
+                }
+                
+                bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + displayValue + '</div>';
             }
             bubblesHtml += '</div>';
             
@@ -1375,15 +1422,13 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.07
-KEY CHANGES from v4.06:
-   - FIXED: Scorecard table CSS for better readability
-   - Removed table-layout: fixed (allows columns to size based on content)
-   - Removed max-width constraints on cells
-   - Made first column sticky when scrolling horizontally
-   - Set consistent font sizes (0.85rem for scores, 0.85rem for labels)
-   - Tighter row spacing (line-height: 1.2)
-   - ALL other functions identical to v4.06 (preserved all existing functionality)
+VERSION: 4.08
+KEY CHANGES from v4.07:
+   - CHANGED: "AS" text replaced with green square (■) in scorecard rows
+   - CHANGED: "AS" text replaced with green square (■) in match bubbles
+   - Square size: 16x16px, green (#4caf50), rounded corners
+   - Maintains same layout as numbered bubbles (e.g., "OCB 1" → "OCB ■")
+   - ALL other functions identical to v4.07 (preserved all existing functionality)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
