@@ -1,12 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.08
-KEY CHANGES from v4.07:
-   - CHANGED: "AS" text replaced with green square (■) in scorecard rows
-   - CHANGED: "AS" text replaced with green square (■) in match bubbles
-   - Square size: 16x16px, green (#4caf50), rounded corners
-   - Maintains same layout as numbered bubbles (e.g., "OCB 1" → "OCB ■")
-   - ALL other functions identical to v4.07 (preserved all existing functionality)
+VERSION: 4.09
+KEY CHANGES from v4.08:
+   - FIXED: Green separator lines now visible (border-bottom, proper height)
+   - ADJUSTED: Column widths for better fit (first column: 55px, data columns: 38px)
+   - Table min-width reduced to 850px
+   - ALL other functions identical to v4.08 (preserved all existing functionality)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -534,7 +533,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - UPDATED v4.08 with green square for AS
+    // Scorecard Rendering - UPDATED v4.09 with improved CSS
     // ============================================================
     
     // t1ClinchedHole and t2ClinchedHole are numbers (the hole number where clinch occurred)
@@ -791,13 +790,13 @@ var GameUI = (function() {
         
         tightenScorecardRows();
         
-        // NEW v4.07: Apply improved CSS styles to the scorecard table
+        // NEW v4.09: Apply improved CSS styles to the scorecard table
         var scorecardTable = container.querySelector('.scorecard-table');
         if (scorecardTable) {
             // Remove fixed table layout, allow content to determine width
             scorecardTable.style.tableLayout = 'auto';
             scorecardTable.style.width = 'auto';
-            scorecardTable.style.minWidth = '1000px';
+            scorecardTable.style.minWidth = '850px';
             scorecardTable.style.borderCollapse = 'collapse';
             
             // Style all cells
@@ -809,7 +808,7 @@ var GameUI = (function() {
                 cell.style.border = 'none';
             });
             
-            // Make first column sticky when scrolling horizontally
+            // Make first column sticky and set width
             var firstColCells = scorecardTable.querySelectorAll('th:first-child, td:first-child');
             firstColCells.forEach(function(cell) {
                 cell.style.position = 'sticky';
@@ -818,14 +817,18 @@ var GameUI = (function() {
                 cell.style.zIndex = '2';
                 cell.style.fontWeight = '600';
                 cell.style.textAlign = 'left';
-                cell.style.minWidth = '70px';
+                cell.style.minWidth = '55px';
+                cell.style.width = '55px';
+                cell.style.padding = '4px 4px';
             });
             
-            // Center align score columns
+            // Center align score columns and set width
             var scoreCells = scorecardTable.querySelectorAll('th:not(:first-child), td:not(:first-child)');
             scoreCells.forEach(function(cell) {
                 cell.style.textAlign = 'center';
-                cell.style.minWidth = '45px';
+                cell.style.minWidth = '38px';
+                cell.style.width = '38px';
+                cell.style.padding = '4px 2px';
             });
             
             // Style header row
@@ -839,6 +842,20 @@ var GameUI = (function() {
             var rows = scorecardTable.querySelectorAll('tr');
             rows.forEach(function(row) {
                 row.style.lineHeight = '1.2';
+            });
+            
+            // FIXED v4.09: Ensure green separator lines are visible
+            var greenLineRows = scorecardTable.querySelectorAll('.green-line');
+            greenLineRows.forEach(function(row) {
+                row.style.height = '2px';
+                var cells = row.querySelectorAll('td');
+                cells.forEach(function(cell) {
+                    cell.style.borderBottom = '2px solid #4caf50';
+                    cell.style.height = '2px';
+                    cell.style.padding = '0';
+                    cell.style.lineHeight = '0';
+                    cell.style.fontSize = '0';
+                });
             });
             
             // Ensure wrapper allows horizontal scroll
@@ -1422,13 +1439,12 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.08
-KEY CHANGES from v4.07:
-   - CHANGED: "AS" text replaced with green square (■) in scorecard rows
-   - CHANGED: "AS" text replaced with green square (■) in match bubbles
-   - Square size: 16x16px, green (#4caf50), rounded corners
-   - Maintains same layout as numbered bubbles (e.g., "OCB 1" → "OCB ■")
-   - ALL other functions identical to v4.07 (preserved all existing functionality)
+VERSION: 4.09
+KEY CHANGES from v4.08:
+   - FIXED: Green separator lines now visible (border-bottom, proper height)
+   - ADJUSTED: Column widths for better fit (first column: 55px, data columns: 38px)
+   - Table min-width reduced to 850px
+   - ALL other functions identical to v4.08 (preserved all existing functionality)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
