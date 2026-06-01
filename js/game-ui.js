@@ -1,11 +1,14 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.13
-KEY CHANGES from v4.12:
-   - FIXED: Clinch bubbles (gold and loss-clinch) no longer have bold text (font-weight: 800 -> 600)
-   - Clinch bubbles now match regular bubble font weight for consistent visual appearance
-   - Gold border and loss-clinch white border still distinguish clinch results
-   - All other functionality identical to v4.12 (T-1/T-2 independent sync, Strk unchanged)
+VERSION: 4.14
+KEY CHANGES from v4.13:
+   - FIXED: Both clinch bubbles (gold and loss-clinch) now have consistent styling
+   - Both have 1px border (same as regular bubbles), 600 font-weight
+   - Only colors differ between win-clinch (gold) and loss-clinch (grey)
+   - Loss-clinch: background #3a1a1a, border #666666, text #aaaaaa
+   - Win-clinch: background #1a3a1a, border #ffaa44, text #ffaa44
+   - All bubbles now have identical padding and font-size scaling
+   - No more jarring size differences between clinch and regular bubbles
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -108,25 +111,37 @@ var GameUI = (function() {
                 font-weight: 600;
                 overflow: hidden;
                 text-overflow: ellipsis;
+                border-width: 1px;
+                border-style: solid;
             }
             
-            /* Bubble color variants */
-            .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-            .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
-            .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+            /* Regular bubble colors */
+            .bubble-green {
+                background: #1a3a1a;
+                color: #4caf50;
+                border-color: #4caf50;
+            }
+            .bubble-red {
+                background: #3a1a1a;
+                color: #ff6b6b;
+                border-color: #ff6b6b;
+            }
+            .bubble-grey {
+                background: #2a2a2a;
+                color: #888;
+                border-color: #444;
+            }
             
-            /* FIXED v4.13: Removed bold font-weight (800 -> 600) for visual consistency */
+            /* FIXED v4.14: Consistent clinch bubble styling - same border width and font weight as regular bubbles */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
-                border: 3px solid #ffaa44;
-                font-weight: 600;
+                border-color: #ffaa44;
             }
             .bubble-loss-clinch {
                 background: #3a1a1a;
-                color: #ffffff;
-                border: 3px solid #ffffff;
-                font-weight: 600;
+                color: #aaaaaa;
+                border-color: #666666;
             }
             
             /* Green square for AS */
@@ -591,7 +606,7 @@ var GameUI = (function() {
         html += '<td>' + totalPar + '<\/td><\/tr>';
         
         // SI row
-        html += '<tr><td style="font-weight:700;">SI<\/td>';
+        html += '<td><td style="font-weight:700;">SI<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
             html += '<td>' + si + '<\/td>';
@@ -672,7 +687,7 @@ var GameUI = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -1422,12 +1437,15 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.13
-KEY CHANGES from v4.12:
-   - FIXED: Clinch bubbles (gold and loss-clinch) no longer have bold text (font-weight: 800 -> 600)
-   - Clinch bubbles now match regular bubble font weight for consistent visual appearance
-   - Gold border and loss-clinch white border still distinguish clinch results
-   - All other functionality identical to v4.12 (T-1/T-2 independent sync, Strk unchanged)
+VERSION: 4.14
+KEY CHANGES from v4.13:
+   - FIXED: Both clinch bubbles (gold and loss-clinch) now have consistent styling
+   - Both have 1px border (same as regular bubbles), 600 font-weight
+   - Only colors differ between win-clinch (gold) and loss-clinch (grey)
+   - Loss-clinch: background #3a1a1a, border #666666, text #aaaaaa
+   - Win-clinch: background #1a3a1a, border #ffaa44, text #ffaa44
+   - All bubbles now have identical padding and font-size scaling
+   - No more jarring size differences between clinch and regular bubbles
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
