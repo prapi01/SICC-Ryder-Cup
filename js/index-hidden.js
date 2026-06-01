@@ -1,15 +1,10 @@
 /*
 FILE: js/index-hidden.js
-VERSION: 1.03
-KEY CHANGES:
-   - FIXED: Date calculation now uses local timezone instead of UTC
-   - Added getLocalDate() function for consistent date handling
-   - Today's date is now correctly determined regardless of timezone
-   - All other functionality identical to v1.02
-   - duplicateMasterRecord(): Copies Master_Record_H17_2028 to today's date
-   - Sets gameStarted: true, resets locks/signatures/submitted
-   - Displays new Game ID in faint green next to device ID
-   - Called by double-clicking golf flag icon in index.html
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - CHANGED: Master Record reference from "Master_Record_H17_2028" to "MR_17H_2030"
+   - UPDATED: Alert message to reflect new MR name
+   - ALL other functionality identical to v1.03 (local date handling, game creation, etc.)
 DEPENDS ON: Firebase Firestore (db object must be available)
 STATUS: Ready for integration
 */
@@ -96,11 +91,12 @@ function duplicateMasterRecord() {
     
     var newId;
     
-    var masterRef = db.collection("scheduledGames").doc("Master_Record_H17_2028");
+    // CHANGED v1.04: Now using MR_17H_2030 instead of Master_Record_H17_2028
+    var masterRef = db.collection("scheduledGames").doc("MR_17H_2030");
     
     masterRef.get().then(function(doc) {
         if (!doc.exists) {
-            alert("❌ Master_Record_H17_2028 not found in Firestore");
+            alert("❌ MR_17H_2030 not found in Firestore.\n\nPlease ensure the Master Record has been created.");
             return;
         }
         
@@ -126,7 +122,7 @@ function duplicateMasterRecord() {
         return db.collection("scheduledGames").doc(newId).set(duplicate);
     }).then(function() {
         console.log("✅ Game created with today's date. ID:", newId);
-        alert("✅ Game created!\n\nGame ID: " + newId + "\n\nRefresh the page and click TODAY GAME.");
+        alert("✅ Game created from MR_17H_2030!\n\nGame ID: " + newId + "\n\nRefresh the page and click TODAY GAME.");
         if (typeof displayGameId === 'function') {
             displayGameId(newId);
         }
@@ -158,16 +154,11 @@ window.clearDisplayedGameId = clearDisplayedGameId;
 
 /*
 FILE: js/index-hidden.js
-VERSION: 1.03
-KEY CHANGES:
-   - FIXED: Date calculation now uses local timezone instead of UTC
-   - Added getLocalDate() function for consistent date handling
-   - Today's date is now correctly determined regardless of timezone
-   - All other functionality identical to v1.02
-   - duplicateMasterRecord(): Copies Master_Record_H17_2028 to today's date
-   - Sets gameStarted: true, resets locks/signatures/submitted
-   - Displays new Game ID in faint green next to device ID
-   - Called by double-clicking golf flag icon in index.html
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - CHANGED: Master Record reference from "Master_Record_H17_2028" to "MR_17H_2030"
+   - UPDATED: Alert message to reflect new MR name
+   - ALL other functionality identical to v1.03 (local date handling, game creation, etc.)
 DEPENDS ON: Firebase Firestore (db object must be available)
 STATUS: Ready for integration
 */
