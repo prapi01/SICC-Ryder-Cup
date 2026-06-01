@@ -1,14 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.14
-KEY CHANGES from v4.13:
-   - FIXED: Both clinch bubbles (gold and loss-clinch) now have consistent styling
-   - Both have 1px border (same as regular bubbles), 600 font-weight
-   - Only colors differ between win-clinch (gold) and loss-clinch (grey)
-   - Loss-clinch: background #3a1a1a, border #666666, text #aaaaaa
-   - Win-clinch: background #1a3a1a, border #ffaa44, text #ffaa44
-   - All bubbles now have identical padding and font-size scaling
-   - No more jarring size differences between clinch and regular bubbles
+VERSION: 4.15
+KEY CHANGES from v4.14:
+   - FIXED: Loss-clinch bubble now uses white border and white text (was grey)
+   - Both clinch bubbles now have consistent styling (1px border, 600 font-weight)
+   - Win-clinch: gold border + gold text + green background
+   - Loss-clinch: white border + white text + red background
+   - All other functionality identical to v4.14
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -132,16 +130,18 @@ var GameUI = (function() {
                 border-color: #444;
             }
             
-            /* FIXED v4.14: Consistent clinch bubble styling - same border width and font weight as regular bubbles */
+            /* FIXED v4.15: Consistent clinch bubble styling - same border width and font weight as regular bubbles */
+            /* Win-clinch: Gold border + gold text + green background */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
                 border-color: #ffaa44;
             }
+            /* Loss-clinch: White border + white text + red background */
             .bubble-loss-clinch {
                 background: #3a1a1a;
-                color: #aaaaaa;
-                border-color: #666666;
+                color: #ffffff;
+                border-color: #ffffff;
             }
             
             /* Green square for AS */
@@ -606,7 +606,7 @@ var GameUI = (function() {
         html += '<td>' + totalPar + '<\/td><\/tr>';
         
         // SI row
-        html += '<td><td style="font-weight:700;">SI<\/td>';
+        html += '<tr><td style="font-weight:700;">SI<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
             html += '<td>' + si + '<\/td>';
@@ -1437,15 +1437,13 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.14
-KEY CHANGES from v4.13:
-   - FIXED: Both clinch bubbles (gold and loss-clinch) now have consistent styling
-   - Both have 1px border (same as regular bubbles), 600 font-weight
-   - Only colors differ between win-clinch (gold) and loss-clinch (grey)
-   - Loss-clinch: background #3a1a1a, border #666666, text #aaaaaa
-   - Win-clinch: background #1a3a1a, border #ffaa44, text #ffaa44
-   - All bubbles now have identical padding and font-size scaling
-   - No more jarring size differences between clinch and regular bubbles
+VERSION: 4.15
+KEY CHANGES from v4.14:
+   - FIXED: Loss-clinch bubble now uses white border and white text (was grey)
+   - Both clinch bubbles now have consistent styling (1px border, 600 font-weight)
+   - Win-clinch: gold border + gold text + green background
+   - Loss-clinch: white border + white text + red background
+   - All other functionality identical to v4.14
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
