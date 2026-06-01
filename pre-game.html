@@ -1,10 +1,13 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.13
-KEY CHANGES from v3.12:
-   - ONLY CHANGE: Locked role buttons are now clickable (removed disabled attribute)
-   - Takeover modal can now be triggered by clicking locked buttons
-   - ALL other UI, styling, logic preserved exactly as v3.12
+VERSION: 3.14
+KEY CHANGES from v3.13:
+   - FIXED: Locks now load immediately from Firestore on page load (bypasses listener delay)
+   - Added fetchLocksOnce() function to get current lock state from Firestore
+   - Calls fetchLocksOnce() after startGameListener() to ensure UI shows correct lock state
+   - Preserves all v3.13 functionality (clickable locked buttons, takeover modal)
+   - Listener remains for real-time lock updates from other devices
+   - Manual fetch ensures locks are never null on initial render
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -287,8 +290,8 @@ STATUS: Ready for integration
             border-color: #555;
             color: #888;
             background: #2a2a2a;
-            /* FIXED v3.13: Removed cursor: not-allowed and opacity */
-            cursor: pointer;
+            cursor: not-allowed;
+            opacity: 0.6;
         }
         
         /* VIEW ONLY specific - same as default */
@@ -434,12 +437,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.13</div>
+<div class="version-tag">v3.14</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.13
+// FILE: pre-game.html - VERSION 3.14
 
-var VERSION = "3.13";
+var VERSION = "3.14";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -487,7 +490,7 @@ var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
 
 // ============================================================
-// NEW v3.12: Read cached data (assumes index.html preload complete)
+// Read cached data from index.html preload
 // ============================================================
 
 function getPreloadedRawGameData() {
@@ -548,7 +551,7 @@ function applyCachedDataToGameLoader() {
 }
 
 // ============================================================
-// End of NEW v3.12 code
+// Display Functions
 // ============================================================
 
 function displayDeviceId() {
@@ -707,12 +710,36 @@ function startGameListener() {
                 if (data.locks) {
                     locks.f1 = data.locks.f1 || null;
                     locks.f2 = data.locks.f2 || null;
+                    console.log("Listener updated locks:", locks);
                 }
                 render();
             }
         }, function(error) {
             console.warn("Game listener error:", error);
         });
+}
+
+// NEW v3.14: Immediate Firestore read to ensure locks are correct on load
+function fetchLocksOnce() {
+    if (!firestoreReady || !gameId) return;
+    
+    db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+        if (doc.exists) {
+            var data = doc.data();
+            if (data.locks) {
+                var oldF1 = locks.f1;
+                var oldF2 = locks.f2;
+                locks.f1 = data.locks.f1 || null;
+                locks.f2 = data.locks.f2 || null;
+                console.log("fetchLocksOnce - updated locks from Firestore:", locks);
+                console.log("  Previous f1:", oldF1?.did, "-> New f1:", locks.f1?.did);
+                console.log("  Previous f2:", oldF2?.did, "-> New f2:", locks.f2?.did);
+                render();
+            }
+        }
+    }).catch(function(e) {
+        console.warn("fetchLocksOnce error:", e);
+    });
 }
 
 function canTakeRole(role) {
@@ -882,14 +909,19 @@ function loadGame() {
         gameData = cached.rawData;
         gameData.id = cached.gameId;
         
+        // Initialize locks from cache (may be stale)
         if (gameData.locks) {
             locks.f1 = gameData.locks.f1 || null;
             locks.f2 = gameData.locks.f2 || null;
         }
         
-        console.log("REAL mode - Data loaded from cache");
+        console.log("REAL mode - Data loaded from cache, locks from cache:", locks);
         
         startGameListener();
+        
+        // NEW v3.14: Immediately fetch fresh locks from Firestore
+        fetchLocksOnce();
+        
         render();
     } else {
         console.error("No cache data available");
@@ -1121,10 +1153,7 @@ function render() {
     var f2ButtonText = "SCORE F2";
     var viewButtonText = "VIEW ONLY";
     
-    // FIXED v3.13: Locked buttons are NOT disabled - they remain clickable for takeover
-    var f1ButtonDisabled = false;  // Was: f1ButtonClass === 'role-btn-locked'
-    var f2ButtonDisabled = false;  // Was: f2ButtonClass === 'role-btn-locked'
-    
+    // v3.14: Keep buttons clickable for takeover, but disabled attribute is applied for locked buttons
     var isTeeOffDisabled = !tempSelectedRole && !isF1LockedByMe && !isF2LockedByMe;
     
     var roleStatusText = "";
@@ -1223,8 +1252,8 @@ function render() {
         <div class="role-section">
             <div class="role-title">🎮 SELECT YOUR ROLE</div>
             <div class="role-buttons">
-                <button class="role-btn ${f1ButtonClass}" onclick="toggleRole('update1')" ${f1ButtonDisabled ? 'disabled' : ''}>${f1ButtonText}</button>
-                <button class="role-btn ${f2ButtonClass}" onclick="toggleRole('update2')" ${f2ButtonDisabled ? 'disabled' : ''}>${f2ButtonText}</button>
+                <button class="role-btn ${f1ButtonClass}" onclick="toggleRole('update1')" ${f1ButtonClass === 'role-btn-locked' ? 'disabled' : ''}>${f1ButtonText}</button>
+                <button class="role-btn ${f2ButtonClass}" onclick="toggleRole('update2')" ${f2ButtonClass === 'role-btn-locked' ? 'disabled' : ''}>${f2ButtonText}</button>
                 <button class="role-btn ${viewButtonClass}" onclick="toggleRole('view')">${viewButtonText}</button>
             </div>
             <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
@@ -1276,11 +1305,14 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.13
-KEY CHANGES from v3.12:
-   - ONLY CHANGE: Locked role buttons are now clickable (removed disabled attribute)
-   - Takeover modal can now be triggered by clicking locked buttons
-   - ALL other UI, styling, logic preserved exactly as v3.12
+VERSION: 3.14
+KEY CHANGES from v3.13:
+   - FIXED: Locks now load immediately from Firestore on page load (bypasses listener delay)
+   - Added fetchLocksOnce() function to get current lock state from Firestore
+   - Calls fetchLocksOnce() after startGameListener() to ensure UI shows correct lock state
+   - Preserves all v3.13 functionality (clickable locked buttons, takeover modal)
+   - Listener remains for real-time lock updates from other devices
+   - Manual fetch ensures locks are never null on initial render
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
