@@ -1,14 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 5.10
-KEY CHANGES from v5.09:
-   - FIXED: T-1 and T-2 now calculate independently when their respective flight saves a hole
-   - FIXED: Cross-flight calculations (match bubbles, Stroke, TR) only when BOTH flights have saved
-   - FIXED: H18 mass clinch issue - existing clinchedAt entries are now preserved from cache
-   - FIXED: Clinch detection no longer overwrites previous clinch data
-   - Removed broken "both flights required for all calculations" logic
-   - Added conditional calculation paths for F1-only, F2-only, and cross-flight data
-   - ALL calculation modules (game-team.js, game-match.js, game-stroke.js) unchanged
+VERSION: 5.11
+KEY CHANGES from v5.10:
+   - ADDED: Intra-flight match results storage (f1IntraMatches, f2IntraMatches)
+   - FIXED: getMatchValueFromStoredResults() now reads intra-flight results for same-flight matches
+   - FIXED: Flight 1 intra-flight bubbles now display immediately when F1 saves a hole
+   - FIXED: Flight 2 intra-flight bubbles now display immediately when F2 saves a hole
+   - Modified calculateHoleResultsWithCumulative() to store intra-flight results independently
+   - Modified saveResultsToFirestoreWithCumulative() to write intra-flight results to Firestore
+   - ALL cross-flight functionality unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -339,7 +339,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.10</div>
+<div class="version-tag">v5.11</div>
 
 <script>
 // ============================================================
@@ -581,12 +581,53 @@ function getAllOpponents(player) {
     return opponents;
 }
 
+// FIXED v5.11: getMatchValueFromStoredResults now reads intra-flight results for same-flight matches
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
     if (!results) return 0;
     
-    return GameData.getMatchValueFromResults(results, player, opponent, holeNumber, allPlayers, getHolePosition);
+    var position = getHolePosition(holeNumber);
+    
+    // SAME FLIGHT - use intra-flight results
+    if (player.flight === opponent.flight) {
+        var intraMatches = (player.flight === 1) ? results.f1IntraMatches : results.f2IntraMatches;
+        if (intraMatches && intraMatches[position]) {
+            var matchKey = player.name + "_vs_" + opponent.name;
+            return intraMatches[position][matchKey] || 0;
+        }
+        return 0;
+    }
+    
+    // DIFFERENT FLIGHT - use cross-flight results
+    if (results.matchResults && results.matchResults[position]) {
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        var aIdx = -1;
+        var bIdx = -1;
+        
+        if (player.team === "A") {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === player.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === opponent.name) bIdx = i;
+            }
+        } else {
+            for (var i = 0; i < teamAPlayers.length; i++) {
+                if (teamAPlayers[i].name === opponent.name) aIdx = i;
+            }
+            for (var i = 0; i < teamBPlayers.length; i++) {
+                if (teamBPlayers[i].name === player.name) bIdx = i;
+            }
+        }
+        
+        if (aIdx !== -1 && bIdx !== -1) {
+            return results.matchResults[position][aIdx * teamBPlayers.length + bIdx] || 0;
+        }
+    }
+    return 0;
 }
 
 // ============================================================
@@ -744,7 +785,7 @@ function performSave() {
                     });
                 });
                 
-                // FIXED v5.10: Load existing clinchedAt from cache before cascade
+                // Load existing clinchedAt from cache before cascade
                 var cache = GameLoader.getLocalCache();
                 var existingClinched = cache.results?.clinchedAt || {};
                 var cumulativeClinched = { ...existingClinched };
@@ -834,6 +875,8 @@ function initializeEmptyResults() {
     return {
         version: 1,
         matchResults: new Array(18),
+        f1IntraMatches: new Array(18),  // NEW v5.11: Flight 1 intra-flight match results
+        f2IntraMatches: new Array(18),  // NEW v5.11: Flight 2 intra-flight match results
         game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
         game2: {
             flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
@@ -867,7 +910,19 @@ function calculateMatchResultsArray(holeNumber) {
     return resultArray;
 }
 
-// FIXED v5.10: Complete rewrite with conditional calculation paths
+// NEW v5.11: Calculate intra-flight match results for a specific flight
+function calculateIntraFlightResults(flight, holeNumber) {
+    var cache = GameLoader.getLocalCache();
+    var flightData = (flight === 1) ? cache.f1DataString : cache.f2DataString;
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+    
+    if (!flightData || flightPlayers.length === 0) return null;
+    
+    var intraResults = GameMatch.calculateIntraFlight(flight, flightPlayers, flightData, courseSi, startingHole, holeNumber, coursePar);
+    return intraResults;
+}
+
+// FIXED v5.11: Complete rewrite with intra-flight storage
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole) {
     var cache = GameLoader.getLocalCache();
     var position = getHolePosition(holeNumber);
@@ -891,6 +946,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var result = {
         position: position,
         matchResults: null,
+        f1IntraMatches: null,  // NEW v5.11
+        f2IntraMatches: null,  // NEW v5.11
         t1Leader: "AS",
         t2Leader: "AS",
         strkLeader: "AS",
@@ -916,6 +973,18 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         t2Display: "AS",
         strkDisplay: "AS"
     };
+    
+    // Calculate Flight 1 intra-flight match results (NEW v5.11)
+    if (f1Available) {
+        result.f1IntraMatches = calculateIntraFlightResults(1, holeNumber);
+        console.log(`    F1 intra-flight results calculated for hole ${holeNumber}`);
+    }
+    
+    // Calculate Flight 2 intra-flight match results (NEW v5.11)
+    if (f2Available) {
+        result.f2IntraMatches = calculateIntraFlightResults(2, holeNumber);
+        console.log(`    F2 intra-flight results calculated for hole ${holeNumber}`);
+    }
     
     // Calculate Team Game results (Flight 1 only)
     if (f1Available) {
@@ -1047,7 +1116,17 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     
     var updatePayload = {};
     
-    // Always write match results if available (cross-flight)
+    // NEW v5.11: Write intra-flight match results
+    if (resultsData.f1IntraMatches !== null) {
+        updatePayload[`results.f1IntraMatches.${position}`] = resultsData.f1IntraMatches;
+        console.log(`  Writing f1IntraMatches for position ${position}`);
+    }
+    if (resultsData.f2IntraMatches !== null) {
+        updatePayload[`results.f2IntraMatches.${position}`] = resultsData.f2IntraMatches;
+        console.log(`  Writing f2IntraMatches for position ${position}`);
+    }
+    
+    // Write match results if available (cross-flight)
     if (resultsData.matchResults !== null) {
         updatePayload[`results.matchResults.${position}`] = resultsData.matchResults;
     }
@@ -1060,7 +1139,7 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload[`results.game2.flight1.cumulativePoints.${position}`] = resultsData.flight1Total;
     updatePayload[`results.game2.flight2.cumulativePoints.${position}`] = resultsData.flight2Total;
     
-    // Always write Stroke data if available
+    // Write Stroke data if available
     if (resultsData.strkLeader !== "AS" || resultsData.strkDisplay !== "AS") {
         updatePayload[`results.game3.leader.${position}`] = resultsData.strkLeader;
         updatePayload[`results.game3.displayStrk.${position}`] = resultsData.strkDisplay;
@@ -1105,6 +1184,16 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         // Update local cache
         var cache = GameLoader.getLocalCache();
         if (!cache.results) cache.results = initializeEmptyResults();
+        
+        // NEW v5.11: Cache intra-flight results
+        if (resultsData.f1IntraMatches !== null) {
+            if (!cache.results.f1IntraMatches) cache.results.f1IntraMatches = new Array(18);
+            cache.results.f1IntraMatches[position] = resultsData.f1IntraMatches;
+        }
+        if (resultsData.f2IntraMatches !== null) {
+            if (!cache.results.f2IntraMatches) cache.results.f2IntraMatches = new Array(18);
+            cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
+        }
         
         if (resultsData.matchResults !== null) {
             cache.results.matchResults[position] = resultsData.matchResults;
@@ -1516,15 +1605,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.10
-KEY CHANGES from v5.09:
-   - FIXED: T-1 and T-2 now calculate independently when their respective flight saves a hole
-   - FIXED: Cross-flight calculations (match bubbles, Stroke, TR) only when BOTH flights have saved
-   - FIXED: H18 mass clinch issue - existing clinchedAt entries are now preserved from cache
-   - FIXED: Clinch detection no longer overwrites previous clinch data
-   - Removed broken "both flights required for all calculations" logic
-   - Added conditional calculation paths for F1-only, F2-only, and cross-flight data
-   - ALL calculation modules (game-team.js, game-match.js, game-stroke.js) unchanged
+VERSION: 5.11
+KEY CHANGES from v5.10:
+   - ADDED: Intra-flight match results storage (f1IntraMatches, f2IntraMatches)
+   - FIXED: getMatchValueFromStoredResults() now reads intra-flight results for same-flight matches
+   - FIXED: Flight 1 intra-flight bubbles now display immediately when F1 saves a hole
+   - FIXED: Flight 2 intra-flight bubbles now display immediately when F2 saves a hole
+   - Modified calculateHoleResultsWithCumulative() to store intra-flight results independently
+   - Modified saveResultsToFirestoreWithCumulative() to write intra-flight results to Firestore
+   - ALL cross-flight functionality unchanged
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
