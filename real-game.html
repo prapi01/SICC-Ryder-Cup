@@ -1,16 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 5.00
-KEY CHANGES from v4.72:
-   - REMOVED: computeDisplayStrings() function (no longer needed)
-   - ADDED: Display strings now come directly from game-team.js and game-stroke.js
-   - MODIFIED: calculateHoleResultsWithCumulative() now includes t1Display, t2Display, strkDisplay
-   - MODIFIED: saveResultsToFirestoreWithCumulative() now writes displayT1, displayT2, displayStrk to Firestore
-   - MODIFIED: renderAll() passes display arrays to GameUI.renderScorecard (already done in v4.72)
-   - ALL existing cascade logic preserved unchanged
-   - ALL existing Firestore writes for existing fields preserved
+VERSION: 5.01
+KEY CHANGES from v5.00:
+   - FIXED: getBubbleClassWithClinch() now uses GameUI.getBubbleClassShared with key normalization
+   - Previously had standalone implementation that only checked one key order
+   - Now checks both key orders (winner and loser) for clinch display
+   - Fixes issue where Team B players showed bubble-red instead of bubble-loss-clinch
+   - ALL other functions identical to v5.00 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration - MAJOR MILESTONE v5.00
+STATUS: Ready for integration
 -->
 
 <!DOCTYPE html>
@@ -339,7 +337,7 @@ STATUS: Ready for integration - MAJOR MILESTONE v5.00
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.00</div>
+<div class="version-tag">v5.01</div>
 
 <script>
 // ============================================================
@@ -600,32 +598,26 @@ function getBubbleValue(player, opponent) {
     return absValue.toString();
 }
 
+// FIXED v5.01: Use GameUI.getBubbleClassShared with key normalization
 function getBubbleClassWithClinch(player, opponent) {
-    var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
-    var cache = GameLoader.getLocalCache();
-    var lastSyncedHole = cache.lastSyncedHole;
-    var clinchedAt = cache.clinchedAt || {};
-    var matchKey = player.name + "_vs_" + opponent.name;
-    var clinchHole = clinchedAt[matchKey];
+    var clinchedAt = resultsCache ? (resultsCache.clinchedAt || {}) : {};
     
-    if (player.flight === opponent.flight) {
-        var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
-        if (!isHoleSavedForFlight) return 'bubble-grey';
-    } else {
-        var isSynced = (lastSyncedHole >= currentHole);
-        if (!isSynced) return 'bubble-grey';
-    }
+    // Normalize keys to work for both player orders (e.g., YHM_vs_P and P_vs_YHM)
+    var normalizedClinchedAt = { ...clinchedAt };
+    Object.keys(clinchedAt).forEach(function(key) {
+        var parts = key.split('_vs_');
+        if (parts.length === 2) {
+            var reverseKey = parts[1] + '_vs_' + parts[0];
+            if (!normalizedClinchedAt[reverseKey]) {
+                normalizedClinchedAt[reverseKey] = clinchedAt[key];
+            }
+        }
+    });
     
-    if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
-    if (clinchHole && currentHole === clinchHole) {
-        if (matchValue > 0) return 'bubble-gold';
-        if (matchValue < 0) return 'bubble-loss-clinch';
-        return 'bubble-green';
-    }
-    
-    if (matchValue > 0) return 'bubble-green';
-    if (matchValue < 0) return 'bubble-red';
-    return 'bubble-green';
+    return GameUI.getBubbleClassShared(
+        player, opponent, currentHole, resultsCache, allPlayers,
+        isHoleSaved, getHolePosition, normalizedClinchedAt
+    );
 }
 
 function updateTRDisplay() {
@@ -757,6 +749,9 @@ function performSave() {
                 if (typeof Ticker !== 'undefined') {
                     Ticker.refresh();
                 }
+                
+                // Force UI refresh after cascade
+                renderAll();
                 
                 resolve(true);
             } else {
@@ -1431,15 +1426,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.00
-KEY CHANGES from v4.72:
-   - REMOVED: computeDisplayStrings() function (no longer needed)
-   - ADDED: Display strings now come directly from game-team.js and game-stroke.js
-   - MODIFIED: calculateHoleResultsWithCumulative() now includes t1Display, t2Display, strkDisplay
-   - MODIFIED: saveResultsToFirestoreWithCumulative() now writes displayT1, displayT2, displayStrk to Firestore
-   - MODIFIED: renderAll() passes display arrays to GameUI.renderScorecard (already done in v4.72)
-   - ALL existing cascade logic preserved unchanged
-   - ALL existing Firestore writes for existing fields preserved
+VERSION: 5.01
+KEY CHANGES from v5.00:
+   - FIXED: getBubbleClassWithClinch() now uses GameUI.getBubbleClassShared with key normalization
+   - Previously had standalone implementation that only checked one key order
+   - Now checks both key orders (winner and loser) for clinch display
+   - Fixes issue where Team B players showed bubble-red instead of bubble-loss-clinch
+   - ALL other functions identical to v5.00 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration - MAJOR MILESTONE v5.00
+STATUS: Ready for integration
 -->
