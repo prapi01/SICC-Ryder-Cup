@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.06
-KEY CHANGES from v5.05:
-   - FIXED: Always write flight1.clinchedHole and flight2.clinchedHole to Firestore (including null)
-   - Previously only wrote when not null, preventing clearing of stale clinch values
-   - Also updated cache writes to always set value (including null)
-   - ALL other functions identical to v5.05 (preserved all existing functionality)
+VERSION: 5.07
+KEY CHANGES from v5.06:
+   - FIXED: setSaveButtonIdle() now restores button text to "SAVE H{hole}"
+   - Previously button text stayed as "SAVING..." after save completion
+   - Flash red success indicator now visible on correct button text
+   - ALL other functions identical to v5.06 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -336,7 +336,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.06</div>
+<div class="version-tag">v5.07</div>
 
 <script>
 // ============================================================
@@ -655,7 +655,12 @@ function updateSaveButtonState() {
     saveBtn.style.cursor = shouldDisable ? 'not-allowed' : 'pointer';
 }
 
+// FIXED v5.07: Restore button text after save
 function setSaveButtonIdle() {
+    var saveBtn = document.getElementById('compactSaveBtn');
+    if (saveBtn) {
+        saveBtn.innerText = 'SAVE H' + currentHole;
+    }
     updateSaveButtonState();
     saveInProgress = false;
 }
@@ -1458,12 +1463,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.06
-KEY CHANGES from v5.05:
-   - FIXED: Always write flight1.clinchedHole and flight2.clinchedHole to Firestore (including null)
-   - Previously only wrote when not null, preventing clearing of stale clinch values
-   - Also updated cache writes to always set value (including null)
-   - ALL other functions identical to v5.05 (preserved all existing functionality)
+VERSION: 5.07
+KEY CHANGES from v5.06:
+   - FIXED: setSaveButtonIdle() now restores button text to "SAVE H{hole}"
+   - Previously button text stayed as "SAVING..." after save completion
+   - Flash red success indicator now visible on correct button text
+   - ALL other functions identical to v5.06 (preserved all existing functionality)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
