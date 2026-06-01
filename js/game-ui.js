@@ -1,12 +1,14 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.06
-KEY CHANGES from v4.05:
-   - FIXED: getBubbleClassShared() now checks both key orders for clinch lookup
-   - Previously only checked player.name + "_vs_" + opponent.name
-   - Now also checks opponent.name + "_vs_" + player.name
-   - Fixes issue where Team B players (losers) showed bubble-red instead of bubble-loss-clinch
-   - ALL other functions identical to v4.05 (preserved all existing functionality)
+VERSION: 4.07
+KEY CHANGES from v4.06:
+   - FIXED: Scorecard table CSS for better readability
+   - Removed table-layout: fixed (allows columns to size based on content)
+   - Removed max-width constraints on cells
+   - Made first column sticky when scrolling horizontally
+   - Set consistent font sizes (0.85rem for scores, 0.85rem for labels)
+   - Tighter row spacing (line-height: 1.2)
+   - ALL other functions identical to v4.06 (preserved all existing functionality)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -507,7 +509,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - UPDATED v4.05 with margin display support
+    // Scorecard Rendering - UPDATED v4.07 with improved CSS
     // ============================================================
     
     // t1ClinchedHole and t2ClinchedHole are numbers (the hole number where clinch occurred)
@@ -546,36 +548,36 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead><table><th>Hole</th>';
+        html += '<thead><tr><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
-        html += '<tr><td style="font-weight:700;">Par</td>';
+        html += '<tr><td style="font-weight:700;">Par<\/td>';
         var totalPar = 0;
         for (var i = 0; i < holes.length; i++) {
             var par = coursePar[holes[i] - 1];
             totalPar += par;
-            html += '<td>' + par + '</td>';
+            html += '<td>' + par + '<\/td>';
         }
-        html += '<td>' + totalPar + '</td></tr>';
+        html += '<td>' + totalPar + '<\/td><\/tr>';
         
         // SI row
-        html += '<tr><td style="font-weight:700;">SI</td>';
+        html += '<tr><td style="font-weight:700;">SI<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var si = courseSi[holes[i] - 1];
-            html += '<td>' + si + '</td>';
+            html += '<td>' + si + '<\/td>';
         }
-        html += '<td>-</td></tr>';
+        html += '<td>-<\/td><\/tr>';
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -583,15 +585,15 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-1 row - Flight 1 cumulative (with margin display support)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t1Row[holeNum - 1] || '_';
@@ -632,16 +634,16 @@ var GameUI = (function() {
                 }
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '</td>';
+            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -649,15 +651,15 @@ var GameUI = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                html += '<td class="' + cellClass + '">' + score + '</td>';
+                html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
-            html += '<td class="score-green">' + playerTotal + '</td></tr>';
+            html += '<td class="score-green">' + playerTotal + '<\/td><\/tr>';
         }
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-2 row - Flight 2 cumulative (with margin display support)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t2Row[holeNum - 1] || '_';
@@ -697,14 +699,14 @@ var GameUI = (function() {
                 }
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '<tr class="green-line"><td colspan="20"></tr>';
+        html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // Strk row - Stroke game (with margin display and gold at hole 18)
-        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk</td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = strkRow[holeNum - 1] || '_';
@@ -740,14 +742,72 @@ var GameUI = (function() {
                 }
             }
             
-            html += '<td class="' + cellClass + '">' + displayVal + '</td>';
+            html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
-        html += '<td style="color:#4caf50;">-</td></tr>';
+        html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody><table>';
+        html += '</tbody></table>';
         container.innerHTML = html;
         
         tightenScorecardRows();
+        
+        // NEW v4.07: Apply improved CSS styles to the scorecard table
+        var scorecardTable = container.querySelector('.scorecard-table');
+        if (scorecardTable) {
+            // Remove fixed table layout, allow content to determine width
+            scorecardTable.style.tableLayout = 'auto';
+            scorecardTable.style.width = 'auto';
+            scorecardTable.style.minWidth = '1000px';
+            scorecardTable.style.borderCollapse = 'collapse';
+            
+            // Style all cells
+            var allCells = scorecardTable.querySelectorAll('th, td');
+            allCells.forEach(function(cell) {
+                cell.style.padding = '4px 6px';
+                cell.style.fontSize = '0.85rem';
+                cell.style.lineHeight = '1.2';
+                cell.style.border = 'none';
+            });
+            
+            // Make first column sticky when scrolling horizontally
+            var firstColCells = scorecardTable.querySelectorAll('th:first-child, td:first-child');
+            firstColCells.forEach(function(cell) {
+                cell.style.position = 'sticky';
+                cell.style.left = '0';
+                cell.style.backgroundColor = '#111';
+                cell.style.zIndex = '2';
+                cell.style.fontWeight = '600';
+                cell.style.textAlign = 'left';
+                cell.style.minWidth = '70px';
+            });
+            
+            // Center align score columns
+            var scoreCells = scorecardTable.querySelectorAll('th:not(:first-child), td:not(:first-child)');
+            scoreCells.forEach(function(cell) {
+                cell.style.textAlign = 'center';
+                cell.style.minWidth = '45px';
+            });
+            
+            // Style header row
+            var headerCells = scorecardTable.querySelectorAll('thead th');
+            headerCells.forEach(function(cell) {
+                cell.style.fontWeight = '700';
+                cell.style.backgroundColor = '#1a1a1a';
+            });
+            
+            // Reduce row height
+            var rows = scorecardTable.querySelectorAll('tr');
+            rows.forEach(function(row) {
+                row.style.lineHeight = '1.2';
+            });
+            
+            // Ensure wrapper allows horizontal scroll
+            var wrapper = document.getElementById(containerId);
+            if (wrapper) {
+                wrapper.style.overflowX = 'auto';
+                wrapper.style.WebkitOverflowScrolling = 'touch';
+            }
+        }
     }
     
     // ============================================================
@@ -1315,13 +1375,15 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.06
-KEY CHANGES from v4.05:
-   - FIXED: getBubbleClassShared() now checks both key orders for clinch lookup
-   - Previously only checked player.name + "_vs_" + opponent.name
-   - Now also checks opponent.name + "_vs_" + player.name
-   - Fixes issue where Team B players (losers) showed bubble-red instead of bubble-loss-clinch
-   - ALL other functions identical to v4.05 (preserved all existing functionality)
+VERSION: 4.07
+KEY CHANGES from v4.06:
+   - FIXED: Scorecard table CSS for better readability
+   - Removed table-layout: fixed (allows columns to size based on content)
+   - Removed max-width constraints on cells
+   - Made first column sticky when scrolling horizontally
+   - Set consistent font sizes (0.85rem for scores, 0.85rem for labels)
+   - Tighter row spacing (line-height: 1.2)
+   - ALL other functions identical to v4.06 (preserved all existing functionality)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
