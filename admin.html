@@ -1,6 +1,15 @@
-<!-- FILE: admin.html - VERSION 1.04 -->
-<!-- Admin panel for SICC Ryder Cup App -->
-<!-- Navigation: Setup Game, Manage Games, Course Management -->
+<!--
+FILE: admin.html
+VERSION: 1.05
+KEY CHANGES:
+   - Added env(safe-area-inset-top) to body padding for iPhone Dynamic Island support
+   - Updated .version-tag and .device-tag to use max(8px, env(safe-area-inset-top))
+   - Added margin-top:20px to .header for additional spacing below Dynamic Island
+   - ALL other functionality identical to v1.04
+DEPENDS ON: js/session.js, Firebase
+STATUS: Ready for integration
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,13 +21,18 @@
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; padding: 20px; }
+        body { 
+            background: #000000; 
+            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; 
+            color: #ffffff; 
+            padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 20px) 20px env(safe-area-inset-left, 20px);
+        }
         .container { max-width: 500px; margin: 0 auto; }
         
         .version-tag { 
             position: fixed; 
-            top: 8px; 
-            right: 8px; 
+            top: max(8px, env(safe-area-inset-top, 8px)); 
+            right: max(8px, env(safe-area-inset-right, 8px)); 
             font-size: 0.65rem; 
             color: #4caf50; 
             background: rgba(0,0,0,0.6); 
@@ -31,8 +45,8 @@
         
         .device-tag {
             position: fixed;
-            top: 8px;
-            left: 8px;
+            top: max(8px, env(safe-area-inset-top, 8px));
+            left: max(8px, env(safe-area-inset-left, 8px));
             font-size: 0.55rem;
             color: #4caf50;
             background: rgba(0,0,0,0.4);
@@ -44,7 +58,7 @@
             letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 40px; }
+        .header { text-align: center; margin-bottom: 40px; margin-top: 20px; }
         .title { font-size: 1.8rem; font-weight: 800; color: #4caf50; }
         .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
         
@@ -85,12 +99,13 @@
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.04</div>
+<div class="version-tag">v1.05</div>
 
 <script>
-// FILE: admin.html - VERSION 1.04
+// FILE: admin.html - VERSION 1.05
+// CHANGED: Safe-area-inset-top for iPhone Dynamic Island support
 
-var VERSION = "1.04";
+var VERSION = "1.05";
 var CACHE_KEY = "admin_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -200,3 +215,15 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 </script>
 </body>
 </html>
+
+<!--
+FILE: admin.html
+VERSION: 1.05
+KEY CHANGES:
+   - Added env(safe-area-inset-top) to body padding for iPhone Dynamic Island support
+   - Updated .version-tag and .device-tag to use max(8px, env(safe-area-inset-top))
+   - Added margin-top:20px to .header for additional spacing below Dynamic Island
+   - ALL other functionality identical to v1.04
+DEPENDS ON: js/session.js, Firebase
+STATUS: Ready for integration
+-->
