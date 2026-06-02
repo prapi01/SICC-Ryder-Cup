@@ -1,9 +1,11 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: Version exposure via window.GAME_SCORECARD_VERSION for easy console debugging
-   - All other functionality identical to v1.01 (T-1/T-2 independent sync, table alignment)
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Removes empty first cells from any row after table rendering
+   - This resolves the F2 player row shift (extra empty cell at beginning)
+   - Cleanup runs automatically after table is inserted into DOM
+   - All other functionality identical to v1.02 (T-1/T-2 independent sync, table alignment)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -11,7 +13,7 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.02";
+window.GAME_SCORECARD_VERSION = "1.03";
 
 var GameScorecard = (function() {
     
@@ -51,7 +53,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - FIXED v1.01 (T-1/T-2 independent sync)
+    // Scorecard Rendering - FIXED v1.03 (removes empty first cells)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -188,7 +190,7 @@ var GameScorecard = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<td>';
+            html += '<tr>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -207,7 +209,7 @@ var GameScorecard = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-2 row - FIXED v1.01: Only requires Flight 2 saved
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<td><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t2Row[holeNum - 1] || '_';
@@ -302,6 +304,17 @@ var GameScorecard = (function() {
         
         html += '</tbody></tr>';
         container.innerHTML = html;
+        
+        // FIXED v1.03: Remove empty first cell from any row that has one
+        // This resolves the F2 player row shift issue
+        var allRows = container.querySelectorAll('tr');
+        for (var i = 0; i < allRows.length; i++) {
+            var cells = allRows[i].cells;
+            if (cells.length > 0 && cells[0].textContent === '') {
+                allRows[i].deleteCell(0);
+                console.log("Removed empty first cell from row", i);
+            }
+        }
         
         tightenScorecardRows();
         
@@ -399,7 +412,7 @@ var GameScorecard = (function() {
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
         // Version info
-        getVersion: function() { return "1.02"; }
+        getVersion: function() { return "1.03"; }
     };
     
 })();
@@ -411,10 +424,12 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: Version exposure via window.GAME_SCORECARD_VERSION for easy console debugging
-   - All other functionality identical to v1.01 (T-1/T-2 independent sync, table alignment)
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Removes empty first cells from any row after table rendering
+   - This resolves the F2 player row shift (extra empty cell at beginning)
+   - Cleanup runs automatically after table is inserted into DOM
+   - All other functionality identical to v1.02 (T-1/T-2 independent sync, table alignment)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
