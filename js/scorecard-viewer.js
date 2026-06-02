@@ -1,16 +1,20 @@
 /*
 FILE: js/scorecard-viewer.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Shared component for hole-by-hole viewing (LIVE and HISTORY)
-   - Provides EXACT same UI as real-game.html (except SAVE button replaced by FLIGHT toggle)
-   - Supports ticker for both live (real-time) and history (final scores)
-   - Uses GameUI and GameScorecard for all rendering
-   - No Firebase dependencies - pure UI component
-   - Configurable via init() with callbacks for data access
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - COMPLETE UI REWRITE: Matches real-game.html EXACT layout
+   - Status bubble shows "VIEWER" (not LIVE)
+   - NO score control buttons (+/-) - display only
+   - Control bar: [P] button | [FLIGHT 1/2 toggle] | [◀] [Hole#] [▶]
+   - Control bar positioned BELOW player cards, ABOVE scorecard
+   - Flight badge on first player card
+   - Version exposed via window.SCORECARD_VIEWER_VERSION for console debugging
 DEPENDS ON: js/game-ui.js, js/game-scorecard.js, js/ticker.js
 STATUS: Ready for integration
 */
+
+// Version exposure for console debugging
+window.SCORECARD_VIEWER_VERSION = "1.01";
 
 var ScorecardViewer = (function() {
     
@@ -25,9 +29,6 @@ var ScorecardViewer = (function() {
     var _isInitialized = false;
     var _containerElement = null;
     var _tickerInitialized = false;
-    
-    // Track if we're in history mode (static data, no updates)
-    var _isHistoryMode = false;
     
     // ============================================================
     // Helper Functions (internal)
@@ -70,7 +71,7 @@ var ScorecardViewer = (function() {
         if (_config.getStoredScore) {
             return _config.getStoredScore(player, _currentHole);
         }
-        return _config.coursePar[_currentHole - 1] || 4;
+        return (_config.coursePar[_currentHole - 1] || 4);
     }
     
     function getAllOpponents(player) {
@@ -143,14 +144,11 @@ var ScorecardViewer = (function() {
         var matchKey2 = opponent.name + "_vs_" + player.name;
         var clinchHole = clinchedAt[matchKey1] || clinchedAt[matchKey2];
         
-        // Check if this flight has saved this hole
         var isHoleSavedForFlight = isHoleSaved(player.flight, _currentHole);
         
         if (player.flight === opponent.flight) {
-            // Intra-flight: only need this flight's save status
             if (!isHoleSavedForFlight) return 'bubble-grey';
         } else {
-            // Cross-flight: need both flights saved (synced)
             var isSynced = (lastSyncedHole >= _currentHole);
             if (!isSynced) return 'bubble-grey';
         }
@@ -182,76 +180,132 @@ var ScorecardViewer = (function() {
     }
     
     // ============================================================
-    // Navigation Functions
+    // Green Square for AS
     // ============================================================
     
-    function goToPrevHole() {
-        var playOrder = getPlayOrder();
-        var currentIndex = playOrder.indexOf(_currentHole);
-        if (currentIndex > 0) {
-            _currentHole = playOrder[currentIndex - 1];
-            updateHoleDisplay();
-            renderAll();
+    function getAsSquareHtml() {
+        if (typeof GameScorecard !== 'undefined' && GameScorecard.getAsSquareHtml) {
+            return GameScorecard.getAsSquareHtml();
         }
+        return '<span class="as-square"></span>';
     }
     
-    function goToNextHole() {
-        var playOrder = getPlayOrder();
-        var currentIndex = playOrder.indexOf(_currentHole);
-        if (currentIndex < 17) {
-            _currentHole = playOrder[currentIndex + 1];
-            updateHoleDisplay();
-            renderAll();
-        }
-    }
+    // ============================================================
+    // Player Card Rendering (NO +/- buttons - display only)
+    // ============================================================
     
-    function toggleFlight() {
-        _currentFlight = _currentFlight === 1 ? 2 : 1;
-        updateFlightButton();
-        renderAll();
-    }
-    
-    function toggleDisplayMode() {
-        _displayMode = _displayMode === "play" ? "natural" : "play";
-        updatePnButton();
-        renderAll();
-    }
-    
-    function updateHoleDisplay() {
-        var holeDisplay = document.getElementById('viewer-compactHoleDisplay');
-        if (holeDisplay) {
-            holeDisplay.innerText = _currentHole;
-        }
-        if (typeof GameUI !== 'undefined' && GameUI.updateHoleHeaderNumber) {
-            GameUI.updateHoleHeaderNumber(_currentHole);
-        }
-    }
-    
-    function updateFlightButton() {
-        var flightBtn = document.getElementById('viewer-compactFlightBtn');
-        if (flightBtn) {
-            flightBtn.innerText = _currentFlight === 1 ? 'FLIGHT 1' : 'FLIGHT 2';
-            if (_currentFlight === 1) {
-                flightBtn.classList.add('active');
-            } else {
-                flightBtn.classList.remove('active');
+    function renderPlayerCards() {
+        var container = document.getElementById('viewer-playerCards');
+        if (!container) return;
+        
+        var players = getFlightOrderedPlayers();
+        var html = '';
+        
+        for (var i = 0; i < players.length; i++) {
+            var player = players[i];
+            var currentScore = getCurrentScore(player);
+            var opponents = getAllOpponents(player);
+            
+            // Build bubbles HTML
+            var bubblesHtml = '<div class="bubbles">';
+            for (var j = 0; j < opponents.length; j++) {
+                var opp = opponents[j];
+                var bubbleClass = getBubbleClass(player, opp);
+                var bubbleValue = getBubbleValue(player, opp);
+                
+                var displayValue = bubbleValue;
+                if (displayValue === 'AS') {
+                    displayValue = getAsSquareHtml();
+                }
+                
+                bubblesHtml += '<div class="bubble ' + bubbleClass + '">' + escapeHtml(opp.label) + ' ' + displayValue + '</div>';
             }
+            bubblesHtml += '</div>';
+            
+            // Player card - NO +/- buttons, just display score
+            html += `
+                <div class="player-card" data-player-name="${escapeHtml(player.name)}" data-player-flight="${player.flight}">
+                    <div class="player-header">
+                        <div>
+                            <span class="player-name">${escapeHtml(player.label || player.name)}</span>
+                            <span class="player-handicap">${player.handicap}</span>
+                        </div>
+                        <div class="score-value">${currentScore}</div>
+                    </div>
+                    ${bubblesHtml}
+                </div>
+            `;
         }
-        if (typeof GameUI !== 'undefined' && GameUI.updateFlightBadge) {
-            GameUI.updateFlightBadge(_currentFlight);
-        }
-    }
-    
-    function updatePnButton() {
-        var pnBtn = document.getElementById('viewer-compactPnBtn');
-        if (pnBtn) {
-            pnBtn.innerText = _displayMode === 'play' ? 'P' : 'N';
-        }
+        
+        container.innerHTML = html;
+        
+        // Add flight badge to first card
+        setTimeout(function() {
+            var firstCard = document.querySelector('#viewer-playerCards .player-card');
+            if (firstCard && !document.querySelector('.flight-badge')) {
+                var badge = document.createElement('div');
+                badge.className = 'flight-badge';
+                badge.innerText = 'FLIGHT ' + _currentFlight;
+                badge.style.cssText = 'position:absolute; top:-18px; left:50%; transform:translateX(-50%); background:#1a3a1a; border:2px solid #4caf50; color:#4caf50; font-size:0.8rem; font-weight:700; padding:4px 16px; border-radius:30px; z-index:100; white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+                firstCard.style.position = 'relative';
+                firstCard.appendChild(badge);
+            }
+        }, 50);
     }
     
     // ============================================================
     // Render Functions
     // ============================================================
+    
+    function renderStatusBubble() {
+        var bubble = document.getElementById('viewer-statusBubble');
+        if (!bubble) return;
+        
+        // Always "VIEWER" for both live and history
+        bubble.innerText = "VIEWER";
+        bubble.style.color = "#4caf50";
+        bubble.style.borderColor = "#4caf50";
+        bubble.style.backgroundColor = "rgba(76,175,80,0.3)";
+        bubble.style.cursor = "pointer";
+        
+        bubble.onclick = function() {
+            location.reload();
+        };
+    }
+    
+    function renderCourseName() {
+        var courseNameEl = document.getElementById('viewer-courseName');
+        if (courseNameEl && _config.courseName) {
+            courseNameEl.innerHTML = _config.courseName;
+        }
+    }
+    
+    function renderHoleHeader() {
+        var container = document.getElementById('viewer-holeHeader');
+        if (!container) return;
+        
+        var currentPar = (_config.coursePar[_currentHole - 1] || 4);
+        var currentSi = (_config.courseSi[_currentHole - 1] || 1);
+        
+        container.innerHTML = '<div style="display:inline-block; background:#111; padding:4px 20px; border-radius:40px; font-size:1.5rem; font-weight:800;">HOLE ' + _currentHole + '</div>';
+    }
+    
+    function renderTR() {
+        var container = document.getElementById('viewer-trDisplay');
+        if (!container) return;
+        
+        var tr = getTRForHole(_currentHole);
+        var teamADisplay = tr.teamA % 1 === 0 ? tr.teamA : tr.teamA.toFixed(1);
+        var teamBDisplay = tr.teamB % 1 === 0 ? tr.teamB : tr.teamB.toFixed(1);
+        var teamAColor = tr.teamA > tr.teamB ? '#4caf50' : (tr.teamA < tr.teamB ? '#ff6b6b' : '#4caf50');
+        var teamBColor = tr.teamB > tr.teamA ? '#4caf50' : (tr.teamB < tr.teamA ? '#ff6b6b' : '#4caf50');
+        
+        container.innerHTML = '<div style="text-align:center;"><div style="display:flex; justify-content:center; align-items:center; gap:16px;">' +
+            '<div><div style="font-size:0.85rem; font-weight:600; color:' + teamAColor + ';">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:' + teamAColor + ';">' + teamADisplay + '</div></div>' +
+            '<div style="font-size:1.5rem; color:#888;">│</div>' +
+            '<div><div style="font-size:0.85rem; font-weight:600; color:' + teamBColor + ';">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:' + teamBColor + ';">' + teamBDisplay + '</div></div>' +
+        '</div></div>';
+    }
     
     function renderControlBar() {
         var container = document.getElementById('viewer-compactHeaderContainer');
@@ -259,12 +313,11 @@ var ScorecardViewer = (function() {
         
         var pnText = _displayMode === 'play' ? 'P' : 'N';
         var flightText = _currentFlight === 1 ? 'FLIGHT 1' : 'FLIGHT 2';
-        var flightActiveClass = _currentFlight === 1 ? 'active' : '';
         
         var html = `
             <div class="compact-header">
                 <button class="compact-pn-btn" id="viewer-compactPnBtn">${pnText}</button>
-                <button class="compact-flight-btn ${flightActiveClass}" id="viewer-compactFlightBtn">${flightText}</button>
+                <button class="compact-flight-btn" id="viewer-compactFlightBtn">${flightText}</button>
                 <div class="compact-nav-group">
                     <button class="compact-prev-btn" id="viewer-compactPrevBtn">◀</button>
                     <span class="compact-hole-display" id="viewer-compactHoleDisplay">${_currentHole}</span>
@@ -275,56 +328,10 @@ var ScorecardViewer = (function() {
         
         container.innerHTML = html;
         
-        document.getElementById('viewer-compactPnBtn').onclick = toggleDisplayMode;
-        document.getElementById('viewer-compactFlightBtn').onclick = toggleFlight;
-        document.getElementById('viewer-compactPrevBtn').onclick = goToPrevHole;
-        document.getElementById('viewer-compactNextBtn').onclick = goToNextHole;
-    }
-    
-    function renderHeader() {
-        var currentPar = _config.coursePar[_currentHole - 1] || 4;
-        var currentSi = _config.courseSi[_currentHole - 1] || 1;
-        
-        if (typeof GameUI !== 'undefined' && GameUI.renderHoleHeader) {
-            GameUI.renderHoleHeader("viewer-holeHeader", _currentHole, currentPar, currentSi);
-        } else {
-            var headerContainer = document.getElementById("viewer-holeHeader");
-            if (headerContainer) {
-                headerContainer.innerHTML = '<div style="display:inline-block; background:#111; padding:4px 20px; border-radius:40px; font-size:1.5rem; font-weight:800;">HOLE ' + _currentHole + '</div>';
-            }
-        }
-    }
-    
-    function renderTR() {
-        var tr = getTRForHole(_currentHole);
-        if (typeof GameUI !== 'undefined' && GameUI.updateTR) {
-            GameUI.updateTR("viewer-trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
-        }
-    }
-    
-    function renderPlayerCards() {
-        var currentPlayers = getFlightOrderedPlayers();
-        var canEdit = false;  // Viewer never has edit capability
-        
-        if (typeof GameUI !== 'undefined' && GameUI.renderPlayerCards) {
-            GameUI.renderPlayerCards(
-                "viewer-playerCards", 
-                currentPlayers, 
-                getAllOpponents, 
-                getBubbleClass, 
-                getBubbleValue, 
-                getCurrentScore, 
-                canEdit, 
-                null  // No onScoreChange callback
-            );
-        }
-        
-        // Add flight badge
-        setTimeout(function() {
-            if (typeof GameUI !== 'undefined' && GameUI.updateFlightBadge) {
-                GameUI.updateFlightBadge(_currentFlight);
-            }
-        }, 50);
+        document.getElementById('viewer-compactPnBtn').onclick = function() { toggleDisplayMode(); };
+        document.getElementById('viewer-compactFlightBtn').onclick = function() { toggleFlight(); };
+        document.getElementById('viewer-compactPrevBtn').onclick = function() { goToPrevHole(); };
+        document.getElementById('viewer-compactNextBtn').onclick = function() { goToNextHole(); };
     }
     
     function renderScorecard() {
@@ -353,63 +360,21 @@ var ScorecardViewer = (function() {
                 t1ClinchedHole, t2ClinchedHole,
                 t1Display, t2Display, strkDisplay
             );
-        } else if (typeof GameUI !== 'undefined' && GameUI.renderScorecard) {
-            GameUI.renderScorecard(
-                "viewer-scorecardWrapper", 
-                holes, 
-                _config.players, 
-                _config.getStoredScore || function(p, h) { return _config.coursePar[h-1] || 4; },
-                isHoleSaved,
-                t1Row, t2Row, strkRow,
-                _config.coursePar, _config.courseSi,
-                t1ClinchedHole, t2ClinchedHole,
-                t1Display, t2Display, strkDisplay
-            );
-        }
-    }
-    
-    function renderStatusBubble() {
-        var bubble = document.getElementById('viewer-statusBubble');
-        if (!bubble) return;
-        
-        var statusText = _config.statusText || (_isHistoryMode ? "HISTORY" : "LIVE");
-        var statusColor = _config.statusColor || "#4caf50";
-        
-        bubble.innerText = statusText;
-        bubble.style.color = statusColor;
-        bubble.style.borderColor = statusColor;
-        bubble.style.backgroundColor = "rgba(76,175,80,0.3)";
-        
-        bubble.onclick = function() {
-            location.reload();
-        };
-    }
-    
-    function renderCourseName() {
-        var courseNameEl = document.getElementById('viewer-courseName');
-        if (courseNameEl && _config.courseName) {
-            courseNameEl.innerHTML = _config.courseName;
         }
     }
     
     function renderBottomMenu() {
-        if (typeof GameUI !== 'undefined' && GameUI.renderBottomMenu) {
-            GameUI.renderBottomMenu("viewer-bottomMenuContainer", function() {
-                if (_config.onExit) {
-                    _config.onExit();
-                }
-            });
-        } else {
-            var container = document.getElementById('viewer-bottomMenuContainer');
-            if (container && _config.onExit) {
-                container.innerHTML = '';
-                var btn = document.createElement('button');
-                btn.textContent = '← Back to Main Menu';
-                btn.style.cssText = 'width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;';
-                btn.onclick = _config.onExit;
-                container.appendChild(btn);
-            }
-        }
+        var container = document.getElementById('viewer-bottomMenuContainer');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        var btn = document.createElement('button');
+        btn.textContent = '← Back to Main Menu';
+        btn.style.cssText = 'width:100%; padding:14px; border-radius:40px; font-weight:600; cursor:pointer; background:#1a1a1a; color:#ccc; border:1px solid #333; margin-top:20px;';
+        btn.onclick = function() {
+            if (_config.onExit) _config.onExit();
+        };
+        container.appendChild(btn);
     }
     
     function renderAll() {
@@ -417,14 +382,14 @@ var ScorecardViewer = (function() {
         
         renderCourseName();
         renderStatusBubble();
-        renderHeader();
+        renderHoleHeader();
         renderTR();
         renderPlayerCards();
         renderControlBar();
         renderScorecard();
         renderBottomMenu();
         
-        // Update navigation buttons (simplified - no save/sign logic)
+        // Update navigation button states
         var playOrder = getPlayOrder();
         var currentIndex = playOrder.indexOf(_currentHole);
         var prevBtn = document.getElementById('viewer-compactPrevBtn');
@@ -435,12 +400,55 @@ var ScorecardViewer = (function() {
         }
         if (nextBtn) {
             nextBtn.disabled = (currentIndex === 17);
-            // Next button is always normal arrow (no sign/trophy in viewer)
             nextBtn.innerHTML = '▶';
             nextBtn.style.background = '#1a3a1a';
             nextBtn.style.color = '#4caf50';
             nextBtn.style.border = '1px solid #4caf50';
         }
+    }
+    
+    // ============================================================
+    // Navigation Functions
+    // ============================================================
+    
+    function goToPrevHole() {
+        var playOrder = getPlayOrder();
+        var currentIndex = playOrder.indexOf(_currentHole);
+        if (currentIndex > 0) {
+            _currentHole = playOrder[currentIndex - 1];
+            var holeDisplay = document.getElementById('viewer-compactHoleDisplay');
+            if (holeDisplay) holeDisplay.innerText = _currentHole;
+            renderAll();
+        }
+    }
+    
+    function goToNextHole() {
+        var playOrder = getPlayOrder();
+        var currentIndex = playOrder.indexOf(_currentHole);
+        if (currentIndex < 17) {
+            _currentHole = playOrder[currentIndex + 1];
+            var holeDisplay = document.getElementById('viewer-compactHoleDisplay');
+            if (holeDisplay) holeDisplay.innerText = _currentHole;
+            renderAll();
+        }
+    }
+    
+    function toggleFlight() {
+        _currentFlight = _currentFlight === 1 ? 2 : 1;
+        var flightBtn = document.getElementById('viewer-compactFlightBtn');
+        if (flightBtn) {
+            flightBtn.innerText = _currentFlight === 1 ? 'FLIGHT 1' : 'FLIGHT 2';
+        }
+        renderAll();
+    }
+    
+    function toggleDisplayMode() {
+        _displayMode = _displayMode === "play" ? "natural" : "play";
+        var pnBtn = document.getElementById('viewer-compactPnBtn');
+        if (pnBtn) {
+            pnBtn.innerText = _displayMode === 'play' ? 'P' : 'N';
+        }
+        renderAll();
     }
     
     // ============================================================
@@ -513,28 +521,22 @@ var ScorecardViewer = (function() {
         }
         
         _config = config;
-        _isHistoryMode = config.isHistoryMode || false;
         _currentFlight = config.defaultFlight || 1;
         _displayMode = config.defaultDisplayMode || "play";
         
         // Determine starting hole
-        if (config.defaultHole) {
-            _currentHole = config.defaultHole;
-        } else {
-            // Auto-detect first unsaved hole for the default flight, or start at hole 1
-            var playOrder = getPlayOrder();
-            _currentHole = playOrder[0];
-            if (config.isHoleSaved) {
-                for (var i = 0; i < playOrder.length; i++) {
-                    if (!config.isHoleSaved(_currentFlight, playOrder[i])) {
-                        _currentHole = playOrder[i];
-                        break;
-                    }
+        var playOrder = getPlayOrder();
+        _currentHole = playOrder[0];
+        if (config.isHoleSaved) {
+            for (var i = 0; i < playOrder.length; i++) {
+                if (!config.isHoleSaved(_currentFlight, playOrder[i])) {
+                    _currentHole = playOrder[i];
+                    break;
                 }
             }
         }
         
-        // Build the HTML structure
+        // Build the HTML structure (matches real-game.html layout)
         var tickerHtml = '';
         if (config.enableTicker) {
             tickerHtml = `
@@ -546,9 +548,9 @@ var ScorecardViewer = (function() {
         
         var containerHtml = `
             ${tickerHtml}
-            <div class="status-bubble" id="viewer-statusBubble">${config.statusText || (config.isHistoryMode ? "HISTORY" : "LIVE")}</div>
+            <div class="status-bubble" id="viewer-statusBubble">VIEWER</div>
             <div style="text-align:center; margin-bottom:8px;" id="viewer-courseName"></div>
-            <div id="viewer-holeHeader"></div>
+            <div id="viewer-holeHeader" style="text-align:center; margin-bottom:10px;"></div>
             <div id="viewer-trDisplay" class="team-score-card"></div>
             <div id="viewer-playerCards" class="player-cards"></div>
             <div class="scorecard-section">
@@ -563,6 +565,28 @@ var ScorecardViewer = (function() {
         // Apply tight layout if GameUI available
         if (typeof GameUI !== 'undefined' && GameUI.applyTightLayout) {
             GameUI.applyTightLayout();
+        }
+        
+        // Apply bubble styles
+        if (typeof GameUI !== 'undefined' && GameUI.applyGlobalBubbleStyles) {
+            GameUI.applyGlobalBubbleStyles();
+        } else {
+            // Fallback: add bubble styles
+            if (!document.getElementById('scorecard-viewer-bubble-styles')) {
+                var style = document.createElement('style');
+                style.id = 'scorecard-viewer-bubble-styles';
+                style.textContent = `
+                    .bubbles { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(4px, 1.5vw, 10px); margin-top: 10px; }
+                    .bubble { white-space: nowrap; text-align: center; padding: clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px); border-radius: clamp(12px, 3vw, 24px); font-size: clamp(0.7rem, 3.8vw, 0.9rem); font-weight: 600; }
+                    .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+                    .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+                    .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+                    .bubble-gold { background: #1a3a1a; color: #ffaa44; border: 2px solid #ffaa44; font-weight: 600; }
+                    .bubble-loss-clinch { background: #3a1a1a; color: #ffffff; border: 2px solid #ffffff; font-weight: 600; }
+                    .as-square { display: inline-block; width: 16px; height: 16px; background-color: #4caf50; border-radius: 3px; vertical-align: middle; margin-left: 4px; }
+                `;
+                document.head.appendChild(style);
+            }
         }
         
         // Initialize ticker
@@ -586,7 +610,8 @@ var ScorecardViewer = (function() {
     function setHole(holeNumber) {
         if (holeNumber >= 1 && holeNumber <= 18) {
             _currentHole = holeNumber;
-            updateHoleDisplay();
+            var holeDisplay = document.getElementById('viewer-compactHoleDisplay');
+            if (holeDisplay) holeDisplay.innerText = _currentHole;
             renderAll();
         }
     }
@@ -594,7 +619,10 @@ var ScorecardViewer = (function() {
     function setFlight(flight) {
         if (flight === 1 || flight === 2) {
             _currentFlight = flight;
-            updateFlightButton();
+            var flightBtn = document.getElementById('viewer-compactFlightBtn');
+            if (flightBtn) {
+                flightBtn.innerText = _currentFlight === 1 ? 'FLIGHT 1' : 'FLIGHT 2';
+            }
             renderAll();
         }
     }
@@ -614,6 +642,20 @@ var ScorecardViewer = (function() {
         _config = null;
         _isInitialized = false;
         _tickerInitialized = false;
+    }
+    
+    // ============================================================
+    // Helper
+    // ============================================================
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
     }
     
     // ============================================================
@@ -637,14 +679,15 @@ window.ScorecardViewer = ScorecardViewer;
 
 /*
 FILE: js/scorecard-viewer.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Shared component for hole-by-hole viewing (LIVE and HISTORY)
-   - Provides EXACT same UI as real-game.html (except SAVE button replaced by FLIGHT toggle)
-   - Supports ticker for both live (real-time) and history (final scores)
-   - Uses GameUI and GameScorecard for all rendering
-   - No Firebase dependencies - pure UI component
-   - Configurable via init() with callbacks for data access
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - COMPLETE UI REWRITE: Matches real-game.html EXACT layout
+   - Status bubble shows "VIEWER" (not LIVE)
+   - NO score control buttons (+/-) - display only
+   - Control bar: [P] button | [FLIGHT 1/2 toggle] | [◀] [Hole#] [▶]
+   - Control bar positioned BELOW player cards, ABOVE scorecard
+   - Flight badge on first player card
+   - Version exposed via window.SCORECARD_VIEWER_VERSION for console debugging
 DEPENDS ON: js/game-ui.js, js/game-scorecard.js, js/ticker.js
 STATUS: Ready for integration
 */
