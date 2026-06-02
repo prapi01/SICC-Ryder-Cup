@@ -1,12 +1,12 @@
 /*
 FILE: js/game-team.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - ADDED: displayT1 and displayT2 arrays (formatted strings like "A10", "B8", "AS")
-   - ADDED: teamGameTR array (TR contributions per hole: { A: number, B: number })
-   - Format: cumulative > 0 → "A" + cumulative, < 0 → "B" + |cumulative|, =0 → "AS"
-   - TR: cumulative > 0 → { A:1, B:0 }, < 0 → { A:0, B:1 }, =0 → { A:0.5, B:0.5 }
-   - ALL existing functionality preserved (cumulative, leaders, pointsA/B)
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: Players are now sorted by NET SCORE for each hole, not by handicap
+   - Best vs Best: lowest net score in Team A vs lowest net score in Team B
+   - Second vs Second: second lowest net score in Team A vs second lowest net score in Team B
+   - This matches real-world match play where players are ordered by performance on each hole
+   - All existing functionality preserved (cumulative, leaders, points, display strings)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
@@ -24,6 +24,31 @@ var GameTeam = (function() {
         return gross - strokes;
     }
 
+    // Helper: Get net score for a player on a specific hole
+    function getPlayerNetScore(player, grossScore, holeSi, courseSi) {
+        return getNetScore(grossScore, player.handicap, holeSi, courseSi);
+    }
+
+    // Helper: Sort players by net score (lowest = best)
+    function sortPlayersByNetScore(players, scores, holeSi, courseSi) {
+        var playersWithNet = [];
+        for (var i = 0; i < players.length; i++) {
+            var netScore = getPlayerNetScore(players[i], scores[i], holeSi, courseSi);
+            playersWithNet.push({
+                player: players[i],
+                netScore: netScore,
+                grossScore: scores[i]
+            });
+        }
+        // Sort by net score ascending (lower is better)
+        playersWithNet.sort(function(a, b) {
+            if (a.netScore < b.netScore) return -1;
+            if (a.netScore > b.netScore) return 1;
+            return 0;
+        });
+        return playersWithNet;
+    }
+
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat) {
         var cumulativeFlight1 = new Array(18).fill(0);
         var cumulativeFlight2 = new Array(18).fill(0);
@@ -32,7 +57,6 @@ var GameTeam = (function() {
         var pointsAArray = new Array(18).fill(0);
         var pointsBArray = new Array(18).fill(0);
         
-        // NEW v1.04: Display strings and TR contributions
         var displayT1 = new Array(18).fill("AS");
         var displayT2 = new Array(18).fill("AS");
         var teamGameTR = new Array(18).fill({ A: 0.5, B: 0.5 });
@@ -40,6 +64,7 @@ var GameTeam = (function() {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
         
+        // Get players by team (still needed for base data)
         var flight1A = flight1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var flight1B = flight1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var flight2A = flight2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -59,36 +84,86 @@ var GameTeam = (function() {
             var f1Hole = GameData.parseHoleData(f1DataString, holeNum);
             var f2Hole = GameData.parseHoleData(f2DataString, holeNum);
 
-            var f1Match1 = 0, f1Match2 = 0;
-            var f2Match1 = 0, f2Match2 = 0;
+            // ============================================================
+            // FLIGHT 1 - Sort by net score for this hole
+            // ============================================================
+            var flight1Match1 = 0, flight1Match2 = 0;
+            
+            if (f1Hole && f1Hole.saved && flight1A.length >= 2 && flight1B.length >= 2) {
+                // Get gross scores for Team A
+                var teamAGross1 = [f1Hole.scores.a1, f1Hole.scores.a2];
+                // Get gross scores for Team B
+                var teamBGross1 = [f1Hole.scores.b1, f1Hole.scores.b2];
+                
+                // Sort Team A players by net score (lowest = best)
+                var sortedTeamA1 = sortPlayersByNetScore(flight1A, teamAGross1, si, courseSi);
+                // Sort Team B players by net score (lowest = best)
+                var sortedTeamB1 = sortPlayersByNetScore(flight1B, teamBGross1, si, courseSi);
+                
+                // Best vs Best (index 0)
+                var bestANet = sortedTeamA1[0].netScore;
+                var bestBNet = sortedTeamB1[0].netScore;
+                if (bestANet < bestBNet) {
+                    flight1Match1 = 1;  // Team A wins best match
+                } else if (bestANet > bestBNet) {
+                    flight1Match1 = -1; // Team B wins best match
+                } else {
+                    flight1Match1 = 0;  // Tie
+                }
+                
+                // Second vs Second (index 1)
+                var secondANet = sortedTeamA1[1].netScore;
+                var secondBNet = sortedTeamB1[1].netScore;
+                if (secondANet < secondBNet) {
+                    flight1Match2 = 1;  // Team A wins second match
+                } else if (secondANet > secondBNet) {
+                    flight1Match2 = -1; // Team B wins second match
+                } else {
+                    flight1Match2 = 0;  // Tie
+                }
+            }
 
-            if (f1Hole && f1Hole.saved && flight1A[0] && flight1B[0]) {
-                var a1Net = getNetScore(f1Hole.scores.a1, flight1A[0].handicap, si, courseSi);
-                var b1Net = getNetScore(f1Hole.scores.b1, flight1B[0].handicap, si, courseSi);
-                if (a1Net < b1Net) f1Match1 = 1;
-                else if (a1Net > b1Net) f1Match1 = -1;
-            }
-            if (f1Hole && f1Hole.saved && flight1A[1] && flight1B[1]) {
-                var a2Net = getNetScore(f1Hole.scores.a2, flight1A[1].handicap, si, courseSi);
-                var b2Net = getNetScore(f1Hole.scores.b2, flight1B[1].handicap, si, courseSi);
-                if (a2Net < b2Net) f1Match2 = 1;
-                else if (a2Net > b2Net) f1Match2 = -1;
-            }
-            if (f2Hole && f2Hole.saved && flight2A[0] && flight2B[0]) {
-                var a3Net = getNetScore(f2Hole.scores.a1, flight2A[0].handicap, si, courseSi);
-                var b3Net = getNetScore(f2Hole.scores.b1, flight2B[0].handicap, si, courseSi);
-                if (a3Net < b3Net) f2Match1 = 1;
-                else if (a3Net > b3Net) f2Match1 = -1;
-            }
-            if (f2Hole && f2Hole.saved && flight2A[1] && flight2B[1]) {
-                var a4Net = getNetScore(f2Hole.scores.a2, flight2A[1].handicap, si, courseSi);
-                var b4Net = getNetScore(f2Hole.scores.b2, flight2B[1].handicap, si, courseSi);
-                if (a4Net < b4Net) f2Match2 = 1;
-                else if (a4Net > b4Net) f2Match2 = -1;
+            // ============================================================
+            // FLIGHT 2 - Sort by net score for this hole
+            // ============================================================
+            var flight2Match1 = 0, flight2Match2 = 0;
+            
+            if (f2Hole && f2Hole.saved && flight2A.length >= 2 && flight2B.length >= 2) {
+                // Get gross scores for Team A
+                var teamAGross2 = [f2Hole.scores.a1, f2Hole.scores.a2];
+                // Get gross scores for Team B
+                var teamBGross2 = [f2Hole.scores.b1, f2Hole.scores.b2];
+                
+                // Sort Team A players by net score (lowest = best)
+                var sortedTeamA2 = sortPlayersByNetScore(flight2A, teamAGross2, si, courseSi);
+                // Sort Team B players by net score (lowest = best)
+                var sortedTeamB2 = sortPlayersByNetScore(flight2B, teamBGross2, si, courseSi);
+                
+                // Best vs Best (index 0)
+                var bestANet2 = sortedTeamA2[0].netScore;
+                var bestBNet2 = sortedTeamB2[0].netScore;
+                if (bestANet2 < bestBNet2) {
+                    flight2Match1 = 1;  // Team A wins best match
+                } else if (bestANet2 > bestBNet2) {
+                    flight2Match1 = -1; // Team B wins best match
+                } else {
+                    flight2Match1 = 0;  // Tie
+                }
+                
+                // Second vs Second (index 1)
+                var secondANet2 = sortedTeamA2[1].netScore;
+                var secondBNet2 = sortedTeamB2[1].netScore;
+                if (secondANet2 < secondBNet2) {
+                    flight2Match2 = 1;  // Team A wins second match
+                } else if (secondANet2 > secondBNet2) {
+                    flight2Match2 = -1; // Team B wins second match
+                } else {
+                    flight2Match2 = 0;  // Tie
+                }
             }
 
-            var flight1Total = f1Match1 + f1Match2;
-            var flight2Total = f2Match1 + f2Match2;
+            var flight1Total = flight1Match1 + flight1Match2;
+            var flight2Total = flight2Match1 + flight2Match2;
 
             runningFlight1 += flight1Total;
             runningFlight2 += flight2Total;
@@ -99,7 +174,7 @@ var GameTeam = (function() {
             flight1Leaders[idx] = runningFlight1 > 0 ? "A" : (runningFlight1 < 0 ? "B" : "AS");
             flight2Leaders[idx] = runningFlight2 > 0 ? "A" : (runningFlight2 < 0 ? "B" : "AS");
 
-            // NEW v1.04: Calculate display strings and TR contributions
+            // Display strings
             if (runningFlight1 > 0) {
                 displayT1[idx] = "A" + runningFlight1;
                 teamGameTR[idx] = { A: 1, B: 0 };
@@ -140,7 +215,6 @@ var GameTeam = (function() {
             flight2Leaders: flight2Leaders,
             pointsA: pointsAArray,
             pointsB: pointsBArray,
-            // NEW v1.04: Display strings and TR contributions
             displayT1: displayT1,
             displayT2: displayT2,
             teamGameTR: teamGameTR
@@ -154,13 +228,13 @@ window.GameTeam = GameTeam;
 
 /*
 FILE: js/game-team.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - ADDED: displayT1 and displayT2 arrays (formatted strings like "A10", "B8", "AS")
-   - ADDED: teamGameTR array (TR contributions per hole: { A: number, B: number })
-   - Format: cumulative > 0 → "A" + cumulative, < 0 → "B" + |cumulative|, =0 → "AS"
-   - TR: cumulative > 0 → { A:1, B:0 }, < 0 → { A:0, B:1 }, =0 → { A:0.5, B:0.5 }
-   - ALL existing functionality preserved (cumulative, leaders, pointsA/B)
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: Players are now sorted by NET SCORE for each hole, not by handicap
+   - Best vs Best: lowest net score in Team A vs lowest net score in Team B
+   - Second vs Second: second lowest net score in Team A vs second lowest net score in Team B
+   - This matches real-world match play where players are ordered by performance on each hole
+   - All existing functionality preserved (cumulative, leaders, points, display strings)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
