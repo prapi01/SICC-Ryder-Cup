@@ -1,13 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.18
-KEY CHANGES from v5.17:
-   - FIXED: When role is taken over by another device, current device loses edit capability
-   - ADDED: Real-time lock monitoring disables +/- buttons when lock is lost
-   - ADDED: Modal dialog appears when takeover detected with options: VIEWER or EXIT
-   - ADDED: Prevent further saves after takeover
-   - User can click "VIEWER" to go to view-game.html or "EXIT" to return to index.html
-   - All other functionality identical to v5.17
+VERSION: 5.19
+KEY CHANGES from v5.18:
+   - FIXED: Cascade now uses GameTeam.calculate for intra-flight results (T-1, T-2)
+   - FIXED: Tournament Handicap - each player gets strokes based on their OWN handicap
+   - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero
+   - ADDED: Self-healing cascade - any hole save recalculates all results correctly
+   - All other functionality identical to v5.18 (takeover detection, viewer redirect, etc.)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -395,13 +394,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.18</div>
+<div class="version-tag">v5.19</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.18";
+window.REAL_GAME_VERSION = "5.19";
 
 // ============================================================
 // Firebase Config
@@ -754,18 +753,15 @@ function checkLockOwnership() {
     var stillOwnsLock = currentLock && currentLock.did === myDeviceIdFull && currentLock.ex > now;
     
     if (!stillOwnsLock && canEdit && !takeoverDetected && !isGameCompleteFlag) {
-        // Takeover detected - disable editing and show modal
         takeoverDetected = true;
         canEdit = false;
         
-        // Disable save button if it exists
         var saveBtn = document.getElementById('compactSaveBtn');
         if (saveBtn) {
             saveBtn.disabled = true;
             saveBtn.style.opacity = '0.5';
         }
         
-        // Show takeover notification modal
         showTakeoverNotificationModal();
     }
     
@@ -793,13 +789,11 @@ function showTakeoverNotificationModal() {
     
     document.getElementById("takeoverViewerBtn").addEventListener("click", function() {
         document.getElementById("takeoverNotificationModal").remove();
-        // Redirect to view-game.html
         window.location.href = "view-game.html";
     });
     
     document.getElementById("takeoverExitBtn").addEventListener("click", function() {
         document.getElementById("takeoverNotificationModal").remove();
-        // Exit to main menu
         window.location.href = "index.html";
     });
 }
@@ -812,7 +806,6 @@ function updateSaveButtonState() {
     var saveBtn = document.getElementById('compactSaveBtn');
     if (!saveBtn) return;
     
-    // If takeover detected, disable save button
     if (!canEdit || takeoverDetected) {
         saveBtn.disabled = true;
         saveBtn.style.opacity = '0.5';
@@ -892,7 +885,6 @@ function flashSaveButtonSuccess() {
 
 function performSave() {
     return new Promise(function(resolve, reject) {
-        // Prevent save if takeover detected
         if (!canEdit || takeoverDetected) {
             reject(new Error("Role was taken over. Cannot save."));
             return;
@@ -1092,6 +1084,10 @@ function getTeamGameDisplayFromCumulative(cumulative) {
     return "B" + Math.abs(cumulative);
 }
 
+// ============================================================
+// FIXED v5.19: calculateHoleResultsWithCumulative now uses GameTeam.calculate
+// ============================================================
+
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole) {
     var cache = GameLoader.getLocalCache();
     var position = getHolePosition(holeNumber);
@@ -1104,6 +1100,12 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     
     if (!f1Available && !f2Available) {
         return null;
+    }
+    
+    // Use GameTeam.calculate for correct intra-flight results
+    var teamGameResults = null;
+    if (f1Available || f2Available) {
+        teamGameResults = GameTeam.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, teamGameFormat);
     }
     
     var result = {
@@ -1141,16 +1143,21 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         cumulativeF2: 0
     };
     
-    var existingCumulativeF1 = cache.results?.game2?.flight1?.cumulativePoints?.[position - 1] || 0;
-    var existingCumulativeF2 = cache.results?.game2?.flight2?.cumulativePoints?.[position - 1] || 0;
-    
-    if (f1Available) {
-        result.f1IntraMatches = calculateIntraFlightResults(1, holeNumber);
-        result.netThisHoleF1 = calculateNetThisHole(1, holeNumber);
-        result.cumulativeF1 = existingCumulativeF1 + result.netThisHoleF1;
+    // FLIGHT 1 - Use GameTeam.calculate results
+    if (f1Available && teamGameResults) {
+        var newCumulativeF1 = teamGameResults.flight1Cumulative[position];
+        var previousCumulativeF1 = position > 0 ? teamGameResults.flight1Cumulative[position - 1] : 0;
+        result.netThisHoleF1 = newCumulativeF1 - previousCumulativeF1;
+        result.cumulativeF1 = newCumulativeF1;
         result.flight1Total = result.cumulativeF1;
-        result.t1Leader = (result.cumulativeF1 > 0) ? "A" : (result.cumulativeF1 < 0) ? "B" : "AS";
-        result.t1Display = getTeamGameDisplayFromCumulative(result.cumulativeF1);
+        result.t1Leader = teamGameResults.flight1Leaders[position];
+        result.t1Display = teamGameResults.displayT1[position];
+        
+        if (teamGameResults.flight1IntraMatches && teamGameResults.flight1IntraMatches[position]) {
+            result.f1IntraMatches = teamGameResults.flight1IntraMatches[position];
+        } else {
+            result.f1IntraMatches = calculateIntraFlightResults(1, holeNumber);
+        }
         
         var remainingHoles = 18 - holeNumber;
         var maxOpponentPoints = remainingHoles * 2;
@@ -1160,13 +1167,21 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
-    if (f2Available) {
-        result.f2IntraMatches = calculateIntraFlightResults(2, holeNumber);
-        result.netThisHoleF2 = calculateNetThisHole(2, holeNumber);
-        result.cumulativeF2 = existingCumulativeF2 + result.netThisHoleF2;
+    // FLIGHT 2 - Use GameTeam.calculate results
+    if (f2Available && teamGameResults) {
+        var newCumulativeF2 = teamGameResults.flight2Cumulative[position];
+        var previousCumulativeF2 = position > 0 ? teamGameResults.flight2Cumulative[position - 1] : 0;
+        result.netThisHoleF2 = newCumulativeF2 - previousCumulativeF2;
+        result.cumulativeF2 = newCumulativeF2;
         result.flight2Total = result.cumulativeF2;
-        result.t2Leader = (result.cumulativeF2 > 0) ? "A" : (result.cumulativeF2 < 0) ? "B" : "AS";
-        result.t2Display = getTeamGameDisplayFromCumulative(result.cumulativeF2);
+        result.t2Leader = teamGameResults.flight2Leaders[position];
+        result.t2Display = teamGameResults.displayT2[position];
+        
+        if (teamGameResults.flight2IntraMatches && teamGameResults.flight2IntraMatches[position]) {
+            result.f2IntraMatches = teamGameResults.flight2IntraMatches[position];
+        } else {
+            result.f2IntraMatches = calculateIntraFlightResults(2, holeNumber);
+        }
         
         var remainingHoles2 = 18 - holeNumber;
         var maxOpponentPoints2 = remainingHoles2 * 2;
@@ -1176,6 +1191,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
+    // CROSS FLIGHT (Game 1) - uses GameMatch
     if (crossAvailable) {
         var matchResultsArray = calculateMatchResultsArray(holeNumber);
         result.matchResults = matchResultsArray;
@@ -1426,12 +1442,8 @@ function setupRealtimeListener() {
                             Ticker.setPlayers(allPlayers);
                         }
                         
-                        // Check if current device still owns the lock
                         checkLockOwnership();
-                        
                         renderAll();
-                        
-                        // SYNC flash removed - updates happen silently
                     } else {
                         console.warn("Failed to refresh cache from realtime update:", result.error);
                     }
@@ -1452,7 +1464,6 @@ function nextHole() {
         return;
     }
     
-    // Prevent navigation if takeover detected
     if (takeoverDetected) {
         return;
     }
@@ -1650,7 +1661,6 @@ function renderAll() {
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
     
-    // Check if we still own the lock before rendering edit controls
     var stillOwnsLock = checkLockOwnership();
     var canEditLocal = canEdit && !isGameCompleteFlag && !takeoverDetected && stillOwnsLock;
     
@@ -1822,14 +1832,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.18
-KEY CHANGES from v5.17:
-   - FIXED: When role is taken over by another device, current device loses edit capability
-   - ADDED: Real-time lock monitoring disables +/- buttons when lock is lost
-   - ADDED: Modal dialog appears when takeover detected with options: VIEWER or EXIT
-   - ADDED: Prevent further saves after takeover
-   - User can click "VIEWER" to go to view-game.html or "EXIT" to return to index.html
-   - All other functionality identical to v5.17
+VERSION: 5.19
+KEY CHANGES from v5.18:
+   - FIXED: Cascade now uses GameTeam.calculate for intra-flight results (T-1, T-2)
+   - FIXED: Tournament Handicap - each player gets strokes based on their OWN handicap
+   - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero
+   - ADDED: Self-healing cascade - any hole save recalculates all results correctly
+   - All other functionality identical to v5.18 (takeover detection, viewer redirect, etc.)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
