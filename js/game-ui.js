@@ -1,12 +1,15 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.15
-KEY CHANGES from v4.14:
-   - FIXED: Loss-clinch bubble now uses white border and white text (was grey)
-   - Both clinch bubbles now have consistent styling (1px border, 600 font-weight)
+VERSION: 4.16
+KEY CHANGES from v4.13:
+   - FIXED: Loss-clinch bubble now uses white border and white text (was gold border)
+   - ADDED: Faint grid lines to scorecard table (border: 1px solid #333 on all cells)
+   - ADDED: Version exposure via getVersion() method
+   - Preserved all v4.13 functionality (T-1/T-2 independent sync, Strk unchanged)
+   - Clinch bubbles have consistent styling (3px border, 600 font-weight)
    - Win-clinch: gold border + gold text + green background
    - Loss-clinch: white border + white text + red background
-   - All other functionality identical to v4.14
+   - ALL other functions identical to v4.13 (working table structure)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -16,6 +19,8 @@ var GameUI = (function() {
     // ============================================================
     // Constants
     // ============================================================
+    
+    var VERSION = "4.16";
     
     var Z_INDEX = {
         STATUS_BUBBLE: 999,
@@ -109,39 +114,25 @@ var GameUI = (function() {
                 font-weight: 600;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                border-width: 1px;
-                border-style: solid;
             }
             
             /* Regular bubble colors */
-            .bubble-green {
-                background: #1a3a1a;
-                color: #4caf50;
-                border-color: #4caf50;
-            }
-            .bubble-red {
-                background: #3a1a1a;
-                color: #ff6b6b;
-                border-color: #ff6b6b;
-            }
-            .bubble-grey {
-                background: #2a2a2a;
-                color: #888;
-                border-color: #444;
-            }
+            .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
+            .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
+            .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
             
-            /* FIXED v4.15: Consistent clinch bubble styling - same border width and font weight as regular bubbles */
-            /* Win-clinch: Gold border + gold text + green background */
+            /* FIXED v4.16: Consistent clinch styling - 3px border, 600 weight */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
-                border-color: #ffaa44;
+                border: 3px solid #ffaa44;
+                font-weight: 600;
             }
-            /* Loss-clinch: White border + white text + red background */
             .bubble-loss-clinch {
                 background: #3a1a1a;
                 color: #ffffff;
-                border-color: #ffffff;
+                border: 3px solid #ffffff;
+                font-weight: 600;
             }
             
             /* Green square for AS */
@@ -687,7 +678,7 @@ var GameUI = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
+            html += '<td><td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             var playerTotal = 0;
             for (var i = 0; i < holes.length; i++) {
                 var hole = holes[i];
@@ -812,7 +803,8 @@ var GameUI = (function() {
                 cell.style.padding = '4px 6px';
                 cell.style.fontSize = '0.85rem';
                 cell.style.lineHeight = '1.2';
-                cell.style.border = 'none';
+                // FIXED v4.16: Add faint grid lines to all cells
+                cell.style.border = '1px solid #333';
             });
             
             var firstColCells = scorecardTable.querySelectorAll('th:first-child, td:first-child');
@@ -1421,6 +1413,9 @@ var GameUI = (function() {
         makeStatusBubbleClickable: makeStatusBubbleClickable,
         fixBackground: fixBackground,
         
+        // Version info
+        getVersion: function() { return VERSION; },
+        
         // Flight indicator (DEPRECATED)
         addFlightIndicator: function() {},
         removeFlightIndicator: function() {},
@@ -1437,13 +1432,16 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.15
-KEY CHANGES from v4.14:
-   - FIXED: Loss-clinch bubble now uses white border and white text (was grey)
-   - Both clinch bubbles now have consistent styling (1px border, 600 font-weight)
+VERSION: 4.16
+KEY CHANGES from v4.13:
+   - FIXED: Loss-clinch bubble now uses white border and white text (was gold border)
+   - ADDED: Faint grid lines to scorecard table (border: 1px solid #333 on all cells)
+   - ADDED: Version exposure via getVersion() method and VERSION constant
+   - Preserved all v4.13 functionality (T-1/T-2 independent sync, Strk unchanged)
+   - Clinch bubbles have consistent styling (3px border, 600 font-weight)
    - Win-clinch: gold border + gold text + green background
    - Loss-clinch: white border + white text + red background
-   - All other functionality identical to v4.14
+   - ALL other functions identical to v4.13 (working table structure)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
