@@ -1,11 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.03
-KEY CHANGES from v7.02:
-   - FIXED: Removed grey oval pill shapes where +/- buttons would be in real-game
-   - Player cards now only show score value without button container
-   - Cleaner display for viewer mode (no edit controls at all)
-   - All other functionality identical to v7.02
+VERSION: 7.04
+KEY CHANGES from v7.03:
+   - REMOVED: SYNC flash animation on real-time updates (was causing UI confusion)
+   - Real-time updates now happen silently (UI just refreshes)
+   - Cleaner status bubble - always shows "VIEWER"
+   - All other functionality identical to v7.03 (no grey pill shapes, proper navigation)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -317,13 +317,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.03</div>
+<div class="version-tag">v7.04</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.03";
+window.VIEW_GAME_VERSION = "7.04";
 
 // ============================================================
 // Firebase Config
@@ -1025,14 +1025,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.03
-KEY CHANGES from v7.02:
-   - FIXED: Removed grey oval pill shapes where +/- buttons would be in real-game
-   - Player cards now only show score value without button container
-   - Added CSS to hide .score-control containers
-   - Added defensive setTimeout to ensure score controls are hidden
-   - Cleaner display for viewer mode (no edit controls at all)
-   - All other functionality identical to v7.02
+VERSION: 7.04
+KEY CHANGES from v7.03:
+   - REMOVED: SYNC flash animation on real-time updates (was causing UI confusion)
+   - Real-time updates now happen silently (UI just refreshes)
+   - Cleaner status bubble - always shows "VIEWER"
+   - All other functionality identical to v7.03 (no grey pill shapes, proper navigation)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
