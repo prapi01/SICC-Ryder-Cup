@@ -1,13 +1,12 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.14
-KEY CHANGES from v3.13:
-   - FIXED: Locks now load immediately from Firestore on page load (bypasses listener delay)
-   - Added fetchLocksOnce() function to get current lock state from Firestore
-   - Calls fetchLocksOnce() after startGameListener() to ensure UI shows correct lock state
-   - Preserves all v3.13 functionality (clickable locked buttons, takeover modal)
-   - Listener remains for real-time lock updates from other devices
-   - Manual fetch ensures locks are never null on initial render
+VERSION: 3.15
+KEY CHANGES from v3.14:
+   - FIXED: Locked role buttons are now clickable to trigger takeover modal
+   - REMOVED: disabled attribute from locked buttons (keeps visual grey appearance)
+   - CHANGED: cursor from not-allowed to pointer for .role-btn-locked
+   - Users can now click greyed-out locked buttons to initiate role takeover
+   - All other functionality identical to v3.14
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -285,12 +284,12 @@ STATUS: Ready for integration
             background: #1a3a1a;
         }
         
-        /* Locked by another device - Grey */
+        /* Locked by another device - Grey (but clickable for takeover) */
         .role-btn-locked {
             border-color: #555;
             color: #888;
             background: #2a2a2a;
-            cursor: not-allowed;
+            cursor: pointer;      /* Changed from not-allowed to allow takeover click */
             opacity: 0.6;
         }
         
@@ -437,12 +436,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.14</div>
+<div class="version-tag">v3.15</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.14
+// FILE: pre-game.html - VERSION 3.15
 
-var VERSION = "3.14";
+var VERSION = "3.15";
 var CACHE_KEY = "pre_game_version";
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -1153,7 +1152,7 @@ function render() {
     var f2ButtonText = "SCORE F2";
     var viewButtonText = "VIEW ONLY";
     
-    // v3.14: Keep buttons clickable for takeover, but disabled attribute is applied for locked buttons
+    // v3.15: Locked buttons are clickable (no disabled attribute)
     var isTeeOffDisabled = !tempSelectedRole && !isF1LockedByMe && !isF2LockedByMe;
     
     var roleStatusText = "";
@@ -1252,8 +1251,8 @@ function render() {
         <div class="role-section">
             <div class="role-title">🎮 SELECT YOUR ROLE</div>
             <div class="role-buttons">
-                <button class="role-btn ${f1ButtonClass}" onclick="toggleRole('update1')" ${f1ButtonClass === 'role-btn-locked' ? 'disabled' : ''}>${f1ButtonText}</button>
-                <button class="role-btn ${f2ButtonClass}" onclick="toggleRole('update2')" ${f2ButtonClass === 'role-btn-locked' ? 'disabled' : ''}>${f2ButtonText}</button>
+                <button class="role-btn ${f1ButtonClass}" onclick="toggleRole('update1')">${f1ButtonText}</button>
+                <button class="role-btn ${f2ButtonClass}" onclick="toggleRole('update2')">${f2ButtonText}</button>
                 <button class="role-btn ${viewButtonClass}" onclick="toggleRole('view')">${viewButtonText}</button>
             </div>
             <div class="role-status ${roleStatusClass}">${roleStatusText}</div>
@@ -1305,14 +1304,13 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.14
-KEY CHANGES from v3.13:
-   - FIXED: Locks now load immediately from Firestore on page load (bypasses listener delay)
-   - Added fetchLocksOnce() function to get current lock state from Firestore
-   - Calls fetchLocksOnce() after startGameListener() to ensure UI shows correct lock state
-   - Preserves all v3.13 functionality (clickable locked buttons, takeover modal)
-   - Listener remains for real-time lock updates from other devices
-   - Manual fetch ensures locks are never null on initial render
+VERSION: 3.15
+KEY CHANGES from v3.14:
+   - FIXED: Locked role buttons are now clickable to trigger takeover modal
+   - REMOVED: disabled attribute from locked buttons (keeps visual grey appearance)
+   - CHANGED: cursor from not-allowed to pointer for .role-btn-locked
+   - Users can now click greyed-out locked buttons to initiate role takeover
+   - All other functionality identical to v3.14
 DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
