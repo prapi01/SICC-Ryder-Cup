@@ -1,13 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 7.01
-KEY CHANGES from v7.00:
-   - FIXED: Bubble padding from 10px 4px to 8px 4px (matches real-game)
-   - FIXED: Bubble border-radius from 16px to 12px (matches real-game)
-   - FIXED: Bubble gap from clamp() to fixed 8px (matches real-game)
-   - ADDED: Responsive bubble styles for small screens (≤380px)
-   - Version exposed via window.VIEW_GAME_VERSION for console debugging
-   - All other functionality identical to v7.00
+VERSION: 7.02
+KEY CHANGES from v7.01:
+   - FIXED: Next button now disabled until current hole has saved data from at least one flight
+   - ADDED: isCurrentHoleSaved check in nextHole() function
+   - ADDED: Navigation button visual feedback (opacity 0.5 when disabled)
+   - BEHAVIOR: Cannot advance past holes with no saved data (prev still works freely)
+   - All other functionality identical to v7.01
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -142,7 +141,7 @@ STATUS: Ready for integration
         .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
         
         /* ============================================================
-           BUBBLE STYLES - FIXED v7.01 to match real-game
+           BUBBLE STYLES - matches real-game
         ============================================================ */
         .bubbles {
             display: grid;
@@ -263,6 +262,15 @@ STATUS: Ready for integration
             justify-content: center;
         }
         
+        /* Disabled button styling */
+        .compact-prev-btn:disabled, .compact-next-btn:disabled {
+            background: #2a2a2a !important;
+            color: #666666 !important;
+            border-color: #444444 !important;
+            opacity: 0.6 !important;
+            cursor: not-allowed !important;
+        }
+        
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
     </style>
@@ -295,13 +303,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.01</div>
+<div class="version-tag">v7.02</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.01";
+window.VIEW_GAME_VERSION = "7.02";
 
 // ============================================================
 // Firebase Config
@@ -517,6 +525,10 @@ function isHoleSaved(flight, hole) {
     return cache.savedHoles[flight] && cache.savedHoles[flight].indexOf(hole) !== -1;
 }
 
+function isCurrentHoleSavedByAnyFlight() {
+    return isHoleSaved(1, currentHole) || isHoleSaved(2, currentHole);
+}
+
 function getCurrentScore(player) {
     return getStoredScore(player, currentHole);
 }
@@ -630,11 +642,20 @@ function updateTRDisplay() {
 
 // ============================================================
 // Navigation Functions (Viewer only - no save/sign)
+// FIXED v7.02: Next button requires current hole to have saved data
 // ============================================================
 
 function nextHole() {
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
+    
+    // Check if current hole has any saved data (from either flight)
+    if (!isCurrentHoleSavedByAnyFlight()) {
+        // Cannot advance past a hole with no data
+        console.log("Cannot advance - hole " + currentHole + " has no saved data");
+        return;
+    }
+    
     if (currentIndex < 17) {
         currentHole = playOrder[currentIndex + 1];
         updateHoleNumberDisplay();
@@ -645,6 +666,7 @@ function nextHole() {
 function prevHole() {
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
+    
     if (currentIndex > 0) {
         currentHole = playOrder[currentIndex - 1];
         updateHoleNumberDisplay();
@@ -844,7 +866,7 @@ function renderAll() {
         );
     }
     
-    // Update navigation button states
+    // Update navigation button states - FIXED v7.02
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     var prevBtn = document.getElementById('compactPrevBtn');
@@ -854,7 +876,14 @@ function renderAll() {
         prevBtn.disabled = (currentIndex === 0);
     }
     if (nextBtn) {
-        nextBtn.disabled = (currentIndex === 17);
+        // Check if current hole has any saved data (from either flight)
+        var hasSavedData = isCurrentHoleSavedByAnyFlight();
+        var isLastHole = (currentIndex === 17);
+        
+        // Disable next if:
+        // 1. Current hole has no saved data, OR
+        // 2. It's the last hole
+        nextBtn.disabled = (!hasSavedData) || isLastHole;
     }
     
     if (typeof Ticker !== 'undefined') Ticker.refresh();
@@ -988,14 +1017,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.01
-KEY CHANGES from v7.00:
-   - FIXED: Bubble padding from 10px 4px to 8px 4px (matches real-game)
-   - FIXED: Bubble border-radius from 16px to 12px (matches real-game)
-   - FIXED: Bubble gap from clamp() to fixed 8px (matches real-game)
-   - ADDED: Responsive bubble styles for small screens (≤380px)
-   - Version exposed via window.VIEW_GAME_VERSION for console debugging
-   - All other functionality identical to v7.00
+VERSION: 7.02
+KEY CHANGES from v7.01:
+   - FIXED: Next button now disabled until current hole has saved data from at least one flight
+   - ADDED: isCurrentHoleSavedByAnyFlight() helper function
+   - ADDED: Check in nextHole() function to prevent advancing past unsaved holes
+   - ADDED: Disabled button styling for visual feedback
+   - BEHAVIOR: Cannot advance past holes with no saved data (prev still works freely)
+   - All other functionality identical to v7.01
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
