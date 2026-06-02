@@ -1,11 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.17
-KEY CHANGES from v5.16:
-   - REMOVED: SYNC flash animation on real-time updates (was getting stuck)
-   - Real-time updates now happen silently (UI just refreshes)
-   - Cleaner status bubble - always shows "LIVE" unless manually changed
-   - All other functionality identical to v5.16
+VERSION: 5.18
+KEY CHANGES from v5.17:
+   - FIXED: When role is taken over by another device, current device loses edit capability
+   - ADDED: Real-time lock monitoring disables +/- buttons when lock is lost
+   - ADDED: Modal dialog appears when takeover detected with options: VIEWER or EXIT
+   - ADDED: Prevent further saves after takeover
+   - User can click "VIEWER" to go to view-game.html or "EXIT" to return to index.html
+   - All other functionality identical to v5.17
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -222,6 +224,62 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
+        .takeover-modal-container {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 28px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #ffaa44;
+            z-index: 10002;
+        }
+        .takeover-modal-title { 
+            font-size: 1.3rem; 
+            font-weight: 700; 
+            color: #ffaa44; 
+            margin-bottom: 16px; 
+        }
+        .takeover-modal-message { 
+            font-size: 0.9rem; 
+            color: #ccc; 
+            margin-bottom: 8px; 
+        }
+        .takeover-modal-device {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #4caf50;
+            margin: 12px 0;
+            padding: 6px;
+            background: #0a0a0a;
+            border-radius: 12px;
+        }
+        .takeover-modal-buttons { 
+            display: flex; 
+            gap: 12px; 
+            margin-top: 24px;
+        }
+        .takeover-btn-viewer {
+            flex: 1;
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .takeover-btn-exit {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
         .sign-modal-container {
             background: #1a1a1a;
             border-radius: 28px;
@@ -337,13 +395,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.17</div>
+<div class="version-tag">v5.18</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.17";
+window.REAL_GAME_VERSION = "5.18";
 
 // ============================================================
 // Firebase Config
@@ -389,6 +447,7 @@ var activeWaitModal = null;
 var activeCompleteModal = null;
 
 var usedPreloadedData = false;
+var takeoverDetected = false;
 
 // Firestore real-time listener
 var firestoreUnsubscribe = null;
@@ -440,7 +499,7 @@ function applyPreloadedData(preloadData) {
         clinchedAt: preloadData.clinchedAt || {},
         signatures: { f1: false, f2: false },
         submitted: { f1: false, f2: false },
-        locks: { f1: null, f2: null },
+        locks: preloadData.locks || { f1: null, f2: null },
         gameStarted: true
     };
     
@@ -587,7 +646,6 @@ function getAllOpponents(player) {
     return opponents;
 }
 
-// FIXED v5.14: getMatchValueFromStoredResults now correctly negates cross-flight values for Team B players
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
@@ -595,7 +653,6 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     
     var position = getHolePosition(holeNumber);
     
-    // SAME FLIGHT - use intra-flight results
     if (player.flight === opponent.flight) {
         var intraMatches = (player.flight === 1) ? results.f1IntraMatches : results.f2IntraMatches;
         if (intraMatches && intraMatches[position]) {
@@ -605,7 +662,6 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
         return 0;
     }
     
-    // DIFFERENT FLIGHT - use cross-flight results
     if (results.matchResults && results.matchResults[position]) {
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -631,7 +687,6 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
         
         if (aIdx !== -1 && bIdx !== -1) {
             var storedValue = results.matchResults[position][aIdx * teamBPlayers.length + bIdx] || 0;
-            // FIXED v5.14: Negate value when player is from Team B (stored values are from Team A perspective)
             return (player.team === "B") ? -storedValue : storedValue;
         }
     }
@@ -685,12 +740,85 @@ function updateTRDisplay() {
 }
 
 // ============================================================
+// Takeover Detection and Handler
+// ============================================================
+
+function checkLockOwnership() {
+    var cache = GameLoader.getLocalCache();
+    if (!cache || !cache.locks) return true;
+    
+    var now = Date.now();
+    var myDeviceIdFull = SessionManager.getDeviceIdDisplay();
+    var currentLock = (editableFlight === 1) ? cache.locks.f1 : cache.locks.f2;
+    
+    var stillOwnsLock = currentLock && currentLock.did === myDeviceIdFull && currentLock.ex > now;
+    
+    if (!stillOwnsLock && canEdit && !takeoverDetected && !isGameCompleteFlag) {
+        // Takeover detected - disable editing and show modal
+        takeoverDetected = true;
+        canEdit = false;
+        
+        // Disable save button if it exists
+        var saveBtn = document.getElementById('compactSaveBtn');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.style.opacity = '0.5';
+        }
+        
+        // Show takeover notification modal
+        showTakeoverNotificationModal();
+    }
+    
+    return stillOwnsLock;
+}
+
+function showTakeoverNotificationModal() {
+    var flightText = editableFlight === 1 ? "Flight 1" : "Flight 2";
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="takeoverNotificationModal">
+            <div class="takeover-modal-container">
+                <div class="takeover-modal-title">⚠️ ROLE TAKEN OVER</div>
+                <div class="takeover-modal-message">Your role (${flightText}) has been taken over by another device.</div>
+                <div class="takeover-modal-device">You can no longer edit scores.</div>
+                <div class="takeover-modal-buttons">
+                    <button class="takeover-btn-viewer" id="takeoverViewerBtn">👁️ VIEWER</button>
+                    <button class="takeover-btn-exit" id="takeoverExitBtn">🚪 EXIT</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("takeoverViewerBtn").addEventListener("click", function() {
+        document.getElementById("takeoverNotificationModal").remove();
+        // Redirect to view-game.html
+        window.location.href = "view-game.html";
+    });
+    
+    document.getElementById("takeoverExitBtn").addEventListener("click", function() {
+        document.getElementById("takeoverNotificationModal").remove();
+        // Exit to main menu
+        window.location.href = "index.html";
+    });
+}
+
+// ============================================================
 // Save Functions
 // ============================================================
 
 function updateSaveButtonState() {
     var saveBtn = document.getElementById('compactSaveBtn');
     if (!saveBtn) return;
+    
+    // If takeover detected, disable save button
+    if (!canEdit || takeoverDetected) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.5';
+        return;
+    }
+    
     var isCurrentSaved = isHoleSaved(editableFlight, currentHole);
     var hasUnsavedChanges = false;
     for (var key in localChanges) {
@@ -707,19 +835,26 @@ function updateSaveButtonState() {
 
 function setSaveButtonIdle() {
     var saveBtn = document.getElementById('compactSaveBtn');
-    if (saveBtn) {
+    if (!saveBtn) return;
+    
+    if (!canEdit || takeoverDetected) {
+        saveBtn.disabled = true;
         saveBtn.innerText = 'SAVE H' + currentHole;
-        saveBtn.style.background = '';
-        saveBtn.style.borderColor = '';
-        saveBtn.style.color = '';
+        saveBtn.style.opacity = '0.5';
+        return;
     }
+    
+    saveBtn.innerText = 'SAVE H' + currentHole;
+    saveBtn.style.background = '';
+    saveBtn.style.borderColor = '';
+    saveBtn.style.color = '';
     updateSaveButtonState();
     saveInProgress = false;
 }
 
 function setSaveButtonPending() {
     var saveBtn = document.getElementById('compactSaveBtn');
-    if (saveBtn) {
+    if (saveBtn && canEdit && !takeoverDetected) {
         saveBtn.innerText = 'SAVING...';
         saveBtn.disabled = true;
         saveBtn.style.background = '#2a2a2a';
@@ -731,7 +866,7 @@ function setSaveButtonPending() {
 
 function setSaveButtonRetry() {
     var saveBtn = document.getElementById('compactSaveBtn');
-    if (saveBtn) {
+    if (saveBtn && canEdit && !takeoverDetected) {
         saveBtn.innerText = 'RETRY';
         saveBtn.disabled = false;
         saveBtn.style.background = '#2a2a2a';
@@ -747,14 +882,22 @@ function flashSaveButtonSuccess() {
         saveBtn.style.background = '#ff4444';
         saveBtn.style.color = '#ffffff';
         setTimeout(function() {
-            saveBtn.style.background = '';
-            saveBtn.style.color = '';
+            if (saveBtn) {
+                saveBtn.style.background = '';
+                saveBtn.style.color = '';
+            }
         }, 300);
     }
 }
 
 function performSave() {
     return new Promise(function(resolve, reject) {
+        // Prevent save if takeover detected
+        if (!canEdit || takeoverDetected) {
+            reject(new Error("Role was taken over. Cannot save."));
+            return;
+        }
+        
         var flight = editableFlight;
         var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
         var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -785,7 +928,6 @@ function performSave() {
                     }
                 }
                 
-                // Refresh cache to get other flight's latest data
                 await new Promise(function(resolveLoad) {
                     GameLoader.loadGame(gameId, "scheduledGames", function(result) {
                         if (result.success) console.log("Cache refreshed after save");
@@ -793,37 +935,25 @@ function performSave() {
                     });
                 });
                 
-                // Load existing clinchedAt from cache before cascade
                 var cache = GameLoader.getLocalCache();
                 var existingClinched = cache.results?.clinchedAt || {};
                 var cumulativeClinched = { ...existingClinched };
                 var cumulativeFlight1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole || null;
                 var cumulativeFlight2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole || null;
                 
-                console.log("=== CASCADE START: existing clinchedAt entries =", Object.keys(cumulativeClinched).length);
-                console.log("=== CASCADE START: cumulativeFlight1ClinchedHole =", cumulativeFlight1ClinchedHole);
-                
-                // Process current hole
                 var result = await saveResultsToFirestoreWithCumulative(currentHole, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
                 cumulativeClinched = result.updatedClinched;
                 cumulativeFlight1ClinchedHole = result.updatedFlight1ClinchedHole;
                 cumulativeFlight2ClinchedHole = result.updatedFlight2ClinchedHole;
                 
-                console.log("=== After hole " + currentHole + ": cumulativeFlight1ClinchedHole =", cumulativeFlight1ClinchedHole);
-                
-                // Process subsequent holes (only if there are holes after current)
                 var playOrder = getPlayOrder();
                 var startPos = playOrder.indexOf(currentHole);
                 for (var i = startPos + 1; i < 18; i++) {
                     var holeToUpdate = playOrder[i];
                     
-                    console.log("--- Processing hole " + holeToUpdate + " ---");
-                    console.log("  Before: cumulativeFlight1ClinchedHole =", cumulativeFlight1ClinchedHole);
-                    
-                    // Refresh cache before each hole to ensure latest data
                     await new Promise(function(resolveLoad) {
                         GameLoader.loadGame(gameId, "scheduledGames", function(loadResult) {
-                            if (loadResult.success) console.log("  Cache refreshed before hole " + holeToUpdate);
+                            if (loadResult.success) console.log("Cache refreshed before hole " + holeToUpdate);
                             resolveLoad();
                         });
                     });
@@ -832,8 +962,6 @@ function performSave() {
                     cumulativeClinched = loopResult.updatedClinched;
                     cumulativeFlight1ClinchedHole = loopResult.updatedFlight1ClinchedHole;
                     cumulativeFlight2ClinchedHole = loopResult.updatedFlight2ClinchedHole;
-                    
-                    console.log("  After: cumulativeFlight1ClinchedHole =", cumulativeFlight1ClinchedHole);
                 }
                 
                 if (typeof Ticker !== 'undefined') {
@@ -850,7 +978,14 @@ function performSave() {
 
 async function saveHole() {
     if (saveInProgress) return;
-    if (!canEdit) return;
+    if (!canEdit) {
+        alert("You can no longer edit - your role was taken over.");
+        return;
+    }
+    if (takeoverDetected) {
+        alert("Your role was taken over. Cannot save.");
+        return;
+    }
     if (isGameCompleteFlag) {
         alert("Game already complete.");
         return;
@@ -967,11 +1102,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var f2Available = (f2Hole && f2Hole.saved);
     var crossAvailable = f1Available && f2Available;
     
-    console.log(`  calculateHoleResults(${holeNumber}) - position: ${position}`);
-    console.log(`    f1Available: ${f1Available}, f2Available: ${f2Available}, crossAvailable: ${crossAvailable}`);
-    
     if (!f1Available && !f2Available) {
-        console.log(`  calculateHoleResults(${holeNumber}) skipped - no flights saved`);
         return null;
     }
     
@@ -1021,14 +1152,11 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.t1Leader = (result.cumulativeF1 > 0) ? "A" : (result.cumulativeF1 < 0) ? "B" : "AS";
         result.t1Display = getTeamGameDisplayFromCumulative(result.cumulativeF1);
         
-        console.log(`    F1 intra-flight results calculated for hole ${holeNumber}, net: ${result.netThisHoleF1}, cumulative: ${result.cumulativeF1}, display: ${result.t1Display}`);
-        
         var remainingHoles = 18 - holeNumber;
         var maxOpponentPoints = remainingHoles * 2;
         
         if (result.flight1ClinchedHole === null && Math.abs(result.cumulativeF1) > maxOpponentPoints) {
             result.flight1ClinchedHole = holeNumber;
-            console.log(`    >>> SET flight1ClinchedHole to ${holeNumber}`);
         }
     }
     
@@ -1040,21 +1168,15 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.t2Leader = (result.cumulativeF2 > 0) ? "A" : (result.cumulativeF2 < 0) ? "B" : "AS";
         result.t2Display = getTeamGameDisplayFromCumulative(result.cumulativeF2);
         
-        console.log(`    F2 intra-flight results calculated for hole ${holeNumber}, net: ${result.netThisHoleF2}, cumulative: ${result.cumulativeF2}, display: ${result.t2Display}`);
-        
         var remainingHoles2 = 18 - holeNumber;
         var maxOpponentPoints2 = remainingHoles2 * 2;
         
         if (result.flight2ClinchedHole === null && Math.abs(result.cumulativeF2) > maxOpponentPoints2) {
             result.flight2ClinchedHole = holeNumber;
-            console.log(`    >>> SET flight2ClinchedHole to ${holeNumber}`);
         }
     }
     
     if (crossAvailable) {
-        console.log(`    f1DataString (first 50 chars): ${cache.f1DataString.substring(0, 50)}...`);
-        console.log(`    f2DataString (first 50 chars): ${cache.f2DataString.substring(0, 50)}...`);
-        
         var matchResultsArray = calculateMatchResultsArray(holeNumber);
         result.matchResults = matchResultsArray;
         
@@ -1107,7 +1229,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
                 var lead = Math.abs(matchValue);
                 if (lead > remainingHolesCross && matchValue !== 0 && !cumulativeClinched[matchKey]) {
                     clinchedAtUpdates[matchKey] = holeNumber;
-                    console.log(`    Clinch detected for ${matchKey} at hole ${holeNumber} (lead: ${lead}, remaining: ${remainingHolesCross})`);
                 }
             }
         }
@@ -1123,10 +1244,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
 }
 
 async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole) {
-    console.log(`saveResultsToFirestore(${holeNumber}) called`);
     var resultsData = calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
     if (!resultsData) {
-        console.log(`saveResultsToFirestore(${holeNumber}) skipped - calculateHoleResults returned null`);
         return {
             updatedClinched: cumulativeClinched,
             updatedFlight1ClinchedHole: cumulativeFlight1ClinchedHole,
@@ -1135,17 +1254,13 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     }
     
     var position = resultsData.position;
-    console.log(`saveResultsToFirestore(${holeNumber}) - position: ${position}`);
-    
     var updatePayload = {};
     
     if (resultsData.f1IntraMatches !== null) {
         updatePayload[`results.f1IntraMatches.${position}`] = resultsData.f1IntraMatches;
-        console.log(`  Writing f1IntraMatches for position ${position}`);
     }
     if (resultsData.f2IntraMatches !== null) {
         updatePayload[`results.f2IntraMatches.${position}`] = resultsData.f2IntraMatches;
-        console.log(`  Writing f2IntraMatches for position ${position}`);
     }
     
     if (resultsData.matchResults !== null) {
@@ -1171,7 +1286,6 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload[`results.game3.pointsA.${position}`] = resultsData.game3PointsA;
     updatePayload[`results.game3.pointsB.${position}`] = resultsData.game3PointsB;
     
-    // FIXED v5.16: Only write TR values when cross-flight results are available (both flights saved)
     if (resultsData.matchResults !== null) {
         updatePayload[`results.tr.teamA.${position}`] = resultsData.trA;
         updatePayload[`results.tr.teamB.${position}`] = resultsData.trB;
@@ -1185,10 +1299,8 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
         var mergedClinched = { ...cumulativeClinched, ...resultsData.clinchedAtUpdates };
         updatePayload["results.clinchedAt"] = mergedClinched;
-        console.log(`  Writing clinchedAt with ${Object.keys(resultsData.clinchedAtUpdates).length} new entries, total: ${Object.keys(mergedClinched).length}`);
     } else if (cumulativeClinched && Object.keys(cumulativeClinched).length > 0) {
         updatePayload["results.clinchedAt"] = cumulativeClinched;
-        console.log(`  Preserving existing clinchedAt with ${Object.keys(cumulativeClinched).length} entries`);
     }
     
     if (position + 1 > (GameLoader.getLocalCache().results?.computedUpToHole || 0)) {
@@ -1198,7 +1310,6 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     
     try {
         await db.collection("scheduledGames").doc(gameId).update(updatePayload);
-        console.log(`saveResultsToFirestore(${holeNumber}) - Firestore update successful`);
         
         var cache = GameLoader.getLocalCache();
         if (!cache.results) cache.results = initializeEmptyResults();
@@ -1241,7 +1352,6 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         cache.results.game3.pointsA[position] = resultsData.game3PointsA;
         cache.results.game3.pointsB[position] = resultsData.game3PointsB;
         
-        // Only cache TR values when cross-flight results were available
         if (resultsData.matchResults !== null) {
             cache.results.tr.teamA[position] = resultsData.trA;
             cache.results.tr.teamB[position] = resultsData.trB;
@@ -1298,12 +1408,7 @@ function setupRealtimeListener() {
             var resultsChanged = (JSON.stringify(currentCache.results) !== JSON.stringify(data.results));
             
             if (f1Changed || f2Changed || locksChanged || resultsChanged) {
-                console.log("Realtime update detected - changes:", {
-                    f1Changed: f1Changed,
-                    f2Changed: f2Changed,
-                    locksChanged: locksChanged,
-                    resultsChanged: resultsChanged
-                });
+                console.log("Realtime update detected");
                 
                 GameLoader.loadGame(gameId, "scheduledGames", function(result) {
                     if (result.success) {
@@ -1320,6 +1425,9 @@ function setupRealtimeListener() {
                         if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
                             Ticker.setPlayers(allPlayers);
                         }
+                        
+                        // Check if current device still owns the lock
+                        checkLockOwnership();
                         
                         renderAll();
                         
@@ -1341,6 +1449,11 @@ function setupRealtimeListener() {
 function nextHole() {
     if (isGameCompleteFlag && !celebrationTriggered) {
         showCelebrationAndHandicap();
+        return;
+    }
+    
+    // Prevent navigation if takeover detected
+    if (takeoverDetected) {
         return;
     }
     
@@ -1536,9 +1649,16 @@ function renderAll() {
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
-    GameUI.renderPlayerCards("playerCards", currentPlayers, getAllOpponents, getBubbleClassWithClinch, getBubbleValue, getCurrentScore, canEdit && !isGameCompleteFlag,
+    
+    // Check if we still own the lock before rendering edit controls
+    var stillOwnsLock = checkLockOwnership();
+    var canEditLocal = canEdit && !isGameCompleteFlag && !takeoverDetected && stillOwnsLock;
+    
+    GameUI.renderPlayerCards("playerCards", currentPlayers, getAllOpponents, getBubbleClassWithClinch, getBubbleValue, getCurrentScore, canEditLocal,
         function(playerName, flight, delta) {
             if (isGameCompleteFlag) return;
+            if (takeoverDetected) return;
+            if (!canEdit) return;
             var player = allPlayers.find(p => p.name === playerName && p.flight === flight);
             if (!player) return;
             var current = getCurrentScore(player);
@@ -1560,17 +1680,8 @@ function renderAll() {
     var t2Display = cache.results?.game2?.displayT2 || null;
     var strkDisplay = cache.results?.game3?.displayStrk || null;
     
-    // Use GameScorecard for table rendering (isolated module)
     if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
         GameScorecard.renderScorecard(
-            "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
-            cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
-            t1ClinchedHole, t2ClinchedHole,
-            t1Display, t2Display, strkDisplay
-        );
-    } else {
-        // Fallback to GameUI (should not happen)
-        GameUI.renderScorecard(
             "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
             cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
             t1ClinchedHole, t2ClinchedHole,
@@ -1588,7 +1699,7 @@ function renderAll() {
 
 async function exitToMainMenu() {
     if (!confirm("Leave the game? Unsaved changes will be lost.")) return;
-    if (canEdit) {
+    if (canEdit && !takeoverDetected) {
         var releasePayload = { ["locks.f" + editableFlight]: null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
         try { await db.collection("scheduledGames").doc(gameId).update(releasePayload); } catch(e) {}
     }
@@ -1711,12 +1822,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.17
-KEY CHANGES from v5.16:
-   - REMOVED: SYNC flash animation on real-time updates (was getting stuck)
-   - Real-time updates now happen silently (UI just refreshes)
-   - Cleaner status bubble - always shows "LIVE" unless manually changed
-   - All other functionality identical to v5.16
+VERSION: 5.18
+KEY CHANGES from v5.17:
+   - FIXED: When role is taken over by another device, current device loses edit capability
+   - ADDED: Real-time lock monitoring disables +/- buttons when lock is lost
+   - ADDED: Modal dialog appears when takeover detected with options: VIEWER or EXIT
+   - ADDED: Prevent further saves after takeover
+   - User can click "VIEWER" to go to view-game.html or "EXIT" to return to index.html
+   - All other functionality identical to v5.17
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
