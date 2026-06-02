@@ -1,12 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.02
-KEY CHANGES from v7.01:
-   - FIXED: Next button now disabled until current hole has saved data from at least one flight
-   - ADDED: isCurrentHoleSaved check in nextHole() function
-   - ADDED: Navigation button visual feedback (opacity 0.5 when disabled)
-   - BEHAVIOR: Cannot advance past holes with no saved data (prev still works freely)
-   - All other functionality identical to v7.01
+VERSION: 7.03
+KEY CHANGES from v7.02:
+   - FIXED: Removed grey oval pill shapes where +/- buttons would be in real-game
+   - Player cards now only show score value without button container
+   - Cleaner display for viewer mode (no edit controls at all)
+   - All other functionality identical to v7.02
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -138,7 +137,22 @@ STATUS: Ready for integration
         }
         .player-name { font-size: 1rem; font-weight: 600; }
         .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
-        .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
+        
+        /* Viewer mode - score value only (no button container) */
+        .score-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            min-width: 38px;
+            text-align: center;
+            background: #1a1a1a;
+            padding: 5px 0;
+            border-radius: 30px;
+        }
+        
+        /* Hide score-control containers in viewer mode */
+        .score-control {
+            display: none;
+        }
         
         /* ============================================================
            BUBBLE STYLES - matches real-game
@@ -303,13 +317,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.02</div>
+<div class="version-tag">v7.03</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.02";
+window.VIEW_GAME_VERSION = "7.03";
 
 // ============================================================
 // Firebase Config
@@ -642,7 +656,6 @@ function updateTRDisplay() {
 
 // ============================================================
 // Navigation Functions (Viewer only - no save/sign)
-// FIXED v7.02: Next button requires current hole to have saved data
 // ============================================================
 
 function nextHole() {
@@ -790,20 +803,7 @@ function setupRealtimeListener() {
                         
                         renderAll();
                         
-                        var statusBubble = document.getElementById("statusBubble");
-                        if (statusBubble) {
-                            var originalText = statusBubble.innerText;
-                            statusBubble.innerText = "SYNC";
-                            statusBubble.style.backgroundColor = "rgba(255,170,68,0.3)";
-                            statusBubble.style.borderColor = "#ffaa44";
-                            setTimeout(function() {
-                                if (statusBubble) {
-                                    statusBubble.innerText = originalText;
-                                    statusBubble.style.backgroundColor = "rgba(76,175,80,0.3)";
-                                    statusBubble.style.borderColor = "#4caf50";
-                                }
-                            }, 1000);
-                        }
+                        // SYNC flash removed - updates happen silently
                     } else {
                         console.warn("Failed to refresh cache from realtime update:", result.error);
                     }
@@ -847,6 +847,14 @@ function renderAll() {
     updatePlayerNamesToShortform();
     GameUI.updateFlightBadge(currentFlight);
     
+    // Hide any remaining score-control containers (defensive)
+    setTimeout(function() {
+        var scoreControls = document.querySelectorAll('#playerCards .score-control');
+        scoreControls.forEach(function(control) {
+            control.style.display = 'none';
+        });
+    }, 10);
+    
     var holes = getDisplayHoles();
     window.savedHoles = cache.savedHoles;
     
@@ -866,7 +874,7 @@ function renderAll() {
         );
     }
     
-    // Update navigation button states - FIXED v7.02
+    // Update navigation button states
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     var prevBtn = document.getElementById('compactPrevBtn');
@@ -1017,14 +1025,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.02
-KEY CHANGES from v7.01:
-   - FIXED: Next button now disabled until current hole has saved data from at least one flight
-   - ADDED: isCurrentHoleSavedByAnyFlight() helper function
-   - ADDED: Check in nextHole() function to prevent advancing past unsaved holes
-   - ADDED: Disabled button styling for visual feedback
-   - BEHAVIOR: Cannot advance past holes with no saved data (prev still works freely)
-   - All other functionality identical to v7.01
+VERSION: 7.03
+KEY CHANGES from v7.02:
+   - FIXED: Removed grey oval pill shapes where +/- buttons would be in real-game
+   - Player cards now only show score value without button container
+   - Added CSS to hide .score-control containers
+   - Added defensive setTimeout to ensure score controls are hidden
+   - Cleaner display for viewer mode (no edit controls at all)
+   - All other functionality identical to v7.02
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
