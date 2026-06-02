@@ -1,13 +1,13 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.20
-KEY CHANGES from v4.19:
-   - COMPLETE REWRITE of renderScorecard() function using working debug version
-   - FIXED: Table alignment now correct on initial load (no saved holes)
-   - FIXED: No extra empty cell at beginning of player rows
-   - Preserved save button fix (compact-btn class)
-   - Preserved all other functions from v4.09 (navigation, bubbles, TR, etc.)
-   - Removed excessive console logs
+VERSION: 4.21
+KEY CHANGES from v4.20:
+   - FIXED: Chinese character '柵' replaced with correct '</tr>' in table closing tag
+   - FIXED: Player handicap display now shows only handicap number (removed duplicate label)
+   - FIXED: Clinch bubble styling - 2px border, font-weight 600 (was 3px, 800)
+   - Win-clinch: 2px gold border + gold text + green background
+   - Loss-clinch: 2px white border + white text + red background
+   - All other functionality identical to v4.20
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -112,21 +112,35 @@ var GameUI = (function() {
                 text-overflow: ellipsis;
             }
             
-            /* Bubble color variants */
-            .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-            .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
-            .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
+            /* Regular bubble colors */
+            .bubble-green {
+                background: #1a3a1a;
+                color: #4caf50;
+                border: 1px solid #4caf50;
+            }
+            .bubble-red {
+                background: #3a1a1a;
+                color: #ff6b6b;
+                border: 1px solid #ff6b6b;
+            }
+            .bubble-grey {
+                background: #2a2a2a;
+                color: #888;
+                border: 1px solid #444;
+            }
+            
+            /* FIXED v4.21: Consistent clinch styling - 2px border, 600 weight */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
-                border: 3px solid #ffaa44;
-                font-weight: 800;
+                border: 2px solid #ffaa44;
+                font-weight: 600;
             }
             .bubble-loss-clinch {
                 background: #3a1a1a;
                 color: #ffffff;
-                border: 3px solid #ffffff;
-                font-weight: 800;
+                border: 2px solid #ffffff;
+                font-weight: 600;
             }
             
             /* Green square for AS */
@@ -448,7 +462,6 @@ var GameUI = (function() {
         }, 50);
         
         // RESPONSIVE: CSS Grid + clamp for all screen sizes
-        // FIXED v4.20: Added 'compact-btn' class to save button for green background
         var html = `
             <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
                 <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
@@ -536,7 +549,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - FIXED v4.20
+    // Scorecard Rendering - FIXED v4.20 (working)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -690,7 +703,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-2 row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<td><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t2Row[holeNum - 1] || '_';
@@ -779,6 +792,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
+        // FIXED v4.21: Correct table closing tag (was '柵')
         html += '</tbody></table>';
         container.innerHTML = html;
         
@@ -853,7 +867,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Player Cards with Bubbles
+    // Player Cards with Bubbles - FIXED v4.21 (removed duplicate label)
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -882,12 +896,13 @@ var GameUI = (function() {
             }
             bubblesHtml += '</div>';
             
+            // FIXED v4.21: Removed duplicate label from handicap span
             html += `
                 <div class="player-card" data-player-name="${escapeHtml(player.name)}" data-player-flight="${player.flight}">
                     <div class="player-header">
                         <div>
                             <span class="player-name">${escapeHtml(player.label || player.name)}</span>
-                            <span class="player-handicap">${player.label} ${player.handicap}</span>
+                            <span class="player-handicap">${player.handicap}</span>
                         </div>
                         <div class="score-control">
                             <button class="score-btn dec-btn" ${btnDisabled} data-delta="-1">-</button>
@@ -1421,14 +1436,14 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.20
-KEY CHANGES from v4.19:
-   - COMPLETE REWRITE of renderScorecard() function using working debug version
-   - FIXED: Table alignment now correct on initial load (no saved holes)
-   - FIXED: No extra empty cell at beginning of player rows
-   - Preserved save button fix (compact-btn class)
-   - Preserved all other functions from v4.09 (navigation, bubbles, TR, etc.)
-   - Removed excessive console logs
+VERSION: 4.21
+KEY CHANGES from v4.20:
+   - FIXED: Chinese character '柵' replaced with correct '</td>' in table closing tag
+   - FIXED: Player handicap display now shows only handicap number (removed duplicate label)
+   - FIXED: Clinch bubble styling - 2px border, font-weight 600 (was 3px, 800)
+   - Win-clinch: 2px gold border + gold text + green background
+   - Loss-clinch: 2px white border + white text + red background
+   - All other functionality identical to v4.20
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
