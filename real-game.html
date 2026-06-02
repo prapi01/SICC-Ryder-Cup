@@ -1,13 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.14
-KEY CHANGES from v5.13:
-   - FIXED: getMatchValueFromStoredResults() now correctly negates cross-flight match values
-   - When player.team === "B", the stored value is negated (since stored values are from Team A perspective)
-   - OCB vs KF now returns +1, KF vs OCB returns -1 (was returning +1 for both)
-   - This fixes match bubbles showing both players winning the same match
-   - Preserves all v5.13 functionality (real-time listener, intra-flight bubbles, T-1/T-2 display)
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.15
+KEY CHANGES from v5.14:
+   - ADDED: js/game-scorecard.js module for isolated scorecard rendering
+   - Table rendering now delegated to GameScorecard module
+   - All other functionality identical to v5.14 (real-time listener, match bubble negation, etc.)
+DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -25,6 +23,7 @@ STATUS: Ready for integration
     <script src="js/game-match.js"></script>
     <script src="js/game-team.js"></script>
     <script src="js/game-stroke.js"></script>
+    <script src="js/game-scorecard.js"></script>
     <script src="js/game-ui.js"></script>
     <script src="js/game-loader.js"></script>
     <script src="js/card-submit.js"></script>
@@ -337,7 +336,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.14</div>
+<div class="version-tag">v5.15</div>
 
 <script>
 // ============================================================
@@ -1560,12 +1559,23 @@ function renderAll() {
     var t2Display = cache.results?.game2?.displayT2 || null;
     var strkDisplay = cache.results?.game3?.displayStrk || null;
     
-    GameUI.renderScorecard(
-        "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
-        cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
-        t1ClinchedHole, t2ClinchedHole,
-        t1Display, t2Display, strkDisplay
-    );
+    // Use GameScorecard for table rendering (isolated module)
+    if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
+        GameScorecard.renderScorecard(
+            "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
+            cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
+            t1ClinchedHole, t2ClinchedHole,
+            t1Display, t2Display, strkDisplay
+        );
+    } else {
+        // Fallback to GameUI (should not happen)
+        GameUI.renderScorecard(
+            "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
+            cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
+            t1ClinchedHole, t2ClinchedHole,
+            t1Display, t2Display, strkDisplay
+        );
+    }
     
     var playOrder = getPlayOrder();
     var isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) { return key.startsWith(editableFlight + "_" + currentHole + "_"); }).length === 0;
@@ -1700,13 +1710,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.14
-KEY CHANGES from v5.13:
-   - FIXED: getMatchValueFromStoredResults() now correctly negates cross-flight match values
-   - When player.team === "B", the stored value is negated (since stored values are from Team A perspective)
-   - OCB vs KF now returns +1, KF vs OCB returns -1 (was returning +1 for both)
-   - This fixes match bubbles showing both players winning the same match
-   - Preserves all v5.13 functionality (real-time listener, intra-flight bubbles, T-1/T-2 display)
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.15
+KEY CHANGES from v5.14:
+   - ADDED: js/game-scorecard.js module for isolated scorecard rendering
+   - Table rendering now delegated to GameScorecard module
+   - All other functionality identical to v5.14 (real-time listener, match bubble negation, etc.)
+DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
