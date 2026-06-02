@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.16
-KEY CHANGES from v5.15:
-   - FIXED: TR values now only written when cross-flight results are available (both flights saved)
-   - This prevents 0:0 TR values from appearing when only one flight has saved a hole
-   - Added version exposure via window.REAL_GAME_VERSION for easy console debugging
-   - All other functionality identical to v5.15 (real-time listener, match bubble negation, etc.)
+VERSION: 5.17
+KEY CHANGES from v5.16:
+   - REMOVED: SYNC flash animation on real-time updates (was getting stuck)
+   - Real-time updates now happen silently (UI just refreshes)
+   - Cleaner status bubble - always shows "LIVE" unless manually changed
+   - All other functionality identical to v5.16
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -337,13 +337,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.16</div>
+<div class="version-tag">v5.17</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.16";
+window.REAL_GAME_VERSION = "5.17";
 
 // ============================================================
 // Firebase Config
@@ -1323,20 +1323,7 @@ function setupRealtimeListener() {
                         
                         renderAll();
                         
-                        var statusBubble = document.getElementById("statusBubble");
-                        if (statusBubble) {
-                            var originalText = statusBubble.innerText;
-                            statusBubble.innerText = "SYNC";
-                            statusBubble.style.backgroundColor = "rgba(255,170,68,0.3)";
-                            statusBubble.style.borderColor = "#ffaa44";
-                            setTimeout(function() {
-                                if (statusBubble) {
-                                    statusBubble.innerText = originalText;
-                                    statusBubble.style.backgroundColor = "rgba(76,175,80,0.3)";
-                                    statusBubble.style.borderColor = "#4caf50";
-                                }
-                            }, 1000);
-                        }
+                        // SYNC flash removed - updates happen silently
                     } else {
                         console.warn("Failed to refresh cache from realtime update:", result.error);
                     }
@@ -1724,12 +1711,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.16
-KEY CHANGES from v5.15:
-   - FIXED: TR values now only written when cross-flight results are available (both flights saved)
-   - This prevents 0:0 TR values from appearing when only one flight has saved a hole
-   - Added version exposure via window.REAL_GAME_VERSION for easy console debugging
-   - All other functionality identical to v5.15 (real-time listener, match bubble negation, etc.)
+VERSION: 5.17
+KEY CHANGES from v5.16:
+   - REMOVED: SYNC flash animation on real-time updates (was getting stuck)
+   - Real-time updates now happen silently (UI just refreshes)
+   - Cleaner status bubble - always shows "LIVE" unless manually changed
+   - All other functionality identical to v5.16
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
