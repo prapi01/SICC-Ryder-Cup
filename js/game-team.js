@@ -1,43 +1,59 @@
 /*
 FILE: js/game-team.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: Players are now sorted by NET SCORE for each hole, not by handicap
-   - Best vs Best: lowest net score in Team A vs lowest net score in Team B
-   - Second vs Second: second lowest net score in Team A vs second lowest net score in Team B
-   - This matches real-world match play where players are ordered by performance on each hole
-   - All existing functionality preserved (cumulative, leaders, points, display strings)
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: Tournament Handicap - each player gets strokes based on their OWN handicap (SI ≤ player handicap)
+   - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero, strokes based on adjusted handicap
+   - ADDED: calculateMinHandicap() helper to get lowest handicap across all players
+   - ADDED: getNetScoreWithFormat() - handles both formats correctly
+   - REMOVED: Old getNetScore() that incorrectly used handicap difference
+   - All other functionality preserved (net score sorting, cumulative, display strings)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
 
 var GameTeam = (function() {
-    function getNetScore(gross, handicap, si, courseSi) {
-        var strokes = 0;
-        if (handicap > 0) {
-            for (var i = 0; i < courseSi.length; i++) {
-                if (courseSi[i] <= handicap && i + 1 === si) {
-                    strokes++;
-                }
+    
+    // Calculate minimum handicap across all players (for Relative format)
+    function calculateMinHandicap(players) {
+        if (!players || players.length === 0) return 0;
+        var min = players[0].handicap;
+        for (var i = 1; i < players.length; i++) {
+            if (players[i].handicap < min) {
+                min = players[i].handicap;
             }
+        }
+        return min;
+    }
+    
+    // Get net score based on team game format
+    function getNetScoreWithFormat(gross, playerHandicap, si, teamGameFormat, minHandicap) {
+        var effectiveHandicap;
+        
+        if (teamGameFormat === "tournament") {
+            // Tournament: use player's own handicap
+            effectiveHandicap = playerHandicap;
+        } else {
+            // Relative: zero-rise - subtract lowest handicap
+            effectiveHandicap = playerHandicap - minHandicap;
+        }
+        
+        var strokes = 0;
+        if (effectiveHandicap > 0 && si <= effectiveHandicap) {
+            strokes = 1;
         }
         return gross - strokes;
     }
 
-    // Helper: Get net score for a player on a specific hole
-    function getPlayerNetScore(player, grossScore, holeSi, courseSi) {
-        return getNetScore(grossScore, player.handicap, holeSi, courseSi);
-    }
-
     // Helper: Sort players by net score (lowest = best)
-    function sortPlayersByNetScore(players, scores, holeSi, courseSi) {
+    function sortPlayersByNetScore(players, grossScores, si, teamGameFormat, minHandicap, courseSi) {
         var playersWithNet = [];
         for (var i = 0; i < players.length; i++) {
-            var netScore = getPlayerNetScore(players[i], scores[i], holeSi, courseSi);
+            var netScore = getNetScoreWithFormat(grossScores[i], players[i].handicap, si, teamGameFormat, minHandicap);
             playersWithNet.push({
                 player: players[i],
                 netScore: netScore,
-                grossScore: scores[i]
+                grossScore: grossScores[i]
             });
         }
         // Sort by net score ascending (lower is better)
@@ -50,6 +66,9 @@ var GameTeam = (function() {
     }
 
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat) {
+        // Calculate minimum handicap across all players for Relative format
+        var minHandicap = calculateMinHandicap(allPlayers);
+        
         var cumulativeFlight1 = new Array(18).fill(0);
         var cumulativeFlight2 = new Array(18).fill(0);
         var flight1Leaders = new Array(18).fill("AS");
@@ -96,9 +115,9 @@ var GameTeam = (function() {
                 var teamBGross1 = [f1Hole.scores.b1, f1Hole.scores.b2];
                 
                 // Sort Team A players by net score (lowest = best)
-                var sortedTeamA1 = sortPlayersByNetScore(flight1A, teamAGross1, si, courseSi);
+                var sortedTeamA1 = sortPlayersByNetScore(flight1A, teamAGross1, si, teamGameFormat, minHandicap, courseSi);
                 // Sort Team B players by net score (lowest = best)
-                var sortedTeamB1 = sortPlayersByNetScore(flight1B, teamBGross1, si, courseSi);
+                var sortedTeamB1 = sortPlayersByNetScore(flight1B, teamBGross1, si, teamGameFormat, minHandicap, courseSi);
                 
                 // Best vs Best (index 0)
                 var bestANet = sortedTeamA1[0].netScore;
@@ -135,9 +154,9 @@ var GameTeam = (function() {
                 var teamBGross2 = [f2Hole.scores.b1, f2Hole.scores.b2];
                 
                 // Sort Team A players by net score (lowest = best)
-                var sortedTeamA2 = sortPlayersByNetScore(flight2A, teamAGross2, si, courseSi);
+                var sortedTeamA2 = sortPlayersByNetScore(flight2A, teamAGross2, si, teamGameFormat, minHandicap, courseSi);
                 // Sort Team B players by net score (lowest = best)
-                var sortedTeamB2 = sortPlayersByNetScore(flight2B, teamBGross2, si, courseSi);
+                var sortedTeamB2 = sortPlayersByNetScore(flight2B, teamBGross2, si, teamGameFormat, minHandicap, courseSi);
                 
                 // Best vs Best (index 0)
                 var bestANet2 = sortedTeamA2[0].netScore;
@@ -228,13 +247,14 @@ window.GameTeam = GameTeam;
 
 /*
 FILE: js/game-team.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: Players are now sorted by NET SCORE for each hole, not by handicap
-   - Best vs Best: lowest net score in Team A vs lowest net score in Team B
-   - Second vs Second: second lowest net score in Team A vs second lowest net score in Team B
-   - This matches real-world match play where players are ordered by performance on each hole
-   - All existing functionality preserved (cumulative, leaders, points, display strings)
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: Tournament Handicap - each player gets strokes based on their OWN handicap (SI ≤ player handicap)
+   - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero, strokes based on adjusted handicap
+   - ADDED: calculateMinHandicap() helper to get lowest handicap across all players
+   - ADDED: getNetScoreWithFormat() - handles both formats correctly
+   - REMOVED: Old getNetScore() that incorrectly used handicap difference
+   - All other functionality preserved (net score sorting, cumulative, display strings)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
