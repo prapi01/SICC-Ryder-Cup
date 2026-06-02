@@ -1,18 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 7.00
-KEY CHANGES from real-game.html v5.16:
-   - REMOVED: All save/sign/celebration functionality
-   - REMOVED: +/- score buttons (canEdit = false)
-   - REMOVED: Sign card modal and waiting screen
-   - REMOVED: Celebration and handicap adjustment
-   - REMOVED: Card-submit.js dependency
-   - CHANGED: Status bubble text from "LIVE" to "VIEWER"
-   - CHANGED: SAVE button replaced with FLIGHT toggle button
-   - CHANGED: No lock release on exit (viewer doesn't lock)
-   - KEPT: Real-time Firestore listener for live updates
-   - KEPT: All UI rendering identical to real-game
-   - KEPT: Ticker, player cards, scorecard, match bubbles
+VERSION: 7.01
+KEY CHANGES from v7.00:
+   - FIXED: Bubble padding from 10px 4px to 8px 4px (matches real-game)
+   - FIXED: Bubble border-radius from 16px to 12px (matches real-game)
+   - FIXED: Bubble gap from clamp() to fixed 8px (matches real-game)
+   - ADDED: Responsive bubble styles for small screens (≤380px)
+   - Version exposed via window.VIEW_GAME_VERSION for console debugging
+   - All other functionality identical to v7.00
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -146,6 +141,67 @@ STATUS: Ready for integration
         .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
         .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
         
+        /* ============================================================
+           BUBBLE STYLES - FIXED v7.01 to match real-game
+        ============================================================ */
+        .bubbles {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-top: 10px;
+        }
+        
+        .bubble {
+            white-space: nowrap;
+            text-align: center;
+            padding: 8px 4px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        /* Small screen adjustments (iPhone SE) */
+        @media (max-width: 380px) {
+            .bubble {
+                padding: 6px 2px;
+                font-size: 0.75rem;
+            }
+            .bubbles {
+                gap: 4px;
+            }
+        }
+        
+        /* Bubble color classes */
+        .bubble-green {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .bubble-red {
+            background: #3a1a1a;
+            color: #ff6b6b;
+            border: 1px solid #ff6b6b;
+        }
+        .bubble-grey {
+            background: #2a2a2a;
+            color: #888;
+            border: 1px solid #444;
+        }
+        .bubble-gold {
+            background: #1a3a1a;
+            color: #ffaa44;
+            border: 2px solid #ffaa44;
+            font-weight: 600;
+        }
+        .bubble-loss-clinch {
+            background: #3a1a1a;
+            color: #ffffff;
+            border: 2px solid #ffffff;
+            font-weight: 600;
+        }
+        
         .scorecard-section { margin: 20px 0; }
         #compactHeaderContainer { margin-bottom: 10px; }
         .scorecard-wrapper { overflow-x: auto; }
@@ -239,13 +295,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.00</div>
+<div class="version-tag">v7.01</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.00";
+window.VIEW_GAME_VERSION = "7.01";
 
 // ============================================================
 // Firebase Config
@@ -932,19 +988,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.00
-KEY CHANGES from real-game.html v5.16:
-   - REMOVED: All save/sign/celebration functionality
-   - REMOVED: +/- score buttons (canEdit = false)
-   - REMOVED: Sign card modal and waiting screen
-   - REMOVED: Celebration and handicap adjustment
-   - REMOVED: Card-submit.js dependency
-   - CHANGED: Status bubble text from "LIVE" to "VIEWER"
-   - CHANGED: SAVE button replaced with FLIGHT toggle button
-   - CHANGED: No lock release on exit (viewer doesn't lock)
-   - KEPT: Real-time Firestore listener for live updates
-   - KEPT: All UI rendering identical to real-game
-   - KEPT: Ticker, player cards, scorecard, match bubbles
+VERSION: 7.01
+KEY CHANGES from v7.00:
+   - FIXED: Bubble padding from 10px 4px to 8px 4px (matches real-game)
+   - FIXED: Bubble border-radius from 16px to 12px (matches real-game)
+   - FIXED: Bubble gap from clamp() to fixed 8px (matches real-game)
+   - ADDED: Responsive bubble styles for small screens (≤380px)
+   - Version exposed via window.VIEW_GAME_VERSION for console debugging
+   - All other functionality identical to v7.00
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
