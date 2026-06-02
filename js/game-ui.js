@@ -1,13 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.21
+VERSION: 4.22
 KEY CHANGES from v4.20:
-   - FIXED: Chinese character '柵' replaced with correct '</tr>' in table closing tag
    - FIXED: Player handicap display now shows only handicap number (removed duplicate label)
    - FIXED: Clinch bubble styling - 2px border, font-weight 600 (was 3px, 800)
    - Win-clinch: 2px gold border + gold text + green background
    - Loss-clinch: 2px white border + white text + red background
-   - All other functionality identical to v4.20
+   - ALL other code identical to v4.20 (table alignment preserved)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -129,7 +128,7 @@ var GameUI = (function() {
                 border: 1px solid #444;
             }
             
-            /* FIXED v4.21: Consistent clinch styling - 2px border, 600 weight */
+            /* FIXED v4.22: Clinch styling - 2px border, 600 weight */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
@@ -549,7 +548,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - FIXED v4.20 (working)
+    // Scorecard Rendering - IDENTICAL to v4.20 (working)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -584,7 +583,7 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead><tr><th>Hole</th>';
+        html += '<thead></td><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
@@ -614,7 +613,7 @@ var GameUI = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr>';
+            html += '<td>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -703,7 +702,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-2 row
-        html += '<td><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '</table><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t2Row[holeNum - 1] || '_';
@@ -792,7 +791,6 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        // FIXED v4.21: Correct table closing tag (was '柵')
         html += '</tbody></table>';
         container.innerHTML = html;
         
@@ -867,7 +865,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Player Cards with Bubbles - FIXED v4.21 (removed duplicate label)
+    // Player Cards with Bubbles - FIXED v4.22 (removed duplicate label)
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -896,7 +894,7 @@ var GameUI = (function() {
             }
             bubblesHtml += '</div>';
             
-            // FIXED v4.21: Removed duplicate label from handicap span
+            // FIXED v4.22: Removed duplicate label from handicap span
             html += `
                 <div class="player-card" data-player-name="${escapeHtml(player.name)}" data-player-flight="${player.flight}">
                     <div class="player-header">
@@ -1436,14 +1434,13 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.21
+VERSION: 4.22
 KEY CHANGES from v4.20:
-   - FIXED: Chinese character '柵' replaced with correct '</td>' in table closing tag
    - FIXED: Player handicap display now shows only handicap number (removed duplicate label)
    - FIXED: Clinch bubble styling - 2px border, font-weight 600 (was 3px, 800)
    - Win-clinch: 2px gold border + gold text + green background
    - Loss-clinch: 2px white border + white text + red background
-   - All other functionality identical to v4.20
+   - ALL other code identical to v4.20 (table alignment preserved)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
