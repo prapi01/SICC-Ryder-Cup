@@ -6,11 +6,15 @@ KEY CHANGES from v1.05:
    - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero, strokes based on adjusted handicap
    - ADDED: calculateMinHandicap() helper to get lowest handicap across all players
    - ADDED: getNetScoreWithFormat() - handles both formats correctly
+   - ADDED: Version exposure via window.GAME_TEAM_VERSION for easy console debugging
    - REMOVED: Old getNetScore() that incorrectly used handicap difference
    - All other functionality preserved (net score sorting, cumulative, display strings)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
+
+// Version exposure for console debugging
+window.GAME_TEAM_VERSION = "1.06";
 
 var GameTeam = (function() {
     
@@ -243,7 +247,11 @@ var GameTeam = (function() {
     return { calculate: calculate };
 })();
 
+// Make available globally
 window.GameTeam = GameTeam;
+
+// Re-expose version for console debugging
+window.GAME_TEAM_VERSION = "1.06";
 
 /*
 FILE: js/game-team.js
@@ -253,6 +261,7 @@ KEY CHANGES from v1.05:
    - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero, strokes based on adjusted handicap
    - ADDED: calculateMinHandicap() helper to get lowest handicap across all players
    - ADDED: getNetScoreWithFormat() - handles both formats correctly
+   - ADDED: Version exposure via window.GAME_TEAM_VERSION for easy console debugging
    - REMOVED: Old getNetScore() that incorrectly used handicap difference
    - All other functionality preserved (net score sorting, cumulative, display strings)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
