@@ -1,14 +1,17 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: T-1 row now displays when ONLY Flight 1 has saved the hole (no longer requires Flight 2)
-   - FIXED: T-2 row now displays when ONLY Flight 2 has saved the hole (no longer requires Flight 1)
-   - Strk row unchanged - still requires BOTH flights to have saved
-   - All other functionality identical to v1.00 (table alignment, green line fix, clinch styling)
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: Version exposure via window.GAME_SCORECARD_VERSION for easy console debugging
+   - All other functionality identical to v1.01 (T-1/T-2 independent sync, table alignment)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
+
+// ============================================================
+// Version Exposure for Console Debugging
+// ============================================================
+window.GAME_SCORECARD_VERSION = "1.02";
 
 var GameScorecard = (function() {
     
@@ -185,7 +188,7 @@ var GameScorecard = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr>';
+            html += '<td>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -297,7 +300,7 @@ var GameScorecard = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody><tr>';
+        html += '</tbody></tr>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -394,7 +397,9 @@ var GameScorecard = (function() {
     return {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
-        getAsSquareHtml: getAsSquareHtml
+        getAsSquareHtml: getAsSquareHtml,
+        // Version info
+        getVersion: function() { return "1.02"; }
     };
     
 })();
@@ -406,12 +411,10 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: T-1 row now displays when ONLY Flight 1 has saved the hole (no longer requires Flight 2)
-   - FIXED: T-2 row now displays when ONLY Flight 2 has saved the hole (no longer requires Flight 1)
-   - Strk row unchanged - still requires BOTH flights to have saved
-   - All other functionality identical to v1.00 (table alignment, green line fix, clinch styling)
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: Version exposure via window.GAME_SCORECARD_VERSION for easy console debugging
+   - All other functionality identical to v1.01 (T-1/T-2 independent sync, table alignment)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
