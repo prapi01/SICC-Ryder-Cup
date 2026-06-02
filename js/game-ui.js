@@ -1,11 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.23
-KEY CHANGES from v4.22:
-   - FIXED: Green line rows are now skipped when applying sticky positioning
-   - This preserves the colspan="20" attribute on green line rows
-   - Table alignment is now permanent and will not shift on re-renders
-   - All other functionality identical to v4.22 (player label fix, clinch styling)
+VERSION: 4.24
+KEY CHANGES from v4.23:
+   - FIXED: T-1 row now displays when ONLY Flight 1 has saved the hole (no longer requires Flight 2)
+   - FIXED: T-2 row now displays when ONLY Flight 2 has saved the hole (no longer requires Flight 1)
+   - Strk row unchanged - still requires BOTH flights to have saved
+   - All other functionality identical to v4.23 (table alignment, green line fix, player labels, clinch styling)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -127,7 +127,7 @@ var GameUI = (function() {
                 border: 1px solid #444;
             }
             
-            /* FIXED v4.22: Clinch styling - 2px border, 600 weight */
+            /* Clinch styling - 2px border, 600 weight */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
@@ -459,7 +459,6 @@ var GameUI = (function() {
             addFlightBadge(flightNumber);
         }, 50);
         
-        // RESPONSIVE: CSS Grid + clamp for all screen sizes
         var html = `
             <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
                 <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
@@ -547,7 +546,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - FIXED v4.23 (preserve green line colspan)
+    // Scorecard Rendering - FIXED v4.24 (T-1/T-2 independent sync)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -630,12 +629,14 @@ var GameUI = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row
-        html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
+        // T-1 row - FIXED v4.24: Only requires Flight 1 saved
+        html += '<table><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t1Row[holeNum - 1] || '_';
-            var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
+            // FIXED v4.24: Only check Flight 1 saved for T-1
+            var isSynced = (savedHoles[1].indexOf(holeNum) !== -1);
+            
             var displayVal = '';
             var cellClass = 'score-invisible';
             
@@ -700,12 +701,14 @@ var GameUI = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row
+        // T-2 row - FIXED v4.24: Only requires Flight 2 saved
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t2Row[holeNum - 1] || '_';
-            var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
+            // FIXED v4.24: Only check Flight 2 saved for T-2
+            var isSynced = (savedHoles[2].indexOf(holeNum) !== -1);
+            
             var displayVal = '';
             var cellClass = 'score-invisible';
             
@@ -749,12 +752,14 @@ var GameUI = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row
+        // Strk row - unchanged (requires both flights)
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = strkRow[holeNum - 1] || '_';
+            // Strk requires BOTH flights saved (unchanged)
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
+            
             var displayVal = '';
             var cellClass = 'score-invisible';
             
@@ -790,7 +795,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></table>';
+        html += '</tbody></tr>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -810,11 +815,9 @@ var GameUI = (function() {
                 cell.style.border = 'none';
             });
             
-            // FIXED v4.23: Skip green line rows when applying sticky positioning
-            // This preserves the colspan="20" attribute on green line rows
+            // Skip green line rows when applying sticky positioning
             var firstColCells = scorecardTable.querySelectorAll('th:first-child, td:first-child');
             firstColCells.forEach(function(cell) {
-                // Skip green line rows to prevent colspan from breaking
                 if (cell.closest('.green-line')) return;
                 
                 cell.style.position = 'sticky';
@@ -869,7 +872,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Player Cards with Bubbles - FIXED v4.22 (removed duplicate label)
+    // Player Cards with Bubbles
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
@@ -1437,12 +1440,12 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.23
-KEY CHANGES from v4.22:
-   - FIXED: Green line rows are now skipped when applying sticky positioning
-   - This preserves the colspan="20" attribute on green line rows
-   - Table alignment is now permanent and will not shift on re-renders
-   - All other functionality identical to v4.22 (player label fix, clinch styling)
+VERSION: 4.24
+KEY CHANGES from v4.23:
+   - FIXED: T-1 row now displays when ONLY Flight 1 has saved the hole (no longer requires Flight 2)
+   - FIXED: T-2 row now displays when ONLY Flight 2 has saved the hole (no longer requires Flight 1)
+   - Strk row unchanged - still requires BOTH flights to have saved
+   - All other functionality identical to v4.23 (table alignment, green line fix, player labels, clinch styling)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
