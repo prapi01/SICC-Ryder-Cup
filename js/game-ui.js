@@ -779,7 +779,7 @@ var GameUI = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody>柵';
+        html += '</tbody></table>';
         container.innerHTML = html;
         
         tightenScorecardRows();
