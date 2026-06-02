@@ -1,13 +1,11 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Isolated scorecard table rendering from game-ui.js
-   - Contains renderScorecard() function with working v4.23 logic
-   - Includes tightenScorecardRows() and getAsSquareHtml() helpers
-   - Table alignment is stable (green line colspan preserved)
-   - T-1/T-2 require both flights saved (v4.23 behavior)
-   - ALL table-specific CSS styling included
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: T-1 row now displays when ONLY Flight 1 has saved the hole (no longer requires Flight 2)
+   - FIXED: T-2 row now displays when ONLY Flight 2 has saved the hole (no longer requires Flight 1)
+   - Strk row unchanged - still requires BOTH flights to have saved
+   - All other functionality identical to v1.00 (table alignment, green line fix, clinch styling)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -50,7 +48,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - ISOLATED v1.00 (from game-ui.js v4.23)
+    // Scorecard Rendering - FIXED v1.01 (T-1/T-2 independent sync)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -133,12 +131,13 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row
+        // T-1 row - FIXED v1.01: Only requires Flight 1 saved
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t1Row[holeNum - 1] || '_';
-            var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
+            // FIXED v1.01: Only check Flight 1 saved for T-1
+            var isSynced = (savedHoles[1].indexOf(holeNum) !== -1);
             
             var displayVal = '';
             var cellClass = 'score-invisible';
@@ -186,7 +185,7 @@ var GameScorecard = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '</tr>';
+            html += '<tr>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -204,12 +203,13 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row
-        html += '</tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        // T-2 row - FIXED v1.01: Only requires Flight 2 saved
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t2Row[holeNum - 1] || '_';
-            var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
+            // FIXED v1.01: Only check Flight 2 saved for T-2
+            var isSynced = (savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
             var cellClass = 'score-invisible';
@@ -254,11 +254,12 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row
+        // Strk row - unchanged (requires both flights)
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = strkRow[holeNum - 1] || '_';
+            // Strk requires BOTH flights saved (unchanged)
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
@@ -296,7 +297,7 @@ var GameScorecard = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></table>';
+        html += '</tbody><tr>';
         container.innerHTML = html;
         
         tightenScorecardRows();
@@ -405,14 +406,12 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Isolated scorecard table rendering from game-ui.js
-   - Contains renderScorecard() function with working v4.23 logic
-   - Includes tightenScorecardRows() and getAsSquareHtml() helpers
-   - Table alignment is stable (green line colspan preserved)
-   - T-1/T-2 require both flights saved (v4.23 behavior)
-   - ALL table-specific CSS styling included
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: T-1 row now displays when ONLY Flight 1 has saved the hole (no longer requires Flight 2)
+   - FIXED: T-2 row now displays when ONLY Flight 2 has saved the hole (no longer requires Flight 1)
+   - Strk row unchanged - still requires BOTH flights to have saved
+   - All other functionality identical to v1.00 (table alignment, green line fix, clinch styling)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
