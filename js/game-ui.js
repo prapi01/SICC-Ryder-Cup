@@ -1,12 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.22
-KEY CHANGES from v4.20:
-   - FIXED: Player handicap display now shows only handicap number (removed duplicate label)
-   - FIXED: Clinch bubble styling - 2px border, font-weight 600 (was 3px, 800)
-   - Win-clinch: 2px gold border + gold text + green background
-   - Loss-clinch: 2px white border + white text + red background
-   - ALL other code identical to v4.20 (table alignment preserved)
+VERSION: 4.23
+KEY CHANGES from v4.22:
+   - FIXED: Green line rows are now skipped when applying sticky positioning
+   - This preserves the colspan="20" attribute on green line rows
+   - Table alignment is now permanent and will not shift on re-renders
+   - All other functionality identical to v4.22 (player label fix, clinch styling)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -548,7 +547,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - IDENTICAL to v4.20 (working)
+    // Scorecard Rendering - FIXED v4.23 (preserve green line colspan)
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -583,7 +582,7 @@ var GameUI = (function() {
         flight2Players = sortFlightPlayers(flight2Players);
         
         var html = '<table class="scorecard-table">';
-        html += '<thead></td><th>Hole</th>';
+        html += '<thead><tr><th>Hole</th>';
         for (var i = 0; i < holes.length; i++) {
             html += '<th>' + holes[i] + '</th>';
         }
@@ -613,7 +612,7 @@ var GameUI = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td>';
+            html += '<tr>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -702,7 +701,7 @@ var GameUI = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // T-2 row
-        html += '</table><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
+        html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t2Row[holeNum - 1] || '_';
@@ -811,8 +810,13 @@ var GameUI = (function() {
                 cell.style.border = 'none';
             });
             
+            // FIXED v4.23: Skip green line rows when applying sticky positioning
+            // This preserves the colspan="20" attribute on green line rows
             var firstColCells = scorecardTable.querySelectorAll('th:first-child, td:first-child');
             firstColCells.forEach(function(cell) {
+                // Skip green line rows to prevent colspan from breaking
+                if (cell.closest('.green-line')) return;
+                
                 cell.style.position = 'sticky';
                 cell.style.left = '0';
                 cell.style.backgroundColor = '#111';
@@ -894,7 +898,6 @@ var GameUI = (function() {
             }
             bubblesHtml += '</div>';
             
-            // FIXED v4.22: Removed duplicate label from handicap span
             html += `
                 <div class="player-card" data-player-name="${escapeHtml(player.name)}" data-player-flight="${player.flight}">
                     <div class="player-header">
@@ -1434,13 +1437,12 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.22
-KEY CHANGES from v4.20:
-   - FIXED: Player handicap display now shows only handicap number (removed duplicate label)
-   - FIXED: Clinch bubble styling - 2px border, font-weight 600 (was 3px, 800)
-   - Win-clinch: 2px gold border + gold text + green background
-   - Loss-clinch: 2px white border + white text + red background
-   - ALL other code identical to v4.20 (table alignment preserved)
+VERSION: 4.23
+KEY CHANGES from v4.22:
+   - FIXED: Green line rows are now skipped when applying sticky positioning
+   - This preserves the colspan="20" attribute on green line rows
+   - Table alignment is now permanent and will not shift on re-renders
+   - All other functionality identical to v4.22 (player label fix, clinch styling)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
