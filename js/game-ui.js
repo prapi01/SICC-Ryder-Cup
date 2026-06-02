@@ -1,15 +1,11 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.16
-KEY CHANGES from v4.13:
-   - FIXED: Loss-clinch bubble now uses white border and white text (was gold border)
-   - ADDED: Faint grid lines to scorecard table (border: 1px solid #333 on all cells)
-   - ADDED: Version exposure via getVersion() method
-   - Preserved all v4.13 functionality (T-1/T-2 independent sync, Strk unchanged)
-   - Clinch bubbles have consistent styling (3px border, 600 font-weight)
-   - Win-clinch: gold border + gold text + green background
-   - Loss-clinch: white border + white text + red background
-   - ALL other functions identical to v4.13 (working table structure)
+VERSION: 4.13
+KEY CHANGES from v4.12:
+   - FIXED: Clinch bubbles (gold and loss-clinch) no longer have bold text (font-weight: 800 -> 600)
+   - Clinch bubbles now match regular bubble font weight for consistent visual appearance
+   - Gold border and loss-clinch white border still distinguish clinch results
+   - All other functionality identical to v4.12 (T-1/T-2 independent sync, Strk unchanged)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -19,8 +15,6 @@ var GameUI = (function() {
     // ============================================================
     // Constants
     // ============================================================
-    
-    var VERSION = "4.16";
     
     var Z_INDEX = {
         STATUS_BUBBLE: 999,
@@ -116,12 +110,12 @@ var GameUI = (function() {
                 text-overflow: ellipsis;
             }
             
-            /* Regular bubble colors */
+            /* Bubble color variants */
             .bubble-green { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
             .bubble-red { background: #3a1a1a; color: #ff6b6b; border: 1px solid #ff6b6b; }
             .bubble-grey { background: #2a2a2a; color: #888; border: 1px solid #444; }
             
-            /* FIXED v4.16: Consistent clinch styling - 3px border, 600 weight */
+            /* FIXED v4.13: Removed bold font-weight (800 -> 600) for visual consistency */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
@@ -803,8 +797,7 @@ var GameUI = (function() {
                 cell.style.padding = '4px 6px';
                 cell.style.fontSize = '0.85rem';
                 cell.style.lineHeight = '1.2';
-                // FIXED v4.16: Add faint grid lines to all cells
-                cell.style.border = '1px solid #333';
+                cell.style.border = 'none';
             });
             
             var firstColCells = scorecardTable.querySelectorAll('th:first-child, td:first-child');
@@ -1413,9 +1406,6 @@ var GameUI = (function() {
         makeStatusBubbleClickable: makeStatusBubbleClickable,
         fixBackground: fixBackground,
         
-        // Version info
-        getVersion: function() { return VERSION; },
-        
         // Flight indicator (DEPRECATED)
         addFlightIndicator: function() {},
         removeFlightIndicator: function() {},
@@ -1432,16 +1422,12 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.16
-KEY CHANGES from v4.13:
-   - FIXED: Loss-clinch bubble now uses white border and white text (was gold border)
-   - ADDED: Faint grid lines to scorecard table (border: 1px solid #333 on all cells)
-   - ADDED: Version exposure via getVersion() method and VERSION constant
-   - Preserved all v4.13 functionality (T-1/T-2 independent sync, Strk unchanged)
-   - Clinch bubbles have consistent styling (3px border, 600 font-weight)
-   - Win-clinch: gold border + gold text + green background
-   - Loss-clinch: white border + white text + red background
-   - ALL other functions identical to v4.13 (working table structure)
+VERSION: 4.13
+KEY CHANGES from v4.12:
+   - FIXED: Clinch bubbles (gold and loss-clinch) no longer have bold text (font-weight: 800 -> 600)
+   - Clinch bubbles now match regular bubble font weight for consistent visual appearance
+   - Gold border and loss-clinch white border still distinguish clinch results
+   - All other functionality identical to v4.12 (T-1/T-2 independent sync, Strk unchanged)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
