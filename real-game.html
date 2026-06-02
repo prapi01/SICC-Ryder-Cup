@@ -1,10 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.15
-KEY CHANGES from v5.14:
-   - ADDED: js/game-scorecard.js module for isolated scorecard rendering
-   - Table rendering now delegated to GameScorecard module
-   - All other functionality identical to v5.14 (real-time listener, match bubble negation, etc.)
+VERSION: 5.16
+KEY CHANGES from v5.15:
+   - FIXED: TR values now only written when cross-flight results are available (both flights saved)
+   - This prevents 0:0 TR values from appearing when only one flight has saved a hole
+   - Added version exposure via window.REAL_GAME_VERSION for easy console debugging
+   - All other functionality identical to v5.15 (real-time listener, match bubble negation, etc.)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -336,9 +337,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.15</div>
+<div class="version-tag">v5.16</div>
 
 <script>
+// ============================================================
+// Version Exposure for Console Debugging
+// ============================================================
+window.REAL_GAME_VERSION = "5.16";
+
 // ============================================================
 // Firebase Config
 // ============================================================
@@ -1164,10 +1170,14 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload[`results.game2.pointsB.${position}`] = resultsData.game2PointsB;
     updatePayload[`results.game3.pointsA.${position}`] = resultsData.game3PointsA;
     updatePayload[`results.game3.pointsB.${position}`] = resultsData.game3PointsB;
-    updatePayload[`results.tr.teamA.${position}`] = resultsData.trA;
-    updatePayload[`results.tr.teamB.${position}`] = resultsData.trB;
-    updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
-    updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
+    
+    // FIXED v5.16: Only write TR values when cross-flight results are available (both flights saved)
+    if (resultsData.matchResults !== null) {
+        updatePayload[`results.tr.teamA.${position}`] = resultsData.trA;
+        updatePayload[`results.tr.teamB.${position}`] = resultsData.trB;
+        updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
+        updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
+    }
     
     updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
     updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
@@ -1230,10 +1240,14 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         cache.results.game3.leader[position] = resultsData.strkLeader;
         cache.results.game3.pointsA[position] = resultsData.game3PointsA;
         cache.results.game3.pointsB[position] = resultsData.game3PointsB;
-        cache.results.tr.teamA[position] = resultsData.trA;
-        cache.results.tr.teamB[position] = resultsData.trB;
-        cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
-        cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
+        
+        // Only cache TR values when cross-flight results were available
+        if (resultsData.matchResults !== null) {
+            cache.results.tr.teamA[position] = resultsData.trA;
+            cache.results.tr.teamB[position] = resultsData.trB;
+            cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
+            cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
+        }
         
         if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
             if (!cache.results.clinchedAt) cache.results.clinchedAt = {};
@@ -1710,11 +1724,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.15
-KEY CHANGES from v5.14:
-   - ADDED: js/game-scorecard.js module for isolated scorecard rendering
-   - Table rendering now delegated to GameScorecard module
-   - All other functionality identical to v5.14 (real-time listener, match bubble negation, etc.)
+VERSION: 5.16
+KEY CHANGES from v5.15:
+   - FIXED: TR values now only written when cross-flight results are available (both flights saved)
+   - This prevents 0:0 TR values from appearing when only one flight has saved a hole
+   - Added version exposure via window.REAL_GAME_VERSION for easy console debugging
+   - All other functionality identical to v5.15 (real-time listener, match bubble negation, etc.)
 DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
