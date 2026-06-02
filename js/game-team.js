@@ -1,20 +1,18 @@
 /*
 FILE: js/game-team.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Tournament Handicap - each player gets strokes based on their OWN handicap (SI ≤ player handicap)
-   - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero, strokes based on adjusted handicap
-   - ADDED: calculateMinHandicap() helper to get lowest handicap across all players
-   - ADDED: getNetScoreWithFormat() - handles both formats correctly
-   - ADDED: Version exposure via window.GAME_TEAM_VERSION for easy console debugging
-   - REMOVED: Old getNetScore() that incorrectly used handicap difference
-   - All other functionality preserved (net score sorting, cumulative, display strings)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: flight1IntraMatches array - stores per-hole intra-flight match results for Flight 1
+   - ADDED: flight2IntraMatches array - stores per-hole intra-flight match results for Flight 2
+   - These arrays are used by cascade and bubble display to show correct match results
+   - Format: { "PlayerA_vs_PlayerB": result, "PlayerB_vs_PlayerA": -result } for each hole
+   - All existing functionality preserved (cumulative, leaders, points, display strings)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_TEAM_VERSION = "1.06";
+window.GAME_TEAM_VERSION = "1.07";
 
 var GameTeam = (function() {
     
@@ -68,6 +66,50 @@ var GameTeam = (function() {
         });
         return playersWithNet;
     }
+    
+    // Helper: Build intra-flight match results object for a flight on a specific hole
+    function buildIntraMatchResults(teamAPlayers, teamBPlayers, teamAGross, teamBGross, si, teamGameFormat, minHandicap, courseSi) {
+        var results = {};
+        
+        // Calculate net scores for all players
+        var teamANets = [];
+        var teamBNets = [];
+        
+        for (var i = 0; i < teamAPlayers.length; i++) {
+            var netA = getNetScoreWithFormat(teamAGross[i], teamAPlayers[i].handicap, si, teamGameFormat, minHandicap);
+            teamANets.push({ player: teamAPlayers[i], net: netA, gross: teamAGross[i] });
+        }
+        for (var i = 0; i < teamBPlayers.length; i++) {
+            var netB = getNetScoreWithFormat(teamBGross[i], teamBPlayers[i].handicap, si, teamGameFormat, minHandicap);
+            teamBNets.push({ player: teamBPlayers[i], net: netB, gross: teamBGross[i] });
+        }
+        
+        // Sort by net score (lowest = best) for matching best vs best, second vs second
+        teamANets.sort(function(a, b) { return a.net - b.net; });
+        teamBNets.sort(function(a, b) { return a.net - b.net; });
+        
+        // Match best vs best, second vs second (both flights have exactly 2 players each)
+        for (var i = 0; i < teamANets.length && i < teamBNets.length; i++) {
+            var playerA = teamANets[i].player;
+            var playerB = teamBNets[i].player;
+            var netA = teamANets[i].net;
+            var netB = teamBNets[i].net;
+            
+            var matchResult = 0;
+            if (netA < netB) {
+                matchResult = 1;  // Team A wins this match
+            } else if (netA > netB) {
+                matchResult = -1; // Team B wins this match
+            }
+            
+            var keyA = playerA.name + "_vs_" + playerB.name;
+            var keyB = playerB.name + "_vs_" + playerA.name;
+            results[keyA] = matchResult;
+            results[keyB] = -matchResult;
+        }
+        
+        return results;
+    }
 
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat) {
         // Calculate minimum handicap across all players for Relative format
@@ -83,6 +125,10 @@ var GameTeam = (function() {
         var displayT1 = new Array(18).fill("AS");
         var displayT2 = new Array(18).fill("AS");
         var teamGameTR = new Array(18).fill({ A: 0.5, B: 0.5 });
+        
+        // NEW v1.07: Arrays to store intra-flight match results per hole
+        var flight1IntraMatches = new Array(18);
+        var flight2IntraMatches = new Array(18);
 
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
@@ -117,6 +163,9 @@ var GameTeam = (function() {
                 var teamAGross1 = [f1Hole.scores.a1, f1Hole.scores.a2];
                 // Get gross scores for Team B
                 var teamBGross1 = [f1Hole.scores.b1, f1Hole.scores.b2];
+                
+                // Store intra-flight match results for bubble display
+                flight1IntraMatches[idx] = buildIntraMatchResults(flight1A, flight1B, teamAGross1, teamBGross1, si, teamGameFormat, minHandicap, courseSi);
                 
                 // Sort Team A players by net score (lowest = best)
                 var sortedTeamA1 = sortPlayersByNetScore(flight1A, teamAGross1, si, teamGameFormat, minHandicap, courseSi);
@@ -156,6 +205,9 @@ var GameTeam = (function() {
                 var teamAGross2 = [f2Hole.scores.a1, f2Hole.scores.a2];
                 // Get gross scores for Team B
                 var teamBGross2 = [f2Hole.scores.b1, f2Hole.scores.b2];
+                
+                // Store intra-flight match results for bubble display
+                flight2IntraMatches[idx] = buildIntraMatchResults(flight2A, flight2B, teamAGross2, teamBGross2, si, teamGameFormat, minHandicap, courseSi);
                 
                 // Sort Team A players by net score (lowest = best)
                 var sortedTeamA2 = sortPlayersByNetScore(flight2A, teamAGross2, si, teamGameFormat, minHandicap, courseSi);
@@ -240,7 +292,10 @@ var GameTeam = (function() {
             pointsB: pointsBArray,
             displayT1: displayT1,
             displayT2: displayT2,
-            teamGameTR: teamGameTR
+            teamGameTR: teamGameTR,
+            // NEW v1.07: Intra-flight match results for bubble display
+            flight1IntraMatches: flight1IntraMatches,
+            flight2IntraMatches: flight2IntraMatches
         };
     }
 
@@ -251,19 +306,18 @@ var GameTeam = (function() {
 window.GameTeam = GameTeam;
 
 // Re-expose version for console debugging
-window.GAME_TEAM_VERSION = "1.06";
+window.GAME_TEAM_VERSION = "1.07";
 
 /*
 FILE: js/game-team.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Tournament Handicap - each player gets strokes based on their OWN handicap (SI ≤ player handicap)
-   - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero, strokes based on adjusted handicap
-   - ADDED: calculateMinHandicap() helper to get lowest handicap across all players
-   - ADDED: getNetScoreWithFormat() - handles both formats correctly
-   - ADDED: Version exposure via window.GAME_TEAM_VERSION for easy console debugging
-   - REMOVED: Old getNetScore() that incorrectly used handicap difference
-   - All other functionality preserved (net score sorting, cumulative, display strings)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: flight1IntraMatches array - stores per-hole intra-flight match results for Flight 1
+   - ADDED: flight2IntraMatches array - stores per-hole intra-flight match results for Flight 2
+   - ADDED: buildIntraMatchResults() helper function
+   - These arrays are used by cascade and bubble display to show correct match results
+   - Format: { "PlayerA_vs_PlayerB": result, "PlayerB_vs_PlayerA": -result } for each hole
+   - All existing functionality preserved (cumulative, leaders, points, display strings)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
