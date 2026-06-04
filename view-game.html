@@ -1,13 +1,14 @@
 <!--
 FILE: view-game.html
-VERSION: 7.08
-KEY CHANGES from v7.07:
-   - FIXED: Flight toggle button now shows OPPOSITE flight (intuitive UI)
-     * When viewing Flight 1, button shows "FLIGHT 2"
-     * When viewing Flight 2, button shows "FLIGHT 1"
-   - Click handler updated to re-render header after toggle
-   - All other functionality identical to v7.07 (ticker, real-time listener, etc.)
-DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
+VERSION: 7.09
+KEY CHANGES from v7.08:
+   - ADDED: Game completion detection (checks both flights signed)
+   - ADDED: When game complete, Next button changes to gold "🏆 RESULT"
+   - ADDED: RESULT button click shows celebration modal and RHP access
+   - FIXED: Signature detection for object format { signed: true, signedAt: ... }
+   - ADDED: onGameComplete() function to handle viewer celebration
+   - All other functionality unchanged (ticker, real-time listener, flight toggle)
+DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
 
@@ -31,6 +32,8 @@ STATUS: Ready for integration
     <script src="js/game-loader.js"></script>
     <script src="js/ticker.js"></script>
     <script src="js/history-record.js"></script>
+    <script src="js/sign-card.js"></script>
+    <script src="js/hcp-adjust.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -287,8 +290,62 @@ STATUS: Ready for integration
             cursor: not-allowed !important;
         }
         
+        /* Gold RESULT button styling */
+        .compact-result-btn {
+            background: #1a3a1a !important;
+            border: 2px solid #ffaa44 !important;
+            color: #ffaa44 !important;
+            border-radius: 30px !important;
+            font-size: 1rem !important;
+            font-weight: 800 !important;
+            flex: 1;
+            height: 52px;
+            cursor: pointer;
+        }
+        
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
+        
+        /* Celebration Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+        .celebration-modal-container {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #ffaa44;
+        }
+        .celebration-title { font-size: 1.5rem; font-weight: 700; color: #ffaa44; margin-bottom: 12px; }
+        .celebration-emojis { font-size: 1.2rem; margin-bottom: 20px; }
+        .celebration-message { font-size: 0.85rem; color: #ccc; margin-bottom: 28px; }
+        .celebration-btn {
+            background: #ffaa44;
+            color: #1a3a1a;
+            border: none;
+            width: 180px;
+            height: 56px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: block;
+            margin: 0 auto;
+        }
     </style>
 </head>
 <body>
@@ -319,13 +376,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.08</div>
+<div class="version-tag">v7.09</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.08";
+window.VIEW_GAME_VERSION = "7.09";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -348,6 +405,8 @@ var courseSi = [];
 var allPlayers = [];
 
 var usedPreloadedData = false;
+var gameCompleteFlag = false;
+var celebrationTriggered = false;
 
 // Firestore real-time listener
 var firestoreUnsubscribe = null;
@@ -635,10 +694,91 @@ function updateTRDisplay() {
 }
 
 // ============================================================
+// Game Completion Detection
+// ============================================================
+
+function isGameComplete() {
+    var cache = GameLoader.getLocalCache();
+    if (!cache || !cache.signatures) return false;
+    
+    // Handle both boolean and object signature formats
+    var f1Signed = cache.signatures.f1 === true || (cache.signatures.f1 && cache.signatures.f1.signed === true);
+    var f2Signed = cache.signatures.f2 === true || (cache.signatures.f2 && cache.signatures.f2.signed === true);
+    
+    return f1Signed && f2Signed;
+}
+
+// ============================================================
+// Celebration & RHP for Viewer
+// ============================================================
+
+function showCelebrationModal() {
+    if (celebrationTriggered) return;
+    celebrationTriggered = true;
+    
+    var cache = GameLoader.getLocalCache();
+    var tr = GameLoader.getTRForHole(18); // Get final TR
+    
+    // Get winner
+    var teamAFinal = tr.teamA;
+    var teamBFinal = tr.teamB;
+    var winner = teamAFinal > teamBFinal ? 'A' : (teamBFinal > teamAFinal ? 'B' : 'Tie');
+    
+    var winnerText = winner === 'A' ? 'Team A' : (winner === 'B' ? 'Team B' : 'Tie');
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="celebrationModal">
+            <div class="celebration-modal-container">
+                <div class="celebration-title">🏆 GAME COMPLETE</div>
+                <div class="celebration-emojis">🍺 🏆 🍺</div>
+                <div class="celebration-message">Winner: ${winnerText}<br>Final Score: ${teamAFinal} - ${teamBFinal}</div>
+                <button id="celebrationRHPBtn" class="celebration-btn">📊 VIEW RESULTS & HANDICAP</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById("celebrationRHPBtn").addEventListener("click", function() {
+        document.getElementById("celebrationModal").remove();
+        openRHPForViewer();
+    });
+}
+
+function openRHPForViewer() {
+    if (!gameId) {
+        console.warn("No game ID for RHP");
+        return;
+    }
+    
+    var cache = GameLoader.getLocalCache();
+    var winningPlayers = { teamA: [], teamB: [] };
+    for (var i = 0; i < allPlayers.length; i++) {
+        if (allPlayers[i].team === 'A') winningPlayers.teamA.push(allPlayers[i]);
+        else winningPlayers.teamB.push(allPlayers[i]);
+    }
+    
+    var tr = cache.results?.tr || { teamA: [9.5], teamB: [9.5] };
+    var finalTeamA = tr.teamA[tr.teamA.length - 1] || 9.5;
+    var finalTeamB = tr.teamB[tr.teamB.length - 1] || 9.5;
+    var winner = finalTeamA > finalTeamB ? 'A' : (finalTeamB > finalTeamA ? 'B' : 'Tie');
+    
+    // Use history record ID if available, otherwise gameId
+    var recordId = gameId + "_history";
+    HandicapAdjustment.init(recordId, recordId, winningPlayers, {}, { teamA: finalTeamA, teamB: finalTeamB, winner: winner }, true);
+}
+
+// ============================================================
 // Navigation Functions (Viewer only - no save/sign)
 // ============================================================
 
 function nextHole() {
+    // If game is complete, show celebration instead of navigating
+    if (gameCompleteFlag && !celebrationTriggered) {
+        showCelebrationModal();
+        return;
+    }
+    
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     
@@ -684,7 +824,7 @@ function onToggleDisplayMode(displayMode) {
 }
 
 // ============================================================
-// Control Bar - FIXED v7.08: Button shows OPPOSITE flight
+// Control Bar - v7.09: Dynamic button (Next or RESULT)
 // ============================================================
 
 function renderCompactHeader() {
@@ -696,6 +836,26 @@ function renderCompactHeader() {
     
     // Button shows opposite flight (click to switch to this flight)
     var oppositeFlight = currentFlight === 1 ? 2 : 1;
+    
+    // Determine if game is complete
+    var gameComplete = isGameComplete();
+    if (gameComplete && !gameCompleteFlag) {
+        gameCompleteFlag = true;
+    }
+    
+    // Determine next button content and class
+    var nextButtonHtml = '';
+    if (gameCompleteFlag && !celebrationTriggered) {
+        // Show gold RESULT button when game complete
+        nextButtonHtml = `<button class="compact-result-btn" id="compactResultBtn" style="width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    🏆 RESULT
+                </button>`;
+    } else {
+        // Normal next button
+        nextButtonHtml = `<button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    ▶
+                </button>`;
+    }
     
     var html = `
         <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
@@ -710,9 +870,7 @@ function renderCompactHeader() {
                     ◀
                 </button>
                 <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">${currentHole}</span>
-                <button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                    ▶
-                </button>
+                ${nextButtonHtml}
             </div>
         </div>
     `;
@@ -736,7 +894,21 @@ function renderCompactHeader() {
     };
     
     document.getElementById('compactPrevBtn').onclick = prevHole;
-    document.getElementById('compactNextBtn').onclick = nextHole;
+    
+    // Handle next/result button
+    if (gameCompleteFlag && !celebrationTriggered) {
+        var resultBtn = document.getElementById('compactResultBtn');
+        if (resultBtn) {
+            resultBtn.onclick = function() {
+                showCelebrationModal();
+            };
+        }
+    } else {
+        var nextBtn = document.getElementById('compactNextBtn');
+        if (nextBtn) {
+            nextBtn.onclick = nextHole;
+        }
+    }
 }
 
 // ============================================================
@@ -766,8 +938,9 @@ function setupRealtimeListener() {
             var f1Changed = (currentCache.f1DataString !== data.f1?.d);
             var f2Changed = (currentCache.f2DataString !== data.f2?.d);
             var resultsChanged = (JSON.stringify(currentCache.results) !== JSON.stringify(data.results));
+            var signaturesChanged = (JSON.stringify(currentCache.signatures) !== JSON.stringify(data.signatures));
             
-            if (f1Changed || f2Changed || resultsChanged) {
+            if (f1Changed || f2Changed || resultsChanged || signaturesChanged) {
                 console.log("Realtime update detected");
                 
                 GameLoader.loadGame(gameId, "scheduledGames", function(result) {
@@ -784,6 +957,15 @@ function setupRealtimeListener() {
                         
                         if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
                             Ticker.setPlayers(allPlayers);
+                        }
+                        
+                        // Check if game just completed
+                        var wasComplete = gameCompleteFlag;
+                        gameCompleteFlag = isGameComplete();
+                        
+                        // Re-render header if completion status changed
+                        if (wasComplete !== gameCompleteFlag) {
+                            renderCompactHeader();
                         }
                         
                         renderAll();
@@ -863,19 +1045,16 @@ function renderAll() {
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     var prevBtn = document.getElementById('compactPrevBtn');
-    var nextBtn = document.getElementById('compactNextBtn');
     
     if (prevBtn) {
         prevBtn.disabled = (currentIndex === 0);
     }
-    if (nextBtn) {
-        // Check if current hole has any saved data (from either flight)
+    
+    // Only update next button if it's not the RESULT button
+    var nextBtn = document.getElementById('compactNextBtn');
+    if (nextBtn && !gameCompleteFlag) {
         var hasSavedData = isCurrentHoleSavedByAnyFlight();
         var isLastHole = (currentIndex === 17);
-        
-        // Disable next if:
-        // 1. Current hole has no saved data, OR
-        // 2. It's the last hole
         nextBtn.disabled = (!hasSavedData) || isLastHole;
     }
     
@@ -906,6 +1085,16 @@ function onCacheUpdate(cache) {
         Ticker.setPlayers(allPlayers);
         Ticker.refresh();  // Refresh ticker with updated playerTotals
     }
+    
+    // Check game completion status
+    var wasComplete = gameCompleteFlag;
+    gameCompleteFlag = isGameComplete();
+    
+    // Re-render header if completion status changed
+    if (wasComplete !== gameCompleteFlag) {
+        renderCompactHeader();
+    }
+    
     renderAll();
 }
 
@@ -963,6 +1152,7 @@ async function init() {
                 if (cache.results && cache.results.playerTotals) {
                     Ticker.refresh();
                 }
+                gameCompleteFlag = isGameComplete();
                 renderAll();
             }
         });
@@ -999,6 +1189,7 @@ async function init() {
             updateHoleNumberDisplay();
             initTicker();
             if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
+            gameCompleteFlag = isGameComplete();
             renderAll();
             
             document.getElementById("mainContainer").classList.add("data-ready");
@@ -1016,13 +1207,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.08
-KEY CHANGES from v7.07:
-   - FIXED: Flight toggle button now shows OPPOSITE flight (intuitive UI)
-     * When viewing Flight 1, button shows "FLIGHT 2"
-     * When viewing Flight 2, button shows "FLIGHT 1"
-   - Click handler updated to re-render header after toggle
-   - All other functionality identical to v7.07 (ticker, real-time listener, etc.)
-DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
+VERSION: 7.09
+KEY CHANGES from v7.08:
+   - ADDED: Game completion detection (checks both flights signed)
+   - ADDED: When game complete, Next button changes to gold "🏆 RESULT"
+   - ADDED: RESULT button click shows celebration modal and RHP access
+   - FIXED: Signature detection for object format { signed: true, signedAt: ... }
+   - ADDED: onGameComplete() function to handle viewer celebration
+   - All other functionality unchanged (ticker, real-time listener, flight toggle)
+DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
