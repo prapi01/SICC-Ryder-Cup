@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.20
-KEY CHANGES from v5.19:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
-   - All existing functionality preserved (self-healing cascade, takeover detection, viewer redirect)
+VERSION: 5.21
+KEY CHANGES from v5.20:
+   - FIXED: calculateMatchResultsArray now orders players by FLIGHT first, then handicap
+   - FIXED: getMatchValueFromStoredResults uses same ordering for cross-flight lookup
+   - This ensures match bubbles display correct values (e.g., Ang C H vs Ong C B = AS at H1)
+   - All other functionality preserved (self-healing cascade, takeover detection, viewer redirect)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -394,13 +394,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.20</div>
+<div class="version-tag">v5.21</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.20";
+window.REAL_GAME_VERSION = "5.21";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -632,6 +632,7 @@ function getAllOpponents(player) {
     return opponents;
 }
 
+// FIXED v5.21: Match value lookup uses flight-first order for cross-flight
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
@@ -648,9 +649,18 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
         return 0;
     }
     
+    // DIFFERENT FLIGHT - use cross-flight results
+    // Must use SAME order as calculateMatchResultsArray
+    // Order: by flight first (1 then 2), then by handicap
     if (results.matchResults && results.matchResults[position]) {
-        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
         
         var aIdx = -1;
         var bIdx = -1;
@@ -1014,11 +1024,22 @@ function initializeEmptyResults() {
     };
 }
 
+// FIXED v5.21: Match results array ordered by FLIGHT first, then handicap
 function calculateMatchResultsArray(holeNumber) {
     var cache = GameLoader.getLocalCache();
     var matchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
-    var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    // Order players by FLIGHT first (1 then 2), then by handicap
+    var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
+        if (a.flight !== b.flight) return a.flight - b.flight;
+        return a.handicap - b.handicap;
+    });
+    
+    var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) {
+        if (a.flight !== b.flight) return a.flight - b.flight;
+        return a.handicap - b.handicap;
+    });
+    
     var resultArray = [];
     for (var a = 0; a < teamAPlayers.length; a++) {
         for (var b = 0; b < teamBPlayers.length; b++) {
@@ -1819,12 +1840,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.20
-KEY CHANGES from v5.19:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
-   - All existing functionality preserved (self-healing cascade, takeover detection, viewer redirect)
+VERSION: 5.21
+KEY CHANGES from v5.20:
+   - FIXED: calculateMatchResultsArray now orders players by FLIGHT first, then handicap
+   - FIXED: getMatchValueFromStoredResults uses same ordering for cross-flight lookup
+   - This ensures match bubbles display correct values (e.g., Ang C H vs Ong C B = AS at H1)
+   - All other functionality preserved (self-healing cascade, takeover detection, viewer redirect)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
