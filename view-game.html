@@ -1,11 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 7.07
-KEY CHANGES from v7.06:
-   - FIXED: Ticker now reads from stored results.playerTotals (calculated by real-game)
-   - NO calculation in view - purely read and display
-   - If playerTotals not available, ticker shows nothing (no fallback calculation)
-   - All other functionality preserved (UI fixes, navigation, no SYNC flash)
+VERSION: 7.08
+KEY CHANGES from v7.07:
+   - FIXED: Flight toggle button now shows OPPOSITE flight (intuitive UI)
+     * When viewing Flight 1, button shows "FLIGHT 2"
+     * When viewing Flight 2, button shows "FLIGHT 1"
+   - Click handler updated to re-render header after toggle
+   - All other functionality identical to v7.07 (ticker, real-time listener, etc.)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -318,13 +319,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.07</div>
+<div class="version-tag">v7.08</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.07";
+window.VIEW_GAME_VERSION = "7.08";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -683,7 +684,7 @@ function onToggleDisplayMode(displayMode) {
 }
 
 // ============================================================
-// Control Bar - Custom for Viewer (Flight toggle instead of SAVE)
+// Control Bar - FIXED v7.08: Button shows OPPOSITE flight
 // ============================================================
 
 function renderCompactHeader() {
@@ -693,13 +694,16 @@ function renderCompactHeader() {
     var displayMode = GameUI.getDisplayMode();
     var pnText = displayMode === 'play' ? 'P' : 'N';
     
+    // Button shows opposite flight (click to switch to this flight)
+    var oppositeFlight = currentFlight === 1 ? 2 : 1;
+    
     var html = `
         <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
             <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
                 ${pnText}
             </button>
             <button class="compact-flight-btn" id="compactFlightBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
-                FLIGHT ${currentFlight}
+                FLIGHT ${oppositeFlight}
             </button>
             <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
                 <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
@@ -721,10 +725,12 @@ function renderCompactHeader() {
         renderAll();
     };
     
+    // Flight button toggles to the flight shown on button (opposite of current)
     document.getElementById('compactFlightBtn').onclick = function() {
         var newFlight = currentFlight === 1 ? 2 : 1;
         currentFlight = newFlight;
-        document.getElementById('compactFlightBtn').innerText = 'FLIGHT ' + currentFlight;
+        // Re-render the header to update button text for the new current flight
+        renderCompactHeader();
         GameUI.updateFlightBadge(currentFlight);
         renderAll();
     };
@@ -1010,12 +1016,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.07
-KEY CHANGES from v7.06:
-   - FIXED: Ticker now reads from stored results.playerTotals (calculated by real-game)
-   - NO calculation in view - purely read and display
-   - If playerTotals not available, ticker shows nothing (no fallback calculation)
-   - All other functionality preserved (UI fixes, navigation, no SYNC flash)
+VERSION: 7.08
+KEY CHANGES from v7.07:
+   - FIXED: Flight toggle button now shows OPPOSITE flight (intuitive UI)
+     * When viewing Flight 1, button shows "FLIGHT 2"
+     * When viewing Flight 2, button shows "FLIGHT 1"
+   - Click handler updated to re-render header after toggle
+   - All other functionality identical to v7.07 (ticker, real-time listener, etc.)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
