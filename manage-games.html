@@ -1,6 +1,6 @@
-<!-- FILE: manage-games.html - VERSION 1.06 -->
+<!-- FILE: manage-games.html - VERSION 1.07 -->
 <!-- Manage scheduled games - Edit or Delete upcoming games -->
-<!-- CHANGED: Container max-width from 550px to 500px -->
+<!-- KEY CHANGES: Added js/firebase-config.js for dynamic config -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,6 +9,7 @@
     <title>Manage Games - SICC Ryder Cup</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -77,13 +78,12 @@
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.06</div>
+<div class="version-tag">v1.07</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.06
-// CHANGED: Container max-width from 550px to 500px
+// FILE: manage-games.html - VERSION 1.07
 
-var VERSION = "1.06";
+var VERSION = "1.07";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -92,27 +92,10 @@ if (storedVersion !== VERSION) {
     window.location.href = window.location.pathname + "?v=" + VERSION;
 }
 
-var FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup",
-    storageBucket: "sicc-ryder-cup.firebasestorage.app",
-    messagingSenderId: "137641493845",
-    appId: "1:137641493845:web:32399940bce639b01ddbdc"
-};
-
-var db = null;
-var firestoreReady = false;
+// Firebase already initialized in firebase-config.js
+var db = firebase.firestore();
+var firestoreReady = true;
 var deviceSession = null;
-
-try {
-    firebase.initializeApp(FIREBASE_CONFIG);
-    db = firebase.firestore();
-    firestoreReady = true;
-    console.log("Firebase ready - v" + VERSION);
-} catch(e) { 
-    console.warn(e);
-}
 
 function displayDeviceId() {
     var deviceDisplay = SessionManager.getDeviceIdDisplay();
@@ -273,5 +256,5 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 </body>
 </html>
 
-<!-- FILE: manage-games.html - VERSION 1.06 -->
-<!-- CHANGED: Container max-width from 550px to 500px -->
+<!-- FILE: manage-games.html - VERSION 1.07 -->
+<!-- KEY CHANGES: Added js/firebase-config.js for dynamic config -->
