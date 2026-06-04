@@ -1,7 +1,6 @@
-<!-- FILE: courses.html - VERSION 1.30 -->
+<!-- FILE: courses.html - VERSION 1.31 -->
 <!-- Course Management for SICC Ryder Cup App -->
-<!-- Add, edit, delete courses with Par and Stroke Index for 18 holes -->
-<!-- CHANGED: Container max-width from 550px to 500px -->
+<!-- KEY CHANGES: Added js/firebase-config.js for dynamic config -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,6 +9,7 @@
     <title>Course Management - SICC Ryder Cup</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -92,13 +92,12 @@
     <div class="loading">Loading courses...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.30</div>
+<div class="version-tag">v1.31</div>
 
 <script>
-// FILE: courses.html - VERSION 1.30
-// CHANGED: Container max-width from 550px to 500px
+// FILE: courses.html - VERSION 1.31
 
-var VERSION = "1.30";
+var VERSION = "1.31";
 var CACHE_KEY = "courses_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -107,27 +106,10 @@ if (storedVersion !== VERSION) {
     window.location.href = window.location.pathname + "?v=" + VERSION;
 }
 
-var FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup",
-    storageBucket: "sicc-ryder-cup.firebasestorage.app",
-    messagingSenderId: "137641493845",
-    appId: "1:137641493845:web:32399940bce639b01ddbdc"
-};
-
-var db = null;
-var firestoreReady = false;
+// Firebase already initialized in firebase-config.js
+var db = firebase.firestore();
+var firestoreReady = true;
 var deviceSession = null;
-
-try {
-    firebase.initializeApp(FIREBASE_CONFIG);
-    db = firebase.firestore();
-    firestoreReady = true;
-    console.log("Firebase ready - v" + VERSION);
-} catch(e) { 
-    console.warn(e);
-}
 
 function displayDeviceId() {
     var deviceDisplay = SessionManager.getDeviceIdDisplay();
@@ -290,278 +272,4 @@ function editCourse(course) {
         si: course.si.slice()
     };
     state.currentHole = 1;
-    state.screen = "addHoles";
-    render();
-}
-
-function renderMain() {
-    var coursesHtml = '<div class="course-list">';
-    for (var i = 0; i < state.courses.length; i++) {
-        var c = state.courses[i];
-        var totalPar = c.par.reduce(function(a,b) { return a + b; }, 0);
-        coursesHtml += `
-            <div class="course-item">
-                <div class="course-info">
-                    <strong>${escapeHtml(c.name)}</strong><br>
-                    <span style="font-size:0.7rem; color:#888;">Par ${totalPar}</span>
-                </div>
-                <div class="course-actions">
-                    <button class="btn btn-secondary btn-small" onclick="editCourseById('${c.id}')">Edit</button>
-                    <button class="btn btn-danger btn-small" onclick="deleteCourseById('${c.id}')">Delete</button>
-                </div>
-            </div>
-        `;
-    }
-    coursesHtml += '</div>';
-    
-    return `
-        <div class="header">
-            <div class="title">⛳ Course Management</div>
-            <div class="version">Version ${VERSION}</div>
-        </div>
-        <div class="card">
-            <div class="card-title">Existing Courses</div>
-            ${coursesHtml}
-            ${state.courses.length === 0 ? '<div class="text-center" style="padding:20px; color:#888;">No courses yet</div>' : ''}
-            <button class="btn btn-primary" style="width:100%; margin-top:16px;" onclick="startAddCourse()">+ Add New Course</button>
-        </div>
-        <div class="back-link" onclick="goBackToSettings()">← Back to Game Settings</div>
-    `;
-}
-
-function renderAddName() {
-    return `
-        <div class="header">
-            <div class="title">⛳ Add New Course</div>
-            <div class="version">Version ${VERSION}</div>
-        </div>
-        <div class="card">
-            <div class="card-title">Course Name</div>
-            <input type="text" id="courseNameInput" placeholder="e.g., SICC Bukit Course" style="width:100%; padding:12px; background:#1a1a1a; border:1px solid #333; border-radius:30px; color:#fff; font-size:1rem;">
-            <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveCourseName()">Next →</button>
-            </div>
-        </div>
-    `;
-}
-
-function renderAddHoles() {
-    var holePar = state.newCourse.par[state.currentHole - 1];
-    var holeSi = state.newCourse.si[state.currentHole - 1];
-    
-    var parOptions = '';
-    for (var i = 3; i <= 6; i++) {
-        parOptions += `<option value="${i}" ${holePar === i ? 'selected' : ''}>${i}</option>`;
-    }
-    
-    var siOptions = '';
-    for (var i = 1; i <= 18; i++) {
-        siOptions += `<option value="${i}" ${holeSi === i ? 'selected' : ''}>${i}</option>`;
-    }
-    
-    var nameDisplay = state.newCourse.name ? escapeHtml(state.newCourse.name) : 'New Course';
-    var isEditing = state.editingCourseId ? '(Editing)' : '';
-    
-    return `
-        <div class="header">
-            <div class="title">⛳ ${nameDisplay} ${isEditing}</div>
-            <div class="version">Version ${VERSION}</div>
-        </div>
-        <div class="card">
-            <div class="hole-number-large">
-                <div class="label">HOLE</div>
-                <div class="number">${state.currentHole}</div>
-                <div style="font-size:0.8rem; color:#888; margin-top:4px;">of 18</div>
-            </div>
-            <div class="vertical-inputs">
-                <div class="input-block">
-                    <div class="label">PAR</div>
-                    <select id="parSelect" onchange="updateHolePar(this.value)">
-                        ${parOptions}
-                    </select>
-                </div>
-                <div class="input-block">
-                    <div class="label">STROKE INDEX</div>
-                    <select id="siSelect" onchange="updateHoleSi(this.value)">
-                        ${siOptions}
-                    </select>
-                </div>
-            </div>
-            <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="prevHole()" ${state.currentHole === 1 ? 'disabled' : ''}>← Back</button>
-                <button class="btn btn-primary" onclick="nextHole()">${state.currentHole === 18 ? 'Review →' : 'Next →'}</button>
-            </div>
-        </div>
-        <div class="back-link" onclick="goBack()">← Cancel</div>
-    `;
-}
-
-function renderConfirm() {
-    var parOptions = '';
-    for (var i = 3; i <= 6; i++) {
-        parOptions += `<option value="${i}">${i}</option>`;
-    }
-    
-    var siOptions = '';
-    for (var i = 1; i <= 18; i++) {
-        siOptions += `<option value="${i}">${i}</option>`;
-    }
-    
-    var totalPar = 0;
-    for (var p = 0; p < state.newCourse.par.length; p++) {
-        totalPar += state.newCourse.par[p];
-    }
-    
-    var rowsHtml = '';
-    for (var i = 0; i < 18; i++) {
-        var holeNum = i + 1;
-        var parVal = state.newCourse.par[i];
-        var siVal = state.newCourse.si[i];
-        
-        rowsHtml += `
-            <tr>
-                <td class="hole-number">${holeNum}</td>
-                <td>
-                    <select class="confirm-select" onchange="updateConfirmPar(${i}, this.value)">
-                        ${parOptions.replace(`value="${parVal}"`, `value="${parVal}" selected`)}
-                    </select>
-                </td>
-                <td>
-                    <select class="confirm-select" onchange="updateConfirmSi(${i}, this.value)">
-                        ${siOptions.replace(`value="${siVal}"`, `value="${siVal}" selected`)}
-                    </select>
-                </td>
-            </tr>
-        `;
-    }
-    
-    var isEditing = state.editingCourseId ? 'Update' : 'Confirm';
-    
-    return `
-        <div class="header">
-            <div class="title">⛳ Confirm Course</div>
-            <div class="version">Version ${VERSION}</div>
-            <div style="font-size:1.2rem; font-weight:700; margin-top:8px;">${escapeHtml(state.newCourse.name)}</div>
-            <div class="green" style="font-size:1rem; margin-top:4px;">Total Par: ${totalPar}</div>
-        </div>
-        <div class="card">
-            <div class="confirm-table-wrapper">
-                <table class="confirm-table">
-                    <thead>
-                        <tr>
-                            <th>Hole</th>
-                            <th>Par</th>
-                            <th>S.I.</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml}
-                    </tbody>
-                </table>
-            </div>
-            <div class="space-between">
-                <button class="btn btn-secondary" onclick="goBack()">← Cancel</button>
-                <button class="btn btn-primary" onclick="saveCourse()">✓ ${isEditing} & Save</button>
-            </div>
-        </div>
-        <div class="back-link" onclick="goBack()">← Back</div>
-    `;
-}
-
-function render() {
-    var app = document.getElementById("app");
-    if (state.screen === "main") {
-        app.innerHTML = renderMain();
-    } else if (state.screen === "addName") {
-        app.innerHTML = renderAddName();
-    } else if (state.screen === "addHoles") {
-        app.innerHTML = renderAddHoles();
-    } else if (state.screen === "confirm") {
-        app.innerHTML = renderConfirm();
-    }
-    attachEvents();
-}
-
-function attachEvents() {
-    // No dynamic events needed for course management
-}
-
-window.updateHolePar = function(value) {
-    state.newCourse.par[state.currentHole - 1] = parseInt(value);
-    render();
-};
-
-window.updateHoleSi = function(value) {
-    state.newCourse.si[state.currentHole - 1] = parseInt(value);
-    render();
-};
-
-window.updateConfirmPar = function(holeIndex, value) {
-    state.newCourse.par[holeIndex] = parseInt(value);
-    render();
-};
-
-window.updateConfirmSi = function(holeIndex, value) {
-    state.newCourse.si[holeIndex] = parseInt(value);
-    render();
-};
-
-window.nextHole = nextHole;
-window.prevHole = prevHole;
-window.saveCourse = saveCourse;
-
-window.saveCourseName = function() {
-    var nameInput = document.getElementById("courseNameInput");
-    if (nameInput && nameInput.value.trim()) {
-        state.newCourse.name = nameInput.value.trim();
-        state.screen = "addHoles";
-        state.currentHole = 1;
-        render();
-    } else {
-        alert("Please enter a course name");
-    }
-};
-
-window.editCourseById = function(courseId) {
-    for (var i = 0; i < state.courses.length; i++) {
-        if (state.courses[i].id === courseId) {
-            editCourse(state.courses[i]);
-            break;
-        }
-    }
-};
-
-window.deleteCourseById = function(courseId) {
-    deleteCourse(courseId);
-};
-
-window.goBack = function() {
-    state.screen = "main";
-    state.editingCourseId = null;
-    render();
-};
-
-window.goBackToSettings = function() {
-    var returnDest = SessionManager.getReturnDestination();
-    window.location.href = returnDest;
-};
-
-window.startAddCourse = startAddCourse;
-
-SessionManager.initSession("courses.html", "admin.html", function(session) {
-    console.log("Session initialized:", session);
-    deviceSession = session;
-    displayDeviceId();
-    if (firestoreReady) {
-        loadCourses();
-    } else {
-        document.getElementById("app").innerHTML = '<div class="loading">Firebase connection failed. Check your internet connection.</div>';
-    }
-});
-</script>
-</body>
-</html>
-
-<!-- FILE: courses.html - VERSION 1.30 -->
-<!-- CHANGED: Container max-width from 550px to 500px -->
+    state.screen = "addHoles
