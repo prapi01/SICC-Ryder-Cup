@@ -1,11 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 7.05
-KEY CHANGES from v7.04:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
-   - All existing functionality preserved (UI fixes, navigation, no SYNC flash)
+VERSION: 7.06
+KEY CHANGES from v7.05:
+   - REMOVED: calculatePlayerScoreRelativeToPar() - ticker now reads from pre-calculated results
+   - SIMPLIFIED: getMatchValueFromStoredResults() - now directly reads from stored arrays without index calculation
+   - Ticker now uses getPlayerTotalScore() that reads from results.game3.nettA/nettB
+   - View no longer performs ANY match value calculations - only reads from Firestore
+   - All other functionality preserved (UI fixes, navigation, no SYNC flash)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -318,13 +319,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.05</div>
+<div class="version-tag">v7.06</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.05";
+window.VIEW_GAME_VERSION = "7.06";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -416,44 +417,39 @@ function applyPreloadedData(preloadData) {
 }
 
 // ============================================================
-// Ticker Functions
+// Ticker Functions - Now reads from pre-calculated results
 // ============================================================
 
-function calculatePlayerScoreRelativeToPar(player) {
+function getPlayerTotalScore(player) {
     var cache = GameLoader.getLocalCache();
-    var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
-    var totalGross = 0;
-    var totalPar = 0;
+    if (!cache || !cache.results || !cache.results.game3) return 0;
     
-    for (var h = 1; h <= 18; h++) {
-        var par = coursePar[h - 1];
-        totalPar += par;
-        
-        var holeData = GameData.parseHoleData(flightDataStr, h);
-        if (holeData && holeData.saved) {
-            var score = 0;
-            var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
-            var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-            var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-            
-            if (player.team === 'A') {
-                if (teamA[0] && teamA[0].name === player.name) score = holeData.scores.a1;
-                else if (teamA[1] && teamA[1].name === player.name) score = holeData.scores.a2;
-            } else {
-                if (teamB[0] && teamB[0].name === player.name) score = holeData.scores.b1;
-                else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
-            }
-            totalGross += score;
-        } else {
-            totalGross += par;
+    // Find the player's cumulative net score from stroke game results
+    var team = player.team;
+    var position = null;
+    
+    // Find player's index in team order
+    var teamPlayers = allPlayers.filter(function(p) { return p.team === team; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    for (var i = 0; i < teamPlayers.length; i++) {
+        if (teamPlayers[i].name === player.name) {
+            position = i;
+            break;
         }
     }
     
-    return totalGross - totalPar;
+    if (position === null) return 0;
+    
+    // Get the cumulative net for this player from the stored results
+    // For stroke game, the last hole (index 17) contains the final total
+    if (team === "A") {
+        return cache.results.game3.nettA[17] || 0;
+    } else {
+        return cache.results.game3.nettB[17] || 0;
+    }
 }
 
 function getPlayerScoreForTicker(player) {
-    return calculatePlayerScoreRelativeToPar(player);
+    return getPlayerTotalScore(player);
 }
 
 function initTicker() {
@@ -547,6 +543,10 @@ function getAllOpponents(player) {
     return opponents;
 }
 
+// ============================================================
+// FIXED v7.06: Direct read from stored results - NO calculation
+// ============================================================
+
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var results = cache.results;
@@ -554,20 +554,30 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     
     var position = getHolePosition(holeNumber);
     
-    // SAME FLIGHT - use intra-flight results
+    // SAME FLIGHT - read directly from intra-flight results
     if (player.flight === opponent.flight) {
         var intraMatches = (player.flight === 1) ? results.f1IntraMatches : results.f2IntraMatches;
         if (intraMatches && intraMatches[position]) {
             var matchKey = player.name + "_vs_" + opponent.name;
-            return intraMatches[position][matchKey] || 0;
+            var value = intraMatches[position][matchKey];
+            return (value !== undefined) ? value : 0;
         }
         return 0;
     }
     
-    // DIFFERENT FLIGHT - use cross-flight results
+    // DIFFERENT FLIGHT - read directly from cross-flight results
+    // The matchResults array is stored in flight-first order (same as bubble display)
     if (results.matchResults && results.matchResults[position]) {
-        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        // Determine the index in the matchResults array based on bubble display order
+        // Bubble display order for cross-flight opponents is: flight 1 then flight 2, by handicap
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
         
         var aIdx = -1;
         var bIdx = -1;
@@ -1013,12 +1023,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.05
-KEY CHANGES from v7.04:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
-   - All existing functionality preserved (UI fixes, navigation, no SYNC flash)
+VERSION: 7.06
+KEY CHANGES from v7.05:
+   - REMOVED: calculatePlayerScoreRelativeToPar() - ticker now reads from pre-calculated results
+   - SIMPLIFIED: getMatchValueFromStoredResults() - now directly reads from stored arrays
+   - Ticker now uses getPlayerTotalScore() that reads from results.game3.nettA/nettB
+   - View no longer performs ANY match value calculations - only reads from Firestore
+   - All other functionality preserved (UI fixes, navigation, no SYNC flash)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
