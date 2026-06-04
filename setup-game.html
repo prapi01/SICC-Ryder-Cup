@@ -1,12 +1,12 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - Added env(safe-area-inset-top) to body padding for iPhone Dynamic Island support
-   - Updated .version-tag and .device-tag to use max(8px, env(safe-area-inset-top))
-   - Added margin-top:20px to .header for additional spacing below Dynamic Island
-   - ALL other functionality identical to v1.19 (results object, edit mode, etc.)
-DEPENDS ON: js/session.js, Firebase
+VERSION: 1.21
+KEY CHANGES:
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All other functionality identical to v1.20
+DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
 
@@ -18,6 +18,7 @@ STATUS: Ready for integration
     <title>Set Up New Game - SICC Ryder Cup</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -191,13 +192,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.20</div>
+<div class="version-tag">v1.21</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.20
-// CHANGED: Safe-area-inset-top for iPhone Dynamic Island support
+// FILE: setup-game.html - VERSION 1.21
 
-var VERSION = "1.20";
+var VERSION = "1.21";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -206,27 +206,10 @@ if (storedVersion !== VERSION) {
     window.location.href = window.location.pathname + "?v=" + VERSION;
 }
 
-var FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup",
-    storageBucket: "sicc-ryder-cup.firebasestorage.app",
-    messagingSenderId: "137641493845",
-    appId: "1:137641493845:web:32399940bce639b01ddbdc"
-};
-
-var db = null;
-var firestoreReady = false;
+// Firebase already initialized in firebase-config.js
+var db = firebase.firestore();
+var firestoreReady = true;
 var deviceSession = null;
-
-try {
-    firebase.initializeApp(FIREBASE_CONFIG);
-    db = firebase.firestore();
-    firestoreReady = true;
-    console.log("Firebase ready - v" + VERSION);
-} catch(e) { 
-    console.warn(e);
-}
 
 // ============================================================
 // AUTO-DELETE PAST GAMES
@@ -309,9 +292,6 @@ function rotateDataString(naturalData, startingHole) {
 }
 
 function initializeEmptyResults() {
-    // Create empty results object for new games
-    // This will be stored in Firestore for future Viewer and History modes
-    
     var emptyResults = {
         version: 1,
         game1: {
@@ -646,7 +626,6 @@ function commitGame() {
     var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
     var rotatedData = rotateDataString(naturalData, state.startingHole);
     
-    // Initialize empty results for this game
     var emptyResults = initializeEmptyResults();
     
     var gameData = {
@@ -686,8 +665,6 @@ function commitGame() {
         currentHoleF1: 1,
         currentHoleF2: 1,
         
-        // NEW: Results object for pre-computed game data
-        // Supports future Viewer and History modes
         results: emptyResults
     };
     
@@ -1004,7 +981,6 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     deviceSession = session;
     displayDeviceId();
     
-    // Auto-delete past games on load
     deletePastGames();
     
     loadEditMode(function() {
@@ -1019,12 +995,12 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - Added env(safe-area-inset-top) to body padding for iPhone Dynamic Island support
-   - Updated .version-tag and .device-tag to use max(8px, env(safe-area-inset-top))
-   - Added margin-top:20px to .header for additional spacing below Dynamic Island
-   - ALL other functionality identical to v1.19 (results object, edit mode, etc.)
-DEPENDS ON: js/session.js, Firebase
+VERSION: 1.21
+KEY CHANGES:
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All other functionality identical to v1.20
+DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
