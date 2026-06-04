@@ -1,14 +1,12 @@
 <!--
 FILE: index.html
-VERSION: 3.17
+VERSION: 3.18
 KEY CHANGES:
-   - ADDED: Preload completion tracking before enabling TODAY GAME button
-   - TODAY GAME button shows "Loading..." and is disabled until preload complete
-   - Preload must complete before user can navigate to pre-game
-   - Ensures cache is guaranteed to exist before transition
-   - Shows loading state on button (replaces spinner)
-   - All existing functionality preserved from v3.16
-DEPENDS ON: js/session.js, js/index-hidden.js
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call (now in firebase-config.js)
+   - All existing functionality preserved (preload, splash screen, etc.)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
 
@@ -35,6 +33,7 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <script src="js/index-hidden.js"></script>
     
@@ -363,12 +362,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.17</div>
+<div class="version-tag">v3.18</div>
 
 <script>
-// FILE: index.html - VERSION 3.17
+// FILE: index.html - VERSION 3.18
 
-var APP_VERSION = "3.17";
+var APP_VERSION = "3.18";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -377,17 +376,10 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-var FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup",
-    storageBucket: "sicc-ryder-cup.firebasestorage.app",
-    messagingSenderId: "137641493845",
-    appId: "1:137641493845:web:32399940bce639b01ddbdc"
-};
+// Firebase is already initialized in firebase-config.js
+var db = firebase.firestore();
 
-var db = null;
-var firestoreReady = false;
+var firestoreReady = true;
 var currentSession = null;
 
 // NEW v3.17: Preload tracking
@@ -481,23 +473,8 @@ if (sessionStorage.getItem('splashShown') === 'true') {
 }
 
 function initApp() {
-    try {
-        if (!firebase.apps.length) {
-            firebase.initializeApp(FIREBASE_CONFIG);
-        }
-        db = firebase.firestore();
-        firestoreReady = true;
-        console.log("Firebase ready - v" + APP_VERSION);
-    } catch(e) {
-        console.warn(e);
-    }
-    
-    SessionManager.initSession("index.html", "index.html", function(session) {
-        console.log("Session initialized:", session);
-        currentSession = session;
-        displayDeviceId();
-        loadAndRender();
-    });
+    displayDeviceId();
+    loadAndRender();
 }
 
 function displayDeviceId() {
@@ -527,10 +504,6 @@ function getTodayString() {
     return year + "-" + month + "-" + day;
 }
 
-// ============================================================
-// NEW v3.17: Preload with completion tracking
-// ============================================================
-
 function getPreloadedRawGameData() {
     var stored = sessionStorage.getItem("preloadedRawGameData");
     if (stored) {
@@ -549,7 +522,6 @@ function getPreloadedRawGameData() {
 }
 
 function startBackgroundPreload(gameId, onComplete) {
-    // Check if already preloaded and fresh
     var existing = getPreloadedRawGameData();
     if (existing && existing.gameId === gameId) {
         console.log("Preload: Data already cached for game", gameId);
@@ -598,10 +570,6 @@ function startBackgroundPreload(gameId, onComplete) {
         });
 }
 
-// ============================================================
-// End of NEW v3.17 code
-// ============================================================
-
 function findNextGame(scheduledGames) {
     var today = getTodayString();
     
@@ -627,7 +595,6 @@ function getGameStatus(gameDateStr) {
     return "past";
 }
 
-// MODIFIED v3.17: Wait for preload before proceeding
 function handleTodayGame() {
     if (!firestoreReady) {
         alert("Connecting to server... Please wait.");
@@ -672,12 +639,10 @@ function handleTodayGame() {
     });
 }
 
-// NEXT GAME button - inactive, just shows info
 function handleNextGame() {
     alert("This is the next scheduled game.\n\nOn the game day, this button will become 'TODAY GAME' and allow you to start scoring.");
 }
 
-// DEMO & TUTORIAL button
 function goToDemo() {
     window.location.href = "tutorial.html";
 }
@@ -736,7 +701,6 @@ function loadAndRender() {
             displayGameId(todayGame.id);
         }
         
-        // NEW v3.17: Start preload and show loading state on button
         var preloadStarted = false;
         
         var ngbHtml = '';
@@ -746,11 +710,9 @@ function loadAndRender() {
             var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
             
             if (status === "today") {
-                // Check if we need to preload
                 var cachedData = getPreloadedRawGameData();
                 if (cachedData && cachedData.gameId === nextGame.id) {
                     preloadComplete = true;
-                    // TODAY GAME button - ACTIVE (preload already done)
                     ngbHtml = `
                         <div class="ngb" onclick="handleTodayGame()">
                             <div class="icon">⛳</div>
@@ -762,7 +724,6 @@ function loadAndRender() {
                 } else {
                     preloadComplete = false;
                     preloadStarted = true;
-                    // TODAY GAME button - LOADING state (disabled during preload)
                     ngbHtml = `
                         <div class="ngb ngb-loading" id="todayGameBtn">
                             <div class="icon">⛳</div>
@@ -771,7 +732,6 @@ function loadAndRender() {
                             <div class="course-name">${escapeHtml(courseName)}</div>
                         </div>
                     `;
-                    // Start preload
                     startBackgroundPreload(nextGame.id, function(success) {
                         if (success) {
                             console.log("Preload complete, enabling TODAY GAME button");
@@ -785,7 +745,6 @@ function loadAndRender() {
                                         <div class="course-name">${escapeHtml(courseName)}</div>
                                     </div>
                                 `;
-                                // Re-apply button widths
                                 setTimeout(setButtonWidths, 10);
                             }
                         } else {
@@ -805,7 +764,6 @@ function loadAndRender() {
                     });
                 }
             } else {
-                // NEXT GAME button - INACTIVE (shows info on click)
                 ngbHtml = `
                     <div class="ngb ngb-inactive" onclick="handleNextGame()">
                         <div class="icon">🏆</div>
@@ -855,7 +813,6 @@ function loadAndRender() {
         
         document.getElementById("app").innerHTML = html;
         
-        // Apply dynamic button widths
         setTimeout(setButtonWidths, 10);
         
         var golfIcon = document.getElementById("golfIcon");
@@ -880,7 +837,6 @@ function loadAndRender() {
             initHiddenAdmin();
         }
         
-        // If preload wasn't started in this render, check if we need to start it
         if (!preloadStarted && todayGame && !preloadComplete) {
             var cachedData = getPreloadedRawGameData();
             if (!cachedData || cachedData.gameId !== todayGame.id) {
@@ -907,20 +863,27 @@ function escapeHtml(str) {
         return m;
     });
 }
+
+SessionManager.initSession("index.html", "index.html", function(session) {
+    console.log("Session initialized:", session);
+    currentSession = session;
+    displayDeviceId();
+    if (firestoreReady) {
+        loadAndRender();
+    }
+});
 </script>
 </body>
 </html>
 
 <!--
 FILE: index.html
-VERSION: 3.17
+VERSION: 3.18
 KEY CHANGES:
-   - ADDED: Preload completion tracking before enabling TODAY GAME button
-   - TODAY GAME button shows "Loading..." and is disabled until preload complete
-   - Preload must complete before user can navigate to pre-game
-   - Ensures cache is guaranteed to exist before transition
-   - Shows loading state on button (replaces spinner)
-   - All existing functionality preserved from v3.16
-DEPENDS ON: js/session.js, js/index-hidden.js
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call (now in firebase-config.js)
+   - All existing functionality preserved (preload, splash screen, etc.)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
