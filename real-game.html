@@ -1,10 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.22
-KEY CHANGES from v5.21:
-   - FIXED: Intra-flight match bubbles (f1IntraMatches, f2IntraMatches) now ALWAYS use GameMatch.calculateIntraFlight
-   - GameTeam is no longer consulted for intra-flight match results (they are separate systems)
-   - This ensures all 4 intra-flight match pairs are correctly stored and displayed
+VERSION: 5.23
+KEY CHANGES from v5.22:
+   - ADDED: playerTotals object stored in results for ticker display
+   - Calculates each player's total gross and relative to par at each cascade
+   - Used by view-game and view-history to display ticker without calculation
+   - No fallback calculation in views - they read this stored data
    - All other functionality preserved (self-healing cascade, takeover detection, viewer redirect)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -394,13 +395,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.22</div>
+<div class="version-tag">v5.23</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.22";
+window.REAL_GAME_VERSION = "5.23";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1020,7 +1021,9 @@ function initializeEmptyResults() {
         tr: { teamA: new Array(18).fill(9.5), teamB: new Array(18).fill(9.5), teamAGreen: new Array(18).fill(true), teamBGreen: new Array(18).fill(true) },
         computedUpToHole: 0,
         lastComputedAt: null,
-        clinchedAt: {}
+        clinchedAt: {},
+        // NEW v5.23: Player totals for ticker display
+        playerTotals: {}
     };
 }
 
@@ -1090,6 +1093,57 @@ function getTeamGameDisplayFromCumulative(cumulative) {
     if (cumulative === 0) return "AS";
     if (cumulative > 0) return "A" + cumulative;
     return "B" + Math.abs(cumulative);
+}
+
+// NEW v5.23: Calculate player totals for ticker
+function calculatePlayerTotals(upToHole) {
+    var cache = GameLoader.getLocalCache();
+    var playerTotals = {};
+    
+    for (var p = 0; p < allPlayers.length; p++) {
+        var player = allPlayers[p];
+        var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
+        var totalGross = 0;
+        var totalPar = 0;
+        var holesPlayed = 0;
+        
+        for (var h = 1; h <= upToHole; h++) {
+            var par = coursePar[h - 1];
+            totalPar += par;
+            
+            var holeData = GameData.parseHoleData(flightDataStr, h);
+            if (holeData && holeData.saved) {
+                var score = 0;
+                var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+                var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+                var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+                
+                if (player.team === 'A') {
+                    if (teamA[0] && teamA[0].name === player.name) score = holeData.scores.a1;
+                    else if (teamA[1] && teamA[1].name === player.name) score = holeData.scores.a2;
+                } else {
+                    if (teamB[0] && teamB[0].name === player.name) score = holeData.scores.b1;
+                    else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
+                }
+                totalGross += score;
+                holesPlayed++;
+            } else {
+                // If hole not saved, use par (but don't count as played for average?)
+                totalGross += par;
+            }
+        }
+        
+        playerTotals[player.name] = {
+            name: player.name,
+            label: player.label,
+            totalGross: totalGross,
+            totalPar: totalPar,
+            holesPlayed: upToHole,
+            relativeToPar: totalGross - totalPar
+        };
+    }
+    
+    return playerTotals;
 }
 
 // ============================================================
@@ -1326,6 +1380,11 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     }
     updatePayload["results.lastComputedAt"] = new Date().toISOString();
     
+    // NEW v5.23: Calculate and store player totals
+    var currentUpToHole = (position + 1);
+    var playerTotals = calculatePlayerTotals(currentUpToHole);
+    updatePayload["results.playerTotals"] = playerTotals;
+    
     try {
         await db.collection("scheduledGames").doc(gameId).update(updatePayload);
         
@@ -1384,6 +1443,9 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         
         if (position + 1 > cache.results.computedUpToHole) cache.results.computedUpToHole = position + 1;
         cache.results.lastComputedAt = updatePayload["results.lastComputedAt"];
+        
+        // NEW v5.23: Store player totals in cache
+        cache.results.playerTotals = playerTotals;
         
     } catch (error) {
         console.error('Error saving results:', error);
@@ -1834,11 +1896,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.22
-KEY CHANGES from v5.21:
-   - FIXED: Intra-flight match bubbles (f1IntraMatches, f2IntraMatches) now ALWAYS use GameMatch.calculateIntraFlight
-   - GameTeam is no longer consulted for intra-flight match results (they are separate systems)
-   - This ensures all 4 intra-flight match pairs are correctly stored and displayed
+VERSION: 5.23
+KEY CHANGES from v5.22:
+   - ADDED: playerTotals object stored in results for ticker display
+   - Calculates each player's total gross and relative to par at each cascade
+   - Used by view-game and view-history to display ticker without calculation
+   - No fallback calculation in views - they read this stored data
    - All other functionality preserved (self-healing cascade, takeover detection, viewer redirect)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
