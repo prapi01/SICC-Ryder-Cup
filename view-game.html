@@ -1,11 +1,10 @@
 <!--
 FILE: view-game.html
-VERSION: 7.06
-KEY CHANGES from v7.05:
-   - REMOVED: calculatePlayerScoreRelativeToPar() - ticker now reads from pre-calculated results
-   - SIMPLIFIED: getMatchValueFromStoredResults() - now directly reads from stored arrays without index calculation
-   - Ticker now uses getPlayerTotalScore() that reads from results.game3.nettA/nettB
-   - View no longer performs ANY match value calculations - only reads from Firestore
+VERSION: 7.07
+KEY CHANGES from v7.06:
+   - FIXED: Ticker now reads from stored results.playerTotals (calculated by real-game)
+   - NO calculation in view - purely read and display
+   - If playerTotals not available, ticker shows nothing (no fallback calculation)
    - All other functionality preserved (UI fixes, navigation, no SYNC flash)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -319,13 +318,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.06</div>
+<div class="version-tag">v7.07</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.06";
+window.VIEW_GAME_VERSION = "7.07";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -417,35 +416,19 @@ function applyPreloadedData(preloadData) {
 }
 
 // ============================================================
-// Ticker Functions - Now reads from pre-calculated results
+// Ticker Functions - READ ONLY, NO CALCULATION
 // ============================================================
 
 function getPlayerTotalScore(player) {
     var cache = GameLoader.getLocalCache();
-    if (!cache || !cache.results || !cache.results.game3) return 0;
-    
-    // Find the player's cumulative net score from stroke game results
-    var team = player.team;
-    var position = null;
-    
-    // Find player's index in team order
-    var teamPlayers = allPlayers.filter(function(p) { return p.team === team; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    for (var i = 0; i < teamPlayers.length; i++) {
-        if (teamPlayers[i].name === player.name) {
-            position = i;
-            break;
-        }
+    if (!cache || !cache.results || !cache.results.playerTotals) {
+        return 0;  // No data available - ticker will show nothing
     }
     
-    if (position === null) return 0;
+    var playerTotal = cache.results.playerTotals[player.name];
+    if (!playerTotal) return 0;
     
-    // Get the cumulative net for this player from the stored results
-    // For stroke game, the last hole (index 17) contains the final total
-    if (team === "A") {
-        return cache.results.game3.nettA[17] || 0;
-    } else {
-        return cache.results.game3.nettB[17] || 0;
-    }
+    return playerTotal.relativeToPar;
 }
 
 function getPlayerScoreForTicker(player) {
@@ -544,7 +527,7 @@ function getAllOpponents(player) {
 }
 
 // ============================================================
-// FIXED v7.06: Direct read from stored results - NO calculation
+// Match Value Read - Direct from stored results, NO calculation
 // ============================================================
 
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
@@ -566,10 +549,8 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     }
     
     // DIFFERENT FLIGHT - read directly from cross-flight results
-    // The matchResults array is stored in flight-first order (same as bubble display)
     if (results.matchResults && results.matchResults[position]) {
-        // Determine the index in the matchResults array based on bubble display order
-        // Bubble display order for cross-flight opponents is: flight 1 then flight 2, by handicap
+        // Order players by FLIGHT first (1 then 2), then by handicap (same as storage)
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
             if (a.flight !== b.flight) return a.flight - b.flight;
             return a.handicap - b.handicap;
@@ -915,7 +896,10 @@ function onCacheUpdate(cache) {
     }
     allPlayers = cache.players;
     startingHole = cache.startingHole;
-    if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
+    if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
+        Ticker.setPlayers(allPlayers);
+        Ticker.refresh();  // Refresh ticker with updated playerTotals
+    }
     renderAll();
 }
 
@@ -970,6 +954,9 @@ async function init() {
                 }
                 allPlayers = cache.players;
                 startingHole = cache.startingHole;
+                if (cache.results && cache.results.playerTotals) {
+                    Ticker.refresh();
+                }
                 renderAll();
             }
         });
@@ -1023,12 +1010,11 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.06
-KEY CHANGES from v7.05:
-   - REMOVED: calculatePlayerScoreRelativeToPar() - ticker now reads from pre-calculated results
-   - SIMPLIFIED: getMatchValueFromStoredResults() - now directly reads from stored arrays
-   - Ticker now uses getPlayerTotalScore() that reads from results.game3.nettA/nettB
-   - View no longer performs ANY match value calculations - only reads from Firestore
+VERSION: 7.07
+KEY CHANGES from v7.06:
+   - FIXED: Ticker now reads from stored results.playerTotals (calculated by real-game)
+   - NO calculation in view - purely read and display
+   - If playerTotals not available, ticker shows nothing (no fallback calculation)
    - All other functionality preserved (UI fixes, navigation, no SYNC flash)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
