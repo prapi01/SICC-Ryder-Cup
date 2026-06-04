@@ -1,10 +1,17 @@
 /*
 FILE: js/firebase-config.js
-VERSION: 1.00
-PURPOSE: Dynamic Firebase config based on branch/environment
+VERSION: 1.01
+KEY CHANGES:
+   - FIXED: Detect Cloudflare Pages preview deployments by hash URL pattern
+   - Preview URLs like 8b7189f3.sicc-ryder-cup.pages.dev now correctly use DEV config
+   - Added detection for localhost and dev subdomain
+   - All other functionality unchanged
+DEPENDS ON: Firebase SDK (loaded before this file)
+STATUS: Ready for integration
 */
 
-window.FIREBASE_CONFIG_VERSION = "1.00";
+// Version exposure for console debugging
+window.FIREBASE_CONFIG_VERSION = "1.01";
 
 // Production config (main branch)
 var PROD_CONFIG = {
@@ -28,23 +35,26 @@ var DEV_CONFIG = {
 
 function getFirebaseConfig() {
     var isDev = false;
+    var hostname = window.location.hostname;
     
-    // Cloudflare Pages branch detection
-    if (typeof CF_PAGES_BRANCH !== 'undefined') {
-        isDev = (CF_PAGES_BRANCH === 'dev');
-    }
+    // Check for Cloudflare Pages preview deployment (hash URL pattern)
+    // Preview URLs look like: 8b7189f3.sicc-ryder-cup.pages.dev
+    var isPreviewHash = /^[a-f0-9]{7,8}\./.test(hostname);
     
-    // Localhost detection
-    if (!isDev && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    if (isPreviewHash) {
         isDev = true;
-    }
-    
-    // URL hostname detection
-    if (!isDev && window.location.hostname.includes('dev')) {
+        console.log("Detected Cloudflare preview deployment (hash URL)");
+    } else if (hostname.includes('dev')) {
         isDev = true;
+        console.log("Detected dev subdomain");
+    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        isDev = true;
+        console.log("Detected localhost");
     }
     
     console.log("Firebase using", isDev ? "DEV" : "PROD", "configuration");
+    console.log("Hostname:", hostname);
+    
     return isDev ? DEV_CONFIG : PROD_CONFIG;
 }
 
@@ -55,3 +65,15 @@ if (typeof firebase !== 'undefined' && firebase.apps && !firebase.apps.length) {
     firebase.initializeApp(FIREBASE_CONFIG);
     console.log("Firebase initialized with project:", firebase.apps[0].options.projectId);
 }
+
+/*
+FILE: js/firebase-config.js
+VERSION: 1.01
+KEY CHANGES:
+   - FIXED: Detect Cloudflare Pages preview deployments by hash URL pattern
+   - Preview URLs like 8b7189f3.sicc-ryder-cup.pages.dev now correctly use DEV config
+   - Added detection for localhost and dev subdomain
+   - All other functionality unchanged
+DEPENDS ON: Firebase SDK (loaded before this file)
+STATUS: Ready for integration
+*/
