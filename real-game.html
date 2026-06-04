@@ -1,10 +1,10 @@
 <!--
 FILE: real-game.html
-VERSION: 5.21
-KEY CHANGES from v5.20:
-   - FIXED: calculateMatchResultsArray now orders players by FLIGHT first, then handicap
-   - FIXED: getMatchValueFromStoredResults uses same ordering for cross-flight lookup
-   - This ensures match bubbles display correct values (e.g., Ang C H vs Ong C B = AS at H1)
+VERSION: 5.22
+KEY CHANGES from v5.21:
+   - FIXED: Intra-flight match bubbles (f1IntraMatches, f2IntraMatches) now ALWAYS use GameMatch.calculateIntraFlight
+   - GameTeam is no longer consulted for intra-flight match results (they are separate systems)
+   - This ensures all 4 intra-flight match pairs are correctly stored and displayed
    - All other functionality preserved (self-healing cascade, takeover detection, viewer redirect)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -394,13 +394,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.21</div>
+<div class="version-tag">v5.22</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.21";
+window.REAL_GAME_VERSION = "5.22";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1093,7 +1093,7 @@ function getTeamGameDisplayFromCumulative(cumulative) {
 }
 
 // ============================================================
-// FIXED v5.19: calculateHoleResultsWithCumulative uses GameTeam.calculate
+// FIXED v5.22: Intra-flight match bubbles ALWAYS use GameMatch (NOT GameTeam)
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole) {
@@ -1110,7 +1110,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         return null;
     }
     
-    // Use GameTeam.calculate for correct intra-flight results
+    // Use GameTeam.calculate for T-1/T-2 cumulative points only
     var teamGameResults = null;
     if (f1Available || f2Available) {
         teamGameResults = GameTeam.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, teamGameFormat);
@@ -1151,7 +1151,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         cumulativeF2: 0
     };
     
-    // FLIGHT 1 - Use GameTeam.calculate results
+    // FLIGHT 1 - Use GameTeam for cumulative, GameMatch for intra-flight bubbles
     if (f1Available && teamGameResults) {
         var newCumulativeF1 = teamGameResults.flight1Cumulative[position];
         var previousCumulativeF1 = position > 0 ? teamGameResults.flight1Cumulative[position - 1] : 0;
@@ -1161,11 +1161,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.t1Leader = teamGameResults.flight1Leaders[position];
         result.t1Display = teamGameResults.displayT1[position];
         
-        if (teamGameResults.flight1IntraMatches && teamGameResults.flight1IntraMatches[position]) {
-            result.f1IntraMatches = teamGameResults.flight1IntraMatches[position];
-        } else {
-            result.f1IntraMatches = calculateIntraFlightResults(1, holeNumber);
-        }
+        // ALWAYS use GameMatch for intra-flight match bubbles - GameTeam has nothing to do with this
+        result.f1IntraMatches = calculateIntraFlightResults(1, holeNumber);
         
         var remainingHoles = 18 - holeNumber;
         var maxOpponentPoints = remainingHoles * 2;
@@ -1175,7 +1172,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
-    // FLIGHT 2 - Use GameTeam.calculate results
+    // FLIGHT 2 - Use GameTeam for cumulative, GameMatch for intra-flight bubbles
     if (f2Available && teamGameResults) {
         var newCumulativeF2 = teamGameResults.flight2Cumulative[position];
         var previousCumulativeF2 = position > 0 ? teamGameResults.flight2Cumulative[position - 1] : 0;
@@ -1185,11 +1182,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.t2Leader = teamGameResults.flight2Leaders[position];
         result.t2Display = teamGameResults.displayT2[position];
         
-        if (teamGameResults.flight2IntraMatches && teamGameResults.flight2IntraMatches[position]) {
-            result.f2IntraMatches = teamGameResults.flight2IntraMatches[position];
-        } else {
-            result.f2IntraMatches = calculateIntraFlightResults(2, holeNumber);
-        }
+        // ALWAYS use GameMatch for intra-flight match bubbles - GameTeam has nothing to do with this
+        result.f2IntraMatches = calculateIntraFlightResults(2, holeNumber);
         
         var remainingHoles2 = 18 - holeNumber;
         var maxOpponentPoints2 = remainingHoles2 * 2;
@@ -1840,11 +1834,11 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.21
-KEY CHANGES from v5.20:
-   - FIXED: calculateMatchResultsArray now orders players by FLIGHT first, then handicap
-   - FIXED: getMatchValueFromStoredResults uses same ordering for cross-flight lookup
-   - This ensures match bubbles display correct values (e.g., Ang C H vs Ong C B = AS at H1)
+VERSION: 5.22
+KEY CHANGES from v5.21:
+   - FIXED: Intra-flight match bubbles (f1IntraMatches, f2IntraMatches) now ALWAYS use GameMatch.calculateIntraFlight
+   - GameTeam is no longer consulted for intra-flight match results (they are separate systems)
+   - This ensures all 4 intra-flight match pairs are correctly stored and displayed
    - All other functionality preserved (self-healing cascade, takeover detection, viewer redirect)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
