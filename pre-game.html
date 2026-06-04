@@ -1,13 +1,12 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.15
-KEY CHANGES from v3.14:
-   - FIXED: Locked role buttons are now clickable to trigger takeover modal
-   - REMOVED: disabled attribute from locked buttons (keeps visual grey appearance)
-   - CHANGED: cursor from not-allowed to pointer for .role-btn-locked
-   - Users can now click greyed-out locked buttons to initiate role takeover
-   - All other functionality identical to v3.14
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+VERSION: 3.16
+KEY CHANGES from v3.15:
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All existing functionality preserved
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
 
@@ -19,6 +18,7 @@ STATUS: Ready for integration
     <title>Ready to Play - SICC Ryder Cup</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     
     <script src="js/game-data.js"></script>
@@ -52,7 +52,6 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
-        /* Device tag - respects safe area */
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -68,7 +67,6 @@ STATUS: Ready for integration
             cursor: pointer;
         }
         
-        /* Version tag - respects safe area */
         .version-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -99,7 +97,6 @@ STATUS: Ready for integration
         .title { font-size: 1.6rem; font-weight: 800; color: #4caf50; }
         .subtitle { font-size: 0.7rem; color: #888; margin-top: 4px; }
         
-        /* Course Card */
         .course-card {
             background: linear-gradient(135deg, #111 0%, #0a0a0a 100%);
             border: 1px solid rgba(76,175,80,0.3);
@@ -129,7 +126,6 @@ STATUS: Ready for integration
         .course-info-label { color: #888; }
         .course-info-value { color: #ffaa44; font-weight: 600; }
         
-        /* Ultra-tight flight boxes - RESPONSIVE */
         .flight-box {
             background: rgba(10,10,10,0.8);
             border: 1px solid rgba(76,175,80,0.2);
@@ -193,7 +189,6 @@ STATUS: Ready for integration
             text-overflow: ellipsis;
         }
         
-        /* Single-line player rows - RESPONSIVE */
         .player-row {
             display: flex;
             justify-content: space-between;
@@ -223,7 +218,6 @@ STATUS: Ready for integration
             flex-shrink: 0;
         }
         
-        /* Role Section - CSS Grid (3 equal columns, no wrapping) */
         .role-section {
             margin: 20px 0;
             padding: 16px;
@@ -263,37 +257,32 @@ STATUS: Ready for integration
             background: #1a3a1a;
         }
         
-        /* Default state - Green */
         .role-btn-default {
             border-color: #4caf50;
             color: #4caf50;
             background: #1a3a1a;
         }
         
-        /* Selected by you (active session) - Gold */
         .role-btn-gold {
             border-color: #ffaa44;
             color: #ffaa44;
             background: #1a3a1a;
         }
         
-        /* Your role from previous session - Green border, Gold text */
         .role-btn-rejoin {
             border-color: #4caf50;
             color: #ffaa44;
             background: #1a3a1a;
         }
         
-        /* Locked by another device - Grey (but clickable for takeover) */
         .role-btn-locked {
             border-color: #555;
             color: #888;
             background: #2a2a2a;
-            cursor: pointer;      /* Changed from not-allowed to allow takeover click */
+            cursor: pointer;
             opacity: 0.6;
         }
         
-        /* VIEW ONLY specific - same as default */
         .role-btn-view {
             border-color: #4caf50;
             color: #4caf50;
@@ -305,7 +294,6 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
-        /* Action Buttons */
         .action-buttons {
             display: flex;
             gap: 12px;
@@ -354,7 +342,6 @@ STATUS: Ready for integration
         .footer { text-align: center; margin-top: 16px; font-size: 0.55rem; color: #444; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Modal Styles */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -436,13 +423,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.15</div>
+<div class="version-tag">v3.16</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.15
+// FILE: pre-game.html - VERSION 3.16
 
-var VERSION = "3.15";
+var VERSION = "3.16";
 var CACHE_KEY = "pre_game_version";
+
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
 
@@ -452,25 +440,12 @@ if (storedVersion !== VERSION) {
     window.location.href = window.location.pathname + "?v=" + VERSION;
 }
 
-var FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup",
-    storageBucket: "sicc-ryder-cup.firebasestorage.app",
-    messagingSenderId: "137641493845",
-    appId: "1:137641493845:web:32399940bce639b01ddbdc"
-};
-
-var db = null;
-var firestoreReady = false;
+// Firebase already initialized in firebase-config.js
+var db = firebase.firestore();
+var firestoreReady = true;
 var unsubcribeGame = null;
 
 try {
-    if (!firebase.apps.length) {
-        firebase.initializeApp(FIREBASE_CONFIG);
-    }
-    db = firebase.firestore();
-    firestoreReady = true;
     console.log("Firebase ready - v" + VERSION);
 } catch(e) { 
     console.warn(e);
@@ -718,7 +693,6 @@ function startGameListener() {
         });
 }
 
-// NEW v3.14: Immediate Firestore read to ensure locks are correct on load
 function fetchLocksOnce() {
     if (!firestoreReady || !gameId) return;
     
@@ -908,7 +882,6 @@ function loadGame() {
         gameData = cached.rawData;
         gameData.id = cached.gameId;
         
-        // Initialize locks from cache (may be stale)
         if (gameData.locks) {
             locks.f1 = gameData.locks.f1 || null;
             locks.f2 = gameData.locks.f2 || null;
@@ -917,8 +890,6 @@ function loadGame() {
         console.log("REAL mode - Data loaded from cache, locks from cache:", locks);
         
         startGameListener();
-        
-        // NEW v3.14: Immediately fetch fresh locks from Firestore
         fetchLocksOnce();
         
         render();
@@ -1152,7 +1123,6 @@ function render() {
     var f2ButtonText = "SCORE F2";
     var viewButtonText = "VIEW ONLY";
     
-    // v3.15: Locked buttons are clickable (no disabled attribute)
     var isTeeOffDisabled = !tempSelectedRole && !isF1LockedByMe && !isF2LockedByMe;
     
     var roleStatusText = "";
@@ -1304,13 +1274,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.15
-KEY CHANGES from v3.14:
-   - FIXED: Locked role buttons are now clickable to trigger takeover modal
-   - REMOVED: disabled attribute from locked buttons (keeps visual grey appearance)
-   - CHANGED: cursor from not-allowed to pointer for .role-btn-locked
-   - Users can now click greyed-out locked buttons to initiate role takeover
-   - All other functionality identical to v3.14
-DEPENDS ON: Firebase Firestore, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+VERSION: 3.16
+KEY CHANGES from v3.15:
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All existing functionality preserved
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
