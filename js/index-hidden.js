@@ -1,10 +1,11 @@
 /*
 FILE: js/index-hidden.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - CHANGED: Master Record reference from "Master_Record_H17_2028" to "MR_17H_2030"
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - CHANGED: Master Record reference from "MR_17H_2030" to "MASTER_RECORD"
    - UPDATED: Alert message to reflect new MR name
-   - ALL other functionality identical to v1.03 (local date handling, game creation, etc.)
+   - Generic name allows future master records without HTML changes
+   - ALL other functionality identical to v1.04
 DEPENDS ON: Firebase Firestore (db object must be available)
 STATUS: Ready for integration
 */
@@ -91,18 +92,18 @@ function duplicateMasterRecord() {
     
     var newId;
     
-    // CHANGED v1.04: Now using MR_17H_2030 instead of Master_Record_H17_2028
-    var masterRef = db.collection("scheduledGames").doc("MR_17H_2030");
+    // Using generic MASTER_RECORD name (no year dependency)
+    var masterRef = db.collection("scheduledGames").doc("MASTER_RECORD");
     
     masterRef.get().then(function(doc) {
         if (!doc.exists) {
-            alert("❌ MR_17H_2030 not found in Firestore.\n\nPlease ensure the Master Record has been created.");
+            alert("❌ MASTER_RECORD not found in Firestore.\n\nPlease ensure the Master Record has been created.");
             return;
         }
         
         var original = doc.data();
         var today = getLocalDate();
-        newId = 'Game_H17_' + today.replace(/-/g, '') + '_' + Date.now();
+        newId = 'Game_' + today.replace(/-/g, '') + '_' + Date.now();
         
         var duplicate = JSON.parse(JSON.stringify(original));
         
@@ -122,7 +123,7 @@ function duplicateMasterRecord() {
         return db.collection("scheduledGames").doc(newId).set(duplicate);
     }).then(function() {
         console.log("✅ Game created with today's date. ID:", newId);
-        alert("✅ Game created from MR_17H_2030!\n\nGame ID: " + newId + "\n\nRefresh the page and click TODAY GAME.");
+        alert("✅ Game created from MASTER_RECORD!\n\nGame ID: " + newId + "\n\nRefresh the page and click TODAY GAME.");
         if (typeof displayGameId === 'function') {
             displayGameId(newId);
         }
@@ -154,11 +155,12 @@ window.clearDisplayedGameId = clearDisplayedGameId;
 
 /*
 FILE: js/index-hidden.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - CHANGED: Master Record reference from "Master_Record_H17_2028" to "MR_17H_2030"
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - CHANGED: Master Record reference from "MR_17H_2030" to "MASTER_RECORD"
    - UPDATED: Alert message to reflect new MR name
-   - ALL other functionality identical to v1.03 (local date handling, game creation, etc.)
+   - Generic name allows future master records without HTML changes
+   - ALL other functionality identical to v1.04
 DEPENDS ON: Firebase Firestore (db object must be available)
 STATUS: Ready for integration
 */
