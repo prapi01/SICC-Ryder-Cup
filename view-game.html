@@ -1,12 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 7.04
-KEY CHANGES from v7.03:
-   - REMOVED: SYNC flash animation on real-time updates (was causing UI confusion)
-   - Real-time updates now happen silently (UI just refreshes)
-   - Cleaner status bubble - always shows "VIEWER"
-   - All other functionality identical to v7.03 (no grey pill shapes, proper navigation)
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
+VERSION: 7.05
+KEY CHANGES from v7.04:
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All existing functionality preserved (UI fixes, navigation, no SYNC flash)
+DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -19,6 +19,7 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <script src="js/game-data.js"></script>
     <script src="js/game-match.js"></script>
@@ -317,30 +318,17 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.04</div>
+<div class="version-tag">v7.05</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.04";
+window.VIEW_GAME_VERSION = "7.05";
 
 // ============================================================
-// Firebase Config
+// Firebase already initialized in firebase-config.js
 // ============================================================
-
-var FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup",
-    storageBucket: "sicc-ryder-cup.firebasestorage.app",
-    messagingSenderId: "137641493845",
-    appId: "1:137641493845:web:32399940bce639b01ddbdc"
-};
-
-if (!firebase.apps.length) {
-    firebase.initializeApp(FIREBASE_CONFIG);
-}
 var db = firebase.firestore();
 
 // ============================================================
@@ -1025,12 +1013,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.04
-KEY CHANGES from v7.03:
-   - REMOVED: SYNC flash animation on real-time updates (was causing UI confusion)
-   - Real-time updates now happen silently (UI just refreshes)
-   - Cleaner status bubble - always shows "VIEWER"
-   - All other functionality identical to v7.03 (no grey pill shapes, proper navigation)
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
+VERSION: 7.05
+KEY CHANGES from v7.04:
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All existing functionality preserved (UI fixes, navigation, no SYNC flash)
+DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
