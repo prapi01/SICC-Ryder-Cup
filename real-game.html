@@ -1,13 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.19
-KEY CHANGES from v5.18:
-   - FIXED: Cascade now uses GameTeam.calculate for intra-flight results (T-1, T-2)
-   - FIXED: Tournament Handicap - each player gets strokes based on their OWN handicap
-   - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero
-   - ADDED: Self-healing cascade - any hole save recalculates all results correctly
-   - All other functionality identical to v5.18 (takeover detection, viewer redirect, etc.)
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.20
+KEY CHANGES from v5.19:
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All existing functionality preserved (self-healing cascade, takeover detection, viewer redirect)
+DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -20,6 +19,7 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <script src="js/game-data.js"></script>
     <script src="js/game-match.js"></script>
@@ -394,30 +394,17 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.19</div>
+<div class="version-tag">v5.20</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.19";
+window.REAL_GAME_VERSION = "5.20";
 
 // ============================================================
-// Firebase Config
+// Firebase already initialized in firebase-config.js
 // ============================================================
-
-var FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup",
-    storageBucket: "sicc-ryder-cup.firebasestorage.app",
-    messagingSenderId: "137641493845",
-    appId: "1:137641493845:web:32399940bce639b01ddbdc"
-};
-
-if (!firebase.apps.length) {
-    firebase.initializeApp(FIREBASE_CONFIG);
-}
 var db = firebase.firestore();
 
 // ============================================================
@@ -1085,7 +1072,7 @@ function getTeamGameDisplayFromCumulative(cumulative) {
 }
 
 // ============================================================
-// FIXED v5.19: calculateHoleResultsWithCumulative now uses GameTeam.calculate
+// FIXED v5.19: calculateHoleResultsWithCumulative uses GameTeam.calculate
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole) {
@@ -1832,13 +1819,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.19
-KEY CHANGES from v5.18:
-   - FIXED: Cascade now uses GameTeam.calculate for intra-flight results (T-1, T-2)
-   - FIXED: Tournament Handicap - each player gets strokes based on their OWN handicap
-   - FIXED: Relative Handicap (Zero-Rise) - lowest handicap becomes zero
-   - ADDED: Self-healing cascade - any hole save recalculates all results correctly
-   - All other functionality identical to v5.18 (takeover detection, viewer redirect, etc.)
-DEPENDS ON: js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.20
+KEY CHANGES from v5.19:
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All existing functionality preserved (self-healing cascade, takeover detection, viewer redirect)
+DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
