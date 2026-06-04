@@ -1,12 +1,12 @@
 <!--
 FILE: admin.html
-VERSION: 1.05
+VERSION: 1.06
 KEY CHANGES:
-   - Added env(safe-area-inset-top) to body padding for iPhone Dynamic Island support
-   - Updated .version-tag and .device-tag to use max(8px, env(safe-area-inset-top))
-   - Added margin-top:20px to .header for additional spacing below Dynamic Island
-   - ALL other functionality identical to v1.04
-DEPENDS ON: js/session.js, Firebase
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All other functionality identical to v1.05
+DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
 
@@ -18,6 +18,7 @@ STATUS: Ready for integration
     <title>Admin - SICC Ryder Cup</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -99,13 +100,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.05</div>
+<div class="version-tag">v1.06</div>
 
 <script>
-// FILE: admin.html - VERSION 1.05
-// CHANGED: Safe-area-inset-top for iPhone Dynamic Island support
+// FILE: admin.html - VERSION 1.06
 
-var VERSION = "1.05";
+var VERSION = "1.06";
 var CACHE_KEY = "admin_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -114,27 +114,10 @@ if (storedVersion !== VERSION) {
     window.location.href = window.location.pathname + "?v=" + VERSION;
 }
 
-var FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup",
-    storageBucket: "sicc-ryder-cup.firebasestorage.app",
-    messagingSenderId: "137641493845",
-    appId: "1:137641493845:web:32399940bce639b01ddbdc"
-};
-
-var db = null;
-var firestoreReady = false;
+// Firebase already initialized in firebase-config.js
+var db = firebase.firestore();
+var firestoreReady = true;
 var deviceSession = null;
-
-try {
-    firebase.initializeApp(FIREBASE_CONFIG);
-    db = firebase.firestore();
-    firestoreReady = true;
-    console.log("Firebase ready - v" + VERSION);
-} catch(e) { 
-    console.warn(e);
-}
 
 function displayDeviceId() {
     var deviceDisplay = SessionManager.getDeviceIdDisplay();
@@ -218,12 +201,12 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.05
+VERSION: 1.06
 KEY CHANGES:
-   - Added env(safe-area-inset-top) to body padding for iPhone Dynamic Island support
-   - Updated .version-tag and .device-tag to use max(8px, env(safe-area-inset-top))
-   - Added margin-top:20px to .header for additional spacing below Dynamic Island
-   - ALL other functionality identical to v1.04
-DEPENDS ON: js/session.js, Firebase
+   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
+   - REMOVED: Hardcoded FIREBASE_CONFIG variable
+   - REMOVED: Manual firebase.initializeApp() call
+   - All other functionality identical to v1.05
+DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
