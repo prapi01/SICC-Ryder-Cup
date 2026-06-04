@@ -1,11 +1,12 @@
 <!--
 FILE: admin.html
-VERSION: 1.06
-KEY CHANGES:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
-   - All other functionality identical to v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: Admin buttons now narrower (280px) and centered
+   - FIXED: Description text now appears BELOW the button main text
+   - FIXED: Back button now matches width and style of admin buttons
+   - FIXED: All buttons have consistent width and centering
+   - All other functionality identical to v1.06
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
@@ -59,40 +60,80 @@ STATUS: Ready for integration
             letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 40px; margin-top: 20px; }
+        .header { text-align: center; margin-bottom: 30px; margin-top: 20px; }
         .title { font-size: 1.8rem; font-weight: 800; color: #4caf50; }
         .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
         
-        .menu { display: flex; flex-direction: column; gap: 16px; }
+        /* Centered menu with consistent button widths */
+        .menu {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            margin: 0 auto;
+        }
+        
         .admin-btn {
             background: #111;
             border: 1px solid #333;
             border-radius: 60px;
-            padding: 20px;
+            padding: 16px 20px;
+            width: 280px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            box-sizing: border-box;
         }
         .admin-btn:active { transform: scale(0.98); background: #1a1a1a; }
-        .admin-btn .icon { font-size: 1.8rem; display: block; margin-bottom: 8px; }
-        .admin-btn .label { font-size: 1.2rem; font-weight: 600; color: #4caf50; }
-        .admin-btn .desc { font-size: 0.7rem; color: #888; margin-top: 4px; }
+        .admin-btn .icon { 
+            font-size: 1.5rem; 
+            display: block; 
+        }
+        .admin-btn .label { 
+            font-size: 1rem; 
+            font-weight: 700; 
+            color: #4caf50; 
+        }
+        .admin-btn .desc { 
+            font-size: 0.65rem; 
+            color: #888; 
+        }
         
+        /* Back button - matches admin buttons */
         .back-btn {
             background: #1a1a1a;
             border: 1px solid #333;
-            border-radius: 40px;
-            padding: 14px;
+            border-radius: 60px;
+            padding: 14px 20px;
+            width: 280px;
             text-align: center;
             cursor: pointer;
             margin-top: 30px;
+            margin-left: auto;
+            margin-right: auto;
             transition: all 0.2s ease;
+            box-sizing: border-box;
         }
         .back-btn:active { transform: scale(0.98); background: #2a2a2a; }
-        .back-btn .label { font-size: 0.9rem; font-weight: 600; color: #ccc; }
+        .back-btn .label { 
+            font-size: 0.9rem; 
+            font-weight: 600; 
+            color: #ccc; 
+        }
         
         .footer { text-align: center; margin-top: 40px; font-size: 0.6rem; color: #444; }
         .loading { text-align: center; padding: 40px; color: #888; }
+        
+        /* Responsive for very small screens */
+        @media (max-width: 380px) {
+            .admin-btn, .back-btn {
+                width: 240px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -100,12 +141,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.06</div>
+<div class="version-tag">v1.07</div>
 
 <script>
-// FILE: admin.html - VERSION 1.06
+// FILE: admin.html - VERSION 1.07
 
-var VERSION = "1.06";
+var VERSION = "1.07";
 var CACHE_KEY = "admin_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -201,12 +242,13 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.06
-KEY CHANGES:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
-   - All other functionality identical to v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: Admin buttons now narrower (280px) and centered
+   - FIXED: Description text now appears BELOW the button main text
+   - FIXED: Back button now matches width and style of admin buttons
+   - FIXED: All buttons have consistent width and centering
+   - All other functionality identical to v1.06
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
