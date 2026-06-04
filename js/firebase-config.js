@@ -1,17 +1,18 @@
 /*
 FILE: js/firebase-config.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - FIXED: Detect Cloudflare Pages preview deployments by hash URL pattern
-   - Preview URLs like 8b7189f3.sicc-ryder-cup.pages.dev now correctly use DEV config
-   - Added detection for localhost and dev subdomain
-   - All other functionality unchanged
+   - FIXED: Changed detection from 'dev' to 'staging' subdomain
+   - Staging URL: staging.sicc-ryder-cup.pages.dev
+   - Production URL: sicc-ryder-cup.pages.dev (no false positive)
+   - Preview hash URLs still detected as DEV
+   - Localhost still detected as DEV
 DEPENDS ON: Firebase SDK (loaded before this file)
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.FIREBASE_CONFIG_VERSION = "1.01";
+window.FIREBASE_CONFIG_VERSION = "1.02";
 
 // Production config (main branch)
 var PROD_CONFIG = {
@@ -23,7 +24,7 @@ var PROD_CONFIG = {
     appId: "1:137641493845:web:32399940bce639b01ddbdc"
 };
 
-// Development config (dev branch)
+// Development config (staging branch)
 var DEV_CONFIG = {
     apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
     authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
@@ -41,15 +42,17 @@ function getFirebaseConfig() {
     // Preview URLs look like: 8b7189f3.sicc-ryder-cup.pages.dev
     var isPreviewHash = /^[a-f0-9]{7,8}\./.test(hostname);
     
-    if (isPreviewHash) {
+    // Check for staging subdomain (staging.sicc-ryder-cup.pages.dev)
+    var isStagingSubdomain = hostname.startsWith('staging.');
+    
+    // Check for localhost
+    var isLocalhost = (hostname === 'localhost' || hostname === '127.0.0.1');
+    
+    if (isPreviewHash || isStagingSubdomain || isLocalhost) {
         isDev = true;
-        console.log("Detected Cloudflare preview deployment (hash URL)");
-    } else if (hostname.includes('dev')) {
-        isDev = true;
-        console.log("Detected dev subdomain");
-    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        isDev = true;
-        console.log("Detected localhost");
+        if (isPreviewHash) console.log("Detected Cloudflare preview deployment (hash URL)");
+        if (isStagingSubdomain) console.log("Detected staging subdomain");
+        if (isLocalhost) console.log("Detected localhost");
     }
     
     console.log("Firebase using", isDev ? "DEV" : "PROD", "configuration");
@@ -68,12 +71,13 @@ if (typeof firebase !== 'undefined' && firebase.apps && !firebase.apps.length) {
 
 /*
 FILE: js/firebase-config.js
-VERSION: 1.01
+VERSION: 1.02
 KEY CHANGES:
-   - FIXED: Detect Cloudflare Pages preview deployments by hash URL pattern
-   - Preview URLs like 8b7189f3.sicc-ryder-cup.pages.dev now correctly use DEV config
-   - Added detection for localhost and dev subdomain
-   - All other functionality unchanged
+   - FIXED: Changed detection from 'dev' to 'staging' subdomain
+   - Staging URL: staging.sicc-ryder-cup.pages.dev
+   - Production URL: sicc-ryder-cup.pages.dev (no false positive)
+   - Preview hash URLs still detected as DEV
+   - Localhost still detected as DEV
 DEPENDS ON: Firebase SDK (loaded before this file)
 STATUS: Ready for integration
 */
