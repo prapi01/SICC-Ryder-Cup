@@ -1,13 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.27
-KEY CHANGES from v5.26:
-   - REPLACED inline clinch detection with GameMatch.calculateClinch()
-   - REPLACED direct overwrite with GameMatch.updateClinchedAt() (smart merge)
-   - REPLACED bubble clinch lookup with GameMatch.getClinchHole()
-   - Now preserves clinches from holes < cascadeStartHole when cascade restarts
-   - Smart list structure: each clinch entry now stores metadata (winner, lead, timestamp, device)
-   - Backward compatible with old flat clinch format for bubble display
+VERSION: 5.28
+KEY CHANGES from v5.27:
+   - ADDED: Intra-flight clinch detection for f1IntraMatches and f2IntraMatches
+   - ADDED: getRemainingHolesFromPlayOrder() helper for accurate remaining holes calculation
+   - FIXED: Remaining holes now based on play order (supports non-1 starting holes)
+   - Clinch detection now covers ALL matches (cross-flight AND intra-flight)
+   - Both cross and intra clinch updates merged before writing to Firestore
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -397,13 +396,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.27</div>
+<div class="version-tag">v5.28</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.27";
+window.REAL_GAME_VERSION = "5.28";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -566,6 +565,13 @@ function getPlayOrder() {
     return order;
 }
 
+function getRemainingHolesFromPlayOrder(currentHoleNumber) {
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHoleNumber);
+    if (currentIndex === -1) return 18 - currentHoleNumber;
+    return 18 - (currentIndex + 1);
+}
+
 function getDisplayHoles() {
     var mode = GameUI.getDisplayMode();
     if (mode === "natural") {
@@ -689,7 +695,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS - UPDATED v5.27: Uses GameMatch.getClinchHole()
+// BUBBLE FUNCTIONS - UPDATED v5.28: Uses GameMatch.getClinchHole()
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -705,7 +711,6 @@ function getBubbleClassWithClinch(player, opponent) {
     var lastSyncedHole = cache.lastSyncedHole;
     var clinchedAt = cache.clinchedAt || {};
     
-    // FIXED v5.27: Use GameMatch.getClinchHole() for smart list support
     var clinchHole = GameMatch.getClinchHole(clinchedAt, player.name, opponent.name);
     
     if (player.flight === opponent.flight) {
@@ -927,7 +932,6 @@ function performSave() {
                 var cumulativeFlight1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole || null;
                 var cumulativeFlight2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole || null;
                 
-                // FIXED v5.27: Determine cascade start hole (the hole being saved)
                 var cascadeStartHole = currentHole;
                 
                 var result = await saveResultsToFirestoreWithCumulative(currentHole, existingClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole);
@@ -1140,7 +1144,7 @@ function calculatePlayerTotals(upToHole) {
     return playerTotals;
 }
 
-// FIXED v5.27: UPDATED to use GameMatch.calculateClinch() and GameMatch.updateClinchedAt()
+// FIXED v5.28: Added intra-flight clinch detection + play-order-aware remaining holes
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
     var cache = GameLoader.getLocalCache();
     var position = getHolePosition(holeNumber);
@@ -1195,6 +1199,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         cumulativeF2: 0
     };
     
+    var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
+    
     if (f1Available && teamGameResults) {
         var newCumulativeF1 = teamGameResults.flight1Cumulative[position];
         var previousCumulativeF1 = position > 0 ? teamGameResults.flight1Cumulative[position - 1] : 0;
@@ -1206,7 +1212,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         
         result.f1IntraMatches = calculateIntraFlightResults(1, holeNumber);
         
-        var remainingHoles = 18 - holeNumber;
         var maxOpponentPoints = remainingHoles * 2;
         
         if (result.flight1ClinchedHole === null && Math.abs(result.cumulativeF1) > maxOpponentPoints) {
@@ -1225,13 +1230,71 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         
         result.f2IntraMatches = calculateIntraFlightResults(2, holeNumber);
         
-        var remainingHoles2 = 18 - holeNumber;
-        var maxOpponentPoints2 = remainingHoles2 * 2;
+        var maxOpponentPoints2 = remainingHoles * 2;
         
         if (result.flight2ClinchedHole === null && Math.abs(result.cumulativeF2) > maxOpponentPoints2) {
             result.flight2ClinchedHole = holeNumber;
         }
     }
+    
+    // Initialize clinch updates object
+    var clinchedAtUpdates = {};
+    var deviceId = SessionManager.getDeviceIdDisplay();
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.28";
+    
+    // ============================================================
+    // FIXED v5.28: INTRA-FLIGHT CLINCH DETECTION
+    // ============================================================
+    
+    // Flight 1 intra-flight clinch detection
+    if (f1Available && result.f1IntraMatches) {
+        var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+        var teamAPlayersF1 = flight1Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayersF1 = flight1Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        for (var a = 0; a < teamAPlayersF1.length; a++) {
+            for (var b = 0; b < teamBPlayersF1.length; b++) {
+                var matchKey = teamAPlayersF1[a].name + "_vs_" + teamBPlayersF1[b].name;
+                var matchValue = result.f1IntraMatches[matchKey];
+                if (matchValue !== undefined) {
+                    var clinchResult = GameMatch.calculateClinch(
+                        matchValue, remainingHoles, teamAPlayersF1[a].name, teamBPlayersF1[b].name,
+                        holeNumber, deviceId, cascadeVersion
+                    );
+                    if (clinchResult) {
+                        clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Flight 2 intra-flight clinch detection
+    if (f2Available && result.f2IntraMatches) {
+        var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
+        var teamAPlayersF2 = flight2Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamBPlayersF2 = flight2Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        for (var a = 0; a < teamAPlayersF2.length; a++) {
+            for (var b = 0; b < teamBPlayersF2.length; b++) {
+                var matchKey = teamAPlayersF2[a].name + "_vs_" + teamBPlayersF2[b].name;
+                var matchValue = result.f2IntraMatches[matchKey];
+                if (matchValue !== undefined) {
+                    var clinchResult = GameMatch.calculateClinch(
+                        matchValue, remainingHoles, teamAPlayersF2[a].name, teamBPlayersF2[b].name,
+                        holeNumber, deviceId, cascadeVersion
+                    );
+                    if (clinchResult) {
+                        clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
+                    }
+                }
+            }
+        }
+    }
+    
+    // ============================================================
+    // CROSS-FLIGHT CLINCH DETECTION (existing, preserved)
+    // ============================================================
     
     if (crossAvailable) {
         var matchResultsArray = calculateMatchResultsArray(holeNumber);
@@ -1274,14 +1337,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.trAGreen = (result.trA > result.trB);
         result.trBGreen = (result.trB > result.trA);
         
-        var remainingHolesCross = 18 - holeNumber;
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        
-        // FIXED v5.27: Use GameMatch.calculateClinch() for each match
-        var clinchedAtUpdates = {};
-        var deviceId = SessionManager.getDeviceIdDisplay();
-        var cascadeVersion = window.REAL_GAME_VERSION || "5.27";
         
         for (var a = 0; a < teamAPlayers.length; a++) {
             for (var b = 0; b < teamBPlayers.length; b++) {
@@ -1290,7 +1347,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
                 var loserName = teamBPlayers[b].name;
                 
                 var clinchResult = GameMatch.calculateClinch(
-                    matchValue, remainingHolesCross, winnerName, loserName, 
+                    matchValue, remainingHoles, winnerName, loserName, 
                     holeNumber, deviceId, cascadeVersion
                 );
                 
@@ -1299,13 +1356,10 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
                 }
             }
         }
-        
-        result.clinchedAtUpdates = clinchedAtUpdates;
-        
-        // FIXED v5.27: Use GameMatch.updateClinchedAt() for smart merge
-        // This preserves entries from holes < cascadeStartHole
-        result.updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole);
     }
+    
+    result.clinchedAtUpdates = clinchedAtUpdates;
+    result.updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole);
     
     result.updatedFlight1ClinchedHole = result.flight1ClinchedHole;
     result.updatedFlight2ClinchedHole = result.flight2ClinchedHole;
@@ -1366,7 +1420,6 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
     updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
     
-    // FIXED v5.27: Direct assign - already smart merged in calculateHoleResultsWithCumulative
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
         updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
     } else if (cumulativeClinched && Object.keys(cumulativeClinched).length > 0) {
@@ -1433,7 +1486,6 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
             cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
         }
         
-        // FIXED v5.27: Direct assign - already smart merged
         if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
             cache.results.clinchedAt = resultsData.updatedClinched;
         }
@@ -1892,14 +1944,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.27
-KEY CHANGES from v5.26:
-   - REPLACED inline clinch detection with GameMatch.calculateClinch()
-   - REPLACED direct overwrite with GameMatch.updateClinchedAt() (smart merge)
-   - REPLACED bubble clinch lookup with GameMatch.getClinchHole()
-   - Now preserves clinches from holes < cascadeStartHole when cascade restarts
-   - Smart list structure: each clinch entry now stores metadata (winner, lead, timestamp, device)
-   - Backward compatible with old flat clinch format for bubble display
+VERSION: 5.28
+KEY CHANGES from v5.27:
+   - ADDED: Intra-flight clinch detection for f1IntraMatches and f2IntraMatches
+   - ADDED: getRemainingHolesFromPlayOrder() helper for accurate remaining holes calculation
+   - FIXED: Remaining holes now based on play order (supports non-1 starting holes)
+   - Clinch detection now covers ALL matches (cross-flight AND intra-flight)
+   - Both cross and intra clinch updates merged before writing to Firestore
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
