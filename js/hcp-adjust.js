@@ -1,12 +1,15 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.14
-KEY CHANGES from v2.13:
-   - FIXED: Performance adjustment now uses MATCH POINTS (0, 0.5, 1 per match)
-   - Win = 1 point, Loss = 0 points, Tie (AS) = 0.5 points
-   - Threshold: ≥ 3.5 points → -1 (CUT stroke), ≤ 0.5 points → +1 (ADD stroke)
-   - Previously used net wins (incorrect for match play)
-   - All other functionality unchanged (anchor adjustment, history display, etc.)
+VERSION: 2.15
+KEY CHANGES from v2.14:
+   - FIXED: Tighter table layout to eliminate horizontal scroll on mobile
+   - Changed min-width from 460px to 375px (fits iPhone SE and all iPhones)
+   - Reduced player column from 90px to 70px (uses full name, fits)
+   - Reduced Start/Anc/Perf/Final columns from 50-55px to 28-32px each
+   - Reduced cell padding from 6px 4px to 4px 2px
+   - Reduced font size from 0.75rem to 0.7rem
+   - Removed unnecessary whitespace in table
+   - All functionality unchanged (match points calculation, thresholds, etc.)
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -280,7 +283,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table (with readonly support)
+    // Display Table - FIXED v2.15: Tighter layout (375px min-width)
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -288,14 +291,14 @@ var HandicapAdjustment = (function() {
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
         var newAnchorName = calculationResult.newAnchorName;
         
-        var tableHtml = '<div style="overflow-x: auto; margin: 16px 0; -webkit-overflow-scrolling: touch;">';
-        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.75rem; min-width: 460px;">';
+        var tableHtml = '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
+        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.7rem; min-width: 375px;">';
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
-        tableHtml += '<th style="padding:6px 4px; text-align:left; width:90px;">Player</th>';
-        tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Start</th>';
-        tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Anc</th>';
-        tableHtml += '<th style="padding:6px 4px; text-align:center; width:50px;">Perf</th>';
-        tableHtml += '<th style="padding:6px 4px; text-align:center; width:55px;">Final</th>';
+        tableHtml += '<th style="padding:4px 2px; text-align:left; width:70px;">Player</th>';
+        tableHtml += '<th style="padding:4px 2px; text-align:center; width:28px;">St</th>';
+        tableHtml += '<th style="padding:4px 2px; text-align:center; width:32px;">Anc</th>';
+        tableHtml += '<th style="padding:4px 2px; text-align:center; width:32px;">Perf</th>';
+        tableHtml += '<th style="padding:4px 2px; text-align:center; width:32px;">Final</th>';
         tableHtml += '</thead><tbody>';
         
         for (var i = 0; i < players.length; i++) {
@@ -329,45 +332,45 @@ var HandicapAdjustment = (function() {
             }
             
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
-            tableHtml += `<td style="padding:6px 4px; text-align:left;">${escapeHtml(p.name)}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center;">${p.currentHcp}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
-            tableHtml += '</tr>';
+            tableHtml += `<td style="padding:4px 2px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}...</td>`;
+            tableHtml += `<td style="padding:4px 2px; text-align:center;">${p.currentHcp}...</td>`;
+            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}...</td>`;
+            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}...</td>`;
+            tableHtml += `<td style="padding:4px 2px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}...</td>`;
+            tableHtml += '</td>';
         }
         
         tableHtml += '</tbody></table></div>';
         
-        var anchorInfoHtml = `<div style="text-align: center; margin-bottom: 12px;"><span style="color: #4caf50; font-size:0.8rem;">✓ Anchor: ${escapeHtml(anchorName)}</span></div>`;
+        var anchorInfoHtml = `<div style="text-align: center; margin-bottom: 10px;"><span style="color: #4caf50; font-size:0.75rem;">✓ Anchor: ${escapeHtml(anchorName)}</span></div>`;
         
         var messageHtml = '';
         if (hasNewAnchor && newAnchorName) {
-            messageHtml = `<div style="font-size:0.85rem; color:#ffaa44; text-align:center; margin-bottom:12px;">🎉 ${escapeHtml(newAnchorName)} will be the NEW ANCHOR! 🎉</div>`;
+            messageHtml = `<div style="font-size:0.8rem; color:#ffaa44; text-align:center; margin-bottom:10px;">🎉 ${escapeHtml(newAnchorName)} will be the NEW ANCHOR! 🎉</div>`;
         }
         
         var buttonsHtml = '';
         if (isReadOnly) {
             buttonsHtml = `
-                <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; justify-content:center;">
-                    <button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:10px 20px; border-radius:30px; font-size:0.8rem; font-weight:600; cursor:pointer;">← Back</button>
+                <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
+                    <button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:8px 16px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">← Back</button>
                 </div>
             `;
         } else {
             buttonsHtml = `
-                <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; justify-content:center;">
-                    <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏌️ Back to Scorecard</button>
-                    <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🎉 Celebration Screen</button>
-                    <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏠 Main Menu</button>
-                    <button id="exitBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 14px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🚪 Exit</button>
+                <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
+                    <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🏌️ Back</button>
+                    <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🎉 Celebration</button>
+                    <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🏠 Menu</button>
+                    <button id="exitBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🚪 Exit</button>
                 </div>
             `;
         }
         
         var modalHtml = `
             <div class="modal-overlay" id="hcpAdjustModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10000;">
-                <div style="background:#1a1a1a; border-radius:28px; padding:16px; max-width:95%; width:auto; border:2px solid #4caf50;">
-                    <div style="font-size:1.3rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:4px;">🏌️ HANDICAP ADJUSTMENT</div>
+                <div style="background:#1a1a1a; border-radius:24px; padding:12px; max-width:95%; width:auto; border:2px solid #4caf50;">
+                    <div style="font-size:1.2rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:4px;">🏌️ HANDICAP ADJUSTMENT</div>
                     ${messageHtml}
                     ${anchorInfoHtml}
                     ${tableHtml}
@@ -814,13 +817,16 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.14
-KEY CHANGES from v2.13:
-   - FIXED: Performance adjustment now uses MATCH POINTS (0, 0.5, 1 per match)
-   - Win = 1 point, Loss = 0 points, Tie (AS) = 0.5 points
-   - Threshold: ≥ 3.5 points → -1 (CUT stroke), ≤ 0.5 points → +1 (ADD stroke)
-   - Previously used net wins (incorrect for match play)
-   - All other functionality unchanged (anchor adjustment, history display, etc.)
+VERSION: 2.15
+KEY CHANGES from v2.14:
+   - FIXED: Tighter table layout to eliminate horizontal scroll on mobile
+   - Changed min-width from 460px to 375px (fits iPhone SE and all iPhones)
+   - Reduced player column from 90px to 70px (uses full name, fits)
+   - Reduced Start/Anc/Perf/Final columns from 50-55px to 28-32px each
+   - Reduced cell padding from 6px 4px to 4px 2px
+   - Reduced font size from 0.75rem to 0.7rem
+   - Removed unnecessary whitespace in table
+   - All functionality unchanged (match points calculation, thresholds, etc.)
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
