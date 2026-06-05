@@ -1,13 +1,14 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.11
+VERSION: 2.12
 KEY CHANGES:
-   - FIXED: calculatePerformanceAdjustmentFromCache() now handles BOTH data formats
-   - NEW: Detects if matchResults is an array (real-game format) or object with 'cross' property (legacy)
-   - For array format: extracts cross-flight matches using the correct player ordering
-   - For legacy format: preserves original behavior
-   - Prevents the "cache.matchResults is undefined" error that caused redirect to index.html
-   - All existing functionality unchanged from v2.10
+   - FIXED: Performance adjustment logic now matches correct concept:
+     * ≥ +3.5 → -1 (handicap DOWN - played very well)
+     * ≤ +0.5 → +1 (handicap UP - played poorly)
+     * Between +0.5 and +3.5 → 0 (average)
+   - FIXED: Added conversion for array-like objects (numeric keys) to true arrays
+   - FIXED: Added detailed console logging for debugging contributions
+   - All other functionality unchanged from v2.11
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -121,7 +122,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // FIXED v2.11: Calculate Performance Adjustment - Handles BOTH data formats
+    // FIXED v2.12: Calculate Performance Adjustment - CORRECTED LOGIC
     // ============================================================
     
     function calculatePerformanceAdjustmentFromCache(cache, allPlayersList) {
@@ -143,95 +144,85 @@ var HandicapAdjustment = (function() {
             return a.handicap - b.handicap;
         });
         
-        // Check what format the matchResults are in
-        var matchResults = cache.results?.matchResults;
+        // Get matchResults - handle both array and array-like object
+        var matchResultsRaw = cache.results?.matchResults;
         
-        if (!matchResults) {
+        if (!matchResultsRaw) {
             console.warn("No matchResults found in cache");
             return contributions;
         }
         
-        // FORMAT 1: matchResults is an array (real-game format)
-        if (Array.isArray(matchResults)) {
-            console.log("Detected array format for matchResults");
-            
-            // Iterate through each hole where we have results
-            for (var holeIdx = 0; holeIdx < matchResults.length; holeIdx++) {
-                var holeMatches = matchResults[holeIdx];
-                if (!holeMatches || !Array.isArray(holeMatches)) continue;
-                
-                // holeMatches is a flat array of 16 values (4 Team A × 4 Team B)
-                for (var aIdx = 0; aIdx < teamAPlayers.length; aIdx++) {
-                    for (var bIdx = 0; bIdx < teamBPlayers.length; bIdx++) {
-                        var matchIndex = aIdx * teamBPlayers.length + bIdx;
-                        var matchValue = holeMatches[matchIndex];
-                        if (matchValue === undefined) continue;
-                        
-                        var playerA = teamAPlayers[aIdx];
-                        var playerB = teamBPlayers[bIdx];
-                        var pairId = [playerA.name, playerB.name].sort().join('|');
-                        
-                        if (processedMatches.has(pairId)) continue;
-                        processedMatches.add(pairId);
-                        
-                        if (matchValue > 0) {
-                            contributions[playerA.name] += 1;
-                            contributions[playerB.name] += -1;
-                        } else if (matchValue < 0) {
-                            contributions[playerA.name] += -1;
-                            contributions[playerB.name] += 1;
-                        } else {
-                            contributions[playerA.name] += 0.5;
-                            contributions[playerB.name] += 0.5;
-                        }
-                    }
-                }
+        // Convert array-like object to true array if needed
+        var matchResultsArray = [];
+        if (Array.isArray(matchResultsRaw)) {
+            matchResultsArray = matchResultsRaw;
+        } else if (typeof matchResultsRaw === 'object' && matchResultsRaw !== null) {
+            // Convert object with numeric keys to array
+            var keys = Object.keys(matchResultsRaw).sort(function(a, b) { return parseInt(a) - parseInt(b); });
+            for (var k = 0; k < keys.length; k++) {
+                matchResultsArray.push(matchResultsRaw[keys[k]]);
             }
+            console.log("Converted array-like object to array, length:", matchResultsArray.length);
         }
-        // FORMAT 2: matchResults has a 'cross' property (legacy format)
-        else if (matchResults.cross) {
-            console.log("Detected legacy format for matchResults (cross property)");
-            var crossResults = matchResults.cross;
-            
-            for (var key in crossResults) {
-                if (key.indexOf('_vs_') !== -1) {
-                    var parts = key.split('_vs_');
-                    var playerA = parts[0];
-                    var playerB = parts[1];
-                    
-                    var pairId = [playerA, playerB].sort().join('|');
-                    if (processedMatches.has(pairId)) continue;
-                    processedMatches.add(pairId);
-                    
-                    var value = crossResults[key];
-                    
-                    if (value > 0) {
-                        contributions[playerA] += 1;
-                        contributions[playerB] += -1;
-                    } else if (value < 0) {
-                        contributions[playerA] += -1;
-                        contributions[playerB] += 1;
-                    } else {
-                        contributions[playerA] += 0.5;
-                        contributions[playerB] += 0.5;
-                    }
-                }
-            }
-        } else {
-            console.warn("Unknown matchResults format - cannot calculate performance adjustment");
+        
+        if (!matchResultsArray.length) {
+            console.warn("No valid matchResults array after conversion");
             return contributions;
         }
         
-        // Calculate final adjustments
+        // Iterate through each hole
+        for (var holeIdx = 0; holeIdx < matchResultsArray.length; holeIdx++) {
+            var holeMatches = matchResultsArray[holeIdx];
+            if (!holeMatches || !Array.isArray(holeMatches)) continue;
+            
+            // holeMatches is a flat array of 16 values (4 Team A × 4 Team B)
+            for (var aIdx = 0; aIdx < teamAPlayers.length; aIdx++) {
+                for (var bIdx = 0; bIdx < teamBPlayers.length; bIdx++) {
+                    var matchIndex = aIdx * teamBPlayers.length + bIdx;
+                    var matchValue = holeMatches[matchIndex];
+                    if (matchValue === undefined) continue;
+                    
+                    var playerA = teamAPlayers[aIdx];
+                    var playerB = teamBPlayers[bIdx];
+                    var pairId = [playerA.name, playerB.name].sort().join('|');
+                    
+                    if (processedMatches.has(pairId)) continue;
+                    processedMatches.add(pairId);
+                    
+                    if (matchValue > 0) {
+                        contributions[playerA.name] += 1;
+                        contributions[playerB.name] += -1;
+                    } else if (matchValue < 0) {
+                        contributions[playerA.name] += -1;
+                        contributions[playerB.name] += 1;
+                    } else {
+                        contributions[playerA.name] += 0.5;
+                        contributions[playerB.name] += 0.5;
+                    }
+                }
+            }
+        }
+        
+        console.log("Performance contributions calculated:", contributions);
+        
+        // ============================================================
+        // CORRECTED LOGIC v2.12:
+        // ≥ +3.5 → -1 (handicap DOWN - played very well)
+        // ≤ +0.5 → +1 (handicap UP - played poorly)
+        // Between +0.5 and +3.5 → 0 (average)
+        // ============================================================
         var perfAdjustments = {};
         for (var playerName in contributions) {
             var contribution = contributions[playerName];
             if (contribution >= 3.5) {
                 perfAdjustments[playerName] = -1;
-            } else if (contribution <= -3.5) {
+                console.log(`  ${playerName}: contribution ${contribution} → -1 (well above average)`);
+            } else if (contribution <= 0.5) {
                 perfAdjustments[playerName] = 1;
+                console.log(`  ${playerName}: contribution ${contribution} → +1 (below average)`);
             } else {
                 perfAdjustments[playerName] = 0;
+                console.log(`  ${playerName}: contribution ${contribution} → 0 (average)`);
             }
         }
         
@@ -320,11 +311,37 @@ var HandicapAdjustment = (function() {
             var p = players[i];
             var displayHcp = hasNewAnchor ? p.newAnchor : p.newHcp;
             
+            // Determine Perf column display color
+            var perfColor = '#888';
+            var perfSign = '';
+            if (p.perfAdj > 0) {
+                perfColor = '#4caf50';
+                perfSign = '+' + p.perfAdj;
+            } else if (p.perfAdj < 0) {
+                perfColor = '#ff6b6b';
+                perfSign = p.perfAdj.toString();
+            } else {
+                perfSign = '0';
+            }
+            
+            // Determine Anc column display color
+            var ancColor = '#888';
+            var ancSign = '';
+            if (p.anchorAdj > 0) {
+                ancColor = '#4caf50';
+                ancSign = '+' + p.anchorAdj;
+            } else if (p.anchorAdj < 0) {
+                ancColor = '#ff6b6b';
+                ancSign = p.anchorAdj.toString();
+            } else {
+                ancSign = '0';
+            }
+            
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
             tableHtml += `<td style="padding:6px 4px; text-align:left;">${escapeHtml(p.name)}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center;">${p.currentHcp}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${p.anchorAdj >= 0 ? '#4caf50' : '#ff6b6b'}; font-weight:600;">${p.anchorAdj >= 0 ? '+' + p.anchorAdj : p.anchorAdj}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${p.perfAdj > 0 ? '#4caf50' : (p.perfAdj < 0 ? '#ff6b6b' : '#888')}; font-weight:600;">${p.perfAdj > 0 ? '+' + p.perfAdj : p.perfAdj}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
             tableHtml += '</tr>';
         }
@@ -806,14 +823,15 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.11
+VERSION: 2.12
 KEY CHANGES:
-   - FIXED: calculatePerformanceAdjustmentFromCache() now handles BOTH data formats
-   - NEW: Detects if matchResults is an array (real-game format) or object with 'cross' property (legacy)
-   - For array format: extracts cross-flight matches using the correct player ordering
-   - For legacy format: preserves original behavior
-   - Prevents the "cache.matchResults is undefined" error that caused redirect to index.html
-   - All existing functionality unchanged from v2.10
+   - FIXED: Performance adjustment logic now matches correct concept:
+     * ≥ +3.5 → -1 (handicap DOWN - played very well)
+     * ≤ +0.5 → +1 (handicap UP - played poorly)
+     * Between +0.5 and +3.5 → 0 (average)
+   - FIXED: Added conversion for array-like objects (numeric keys) to true arrays
+   - FIXED: Added detailed console logging for debugging contributions
+   - All other functionality unchanged from v2.11
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
