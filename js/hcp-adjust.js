@@ -1,14 +1,15 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.12
+VERSION: 2.13
 KEY CHANGES:
-   - FIXED: Performance adjustment logic now matches correct concept:
-     * ≥ +3.5 → -1 (handicap DOWN - played very well)
-     * ≤ +0.5 → +1 (handicap UP - played poorly)
-     * Between +0.5 and +3.5 → 0 (average)
-   - FIXED: Added conversion for array-like objects (numeric keys) to true arrays
-   - FIXED: Added detailed console logging for debugging contributions
-   - All other functionality unchanged from v2.11
+   - COMPLETE REWRITE of calculatePerformanceAdjustmentFromCache()
+   - NOW uses clinchedAt data for match results (correct Match Play logic)
+   - Performance adjustment based on net match wins (Wins - Losses) across 4 matches
+   - Wins: player appears as FIRST in "A_vs_B" key in clinchedAt
+   - Losses: player appears as SECOND in "A_vs_B" key in clinchedAt
+   - Ties: no entry for the matchup in clinchedAt (0 contribution)
+   - Anchor adjustment unchanged (already correct)
+   - All other functionality preserved from v2.12
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -122,107 +123,73 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // FIXED v2.12: Calculate Performance Adjustment - CORRECTED LOGIC
+    // FIXED v2.13: Calculate Performance Adjustment from clinchedAt
+    // Uses Match Play logic: each match is Win (+1), Loss (-1), or Tie (0)
     // ============================================================
     
     function calculatePerformanceAdjustmentFromCache(cache, allPlayersList) {
+        // Initialize contributions for all players
         var contributions = {};
-        
         for (var i = 0; i < allPlayersList.length; i++) {
             contributions[allPlayersList[i].name] = 0;
         }
         
-        var processedMatches = new Set();
+        // Get clinchedAt data
+        var clinchedAt = cache.results?.clinchedAt || {};
         
-        // Get ordered players for consistent indexing
-        var teamAPlayers = allPlayersList.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
-            if (a.flight !== b.flight) return a.flight - b.flight;
-            return a.handicap - b.handicap;
-        });
-        var teamBPlayers = allPlayersList.filter(function(p) { return p.team === "B"; }).sort(function(a, b) {
-            if (a.flight !== b.flight) return a.flight - b.flight;
-            return a.handicap - b.handicap;
-        });
-        
-        // Get matchResults - handle both array and array-like object
-        var matchResultsRaw = cache.results?.matchResults;
-        
-        if (!matchResultsRaw) {
-            console.warn("No matchResults found in cache");
-            return contributions;
+        if (Object.keys(clinchedAt).length === 0) {
+            console.warn("No clinchedAt data found in cache");
+            return {};
         }
         
-        // Convert array-like object to true array if needed
-        var matchResultsArray = [];
-        if (Array.isArray(matchResultsRaw)) {
-            matchResultsArray = matchResultsRaw;
-        } else if (typeof matchResultsRaw === 'object' && matchResultsRaw !== null) {
-            // Convert object with numeric keys to array
-            var keys = Object.keys(matchResultsRaw).sort(function(a, b) { return parseInt(a) - parseInt(b); });
-            for (var k = 0; k < keys.length; k++) {
-                matchResultsArray.push(matchResultsRaw[keys[k]]);
-            }
-            console.log("Converted array-like object to array, length:", matchResultsArray.length);
-        }
+        console.log("clinchedAt data:", clinchedAt);
         
-        if (!matchResultsArray.length) {
-            console.warn("No valid matchResults array after conversion");
-            return contributions;
-        }
-        
-        // Iterate through each hole
-        for (var holeIdx = 0; holeIdx < matchResultsArray.length; holeIdx++) {
-            var holeMatches = matchResultsArray[holeIdx];
-            if (!holeMatches || !Array.isArray(holeMatches)) continue;
+        // Process each entry in clinchedAt
+        // Format: "WinnerName_vs_LoserName": holeNumber
+        for (var matchKey in clinchedAt) {
+            // Skip if not a valid match key (should contain "_vs_")
+            if (matchKey.indexOf("_vs_") === -1) continue;
             
-            // holeMatches is a flat array of 16 values (4 Team A × 4 Team B)
-            for (var aIdx = 0; aIdx < teamAPlayers.length; aIdx++) {
-                for (var bIdx = 0; bIdx < teamBPlayers.length; bIdx++) {
-                    var matchIndex = aIdx * teamBPlayers.length + bIdx;
-                    var matchValue = holeMatches[matchIndex];
-                    if (matchValue === undefined) continue;
-                    
-                    var playerA = teamAPlayers[aIdx];
-                    var playerB = teamBPlayers[bIdx];
-                    var pairId = [playerA.name, playerB.name].sort().join('|');
-                    
-                    if (processedMatches.has(pairId)) continue;
-                    processedMatches.add(pairId);
-                    
-                    if (matchValue > 0) {
-                        contributions[playerA.name] += 1;
-                        contributions[playerB.name] += -1;
-                    } else if (matchValue < 0) {
-                        contributions[playerA.name] += -1;
-                        contributions[playerB.name] += 1;
-                    } else {
-                        contributions[playerA.name] += 0.5;
-                        contributions[playerB.name] += 0.5;
-                    }
-                }
+            var parts = matchKey.split("_vs_");
+            var winnerName = parts[0];
+            var loserName = parts[1];
+            
+            // Winner gets +1
+            if (contributions[winnerName] !== undefined) {
+                contributions[winnerName] += 1;
+            } else {
+                console.warn("Winner not found in players:", winnerName);
+            }
+            
+            // Loser gets -1
+            if (contributions[loserName] !== undefined) {
+                contributions[loserName] += -1;
+            } else {
+                console.warn("Loser not found in players:", loserName);
             }
         }
         
-        console.log("Performance contributions calculated:", contributions);
+        // Note: Ties (AS) have no entry in clinchedAt, so they contribute 0 automatically
         
-        // ============================================================
-        // CORRECTED LOGIC v2.12:
-        // ≥ +3.5 → -1 (handicap DOWN - played very well)
-        // ≤ +0.5 → +1 (handicap UP - played poorly)
+        console.log("Performance contributions (net match wins):", contributions);
+        
+        // Apply performance adjustment rules:
+        // Net match wins ≥ +3.5 → -1 (handicap DOWN)
+        // Net match wins ≤ +0.5 → +1 (handicap UP)
         // Between +0.5 and +3.5 → 0 (average)
-        // ============================================================
         var perfAdjustments = {};
         for (var playerName in contributions) {
-            var contribution = contributions[playerName];
-            if (contribution >= 3.5) {
+            var netWins = contributions[playerName];
+            
+            if (netWins >= 3.5) {
                 perfAdjustments[playerName] = -1;
-                console.log(`  ${playerName}: contribution ${contribution} → -1 (well above average)`);
-            } else if (contribution <= 0.5) {
+                console.log(`  ${playerName}: net match wins ${netWins} → -1 (well above average)`);
+            } else if (netWins <= 0.5) {
                 perfAdjustments[playerName] = 1;
-                console.log(`  ${playerName}: contribution ${contribution} → +1 (below average)`);
+                console.log(`  ${playerName}: net match wins ${netWins} → +1 (below average)`);
             } else {
                 perfAdjustments[playerName] = 0;
-                console.log(`  ${playerName}: contribution ${contribution} → 0 (average)`);
+                console.log(`  ${playerName}: net match wins ${netWins} → 0 (average)`);
             }
         }
         
@@ -346,7 +313,7 @@ var HandicapAdjustment = (function() {
             tableHtml += '</tr>';
         }
         
-        tableHtml += '</tbody></table></div>';
+        tableHtml += '</tbody></tr></div>';
         
         var anchorInfoHtml = `<div style="text-align: center; margin-bottom: 12px;"><span style="color: #4caf50; font-size:0.8rem;">✓ Anchor: ${escapeHtml(anchorName)}</span></div>`;
         
@@ -823,15 +790,16 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.12
+VERSION: 2.13
 KEY CHANGES:
-   - FIXED: Performance adjustment logic now matches correct concept:
-     * ≥ +3.5 → -1 (handicap DOWN - played very well)
-     * ≤ +0.5 → +1 (handicap UP - played poorly)
-     * Between +0.5 and +3.5 → 0 (average)
-   - FIXED: Added conversion for array-like objects (numeric keys) to true arrays
-   - FIXED: Added detailed console logging for debugging contributions
-   - All other functionality unchanged from v2.11
+   - COMPLETE REWRITE of calculatePerformanceAdjustmentFromCache()
+   - NOW uses clinchedAt data for match results (correct Match Play logic)
+   - Performance adjustment based on net match wins (Wins - Losses) across 4 matches
+   - Wins: player appears as FIRST in "A_vs_B" key in clinchedAt
+   - Losses: player appears as SECOND in "A_vs_B" key in clinchedAt
+   - Ties: no entry for the matchup in clinchedAt (0 contribution)
+   - Anchor adjustment unchanged (already correct)
+   - All other functionality preserved from v2.12
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
