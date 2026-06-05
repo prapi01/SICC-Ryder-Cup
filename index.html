@@ -1,11 +1,12 @@
 <!--
 FILE: index.html (merge)
-VERSION: 3.18 
+VERSION: 3.19 
 KEY CHANGES:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call (now in firebase-config.js)
-   - All existing functionality preserved (preload, splash screen, etc.)
+   - FIXED: Splash screen now shows on EVERY fresh app launch (not just once per tab session)
+   - NEW: Uses localStorage with cooldown timer (10 minutes) to determine fresh launches
+   - NEW: Detects PWA standalone mode - always shows splash on launch
+   - FIXED: Works consistently across Brave, Firefox, Chrome, Safari
+   - All existing functionality preserved (preload, button widths, etc.)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -362,12 +363,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.18</div>
+<div class="version-tag">v3.19</div>
 
 <script>
-// FILE: index.html - VERSION 3.18
+// FILE: index.html - VERSION 3.19
 
-var APP_VERSION = "3.18";
+var APP_VERSION = "3.19";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -393,18 +394,62 @@ var splashGolfIcon = document.getElementById('splashGolfIcon');
 var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
 
-// Check if splash already shown in this session
-if (sessionStorage.getItem('splashShown') === 'true') {
-    // Skip splash - show container immediately
-    splashOverlay.style.display = 'none';
-    var container = document.querySelector('.container');
-    if (container) {
-        container.style.display = 'block';
+// ============================================================
+// FIXED v3.19: Improved splash screen logic
+// Shows splash on EVERY fresh app launch, not just once per tab session
+// ============================================================
+
+function shouldShowSplash() {
+    // Detect if running as PWA (standalone mode)
+    var isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                       window.navigator.standalone === true;
+    
+    // For PWA: always show splash on launch
+    if (isStandalone) {
+        console.log("PWA mode detected - showing splash");
+        return true;
     }
-    initApp();
-} else {
-    // Mark splash as shown
-    sessionStorage.setItem('splashShown', 'true');
+    
+    // For browser: use cooldown timer (10 minutes)
+    var lastSplashTime = localStorage.getItem('splashLastShown');
+    var now = Date.now();
+    var COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+    
+    if (!lastSplashTime) {
+        console.log("No previous splash recorded - showing splash");
+        return true;
+    }
+    
+    var timeSinceLastSplash = now - parseInt(lastSplashTime);
+    if (timeSinceLastSplash > COOLDOWN_MS) {
+        console.log("Cooldown expired (" + Math.round(timeSinceLastSplash / 1000) + "s ago) - showing splash");
+        return true;
+    }
+    
+    console.log("Within cooldown (" + Math.round(timeSinceLastSplash / 1000) + "s ago) - skipping splash");
+    return false;
+}
+
+function recordSplashShown() {
+    localStorage.setItem('splashLastShown', Date.now().toString());
+}
+
+function hideSplashAndShowApp() {
+    splashOverlay.style.opacity = '0';
+    setTimeout(function() {
+        splashOverlay.remove();
+        var container = document.querySelector('.container');
+        if (container) {
+            container.style.display = 'block';
+        }
+        initApp();
+    }, 800);
+}
+
+// Determine if we should show splash
+if (shouldShowSplash()) {
+    // Record that splash was shown
+    recordSplashShown();
     
     // Animate splash
     setTimeout(function() {
@@ -458,18 +503,16 @@ if (sessionStorage.getItem('splashShown') === 'true') {
         }, 700);
     }
     
-    // Fade out splash and show main content
-    setTimeout(function() {
-        splashOverlay.style.opacity = '0';
-        setTimeout(function() {
-            splashOverlay.remove();
-            var container = document.querySelector('.container');
-            if (container) {
-                container.style.display = 'block';
-            }
-            initApp();
-        }, 800);
-    }, 2800);
+    // Fade out splash and show main content after animation
+    setTimeout(hideSplashAndShowApp, 2800);
+} else {
+    // Skip splash - show container immediately
+    splashOverlay.style.display = 'none';
+    var container = document.querySelector('.container');
+    if (container) {
+        container.style.display = 'block';
+    }
+    initApp();
 }
 
 function initApp() {
@@ -878,12 +921,13 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 
 <!--
 FILE: index.html
-VERSION: 3.18
+VERSION: 3.19
 KEY CHANGES:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call (now in firebase-config.js)
-   - All existing functionality preserved (preload, splash screen, etc.)
+   - FIXED: Splash screen now shows on EVERY fresh app launch (not just once per tab session)
+   - NEW: Uses localStorage with cooldown timer (10 minutes) to determine fresh launches
+   - NEW: Detects PWA standalone mode - always shows splash on launch
+   - FIXED: Works consistently across Brave, Firefox, Chrome, Safari
+   - All existing functionality preserved (preload, button widths, etc.)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
