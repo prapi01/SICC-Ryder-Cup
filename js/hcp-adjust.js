@@ -1,15 +1,12 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.13
-KEY CHANGES:
-   - COMPLETE REWRITE of calculatePerformanceAdjustmentFromCache()
-   - NOW uses clinchedAt data for match results (correct Match Play logic)
-   - Performance adjustment based on net match wins (Wins - Losses) across 4 matches
-   - Wins: player appears as FIRST in "A_vs_B" key in clinchedAt
-   - Losses: player appears as SECOND in "A_vs_B" key in clinchedAt
-   - Ties: no entry for the matchup in clinchedAt (0 contribution)
-   - Anchor adjustment unchanged (already correct)
-   - All other functionality preserved from v2.12
+VERSION: 2.14
+KEY CHANGES from v2.13:
+   - FIXED: Performance adjustment now uses MATCH POINTS (0, 0.5, 1 per match)
+   - Win = 1 point, Loss = 0 points, Tie (AS) = 0.5 points
+   - Threshold: ≥ 3.5 points → -1 (CUT stroke), ≤ 0.5 points → +1 (ADD stroke)
+   - Previously used net wins (incorrect for match play)
+   - All other functionality unchanged (anchor adjustment, history display, etc.)
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -123,18 +120,21 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // FIXED v2.13: Calculate Performance Adjustment from clinchedAt
-    // Uses Match Play logic: each match is Win (+1), Loss (-1), or Tie (0)
+    // FIXED v2.14: Calculate Performance Adjustment using MATCH POINTS
+    // Each match: Win = 1 point, Loss = 0 points, Tie = 0.5 points
+    // Total points ≥ 3.5 → -1 (CUT stroke)
+    // Total points ≤ 0.5 → +1 (ADD stroke)
+    // Otherwise → 0
     // ============================================================
     
     function calculatePerformanceAdjustmentFromCache(cache, allPlayersList) {
-        // Initialize contributions for all players
-        var contributions = {};
+        // Initialize match points for all players
+        var matchPoints = {};
         for (var i = 0; i < allPlayersList.length; i++) {
-            contributions[allPlayersList[i].name] = 0;
+            matchPoints[allPlayersList[i].name] = 0;
         }
         
-        // Get clinchedAt data
+        // Get clinchedAt data (wins are recorded here)
         var clinchedAt = cache.results?.clinchedAt || {};
         
         if (Object.keys(clinchedAt).length === 0) {
@@ -144,52 +144,76 @@ var HandicapAdjustment = (function() {
         
         console.log("clinchedAt data:", clinchedAt);
         
-        // Process each entry in clinchedAt
-        // Format: "WinnerName_vs_LoserName": holeNumber
+        // Track which matchups have been processed to handle ties
+        var processedMatchups = new Set();
+        
+        // Get ordered players for all possible matchups
+        var teamAPlayers = allPlayersList.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        var teamBPlayers = allPlayersList.filter(function(p) { return p.team === "B"; }).sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        
+        // Process wins from clinchedAt
         for (var matchKey in clinchedAt) {
-            // Skip if not a valid match key (should contain "_vs_")
             if (matchKey.indexOf("_vs_") === -1) continue;
             
             var parts = matchKey.split("_vs_");
-            var winnerName = parts[0];
-            var loserName = parts[1];
+            var winner = parts[0];
+            var loser = parts[1];
+            var matchupId = [winner, loser].sort().join("|");
             
-            // Winner gets +1
-            if (contributions[winnerName] !== undefined) {
-                contributions[winnerName] += 1;
-            } else {
-                console.warn("Winner not found in players:", winnerName);
+            if (processedMatchups.has(matchupId)) continue;
+            processedMatchups.add(matchupId);
+            
+            // Winner gets 1 point
+            if (matchPoints[winner] !== undefined) {
+                matchPoints[winner] += 1;
             }
+            // Loser gets 0 points (no addition needed)
             
-            // Loser gets -1
-            if (contributions[loserName] !== undefined) {
-                contributions[loserName] += -1;
-            } else {
-                console.warn("Loser not found in players:", loserName);
+            console.log(`Match: ${winner} beat ${loser} → ${winner} +1 point`);
+        }
+        
+        // Process ties (AS) - matches not recorded in clinchedAt
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                var playerA = teamAPlayers[a];
+                var playerB = teamBPlayers[b];
+                var matchupId = [playerA.name, playerB.name].sort().join("|");
+                
+                if (processedMatchups.has(matchupId)) continue;
+                processedMatchups.add(matchupId);
+                
+                // This matchup is a tie (AS) - both get 0.5 points
+                matchPoints[playerA.name] += 0.5;
+                matchPoints[playerB.name] += 0.5;
+                console.log(`Match: ${playerA.name} vs ${playerB.name} → TIE, both +0.5 points`);
             }
         }
         
-        // Note: Ties (AS) have no entry in clinchedAt, so they contribute 0 automatically
-        
-        console.log("Performance contributions (net match wins):", contributions);
+        console.log("Match points calculated:", matchPoints);
         
         // Apply performance adjustment rules:
-        // Net match wins ≥ +3.5 → -1 (handicap DOWN)
-        // Net match wins ≤ +0.5 → +1 (handicap UP)
-        // Between +0.5 and +3.5 → 0 (average)
+        // Total points ≥ 3.5 → -1 (CUT stroke - handicap DOWN)
+        // Total points ≤ 0.5 → +1 (ADD stroke - handicap UP)
+        // Between 0.5 and 3.5 → 0 (no change)
         var perfAdjustments = {};
-        for (var playerName in contributions) {
-            var netWins = contributions[playerName];
+        for (var playerName in matchPoints) {
+            var points = matchPoints[playerName];
             
-            if (netWins >= 3.5) {
+            if (points >= 3.5) {
                 perfAdjustments[playerName] = -1;
-                console.log(`  ${playerName}: net match wins ${netWins} → -1 (well above average)`);
-            } else if (netWins <= 0.5) {
+                console.log(`  ${playerName}: ${points} points → -1 (CUT stroke - played very well)`);
+            } else if (points <= 0.5) {
                 perfAdjustments[playerName] = 1;
-                console.log(`  ${playerName}: net match wins ${netWins} → +1 (below average)`);
+                console.log(`  ${playerName}: ${points} points → +1 (ADD stroke - played poorly)`);
             } else {
                 perfAdjustments[playerName] = 0;
-                console.log(`  ${playerName}: net match wins ${netWins} → 0 (average)`);
+                console.log(`  ${playerName}: ${points} points → 0 (average)`);
             }
         }
         
@@ -313,7 +337,7 @@ var HandicapAdjustment = (function() {
             tableHtml += '</tr>';
         }
         
-        tableHtml += '</tbody></tr></div>';
+        tableHtml += '</tbody></table></div>';
         
         var anchorInfoHtml = `<div style="text-align: center; margin-bottom: 12px;"><span style="color: #4caf50; font-size:0.8rem;">✓ Anchor: ${escapeHtml(anchorName)}</span></div>`;
         
@@ -790,16 +814,13 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.13
-KEY CHANGES:
-   - COMPLETE REWRITE of calculatePerformanceAdjustmentFromCache()
-   - NOW uses clinchedAt data for match results (correct Match Play logic)
-   - Performance adjustment based on net match wins (Wins - Losses) across 4 matches
-   - Wins: player appears as FIRST in "A_vs_B" key in clinchedAt
-   - Losses: player appears as SECOND in "A_vs_B" key in clinchedAt
-   - Ties: no entry for the matchup in clinchedAt (0 contribution)
-   - Anchor adjustment unchanged (already correct)
-   - All other functionality preserved from v2.12
+VERSION: 2.14
+KEY CHANGES from v2.13:
+   - FIXED: Performance adjustment now uses MATCH POINTS (0, 0.5, 1 per match)
+   - Win = 1 point, Loss = 0 points, Tie (AS) = 0.5 points
+   - Threshold: ≥ 3.5 points → -1 (CUT stroke), ≤ 0.5 points → +1 (ADD stroke)
+   - Previously used net wins (incorrect for match play)
+   - All other functionality unchanged (anchor adjustment, history display, etc.)
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
