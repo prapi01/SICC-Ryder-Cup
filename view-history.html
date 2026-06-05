@@ -1,12 +1,10 @@
 <!--
 FILE: view-history.html
-VERSION: 7.01
-KEY CHANGES from v7.00:
-   - FIXED: Flight toggle button now shows OPPOSITE flight (intuitive UI)
-     * When viewing Flight 1, button shows "FLIGHT 2"
-     * When viewing Flight 2, button shows "FLIGHT 1"
-   - Clicking takes you to the flight shown on the button
-   - All other functionality unchanged
+VERSION: 7.02
+KEY CHANGES from v7.01:
+   - UPDATED bubble display to use GameMatch.getClinchHole() for smart list support
+   - Now handles both old flat clinch format and new smart object format
+   - All other functionality unchanged (game list, navigation, RHP handler)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -427,13 +425,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.01</div>
+<div class="version-tag">v7.02</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "7.01";
+window.VIEW_HISTORY_VERSION = "7.02";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -600,7 +598,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS (same as view-game.html)
+// BUBBLE FUNCTIONS - UPDATED v7.02: Uses GameMatch.getClinchHole()
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -615,9 +613,8 @@ function getBubbleClassWithClinch(player, opponent) {
     var lastSyncedHole = resultsCache?.computedUpToHole || 0;
     var clinchedAt = resultsCache?.clinchedAt || {};
     
-    var matchKey1 = player.name + "_vs_" + opponent.name;
-    var matchKey2 = opponent.name + "_vs_" + player.name;
-    var clinchHole = clinchedAt[matchKey1] || clinchedAt[matchKey2];
+    // FIXED v7.02: Use GameMatch.getClinchHole() for smart list support
+    var clinchHole = GameMatch.getClinchHole(clinchedAt, player.name, opponent.name);
     
     if (player.flight === opponent.flight) {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
@@ -1068,13 +1065,11 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 7.01
-KEY CHANGES from v7.00:
-   - FIXED: Flight toggle button now shows OPPOSITE flight (intuitive UI)
-     * When viewing Flight 1, button shows "FLIGHT 2"
-     * When viewing Flight 2, button shows "FLIGHT 1"
-   - Clicking takes you to the flight shown on the button
-   - All other functionality unchanged
+VERSION: 7.02
+KEY CHANGES from v7.01:
+   - UPDATED bubble display to use GameMatch.getClinchHole() for smart list support
+   - Now handles both old flat clinch format and new smart object format
+   - All other functionality unchanged (game list, navigation, RHP handler)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
