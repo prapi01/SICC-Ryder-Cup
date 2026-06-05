@@ -1,12 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 7.09
-KEY CHANGES from v7.08:
-   - ADDED: Game completion detection (checks both flights signed)
-   - ADDED: When game complete, Next button changes to gold "🏆 RESULT"
-   - ADDED: RESULT button click shows celebration modal and RHP access
-   - FIXED: Signature detection for object format { signed: true, signedAt: ... }
-   - ADDED: onGameComplete() function to handle viewer celebration
+VERSION: 7.10
+KEY CHANGES from v7.09:
+   - FIXED: RESULT button now only shows on LAST PLAYABLE HOLE (where both flights have saved data)
+   - FIXED: Navigating back to previous holes shows normal "▶" button, not RESULT
+   - FIXED: History record ID format changed from "_history" to "_H" (matches history-record.js v3.02)
+   - ADDED: Post-game data source switch - after game complete, viewer reads from historyGames
+   - ADDED: loadFromHistoryRecord() function for reading completed games
+   - FIXED: RHP button now uses correct history record ID
    - All other functionality unchanged (ticker, real-time listener, flight toggle)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
@@ -376,13 +377,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.09</div>
+<div class="version-tag">v7.10</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.09";
+window.VIEW_GAME_VERSION = "7.10";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -407,6 +408,7 @@ var allPlayers = [];
 var usedPreloadedData = false;
 var gameCompleteFlag = false;
 var celebrationTriggered = false;
+var hasSwitchedToHistory = false;
 
 // Firestore real-time listener
 var firestoreUnsubscribe = null;
@@ -476,13 +478,97 @@ function applyPreloadedData(preloadData) {
 }
 
 // ============================================================
+// Load from History Record (post-game)
+// ============================================================
+
+function loadFromHistoryRecord(historyId) {
+    console.log("Loading from history record:", historyId);
+    
+    db.collection("historyGames").doc(historyId).get()
+        .then(function(doc) {
+            if (!doc.exists) {
+                console.warn("History record not found, falling back to scheduledGames");
+                return;
+            }
+            
+            var historyData = doc.data();
+            
+            // Extract data from history record
+            courseName = historyData.gameInfo?.course?.name || "Unknown Course";
+            coursePar = historyData.gameInfo?.course?.par || [];
+            courseSi = historyData.gameInfo?.course?.si || [];
+            allPlayers = historyData.players || [];
+            startingHole = historyData.gameInfo?.startingHole || 1;
+            teamGameFormat = historyData.gameInfo?.teamGameFormat || "tournament";
+            
+            // Build cache from history data
+            var historyCache = {
+                course: { name: courseName, par: coursePar, si: courseSi },
+                players: allPlayers,
+                startingHole: startingHole,
+                teamGameFormat: teamGameFormat,
+                f1DataString: historyData.f1DataString || "",
+                f2DataString: historyData.f2DataString || "",
+                results: historyData.results || null,
+                savedHoles: { 1: [], 2: [] },
+                t1Row: historyData.results?.game2?.flight1?.leader || new Array(18).fill('_'),
+                t2Row: historyData.results?.game2?.flight2?.leader || new Array(18).fill('_'),
+                strkRow: historyData.results?.game3?.leader || new Array(18).fill('0'),
+                lastSyncedHole: 18,
+                clinchedAt: historyData.results?.clinchedAt || {},
+                signatures: historyData.signatures || { f1: true, f2: true },
+                submitted: { f1: true, f2: true },
+                locks: { f1: null, f2: null },
+                gameStarted: true,
+                gameComplete: true
+            };
+            
+            // Calculate saved holes from data strings
+            for (var h = 1; h <= 18; h++) {
+                var f1HoleData = GameData.parseHoleData(historyCache.f1DataString, h);
+                var f2HoleData = GameData.parseHoleData(historyCache.f2DataString, h);
+                if (f1HoleData && f1HoleData.saved) historyCache.savedHoles[1].push(h);
+                if (f2HoleData && f2HoleData.saved) historyCache.savedHoles[2].push(h);
+            }
+            
+            GameLoader.setLocalCache(historyCache);
+            
+            document.getElementById("courseName").innerHTML = courseName;
+            document.getElementById("mainContainer").classList.add("data-ready");
+            
+            // Set initial hole to first unsaved or last hole
+            var playOrder = getPlayOrder();
+            currentHole = playOrder[0];
+            for (var i = 0; i < playOrder.length; i++) {
+                if (!isHoleSaved(currentFlight, playOrder[i])) {
+                    currentHole = playOrder[i];
+                    break;
+                }
+            }
+            
+            gameCompleteFlag = true;
+            hasSwitchedToHistory = true;
+            
+            updateHoleNumberDisplay();
+            initTicker();
+            if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
+            renderAll();
+            
+            console.log("History record loaded successfully");
+        })
+        .catch(function(err) {
+            console.error("Error loading history record:", err);
+        });
+}
+
+// ============================================================
 // Ticker Functions - READ ONLY, NO CALCULATION
 // ============================================================
 
 function getPlayerTotalScore(player) {
     var cache = GameLoader.getLocalCache();
     if (!cache || !cache.results || !cache.results.playerTotals) {
-        return 0;  // No data available - ticker will show nothing
+        return 0;
     }
     
     var playerTotal = cache.results.playerTotals[player.name];
@@ -610,7 +696,6 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     
     // DIFFERENT FLIGHT - read directly from cross-flight results
     if (results.matchResults && results.matchResults[position]) {
-        // Order players by FLIGHT first (1 then 2), then by handicap (same as storage)
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
             if (a.flight !== b.flight) return a.flight - b.flight;
             return a.handicap - b.handicap;
@@ -701,11 +786,26 @@ function isGameComplete() {
     var cache = GameLoader.getLocalCache();
     if (!cache || !cache.signatures) return false;
     
-    // Handle both boolean and object signature formats
     var f1Signed = cache.signatures.f1 === true || (cache.signatures.f1 && cache.signatures.f1.signed === true);
     var f2Signed = cache.signatures.f2 === true || (cache.signatures.f2 && cache.signatures.f2.signed === true);
     
     return f1Signed && f2Signed;
+}
+
+// ============================================================
+// Get Last Playable Hole (highest hole where both flights have saved)
+// ============================================================
+
+function getLastPlayableHole() {
+    var playOrder = getPlayOrder();
+    var lastHole = 1;
+    for (var i = 0; i < playOrder.length; i++) {
+        var hole = playOrder[i];
+        if (isHoleSaved(1, hole) && isHoleSaved(2, hole)) {
+            lastHole = hole;
+        }
+    }
+    return lastHole;
 }
 
 // ============================================================
@@ -717,9 +817,8 @@ function showCelebrationModal() {
     celebrationTriggered = true;
     
     var cache = GameLoader.getLocalCache();
-    var tr = GameLoader.getTRForHole(18); // Get final TR
+    var tr = GameLoader.getTRForHole(18);
     
-    // Get winner
     var teamAFinal = tr.teamA;
     var teamBFinal = tr.teamB;
     var winner = teamAFinal > teamBFinal ? 'A' : (teamBFinal > teamAFinal ? 'B' : 'Tie');
@@ -763,8 +862,8 @@ function openRHPForViewer() {
     var finalTeamB = tr.teamB[tr.teamB.length - 1] || 9.5;
     var winner = finalTeamA > finalTeamB ? 'A' : (finalTeamB > finalTeamA ? 'B' : 'Tie');
     
-    // Use history record ID if available, otherwise gameId
-    var recordId = gameId + "_history";
+    // FIXED v7.10: Use correct history record ID format (_H, not _history)
+    var recordId = gameId + "_H";
     HandicapAdjustment.init(recordId, recordId, winningPlayers, {}, { teamA: finalTeamA, teamB: finalTeamB, winner: winner }, true);
 }
 
@@ -773,23 +872,23 @@ function openRHPForViewer() {
 // ============================================================
 
 function nextHole() {
-    // If game is complete, show celebration instead of navigating
-    if (gameCompleteFlag && !celebrationTriggered) {
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    var lastPlayableHole = getLastPlayableHole();
+    
+    // Check if we are on the last playable hole AND game is complete
+    if (gameCompleteFlag && currentHole === lastPlayableHole && !celebrationTriggered) {
         showCelebrationModal();
         return;
     }
     
-    var playOrder = getPlayOrder();
-    var currentIndex = playOrder.indexOf(currentHole);
-    
-    // Check if current hole has any saved data (from either flight)
+    // Normal navigation - check if current hole has saved data
     if (!isCurrentHoleSavedByAnyFlight()) {
-        // Cannot advance past a hole with no data
         console.log("Cannot advance - hole " + currentHole + " has no saved data");
         return;
     }
     
-    if (currentIndex < 17) {
+    if (currentIndex < playOrder.length - 1) {
         currentHole = playOrder[currentIndex + 1];
         updateHoleNumberDisplay();
         renderAll();
@@ -819,12 +918,11 @@ function onToggleFlight(flightNumber) {
 }
 
 function onToggleDisplayMode(displayMode) {
-    // Display mode is handled by GameUI.setDisplayMode
     renderAll();
 }
 
 // ============================================================
-// Control Bar - v7.09: Dynamic button (Next or RESULT)
+// Control Bar - v7.10: RESULT button only on LAST PLAYABLE HOLE
 // ============================================================
 
 function renderCompactHeader() {
@@ -843,16 +941,26 @@ function renderCompactHeader() {
         gameCompleteFlag = true;
     }
     
+    // FIXED v7.10: RESULT button only on LAST PLAYABLE HOLE
+    var lastPlayableHole = getLastPlayableHole();
+    var isOnLastPlayableHole = (currentHole === lastPlayableHole);
+    var showResultButton = gameCompleteFlag && isOnLastPlayableHole && !celebrationTriggered;
+    
     // Determine next button content and class
     var nextButtonHtml = '';
-    if (gameCompleteFlag && !celebrationTriggered) {
-        // Show gold RESULT button when game complete
+    if (showResultButton) {
+        // Show gold RESULT button only on last playable hole
         nextButtonHtml = `<button class="compact-result-btn" id="compactResultBtn" style="width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
                     🏆 RESULT
                 </button>`;
     } else {
-        // Normal next button
-        nextButtonHtml = `<button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+        // Normal next button (enabled/disabled based on saved data)
+        var playOrder = getPlayOrder();
+        var hasSavedData = isCurrentHoleSavedByAnyFlight();
+        var isLastHole = (playOrder.indexOf(currentHole) === playOrder.length - 1);
+        var isDisabled = (!hasSavedData) || isLastHole;
+        
+        nextButtonHtml = `<button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;" ${isDisabled ? 'disabled' : ''}>
                     ▶
                 </button>`;
     }
@@ -883,11 +991,9 @@ function renderCompactHeader() {
         renderAll();
     };
     
-    // Flight button toggles to the flight shown on button (opposite of current)
     document.getElementById('compactFlightBtn').onclick = function() {
         var newFlight = currentFlight === 1 ? 2 : 1;
         currentFlight = newFlight;
-        // Re-render the header to update button text for the new current flight
         renderCompactHeader();
         GameUI.updateFlightBadge(currentFlight);
         renderAll();
@@ -895,8 +1001,7 @@ function renderCompactHeader() {
     
     document.getElementById('compactPrevBtn').onclick = prevHole;
     
-    // Handle next/result button
-    if (gameCompleteFlag && !celebrationTriggered) {
+    if (showResultButton) {
         var resultBtn = document.getElementById('compactResultBtn');
         if (resultBtn) {
             resultBtn.onclick = function() {
@@ -905,14 +1010,14 @@ function renderCompactHeader() {
         }
     } else {
         var nextBtn = document.getElementById('compactNextBtn');
-        if (nextBtn) {
+        if (nextBtn && !nextBtn.disabled) {
             nextBtn.onclick = nextHole;
         }
     }
 }
 
 // ============================================================
-// Real-time Firestore Listener
+// Real-time Firestore Listener (only for active games)
 // ============================================================
 
 function setupRealtimeListener() {
@@ -931,6 +1036,9 @@ function setupRealtimeListener() {
     firestoreUnsubscribe = db.collection("scheduledGames").doc(gameId)
         .onSnapshot(function(doc) {
             if (!doc.exists) return;
+            
+            // If already switched to history, ignore updates from scheduledGames
+            if (hasSwitchedToHistory) return;
             
             var data = doc.data();
             var currentCache = GameLoader.getLocalCache();
@@ -959,18 +1067,18 @@ function setupRealtimeListener() {
                             Ticker.setPlayers(allPlayers);
                         }
                         
-                        // Check if game just completed
                         var wasComplete = gameCompleteFlag;
                         gameCompleteFlag = isGameComplete();
                         
-                        // Re-render header if completion status changed
-                        if (wasComplete !== gameCompleteFlag) {
-                            renderCompactHeader();
+                        // If game just completed, switch to history record for future reads
+                        if (!wasComplete && gameCompleteFlag && !hasSwitchedToHistory) {
+                            console.log("Game completed - switching to history record");
+                            var historyId = gameId + "_H";
+                            loadFromHistoryRecord(historyId);
                         }
                         
+                        renderCompactHeader();
                         renderAll();
-                        
-                        // SYNC flash removed - updates happen silently
                     } else {
                         console.warn("Failed to refresh cache from realtime update:", result.error);
                     }
@@ -1001,6 +1109,8 @@ function updatePlayerNamesToShortform() {
 
 function renderAll() {
     var cache = GameLoader.getLocalCache();
+    if (!cache) return;
+    
     var currentPar = coursePar[currentHole - 1];
     var currentSi = courseSi[currentHole - 1];
     var tr = GameLoader.getTRForHole(currentHole);
@@ -1009,12 +1119,10 @@ function renderAll() {
     GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(currentFlight);
-    // canEdit = false (no +/- buttons)
     GameUI.renderPlayerCards("playerCards", currentPlayers, getAllOpponents, getBubbleClassWithClinch, getBubbleValue, getCurrentScore, false, null);
     updatePlayerNamesToShortform();
     GameUI.updateFlightBadge(currentFlight);
     
-    // Hide any remaining score-control containers (defensive)
     setTimeout(function() {
         var scoreControls = document.querySelectorAll('#playerCards .score-control');
         scoreControls.forEach(function(control) {
@@ -1027,7 +1135,6 @@ function renderAll() {
     
     var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
     var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
-    
     var t1Display = cache.results?.game2?.displayT1 || null;
     var t2Display = cache.results?.game2?.displayT2 || null;
     var strkDisplay = cache.results?.game3?.displayStrk || null;
@@ -1041,21 +1148,12 @@ function renderAll() {
         );
     }
     
-    // Update navigation button states
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     var prevBtn = document.getElementById('compactPrevBtn');
     
     if (prevBtn) {
         prevBtn.disabled = (currentIndex === 0);
-    }
-    
-    // Only update next button if it's not the RESULT button
-    var nextBtn = document.getElementById('compactNextBtn');
-    if (nextBtn && !gameCompleteFlag) {
-        var hasSavedData = isCurrentHoleSavedByAnyFlight();
-        var isLastHole = (currentIndex === 17);
-        nextBtn.disabled = (!hasSavedData) || isLastHole;
     }
     
     if (typeof Ticker !== 'undefined') Ticker.refresh();
@@ -1083,14 +1181,12 @@ function onCacheUpdate(cache) {
     startingHole = cache.startingHole;
     if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
         Ticker.setPlayers(allPlayers);
-        Ticker.refresh();  // Refresh ticker with updated playerTotals
+        Ticker.refresh();
     }
     
-    // Check game completion status
     var wasComplete = gameCompleteFlag;
     gameCompleteFlag = isGameComplete();
     
-    // Re-render header if completion status changed
     if (wasComplete !== gameCompleteFlag) {
         renderCompactHeader();
     }
@@ -1207,13 +1303,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.09
-KEY CHANGES from v7.08:
-   - ADDED: Game completion detection (checks both flights signed)
-   - ADDED: When game complete, Next button changes to gold "🏆 RESULT"
-   - ADDED: RESULT button click shows celebration modal and RHP access
-   - FIXED: Signature detection for object format { signed: true, signedAt: ... }
-   - ADDED: onGameComplete() function to handle viewer celebration
+VERSION: 7.10
+KEY CHANGES from v7.09:
+   - FIXED: RESULT button now only shows on LAST PLAYABLE HOLE (where both flights have saved data)
+   - FIXED: Navigating back to previous holes shows normal "▶" button, not RESULT
+   - FIXED: History record ID format changed from "_history" to "_H" (matches history-record.js v3.02)
+   - ADDED: Post-game data source switch - after game complete, viewer reads from historyGames
+   - ADDED: loadFromHistoryRecord() function for reading completed games
+   - FIXED: RHP button now uses correct history record ID
    - All other functionality unchanged (ticker, real-time listener, flight toggle)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
