@@ -1,11 +1,10 @@
 <!--
 FILE: view-game.html
-VERSION: 7.13
-KEY CHANGES from v7.12:
-   - FIXED: NEXT button disabled state now uses cache data directly (not function call)
-   - FIXED: Added cache refresh at start of renderCompactHeader() for accurate state
-   - FIXED: hasSavedData now reads from cache.savedHoles directly
-   - Ensures H18 button is properly disabled when no flights have saved
+VERSION: 7.14
+KEY CHANGES from v7.13:
+   - FIXED: renderAll() now calls renderCompactHeader() at the beginning
+   - Ensures NEXT button state is refreshed after every navigation
+   - Fixes issue where H18 button remained enabled after navigating back from H17
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
@@ -375,13 +374,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.13</div>
+<div class="version-tag">v7.14</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.13";
+window.VIEW_GAME_VERSION = "7.14";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1124,6 +1123,9 @@ function updatePlayerNamesToShortform() {
 }
 
 function renderAll() {
+    // FIXED v7.14: Refresh button state first
+    renderCompactHeader();
+    
     var cache = GameLoader.getLocalCache();
     if (!cache) return;
     
@@ -1307,12 +1309,11 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.13
-KEY CHANGES from v7.12:
-   - FIXED: NEXT button disabled state now uses cache data directly (not function call)
-   - FIXED: Added cache refresh at start of renderCompactHeader() for accurate state
-   - FIXED: hasSavedData now reads from cache.savedHoles directly
-   - Ensures H18 button is properly disabled when no flights have saved
+VERSION: 7.14
+KEY CHANGES from v7.13:
+   - FIXED: renderAll() now calls renderCompactHeader() at the beginning
+   - Ensures NEXT button state is refreshed after every navigation
+   - Fixes issue where H18 button remained enabled after navigating back from H17
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
