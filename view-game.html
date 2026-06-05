@@ -1,11 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.15
-KEY CHANGES from v7.14:
-   - FIXED: openRHPForViewer() now calls HandicapAdjustment.initForHistory() instead of init()
-   - This ensures viewer reads from history record (not scheduledGames) for completed games
-   - Prevents redirect to index.html when clicking VIEW RESULTS & HANDICAP
-   - All other functionality unchanged (navigation, button states, etc.)
+VERSION: 7.16
+KEY CHANGES from v7.15:
+   - FIXED: Unified celebration screen now uses SignCard.showCelebrationScreen() (same as real-game.html)
+   - REMOVED: Hardcoded celebration modal HTML (now uses shared sign-card.js)
+   - Celebration screen now includes: image, beer time, winning players grid, confetti
+   - All other functionality unchanged (navigation, button states, RHP handler)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -304,7 +304,7 @@ STATUS: Ready for integration
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Celebration Modal Styles */
+        /* Modal Overlay for celebration (styles from sign-card.js will be added dynamically) */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -317,32 +317,6 @@ STATUS: Ready for integration
             justify-content: center;
             z-index: 10001;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-        }
-        
-        .celebration-modal-container {
-            background: #1a1a1a;
-            border-radius: 28px;
-            padding: 32px;
-            max-width: 360px;
-            width: 90%;
-            text-align: center;
-            border: 2px solid #ffaa44;
-        }
-        .celebration-title { font-size: 1.5rem; font-weight: 700; color: #ffaa44; margin-bottom: 12px; }
-        .celebration-emojis { font-size: 1.2rem; margin-bottom: 20px; }
-        .celebration-message { font-size: 0.85rem; color: #ccc; margin-bottom: 28px; }
-        .celebration-btn {
-            background: #ffaa44;
-            color: #1a3a1a;
-            border: none;
-            width: 180px;
-            height: 56px;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-weight: 800;
-            cursor: pointer;
-            display: block;
-            margin: 0 auto;
         }
     </style>
 </head>
@@ -374,13 +348,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.15</div>
+<div class="version-tag">v7.16</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.15";
+window.VIEW_GAME_VERSION = "7.16";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -870,7 +844,7 @@ function onToggleDisplayMode(displayMode) {
 }
 
 // ============================================================
-// Celebration & RHP for Viewer
+// Celebration & RHP for Viewer - FIXED v7.16: Uses shared celebration screen
 // ============================================================
 
 function showCelebrationModal() {
@@ -879,33 +853,23 @@ function showCelebrationModal() {
     
     var cache = GameLoader.getLocalCache();
     var tr = GameLoader.getTRForHole(18);
+    var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
+    var winningPlayers = { 
+        teamA: allPlayers.filter(function(p) { return p.team === "A"; }), 
+        teamB: allPlayers.filter(function(p) { return p.team === "B"; }) 
+    };
     
-    var teamAFinal = tr.teamA;
-    var teamBFinal = tr.teamB;
-    var winner = teamAFinal > teamBFinal ? 'A' : (teamBFinal > teamAFinal ? 'B' : 'Tie');
-    
-    var winnerText = winner === 'A' ? 'Team A' : (winner === 'B' ? 'Team B' : 'Tie');
-    
-    var modalHtml = `
-        <div class="modal-overlay" id="celebrationModal">
-            <div class="celebration-modal-container">
-                <div class="celebration-title">🏆 GAME COMPLETE</div>
-                <div class="celebration-emojis">🍺 🏆 🍺</div>
-                <div class="celebration-message">Winner: ${winnerText}<br>Final Score: ${teamAFinal} - ${teamBFinal}</div>
-                <button id="celebrationRHPBtn" class="celebration-btn">📊 VIEW RESULTS & HANDICAP</button>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    document.getElementById("celebrationRHPBtn").addEventListener("click", function() {
-        document.getElementById("celebrationModal").remove();
-        openRHPForViewer();
-    });
+    // FIXED v7.16: Use the shared celebration screen from sign-card.js
+    // The callback will call openRHPForViewer() when HANDICAP ADJUSTMENT is clicked
+    if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+        SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
+            openRHPForViewer();
+        });
+    } else {
+        console.error("SignCard.showCelebrationScreen not available");
+    }
 }
 
-// FIXED v7.15: Changed from HandicapAdjustment.init() to HandicapAdjustment.initForHistory()
 function openRHPForViewer() {
     if (!gameId) {
         console.warn("No game ID for RHP");
@@ -925,7 +889,7 @@ function openRHPForViewer() {
     var winner = finalTeamA > finalTeamB ? 'A' : (finalTeamB > finalTeamA ? 'B' : 'Tie');
     
     var recordId = gameId + "_H";
-    // FIXED: Use initForHistory for viewer (reads from history record, not scheduledGames)
+    // Use initForHistory for viewer (reads from history record, not scheduledGames)
     if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForHistory) {
         HandicapAdjustment.initForHistory(gameId, recordId, 'view-game.html');
     } else {
@@ -1317,12 +1281,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.15
-KEY CHANGES from v7.14:
-   - FIXED: openRHPForViewer() now calls HandicapAdjustment.initForHistory() instead of init()
-   - This ensures viewer reads from history record (not scheduledGames) for completed games
-   - Prevents redirect to index.html when clicking VIEW RESULTS & HANDICAP
-   - All other functionality unchanged (navigation, button states, etc.)
+VERSION: 7.16
+KEY CHANGES from v7.15:
+   - FIXED: Unified celebration screen now uses SignCard.showCelebrationScreen() (same as real-game.html)
+   - REMOVED: Hardcoded celebration modal HTML (now uses shared sign-card.js)
+   - Celebration screen now includes: image, beer time, winning players grid, confetti
+   - All other functionality unchanged (navigation, button states, RHP handler)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
