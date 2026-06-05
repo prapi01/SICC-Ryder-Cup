@@ -1,12 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.11
-KEY CHANGES from v7.10:
-   - FIXED: Starting hole logic now checks BOTH flights (not just current flight)
-   - FIXED: NEXT button handler properly attached and persists
-   - FIXED: nextHole function no longer overwritten by variable
-   - FIXED: prevHole function reference corrected
-   - All other functionality unchanged
+VERSION: 7.12
+KEY CHANGES from v7.11:
+   - FIXED: NEXT button onclick handler now attached ALWAYS (not only when not disabled)
+   - FIXED: Handler re-attached after real-time updates in renderCompactHeader()
+   - FIXED: Removed conflicting renderAll() button logic that was overriding disabled state
+   - All other functionality unchanged (starting hole logic, RESULT button, etc.)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -375,13 +374,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.11</div>
+<div class="version-tag">v7.12</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.11";
+window.VIEW_GAME_VERSION = "7.12";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -531,7 +530,6 @@ function loadFromHistoryRecord(historyId) {
             document.getElementById("courseName").innerHTML = courseName;
             document.getElementById("mainContainer").classList.add("data-ready");
             
-            // FIXED v7.11: Set starting hole based on BOTH flights
             setInitialHole();
             
             gameCompleteFlag = true;
@@ -550,7 +548,7 @@ function loadFromHistoryRecord(historyId) {
 }
 
 // ============================================================
-// FIXED v7.11: Set initial hole based on BOTH flights
+// Set initial hole based on BOTH flights
 // ============================================================
 
 function setInitialHole() {
@@ -560,7 +558,6 @@ function setInitialHole() {
     
     var startHole = playOrder[0];
     
-    // Find first hole where EITHER flight hasn't saved data
     for (var i = 0; i < playOrder.length; i++) {
         var hole = playOrder[i];
         if (!isHoleSaved(1, hole) || !isHoleSaved(2, hole)) {
@@ -685,7 +682,7 @@ function getAllOpponents(player) {
 }
 
 // ============================================================
-// Match Value Read - Direct from stored results, NO calculation
+// Match Value Read - Direct from stored results
 // ============================================================
 
 function getMatchValueFromStoredResults(player, opponent, holeNumber) {
@@ -803,7 +800,7 @@ function isGameComplete() {
 }
 
 // ============================================================
-// Get Last Playable Hole (highest hole where both flights have saved)
+// Get Last Playable Hole
 // ============================================================
 
 function getLastPlayableHole() {
@@ -931,7 +928,7 @@ function openRHPForViewer() {
 }
 
 // ============================================================
-// Control Bar
+// Control Bar - FIXED v7.12: ALWAYS attach onclick handlers
 // ============================================================
 
 function renderCompactHeader() {
@@ -987,22 +984,35 @@ function renderCompactHeader() {
     
     container.innerHTML = html;
     
-    document.getElementById('compactPnBtn').onclick = function() {
-        var newMode = GameUI.getDisplayMode() === 'play' ? 'natural' : 'play';
-        GameUI.setDisplayMode(newMode, null);
-        renderAll();
-    };
+    // Attach P/N button handler
+    var pnBtn = document.getElementById('compactPnBtn');
+    if (pnBtn) {
+        pnBtn.onclick = function() {
+            var newMode = GameUI.getDisplayMode() === 'play' ? 'natural' : 'play';
+            GameUI.setDisplayMode(newMode, null);
+            renderAll();
+        };
+    }
     
-    document.getElementById('compactFlightBtn').onclick = function() {
-        var newFlight = currentFlight === 1 ? 2 : 1;
-        currentFlight = newFlight;
-        renderCompactHeader();
-        GameUI.updateFlightBadge(currentFlight);
-        renderAll();
-    };
+    // Attach Flight button handler
+    var flightBtn = document.getElementById('compactFlightBtn');
+    if (flightBtn) {
+        flightBtn.onclick = function() {
+            var newFlight = currentFlight === 1 ? 2 : 1;
+            currentFlight = newFlight;
+            renderCompactHeader();
+            GameUI.updateFlightBadge(currentFlight);
+            renderAll();
+        };
+    }
     
-    document.getElementById('compactPrevBtn').onclick = prevHole;
+    // Attach Prev button handler
+    var prevBtn = document.getElementById('compactPrevBtn');
+    if (prevBtn) {
+        prevBtn.onclick = prevHole;
+    }
     
+    // FIXED v7.12: ALWAYS attach Next/Result button handler, regardless of disabled state
     if (showResultButton) {
         var resultBtn = document.getElementById('compactResultBtn');
         if (resultBtn) {
@@ -1012,7 +1022,8 @@ function renderCompactHeader() {
         }
     } else {
         var nextBtn = document.getElementById('compactNextBtn');
-        if (nextBtn && !nextBtn.disabled) {
+        if (nextBtn) {
+            // ALWAYS attach the handler, even if disabled
             nextBtn.onclick = nextHole;
         }
     }
@@ -1155,6 +1166,9 @@ function renderAll() {
         prevBtn.disabled = (currentIndex === 0);
     }
     
+    // REMOVED: The conflicting nextBtn.disabled logic from renderAll()
+    // This is now handled entirely in renderCompactHeader()
+    
     if (typeof Ticker !== 'undefined') Ticker.refresh();
 }
 
@@ -1222,7 +1236,6 @@ async function init() {
         setTimeout(function() { GameUI.addFlightBadge(currentFlight); }, 100);
         GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
         
-        // FIXED v7.11: Use corrected initial hole logic
         setInitialHole();
         updateHoleNumberDisplay();
         initTicker();
@@ -1269,7 +1282,6 @@ async function init() {
             setTimeout(function() { GameUI.addFlightBadge(currentFlight); }, 100);
             GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
             
-            // FIXED v7.11: Use corrected initial hole logic
             setInitialHole();
             updateHoleNumberDisplay();
             initTicker();
@@ -1292,13 +1304,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.11
-KEY CHANGES from v7.10:
-   - FIXED: Starting hole logic now checks BOTH flights (not just current flight)
-   - FIXED: NEXT button handler properly attached and persists
-   - FIXED: nextHole function no longer overwritten by variable
-   - FIXED: prevHole function reference corrected
-   - All other functionality unchanged
+VERSION: 7.12
+KEY CHANGES from v7.11:
+   - FIXED: NEXT button onclick handler now attached ALWAYS (not only when not disabled)
+   - FIXED: Handler re-attached after real-time updates in renderCompactHeader()
+   - FIXED: Removed conflicting renderAll() button logic that was overriding disabled state
+   - All other functionality unchanged (starting hole logic, RESULT button, etc.)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
