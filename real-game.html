@@ -1,12 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.24
-KEY CHANGES from v5.23:
-   - FIXED: ClinchedAt now correctly records the ACTUAL winner (not always Team A)
-   - When matchValue > 0 → Team A wins → "TeamA_vs_TeamB"
-   - When matchValue < 0 → Team B wins → "TeamB_vs_TeamA"
-   - Prevents incorrect performance adjustment calculations
-   - All other functionality unchanged (preload, cascade, takeover detection, viewer redirect)
+VERSION: 5.25
+KEY CHANGES from v5.24:
+   - FIXED: Cascade now ALWAYS overwrites clinchedAt with correct winner
+   - Removed the check that prevented overwriting existing entries
+   - Cascade is now the true source of truth - self-healing
+   - If wrong winner exists, it gets replaced with correct winner
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -395,13 +395,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.24</div>
+<div class="version-tag">v5.25</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.24";
+window.REAL_GAME_VERSION = "5.25";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1293,7 +1293,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // FIXED v5.24: Correctly record the actual winner in clinchedAt
+        // FIXED v5.25: Cascade is the source of truth - ALWAYS overwrite clinchedAt
         var clinchedAtUpdates = {};
         for (var a = 0; a < teamAPlayers.length; a++) {
             for (var b = 0; b < teamBPlayers.length; b++) {
@@ -1302,20 +1302,14 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
                 if (lead > remainingHolesCross && matchValue !== 0) {
                     var winner, loser;
                     if (matchValue > 0) {
-                        // Team A is winning
                         winner = teamAPlayers[a].name;
                         loser = teamBPlayers[b].name;
                     } else {
-                        // Team B is winning (matchValue is negative)
                         winner = teamBPlayers[b].name;
                         loser = teamAPlayers[a].name;
                     }
-                    var matchKey = winner + "_vs_" + loser;
-                    // Check if already clinched in either direction
-                    if (!cumulativeClinched[winner + "_vs_" + loser] && 
-                        !cumulativeClinched[loser + "_vs_" + winner]) {
-                        clinchedAtUpdates[matchKey] = holeNumber;
-                    }
+                    // CASCADE IS THE SOURCE OF TRUTH - ALWAYS OVERWRITE
+                    clinchedAtUpdates[winner + "_vs_" + loser] = holeNumber;
                 }
             }
         }
@@ -1384,6 +1378,7 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
     
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
+        // FIXED v5.25: Simply merge - new correct entries will overwrite old wrong ones
         var mergedClinched = { ...cumulativeClinched, ...resultsData.clinchedAtUpdates };
         updatePayload["results.clinchedAt"] = mergedClinched;
     } else if (cumulativeClinched && Object.keys(cumulativeClinched).length > 0) {
@@ -1453,6 +1448,7 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         
         if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
             if (!cache.results.clinchedAt) cache.results.clinchedAt = {};
+            // FIXED v5.25: Simple assign - new correct entries overwrite old ones
             Object.assign(cache.results.clinchedAt, resultsData.clinchedAtUpdates);
         }
         
@@ -1911,13 +1907,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.24
-KEY CHANGES from v5.23:
-   - FIXED: ClinchedAt now correctly records the ACTUAL winner (not always Team A)
-   - When matchValue > 0 → Team A wins → "TeamA_vs_TeamB"
-   - When matchValue < 0 → Team B wins → "TeamB_vs_TeamA"
-   - Prevents incorrect performance adjustment calculations
-   - All other functionality unchanged (preload, cascade, takeover detection, viewer redirect)
+VERSION: 5.25
+KEY CHANGES from v5.24:
+   - FIXED: Cascade now ALWAYS overwrites clinchedAt with correct winner
+   - Removed the check that prevented overwriting existing entries
+   - Cascade is now the true source of truth - self-healing
+   - If wrong winner exists, it gets replaced with correct winner
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
