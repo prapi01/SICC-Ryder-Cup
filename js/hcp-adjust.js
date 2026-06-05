@@ -1,14 +1,13 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.10
+VERSION: 2.11
 KEY CHANGES:
-   - CHANGED: loadFromHistory() now uses stored adjustedHandicaps from archive
-   - NO longer recalculates handicaps from raw game data
-   - Prevents errors from players' handicaps changing over time
-   - Displays historically accurate adjustment data
-   - Falls back to recalculation ONLY if adjustedHandicaps doesn't exist (backward compat)
-   - Added getStoredAdjustment() for direct access
-   - All existing live game functionality unchanged from v2.09
+   - FIXED: calculatePerformanceAdjustmentFromCache() now handles BOTH data formats
+   - NEW: Detects if matchResults is an array (real-game format) or object with 'cross' property (legacy)
+   - For array format: extracts cross-flight matches using the correct player ordering
+   - For legacy format: preserves original behavior
+   - Prevents the "cache.matchResults is undefined" error that caused redirect to index.html
+   - All existing functionality unchanged from v2.10
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -122,11 +121,10 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Calculate Performance Adjustment from match results
+    // FIXED v2.11: Calculate Performance Adjustment - Handles BOTH data formats
     // ============================================================
     
     function calculatePerformanceAdjustmentFromCache(cache, allPlayersList) {
-        var crossResults = cache.matchResults.cross;
         var contributions = {};
         
         for (var i = 0; i < allPlayersList.length; i++) {
@@ -135,31 +133,96 @@ var HandicapAdjustment = (function() {
         
         var processedMatches = new Set();
         
-        for (var key in crossResults) {
-            if (key.indexOf('_vs_') !== -1) {
-                var parts = key.split('_vs_');
-                var playerA = parts[0];
-                var playerB = parts[1];
+        // Get ordered players for consistent indexing
+        var teamAPlayers = allPlayersList.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        var teamBPlayers = allPlayersList.filter(function(p) { return p.team === "B"; }).sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        
+        // Check what format the matchResults are in
+        var matchResults = cache.results?.matchResults;
+        
+        if (!matchResults) {
+            console.warn("No matchResults found in cache");
+            return contributions;
+        }
+        
+        // FORMAT 1: matchResults is an array (real-game format)
+        if (Array.isArray(matchResults)) {
+            console.log("Detected array format for matchResults");
+            
+            // Iterate through each hole where we have results
+            for (var holeIdx = 0; holeIdx < matchResults.length; holeIdx++) {
+                var holeMatches = matchResults[holeIdx];
+                if (!holeMatches || !Array.isArray(holeMatches)) continue;
                 
-                var pairId = [playerA, playerB].sort().join('|');
-                if (processedMatches.has(pairId)) continue;
-                processedMatches.add(pairId);
-                
-                var value = crossResults[key];
-                
-                if (value > 0) {
-                    contributions[playerA] += 1;
-                    contributions[playerB] += -1;
-                } else if (value < 0) {
-                    contributions[playerA] += -1;
-                    contributions[playerB] += 1;
-                } else {
-                    contributions[playerA] += 0.5;
-                    contributions[playerB] += 0.5;
+                // holeMatches is a flat array of 16 values (4 Team A × 4 Team B)
+                for (var aIdx = 0; aIdx < teamAPlayers.length; aIdx++) {
+                    for (var bIdx = 0; bIdx < teamBPlayers.length; bIdx++) {
+                        var matchIndex = aIdx * teamBPlayers.length + bIdx;
+                        var matchValue = holeMatches[matchIndex];
+                        if (matchValue === undefined) continue;
+                        
+                        var playerA = teamAPlayers[aIdx];
+                        var playerB = teamBPlayers[bIdx];
+                        var pairId = [playerA.name, playerB.name].sort().join('|');
+                        
+                        if (processedMatches.has(pairId)) continue;
+                        processedMatches.add(pairId);
+                        
+                        if (matchValue > 0) {
+                            contributions[playerA.name] += 1;
+                            contributions[playerB.name] += -1;
+                        } else if (matchValue < 0) {
+                            contributions[playerA.name] += -1;
+                            contributions[playerB.name] += 1;
+                        } else {
+                            contributions[playerA.name] += 0.5;
+                            contributions[playerB.name] += 0.5;
+                        }
+                    }
                 }
             }
         }
+        // FORMAT 2: matchResults has a 'cross' property (legacy format)
+        else if (matchResults.cross) {
+            console.log("Detected legacy format for matchResults (cross property)");
+            var crossResults = matchResults.cross;
+            
+            for (var key in crossResults) {
+                if (key.indexOf('_vs_') !== -1) {
+                    var parts = key.split('_vs_');
+                    var playerA = parts[0];
+                    var playerB = parts[1];
+                    
+                    var pairId = [playerA, playerB].sort().join('|');
+                    if (processedMatches.has(pairId)) continue;
+                    processedMatches.add(pairId);
+                    
+                    var value = crossResults[key];
+                    
+                    if (value > 0) {
+                        contributions[playerA] += 1;
+                        contributions[playerB] += -1;
+                    } else if (value < 0) {
+                        contributions[playerA] += -1;
+                        contributions[playerB] += 1;
+                    } else {
+                        contributions[playerA] += 0.5;
+                        contributions[playerB] += 0.5;
+                    }
+                }
+            }
+        } else {
+            console.warn("Unknown matchResults format - cannot calculate performance adjustment");
+            return contributions;
+        }
         
+        // Calculate final adjustments
         var perfAdjustments = {};
         for (var playerName in contributions) {
             var contribution = contributions[playerName];
@@ -612,7 +675,6 @@ var HandicapAdjustment = (function() {
         };
         
         if (currentArchiveId && typeof HistoryRecord !== 'undefined') {
-            // NEW v3.01: Pass starting players to store adjustedHandicaps
             HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, allPlayers, function(err) {
                 if (err) {
                     console.error("Error saving handicap data:", err);
@@ -734,25 +796,24 @@ var HandicapAdjustment = (function() {
     return {
         init: init,
         initForViewer: initForViewer,
-        initForHistory: initForHistory,  // NEW v2.10
+        initForHistory: initForHistory,
         initReadOnly: initReadOnly,
         checkUrlAndInit: checkUrlAndInit,
-        displayStoredAdjustment: displayStoredAdjustment  // NEW v2.10
+        displayStoredAdjustment: displayStoredAdjustment
     };
     
 })();
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.10
+VERSION: 2.11
 KEY CHANGES:
-   - CHANGED: loadFromHistory() now uses stored adjustedHandicaps from archive
-   - NO longer recalculates handicaps from raw game data
-   - Prevents errors from players' handicaps changing over time
-   - Displays historically accurate adjustment data
-   - Falls back to recalculation ONLY if adjustedHandicaps doesn't exist (backward compat)
-   - Added initForHistory() and displayStoredAdjustment() for direct access
-   - All existing live game functionality unchanged from v2.09
+   - FIXED: calculatePerformanceAdjustmentFromCache() now handles BOTH data formats
+   - NEW: Detects if matchResults is an array (real-game format) or object with 'cross' property (legacy)
+   - For array format: extracts cross-flight matches using the correct player ordering
+   - For legacy format: preserves original behavior
+   - Prevents the "cache.matchResults is undefined" error that caused redirect to index.html
+   - All existing functionality unchanged from v2.10
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
