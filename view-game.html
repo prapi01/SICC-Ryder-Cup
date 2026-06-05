@@ -1,11 +1,10 @@
 <!--
 FILE: view-game.html
-VERSION: 7.16
-KEY CHANGES from v7.15:
-   - FIXED: Unified celebration screen now uses SignCard.showCelebrationScreen() (same as real-game.html)
-   - REMOVED: Hardcoded celebration modal HTML (now uses shared sign-card.js)
-   - Celebration screen now includes: image, beer time, winning players grid, confetti
-   - All other functionality unchanged (navigation, button states, RHP handler)
+VERSION: 7.17
+KEY CHANGES from v7.16:
+   - UPDATED bubble display to use GameMatch.getClinchHole() for smart list support
+   - Now handles both old flat clinch format and new smart object format
+   - All other functionality unchanged (celebration, navigation, RHP handler)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -348,13 +347,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.16</div>
+<div class="version-tag">v7.17</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.16";
+window.VIEW_GAME_VERSION = "7.17";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -714,7 +713,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS
+// BUBBLE FUNCTIONS - UPDATED v7.17: Uses GameMatch.getClinchHole()
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -730,9 +729,8 @@ function getBubbleClassWithClinch(player, opponent) {
     var lastSyncedHole = cache.lastSyncedHole;
     var clinchedAt = cache.clinchedAt || {};
     
-    var matchKey1 = player.name + "_vs_" + opponent.name;
-    var matchKey2 = opponent.name + "_vs_" + player.name;
-    var clinchHole = clinchedAt[matchKey1] || clinchedAt[matchKey2];
+    // FIXED v7.17: Use GameMatch.getClinchHole() for smart list support
+    var clinchHole = GameMatch.getClinchHole(clinchedAt, player.name, opponent.name);
     
     if (player.flight === opponent.flight) {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
@@ -1281,12 +1279,11 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.16
-KEY CHANGES from v7.15:
-   - FIXED: Unified celebration screen now uses SignCard.showCelebrationScreen() (same as real-game.html)
-   - REMOVED: Hardcoded celebration modal HTML (now uses shared sign-card.js)
-   - Celebration screen now includes: image, beer time, winning players grid, confetti
-   - All other functionality unchanged (navigation, button states, RHP handler)
+VERSION: 7.17
+KEY CHANGES from v7.16:
+   - UPDATED bubble display to use GameMatch.getClinchHole() for smart list support
+   - Now handles both old flat clinch format and new smart object format
+   - All other functionality unchanged (celebration, navigation, RHP handler)
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
