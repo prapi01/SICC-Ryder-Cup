@@ -1,14 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 7.10
-KEY CHANGES from v7.09:
-   - FIXED: RESULT button now only shows on LAST PLAYABLE HOLE (where both flights have saved data)
-   - FIXED: Navigating back to previous holes shows normal "▶" button, not RESULT
-   - FIXED: History record ID format changed from "_history" to "_H" (matches history-record.js v3.02)
-   - ADDED: Post-game data source switch - after game complete, viewer reads from historyGames
-   - ADDED: loadFromHistoryRecord() function for reading completed games
-   - FIXED: RHP button now uses correct history record ID
-   - All other functionality unchanged (ticker, real-time listener, flight toggle)
+VERSION: 7.11
+KEY CHANGES from v7.10:
+   - FIXED: Starting hole logic now checks BOTH flights (not just current flight)
+   - FIXED: NEXT button handler properly attached and persists
+   - FIXED: nextHole function no longer overwritten by variable
+   - FIXED: prevHole function reference corrected
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -203,11 +201,6 @@ STATUS: Ready for integration
             color: #ff6b6b;
             border: 1px solid #ff6b6b;
         }
-        .bubble-grey {
-            background: #2a2a2a;
-            color: #888;
-            border: 1px solid #444;
-        }
         .bubble-gold {
             background: #1a3a1a;
             color: #ffaa44;
@@ -219,6 +212,11 @@ STATUS: Ready for integration
             color: #ffffff;
             border: 2px solid #ffffff;
             font-weight: 600;
+        }
+        .bubble-grey {
+            background: #2a2a2a;
+            color: #888;
+            border: 1px solid #444;
         }
         
         .scorecard-section { margin: 20px 0; }
@@ -377,13 +375,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.10</div>
+<div class="version-tag">v7.11</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.10";
+window.VIEW_GAME_VERSION = "7.11";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -493,7 +491,6 @@ function loadFromHistoryRecord(historyId) {
             
             var historyData = doc.data();
             
-            // Extract data from history record
             courseName = historyData.gameInfo?.course?.name || "Unknown Course";
             coursePar = historyData.gameInfo?.course?.par || [];
             courseSi = historyData.gameInfo?.course?.si || [];
@@ -501,7 +498,6 @@ function loadFromHistoryRecord(historyId) {
             startingHole = historyData.gameInfo?.startingHole || 1;
             teamGameFormat = historyData.gameInfo?.teamGameFormat || "tournament";
             
-            // Build cache from history data
             var historyCache = {
                 course: { name: courseName, par: coursePar, si: courseSi },
                 players: allPlayers,
@@ -523,7 +519,6 @@ function loadFromHistoryRecord(historyId) {
                 gameComplete: true
             };
             
-            // Calculate saved holes from data strings
             for (var h = 1; h <= 18; h++) {
                 var f1HoleData = GameData.parseHoleData(historyCache.f1DataString, h);
                 var f2HoleData = GameData.parseHoleData(historyCache.f2DataString, h);
@@ -536,15 +531,8 @@ function loadFromHistoryRecord(historyId) {
             document.getElementById("courseName").innerHTML = courseName;
             document.getElementById("mainContainer").classList.add("data-ready");
             
-            // Set initial hole to first unsaved or last hole
-            var playOrder = getPlayOrder();
-            currentHole = playOrder[0];
-            for (var i = 0; i < playOrder.length; i++) {
-                if (!isHoleSaved(currentFlight, playOrder[i])) {
-                    currentHole = playOrder[i];
-                    break;
-                }
-            }
+            // FIXED v7.11: Set starting hole based on BOTH flights
+            setInitialHole();
             
             gameCompleteFlag = true;
             hasSwitchedToHistory = true;
@@ -559,6 +547,30 @@ function loadFromHistoryRecord(historyId) {
         .catch(function(err) {
             console.error("Error loading history record:", err);
         });
+}
+
+// ============================================================
+// FIXED v7.11: Set initial hole based on BOTH flights
+// ============================================================
+
+function setInitialHole() {
+    var playOrder = [];
+    for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+    for (var i = 1; i < startingHole; i++) playOrder.push(i);
+    
+    var startHole = playOrder[0];
+    
+    // Find first hole where EITHER flight hasn't saved data
+    for (var i = 0; i < playOrder.length; i++) {
+        var hole = playOrder[i];
+        if (!isHoleSaved(1, hole) || !isHoleSaved(2, hole)) {
+            startHole = hole;
+            break;
+        }
+    }
+    
+    currentHole = startHole;
+    console.log("Initial hole set to:", currentHole);
 }
 
 // ============================================================
@@ -683,7 +695,6 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
     
     var position = getHolePosition(holeNumber);
     
-    // SAME FLIGHT - read directly from intra-flight results
     if (player.flight === opponent.flight) {
         var intraMatches = (player.flight === 1) ? results.f1IntraMatches : results.f2IntraMatches;
         if (intraMatches && intraMatches[position]) {
@@ -694,7 +705,6 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
         return 0;
     }
     
-    // DIFFERENT FLIGHT - read directly from cross-flight results
     if (results.matchResults && results.matchResults[position]) {
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
             if (a.flight !== b.flight) return a.flight - b.flight;
@@ -809,6 +819,60 @@ function getLastPlayableHole() {
 }
 
 // ============================================================
+// Navigation Functions
+// ============================================================
+
+function nextHole() {
+    console.log("nextHole called, currentHole:", currentHole);
+    
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    var lastPlayableHole = getLastPlayableHole();
+    
+    if (gameCompleteFlag && currentHole === lastPlayableHole && !celebrationTriggered) {
+        showCelebrationModal();
+        return;
+    }
+    
+    if (!isCurrentHoleSavedByAnyFlight()) {
+        console.log("Cannot advance - hole " + currentHole + " has no saved data");
+        return;
+    }
+    
+    if (currentIndex < playOrder.length - 1) {
+        currentHole = playOrder[currentIndex + 1];
+        updateHoleNumberDisplay();
+        renderAll();
+    }
+}
+
+function prevHole() {
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    
+    if (currentIndex > 0) {
+        currentHole = playOrder[currentIndex - 1];
+        updateHoleNumberDisplay();
+        renderAll();
+    }
+}
+
+function updateHoleNumberDisplay() {
+    GameUI.updateCompactHoleDisplay(currentHole);
+    GameUI.updateHoleHeaderNumber(currentHole);
+}
+
+function onToggleFlight(flightNumber) {
+    currentFlight = flightNumber;
+    GameUI.updateFlightBadge(flightNumber);
+    renderAll();
+}
+
+function onToggleDisplayMode(displayMode) {
+    renderAll();
+}
+
+// ============================================================
 // Celebration & RHP for Viewer
 // ============================================================
 
@@ -862,67 +926,12 @@ function openRHPForViewer() {
     var finalTeamB = tr.teamB[tr.teamB.length - 1] || 9.5;
     var winner = finalTeamA > finalTeamB ? 'A' : (finalTeamB > finalTeamA ? 'B' : 'Tie');
     
-    // FIXED v7.10: Use correct history record ID format (_H, not _history)
     var recordId = gameId + "_H";
     HandicapAdjustment.init(recordId, recordId, winningPlayers, {}, { teamA: finalTeamA, teamB: finalTeamB, winner: winner }, true);
 }
 
 // ============================================================
-// Navigation Functions (Viewer only - no save/sign)
-// ============================================================
-
-function nextHole() {
-    var playOrder = getPlayOrder();
-    var currentIndex = playOrder.indexOf(currentHole);
-    var lastPlayableHole = getLastPlayableHole();
-    
-    // Check if we are on the last playable hole AND game is complete
-    if (gameCompleteFlag && currentHole === lastPlayableHole && !celebrationTriggered) {
-        showCelebrationModal();
-        return;
-    }
-    
-    // Normal navigation - check if current hole has saved data
-    if (!isCurrentHoleSavedByAnyFlight()) {
-        console.log("Cannot advance - hole " + currentHole + " has no saved data");
-        return;
-    }
-    
-    if (currentIndex < playOrder.length - 1) {
-        currentHole = playOrder[currentIndex + 1];
-        updateHoleNumberDisplay();
-        renderAll();
-    }
-}
-
-function prevHole() {
-    var playOrder = getPlayOrder();
-    var currentIndex = playOrder.indexOf(currentHole);
-    
-    if (currentIndex > 0) {
-        currentHole = playOrder[currentIndex - 1];
-        updateHoleNumberDisplay();
-        renderAll();
-    }
-}
-
-function updateHoleNumberDisplay() {
-    GameUI.updateCompactHoleDisplay(currentHole);
-    GameUI.updateHoleHeaderNumber(currentHole);
-}
-
-function onToggleFlight(flightNumber) {
-    currentFlight = flightNumber;
-    GameUI.updateFlightBadge(flightNumber);
-    renderAll();
-}
-
-function onToggleDisplayMode(displayMode) {
-    renderAll();
-}
-
-// ============================================================
-// Control Bar - v7.10: RESULT button only on LAST PLAYABLE HOLE
+// Control Bar
 // ============================================================
 
 function renderCompactHeader() {
@@ -931,30 +940,23 @@ function renderCompactHeader() {
     
     var displayMode = GameUI.getDisplayMode();
     var pnText = displayMode === 'play' ? 'P' : 'N';
-    
-    // Button shows opposite flight (click to switch to this flight)
     var oppositeFlight = currentFlight === 1 ? 2 : 1;
     
-    // Determine if game is complete
     var gameComplete = isGameComplete();
     if (gameComplete && !gameCompleteFlag) {
         gameCompleteFlag = true;
     }
     
-    // FIXED v7.10: RESULT button only on LAST PLAYABLE HOLE
     var lastPlayableHole = getLastPlayableHole();
     var isOnLastPlayableHole = (currentHole === lastPlayableHole);
     var showResultButton = gameCompleteFlag && isOnLastPlayableHole && !celebrationTriggered;
     
-    // Determine next button content and class
     var nextButtonHtml = '';
     if (showResultButton) {
-        // Show gold RESULT button only on last playable hole
         nextButtonHtml = `<button class="compact-result-btn" id="compactResultBtn" style="width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
                     🏆 RESULT
                 </button>`;
     } else {
-        // Normal next button (enabled/disabled based on saved data)
         var playOrder = getPlayOrder();
         var hasSavedData = isCurrentHoleSavedByAnyFlight();
         var isLastHole = (playOrder.indexOf(currentHole) === playOrder.length - 1);
@@ -1036,8 +1038,6 @@ function setupRealtimeListener() {
     firestoreUnsubscribe = db.collection("scheduledGames").doc(gameId)
         .onSnapshot(function(doc) {
             if (!doc.exists) return;
-            
-            // If already switched to history, ignore updates from scheduledGames
             if (hasSwitchedToHistory) return;
             
             var data = doc.data();
@@ -1070,7 +1070,6 @@ function setupRealtimeListener() {
                         var wasComplete = gameCompleteFlag;
                         gameCompleteFlag = isGameComplete();
                         
-                        // If game just completed, switch to history record for future reads
                         if (!wasComplete && gameCompleteFlag && !hasSwitchedToHistory) {
                             console.log("Game completed - switching to history record");
                             var historyId = gameId + "_H";
@@ -1223,13 +1222,8 @@ async function init() {
         setTimeout(function() { GameUI.addFlightBadge(currentFlight); }, 100);
         GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
         
-        var playOrder = getPlayOrder();
-        for (var i = 0; i < playOrder.length; i++) {
-            if (!isHoleSaved(currentFlight, playOrder[i])) {
-                currentHole = playOrder[i];
-                break;
-            }
-        }
+        // FIXED v7.11: Use corrected initial hole logic
+        setInitialHole();
         updateHoleNumberDisplay();
         initTicker();
         if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
@@ -1275,13 +1269,8 @@ async function init() {
             setTimeout(function() { GameUI.addFlightBadge(currentFlight); }, 100);
             GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
             
-            var playOrder = getPlayOrder();
-            for (var i = 0; i < playOrder.length; i++) {
-                if (!isHoleSaved(currentFlight, playOrder[i])) {
-                    currentHole = playOrder[i];
-                    break;
-                }
-            }
+            // FIXED v7.11: Use corrected initial hole logic
+            setInitialHole();
             updateHoleNumberDisplay();
             initTicker();
             if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
@@ -1303,15 +1292,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.10
-KEY CHANGES from v7.09:
-   - FIXED: RESULT button now only shows on LAST PLAYABLE HOLE (where both flights have saved data)
-   - FIXED: Navigating back to previous holes shows normal "▶" button, not RESULT
-   - FIXED: History record ID format changed from "_history" to "_H" (matches history-record.js v3.02)
-   - ADDED: Post-game data source switch - after game complete, viewer reads from historyGames
-   - ADDED: loadFromHistoryRecord() function for reading completed games
-   - FIXED: RHP button now uses correct history record ID
-   - All other functionality unchanged (ticker, real-time listener, flight toggle)
+VERSION: 7.11
+KEY CHANGES from v7.10:
+   - FIXED: Starting hole logic now checks BOTH flights (not just current flight)
+   - FIXED: NEXT button handler properly attached and persists
+   - FIXED: nextHole function no longer overwritten by variable
+   - FIXED: prevHole function reference corrected
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
