@@ -1,11 +1,14 @@
 /*
 FILE: js/index-hidden.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - CHANGED: Master Record reference from "MR_17H_2030" to "MASTER_RECORD"
-   - UPDATED: Alert message to reflect new MR name
-   - Generic name allows future master records without HTML changes
-   - ALL other functionality identical to v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - CHANGED: Game ID format from "Game_YYYYMMDD_timestamp" to "GM_YYMMDD_HHMM_XX"
+   - ADDED: generateGameId() function for short, readable game IDs
+   - Format: GM_260605_1503_42 (GM_YYMMDD_HHMM_XX)
+   - WHERE: YYMMDD = 2-digit year, 2-digit month, 2-digit day
+   -        HHMM = 2-digit hour, 2-digit minute
+   -        XX = 2-digit random number (00-99)
+   - All other functionality identical to v1.05
 DEPENDS ON: Firebase Firestore (db object must be available)
 STATUS: Ready for integration
 */
@@ -20,6 +23,32 @@ function getLocalDate() {
     var month = String(today.getMonth() + 1).padStart(2, '0');
     var day = String(today.getDate()).padStart(2, '0');
     return year + '-' + month + '-' + day;
+}
+
+// ============================================================
+// NEW v1.06: Generate Short Game ID
+// Format: GM_YYMMDD_HHMM_XX
+// Example: GM_260605_1503_42
+// ============================================================
+
+function generateGameId() {
+    var now = new Date();
+    
+    // Get YYMMDD (2-digit year, month, day)
+    var yy = String(now.getFullYear()).slice(-2);
+    var mm = String(now.getMonth() + 1).padStart(2, '0');
+    var dd = String(now.getDate()).padStart(2, '0');
+    var yymmdd = yy + mm + dd;
+    
+    // Get HHMM (24-hour hour and minute)
+    var hh = String(now.getHours()).padStart(2, '0');
+    var min = String(now.getMinutes()).padStart(2, '0');
+    var hhmm = hh + min;
+    
+    // Get random 2-digit number (00-99)
+    var random = String(Math.floor(Math.random() * 100)).padStart(2, '0');
+    
+    return 'GM_' + yymmdd + '_' + hhmm + '_' + random;
 }
 
 // ============================================================
@@ -103,7 +132,9 @@ function duplicateMasterRecord() {
         
         var original = doc.data();
         var today = getLocalDate();
-        newId = 'Game_' + today.replace(/-/g, '') + '_' + Date.now();
+        
+        // NEW v1.06: Use short game ID format
+        newId = generateGameId();
         
         var duplicate = JSON.parse(JSON.stringify(original));
         
@@ -152,15 +183,19 @@ window.initHiddenAdmin = initHiddenAdmin;
 window.displayGameId = displayGameId;
 window.getCurrentGameId = getCurrentGameId;
 window.clearDisplayedGameId = clearDisplayedGameId;
+window.generateGameId = generateGameId;
 
 /*
 FILE: js/index-hidden.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - CHANGED: Master Record reference from "MR_17H_2030" to "MASTER_RECORD"
-   - UPDATED: Alert message to reflect new MR name
-   - Generic name allows future master records without HTML changes
-   - ALL other functionality identical to v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - CHANGED: Game ID format from "Game_YYYYMMDD_timestamp" to "GM_YYMMDD_HHMM_XX"
+   - ADDED: generateGameId() function for short, readable game IDs
+   - Format: GM_260605_1503_42 (GM_YYMMDD_HHMM_XX)
+   - WHERE: YYMMDD = 2-digit year, 2-digit month, 2-digit day
+   -        HHMM = 2-digit hour, 2-digit minute
+   -        XX = 2-digit random number (00-99)
+   - All other functionality identical to v1.05
 DEPENDS ON: Firebase Firestore (db object must be available)
 STATUS: Ready for integration
 */
