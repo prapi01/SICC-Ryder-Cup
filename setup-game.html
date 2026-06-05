@@ -1,11 +1,15 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.21
-KEY CHANGES:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
-   - All other functionality identical to v1.20
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - ADDED: generateGameId() function for short, readable game IDs
+   - CHANGED: Game creation now uses custom ID format instead of Firestore auto-ID
+   - Format: GM_260605_1503_42 (GM_YYMMDD_HHMM_XX)
+   - WHERE: YYMMDD = 2-digit year, 2-digit month, 2-digit day
+   -        HHMM = 2-digit hour, 2-digit minute
+   -        XX = 2-digit random number (00-99)
+   - Replaced .add() with .doc(gameId).set() for consistent ID format
+   - All other functionality identical to v1.21
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
@@ -192,12 +196,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.21</div>
+<div class="version-tag">v1.22</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.21
+// FILE: setup-game.html - VERSION 1.22
 
-var VERSION = "1.21";
+var VERSION = "1.22";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -210,6 +214,32 @@ if (storedVersion !== VERSION) {
 var db = firebase.firestore();
 var firestoreReady = true;
 var deviceSession = null;
+
+// ============================================================
+// NEW v1.22: Generate Short Game ID
+// Format: GM_YYMMDD_HHMM_XX
+// Example: GM_260605_1503_42
+// ============================================================
+
+function generateGameId() {
+    var now = new Date();
+    
+    // Get YYMMDD (2-digit year, month, day)
+    var yy = String(now.getFullYear()).slice(-2);
+    var mm = String(now.getMonth() + 1).padStart(2, '0');
+    var dd = String(now.getDate()).padStart(2, '0');
+    var yymmdd = yy + mm + dd;
+    
+    // Get HHMM (24-hour hour and minute)
+    var hh = String(now.getHours()).padStart(2, '0');
+    var min = String(now.getMinutes()).padStart(2, '0');
+    var hhmm = hh + min;
+    
+    // Get random 2-digit number (00-99)
+    var random = String(Math.floor(Math.random() * 100)).padStart(2, '0');
+    
+    return 'GM_' + yymmdd + '_' + hhmm + '_' + random;
+}
 
 // ============================================================
 // AUTO-DELETE PAST GAMES
@@ -679,15 +709,18 @@ function commitGame() {
             alert("Error updating game: " + e.message);
         });
     } else {
+        // NEW v1.22: Use custom game ID format instead of Firestore auto-ID
         gameData.createdAt = new Date().toISOString();
-        db.collection("scheduledGames").add(gameData).then(function(docRef) {
+        var newGameId = generateGameId();
+        
+        db.collection("scheduledGames").doc(newGameId).set(gameData).then(function() {
             saveAsDefaultPlayers(state.players, function(saveSuccess) {
                 if (saveSuccess) {
                     console.log("Default players updated successfully");
                 } else {
                     console.warn("Failed to save default players, but game was created");
                 }
-                SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: docRef.id });
+                SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
                 document.getElementById("successMsg").style.display = "block";
                 setTimeout(function() {
                     window.location.href = "admin.html";
@@ -995,12 +1028,16 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.21
-KEY CHANGES:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
-   - All other functionality identical to v1.20
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - ADDED: generateGameId() function for short, readable game IDs
+   - CHANGED: Game creation now uses custom ID format instead of Firestore auto-ID
+   - Format: GM_260605_1503_42 (GM_YYMMDD_HHMM_XX)
+   - WHERE: YYMMDD = 2-digit year, 2-digit month, 2-digit day
+   -        HHMM = 2-digit hour, 2-digit minute
+   -        XX = 2-digit random number (00-99)
+   - Replaced .add() with .doc(gameId).set() for consistent ID format
+   - All other functionality identical to v1.21
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
