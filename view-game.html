@@ -1,11 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 7.12
-KEY CHANGES from v7.11:
-   - FIXED: NEXT button onclick handler now attached ALWAYS (not only when not disabled)
-   - FIXED: Handler re-attached after real-time updates in renderCompactHeader()
-   - FIXED: Removed conflicting renderAll() button logic that was overriding disabled state
-   - All other functionality unchanged (starting hole logic, RESULT button, etc.)
+VERSION: 7.13
+KEY CHANGES from v7.12:
+   - FIXED: NEXT button disabled state now uses cache data directly (not function call)
+   - FIXED: Added cache refresh at start of renderCompactHeader() for accurate state
+   - FIXED: hasSavedData now reads from cache.savedHoles directly
+   - Ensures H18 button is properly disabled when no flights have saved
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -374,13 +375,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.12</div>
+<div class="version-tag">v7.13</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.12";
+window.VIEW_GAME_VERSION = "7.13";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -928,12 +929,16 @@ function openRHPForViewer() {
 }
 
 // ============================================================
-// Control Bar - FIXED v7.12: ALWAYS attach onclick handlers
+// Control Bar - FIXED v7.13: Uses cache data directly
 // ============================================================
 
 function renderCompactHeader() {
     var container = document.getElementById('compactHeaderContainer');
     if (!container) return;
+    
+    // FIXED v7.13: Get fresh cache data directly
+    var cache = GameLoader.getLocalCache();
+    if (!cache) return;
     
     var displayMode = GameUI.getDisplayMode();
     var pnText = displayMode === 'play' ? 'P' : 'N';
@@ -955,7 +960,9 @@ function renderCompactHeader() {
                 </button>`;
     } else {
         var playOrder = getPlayOrder();
-        var hasSavedData = isCurrentHoleSavedByAnyFlight();
+        // FIXED v7.13: Use cache data directly for accurate saved holes check
+        var hasSavedData = (cache.savedHoles[1]?.includes(currentHole) || false) || 
+                          (cache.savedHoles[2]?.includes(currentHole) || false);
         var isLastHole = (playOrder.indexOf(currentHole) === playOrder.length - 1);
         var isDisabled = (!hasSavedData) || isLastHole;
         
@@ -1012,7 +1019,7 @@ function renderCompactHeader() {
         prevBtn.onclick = prevHole;
     }
     
-    // FIXED v7.12: ALWAYS attach Next/Result button handler, regardless of disabled state
+    // Attach Next/Result button handler
     if (showResultButton) {
         var resultBtn = document.getElementById('compactResultBtn');
         if (resultBtn) {
@@ -1023,7 +1030,6 @@ function renderCompactHeader() {
     } else {
         var nextBtn = document.getElementById('compactNextBtn');
         if (nextBtn) {
-            // ALWAYS attach the handler, even if disabled
             nextBtn.onclick = nextHole;
         }
     }
@@ -1166,9 +1172,6 @@ function renderAll() {
         prevBtn.disabled = (currentIndex === 0);
     }
     
-    // REMOVED: The conflicting nextBtn.disabled logic from renderAll()
-    // This is now handled entirely in renderCompactHeader()
-    
     if (typeof Ticker !== 'undefined') Ticker.refresh();
 }
 
@@ -1304,12 +1307,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.12
-KEY CHANGES from v7.11:
-   - FIXED: NEXT button onclick handler now attached ALWAYS (not only when not disabled)
-   - FIXED: Handler re-attached after real-time updates in renderCompactHeader()
-   - FIXED: Removed conflicting renderAll() button logic that was overriding disabled state
-   - All other functionality unchanged (starting hole logic, RESULT button, etc.)
+VERSION: 7.13
+KEY CHANGES from v7.12:
+   - FIXED: NEXT button disabled state now uses cache data directly (not function call)
+   - FIXED: Added cache refresh at start of renderCompactHeader() for accurate state
+   - FIXED: hasSavedData now reads from cache.savedHoles directly
+   - Ensures H18 button is properly disabled when no flights have saved
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
