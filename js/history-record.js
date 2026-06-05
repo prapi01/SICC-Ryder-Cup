@@ -1,14 +1,13 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.01
-KEY CHANGES:
-   - ADDED: adjustedHandicaps field permanently stored in archive record
-   - Stores starting handicap for each player at game time
-   - Stores anchorAdj, perfAdj, finalHcp after handicap adjustment
-   - Prevents future recalculation errors (handicap changes over time)
-   - Archive now has complete immutable handicap adjustment record
-   - Backward compatible: reads existing records without adjustedHandicaps
-   - All existing functionality preserved from v3.00
+VERSION: 3.02
+KEY CHANGES from v3.01:
+   - CHANGED: Now uses FIXED document ID = gameId + "_H" instead of auto-generated ID
+   - ADDED: Existence check before create/update (prevents duplicate records)
+   - CREATE: If record doesn't exist, create with fixed ID
+   - UPDATE: If record exists, update in place (no duplicate)
+   - ELIMINATES: Multiple duplicate history records for same game
+   - All existing functionality preserved (handicap data, upsert logic, etc.)
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
@@ -18,7 +17,39 @@ var HistoryRecord = (function() {
     var COLLECTION = "historyGames";
     
     // ============================================================
-    // Get existing record for a game (by originalGameId)
+    // Generate fixed document ID from game ID
+    // Format: gameId + "_H"
+    // Example: GM_260605_1503_42_H
+    // ============================================================
+    
+    function getHistoryDocId(gameId) {
+        return gameId + "_H";
+    }
+    
+    // ============================================================
+    // Check if history record exists (by fixed document ID)
+    // ============================================================
+    
+    function recordExists(gameId, callback) {
+        if (!gameId) {
+            if (callback) callback("No game ID provided", false);
+            return;
+        }
+        
+        var docId = getHistoryDocId(gameId);
+        
+        firebase.firestore().collection(COLLECTION).doc(docId).get()
+            .then(function(doc) {
+                callback(null, doc.exists, doc.id);
+            })
+            .catch(function(err) {
+                console.error("Error checking record existence:", err);
+                callback(err, false);
+            });
+    }
+    
+    // ============================================================
+    // Get existing record for a game (by fixed document ID)
     // ============================================================
     
     function getExistingRecord(gameId, callback) {
@@ -27,16 +58,14 @@ var HistoryRecord = (function() {
             return;
         }
         
-        firebase.firestore().collection(COLLECTION)
-            .where("originalGameId", "==", gameId)
-            .limit(1)
-            .get()
-            .then(function(snapshot) {
-                if (snapshot.empty) {
-                    callback(null, null);
-                } else {
-                    var doc = snapshot.docs[0];
+        var docId = getHistoryDocId(gameId);
+        
+        firebase.firestore().collection(COLLECTION).doc(docId).get()
+            .then(function(doc) {
+                if (doc.exists) {
                     callback(null, { id: doc.id, data: doc.data() });
+                } else {
+                    callback(null, null);
                 }
             })
             .catch(function(err) {
@@ -46,9 +75,9 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Create or update archive record (UPSERT)
+    // Create or update archive record (UPSERT with fixed ID)
     // Stores data strings directly - NO conversion
-    // NEW v3.01: Also stores adjustedHandicaps placeholder
+    // NEW v3.02: Uses fixed document ID (gameId + "_H")
     // ============================================================
     
     function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -58,154 +87,144 @@ var HistoryRecord = (function() {
             return;
         }
         
-        getExistingRecord(gameId, function(err, existing) {
-            if (err) {
-                console.error("Error checking existing record:", err);
-                if (callback) callback(err, null);
-                return;
-            }
-            
-            if (existing && existing.id) {
-                // UPDATE existing record
-                console.log("Updating existing archive record:", existing.id);
+        var docId = getHistoryDocId(gameId);
+        
+        // Check if record already exists
+        firebase.firestore().collection(COLLECTION).doc(docId).get()
+            .then(function(doc) {
+                var isUpdate = doc.exists;
                 
-                var updateData = {
-                    status: "pending_handicap",
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    finalResults: {
-                        teamAScore: finalScores.teamA,
-                        teamBScore: finalScores.teamB,
-                        winner: finalScores.teamA > finalScores.teamB ? "A" : (finalScores.teamB > finalScores.teamA ? "B" : "Tie"),
-                        winnerText: finalScores.teamA > finalScores.teamB ? "Team A Wins!" : (finalScores.teamB > finalScores.teamA ? "Team B Wins!" : "Tie Game!")
-                    },
-                    signatures: {
-                        f1: {
-                            signed: signatures.f1?.signed === true,
-                            signedAt: signatures.f1?.signedAt || null,
-                            captainName: signatures.f1?.captainName || null
+                if (isUpdate) {
+                    // UPDATE existing record
+                    console.log("Updating existing archive record:", docId);
+                    
+                    var updateData = {
+                        status: "pending_handicap",
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        finalResults: {
+                            teamAScore: finalScores.teamA,
+                            teamBScore: finalScores.teamB,
+                            winner: finalScores.teamA > finalScores.teamB ? "A" : (finalScores.teamB > finalScores.teamA ? "B" : "Tie"),
+                            winnerText: finalScores.teamA > finalScores.teamB ? "Team A Wins!" : (finalScores.teamB > finalScores.teamA ? "Team B Wins!" : "Tie Game!")
                         },
-                        f2: {
-                            signed: signatures.f2?.signed === true,
-                            signedAt: signatures.f2?.signedAt || null,
-                            captainName: signatures.f2?.captainName || null
-                        }
-                    },
-                    // Store data strings directly - NO conversion
-                    f1DataString: flight1DataString || "",
-                    f2DataString: flight2DataString || "",
-                    results: results
-                };
-                
-                firebase.firestore().collection(COLLECTION).doc(existing.id).update(updateData)
-                    .then(function() {
-                        console.log("Archive record updated:", existing.id);
-                        if (callback) callback(null, existing.id);
-                    })
-                    .catch(function(err) {
-                        console.error("Error updating archive record:", err);
-                        if (callback) callback(err, null);
-                    });
-                
-            } else {
-                // CREATE new record
-                console.log("Creating new archive record for game:", gameId);
-                
-                var winner = "Tie";
-                var winnerText = "Tie Game!";
-                if (finalScores.teamA > finalScores.teamB) {
-                    winner = "A";
-                    winnerText = "Team A Wins!";
-                } else if (finalScores.teamB > finalScores.teamA) {
-                    winner = "B";
-                    winnerText = "Team B Wins!";
-                }
-                
-                // NEW v3.01: Store starting handicaps for all players
-                var playersWithStartingHcp = gameData.players.map(function(p) {
-                    return {
-                        name: p.name,
-                        label: p.label,
-                        handicap: p.handicap,  // STARTING handicap at game time
-                        team: p.team,
-                        flight: p.flight
+                        signatures: {
+                            f1: {
+                                signed: signatures.f1?.signed === true,
+                                signedAt: signatures.f1?.signedAt || null,
+                                captainName: signatures.f1?.captainName || null
+                            },
+                            f2: {
+                                signed: signatures.f2?.signed === true,
+                                signedAt: signatures.f2?.signedAt || null,
+                                captainName: signatures.f2?.captainName || null
+                            }
+                        },
+                        // Store data strings directly - NO conversion
+                        f1DataString: flight1DataString || "",
+                        f2DataString: flight2DataString || "",
+                        results: results
                     };
-                });
-                
-                var archiveData = {
-                    originalGameId: gameId,
-                    completedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    status: "pending_handicap",
-                    version: 3,
-                    schema: "v3_strings",
                     
-                    gameInfo: {
-                        date: gameData.date,
-                        course: {
-                            name: gameData.course.name,
-                            id: gameData.course.id,
-                            par: gameData.course.par,
-                            si: gameData.course.si
-                        },
-                        startingHole: gameData.startingHole || 1,
-                        teamGameFormat: gameData.teamGameFormat || "tournament"
-                    },
+                    return firebase.firestore().collection(COLLECTION).doc(docId).update(updateData)
+                        .then(function() {
+                            console.log("Archive record updated:", docId);
+                            if (callback) callback(null, docId);
+                        });
                     
-                    // Store players with their STARTING handicaps
-                    players: playersWithStartingHcp,
+                } else {
+                    // CREATE new record
+                    console.log("Creating new archive record for game:", gameId, "with ID:", docId);
                     
-                    finalResults: {
-                        teamAScore: finalScores.teamA,
-                        teamBScore: finalScores.teamB,
-                        winner: winner,
-                        winnerText: winnerText
-                    },
+                    var winner = "Tie";
+                    var winnerText = "Tie Game!";
+                    if (finalScores.teamA > finalScores.teamB) {
+                        winner = "A";
+                        winnerText = "Team A Wins!";
+                    } else if (finalScores.teamB > finalScores.teamA) {
+                        winner = "B";
+                        winnerText = "Team B Wins!";
+                    }
                     
-                    signatures: {
-                        f1: {
-                            signed: signatures.f1?.signed === true,
-                            signedAt: signatures.f1?.signedAt || null,
-                            captainName: signatures.f1?.captainName || null
-                        },
-                        f2: {
-                            signed: signatures.f2?.signed === true,
-                            signedAt: signatures.f2?.signedAt || null,
-                            captainName: signatures.f2?.captainName || null
-                        }
-                    },
-                    
-                    // Store data strings directly - NO conversion needed
-                    f1DataString: flight1DataString || "",
-                    f2DataString: flight2DataString || "",
-                    results: results,
-                    
-                    // NEW v3.01: Placeholder for handicap adjustment (to be filled later)
-                    adjustedHandicaps: null,
-                    
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                };
-                
-                try {
-                    var docRef = firebase.firestore().collection(COLLECTION).doc();
-                    archiveData.archiveId = docRef.id;
-                    
-                    docRef.set(archiveData).then(function() {
-                        console.log("New archive record created:", docRef.id);
-                        if (callback) callback(null, docRef.id);
-                    }).catch(function(err) {
-                        console.error("Error creating archive record:", err);
-                        if (callback) callback(err, null);
+                    // Store starting handicaps for all players
+                    var playersWithStartingHcp = gameData.players.map(function(p) {
+                        return {
+                            name: p.name,
+                            label: p.label,
+                            handicap: p.handicap,  // STARTING handicap at game time
+                            team: p.team,
+                            flight: p.flight
+                        };
                     });
-                } catch (err) {
-                    console.error("Exception creating archive record:", err);
-                    if (callback) callback(err, null);
+                    
+                    var archiveData = {
+                        originalGameId: gameId,
+                        completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        status: "pending_handicap",
+                        version: 3,
+                        schema: "v3_strings",
+                        
+                        gameInfo: {
+                            date: gameData.date,
+                            course: {
+                                name: gameData.course.name,
+                                id: gameData.course.id,
+                                par: gameData.course.par,
+                                si: gameData.course.si
+                            },
+                            startingHole: gameData.startingHole || 1,
+                            teamGameFormat: gameData.teamGameFormat || "tournament"
+                        },
+                        
+                        // Store players with their STARTING handicaps
+                        players: playersWithStartingHcp,
+                        
+                        finalResults: {
+                            teamAScore: finalScores.teamA,
+                            teamBScore: finalScores.teamB,
+                            winner: winner,
+                            winnerText: winnerText
+                        },
+                        
+                        signatures: {
+                            f1: {
+                                signed: signatures.f1?.signed === true,
+                                signedAt: signatures.f1?.signedAt || null,
+                                captainName: signatures.f1?.captainName || null
+                            },
+                            f2: {
+                                signed: signatures.f2?.signed === true,
+                                signedAt: signatures.f2?.signedAt || null,
+                                captainName: signatures.f2?.captainName || null
+                            }
+                        },
+                        
+                        // Store data strings directly - NO conversion needed
+                        f1DataString: flight1DataString || "",
+                        f2DataString: flight2DataString || "",
+                        results: results,
+                        
+                        // Placeholder for handicap adjustment (to be filled later)
+                        adjustedHandicaps: null,
+                        
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        archiveId: docId
+                    };
+                    
+                    return firebase.firestore().collection(COLLECTION).doc(docId).set(archiveData)
+                        .then(function() {
+                            console.log("New archive record created:", docId);
+                            if (callback) callback(null, docId);
+                        });
                 }
-            }
-        });
+            })
+            .catch(function(err) {
+                console.error("Error in upsertPendingRecord:", err);
+                if (callback) callback(err, null);
+            });
     }
     
     // ============================================================
     // Update with handicap adjustment (mark as completed)
-    // NEW v3.01: Stores adjustedHandicaps with starting handicaps
     // ============================================================
     
     function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
@@ -215,7 +234,7 @@ var HistoryRecord = (function() {
             return;
         }
         
-        // NEW v3.01: Build complete adjustedHandicaps record
+        // Build complete adjustedHandicaps record
         var adjustedHandicaps = {
             calculatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             anchor: handicapData.anchor,
@@ -338,7 +357,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // Get by original game ID
+    // Get by original game ID (using fixed ID format)
     // ============================================================
     
     function getArchivedGameByOriginalId(originalGameId, callback) {
@@ -347,16 +366,14 @@ var HistoryRecord = (function() {
             return;
         }
         
-        firebase.firestore().collection(COLLECTION)
-            .where("originalGameId", "==", originalGameId)
-            .limit(1)
-            .get()
-            .then(function(snapshot) {
-                if (snapshot.empty) {
-                    callback("No archive found for this game", null);
-                } else {
-                    var doc = snapshot.docs[0];
+        var docId = getHistoryDocId(originalGameId);
+        
+        firebase.firestore().collection(COLLECTION).doc(docId).get()
+            .then(function(doc) {
+                if (doc.exists) {
                     callback(null, { id: doc.id, data: doc.data() });
+                } else {
+                    callback("No archive found for this game", null);
                 }
             })
             .catch(function(err) {
@@ -387,7 +404,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // NEW v3.01: Get stored adjustedHandicaps (for history display)
+    // Get stored adjustedHandicaps (for history display)
     // ============================================================
     
     function getAdjustedHandicaps(archiveId, callback) {
@@ -424,24 +441,26 @@ var HistoryRecord = (function() {
         getArchivedGames: getArchivedGames,
         getArchivedGameByOriginalId: getArchivedGameByOriginalId,
         getExistingRecord: getExistingRecord,
+        recordExists: recordExists,
         deleteArchiveRecord: deleteArchiveRecord,
-        getAdjustedHandicaps: getAdjustedHandicaps  // NEW v3.01
+        getAdjustedHandicaps: getAdjustedHandicaps,
+        getHistoryDocId: getHistoryDocId
     };
     
 })();
 
 /*
 FILE: js/history-record.js
-VERSION: 3.01
-KEY CHANGES:
-   - ADDED: adjustedHandicaps field permanently stored in archive record
-   - Stores starting handicap for each player at game time
-   - Stores anchorAdj, perfAdj, finalHcp after handicap adjustment
-   - Prevents future recalculation errors (handicap changes over time)
-   - Archive now has complete immutable handicap adjustment record
-   - Backward compatible: reads existing records without adjustedHandicaps
-   - Added getAdjustedHandicaps() for easy retrieval
-   - All existing functionality preserved from v3.00
+VERSION: 3.02
+KEY CHANGES from v3.01:
+   - CHANGED: Now uses FIXED document ID = gameId + "_H" instead of auto-generated ID
+   - ADDED: getHistoryDocId() function for consistent ID generation
+   - ADDED: recordExists() function for checking existence
+   - ADDED: Existence check before create/update (prevents duplicate records)
+   - CREATE: If record doesn't exist, create with fixed ID (gameId_H)
+   - UPDATE: If record exists, update in place (no duplicate)
+   - ELIMINATES: Multiple duplicate history records for same game
+   - All existing functionality preserved (handicap data, upsert logic, etc.)
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
