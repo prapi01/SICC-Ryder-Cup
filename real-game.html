@@ -1,12 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 5.26
-KEY CHANGES from v5.25:
-   - REMOVED ALL MERGING of clinchedAt data
-   - Cascade now DIRECTLY OVERWRITES clinchedAt with current truth
-   - No preservation of old/wrong data in Firestore or cache
-   - Cache and Firestore both get direct assignment from cascade results
-   - Version exposure via window.REAL_GAME_VERSION for console debugging
+VERSION: 5.27
+KEY CHANGES from v5.26:
+   - REPLACED inline clinch detection with GameMatch.calculateClinch()
+   - REPLACED direct overwrite with GameMatch.updateClinchedAt() (smart merge)
+   - REPLACED bubble clinch lookup with GameMatch.getClinchHole()
+   - Now preserves clinches from holes < cascadeStartHole when cascade restarts
+   - Smart list structure: each clinch entry now stores metadata (winner, lead, timestamp, device)
+   - Backward compatible with old flat clinch format for bubble display
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -395,13 +397,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.26</div>
+<div class="version-tag">v5.27</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.26";
+window.REAL_GAME_VERSION = "5.27";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -687,7 +689,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS
+// BUBBLE FUNCTIONS - UPDATED v5.27: Uses GameMatch.getClinchHole()
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -703,9 +705,8 @@ function getBubbleClassWithClinch(player, opponent) {
     var lastSyncedHole = cache.lastSyncedHole;
     var clinchedAt = cache.clinchedAt || {};
     
-    var matchKey1 = player.name + "_vs_" + opponent.name;
-    var matchKey2 = opponent.name + "_vs_" + player.name;
-    var clinchHole = clinchedAt[matchKey1] || clinchedAt[matchKey2];
+    // FIXED v5.27: Use GameMatch.getClinchHole() for smart list support
+    var clinchHole = GameMatch.getClinchHole(clinchedAt, player.name, opponent.name);
     
     if (player.flight === opponent.flight) {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
@@ -923,14 +924,16 @@ function performSave() {
                 
                 var cache = GameLoader.getLocalCache();
                 var existingClinched = cache.results?.clinchedAt || {};
-                var cumulativeClinched = { ...existingClinched };
                 var cumulativeFlight1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole || null;
                 var cumulativeFlight2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole || null;
                 
-                var result = await saveResultsToFirestoreWithCumulative(currentHole, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
-                cumulativeClinched = result.updatedClinched;
-                cumulativeFlight1ClinchedHole = result.updatedFlight1ClinchedHole;
-                cumulativeFlight2ClinchedHole = result.updatedFlight2ClinchedHole;
+                // FIXED v5.27: Determine cascade start hole (the hole being saved)
+                var cascadeStartHole = currentHole;
+                
+                var result = await saveResultsToFirestoreWithCumulative(currentHole, existingClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole);
+                var updatedClinched = result.updatedClinched;
+                var updatedFlight1ClinchedHole = result.updatedFlight1ClinchedHole;
+                var updatedFlight2ClinchedHole = result.updatedFlight2ClinchedHole;
                 
                 var playOrder = getPlayOrder();
                 var startPos = playOrder.indexOf(currentHole);
@@ -944,10 +947,10 @@ function performSave() {
                         });
                     });
                     
-                    var loopResult = await saveResultsToFirestoreWithCumulative(holeToUpdate, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
-                    cumulativeClinched = loopResult.updatedClinched;
-                    cumulativeFlight1ClinchedHole = loopResult.updatedFlight1ClinchedHole;
-                    cumulativeFlight2ClinchedHole = loopResult.updatedFlight2ClinchedHole;
+                    var loopResult = await saveResultsToFirestoreWithCumulative(holeToUpdate, updatedClinched, updatedFlight1ClinchedHole, updatedFlight2ClinchedHole, cascadeStartHole);
+                    updatedClinched = loopResult.updatedClinched;
+                    updatedFlight1ClinchedHole = loopResult.updatedFlight1ClinchedHole;
+                    updatedFlight2ClinchedHole = loopResult.updatedFlight2ClinchedHole;
                 }
                 
                 if (typeof Ticker !== 'undefined') {
@@ -1137,7 +1140,8 @@ function calculatePlayerTotals(upToHole) {
     return playerTotals;
 }
 
-function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole) {
+// FIXED v5.27: UPDATED to use GameMatch.calculateClinch() and GameMatch.updateClinchedAt()
+function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
     var cache = GameLoader.getLocalCache();
     var position = getHolePosition(holeNumber);
     var f1Hole = cache.flight1Data[holeNumber];
@@ -1274,29 +1278,33 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // CASCADE IS SOURCE OF TRUTH - DIRECT OVERWRITE, NO MERGE
+        // FIXED v5.27: Use GameMatch.calculateClinch() for each match
         var clinchedAtUpdates = {};
+        var deviceId = SessionManager.getDeviceIdDisplay();
+        var cascadeVersion = window.REAL_GAME_VERSION || "5.27";
+        
         for (var a = 0; a < teamAPlayers.length; a++) {
             for (var b = 0; b < teamBPlayers.length; b++) {
                 var matchValue = matchResultsArray[a * teamBPlayers.length + b];
-                var lead = Math.abs(matchValue);
-                if (lead > remainingHolesCross && matchValue !== 0) {
-                    var winner, loser;
-                    if (matchValue > 0) {
-                        winner = teamAPlayers[a].name;
-                        loser = teamBPlayers[b].name;
-                    } else {
-                        winner = teamBPlayers[b].name;
-                        loser = teamAPlayers[a].name;
-                    }
-                    clinchedAtUpdates[winner + "_vs_" + loser] = holeNumber;
+                var winnerName = teamAPlayers[a].name;
+                var loserName = teamBPlayers[b].name;
+                
+                var clinchResult = GameMatch.calculateClinch(
+                    matchValue, remainingHolesCross, winnerName, loserName, 
+                    holeNumber, deviceId, cascadeVersion
+                );
+                
+                if (clinchResult) {
+                    clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
                 }
             }
         }
         
         result.clinchedAtUpdates = clinchedAtUpdates;
-        // DIRECT OVERWRITE - cascade calculated the complete truth
-        result.updatedClinched = clinchedAtUpdates;
+        
+        // FIXED v5.27: Use GameMatch.updateClinchedAt() for smart merge
+        // This preserves entries from holes < cascadeStartHole
+        result.updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole);
     }
     
     result.updatedFlight1ClinchedHole = result.flight1ClinchedHole;
@@ -1305,8 +1313,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     return result;
 }
 
-async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole) {
-    var resultsData = calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole);
+async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
+    var resultsData = calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole);
     if (!resultsData) {
         return {
             updatedClinched: cumulativeClinched,
@@ -1358,9 +1366,11 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
     updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
     
-    // CASCADE IS SOURCE OF TRUTH - DIRECT OVERWRITE, NO MERGE
+    // FIXED v5.27: Direct assign - already smart merged in calculateHoleResultsWithCumulative
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
-        updatePayload["results.clinchedAt"] = resultsData.clinchedAtUpdates;
+        updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
+    } else if (cumulativeClinched && Object.keys(cumulativeClinched).length > 0) {
+        updatePayload["results.clinchedAt"] = cumulativeClinched;
     }
     
     if (position + 1 > (GameLoader.getLocalCache().results?.computedUpToHole || 0)) {
@@ -1423,9 +1433,9 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
             cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
         }
         
-        // CASCADE IS SOURCE OF TRUTH - DIRECT OVERWRITE IN CACHE
+        // FIXED v5.27: Direct assign - already smart merged
         if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
-            cache.results.clinchedAt = resultsData.clinchedAtUpdates;
+            cache.results.clinchedAt = resultsData.updatedClinched;
         }
         
         if (position + 1 > cache.results.computedUpToHole) cache.results.computedUpToHole = position + 1;
@@ -1882,13 +1892,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.26
-KEY CHANGES from v5.25:
-   - REMOVED ALL MERGING of clinchedAt data
-   - Cascade now DIRECTLY OVERWRITES clinchedAt with current truth
-   - No preservation of old/wrong data in Firestore or cache
-   - Cache and Firestore both get direct assignment from cascade results
-   - Version exposure via window.REAL_GAME_VERSION for console debugging
+VERSION: 5.27
+KEY CHANGES from v5.26:
+   - REPLACED inline clinch detection with GameMatch.calculateClinch()
+   - REPLACED direct overwrite with GameMatch.updateClinchedAt() (smart merge)
+   - REPLACED bubble clinch lookup with GameMatch.getClinchHole()
+   - Now preserves clinches from holes < cascadeStartHole when cascade restarts
+   - Smart list structure: each clinch entry now stores metadata (winner, lead, timestamp, device)
+   - Backward compatible with old flat clinch format for bubble display
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
