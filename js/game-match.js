@@ -1,19 +1,20 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.00
-KEY CHANGES:
-   - Added calculateIntraFlight() for intra-flight matches (A vs B within same flight)
-   - Added calculateCrossFlight() for cross-flight matches (Flight 1 vs Flight 2)
-   - Both functions accept 'upToHole' parameter to calculate results only up to a specific hole
-   - Preserved existing calculate() function for backward compatibility
-   - Full handicap difference method for all matches
-STATUS: Ready for integration with real-game.html v2.00
+VERSION: 2.01
+KEY CHANGES from v2.00:
+   - ADDED: calculateClinch() - determines if a match clinches at current hole
+   - ADDED: updateClinchedAt() - smart merge preserving entries from holes < cascadeStartHole
+   - ADDED: getClinchHole() - reads clinch hole for bubble display (handles both old/new format)
+   - ADDED: filterClinchedByHole() - removes entries from holes >= cascadeStartHole
+   - All existing functions unchanged (calculateIntraFlight, calculateCrossFlight, etc.)
+DEPENDS ON: None (pure calculation)
+STATUS: Ready for integration
 */
 
-// FILE: js/game-match.js - VERSION 2.00
+// FILE: js/game-match.js - VERSION 2.01
 // Game 1: Match Play (16 points)
 // Full handicap difference method
-// NOW WITH upToHole support for IB and XB
+// NOW WITH smart clinch list management
 
 var GameMatch = (function() {
     
@@ -257,6 +258,104 @@ var GameMatch = (function() {
         return results;
     }
     
+    // ============================================================
+    // NEW v2.01: Smart Clinch List Functions
+    // ============================================================
+    
+    // Calculate if a match clinches at the current hole
+    // Returns: { matchKey, clinchData } or null if not clinched
+    function calculateClinch(matchValue, remainingHoles, winnerName, loserName, currentHole, deviceId, cascadeVersion) {
+        var lead = Math.abs(matchValue);
+        if (lead > remainingHoles && matchValue !== 0) {
+            // Determine winner based on matchValue sign
+            var actualWinner = (matchValue > 0) ? winnerName : loserName;
+            var actualLoser = (matchValue > 0) ? loserName : winnerName;
+            
+            return {
+                matchKey: actualWinner + "_vs_" + actualLoser,
+                clinchData: {
+                    clinchedAtHole: currentHole,
+                    winner: actualWinner,
+                    loser: actualLoser,
+                    leadAtClinch: lead,
+                    remainingHolesAtClinch: remainingHoles,
+                    recordedAt: new Date().toISOString(),
+                    recordedByDevice: deviceId || "unknown",
+                    cascadeVersion: cascadeVersion || "2.01"
+                }
+            };
+        }
+        return null;
+    }
+    
+    // Filter clinchedAt to keep only entries from holes BEFORE cascadeStartHole
+    // This is used when cascade starts at a hole > 1
+    function filterClinchedByHole(clinchedAt, cascadeStartHole) {
+        if (!clinchedAt) return {};
+        if (cascadeStartHole <= 1) return clinchedAt;
+        
+        var filtered = {};
+        for (var matchKey in clinchedAt) {
+            var entry = clinchedAt[matchKey];
+            // Handle both old format (number) and new format (object)
+            var entryHole = (typeof entry === 'number') ? entry : entry.clinchedAtHole;
+            if (entryHole < cascadeStartHole) {
+                filtered[matchKey] = entry;
+            }
+        }
+        return filtered;
+    }
+    
+    // Update clinchedAt with new clinch data (smart merge)
+    // Preserves entries from holes < cascadeStartHole
+    // Overwrites/adds new clinch data
+    function updateClinchedAt(existingClinched, newClinchData, cascadeStartHole) {
+        // Start with filtered existing (keep only entries from holes < cascadeStartHole)
+        var updated = filterClinchedByHole(existingClinched, cascadeStartHole);
+        
+        // Add/overwrite with new clinch data
+        for (var matchKey in newClinchData) {
+            updated[matchKey] = newClinchData[matchKey];
+        }
+        
+        return updated;
+    }
+    
+    // Get clinch hole for bubble display (handles both old format and new smart format)
+    function getClinchHole(clinchedAt, playerName, opponentName) {
+        if (!clinchedAt) return null;
+        
+        var matchKey1 = playerName + "_vs_" + opponentName;
+        var matchKey2 = opponentName + "_vs_" + playerName;
+        
+        var entry = clinchedAt[matchKey1] || clinchedAt[matchKey2];
+        
+        if (!entry) return null;
+        
+        // Old format: direct number
+        if (typeof entry === 'number') return entry;
+        
+        // New smart format: object with clinchedAtHole property
+        if (typeof entry === 'object' && entry.clinchedAtHole) return entry.clinchedAtHole;
+        
+        return null;
+    }
+    
+    // Get the winner name from clinch entry (for debugging/audit)
+    function getClinchWinner(clinchedAt, playerName, opponentName) {
+        if (!clinchedAt) return null;
+        
+        var matchKey1 = playerName + "_vs_" + opponentName;
+        var matchKey2 = opponentName + "_vs_" + playerName;
+        
+        var entry = clinchedAt[matchKey1] || clinchedAt[matchKey2];
+        
+        if (!entry) return null;
+        if (typeof entry === 'number') return null; // Old format has no winner info
+        
+        return entry.winner;
+    }
+    
     // Legacy: Calculate cross-flight matches (backward compatible)
     function calculate(allPlayers, flight1Data, flight2Data, courseSi, startingHole) {
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
@@ -307,6 +406,13 @@ var GameMatch = (function() {
         calculateIntraFlight: calculateIntraFlight,
         calculateCrossFlight: calculateCrossFlight,
         
+        // NEW v2.01: Smart Clinch List API
+        calculateClinch: calculateClinch,
+        filterClinchedByHole: filterClinchedByHole,
+        updateClinchedAt: updateClinchedAt,
+        getClinchHole: getClinchHole,
+        getClinchWinner: getClinchWinner,
+        
         // Legacy (backward compatible)
         calculate: calculate,
         calculatePoints: calculatePoints
@@ -315,13 +421,14 @@ var GameMatch = (function() {
 
 /*
 FILE: js/game-match.js
-VERSION: 2.00
-KEY CHANGES:
-   - Added calculateIntraFlight() for intra-flight matches (A vs B within same flight)
-   - Added calculateCrossFlight() for cross-flight matches (Flight 1 vs Flight 2)
-   - Both functions accept 'upToHole' parameter to calculate results only up to a specific hole
-   - Returns results as object: { "PlayerA_vs_PlayerB": result, ... }
-   - Preserved existing calculate() function for backward compatibility
-   - Full handicap difference method for all matches
-STATUS: Ready for integration with real-game.html v2.00
+VERSION: 2.01
+KEY CHANGES from v2.00:
+   - ADDED: calculateClinch() - determines if a match clinches at current hole
+   - ADDED: updateClinchedAt() - smart merge preserving entries from holes < cascadeStartHole
+   - ADDED: getClinchHole() - reads clinch hole for bubble display (handles both old/new format)
+   - ADDED: filterClinchedByHole() - removes entries from holes >= cascadeStartHole
+   - ADDED: getClinchWinner() - returns winner name from clinch entry
+   - All existing functions unchanged (calculateIntraFlight, calculateCrossFlight, etc.)
+DEPENDS ON: None (pure calculation)
+STATUS: Ready for integration
 */
