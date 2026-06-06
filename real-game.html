@@ -1,15 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 5.43
-KEY CHANGES from v5.42:
-   - UPDATED: calculateHoleResultsWithCumulative() now passes isCascadeStartHole to GameMatch.updateClinchedAt()
-   - isCascadeStartHole = (holeNumber === cascadeStartHole)
-   - This ensures filtering only happens at the cascade start hole
-   - For subsequent holes, no filtering is applied, preserving clinches from earlier in the cascade
-   - This fixes the issue where H12 clinch was being discarded at H13, H14, H15
-   - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.12+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for testing - fixes cascade filtering
+VERSION: 5.44
+KEY CHANGES from v5.43:
+   - ADDED: Debug logging for computedUpToHole updates in saveResultsToFirestoreWithCumulative()
+   - Logs current computedUpToHole, newComputedUpToHole, and condition result
+   - Logs when computedUpToHole is being written to Firestore
+   - Helps diagnose why computedUpToHole is not updating correctly
+   - No functional changes to game logic
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+STATUS: Debug version - tracking computedUpToHole updates
 -->
 
 <!DOCTYPE html>
@@ -396,13 +395,13 @@ STATUS: Ready for testing - fixes cascade filtering
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.43</div>
+<div class="version-tag">v5.44</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.43";
+window.REAL_GAME_VERSION = "5.44";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -588,16 +587,31 @@ async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
         updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
     }
     
+    // DEBUG: Log computedUpToHole update
     var newComputedUpToHole = position + 1;
-    if (newComputedUpToHole > (cache.results.computedUpToHole || 0)) {
+    var currentComputedUpToHole = cache.results.computedUpToHole || 0;
+    console.log(`[COMPUTED-DEBUG] Hole ${holeNumber}: position=${position}, newComputedUpToHole=${newComputedUpToHole}, currentComputedUpToHole=${currentComputedUpToHole}`);
+    
+    if (newComputedUpToHole > currentComputedUpToHole) {
         updatePayload["results.computedUpToHole"] = newComputedUpToHole;
+        console.log(`[COMPUTED-DEBUG] UPDATING computedUpToHole to ${newComputedUpToHole}`);
+    } else {
+        console.log(`[COMPUTED-DEBUG] NOT updating computedUpToHole (${newComputedUpToHole} <= ${currentComputedUpToHole})`);
     }
     
     var now = new Date().toISOString();
     updatePayload["results.lastComputedAt"] = now;
     updatePayload["results.playerTotals"] = cache.results.playerTotals;
     
-    await db.collection("scheduledGames").doc(gameId).update(updatePayload);
+    console.log(`[COMPUTED-DEBUG] updatePayload keys:`, Object.keys(updatePayload));
+    
+    try {
+        await db.collection("scheduledGames").doc(gameId).update(updatePayload);
+        console.log(`[CASCADE-DEBUG] Results saved successfully for hole ${holeNumber}`);
+    } catch (error) {
+        console.error('Error saving results:', error);
+    }
+    
     return true;
 }
 
@@ -1213,6 +1227,7 @@ function updateLocalCacheWithResults(resultsData) {
     var newComputedUpToHole = position + 1;
     if (newComputedUpToHole > (cache.results.computedUpToHole || 0)) {
         cache.results.computedUpToHole = newComputedUpToHole;
+        console.log(`[COMPUTED-DEBUG] Local cache computedUpToHole updated to ${newComputedUpToHole}`);
     }
     
     // Update player totals
@@ -1441,7 +1456,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.43";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.44";
     
     console.log(`[CASCADE-DEBUG] calculateHoleResultsWithCumulative: hole=${holeNumber}, remainingHoles=${remainingHoles}, existingClinched count=${Object.keys(cumulativeClinched).length}`);
     
@@ -2044,14 +2059,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.43
-KEY CHANGES from v5.42:
-   - UPDATED: calculateHoleResultsWithCumulative() now passes isCascadeStartHole to GameMatch.updateClinchedAt()
-   - isCascadeStartHole = (holeNumber === cascadeStartHole)
-   - This ensures filtering only happens at the cascade start hole
-   - For subsequent holes, no filtering is applied, preserving clinches from earlier in the cascade
-   - This fixes the issue where H12 clinch was being discarded at H13, H14, H15
-   - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.12+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for testing - fixes cascade filtering
+VERSION: 5.44
+KEY CHANGES from v5.43:
+   - ADDED: Debug logging for computedUpToHole updates in saveResultsToFirestoreWithCumulative()
+   - Logs current computedUpToHole, newComputedUpToHole, and condition result
+   - Logs when computedUpToHole is being written to Firestore
+   - Added local cache computedUpToHole update logging
+   - Helps diagnose why computedUpToHole is not updating correctly
+   - No functional changes to game logic
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+STATUS: Debug version - tracking computedUpToHole updates
 -->
