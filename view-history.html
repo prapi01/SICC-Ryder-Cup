@@ -1,11 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.07
-KEY CHANGES from v8.06:
-   - REMOVED: Local renderCompactHeader() override (was causing unstyled buttons)
-   - NOW USES: GameUI.renderCompactHeader() with proper parameters
-   - Control bar buttons now use inline styles from game-ui.js v5.01
-   - Flight toggle and navigation now work correctly with GameUI
+VERSION: 8.08
+KEY CHANGES from v8.07:
+   - FIXED: Initial hole detection now finds first saved hole (not first in play order)
+   - FIXED: Control bar hole number now syncs with actual displayed hole
+   - FIXED: Flight toggle preserves current hole number
+   - FIXED: Navigation buttons now work correctly with archived data
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
@@ -322,13 +322,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.07</div>
+<div class="version-tag">v8.08</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.07";
+window.VIEW_HISTORY_VERSION = "8.08";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -454,7 +454,6 @@ function renderScorecardView(game) {
         <div class="ticker-container" id="tickerContainer">
             <div class="ticker-content" id="tickerContent">&nbsp;</div>
         </div>
-        <div class="status-bubble" id="statusBubble">ARCHIVE</div>
         <div style="text-align:center; margin-bottom:8px;" id="courseName">${escapeHtml(courseName)}</div>
         <div id="holeHeader"></div>
         <div id="flightTab" class="flight-tab"></div>
@@ -474,9 +473,7 @@ function renderScorecardView(game) {
     GameUI.applyTightLayout();
     GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
     
-    var currentFlight = 1;
-    var currentHole = 1;
-    
+    // Helper functions for data access
     function getPlayOrder() {
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
@@ -559,7 +556,7 @@ function renderScorecardView(game) {
         var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
         var clinchedAt = resultsCache?.clinchedAt || {};
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
-        var lastSyncedHole = resultsCache?.computedUpToHole || 0;
+        var lastSyncedHole = resultsCache?.computedUpToHole || 18;
         
         return GameMatch.getMatchBubbleClass(
             matchValue, clinchedAt, player, opponent, currentHole,
@@ -593,6 +590,7 @@ function renderScorecardView(game) {
         }
     }
     
+    // Navigation functions
     function nextHole() {
         var playOrder = getPlayOrder();
         var currentIndex = playOrder.indexOf(currentHole);
@@ -625,26 +623,16 @@ function renderScorecardView(game) {
         renderDetailView();
     }
     
-    // ============================================================
-    // Control Bar - NOW USING GameUI.renderCompactHeader()
-    // ============================================================
-    
-    // Global variables for GameUI callbacks
-    var globalPrevHole = prevHole;
-    var globalNextHole = nextHole;
-    var globalToggleFlight = onToggleFlight;
-    
+    // Render functions
     function renderCompactHeader() {
-        // Use GameUI's renderCompactHeader with the correct parameters
-        // Parameters: containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay
         GameUI.renderCompactHeader(
             "compactHeaderContainer",
             currentFlight,
             currentHole,
             null,           // onSave (no save button in viewer)
-            globalPrevHole,
-            globalNextHole,
-            globalToggleFlight,
+            prevHole,
+            nextHole,
+            onToggleFlight,
             null            // onToggleDisplay (handled by P/N button in GameUI)
         );
     }
@@ -704,21 +692,37 @@ function renderScorecardView(game) {
         if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
+    // ============================================================
+    // FIXED: Initial hole detection - find first saved hole
+    // ============================================================
+    
     var playOrder = [];
     for (var i = startingHole; i <= 18; i++) playOrder.push(i);
     for (var i = 1; i < startingHole; i++) playOrder.push(i);
-    currentHole = playOrder[0];
-    currentFlight = 1;
+    
+    // Find first hole that has saved data for at least one flight
+    var startHole = playOrder[0];
+    for (var i = 0; i < playOrder.length; i++) {
+        var hole = playOrder[i];
+        if (isHoleSaved(1, hole) || isHoleSaved(2, hole)) {
+            startHole = hole;
+            break;
+        }
+    }
+    
+    var currentHole = startHole;
+    var currentFlight = 1;
+    
+    console.log('Initial hole set to:', currentHole, '(first hole with saved data)');
+    
+    // Update UI to match
+    GameUI.updateCompactHoleDisplay(currentHole);
+    GameUI.updateHoleHeaderNumber(currentHole);
     
     renderCompactHeader();
     initTicker();
     renderDetailView();
     GameUI.renderBottomMenu("bottomMenuContainer", null);
-    
-    var statusBubble = document.getElementById('statusBubble');
-    if (statusBubble) {
-        statusBubble.onclick = function() { location.reload(); };
-    }
     
     detailContent.classList.add('data-ready');
 }
@@ -890,12 +894,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.07
-KEY CHANGES from v8.06:
-   - REMOVED: Local renderCompactHeader() override (was causing unstyled buttons)
-   - NOW USES: GameUI.renderCompactHeader() with proper parameters
-   - Control bar buttons now use inline styles from game-ui.js v5.01
-   - Flight toggle and navigation now work correctly with GameUI
+VERSION: 8.08
+KEY CHANGES from v8.07:
+   - FIXED: Initial hole detection now finds first saved hole (not first in play order)
+   - FIXED: Control bar hole number now syncs with actual displayed hole
+   - FIXED: Flight toggle preserves current hole number
+   - FIXED: Navigation buttons now work correctly with archived data
+   - REMOVED: Status bubble (no longer needed for archive view)
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
