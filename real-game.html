@@ -1117,6 +1117,12 @@ function calculatePlayerTotals(upToHole) {
     return playerTotals;
 }
 
+// Helper: Get hole number at a given position (0-based)
+function getHoleAtPosition(position) {
+    var playOrder = getPlayOrder();
+    return playOrder[position];
+}
+
 // ============================================================
 // REFACTORED v5.33: Uses GameTeam.calculateWithClinched() for team game results
 // This moves clinch detection INSIDE game-team.js for consistency
@@ -1317,12 +1323,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     return result;
 }
 
-// Helper: Get hole number at a given position (0-based)
-function getHoleAtPosition(position) {
-    var playOrder = getPlayOrder();
-    return playOrder[position];
-}
-
 // ============================================================
 // FIXED v5.31: ALL problematic fields use sparse dot notation
 // ============================================================
@@ -1480,21 +1480,436 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
 }
 
 // ============================================================
-// Real-time Firestore Listener, Navigation, Modal Functions, Render Functions
-// (All unchanged from v5.32 - omitted for brevity but identical)
+// Real-time Firestore Listener
 // ============================================================
 
-// [The remaining functions - setupRealtimeListener, nextHole, prevHole, 
-//  updateHoleNumberDisplay, onToggleFlight, showSignCardModal, showWaitingScreen,
-//  hideWaitingScreen, showGameCompleteScreen, createHistoryRecord,
-//  showCelebrationAndHandicap, updatePlayerNamesToShortform, renderAll,
-//  exitToMainMenu, onCacheUpdate, initializeGameData, init - remain identical to v5.32]
+function setupRealtimeListener() {
+    if (!db || !gameId) {
+        console.warn("Cannot setup realtime listener - db or gameId missing");
+        return;
+    }
+    
+    if (firestoreUnsubscribe) {
+        firestoreUnsubscribe();
+        firestoreUnsubscribe = null;
+    }
+    
+    console.log("Setting up realtime Firestore listener for game:", gameId);
+    
+    firestoreUnsubscribe = db.collection("scheduledGames").doc(gameId)
+        .onSnapshot(function(doc) {
+            if (!doc.exists) return;
+            
+            var data = doc.data();
+            var currentCache = GameLoader.getLocalCache();
+            
+            var f1Changed = (currentCache.f1DataString !== data.f1?.d);
+            var f2Changed = (currentCache.f2DataString !== data.f2?.d);
+            var locksChanged = (JSON.stringify(currentCache.locks) !== JSON.stringify(data.locks));
+            var resultsChanged = (JSON.stringify(currentCache.results) !== JSON.stringify(data.results));
+            
+            if (f1Changed || f2Changed || locksChanged || resultsChanged) {
+                console.log("Realtime update detected");
+                
+                GameLoader.loadGame(gameId, "scheduledGames", function(result) {
+                    if (result.success) {
+                        console.log("Cache refreshed from realtime update");
+                        
+                        if (result.cache.course) {
+                            courseName = result.cache.course.name;
+                            coursePar = result.cache.course.par;
+                            courseSi = result.cache.course.si;
+                        }
+                        allPlayers = result.cache.players;
+                        startingHole = result.cache.startingHole;
+                        
+                        if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) {
+                            Ticker.setPlayers(allPlayers);
+                        }
+                        
+                        checkLockOwnership();
+                        renderAll();
+                    } else {
+                        console.warn("Failed to refresh cache from realtime update:", result.error);
+                    }
+                });
+            }
+        }, function(error) {
+            console.warn("Firestore realtime listener error:", error);
+        });
+}
 
-// Note: For brevity, I've omitted the unchanged functions.
-// In the actual deployment, all functions from v5.32 remain exactly as they were,
-// with only calculateHoleResultsWithCumulative and saveResultsToFirestoreWithCumulative
-// updated as shown above.
+// ============================================================
+// Navigation
+// ============================================================
 
+function nextHole() {
+    if (isGameCompleteFlag && !celebrationTriggered) {
+        showCelebrationAndHandicap();
+        return;
+    }
+    
+    if (takeoverDetected) {
+        return;
+    }
+    
+    var isLast = (currentHole === 18);
+    var isSaved = isHoleSaved(editableFlight, currentHole);
+    
+    var hasUnsavedChanges = false;
+    for (var key in localChanges) {
+        if (key.startsWith(editableFlight + "_" + currentHole + "_")) {
+            hasUnsavedChanges = true;
+            break;
+        }
+    }
+    
+    var isCurrentSaved = isSaved && !hasUnsavedChanges;
+    
+    if (isLast && isCurrentSaved) {
+        showSignCardModal();
+        return;
+    }
+    
+    if (!isCurrentSaved) {
+        return;
+    }
+    
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    var nextIndex = (currentIndex + 1) % 18;
+    currentHole = playOrder[nextIndex];
+    
+    updateHoleNumberDisplay();
+    setSaveButtonIdle();
+    renderAll();
+}
+
+function prevHole() {
+    var playOrder = getPlayOrder();
+    var currentIndex = playOrder.indexOf(currentHole);
+    
+    if (currentIndex <= 0) return;
+    
+    var prevIndex = currentIndex - 1;
+    currentHole = playOrder[prevIndex];
+    
+    updateHoleNumberDisplay();
+    setSaveButtonIdle();
+    renderAll();
+}
+
+function updateHoleNumberDisplay() {
+    GameUI.updateCompactHoleDisplay(currentHole);
+    GameUI.updateHoleHeaderNumber(currentHole);
+}
+
+function onToggleFlight(flightNumber) {
+    editableFlight = flightNumber;
+    GameUI.updateFlightBadge(flightNumber);
+    renderAll();
+}
+
+// ============================================================
+// Modal Functions
+// ============================================================
+
+function showSignCardModal() {
+    if (typeof GameUI.ensureNoStuckModals === 'function') GameUI.ensureNoStuckModals();
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="signModalNew">
+            <div class="sign-modal-container">
+                <div class="sign-modal-title">✍️ SIGN SCORECARD</div>
+                <div class="sign-modal-message">Confirm that all scores are correct.</div>
+                <div class="sign-modal-buttons">
+                    <button class="sign-btn-back" id="signBackBtnNew">← BACK</button>
+                    <button class="sign-btn-confirm" id="signConfirmBtnNew">✓ SIGN CARD</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    document.getElementById('signBackBtnNew').onclick = function() { document.getElementById('signModalNew').remove(); };
+    document.getElementById('signConfirmBtnNew').onclick = async function() {
+        document.getElementById('signModalNew').remove();
+        var success = await SignCard.submitSignature(gameId, editableFlight, null, "scheduledGames");
+        if (success) {
+            var cache = GameLoader.getLocalCache();
+            if (editableFlight === 1) cache.signatures.f1 = true;
+            else cache.signatures.f2 = true;
+            if (cache.signatures.f1 && cache.signatures.f2) {
+                await createHistoryRecord();
+                isGameCompleteFlag = true;
+                celebrationTriggered = false;
+                showGameCompleteScreen();
+                renderAll();
+            } else {
+                showWaitingScreen();
+            }
+        } else {
+            alert("Error signing card.");
+        }
+    };
+}
+
+function showWaitingScreen() {
+    if (activeWaitModal) activeWaitModal.remove();
+    var modalHtml = `
+        <div class="modal-overlay" id="waitingModalNew">
+            <div class="waiting-modal-container">
+                <div class="waiting-title">⌛ CARD SIGNED</div>
+                <div class="waiting-message">Waiting for ${editableFlight === 1 ? 'Flight 2' : 'Flight 1'}...</div>
+                <div class="waiting-submessage">The match will complete when both cards are signed.</div>
+                <div class="waiting-spinner"></div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    activeWaitModal = document.getElementById("waitingModalNew");
+}
+
+function hideWaitingScreen() { if (activeWaitModal) { activeWaitModal.remove(); activeWaitModal = null; } }
+
+function showGameCompleteScreen() {
+    hideWaitingScreen();
+    if (activeCompleteModal) activeCompleteModal.remove();
+    var modalHtml = `
+        <div class="modal-overlay" id="completeModalNew">
+            <div class="complete-modal-container">
+                <div class="complete-title">🏆 GAME COMPLETE</div>
+                <div class="complete-emojis">🍺 🏆 🍺</div>
+                <div class="complete-message">Both cards have been signed!</div>
+                <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    activeCompleteModal = document.getElementById("completeModalNew");
+    document.getElementById("seeResultsBtnNew").onclick = function() {
+        activeCompleteModal.remove();
+        activeCompleteModal = null;
+        showCelebrationAndHandicap();
+    };
+}
+
+async function createHistoryRecord() {
+    var cache = GameLoader.getLocalCache();
+    var tr = GameLoader.getTRForHole(currentHole);
+    var allMatchResults = {};
+    for (var hole = 1; hole <= 18; hole++) {
+        var matchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, hole, coursePar);
+        for (var key in matchResults) allMatchResults[key] = matchResults[key];
+    }
+    var gameDataForHistory = { date: new Date().toISOString().split('T')[0], course: { name: courseName, id: cache.course?.id || "", par: coursePar, si: courseSi }, players: allPlayers, startingHole: startingHole, teamGameFormat: teamGameFormat };
+    return new Promise(function(resolve, reject) {
+        HistoryRecord.createPendingRecord(gameId, gameDataForHistory, cache.results, { teamA: tr.teamA, teamB: tr.teamB }, { f1: { signed: cache.signatures.f1 || false }, f2: { signed: cache.signatures.f2 || false } }, cache.f1DataString, cache.f2DataString, allMatchResults, function(err, recordId) { if (err) reject(err); else resolve(recordId); });
+    });
+}
+
+function showCelebrationAndHandicap() {
+    if (celebrationTriggered) return;
+    celebrationTriggered = true;
+    var tr = GameLoader.getTRForHole(currentHole);
+    var winner = SignCard.getWinner(tr.teamA, tr.teamB);
+    var winningPlayers = { teamA: allPlayers.filter(function(p) { return p.team === "A"; }), teamB: allPlayers.filter(function(p) { return p.team === "B"; }) };
+    var historyRecordId = gameId + "_history";
+    SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() { HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, {}, {}, false); });
+}
+
+// ============================================================
+// RENDER FUNCTIONS
+// ============================================================
+
+function updatePlayerNamesToShortform() {
+    var playerCards = document.querySelectorAll('.player-card');
+    for (var i = 0; i < playerCards.length; i++) {
+        var nameSpan = playerCards[i].querySelector('.player-name');
+        if (nameSpan) {
+            var originalName = nameSpan.innerText;
+            var player = allPlayers.find(p => p.name === originalName);
+            if (player && player.label) {
+                nameSpan.innerText = player.label;
+            }
+        }
+    }
+}
+
+function renderAll() {
+    var cache = GameLoader.getLocalCache();
+    var currentPar = coursePar[currentHole - 1];
+    var currentSi = courseSi[currentHole - 1];
+    var tr = GameLoader.getTRForHole(currentHole);
+    
+    GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+    
+    var currentPlayers = getFlightOrderedPlayers(editableFlight);
+    
+    var stillOwnsLock = checkLockOwnership();
+    var canEditLocal = canEdit && !isGameCompleteFlag && !takeoverDetected && stillOwnsLock;
+    
+    GameUI.renderPlayerCards("playerCards", currentPlayers, getAllOpponents, getBubbleClassWithClinch, getBubbleValue, getCurrentScore, canEditLocal,
+        function(playerName, flight, delta) {
+            if (isGameCompleteFlag) return;
+            if (takeoverDetected) return;
+            if (!canEdit) return;
+            var player = allPlayers.find(p => p.name === playerName && p.flight === flight);
+            if (!player) return;
+            var current = getCurrentScore(player);
+            var newScore = Math.max(1, Math.min(99, current + delta));
+            localChanges[flight + "_" + currentHole + "_" + player.name] = newScore;
+            renderAll();
+        }
+    );
+    updatePlayerNamesToShortform();
+    GameUI.updateFlightBadge(editableFlight);
+    
+    var holes = getDisplayHoles();
+    window.savedHoles = cache.savedHoles;
+    
+    var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
+    var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
+    
+    var t1Display = cache.results?.game2?.displayT1 || null;
+    var t2Display = cache.results?.game2?.displayT2 || null;
+    var strkDisplay = cache.results?.game3?.displayStrk || null;
+    
+    if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
+        GameScorecard.renderScorecard(
+            "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
+            cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
+            t1ClinchedHole, t2ClinchedHole,
+            t1Display, t2Display, strkDisplay
+        );
+    }
+    
+    var playOrder = getPlayOrder();
+    var isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) { return key.startsWith(editableFlight + "_" + currentHole + "_"); }).length === 0;
+    GameUI.updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameCompleteFlag, celebrationTriggered, showSignCardModal);
+    if (typeof Ticker !== 'undefined') Ticker.refresh();
+    
+    updateSaveButtonState();
+}
+
+async function exitToMainMenu() {
+    if (!confirm("Leave the game? Unsaved changes will be lost.")) return;
+    if (canEdit && !takeoverDetected) {
+        var releasePayload = { ["locks.f" + editableFlight]: null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        try { await db.collection("scheduledGames").doc(gameId).update(releasePayload); } catch(e) {}
+    }
+    
+    if (firestoreUnsubscribe) {
+        firestoreUnsubscribe();
+        firestoreUnsubscribe = null;
+    }
+    
+    GameLoader.unload();
+    sessionStorage.removeItem("currentGame");
+    localStorage.removeItem("userRole");
+    window.location.href = "index.html";
+}
+
+function onCacheUpdate(cache) {
+    if (cache.course) {
+        courseName = cache.course.name;
+        coursePar = cache.course.par;
+        courseSi = cache.course.si;
+        document.getElementById("courseName").innerHTML = courseName;
+    }
+    allPlayers = cache.players;
+    startingHole = cache.startingHole;
+    if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
+    if (cache.signatures.f1 && cache.signatures.f2 && !isGameCompleteFlag && !celebrationTriggered) {
+        createHistoryRecord().then(function() { isGameCompleteFlag = true; showGameCompleteScreen(); renderAll(); }).catch(console.error);
+    }
+    renderAll();
+}
+
+function initializeGameData(collection, cache) {
+    return new Promise(function(resolve) {
+        var mockSession = { activeGame: { gameId: gameId, gameType: "real", gameMode: "real", collection: collection, role: editableFlight === 1 ? "update1" : "update2" } };
+        GameData.loadGameFromSession(mockSession, function(success) {
+            if (success) { GameData.setCourse({ par: cache.course?.par || [] }); GameData.setPlayers(cache.players || []); resolve(true); }
+            else resolve(false);
+        });
+    });
+}
+
+async function init() {
+    var myDeviceShortName = await SessionManager.getShortNameOnly();
+    document.getElementById("deviceTag").innerHTML = "🖥️ " + myDeviceShortName;
+    var session = await new Promise(function(resolve) { SessionManager.initSession("real-game.html", "index.html", resolve); });
+    var sessionRole = session.activeGame ? session.activeGame.role : null;
+    editableFlight = (sessionRole === "update1") ? 1 : (sessionRole === "update2") ? 2 : 1;
+    canEdit = (editableFlight === 1 || editableFlight === 2);
+    gameId = session.activeGame ? session.activeGame.gameId : sessionStorage.getItem('currentGameId');
+    if (!gameId) { document.getElementById("debug").innerHTML = "Error: No game ID"; return; }
+    
+    var collection = "scheduledGames";
+    GameLoader.addDataCallback(onCacheUpdate);
+    
+    var preloadData = getPreloadedRawGameData();
+    var gameDataPreloaded = sessionStorage.getItem("gameDataPreloaded") === "true";
+    
+    if (preloadData && gameDataPreloaded) {
+        applyPreloadedData(preloadData);
+        sessionStorage.removeItem("gameDataPreloaded");
+        GameUI.applyTightLayout();
+        GameUI.renderCompactHeader("compactHeaderContainer", editableFlight, currentHole, saveHole, prevHole, nextHole, onToggleFlight, null);
+        GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
+        setTimeout(function() { GameUI.addFlightBadge(editableFlight); }, 100);
+        GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+        var playOrder = getPlayOrder();
+        for (var i = 0; i < playOrder.length; i++) { if (!isHoleSaved(editableFlight, playOrder[i])) { currentHole = playOrder[i]; break; } }
+        updateHoleNumberDisplay();
+        initTicker();
+        if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
+        renderAll();
+        setSaveButtonIdle();
+        GameLoader.loadGame(gameId, collection, async function(result) {
+            if (result.success) {
+                var cache = result.cache;
+                if (cache.course) { courseName = cache.course.name; coursePar = cache.course.par; courseSi = cache.course.si; }
+                allPlayers = cache.players;
+                startingHole = cache.startingHole;
+                renderAll();
+            }
+        });
+        setupRealtimeListener();
+    } else {
+        GameLoader.loadGame(gameId, collection, async function(result) {
+            if (!result.success) { document.getElementById("debug").innerHTML = "Error: " + result.error; return; }
+            var cache = result.cache;
+            courseName = cache.course?.name || "Unknown Course";
+            coursePar = cache.course?.par || [];
+            courseSi = cache.course?.si || [];
+            allPlayers = cache.players || [];
+            startingHole = cache.startingHole;
+            teamGameFormat = cache.teamGameFormat || "tournament";
+            document.getElementById("courseName").innerHTML = courseName;
+            var initSuccess = await initializeGameData(collection, cache);
+            if (!initSuccess) { document.getElementById("debug").innerHTML = "Error: Failed to initialize"; return; }
+            GameUI.applyTightLayout();
+            GameUI.renderCompactHeader("compactHeaderContainer", editableFlight, currentHole, saveHole, prevHole, nextHole, onToggleFlight, null);
+            GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
+            setTimeout(function() { GameUI.addFlightBadge(editableFlight); }, 100);
+            GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
+            var playOrder = getPlayOrder();
+            for (var i = 0; i < playOrder.length; i++) { if (!isHoleSaved(editableFlight, playOrder[i])) { currentHole = playOrder[i]; break; } }
+            updateHoleNumberDisplay();
+            initTicker();
+            if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
+            renderAll();
+            setSaveButtonIdle();
+            document.getElementById("mainContainer").classList.add("data-ready");
+            setupRealtimeListener();
+        });
+    }
+    GameUI.updateToggleButtons(GameUI.getDisplayMode());
+}
+
+init();
 </script>
 
 </body>
