@@ -1,12 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.36
-KEY CHANGES from v5.35:
-   - FIXED: Intra-flight clinch detection now checks for existing clinch before adding
-   - Previously, intra-flight matches would get overwritten at every subsequent hole
-   - Now checks clinchedAtUpdates for both matchKey variations before adding a new clinch
-   - This matches the cross-flight behavior already in game-match.js
-   - Ensures CK vs OCB clinch at H12 stays at H12, not overwritten by H13-H15
+VERSION: 5.37
+KEY CHANGES from v5.36:
+   - FIXED: Intra-flight clinch detection now checks cumulativeClinched (accumulated from previous holes)
+   - Previously it only checked clinchedAtUpdates which is reset every hole
+   - Now passes cumulativeClinched to intra-flight detection loops
+   - Checks both matchKey variations against existing clinches from earlier holes in the same cascade
+   - This ensures that once a clinch is recorded at H12, it is never overwritten by H13-H15
    - Applied to both Flight 1 and Flight 2 intra-flight detection
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
@@ -397,13 +397,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.36</div>
+<div class="version-tag">v5.37</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.36";
+window.REAL_GAME_VERSION = "5.37";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1253,7 +1253,7 @@ function getHoleAtPosition(position) {
 }
 
 // ============================================================
-// FIXED v5.36: Intra-flight clinch detection now checks existing clinch
+// FIXED v5.37: Intra-flight clinch detection checks cumulativeClinched
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1347,10 +1347,11 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     // Initialize clinch updates object
     var clinchedAtUpdates = {};
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.36";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.37";
     
     // ============================================================
-    // FIXED v5.36: INTRA-FLIGHT CLINCH DETECTION with existing clinch check
+    // FIXED v5.37: INTRA-FLIGHT CLINCH DETECTION - checks cumulativeClinched
+    // (clinches from previous holes in the same cascade)
     // ============================================================
     
     if (f1Available && result.f1IntraMatches) {
@@ -1365,8 +1366,11 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
                 var matchValue = result.f1IntraMatches[matchKey1];
                 
                 if (matchValue !== undefined) {
-                    // Check if already clinched in this cascade run
-                    if (!clinchedAtUpdates[matchKey1] && !clinchedAtUpdates[matchKey2]) {
+                    // Check cumulativeClinched (from previous holes in cascade) AND clinchedAtUpdates (current hole)
+                    var alreadyClinched = (cumulativeClinched && (cumulativeClinched[matchKey1] || cumulativeClinched[matchKey2])) ||
+                                          (clinchedAtUpdates[matchKey1] || clinchedAtUpdates[matchKey2]);
+                    
+                    if (!alreadyClinched) {
                         var clinchResult = GameMatch.calculateClinch(
                             matchValue, remainingHoles, teamAPlayersF1[a].name, teamBPlayersF1[b].name,
                             holeNumber, deviceId, cascadeVersion
@@ -1392,8 +1396,11 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
                 var matchValue = result.f2IntraMatches[matchKey1];
                 
                 if (matchValue !== undefined) {
-                    // Check if already clinched in this cascade run
-                    if (!clinchedAtUpdates[matchKey1] && !clinchedAtUpdates[matchKey2]) {
+                    // Check cumulativeClinched (from previous holes in cascade) AND clinchedAtUpdates (current hole)
+                    var alreadyClinched = (cumulativeClinched && (cumulativeClinched[matchKey1] || cumulativeClinched[matchKey2])) ||
+                                          (clinchedAtUpdates[matchKey1] || clinchedAtUpdates[matchKey2]);
+                    
+                    if (!alreadyClinched) {
                         var clinchResult = GameMatch.calculateClinch(
                             matchValue, remainingHoles, teamAPlayersF2[a].name, teamBPlayersF2[b].name,
                             holeNumber, deviceId, cascadeVersion
@@ -1408,7 +1415,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     }
     
     // ============================================================
-    // CROSS-FLIGHT CLINCH DETECTION (already had existing clinch check)
+    // CROSS-FLIGHT CLINCH DETECTION (already checks cumulativeClinched)
     // ============================================================
     if (crossAvailable) {
         var crossResult = GameMatch.calculateCrossFlightWithClinch(
@@ -1553,13 +1560,12 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     return {
         updatedClinched: resultsData.updatedClinched,
         updatedFlight1ClinchedHole: resultsData.updatedFlight1ClinchedHole,
-        updatedFlight2ClinchedHole: resultsData.updatedFlight2ClinchedHole
-    };
+        updatedFlight2ClinchedHole: resultsData.updatedFlight2ClinchedHole    };
 }
 
 // ============================================================
 // Real-time Firestore Listener, Navigation, Modal Functions, Render Functions
-// (All unchanged from v5.35 - identical implementations)
+// (All unchanged from v5.36 - identical implementations)
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1984,13 +1990,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.36
-KEY CHANGES from v5.35:
-   - FIXED: Intra-flight clinch detection now checks for existing clinch before adding
-   - Previously, intra-flight matches would get overwritten at every subsequent hole
-   - Now checks clinchedAtUpdates for both matchKey variations before adding a new clinch
-   - This matches the cross-flight behavior already in game-match.js
-   - Ensures CK vs OCB clinch at H12 stays at H12, not overwritten by H13-H15
+VERSION: 5.37
+KEY CHANGES from v5.36:
+   - FIXED: Intra-flight clinch detection now checks cumulativeClinched (accumulated from previous holes)
+   - Previously it only checked clinchedAtUpdates which is reset every hole
+   - Now passes cumulativeClinched to intra-flight detection loops
+   - Checks both matchKey variations against existing clinches from earlier holes in the same cascade
+   - This ensures that once a clinch is recorded at H12, it is never overwritten by H13-H15
    - Applied to both Flight 1 and Flight 2 intra-flight detection
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
