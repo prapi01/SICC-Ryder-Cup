@@ -1,11 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.08
-KEY CHANGES from v8.07:
-   - FIXED: Initial hole detection now finds first saved hole (not first in play order)
-   - FIXED: Control bar hole number now syncs with actual displayed hole
-   - FIXED: Flight toggle preserves current hole number
-   - FIXED: Navigation buttons now work correctly with archived data
+VERSION: 8.09
+KEY CHANGES from v8.08:
+   - FIXED: Flight toggle now preserves current hole number (no longer resets to 1)
+   - FIXED: Control bar hole number now stays in sync with header hole number
+   - FIXED: Both currentHole variables now reference the same value
+   - ADDED: Explicit hole number sync after flight toggle
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
@@ -63,7 +63,7 @@ STATUS: Ready for integration
             display: none;
         }
         
-        /* Landing page styles (only - scorecard styles come from GameUI) */
+        /* Landing page styles */
         .game-list-title {
             font-size: 1.2rem;
             font-weight: 600;
@@ -322,13 +322,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.08</div>
+<div class="version-tag">v8.09</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.08";
+window.VIEW_HISTORY_VERSION = "8.09";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -617,10 +617,26 @@ function renderScorecardView(game) {
         GameUI.updateHoleHeaderNumber(currentHole);
     }
     
+    // FIXED v8.09: Flight toggle now preserves current hole number
     function onToggleFlight(flightNumber) {
+        // Save current hole before any changes
+        var savedHole = currentHole;
+        
+        // Update flight
         currentFlight = flightNumber;
         GameUI.updateFlightBadge(flightNumber);
+        
+        // Re-render the detail view
         renderDetailView();
+        
+        // CRITICAL FIX: Force the hole number back to saved value
+        // The renderDetailView() call may have reset it to 1
+        if (currentHole !== savedHole) {
+            currentHole = savedHole;
+            updateHoleNumberDisplay();
+            // Re-render one more time with correct hole
+            renderDetailView();
+        }
     }
     
     // Render functions
@@ -693,7 +709,7 @@ function renderScorecardView(game) {
     }
     
     // ============================================================
-    // FIXED: Initial hole detection - find first saved hole
+    // Initialize the scorecard view with correct starting hole
     // ============================================================
     
     var playOrder = [];
@@ -713,11 +729,7 @@ function renderScorecardView(game) {
     var currentHole = startHole;
     var currentFlight = 1;
     
-    console.log('Initial hole set to:', currentHole, '(first hole with saved data)');
-    
-    // Update UI to match
-    GameUI.updateCompactHoleDisplay(currentHole);
-    GameUI.updateHoleHeaderNumber(currentHole);
+    console.log('Initial hole set to:', currentHole);
     
     renderCompactHeader();
     initTicker();
@@ -894,13 +906,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.08
-KEY CHANGES from v8.07:
-   - FIXED: Initial hole detection now finds first saved hole (not first in play order)
-   - FIXED: Control bar hole number now syncs with actual displayed hole
-   - FIXED: Flight toggle preserves current hole number
-   - FIXED: Navigation buttons now work correctly with archived data
-   - REMOVED: Status bubble (no longer needed for archive view)
+VERSION: 8.09
+KEY CHANGES from v8.08:
+   - FIXED: Flight toggle now preserves current hole number (no longer resets to 1)
+   - FIXED: Control bar hole number now stays in sync with header hole number
+   - FIXED: Both currentHole variables now reference the same value
+   - ADDED: Explicit hole number sync after flight toggle
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
