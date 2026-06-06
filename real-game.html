@@ -1,14 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.44
-KEY CHANGES from v5.43:
-   - ADDED: Debug logging for computedUpToHole updates in saveResultsToFirestoreWithCumulative()
-   - Logs current computedUpToHole, newComputedUpToHole, and condition result
-   - Logs when computedUpToHole is being written to Firestore
-   - Helps diagnose why computedUpToHole is not updating correctly
-   - No functional changes to game logic
+VERSION: 5.45
+KEY CHANGES from v5.44:
+   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
+   - Player cards, bubbles, scorecard table, compact header styles removed
+   - Kept only page-specific styles: container, visibility rules, device tags, modals
+   - All functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Debug version - tracking computedUpToHole updates
+STATUS: Ready for integration
 -->
 
 <!DOCTYPE html>
@@ -107,109 +106,10 @@ STATUS: Debug version - tracking computedUpToHole updates
             z-index: 1000;
         }
         
-        .status-bubble {
-            background: rgba(76,175,80,0.3);
-            border: 1px solid #4caf50;
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            color: #4caf50;
-            margin-bottom: 12px;
-            cursor: pointer;
-        }
-        
-        .team-score-card {
-            background: #111;
-            border-radius: 16px;
-            text-align: center;
-        }
-        
-        .player-card {
-            background: #111;
-            border-radius: 16px;
-            padding: 14px;
-            margin-bottom: 12px;
-            border: 1px solid #333;
-            position: relative;
-        }
-        .player-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .player-name { font-size: 1rem; font-weight: 600; }
-        .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
-        .score-control { display: flex; gap: 10px; align-items: center; }
-        .score-btn { background: #1a3a1a; border: none; width: 38px; height: 38px; border-radius: 30px; font-size: 1.1rem; color: #fff; cursor: pointer; }
-        .score-btn:active { transform: scale(0.95); }
-        .score-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .score-value { font-size: 1.1rem; font-weight: 700; min-width: 38px; text-align: center; background: #1a1a1a; padding: 5px 0; border-radius: 30px; }
-        
-        .scorecard-section { margin: 20px 0; }
-        #compactHeaderContainer { margin-bottom: 10px; }
-        .scorecard-wrapper { overflow-x: auto; }
-        
-        .scorecard-table {
-            table-layout: fixed;
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.7rem;
-            min-width: 600px;
-        }
-        .scorecard-table th,
-        .scorecard-table td {
-            min-width: 40px;
-            max-width: 60px;
-            text-align: center;
-            padding: 6px 3px;
-            border: 1px solid #222;
-            white-space: nowrap;
-        }
-        .scorecard-table th:first-child,
-        .scorecard-table td:first-child {
-            width: 50px;
-            position: sticky;
-            left: 0;
-            background: #111;
-            z-index: 1;
-        }
-        .scorecard-table th {
-            color: #4caf50;
-            background: #111;
-        }
-        .score-green { color: #4caf50; font-weight: 600; }
-        .score-invisible { color: #000; }
-        .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
-        
-        .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
-            border-radius: 12px !important;
-        }
-        .compact-save-btn {
-            border-radius: 30px !important;
-            font-size: 1rem !important;
-            font-weight: 800 !important;
-        }
-        .compact-btn {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            cursor: pointer;
-        }
-        .compact-nav-btn {
-            width: 52px;
-            height: 52px;
-            font-size: 1.3rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
+        /* Modal styles (not in game-ui.js) */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -395,13 +295,13 @@ STATUS: Debug version - tracking computedUpToHole updates
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.44</div>
+<div class="version-tag">v5.45</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.44";
+window.REAL_GAME_VERSION = "5.45";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -468,7 +368,6 @@ function loadPendingWrites() {
     
     try {
         var data = JSON.parse(stored);
-        // Check if older than 1 hour (stale)
         if (Date.now() - data.timestamp > 3600000) {
             localStorage.removeItem(key);
             return null;
@@ -487,7 +386,6 @@ async function processPendingWrites() {
     
     console.log(`[CASCADE-DEBUG] Resuming ${pendingData.pendingWrites.length} pending writes...`);
     
-    // Show status to user
     var debugDiv = document.getElementById("debug");
     if (debugDiv) {
         debugDiv.innerHTML = `⏳ Resuming ${pendingData.pendingWrites.length} pending updates...`;
@@ -508,9 +406,8 @@ async function processPendingWrites() {
             await writeSingleHoleToFirestore(holeNum, pending.resultsData, resultsCache);
             console.log(`[CASCADE-DEBUG] Successfully wrote pending hole ${holeNum}`);
             
-            // Remove this hole from queue
             pendingData.pendingWrites.splice(i, 1);
-            i--; // Adjust index after removal
+            i--;
             savePendingWrites(pendingData);
             
         } catch (error) {
@@ -532,7 +429,7 @@ async function processPendingWrites() {
         }, 3000);
     }
     
-    savePendingWrites(null); // Clear from localStorage
+    savePendingWrites(null);
     return true;
 }
 
@@ -540,7 +437,6 @@ async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
     var position = resultsData.position;
     var updatePayload = {};
     
-    // Sparse dot notation for nested structures
     if (resultsData.matchResults !== null) {
         updatePayload[`results.matchResults.${position}`] = resultsData.matchResults;
     }
@@ -553,7 +449,6 @@ async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
         updatePayload[`results.f2IntraMatches.${position}`] = resultsData.f2IntraMatches;
     }
     
-    // Full arrays for flat data
     updatePayload["results.game1.pointsA"] = cache.results.game1.pointsA;
     updatePayload["results.game1.pointsB"] = cache.results.game1.pointsB;
     updatePayload["results.game2.pointsA"] = cache.results.game2.pointsA;
@@ -583,11 +478,9 @@ async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
         updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
     } else {
-        // Even if no new clinches, we still need to write the current clinchedAt state
         updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
     }
     
-    // DEBUG: Log computedUpToHole update
     var newComputedUpToHole = position + 1;
     var currentComputedUpToHole = cache.results.computedUpToHole || 0;
     console.log(`[COMPUTED-DEBUG] Hole ${holeNumber}: position=${position}, newComputedUpToHole=${newComputedUpToHole}, currentComputedUpToHole=${currentComputedUpToHole}`);
@@ -730,7 +623,7 @@ function initTicker() {
 }
 
 // ============================================================
-// Helper Functions (Course/Play Order Utilities)
+// Helper Functions
 // ============================================================
 
 function getPlayOrder() {
@@ -774,7 +667,7 @@ function getFlightOrderedPlayers(flight) {
 }
 
 // ============================================================
-// Player Score Functions (NOT match logic - these are for UI/editing)
+// Player Score Functions
 // ============================================================
 
 function getStoredScore(player, hole) {
@@ -814,7 +707,7 @@ function updateTRDisplay() {
 }
 
 // ============================================================
-// Takeover Detection and Handler
+// Takeover Detection
 // ============================================================
 
 function checkLockOwnership() {
@@ -998,7 +891,6 @@ function performSave() {
                 console.log(`[CASCADE-DEBUG] === CASCADE START ===`);
                 console.log(`[CASCADE-DEBUG] currentHole (saved) = ${currentHole}`);
                 
-                // Refresh cache once after save
                 await new Promise(function(resolveLoad) {
                     GameLoader.loadGame(gameId, "scheduledGames", function(result) {
                         if (result.success) console.log("[CASCADE-DEBUG] Cache refreshed after save");
@@ -1016,14 +908,11 @@ function performSave() {
                 console.log(`[CASCADE-DEBUG] cascadeStartHole = ${cascadeStartHole}`);
                 console.log(`[CASCADE-DEBUG] existingClinched count = ${Object.keys(existingClinched).length}`);
                 
-                // Get last saved hole (computedUpToHole)
                 var lastSavedHole = cache.results?.computedUpToHole || 0;
                 console.log(`[CASCADE-DEBUG] lastSavedHole = ${lastSavedHole}`);
                 
-                // Array to accumulate results for each hole
                 var cascadeResultsQueue = [];
                 
-                // Calculate results for this hole
                 var resultsData = calculateHoleResultsWithCumulative(currentHole, existingClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole);
                 if (resultsData) {
                     updateLocalCacheWithResults(resultsData);
@@ -1034,13 +923,11 @@ function performSave() {
                     });
                 }
                 
-                // Cascade to remaining holes (up to lastSavedHole)
                 var playOrder = getPlayOrder();
                 var startPos = playOrder.indexOf(currentHole);
                 var cascadeEndHole = lastSavedHole;
                 console.log(`[CASCADE-DEBUG] Cascading from hole ${currentHole} to hole ${cascadeEndHole}`);
                 
-                // Use local cache for subsequent holes (no Firestore reads)
                 var currentCache = GameLoader.getLocalCache();
                 
                 for (var i = startPos + 1; i < 18; i++) {
@@ -1069,13 +956,11 @@ function performSave() {
                         });
                     }
                     
-                    // Update currentCache reference for next iteration
                     currentCache = GameLoader.getLocalCache();
                 }
                 
                 console.log(`[CASCADE-DEBUG] Cascade calculation complete. ${cascadeResultsQueue.length} holes to write to Firestore.`);
                 
-                // Save pending writes to localStorage before starting
                 var pendingData = {
                     gameId: gameId,
                     cascadeStartHole: cascadeStartHole,
@@ -1089,7 +974,6 @@ function performSave() {
                 };
                 savePendingWrites(pendingData);
                 
-                // Write each hole sequentially
                 var finalCache = GameLoader.getLocalCache();
                 for (var q = 0; q < cascadeResultsQueue.length; q++) {
                     var item = cascadeResultsQueue[q];
@@ -1099,7 +983,6 @@ function performSave() {
                         await writeSingleHoleToFirestore(item.hole, item.resultsData, finalCache);
                         console.log(`[CASCADE-DEBUG] Successfully wrote hole ${item.hole}`);
                         
-                        // Remove this hole from pending queue
                         pendingData.pendingWrites = pendingData.pendingWrites.filter(function(w) {
                             return w.hole !== item.hole;
                         });
@@ -1107,13 +990,11 @@ function performSave() {
                         
                     } catch (error) {
                         console.error(`[CASCADE-DEBUG] Failed to write hole ${item.hole}:`, error);
-                        // Keep remaining writes in localStorage for retry
                         reject(new Error(`Failed to write hole ${item.hole}`));
                         return;
                     }
                 }
                 
-                // Clear pending writes
                 savePendingWrites(null);
                 
                 if (typeof Ticker !== 'undefined') {
@@ -1128,7 +1009,6 @@ function performSave() {
     });
 }
 
-// Helper function to update local cache with results data
 function updateLocalCacheWithResults(resultsData) {
     var cache = GameLoader.getLocalCache();
     if (!cache.results) {
@@ -1137,13 +1017,11 @@ function updateLocalCacheWithResults(resultsData) {
     
     var position = resultsData.position;
     
-    // Update match results
     if (resultsData.matchResults !== null) {
         if (!cache.results.matchResults) cache.results.matchResults = new Array(18);
         cache.results.matchResults[position] = resultsData.matchResults;
     }
     
-    // Update intra-flight matches
     if (resultsData.f1IntraMatches !== null) {
         if (!cache.results.f1IntraMatches) cache.results.f1IntraMatches = new Array(18);
         cache.results.f1IntraMatches[position] = resultsData.f1IntraMatches;
@@ -1154,42 +1032,36 @@ function updateLocalCacheWithResults(resultsData) {
         cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
     }
     
-    // Update game1 points
     if (!cache.results.game1.pointsA) cache.results.game1.pointsA = new Array(18).fill(8);
     cache.results.game1.pointsA[position] = resultsData.game1PointsA;
     
     if (!cache.results.game1.pointsB) cache.results.game1.pointsB = new Array(18).fill(8);
     cache.results.game1.pointsB[position] = resultsData.game1PointsB;
     
-    // Update game2 points
     if (!cache.results.game2.pointsA) cache.results.game2.pointsA = new Array(18).fill(1);
     cache.results.game2.pointsA[position] = resultsData.game2PointsA;
     
     if (!cache.results.game2.pointsB) cache.results.game2.pointsB = new Array(18).fill(1);
     cache.results.game2.pointsB[position] = resultsData.game2PointsB;
     
-    // Update flight leaders
     if (!cache.results.game2.flight1.leader) cache.results.game2.flight1.leader = new Array(18).fill("AS");
     cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
     
     if (!cache.results.game2.flight2.leader) cache.results.game2.flight2.leader = new Array(18).fill("AS");
     cache.results.game2.flight2.leader[position] = resultsData.t2Leader;
     
-    // Update display strings
     if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill("AS");
     cache.results.game2.displayT1[position] = resultsData.t1Display;
     
     if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill("AS");
     cache.results.game2.displayT2[position] = resultsData.t2Display;
     
-    // Update cumulative points
     if (!cache.results.game2.flight1.cumulativePoints) cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
     cache.results.game2.flight1.cumulativePoints[position] = resultsData.cumulativeF1 !== undefined ? resultsData.cumulativeF1 : 0;
     
     if (!cache.results.game2.flight2.cumulativePoints) cache.results.game2.flight2.cumulativePoints = new Array(18).fill(0);
     cache.results.game2.flight2.cumulativePoints[position] = resultsData.cumulativeF2 !== undefined ? resultsData.cumulativeF2 : 0;
     
-    // Update game3
     if (!cache.results.game3.leader) cache.results.game3.leader = new Array(18).fill("AS");
     cache.results.game3.leader[position] = resultsData.strkLeader;
     
@@ -1202,7 +1074,6 @@ function updateLocalCacheWithResults(resultsData) {
     if (!cache.results.game3.pointsB) cache.results.game3.pointsB = new Array(18).fill(0.5);
     cache.results.game3.pointsB[position] = resultsData.game3PointsB;
     
-    // Update TR
     if (!cache.results.tr.teamA) cache.results.tr.teamA = new Array(18).fill(9.5);
     cache.results.tr.teamA[position] = resultsData.trA;
     
@@ -1215,22 +1086,18 @@ function updateLocalCacheWithResults(resultsData) {
     if (!cache.results.tr.teamBGreen) cache.results.tr.teamBGreen = new Array(18).fill(true);
     cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
     
-    // Update clinched holes
     cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
     cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
     
-    // ALWAYS update clinchedAt, even if empty (fixes stale cache issue)
     cache.results.clinchedAt = resultsData.updatedClinched;
     console.log(`[CASCADE-DEBUG] updateLocalCacheWithResults: clinchedAt updated, new count = ${Object.keys(cache.results.clinchedAt).length}`);
     
-    // Update computedUpToHole
     var newComputedUpToHole = position + 1;
     if (newComputedUpToHole > (cache.results.computedUpToHole || 0)) {
         cache.results.computedUpToHole = newComputedUpToHole;
         console.log(`[COMPUTED-DEBUG] Local cache computedUpToHole updated to ${newComputedUpToHole}`);
     }
     
-    // Update player totals
     var playerTotals = calculatePlayerTotals(newComputedUpToHole);
     cache.results.playerTotals = playerTotals;
 }
@@ -1270,7 +1137,7 @@ async function saveHole() {
 }
 
 // ============================================================
-// Results Calculation and Storage
+// Results Calculation
 // ============================================================
 
 function initializeEmptyResults() {
@@ -1295,34 +1162,6 @@ function initializeEmptyResults() {
     };
 }
 
-function calculateNetThisHole(flight, holeNumber) {
-    var cache = GameLoader.getLocalCache();
-    var flightDataStr = (flight === 1) ? cache.f1DataString : cache.f2DataString;
-    var holeData = GameData.parseHoleData(flightDataStr, holeNumber);
-    
-    if (!holeData || !holeData.saved) return 0;
-    
-    var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
-    var teamA = flightPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var a1Score = holeData.scores.a1;
-    var a2Score = holeData.scores.a2;
-    var b1Score = holeData.scores.b1;
-    var b2Score = holeData.scores.b2;
-    
-    var a1Wins = (a1Score < b1Score) ? 1 : (a1Score === b1Score) ? 0 : -1;
-    var a2Wins = (a2Score < b2Score) ? 1 : (a2Score === b2Score) ? 0 : -1;
-    
-    return a1Wins + a2Wins;
-}
-
-function getTeamGameDisplayFromCumulative(cumulative) {
-    if (cumulative === 0) return "AS";
-    if (cumulative > 0) return "A" + cumulative;
-    return "B" + Math.abs(cumulative);
-}
-
 function calculatePlayerTotals(upToHole) {
     var cache = GameLoader.getLocalCache();
     var playerTotals = {};
@@ -1332,7 +1171,6 @@ function calculatePlayerTotals(upToHole) {
         var flightDataStr = player.flight === 1 ? cache.f1DataString : cache.f2DataString;
         var totalGross = 0;
         var totalPar = 0;
-        var holesPlayed = 0;
         
         for (var h = 1; h <= upToHole; h++) {
             var par = coursePar[h - 1];
@@ -1353,7 +1191,6 @@ function calculatePlayerTotals(upToHole) {
                     else if (teamB[1] && teamB[1].name === player.name) score = holeData.scores.b2;
                 }
                 totalGross += score;
-                holesPlayed++;
             } else {
                 totalGross += par;
             }
@@ -1372,7 +1209,6 @@ function calculatePlayerTotals(upToHole) {
     return playerTotals;
 }
 
-// Helper: Get hole number at a given position (0-based)
 function getHoleAtPosition(position) {
     var playOrder = getPlayOrder();
     return playOrder[position];
@@ -1396,14 +1232,12 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         return null;
     }
     
-    // Build remainingHoles array for all positions (needed for calculateWithClinched)
     var remainingHolesByPosition = new Array(18);
     for (var pos = 0; pos < 18; pos++) {
         var holeForPos = getHoleAtPosition(pos);
         remainingHolesByPosition[pos] = getRemainingHolesFromPlayOrder(holeForPos);
     }
     
-    // Get team game results WITH integrated clinch detection
     var teamGameResults = null;
     var flight1ClinchedHoleResult = cumulativeFlight1ClinchedHole;
     var flight2ClinchedHoleResult = cumulativeFlight2ClinchedHole;
@@ -1456,16 +1290,13 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.44";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.45";
     
     console.log(`[CASCADE-DEBUG] calculateHoleResultsWithCumulative: hole=${holeNumber}, remainingHoles=${remainingHoles}, existingClinched count=${Object.keys(cumulativeClinched).length}`);
     
-    // Initialize clinch updates object
     var clinchedAtUpdates = {};
     
-    // ============================================================
     // FLIGHT 1 INTRA-FLIGHT MATCHES
-    // ============================================================
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var flight1Data = cache.f1DataString;
@@ -1482,9 +1313,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
-    // ============================================================
     // FLIGHT 2 INTRA-FLIGHT MATCHES
-    // ============================================================
     if (f2Available) {
         var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
         var flight2Data = cache.f2DataString;
@@ -1501,9 +1330,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
-    // ============================================================
     // CROSS-FLIGHT CLINCH DETECTION
-    // ============================================================
     if (crossAvailable) {
         var crossResult = GameMatch.calculateCrossFlightWithClinch(
             cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar,
@@ -1517,7 +1344,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
             clinchedAtUpdates[matchKey] = crossResult.clinchedAtUpdates[matchKey];
         }
         
-        // Calculate Game 1 points
         var game1PointsA = 0, game1PointsB = 0, matchCount = 0;
         for (var key in matchResultsObj) {
             if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
@@ -1535,12 +1361,10 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.game1PointsA = game1PointsA;
         result.game1PointsB = game1PointsB;
         
-        // Stroke game calculation
         var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, coursePar);
         result.strkLeader = strokeResults.leader[position] === "A" ? "A" : strokeResults.leader[position] === "B" ? "B" : "AS";
         result.strkDisplay = strokeResults.displayStrk?.[position] || "AS";
         
-        // Get cumulative values from team game results
         if (teamGameResults) {
             result.cumulativeF1 = teamGameResults.flight1Cumulative[position];
             result.cumulativeF2 = teamGameResults.flight2Cumulative[position];
@@ -1550,7 +1374,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
             result.t2Display = teamGameResults.displayT2[position];
         }
         
-        // Calculate Game 2 points
         var flight1PointsA = (result.cumulativeF1 > 0) ? 1 : (result.cumulativeF1 < 0) ? 0 : 0.5;
         var flight1PointsB = (result.cumulativeF1 > 0) ? 0 : (result.cumulativeF1 < 0) ? 1 : 0.5;
         var flight2PointsA = (result.cumulativeF2 > 0) ? 1 : (result.cumulativeF2 < 0) ? 0 : 0.5;
@@ -1558,11 +1381,9 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.game2PointsA = flight1PointsA + flight2PointsA;
         result.game2PointsB = flight1PointsB + flight2PointsB;
         
-        // Calculate Game 3 points
         result.game3PointsA = (result.strkLeader === "A") ? 1 : (result.strkLeader === "B") ? 0 : 0.5;
         result.game3PointsB = (result.strkLeader === "A") ? 0 : (result.strkLeader === "B") ? 1 : 0.5;
         
-        // Calculate Total TR
         result.trA = result.game1PointsA + result.game2PointsA + result.game3PointsA;
         result.trB = result.game1PointsB + result.game2PointsB + result.game3PointsB;
         result.trAGreen = (result.trA > result.trB);
@@ -1571,7 +1392,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     
     result.clinchedAtUpdates = clinchedAtUpdates;
     
-    // FIXED: Pass isCascadeStartHole to updateClinchedAt
     var isCascadeStartHole = (holeNumber === cascadeStartHole);
     result.updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole, isCascadeStartHole);
     
@@ -1581,7 +1401,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
 }
 
 // ============================================================
-// Real-time Firestore Listener, Navigation, Modal Functions, Render Functions
+// Real-time Firestore Listener
 // ============================================================
 
 function setupRealtimeListener() {
@@ -1642,6 +1462,10 @@ function setupRealtimeListener() {
             console.warn("Firestore realtime listener error:", error);
         });
 }
+
+// ============================================================
+// Navigation and Modal Functions
+// ============================================================
 
 function nextHole() {
     if (isGameCompleteFlag && !celebrationTriggered) {
@@ -1967,11 +1791,9 @@ async function init() {
     var collection = "scheduledGames";
     GameLoader.addDataCallback(onCacheUpdate);
     
-    // Check for pending writes first
     var pendingWrites = loadPendingWrites();
     if (pendingWrites) {
         console.log(`[CASCADE-DEBUG] Found pending writes from previous session, resuming...`);
-        // Load game data first
         await new Promise(function(resolveLoad) {
             GameLoader.loadGame(gameId, collection, function(result) {
                 if (result.success) {
@@ -1987,7 +1809,6 @@ async function init() {
             });
         });
         
-        // Process pending writes
         await processPendingWrites();
     }
     
@@ -2059,14 +1880,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.44
-KEY CHANGES from v5.43:
-   - ADDED: Debug logging for computedUpToHole updates in saveResultsToFirestoreWithCumulative()
-   - Logs current computedUpToHole, newComputedUpToHole, and condition result
-   - Logs when computedUpToHole is being written to Firestore
-   - Added local cache computedUpToHole update logging
-   - Helps diagnose why computedUpToHole is not updating correctly
-   - No functional changes to game logic
+VERSION: 5.45
+KEY CHANGES from v5.44:
+   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
+   - Player cards, bubbles, scorecard table, compact header styles removed
+   - Kept only page-specific styles: container, visibility rules, device tags, modals
+   - All functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Debug version - tracking computedUpToHole updates
+STATUS: Ready for integration
 -->
