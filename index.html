@@ -1,12 +1,13 @@
 <!--
-FILE: index.html (merge)
-VERSION: 3.19 
-KEY CHANGES:
-   - FIXED: Splash screen now shows on EVERY fresh app launch (not just once per tab session)
-   - NEW: Uses localStorage with cooldown timer (10 minutes) to determine fresh launches
-   - NEW: Detects PWA standalone mode - always shows splash on launch
-   - FIXED: Works consistently across Brave, Firefox, Chrome, Safari
-   - All existing functionality preserved (preload, button widths, etc.)
+FILE: index.html
+VERSION: 3.21
+KEY CHANGES from v3.20:
+   - REMOVED: 6-hour grace period logic (unnecessary complexity)
+   - SIMPLIFIED: TODAY GAME button active for entire day regardless of completion status
+   - If game completed, redirect to view-history.html to show results
+   - If game in progress, redirect to pre-game.html normally
+   - Clean, simple logic: TODAY = active, NOT TODAY = inactive
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -363,12 +364,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.19</div>
+<div class="version-tag">v3.21</div>
 
 <script>
-// FILE: index.html - VERSION 3.19
+// FILE: index.html - VERSION 3.21
 
-var APP_VERSION = "3.19";
+var APP_VERSION = "3.21";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -383,7 +384,7 @@ var db = firebase.firestore();
 var firestoreReady = true;
 var currentSession = null;
 
-// NEW v3.17: Preload tracking
+// Preload tracking
 var preloadComplete = false;
 var preloadInProgress = false;
 var pendingGameId = null;
@@ -395,25 +396,21 @@ var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
 
 // ============================================================
-// FIXED v3.19: Improved splash screen logic
-// Shows splash on EVERY fresh app launch, not just once per tab session
+// Splash Screen Logic
 // ============================================================
 
 function shouldShowSplash() {
-    // Detect if running as PWA (standalone mode)
     var isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
                        window.navigator.standalone === true;
     
-    // For PWA: always show splash on launch
     if (isStandalone) {
         console.log("PWA mode detected - showing splash");
         return true;
     }
     
-    // For browser: use cooldown timer (10 minutes)
     var lastSplashTime = localStorage.getItem('splashLastShown');
     var now = Date.now();
-    var COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+    var COOLDOWN_MS = 10 * 60 * 1000;
     
     if (!lastSplashTime) {
         console.log("No previous splash recorded - showing splash");
@@ -422,11 +419,11 @@ function shouldShowSplash() {
     
     var timeSinceLastSplash = now - parseInt(lastSplashTime);
     if (timeSinceLastSplash > COOLDOWN_MS) {
-        console.log("Cooldown expired (" + Math.round(timeSinceLastSplash / 1000) + "s ago) - showing splash");
+        console.log("Cooldown expired - showing splash");
         return true;
     }
     
-    console.log("Within cooldown (" + Math.round(timeSinceLastSplash / 1000) + "s ago) - skipping splash");
+    console.log("Within cooldown - skipping splash");
     return false;
 }
 
@@ -446,18 +443,14 @@ function hideSplashAndShowApp() {
     }, 800);
 }
 
-// Determine if we should show splash
 if (shouldShowSplash()) {
-    // Record that splash was shown
     recordSplashShown();
     
-    // Animate splash
     setTimeout(function() {
         splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
         splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
     }, 100);
     
-    // Fade in title and subtitle
     setTimeout(function() {
         splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
         splashTitle.style.opacity = '1';
@@ -470,7 +463,6 @@ if (shouldShowSplash()) {
         splashSubtitle.style.transform = 'translateY(0)';
     }, 600);
     
-    // Thump ring effect
     setTimeout(function() {
         var thumpRing = document.createElement('div');
         thumpRing.style.cssText = `
@@ -491,22 +483,18 @@ if (shouldShowSplash()) {
         thumpRing.style.animation = 'splashThumpRing 0.4s ease-out forwards';
     }, 700);
     
-    // Shake effect
     setTimeout(function() {
         splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
     }, 700);
     
-    // Vibrate if supported
     if (navigator.vibrate) {
         setTimeout(function() {
             navigator.vibrate(50);
         }, 700);
     }
     
-    // Fade out splash and show main content after animation
     setTimeout(hideSplashAndShowApp, 2800);
 } else {
-    // Skip splash - show container immediately
     splashOverlay.style.display = 'none';
     var container = document.querySelector('.container');
     if (container) {
@@ -638,6 +626,7 @@ function getGameStatus(gameDateStr) {
     return "past";
 }
 
+// SIMPLIFIED v3.21: TODAY GAME button active for entire day
 function handleTodayGame() {
     if (!firestoreReady) {
         alert("Connecting to server... Please wait.");
@@ -670,12 +659,40 @@ function handleTodayGame() {
         }
         
         var gameId = todayGame.id;
-        var gameDate = todayGame.date;
         
-        if (typeof displayGameId === 'function') {
-            displayGameId(gameId);
-        }
-        proceedToRealGame(gameId, "real");
+        // Check if game is completed (both signatures true)
+        db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+            if (doc.exists) {
+                var data = doc.data();
+                var signatures = data.signatures || {};
+                var f1Signed = signatures.f1?.signed === true;
+                var f2Signed = signatures.f2?.signed === true;
+                var isCompleted = f1Signed && f2Signed;
+                
+                if (typeof displayGameId === 'function') {
+                    displayGameId(gameId);
+                }
+                
+                if (isCompleted) {
+                    // Game completed - show results via history view
+                    window.location.href = "view-history.html?gameId=" + gameId;
+                } else {
+                    // Game in progress - normal flow
+                    proceedToRealGame(gameId, "real");
+                }
+            } else {
+                if (typeof displayGameId === 'function') {
+                    displayGameId(gameId);
+                }
+                proceedToRealGame(gameId, "real");
+            }
+        }).catch(function(e) {
+            console.error("Error checking game completion:", e);
+            if (typeof displayGameId === 'function') {
+                displayGameId(gameId);
+            }
+            proceedToRealGame(gameId, "real");
+        });
     }).catch(function(e) {
         console.error("Error loading games:", e);
         alert("Error loading games: " + e.message);
@@ -683,7 +700,7 @@ function handleTodayGame() {
 }
 
 function handleNextGame() {
-    alert("This is the next scheduled game.\n\nOn the game day, this button will become 'TODAY GAME' and allow you to start scoring.");
+    alert("This is the next scheduled game.\n\nOn the game day, this button will become 'TODAY GAME'.");
 }
 
 function goToDemo() {
@@ -753,6 +770,7 @@ function loadAndRender() {
             var courseName = nextGame.course ? nextGame.course.name : "Unknown Course";
             
             if (status === "today") {
+                // SIMPLIFIED: TODAY GAME button shows regardless of completion
                 var cachedData = getPreloadedRawGameData();
                 if (cachedData && cachedData.gameId === nextGame.id) {
                     preloadComplete = true;
@@ -921,13 +939,14 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 
 <!--
 FILE: index.html
-VERSION: 3.19
-KEY CHANGES:
-   - FIXED: Splash screen now shows on EVERY fresh app launch (not just once per tab session)
-   - NEW: Uses localStorage with cooldown timer (10 minutes) to determine fresh launches
-   - NEW: Detects PWA standalone mode - always shows splash on launch
-   - FIXED: Works consistently across Brave, Firefox, Chrome, Safari
-   - All existing functionality preserved (preload, button widths, etc.)
+VERSION: 3.21
+KEY CHANGES from v3.20:
+   - REMOVED: 6-hour grace period logic (unnecessary complexity)
+   - SIMPLIFIED: TODAY GAME button active for entire day regardless of completion status
+   - If game completed, redirect to view-history.html to show results
+   - If game in progress, redirect to pre-game.html normally
+   - Clean, simple logic: TODAY = active, NOT TODAY = inactive
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
