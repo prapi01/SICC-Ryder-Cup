@@ -1,18 +1,19 @@
 /*
 FILE: js/game-team.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: flight1IntraMatches array - stores per-hole intra-flight match results for Flight 1
-   - ADDED: flight2IntraMatches array - stores per-hole intra-flight match results for Flight 2
-   - These arrays are used by cascade and bubble display to show correct match results
-   - Format: { "PlayerA_vs_PlayerB": result, "PlayerB_vs_PlayerA": -result } for each hole
-   - All existing functionality preserved (cumulative, leaders, points, display strings)
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - ADDED: calculateWithClinched() - NEW function that returns team game results WITH clinch detection
+   - Clinch detection now happens INSIDE game-team.js using the SAME remainingHoles value
+   - This eliminates the possibility of race conditions where remainingHoles differs between calls
+   - Returns flight1ClinchedHole and flight2ClinchedHole in addition to all existing data
+   - Original calculate() preserved for backward compatibility
+   - All other functions unchanged
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_TEAM_VERSION = "1.07";
+window.GAME_TEAM_VERSION = "1.08";
 
 var GameTeam = (function() {
     
@@ -111,6 +112,7 @@ var GameTeam = (function() {
         return results;
     }
 
+    // Legacy calculate function (no clinch detection)
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat) {
         // Calculate minimum handicap across all players for Relative format
         var minHandicap = calculateMinHandicap(allPlayers);
@@ -293,31 +295,89 @@ var GameTeam = (function() {
             displayT1: displayT1,
             displayT2: displayT2,
             teamGameTR: teamGameTR,
-            // NEW v1.07: Intra-flight match results for bubble display
             flight1IntraMatches: flight1IntraMatches,
             flight2IntraMatches: flight2IntraMatches
         };
     }
 
-    return { calculate: calculate };
+    // ============================================================
+    // NEW v1.08: calculateWithClinched - returns team game results WITH clinch detection
+    // This ensures clinch detection uses the SAME cumulative values and remainingHoles
+    // ============================================================
+    
+    function calculateWithClinched(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat, remainingHolesByHole) {
+        // First get all the standard results
+        var baseResults = calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat);
+        
+        // Now calculate clinch holes based on cumulative values
+        var flight1ClinchedHole = null;
+        var flight2ClinchedHole = null;
+        
+        // For each hole position (0-17), check if the flight clinched at that hole
+        for (var position = 0; position < 18; position++) {
+            var cumulative1 = Math.abs(baseResults.flight1Cumulative[position]);
+            var cumulative2 = Math.abs(baseResults.flight2Cumulative[position]);
+            var remainingHoles = remainingHolesByHole[position];
+            
+            // Flight 1 clinch check
+            if (flight1ClinchedHole === null && cumulative1 > 0) {
+                var maxOpponentPoints1 = remainingHoles * 2;
+                if (cumulative1 > maxOpponentPoints1) {
+                    flight1ClinchedHole = position + 1; // Convert to 1-based hole number
+                }
+            }
+            
+            // Flight 2 clinch check
+            if (flight2ClinchedHole === null && cumulative2 > 0) {
+                var maxOpponentPoints2 = remainingHoles * 2;
+                if (cumulative2 > maxOpponentPoints2) {
+                    flight2ClinchedHole = position + 1; // Convert to 1-based hole number
+                }
+            }
+        }
+        
+        // Return everything including clinch holes
+        return {
+            flight1Cumulative: baseResults.flight1Cumulative,
+            flight2Cumulative: baseResults.flight2Cumulative,
+            flight1Leaders: baseResults.flight1Leaders,
+            flight2Leaders: baseResults.flight2Leaders,
+            pointsA: baseResults.pointsA,
+            pointsB: baseResults.pointsB,
+            displayT1: baseResults.displayT1,
+            displayT2: baseResults.displayT2,
+            teamGameTR: baseResults.teamGameTR,
+            flight1IntraMatches: baseResults.flight1IntraMatches,
+            flight2IntraMatches: baseResults.flight2IntraMatches,
+            flight1ClinchedHole: flight1ClinchedHole,
+            flight2ClinchedHole: flight2ClinchedHole
+        };
+    }
+    
+    return {
+        // Legacy
+        calculate: calculate,
+        // NEW v1.08: With clinch detection
+        calculateWithClinched: calculateWithClinched
+    };
 })();
 
 // Make available globally
 window.GameTeam = GameTeam;
 
 // Re-expose version for console debugging
-window.GAME_TEAM_VERSION = "1.07";
+window.GAME_TEAM_VERSION = "1.08";
 
 /*
 FILE: js/game-team.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: flight1IntraMatches array - stores per-hole intra-flight match results for Flight 1
-   - ADDED: flight2IntraMatches array - stores per-hole intra-flight match results for Flight 2
-   - ADDED: buildIntraMatchResults() helper function
-   - These arrays are used by cascade and bubble display to show correct match results
-   - Format: { "PlayerA_vs_PlayerB": result, "PlayerB_vs_PlayerA": -result } for each hole
-   - All existing functionality preserved (cumulative, leaders, points, display strings)
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - ADDED: calculateWithClinched() - NEW function that returns team game results WITH clinch detection
+   - Clinch detection now happens INSIDE game-team.js using the SAME remainingHoles value
+   - This eliminates the possibility of race conditions where remainingHoles differs between calls
+   - Returns flight1ClinchedHole and flight2ClinchedHole in addition to all existing data
+   - Original calculate() preserved for backward compatibility
+   - All other functions unchanged
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
