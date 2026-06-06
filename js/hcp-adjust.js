@@ -1,6 +1,6 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.16
+VERSION: 2.17
 KEY CHANGES from v2.15:
    - REMOVED: Hard-coded "..." suffix from all table cell values
    - Player names now display as "JG" instead of "JG..."
@@ -8,7 +8,7 @@ KEY CHANGES from v2.15:
    - Anchor adjustment displays as "0" instead of "0..."
    - Performance adjustment displays as "0" instead of "0..."
    - Final handicap displays as "0" instead of "0..."
-   - All other functionality unchanged
+   - All other functionality identical to v2.15 (working version)
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -122,7 +122,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Calculate Performance Adjustment using MATCH POINTS
+    // FIXED v2.14: Calculate Performance Adjustment using MATCH POINTS
     // Each match: Win = 1 point, Loss = 0 points, Tie = 0.5 points
     // Total points ≥ 3.5 → -1 (CUT stroke)
     // Total points ≤ 0.5 → +1 (ADD stroke)
@@ -282,7 +282,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - FIXED v2.16: Removed hard-coded "..." suffix
+    // Display Table - FIXED v2.17: Removed "..." suffix
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -331,16 +331,16 @@ var HandicapAdjustment = (function() {
             }
             
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
-            // FIXED v2.16: Removed hard-coded "..." from all cells
+            // REMOVED: "..." from all cell values (v2.17)
             tableHtml += `<td style="padding:4px 2px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}</td>`;
             tableHtml += `<td style="padding:4px 2px; text-align:center;">${p.currentHcp}</td>`;
             tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
             tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
             tableHtml += `<td style="padding:4px 2px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
-            tableHtml += '</table>';
+            tableHtml += '</td>';
         }
         
-        tableHtml += '</tbody><td></div>';
+        tableHtml += '</tbody></table></div>';
         
         var anchorInfoHtml = `<div style="text-align: center; margin-bottom: 10px;"><span style="color: #4caf50; font-size:0.75rem;">✓ Anchor: ${escapeHtml(anchorName)}</span></div>`;
         
@@ -419,7 +419,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display stored adjustment from history record
+    // NEW v2.10: Display stored adjustment from history record
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName) {
@@ -455,7 +455,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // initForHistory - Reads stored adjustment data
+    // NEW v2.10: initForHistory - Reads stored adjustment data
     // ============================================================
     
     function initForHistory(gameId, archiveId, returnUrl) {
@@ -800,6 +800,9 @@ var HandicapAdjustment = (function() {
         });
     }
     
+    // Version exposure for console debugging
+    window.HANDICAP_ADJUST_VERSION = "2.17";
+    
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
     }
@@ -817,7 +820,7 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.16
+VERSION: 2.17
 KEY CHANGES from v2.15:
    - REMOVED: Hard-coded "..." suffix from all table cell values
    - Player names now display as "JG" instead of "JG..."
@@ -825,7 +828,8 @@ KEY CHANGES from v2.15:
    - Anchor adjustment displays as "0" instead of "0..."
    - Performance adjustment displays as "0" instead of "0..."
    - Final handicap displays as "0" instead of "0..."
-   - All other functionality unchanged
+   - Added version exposure window.HANDICAP_ADJUST_VERSION = "2.17"
+   - All other functionality identical to v2.15 (working version)
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
