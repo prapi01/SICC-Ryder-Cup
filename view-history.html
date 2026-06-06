@@ -1,11 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.03
-KEY CHANGES from v8.02:
-   - FIXED: Body flex-direction column (was row causing 2-column layout)
-   - FIXED: Container display block
-   - FIXED: Card width now respects max-width
-   - Landing page pure CSS, no GameUI conflicts
+VERSION: 8.04
+KEY CHANGES from v8.03:
+   - FIXED: Removed duplicate "Back to Game List" button from landing page
+   - FIXED: Added safe-area-inset for iPhone notch/Dynamic Island
+   - FIXED: Proper button visibility (Back to Game List only shows in detail view)
+   - FIXED: Card layout now respects safe area margins
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
@@ -14,7 +14,7 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <title>SICC Ryder Cup - HISTORY VIEWER</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -45,7 +45,7 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        /* Main container */
+        /* Main container - respects safe area */
         .container {
             max-width: 500px;
             width: 100%;
@@ -208,6 +208,7 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
+        /* Back button - only one on landing page */
         .back-buttons {
             display: flex;
             flex-direction: column;
@@ -232,6 +233,26 @@ STATUS: Ready for integration
         }
         
         .back-btn:active {
+            transform: scale(0.98);
+        }
+        
+        /* Detail view specific back button - styled same */
+        .detail-back-btn {
+            width: 100%;
+            max-width: 380px;
+            padding: 14px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            text-align: center;
+            border: 1px solid #4caf50;
+            background: #1a1a1a;
+            color: #4caf50;
+            margin: 20px auto 0 auto;
+        }
+        
+        .detail-back-btn:active {
             transform: scale(0.98);
         }
         
@@ -298,22 +319,20 @@ STATUS: Ready for integration
     </div>
 </div>
 
-<!-- GAME DETAIL VIEW (Scorecard - loaded dynamically when needed) -->
+<!-- GAME DETAIL VIEW (Scorecard) -->
 <div class="container" id="gameDetailView">
     <div id="detailContent"></div>
-    <div class="back-buttons" style="margin-top: 20px;">
-        <button class="back-btn" id="backToListBtn">← Back to Game List</button>
-    </div>
+    <button class="detail-back-btn" id="backToListBtn">← Back to Game List</button>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.03</div>
+<div class="version-tag">v8.04</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.03";
+window.VIEW_HISTORY_VERSION = "8.04";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -870,6 +889,7 @@ function backToGameList() {
     detailView.style.display = 'none';
     listView.style.display = 'block';
     
+    // Reload game list to ensure fresh data
     loadGameList();
 }
 
@@ -899,12 +919,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.03
-KEY CHANGES from v8.02:
-   - FIXED: Body flex-direction column (was row causing 2-column layout)
-   - FIXED: Container display block
-   - FIXED: Card width now respects max-width
-   - Landing page pure CSS, no GameUI conflicts
+VERSION: 8.04
+KEY CHANGES from v8.03:
+   - FIXED: Removed duplicate "Back to Game List" button from landing page
+   - FIXED: Added safe-area-inset for iPhone notch/Dynamic Island
+   - FIXED: Proper button visibility (Back to Game List only shows in detail view)
+   - FIXED: Card layout now respects safe area margins
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
