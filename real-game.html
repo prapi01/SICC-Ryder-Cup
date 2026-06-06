@@ -1,18 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 5.41
-KEY CHANGES from v5.40:
-   - ADDED: Persistent write queue with recovery on page load
-   - Accumulates all cascade results in memory before writing to Firestore
-   - Writes each hole sequentially after cascade completes
-   - Tracks progress in localStorage to resume on page refresh
-   - On init, checks for pending writes and resumes them
-   - Eliminates race condition between reads and writes
-   - Preserves clinch data correctly through entire cascade
-   - No Firestore reads between cascade holes (uses local cache only)
-   - All logging uses "[CASCADE-DEBUG]" prefix
+VERSION: 5.42
+KEY CHANGES from v5.41:
+   - FIXED: updateLocalCacheWithResults() now ALWAYS updates clinchedAt, not only when there are new clinches
+   - Previously, clinchedAt was only updated when new clinches were added, leaving old data in cache
+   - This caused H2-H11 to see old clinch data (8 entries) instead of empty
+   - Now forces cache.results.clinchedAt = resultsData.updatedClinched regardless of whether there are updates
+   - This ensures local cache stays in sync with calculated results
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.11+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for testing - includes write queue recovery
+STATUS: Ready for testing - fixes local cache sync issue
 -->
 
 <!DOCTYPE html>
@@ -399,13 +396,13 @@ STATUS: Ready for testing - includes write queue recovery
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.41</div>
+<div class="version-tag">v5.42</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.41";
+window.REAL_GAME_VERSION = "5.42";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -585,6 +582,9 @@ async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
     }
     
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
+        updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
+    } else {
+        // Even if no new clinches, we still need to write the current clinchedAt state
         updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
     }
     
@@ -1205,11 +1205,9 @@ function updateLocalCacheWithResults(resultsData) {
     cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
     cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
     
-    // Update clinchedAt
-    if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
-        cache.results.clinchedAt = resultsData.updatedClinched;
-        console.log(`[CASCADE-DEBUG] updateLocalCacheWithResults: clinchedAt updated, new count = ${Object.keys(cache.results.clinchedAt).length}`);
-    }
+    // ALWAYS update clinchedAt, even if empty (fixes stale cache issue)
+    cache.results.clinchedAt = resultsData.updatedClinched;
+    console.log(`[CASCADE-DEBUG] updateLocalCacheWithResults: clinchedAt updated, new count = ${Object.keys(cache.results.clinchedAt).length}`);
     
     // Update computedUpToHole
     var newComputedUpToHole = position + 1;
@@ -1443,7 +1441,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.41";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.42";
     
     console.log(`[CASCADE-DEBUG] calculateHoleResultsWithCumulative: hole=${holeNumber}, remainingHoles=${remainingHoles}, existingClinched count=${Object.keys(cumulativeClinched).length}`);
     
@@ -2043,17 +2041,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.41
-KEY CHANGES from v5.40:
-   - ADDED: Persistent write queue with recovery on page load
-   - Accumulates all cascade results in memory before writing to Firestore
-   - Writes each hole sequentially after cascade completes
-   - Tracks progress in localStorage to resume on page refresh
-   - On init, checks for pending writes and resumes them
-   - Eliminates race condition between reads and writes
-   - Preserves clinch data correctly through entire cascade
-   - No Firestore reads between cascade holes (uses local cache only)
-   - All logging uses "[CASCADE-DEBUG]" prefix
+VERSION: 5.42
+KEY CHANGES from v5.41:
+   - FIXED: updateLocalCacheWithResults() now ALWAYS updates clinchedAt, not only when there are new clinches
+   - Previously, clinchedAt was only updated when new clinches were added, leaving old data in cache
+   - This caused H2-H11 to see old clinch data (8 entries) instead of empty
+   - Now forces cache.results.clinchedAt = resultsData.updatedClinched regardless of whether there are updates
+   - This ensures local cache stays in sync with calculated results
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.11+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for testing - includes write queue recovery
+STATUS: Ready for testing - fixes local cache sync issue
 -->
