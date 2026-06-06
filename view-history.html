@@ -1,11 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.04
-KEY CHANGES from v8.03:
-   - FIXED: Removed duplicate "Back to Game List" button from landing page
-   - FIXED: Added safe-area-inset for iPhone notch/Dynamic Island
-   - FIXED: Proper button visibility (Back to Game List only shows in detail view)
-   - FIXED: Card layout now respects safe area margins
+VERSION: 8.05
+KEY CHANGES from v8.04:
+   - REMOVED: "Back to Game List" button entirely (unnecessary)
+   - Only "Back to Main Menu" button remains on landing page
+   - Detail view now has its own back button to return to list
+   - Cleaner, simpler navigation
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
@@ -45,7 +45,6 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        /* Main container - respects safe area */
         .container {
             max-width: 500px;
             width: 100%;
@@ -54,9 +53,7 @@ STATUS: Ready for integration
             display: block;
         }
         
-        /* ============================================================
-           LANDING PAGE STYLES
-        ============================================================ */
+        /* View containers */
         .game-list-view {
             display: block;
         }
@@ -65,6 +62,7 @@ STATUS: Ready for integration
             display: none;
         }
         
+        /* Landing page styles */
         .game-list-title {
             font-size: 1.2rem;
             font-weight: 600;
@@ -82,7 +80,6 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* Game Card */
         .game-card {
             width: 100%;
             max-width: 380px;
@@ -236,7 +233,7 @@ STATUS: Ready for integration
             transform: scale(0.98);
         }
         
-        /* Detail view specific back button - styled same */
+        /* Detail view back button */
         .detail-back-btn {
             width: 100%;
             max-width: 380px;
@@ -309,7 +306,7 @@ STATUS: Ready for integration
 <body>
 
 <!-- GAME LIST VIEW (Landing Page) -->
-<div class="container" id="gameListView">
+<div class="container game-list-view" id="gameListView">
     <div class="game-list-title">📜 COMPLETED GAMES</div>
     <div class="game-list" id="gameListContainer">
         <div class="loading">Loading games...</div>
@@ -320,19 +317,19 @@ STATUS: Ready for integration
 </div>
 
 <!-- GAME DETAIL VIEW (Scorecard) -->
-<div class="container" id="gameDetailView">
+<div class="container game-detail-view" id="gameDetailView">
     <div id="detailContent"></div>
     <button class="detail-back-btn" id="backToListBtn">← Back to Game List</button>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.04</div>
+<div class="version-tag">v8.05</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.04";
+window.VIEW_HISTORY_VERSION = "8.05";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -889,7 +886,6 @@ function backToGameList() {
     detailView.style.display = 'none';
     listView.style.display = 'block';
     
-    // Reload game list to ensure fresh data
     loadGameList();
 }
 
@@ -919,12 +915,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.04
-KEY CHANGES from v8.03:
-   - FIXED: Removed duplicate "Back to Game List" button from landing page
-   - FIXED: Added safe-area-inset for iPhone notch/Dynamic Island
-   - FIXED: Proper button visibility (Back to Game List only shows in detail view)
-   - FIXED: Card layout now respects safe area margins
+VERSION: 8.05
+KEY CHANGES from v8.04:
+   - REMOVED: "Back to Game List" button entirely (unnecessary)
+   - Only "Back to Main Menu" button remains on landing page
+   - Detail view now has its own back button to return to list
+   - Cleaner, simpler navigation
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
