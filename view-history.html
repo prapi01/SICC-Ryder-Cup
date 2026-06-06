@@ -1,13 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.02
-KEY CHANGES from v8.01:
-   - REMOVED: All GameUI calls from landing page initialization (caused CSS conflicts)
-   - GameUI/GameScorecard now loaded ONLY when viewing a scorecard
-   - Landing page now pure HTML/CSS - no interference from shared modules
-   - Scorecard viewer loads dependencies dynamically when needed
-   - Handicap uses HandicapAdjustment.initForHistory() directly
-   - Clean separation between list view and detail view
+VERSION: 8.03
+KEY CHANGES from v8.02:
+   - FIXED: Body flex-direction column (was row causing 2-column layout)
+   - FIXED: Container display block
+   - FIXED: Card width now respects max-width
+   - Landing page pure CSS, no GameUI conflicts
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
@@ -41,8 +39,9 @@ STATUS: Ready for integration
             font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
             color: #ffffff;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
@@ -52,10 +51,11 @@ STATUS: Ready for integration
             width: 100%;
             margin: 0 auto;
             padding: 20px 16px;
+            display: block;
         }
         
         /* ============================================================
-           LANDING PAGE STYLES (Pure, no GameUI conflicts)
+           LANDING PAGE STYLES
         ============================================================ */
         .game-list-view {
             display: block;
@@ -79,9 +79,10 @@ STATUS: Ready for integration
             align-items: center;
             gap: 16px;
             margin-bottom: 24px;
+            width: 100%;
         }
         
-        /* Game Card - 380px wide, centered */
+        /* Game Card */
         .game-card {
             width: 100%;
             max-width: 380px;
@@ -89,14 +90,13 @@ STATUS: Ready for integration
             border: 1px solid #2a2a2a;
             border-radius: 24px;
             padding: 20px 16px;
-            transition: transform 0.1s ease;
+            margin: 0 auto;
         }
         
         .game-card:active {
             transform: scale(0.99);
         }
         
-        /* Card Header */
         .game-header {
             text-align: center;
             margin-bottom: 16px;
@@ -116,7 +116,6 @@ STATUS: Ready for integration
             margin-top: 4px;
         }
         
-        /* TR Result - Team A vs Team B */
         .game-tr-result {
             margin-bottom: 16px;
         }
@@ -153,7 +152,6 @@ STATUS: Ready for integration
             font-weight: 600;
         }
         
-        /* T-1, T-2, Strk line */
         .tr-subresult {
             display: flex;
             justify-content: center;
@@ -178,7 +176,6 @@ STATUS: Ready for integration
             font-weight: 600;
         }
         
-        /* Action Buttons */
         .game-actions {
             display: flex;
             gap: 12px;
@@ -192,7 +189,6 @@ STATUS: Ready for integration
             font-weight: 600;
             font-size: 0.75rem;
             cursor: pointer;
-            transition: all 0.1s ease;
             text-align: center;
             border: 1px solid;
             background: #1a1a1a;
@@ -212,12 +208,12 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
-        /* Back Button */
         .back-buttons {
             display: flex;
             flex-direction: column;
             align-items: center;
             margin-top: 8px;
+            width: 100%;
         }
         
         .back-btn {
@@ -232,14 +228,13 @@ STATUS: Ready for integration
             border: 1px solid #4caf50;
             background: #1a1a1a;
             color: #4caf50;
-            transition: all 0.1s ease;
+            margin: 0 auto;
         }
         
         .back-btn:active {
             transform: scale(0.98);
         }
         
-        /* Loading & Empty States */
         .loading {
             text-align: center;
             padding: 60px 20px;
@@ -254,7 +249,6 @@ STATUS: Ready for integration
             font-size: 0.85rem;
         }
         
-        /* Error message */
         .error-message {
             text-align: center;
             padding: 60px 20px;
@@ -262,7 +256,6 @@ STATUS: Ready for integration
             font-size: 0.85rem;
         }
         
-        /* Device and Version Tags */
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -314,13 +307,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.02</div>
+<div class="version-tag">v8.03</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.02";
+window.VIEW_HISTORY_VERSION = "8.03";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -373,11 +366,10 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// Show Handicap Adjustment (uses hcp-adjust.js)
+// Show Handicap Adjustment
 // ============================================================
 
 function showHandicapAdjustment(archiveId) {
-    // Load hcp-adjust.js dynamically if not already loaded
     if (typeof HandicapAdjustment === 'undefined') {
         var script = document.createElement('script');
         script.src = 'js/hcp-adjust.js';
@@ -391,11 +383,10 @@ function showHandicapAdjustment(archiveId) {
 }
 
 // ============================================================
-// Show Scorecard View (loads GameUI, GameScorecard dynamically)
+// Show Scorecard View
 // ============================================================
 
 function showScorecardView(game) {
-    // Show detail view container
     var listView = document.getElementById('gameListView');
     var detailView = document.getElementById('gameDetailView');
     var detailContent = document.getElementById('detailContent');
@@ -404,7 +395,6 @@ function showScorecardView(game) {
     detailView.style.display = 'block';
     detailContent.innerHTML = '<div class="loading">Loading scorecard...</div>';
     
-    // Load all required modules dynamically
     var modulesToLoad = [
         'js/game-data.js',
         'js/game-match.js',
@@ -436,7 +426,6 @@ function showScorecardView(game) {
 function renderScorecardView(game) {
     var detailContent = document.getElementById('detailContent');
     
-    // Extract data from historyGames structure
     var courseName = game.gameInfo?.course?.name || "Unknown Course";
     var coursePar = game.gameInfo?.course?.par || [];
     var courseSi = game.gameInfo?.course?.si || [];
@@ -446,7 +435,6 @@ function renderScorecardView(game) {
     var f2DataString = game.f2DataString || "";
     var resultsCache = game.results || null;
     
-    // Build the scorecard HTML container
     var html = `
         <div class="ticker-container" id="tickerContainer">
             <div class="ticker-content" id="tickerContent">&nbsp;</div>
@@ -467,15 +455,12 @@ function renderScorecardView(game) {
     
     detailContent.innerHTML = html;
     
-    // Now initialize GameUI and render
     GameUI.applyTightLayout();
     GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
     
-    // Set up state for detail view
     var currentFlight = 1;
     var currentHole = 1;
     
-    // Helper functions for the detail view
     function getPlayOrder() {
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
@@ -728,20 +713,17 @@ function renderScorecardView(game) {
         if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
-    // Set initial hole
     var playOrder = [];
     for (var i = startingHole; i <= 18; i++) playOrder.push(i);
     for (var i = 1; i < startingHole; i++) playOrder.push(i);
     currentHole = playOrder[0];
     currentFlight = 1;
     
-    // Render everything
     renderCompactHeader();
     initTicker();
     renderDetailView();
     GameUI.renderBottomMenu("bottomMenuContainer", null);
     
-    // Make status bubble refresh
     var statusBubble = document.getElementById('statusBubble');
     if (statusBubble) {
         statusBubble.onclick = function() { location.reload(); };
@@ -751,7 +733,7 @@ function renderScorecardView(game) {
 }
 
 // ============================================================
-// Game List Functions (Landing Page)
+// Game List Functions
 // ============================================================
 
 function renderGameList(games) {
@@ -817,7 +799,6 @@ function renderGameList(games) {
     
     container.innerHTML = html;
     
-    // Attach event listeners
     var allGames = games;
     
     document.querySelectorAll('.btn-scorecard').forEach(function(btn) {
@@ -866,7 +847,6 @@ function loadGameList() {
                 });
             });
             
-            // Sort by completedAt descending (most recent first)
             games.sort(function(a, b) {
                 var dateA = a.completedAt ? (a.completedAt.toDate ? a.completedAt.toDate() : new Date(a.completedAt)) : new Date(0);
                 var dateB = b.completedAt ? (b.completedAt.toDate ? b.completedAt.toDate() : new Date(b.completedAt)) : new Date(0);
@@ -890,7 +870,6 @@ function backToGameList() {
     detailView.style.display = 'none';
     listView.style.display = 'block';
     
-    // Reload game list to ensure fresh data
     loadGameList();
 }
 
@@ -899,18 +878,16 @@ function exitToMainMenu() {
 }
 
 // ============================================================
-// Initialization - NO GameUI calls here!
+// Initialization
 // ============================================================
 
 async function init() {
     var myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "📋 " + myDeviceShortName;
     
-    // Set up button handlers
     document.getElementById('backToMenuBtn').onclick = exitToMainMenu;
     document.getElementById('backToListBtn').onclick = backToGameList;
     
-    // Load game list
     loadGameList();
 }
 
@@ -922,14 +899,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.02
-KEY CHANGES from v8.01:
-   - REMOVED: All GameUI calls from landing page initialization (caused CSS conflicts)
-   - GameUI/GameScorecard now loaded ONLY when viewing a scorecard
-   - Landing page now pure HTML/CSS - no interference from shared modules
-   - Scorecard viewer loads dependencies dynamically when needed
-   - Handicap uses HandicapAdjustment.initForHistory() directly
-   - Clean separation between list view and detail view
+VERSION: 8.03
+KEY CHANGES from v8.02:
+   - FIXED: Body flex-direction column (was row causing 2-column layout)
+   - FIXED: Container display block
+   - FIXED: Card width now respects max-width
+   - Landing page pure CSS, no GameUI conflicts
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
