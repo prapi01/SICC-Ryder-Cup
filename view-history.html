@@ -1,11 +1,10 @@
 <!--
 FILE: view-history.html
-VERSION: 8.10
-KEY CHANGES from v8.09:
-   - SIMPLIFIED FIX: Removed renderCompactHeader() from renderDetailView() (only called once at init)
-   - Flight toggle now only updates flight badge and player cards, NOT the entire control bar
-   - Control bar hole number now stays correct when toggling flights
-   - Same pattern as real-game.html and view-game.html
+VERSION: 8.11
+KEY CHANGES from v8.10:
+   - FIXED: Added GameUI.updateCompactHoleDisplay() in onToggleFlight to preserve hole number
+   - Flight toggle now explicitly updates the control bar hole display
+   - One-line fix - all other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
 -->
@@ -321,13 +320,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.10</div>
+<div class="version-tag">v8.11</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.10";
+window.VIEW_HISTORY_VERSION = "8.11";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -616,12 +615,11 @@ function renderScorecardView(game) {
         GameUI.updateHoleHeaderNumber(currentHole);
     }
     
-    // SIMPLIFIED: Flight toggle - only update flight badge and player cards
-    // Do NOT recreate the control bar
+    // FIXED v8.11: Added updateCompactHoleDisplay to preserve hole number on flight toggle
     function onToggleFlight(flightNumber) {
         currentFlight = flightNumber;
         GameUI.updateFlightBadge(flightNumber);
-        // Only re-render player cards, not the entire control bar
+        GameUI.updateCompactHoleDisplay(currentHole);  // <-- THE FIX
         renderPlayerCardsOnly();
     }
     
@@ -913,12 +911,11 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.10
-KEY CHANGES from v8.09:
-   - SIMPLIFIED FIX: Removed renderCompactHeader() from renderDetailView() (only called once at init)
-   - Flight toggle now only updates flight badge and player cards, NOT the entire control bar
-   - Control bar hole number now stays correct when toggling flights
-   - Same pattern as real-game.html and view-game.html
+VERSION: 8.11
+KEY CHANGES from v8.10:
+   - FIXED: Added GameUI.updateCompactHoleDisplay() in onToggleFlight to preserve hole number
+   - Flight toggle now explicitly updates the control bar hole display
+   - One-line fix - all other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
 -->
