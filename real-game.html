@@ -1,19 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.38
-KEY CHANGES from v5.37:
-   - REMOVED: getAllOpponents() - now in game-match.js v2.08
-   - REMOVED: getMatchValueFromStoredResults() - now in game-match.js v2.08
-   - REMOVED: getBubbleValue() - now GameMatch.getMatchDisplayValue()
-   - REMOVED: getBubbleClassWithClinch() - now GameMatch.getMatchBubbleClass()
-   - REMOVED: calculateIntraFlightResults() - now internal to GameMatch.calculateIntraFlightWithClinch()
-   - REMOVED: Inline intra-flight clinch detection loops - now using GameMatch.calculateIntraFlightWithClinch()
-   - UPDATED: calculateHoleResultsWithCumulative() to use new GameMatch functions
-   - UPDATED: renderAll() to use GameMatch.getAllOpponents(), getMatchDisplayValue(), getMatchBubbleClass()
-   - All match logic now resides in game-match.js (proper separation of concerns)
-   - Intra-flight clinch detection now properly checks cumulativeClinched via game-match.js
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.08+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+VERSION: 5.39
+KEY CHANGES from v5.38:
+   - Updated version for consistency with game-match.js v2.09
+   - game-match.js now includes strategic console logging for clinch verification
+   - All clinch detection logging uses "[CLINCH]" prefix for easy filtering
+   - No functional changes to real-game.html from v5.38
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.09+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+STATUS: Ready for integration - includes logging for clinch testing
 -->
 
 <!DOCTYPE html>
@@ -400,13 +394,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.38</div>
+<div class="version-tag">v5.39</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.38";
+window.REAL_GAME_VERSION = "5.39";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1222,7 +1216,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.38";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.39";
     
     // Initialize clinch updates object
     var clinchedAtUpdates = {};
@@ -1887,18 +1881,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.38
-KEY CHANGES from v5.37:
-   - REMOVED: getAllOpponents() - now in game-match.js v2.08
-   - REMOVED: getMatchValueFromStoredResults() - now in game-match.js v2.08
-   - REMOVED: getBubbleValue() - now GameMatch.getMatchDisplayValue()
-   - REMOVED: getBubbleClassWithClinch() - now GameMatch.getMatchBubbleClass()
-   - REMOVED: calculateIntraFlightResults() - now internal to GameMatch.calculateIntraFlightWithClinch()
-   - REMOVED: Inline intra-flight clinch detection loops - now using GameMatch.calculateIntraFlightWithClinch()
-   - UPDATED: calculateHoleResultsWithCumulative() to use new GameMatch functions
-   - UPDATED: renderAll() to use GameMatch.getAllOpponents(), getMatchDisplayValue(), getMatchBubbleClass()
-   - All match logic now resides in game-match.js (proper separation of concerns)
-   - Intra-flight clinch detection now properly checks cumulativeClinched via game-match.js
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.08+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+VERSION: 5.39
+KEY CHANGES from v5.38:
+   - Updated version for consistency with game-match.js v2.09
+   - game-match.js now includes strategic console logging for clinch verification
+   - All clinch detection logging uses "[CLINCH]" prefix for easy filtering
+   - No functional changes to real-game.html from v5.38
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.09+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+STATUS: Ready for integration - includes logging for clinch testing
 -->
