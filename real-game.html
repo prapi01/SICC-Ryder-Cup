@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.31
-KEY CHANGES from v5.30:
-   - FIXED: Firestore "nested arrays not supported" error still occurring
-   - Now writes f1IntraMatches and f2IntraMatches as sparse objects (dot notation)
-   - matchResults already using sparse dot notation
-   - All other arrays (pointsA/B, leader, cumulativePoints, tr arrays, display arrays) remain as FULL arrays
-   - This hybrid approach satisfies Firestore's constraints while maintaining data consistency
+VERSION: 5.32
+KEY CHANGES from v5.31:
+   - REFACTORED: Now uses GameMatch.calculateCrossFlightWithClinch() for cross-flight match results
+   - REMOVED: Duplicate cross-flight clinch detection loop (was causing index mismatch bugs)
+   - Clinch detection now happens INSIDE game-match.js using the SAME sorted player arrays
+   - This eliminates the possibility of index misalignment between matchResults and clinch detection
+   - Intra-flight clinch detection remains in real-game.html (game-match.js doesn't have equivalent yet)
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -395,13 +396,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.31</div>
+<div class="version-tag">v5.32</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.31";
+window.REAL_GAME_VERSION = "5.32";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1028,33 +1029,6 @@ function initializeEmptyResults() {
     };
 }
 
-function calculateMatchResultsArray(holeNumber) {
-    var cache = GameLoader.getLocalCache();
-    var matchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
-    
-    var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
-        if (a.flight !== b.flight) return a.flight - b.flight;
-        return a.handicap - b.handicap;
-    });
-    
-    var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) {
-        if (a.flight !== b.flight) return a.flight - b.flight;
-        return a.handicap - b.handicap;
-    });
-    
-    var resultArray = [];
-    for (var a = 0; a < teamAPlayers.length; a++) {
-        for (var b = 0; b < teamBPlayers.length; b++) {
-            var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
-            var value = matchResults[key] || 0;
-            if (value > 15) value = 15;
-            if (value < -10) value = -10;
-            resultArray.push(value);
-        }
-    }
-    return resultArray;
-}
-
 function calculateIntraFlightResults(flight, holeNumber) {
     var cache = GameLoader.getLocalCache();
     var flightData = (flight === 1) ? cache.f1DataString : cache.f2DataString;
@@ -1142,6 +1116,11 @@ function calculatePlayerTotals(upToHole) {
     
     return playerTotals;
 }
+
+// ============================================================
+// REFACTORED v5.32: Uses GameMatch.calculateCrossFlightWithClinch()
+// This eliminates the duplicate sorting that caused index mismatch bugs
+// ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
     var cache = GameLoader.getLocalCache();
@@ -1238,9 +1217,9 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     // Initialize clinch updates object
     var clinchedAtUpdates = {};
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.31";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.32";
     
-    // INTRA-FLIGHT CLINCH DETECTION
+    // INTRA-FLIGHT CLINCH DETECTION (still in real-game.html)
     if (f1Available && result.f1IntraMatches) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var teamAPlayersF1 = flight1Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -1285,19 +1264,38 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
-    // CROSS-FLIGHT CLINCH DETECTION
+    // ============================================================
+    // REFACTORED: CROSS-FLIGHT CLINCH DETECTION
+    // Now uses GameMatch.calculateCrossFlightWithClinch() which returns
+    // BOTH matchResults AND clinchedAtUpdates from the SAME sorted arrays
+    // ============================================================
+    
     if (crossAvailable) {
-        var matchResultsArray = calculateMatchResultsArray(holeNumber);
-        result.matchResults = matchResultsArray;
+        // Get cross-flight results with integrated clinch detection
+        var crossResult = GameMatch.calculateCrossFlightWithClinch(
+            cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar,
+            remainingHoles, holeNumber, deviceId, cascadeVersion
+        );
         
-        var tempMatchResults = GameMatch.calculateCrossFlight(cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar);
+        // Store match results as array (for Firestore)
+        result.matchResults = crossResult.matchResultsArray;
+        
+        // Store match results object for game1 points calculation
+        var matchResultsObj = crossResult.matchResultsObj;
+        
+        // Merge clinch updates from cross-flight
+        for (var matchKey in crossResult.clinchedAtUpdates) {
+            clinchedAtUpdates[matchKey] = crossResult.clinchedAtUpdates[matchKey];
+        }
+        
+        // Calculate game1 points from match results object
         var game1PointsA = 0, game1PointsB = 0, matchCount = 0;
-        for (var key in tempMatchResults) {
+        for (var key in matchResultsObj) {
             if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
                 var firstPlayerName = key.split("_vs_")[0];
                 var firstPlayer = allPlayers.find(function(p) { return p.name === firstPlayerName; });
                 if (firstPlayer && firstPlayer.team === "A") {
-                    var value = tempMatchResults[key];
+                    var value = matchResultsObj[key];
                     if (value > 0) game1PointsA += 1;
                     else if (value < 0) game1PointsB += 1;
                     else { game1PointsA += 0.5; game1PointsB += 0.5; }
@@ -1308,10 +1306,12 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.game1PointsA = game1PointsA;
         result.game1PointsB = game1PointsB;
         
+        // Stroke game calculation (unchanged)
         var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, coursePar);
         result.strkLeader = strokeResults.leader[position] === "A" ? "A" : strokeResults.leader[position] === "B" ? "B" : "AS";
         result.strkDisplay = strokeResults.displayStrk?.[position] || "AS";
         
+        // Team game points (unchanged)
         var flight1PointsA = (result.cumulativeF1 > 0) ? 1 : (result.cumulativeF1 < 0) ? 0 : 0.5;
         var flight1PointsB = (result.cumulativeF1 > 0) ? 0 : (result.cumulativeF1 < 0) ? 1 : 0.5;
         var flight2PointsA = (result.cumulativeF2 > 0) ? 1 : (result.cumulativeF2 < 0) ? 0 : 0.5;
@@ -1319,33 +1319,15 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         result.game2PointsA = flight1PointsA + flight2PointsA;
         result.game2PointsB = flight1PointsB + flight2PointsB;
         
+        // Stroke points (unchanged)
         result.game3PointsA = (result.strkLeader === "A") ? 1 : (result.strkLeader === "B") ? 0 : 0.5;
         result.game3PointsB = (result.strkLeader === "A") ? 0 : (result.strkLeader === "B") ? 1 : 0.5;
         
+        // Total points (unchanged)
         result.trA = result.game1PointsA + result.game2PointsA + result.game3PointsA;
         result.trB = result.game1PointsB + result.game2PointsB + result.game3PointsB;
         result.trAGreen = (result.trA > result.trB);
         result.trBGreen = (result.trB > result.trA);
-        
-        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        
-        for (var a = 0; a < teamAPlayers.length; a++) {
-            for (var b = 0; b < teamBPlayers.length; b++) {
-                var matchValue = matchResultsArray[a * teamBPlayers.length + b];
-                var winnerName = teamAPlayers[a].name;
-                var loserName = teamBPlayers[b].name;
-                
-                var clinchResult = GameMatch.calculateClinch(
-                    matchValue, remainingHoles, winnerName, loserName, 
-                    holeNumber, deviceId, cascadeVersion
-                );
-                
-                if (clinchResult) {
-                    clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
-                }
-            }
-        }
     }
     
     result.clinchedAtUpdates = clinchedAtUpdates;
@@ -1987,13 +1969,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.31
-KEY CHANGES from v5.30:
-   - FIXED: Firestore "nested arrays not supported" error still occurring
-   - Now writes f1IntraMatches and f2IntraMatches as sparse objects (dot notation)
-   - matchResults already using sparse dot notation
-   - All other arrays (pointsA/B, leader, cumulativePoints, tr arrays, display arrays) remain as FULL arrays
-   - This hybrid approach satisfies Firestore's constraints while maintaining data consistency
+VERSION: 5.32
+KEY CHANGES from v5.31:
+   - REFACTORED: Now uses GameMatch.calculateCrossFlightWithClinch() for cross-flight match results
+   - REMOVED: Duplicate cross-flight clinch detection loop (was causing index mismatch bugs)
+   - Clinch detection now happens INSIDE game-match.js using the SAME sorted player arrays
+   - This eliminates the possibility of index misalignment between matchResults and clinch detection
+   - Intra-flight clinch detection remains in real-game.html (game-match.js doesn't have equivalent yet)
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
