@@ -1,14 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.29
-KEY CHANGES from v5.28:
-   - FIXED: Results arrays now written as FULL arrays (length 18) instead of sparse objects
-   - Modified saveResultsToFirestoreWithCumulative() to read existing array, update position, write entire array
-   - Affected fields: game1.pointsA/B, game2.pointsA/B, game2.flight1/2.leader, game2.flight1/2.cumulativePoints
-   - Affected fields: game2.displayT1/T2, game3.leader, game3.displayStrk, game3.pointsA/B, tr.teamA/B, tr.teamAGreen/BGreen
-   - Also fixed matchResults, f1IntraMatches, f2IntraMatches to use array indexing
-   - Ensures consistent data structure across all games (no more sparse objects)
-   - All other functionality identical to v5.28
+VERSION: 5.30
+KEY CHANGES from v5.29:
+   - FIXED: Firestore "nested arrays not supported" error
+   - matchResults now written as sparse object (dot notation) because it contains nested arrays
+   - All other arrays (pointsA/B, leader, cumulativePoints, tr arrays, display arrays) remain as FULL arrays
+   - f1IntraMatches and f2IntraMatches remain as full arrays (they contain objects, not arrays)
+   - This hybrid approach satisfies Firestore's constraints while maintaining data consistency
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -397,13 +395,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.29</div>
+<div class="version-tag">v5.30</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.29";
+window.REAL_GAME_VERSION = "5.30";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1240,7 +1238,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     // Initialize clinch updates object
     var clinchedAtUpdates = {};
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.29";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.30";
     
     // INTRA-FLIGHT CLINCH DETECTION
     if (f1Available && result.f1IntraMatches) {
@@ -1360,7 +1358,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
 }
 
 // ============================================================
-// FIXED v5.29: Write FULL ARRAYS instead of sparse objects
+// FIXED v5.30: Hybrid approach - matchResults uses sparse dot notation
+// (because Firestore rejects nested arrays), all other arrays are full arrays
 // ============================================================
 
 async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1383,126 +1382,132 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     }
     
     // ============================================================
-    // FIXED: Handle per-hole arrays by reading full array from cache,
-    // updating the specific position, and writing the full array back
+    // CRITICAL FIX: matchResults contains NESTED ARRAYS which Firestore rejects
+    // Must use sparse dot notation for matchResults only
     // ============================================================
-    
-    // 1. matchResults (array of 16 values per hole)
     if (resultsData.matchResults !== null) {
+        updatePayload[`results.matchResults.${position}`] = resultsData.matchResults;
+        // Also update local cache
         if (!cache.results.matchResults) cache.results.matchResults = new Array(18);
         cache.results.matchResults[position] = resultsData.matchResults;
-        updatePayload["results.matchResults"] = cache.results.matchResults;
     }
     
-    // 2. f1IntraMatches (object per hole)
+    // f1IntraMatches and f2IntraMatches contain objects (not arrays) - safe as full arrays
     if (resultsData.f1IntraMatches !== null) {
         if (!cache.results.f1IntraMatches) cache.results.f1IntraMatches = new Array(18);
         cache.results.f1IntraMatches[position] = resultsData.f1IntraMatches;
         updatePayload["results.f1IntraMatches"] = cache.results.f1IntraMatches;
     }
     
-    // 3. f2IntraMatches (object per hole)
     if (resultsData.f2IntraMatches !== null) {
         if (!cache.results.f2IntraMatches) cache.results.f2IntraMatches = new Array(18);
         cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
         updatePayload["results.f2IntraMatches"] = cache.results.f2IntraMatches;
     }
     
-    // 4. game1.pointsA (full array)
+    // ============================================================
+    // All other arrays are FLAT (primitive values) - safe as full arrays
+    // ============================================================
+    
+    // game1.pointsA (full array)
     if (!cache.results.game1.pointsA) cache.results.game1.pointsA = new Array(18).fill(8);
     cache.results.game1.pointsA[position] = resultsData.game1PointsA;
     updatePayload["results.game1.pointsA"] = cache.results.game1.pointsA;
     
-    // 5. game1.pointsB (full array)
+    // game1.pointsB (full array)
     if (!cache.results.game1.pointsB) cache.results.game1.pointsB = new Array(18).fill(8);
     cache.results.game1.pointsB[position] = resultsData.game1PointsB;
     updatePayload["results.game1.pointsB"] = cache.results.game1.pointsB;
     
-    // 6. game2.pointsA (full array)
+    // game2.pointsA (full array)
     if (!cache.results.game2.pointsA) cache.results.game2.pointsA = new Array(18).fill(1);
     cache.results.game2.pointsA[position] = resultsData.game2PointsA;
     updatePayload["results.game2.pointsA"] = cache.results.game2.pointsA;
     
-    // 7. game2.pointsB (full array)
+    // game2.pointsB (full array)
     if (!cache.results.game2.pointsB) cache.results.game2.pointsB = new Array(18).fill(1);
     cache.results.game2.pointsB[position] = resultsData.game2PointsB;
     updatePayload["results.game2.pointsB"] = cache.results.game2.pointsB;
     
-    // 8. game2.flight1.leader (full array)
+    // game2.flight1.leader (full array)
     if (!cache.results.game2.flight1.leader) cache.results.game2.flight1.leader = new Array(18).fill("AS");
     cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
     updatePayload["results.game2.flight1.leader"] = cache.results.game2.flight1.leader;
     
-    // 9. game2.flight2.leader (full array)
+    // game2.flight2.leader (full array)
     if (!cache.results.game2.flight2.leader) cache.results.game2.flight2.leader = new Array(18).fill("AS");
     cache.results.game2.flight2.leader[position] = resultsData.t2Leader;
     updatePayload["results.game2.flight2.leader"] = cache.results.game2.flight2.leader;
     
-    // 10. game2.displayT1 (full array)
+    // game2.displayT1 (full array)
     if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill("AS");
     cache.results.game2.displayT1[position] = resultsData.t1Display;
     updatePayload["results.game2.displayT1"] = cache.results.game2.displayT1;
     
-    // 11. game2.displayT2 (full array)
+    // game2.displayT2 (full array)
     if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill("AS");
     cache.results.game2.displayT2[position] = resultsData.t2Display;
     updatePayload["results.game2.displayT2"] = cache.results.game2.displayT2;
     
-    // 12. game2.flight1.cumulativePoints (full array)
+    // game2.flight1.cumulativePoints (full array)
     if (!cache.results.game2.flight1.cumulativePoints) cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
     cache.results.game2.flight1.cumulativePoints[position] = resultsData.cumulativeF1 !== undefined ? resultsData.cumulativeF1 : 0;
     updatePayload["results.game2.flight1.cumulativePoints"] = cache.results.game2.flight1.cumulativePoints;
     
-    // 13. game2.flight2.cumulativePoints (full array)
+    // game2.flight2.cumulativePoints (full array)
     if (!cache.results.game2.flight2.cumulativePoints) cache.results.game2.flight2.cumulativePoints = new Array(18).fill(0);
     cache.results.game2.flight2.cumulativePoints[position] = resultsData.cumulativeF2 !== undefined ? resultsData.cumulativeF2 : 0;
     updatePayload["results.game2.flight2.cumulativePoints"] = cache.results.game2.flight2.cumulativePoints;
     
-    // 14. game3.leader (full array)
+    // game3.leader (full array)
     if (!cache.results.game3.leader) cache.results.game3.leader = new Array(18).fill("AS");
     cache.results.game3.leader[position] = resultsData.strkLeader;
     updatePayload["results.game3.leader"] = cache.results.game3.leader;
     
-    // 15. game3.displayStrk (full array)
+    // game3.displayStrk (full array)
     if (!cache.results.game3.displayStrk) cache.results.game3.displayStrk = new Array(18).fill("AS");
     cache.results.game3.displayStrk[position] = resultsData.strkDisplay;
     updatePayload["results.game3.displayStrk"] = cache.results.game3.displayStrk;
     
-    // 16. game3.pointsA (full array)
+    // game3.pointsA (full array)
     if (!cache.results.game3.pointsA) cache.results.game3.pointsA = new Array(18).fill(0.5);
     cache.results.game3.pointsA[position] = resultsData.game3PointsA;
     updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
     
-    // 17. game3.pointsB (full array)
+    // game3.pointsB (full array)
     if (!cache.results.game3.pointsB) cache.results.game3.pointsB = new Array(18).fill(0.5);
     cache.results.game3.pointsB[position] = resultsData.game3PointsB;
     updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
     
-    // 18. tr.teamA (full array)
+    // tr.teamA (full array)
     if (!cache.results.tr.teamA) cache.results.tr.teamA = new Array(18).fill(9.5);
     cache.results.tr.teamA[position] = resultsData.trA;
     updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
     
-    // 19. tr.teamB (full array)
+    // tr.teamB (full array)
     if (!cache.results.tr.teamB) cache.results.tr.teamB = new Array(18).fill(9.5);
     cache.results.tr.teamB[position] = resultsData.trB;
     updatePayload["results.tr.teamB"] = cache.results.tr.teamB;
     
-    // 20. tr.teamAGreen (full array)
+    // tr.teamAGreen (full array)
     if (!cache.results.tr.teamAGreen) cache.results.tr.teamAGreen = new Array(18).fill(true);
     cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
     updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
     
-    // 21. tr.teamBGreen (full array)
+    // tr.teamBGreen (full array)
     if (!cache.results.tr.teamBGreen) cache.results.tr.teamBGreen = new Array(18).fill(true);
     cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
     updatePayload["results.tr.teamBGreen"] = cache.results.tr.teamBGreen;
     
-    // 22. game2 flight clinched holes
-    updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
-    updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
+    // game2 flight clinched holes
+    if (resultsData.flight1ClinchedHole !== cumulativeFlight1ClinchedHole) {
+        updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
+    }
+    if (resultsData.flight2ClinchedHole !== cumulativeFlight2ClinchedHole) {
+        updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
+    }
     
-    // 23. clinchedAt
+    // clinchedAt
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
         cache.results.clinchedAt = resultsData.updatedClinched;
         updatePayload["results.clinchedAt"] = cache.results.clinchedAt;
@@ -1510,27 +1515,26 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
         updatePayload["results.clinchedAt"] = cumulativeClinched;
     }
     
-    // 24. computedUpToHole
-    if (position + 1 > (cache.results.computedUpToHole || 0)) {
-        cache.results.computedUpToHole = position + 1;
-        updatePayload["results.computedUpToHole"] = cache.results.computedUpToHole;
+    // computedUpToHole
+    var newComputedUpToHole = position + 1;
+    if (newComputedUpToHole > (cache.results.computedUpToHole || 0)) {
+        cache.results.computedUpToHole = newComputedUpToHole;
+        updatePayload["results.computedUpToHole"] = newComputedUpToHole;
     }
     
-    // 25. lastComputedAt
-    updatePayload["results.lastComputedAt"] = new Date().toISOString();
+    // lastComputedAt
+    var now = new Date().toISOString();
+    updatePayload["results.lastComputedAt"] = now;
+    cache.results.lastComputedAt = now;
     
-    // 26. playerTotals
-    var currentUpToHole = (position + 1);
-    var playerTotals = calculatePlayerTotals(currentUpToHole);
+    // playerTotals
+    var playerTotals = calculatePlayerTotals(newComputedUpToHole);
     cache.results.playerTotals = playerTotals;
     updatePayload["results.playerTotals"] = playerTotals;
     
     try {
         await db.collection("scheduledGames").doc(gameId).update(updatePayload);
-        
-        // Also update the local cache's results reference
-        // (The individual array updates above already modified cache.results)
-        
+        console.log("Results saved successfully for hole", holeNumber);
     } catch (error) {
         console.error('Error saving results:', error);
     }
@@ -1980,15 +1984,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.29
-KEY CHANGES from v5.28:
-   - FIXED: Results arrays now written as FULL arrays (length 18) instead of sparse objects
-   - Modified saveResultsToFirestoreWithCumulative() to read existing array, update position, write entire array
-   - Affected fields: game1.pointsA/B, game2.pointsA/B, game2.flight1/2.leader, game2.flight1/2.cumulativePoints
-   - Affected fields: game2.displayT1/T2, game3.leader, game3.displayStrk, game3.pointsA/B, tr.teamA/B, tr.teamAGreen/BGreen
-   - Also fixed matchResults, f1IntraMatches, f2IntraMatches to use array indexing
-   - Ensures consistent data structure across all games (no more sparse objects)
-   - All other functionality identical to v5.28
+VERSION: 5.30
+KEY CHANGES from v5.29:
+   - FIXED: Firestore "nested arrays not supported" error
+   - matchResults now written as sparse object (dot notation) because it contains nested arrays
+   - All other arrays (pointsA/B, leader, cumulativePoints, tr arrays, display arrays) remain as FULL arrays
+   - f1IntraMatches and f2IntraMatches remain as full arrays (they contain objects, not arrays)
+   - This hybrid approach satisfies Firestore's constraints while maintaining data consistency
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
