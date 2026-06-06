@@ -1,11 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.06
-KEY CHANGES from v8.05:
-   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
-   - Player cards, bubbles, scorecard table now styled by GameUI
-   - Cleaner, smaller file - no redundant styling
-   - Maintains landing page card styles (independent from GameUI)
+VERSION: 8.07
+KEY CHANGES from v8.06:
+   - REMOVED: Local renderCompactHeader() override (was causing unstyled buttons)
+   - NOW USES: GameUI.renderCompactHeader() with proper parameters
+   - Control bar buttons now use inline styles from game-ui.js v5.01
+   - Flight toggle and navigation now work correctly with GameUI
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
 -->
@@ -321,13 +322,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.06</div>
+<div class="version-tag">v8.07</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.06";
+window.VIEW_HISTORY_VERSION = "8.07";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -469,7 +470,7 @@ function renderScorecardView(game) {
     
     detailContent.innerHTML = html;
     
-    // GameUI now provides all styles via applyTightLayout()
+    // Apply GameUI styles and layout
     GameUI.applyTightLayout();
     GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
     
@@ -624,47 +625,28 @@ function renderScorecardView(game) {
         renderDetailView();
     }
     
+    // ============================================================
+    // Control Bar - NOW USING GameUI.renderCompactHeader()
+    // ============================================================
+    
+    // Global variables for GameUI callbacks
+    var globalPrevHole = prevHole;
+    var globalNextHole = nextHole;
+    var globalToggleFlight = onToggleFlight;
+    
     function renderCompactHeader() {
-        var displayMode = GameUI.getDisplayMode();
-        var pnText = displayMode === 'play' ? 'P' : 'N';
-        var oppositeFlight = currentFlight === 1 ? 2 : 1;
-        
-        var container = document.getElementById('compactHeaderContainer');
-        if (!container) return;
-        
-        var html = `
-            <div class="compact-header">
-                <button class="compact-pn-btn" id="compactPnBtn">
-                    ${pnText}
-                </button>
-                <button class="compact-flight-btn" id="compactFlightBtn">
-                    FLIGHT ${oppositeFlight}
-                </button>
-                <div class="compact-nav-group">
-                    <button class="compact-prev-btn" id="compactPrevBtn">◀</button>
-                    <span class="compact-hole-display">${currentHole}</span>
-                    <button class="compact-next-btn" id="compactNextBtn">▶</button>
-                </div>
-            </div>
-        `;
-        
-        container.innerHTML = html;
-        
-        document.getElementById('compactPnBtn').onclick = function() {
-            var newMode = GameUI.getDisplayMode() === 'play' ? 'natural' : 'play';
-            GameUI.setDisplayMode(newMode, null);
-            renderDetailView();
-        };
-        
-        document.getElementById('compactFlightBtn').onclick = function() {
-            currentFlight = currentFlight === 1 ? 2 : 1;
-            renderCompactHeader();
-            GameUI.updateFlightBadge(currentFlight);
-            renderDetailView();
-        };
-        
-        document.getElementById('compactPrevBtn').onclick = prevHole;
-        document.getElementById('compactNextBtn').onclick = nextHole;
+        // Use GameUI's renderCompactHeader with the correct parameters
+        // Parameters: containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay
+        GameUI.renderCompactHeader(
+            "compactHeaderContainer",
+            currentFlight,
+            currentHole,
+            null,           // onSave (no save button in viewer)
+            globalPrevHole,
+            globalNextHole,
+            globalToggleFlight,
+            null            // onToggleDisplay (handled by P/N button in GameUI)
+        );
     }
     
     function renderDetailView() {
@@ -908,12 +890,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.06
-KEY CHANGES from v8.05:
-   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
-   - Player cards, bubbles, scorecard table now styled by GameUI
-   - Cleaner, smaller file - no redundant styling
-   - Maintains landing page card styles (independent from GameUI)
+VERSION: 8.07
+KEY CHANGES from v8.06:
+   - REMOVED: Local renderCompactHeader() override (was causing unstyled buttons)
+   - NOW USES: GameUI.renderCompactHeader() with proper parameters
+   - Control bar buttons now use inline styles from game-ui.js v5.01
+   - Flight toggle and navigation now work correctly with GameUI
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
 -->
