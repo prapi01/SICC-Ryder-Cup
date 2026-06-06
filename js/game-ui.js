@@ -1,13 +1,14 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.01
-KEY CHANGES from v5.00:
-   - ADDED: Robust inline styles for all compact header buttons (guaranteed styling regardless of CSS injection)
-   - ADDED: Defensive style checking and re-application
-   - ADDED: ensureStylesApplied() function to verify CSS injection
-   - All button styles now use inline styles as primary, classes as backup
-   - This ensures buttons look correct in view-history.html and all other pages
-   - No functionality changes, only styling improvements
+VERSION: 5.02
+KEY CHANGES from v5.01:
+   - FIXED: Flight toggle no longer recreates the entire control bar (was resetting hole display)
+   - Flight button now only updates its own text and calls the callback
+   - Removed recursive renderCompactHeader() call from flight button handler
+   - Control bar is now created ONCE and never recreated
+   - Hole display updates via updateCompactHoleDisplay() work correctly
+   - This fixes the flight toggle bug in view-history.html
+   - All other functionality unchanged
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
@@ -35,6 +36,16 @@ var GameUI = (function() {
     var currentFlight = 1;
     var currentDisplayMode = "play";
     var currentHoleNumber = 1;
+    
+    // Store references to control bar elements for direct updates
+    var controlBarElements = {
+        pnBtn: null,
+        flightBtn: null,
+        prevBtn: null,
+        nextBtn: null,
+        holeDisplay: null,
+        containerId: null
+    };
     
     // Callback registry for shared UI events
     var eventCallbacks = {
@@ -89,7 +100,6 @@ var GameUI = (function() {
     
     // ============================================================
     // Apply Global UI Styles - SINGLE SOURCE OF TRUTH
-    // Includes: player cards, bubbles, scorecard, buttons, layout
     // ============================================================
     
     function applyGlobalStyles() {
@@ -169,7 +179,7 @@ var GameUI = (function() {
             }
             
             /* ============================================================
-               BUBBLE STYLES - FULLY FLUID
+               BUBBLE STYLES
             ============================================================ */
             .bubbles {
                 display: grid;
@@ -241,7 +251,7 @@ var GameUI = (function() {
             }
             
             /* ============================================================
-               COMPACT HEADER BUTTONS - Base styles
+               COMPACT HEADER BUTTONS
             ============================================================ */
             .compact-header {
                 display: grid;
@@ -482,7 +492,6 @@ var GameUI = (function() {
         if (!globalStylesApplied) {
             applyGlobalStyles();
         }
-        // Double-check that style tag exists
         if (!document.getElementById('gameui-global-styles')) {
             applyGlobalStyles();
         }
@@ -677,15 +686,29 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Render Compact Header - WITH ROBUST INLINE STYLES
+    // Update flight button text (for control bar)
+    // ============================================================
+    
+    function updateFlightButtonText(flightNumber) {
+        if (controlBarElements.flightBtn) {
+            var oppositeFlight = flightNumber === 1 ? 2 : 1;
+            controlBarElements.flightBtn.innerText = 'FLIGHT ' + oppositeFlight;
+        }
+        currentFlight = flightNumber;
+    }
+    
+    // ============================================================
+    // Render Compact Header - FIXED v5.02 (no recreation on flight toggle)
     // ============================================================
     
     function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Ensure styles are applied before rendering
         ensureStylesApplied();
+        
+        // Store container ID for later updates
+        controlBarElements.containerId = containerId;
         
         if (onSave) eventCallbacks.onSave = onSave;
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
@@ -697,12 +720,9 @@ var GameUI = (function() {
         currentHoleNumber = currentHole;
         
         var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
+        var oppositeFlight = flightNumber === 1 ? 2 : 1;
         
-        setTimeout(function() {
-            addFlightBadge(flightNumber);
-        }, 50);
-        
-        // ROBUST INLINE STYLES - guaranteed to work even if CSS injection fails
+        // ROBUST INLINE STYLES
         var buttonBaseStyle = 'background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; cursor: pointer;';
         var pnBtnStyle = buttonBaseStyle + ' border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; flex-shrink: 0;';
         var flightBtnStyle = buttonBaseStyle + ' border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; text-align: center; white-space: nowrap;';
@@ -715,7 +735,7 @@ var GameUI = (function() {
                     ${pnText}
                 </button>
                 <button class="compact-flight-btn" id="compactFlightBtn" style="${flightBtnStyle}">
-                    FLIGHT ${flightNumber === 1 ? 2 : 1}
+                    FLIGHT ${oppositeFlight}
                 </button>
                 <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
                     <button class="compact-prev-btn" id="compactPrevBtn" style="${navBtnStyle}">
@@ -731,14 +751,16 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
-        // Attach event handlers
-        var pnBtn = document.getElementById('compactPnBtn');
-        var flightBtn = document.getElementById('compactFlightBtn');
-        var prevBtn = document.getElementById('compactPrevBtn');
-        var nextBtn = document.getElementById('compactNextBtn');
+        // Store element references for later updates
+        controlBarElements.pnBtn = document.getElementById('compactPnBtn');
+        controlBarElements.flightBtn = document.getElementById('compactFlightBtn');
+        controlBarElements.prevBtn = document.getElementById('compactPrevBtn');
+        controlBarElements.nextBtn = document.getElementById('compactNextBtn');
+        controlBarElements.holeDisplay = document.querySelector('.compact-hole-display');
         
-        if (pnBtn && eventCallbacks.onToggleDisplay) {
-            pnBtn.onclick = function() {
+        // Attach event handlers - FIXED: flight button does NOT recreate control bar
+        if (controlBarElements.pnBtn && eventCallbacks.onToggleDisplay) {
+            controlBarElements.pnBtn.onclick = function() {
                 var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
                 setDisplayMode(newMode, null);
                 updateCompactPnButton();
@@ -746,31 +768,30 @@ var GameUI = (function() {
             };
         }
         
-        if (flightBtn && eventCallbacks.onToggleFlight) {
-            flightBtn.onclick = function() {
+        // FIXED v5.02: Flight button only updates its text and calls callback
+        // Does NOT call renderCompactHeader again
+        if (controlBarElements.flightBtn && eventCallbacks.onToggleFlight) {
+            controlBarElements.flightBtn.onclick = function() {
                 var newFlight = currentFlight === 1 ? 2 : 1;
+                // Update button text immediately for responsiveness
+                controlBarElements.flightBtn.innerText = 'FLIGHT ' + (newFlight === 1 ? 2 : 1);
+                // Call the callback to let the page update its internal state
                 if (eventCallbacks.onToggleFlight) eventCallbacks.onToggleFlight(newFlight);
-                renderCompactHeader(containerId, newFlight, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay);
             };
         }
         
-        if (prevBtn && eventCallbacks.onPrevHole) {
-            prevBtn.onclick = function() {
+        if (controlBarElements.prevBtn && eventCallbacks.onPrevHole) {
+            controlBarElements.prevBtn.onclick = function() {
                 if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
             };
         }
         
-        if (nextBtn && eventCallbacks.onNextHole) {
-            // Store original handler for later updates (like sign mode)
-            nextBtn._originalOnClick = function() {
+        if (controlBarElements.nextBtn && eventCallbacks.onNextHole) {
+            controlBarElements.nextBtn._originalOnClick = function() {
                 if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
             };
-            nextBtn.onclick = nextBtn._originalOnClick;
+            controlBarElements.nextBtn.onclick = controlBarElements.nextBtn._originalOnClick;
         }
-        
-        // Store reference to the save button in the container for later updates
-        // Note: In this version, save button is not rendered in compact header
-        // It's handled separately in real-game.html
     }
     
     function updateCompactSaveButton(currentHole, isDisabled) {
@@ -789,29 +810,29 @@ var GameUI = (function() {
     }
     
     function updateCompactPnButton() {
-        var pnBtn = document.getElementById('compactPnBtn');
-        if (pnBtn) {
-            pnBtn.innerText = currentDisplayMode === 'play' ? 'P' : 'N';
+        if (controlBarElements.pnBtn) {
+            controlBarElements.pnBtn.innerText = currentDisplayMode === 'play' ? 'P' : 'N';
         }
     }
     
     function updateCompactHoleDisplay(holeNumber) {
         currentHoleNumber = holeNumber;
-        var holeDisplay = document.querySelector('.compact-hole-display');
-        if (holeDisplay) {
-            holeDisplay.innerText = holeNumber;
+        if (controlBarElements.holeDisplay) {
+            controlBarElements.holeDisplay.innerText = holeNumber;
         }
         updateCompactSaveButton(holeNumber, false);
     }
     
     function updateFlightToggleButton(flightNumber) {
         updateFlightBadge(flightNumber);
+        updateFlightButtonText(flightNumber);
     }
     
     function toggleFlight() {
         var newFlight = currentFlight === 1 ? 2 : 1;
         currentFlight = newFlight;
         updateFlightBadge(currentFlight);
+        updateFlightButtonText(currentFlight);
         if (eventCallbacks.onToggleFlight) {
             eventCallbacks.onToggleFlight(currentFlight);
         }
@@ -1153,11 +1174,11 @@ var GameUI = (function() {
     }
     
     function updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameComplete, celebrationTriggered) {
-        // Deprecated - use updateNavigationButtons instead
+        // Deprecated
     }
     
     function updateNextButtonForLastHole(currentHole, isLast, isCurrentSaved, onSignCardCallback) {
-        // Deprecated - use updateNavigationButtons instead
+        // Deprecated
     }
     
     function setNextButtonToSignMode() {
@@ -1246,12 +1267,15 @@ var GameUI = (function() {
         updateFlightBadge: updateFlightBadge,
         removeFlightBadge: removeFlightBadge,
         
+        // Flight button text update
+        updateFlightButtonText: updateFlightButtonText,
+        
         // Navigation
         updateNavigationButtons: updateNavigationButtons,
         
         // Legacy compatibility
-        updateFlightToggleButton: updateFlightBadge,
-        updateFlightButtonText: updateFlightBadge,
+        updateFlightToggleButton: updateFlightToggleButton,
+        updateFlightButtonText: updateFlightButtonText,
         updatePnButtonText: updateCompactPnButton,
         
         // Display mode
@@ -1308,21 +1332,23 @@ var GameUI = (function() {
 })();
 
 // ============================================================
-// DUAL EXPORT - for compatibility with all game files
+// DUAL EXPORT
 // ============================================================
 window.gameUI = GameUI;
 window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.01
-KEY CHANGES from v5.00:
-   - ADDED: Robust inline styles for all compact header buttons (guaranteed styling regardless of CSS injection)
-   - ADDED: Defensive style checking and re-application
-   - ADDED: ensureStylesApplied() function to verify CSS injection
-   - All button styles now use inline styles as primary, classes as backup
-   - This ensures buttons look correct in view-history.html and all other pages
-   - No functionality changes, only styling improvements
+VERSION: 5.02
+KEY CHANGES from v5.01:
+   - FIXED: Flight toggle no longer recreates the entire control bar (was resetting hole display)
+   - Flight button now only updates its own text and calls the callback
+   - Removed recursive renderCompactHeader() call from flight button handler
+   - Control bar is now created ONCE and never recreated
+   - Hole display updates via updateCompactHoleDisplay() work correctly
+   - This fixes the flight toggle bug in view-history.html
+   - Added updateFlightButtonText() for external flight button text updates
+   - All other functionality unchanged
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
