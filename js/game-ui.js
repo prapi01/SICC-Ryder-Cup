@@ -1,12 +1,16 @@
 /*
 FILE: js/game-ui.js
-VERSION: 4.25
-KEY CHANGES from v4.24:
-   - REMOVED: renderScorecard(), tightenScorecardRows(), getAsSquareHtml() (moved to game-scorecard.js)
-   - ADDED: Now uses GameScorecard.renderScorecard() for table rendering
-   - All other functions unchanged (player cards, bubbles, TR, header, navigation)
-   - This file now handles only UI components outside the scorecard table
-DEPENDS ON: js/game-scorecard.js
+VERSION: 5.00
+KEY CHANGES from v4.25:
+   - ADDED: Complete player card styles (background, border, border-radius, padding)
+   - ADDED: Complete bubble grid and bubble styles (all variants)
+   - ADDED: Player header flex layout styles
+   - ADDED: Scorecard table base styles
+   - ADDED: Compact header button styles
+   - Consolidated all shared UI styles into game-ui.js
+   - Eliminates duplicate CSS across real-game.html, view-game.html, view-history.html
+   - Single source of truth for all game UI styling
+DEPENDS ON: None (pure style injection)
 STATUS: Ready for integration
 */
 
@@ -85,16 +89,88 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Apply Global Bubble Styles (SINGLE SOURCE OF TRUTH)
+    // Apply Global UI Styles - SINGLE SOURCE OF TRUTH
+    // Includes: player cards, bubbles, scorecard, buttons, layout
     // ============================================================
     
-    function applyGlobalBubbleStyles() {
-        if (document.getElementById('gameui-bubble-styles')) return;
+    function applyGlobalStyles() {
+        if (document.getElementById('gameui-global-styles')) return;
         
         var style = document.createElement('style');
-        style.id = 'gameui-bubble-styles';
+        style.id = 'gameui-global-styles';
         style.textContent = `
-            /* Bubbles - FULLY FLUID, self-adjusting across ALL screen sizes */
+            /* ============================================================
+               PLAYER CARD STYLES
+            ============================================================ */
+            .player-card {
+                background: #111111;
+                border: 1px solid #333333;
+                border-radius: 16px;
+                padding: 14px;
+                margin-bottom: 12px;
+                position: relative;
+            }
+            
+            .player-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            
+            .player-name {
+                font-size: 1rem;
+                font-weight: 600;
+            }
+            
+            .player-handicap {
+                background: #1a3a1a;
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 0.7rem;
+                margin-left: 8px;
+            }
+            
+            .score-control {
+                display: flex;
+                gap: 12px;
+                align-items: center;
+            }
+            
+            .score-btn {
+                background: #1a3a1a;
+                border: none;
+                width: 38px;
+                height: 38px;
+                border-radius: 30px;
+                font-size: 1.1rem;
+                color: #fff;
+                cursor: pointer;
+            }
+            
+            .score-btn:active {
+                transform: scale(0.95);
+            }
+            
+            .score-btn:disabled {
+                opacity: 0.4;
+                cursor: not-allowed;
+            }
+            
+            .score-value {
+                font-size: 1.1rem;
+                font-weight: 700;
+                min-width: 38px;
+                text-align: center;
+                background: #1a1a1a;
+                padding: 5px 0;
+                border-radius: 30px;
+            }
+            
+            /* ============================================================
+               BUBBLE STYLES - FULLY FLUID
+            ============================================================ */
             .bubbles {
                 display: grid;
                 grid-template-columns: repeat(4, 1fr);
@@ -156,13 +232,7 @@ var GameUI = (function() {
                 margin-top: -2px;
             }
             
-            /* T-1/T-2 row colors */
-            .score-green { color: #4caf50; font-weight: 600; }
-            .score-gold { color: #ffaa44; font-weight: 800; }
-            .score-grey { color: #888888; font-weight: 600; }
-            .score-invisible { color: #000; }
-            
-            /* Very small screens (iPhone SE) */
+            /* Small screens (iPhone SE) */
             @media (max-width: 380px) {
                 .bubble {
                     font-size: 0.7rem;
@@ -191,6 +261,210 @@ var GameUI = (function() {
                     width: 18px;
                     height: 18px;
                 }
+            }
+            
+            /* ============================================================
+               SCORECARD TABLE STYLES
+            ============================================================ */
+            .scorecard-section {
+                margin: 20px 0;
+            }
+            
+            .scorecard-wrapper {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .scorecard-table {
+                table-layout: fixed;
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.7rem;
+                min-width: 600px;
+            }
+            
+            .scorecard-table th,
+            .scorecard-table td {
+                min-width: 40px;
+                max-width: 60px;
+                text-align: center;
+                padding: 6px 3px;
+                border: 1px solid #222;
+                white-space: nowrap;
+            }
+            
+            .scorecard-table th:first-child,
+            .scorecard-table td:first-child {
+                width: 50px;
+                position: sticky;
+                left: 0;
+                background: #111;
+                z-index: 1;
+            }
+            
+            .scorecard-table th {
+                color: #4caf50;
+                background: #111;
+            }
+            
+            .score-green {
+                color: #4caf50;
+                font-weight: 600;
+            }
+            
+            .score-gold {
+                color: #ffaa44;
+                font-weight: 800;
+            }
+            
+            .score-grey {
+                color: #888;
+                font-weight: 600;
+            }
+            
+            .score-invisible {
+                color: #000;
+            }
+            
+            .green-line td {
+                border-bottom: 2px solid #4caf50;
+                padding: 0;
+                height: 2px;
+            }
+            
+            /* ============================================================
+               COMPACT HEADER BUTTONS
+            ============================================================ */
+            .compact-header {
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                align-items: center;
+                gap: clamp(6px, 2vw, 12px);
+                margin-bottom: 15px;
+                width: 100%;
+            }
+            
+            .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
+                border-radius: 30px !important;
+            }
+            
+            .compact-save-btn, .compact-flight-btn {
+                border-radius: 30px !important;
+                font-size: 1rem !important;
+                font-weight: 800 !important;
+            }
+            
+            .compact-btn {
+                background: #1a3a1a;
+                border: 1px solid #4caf50;
+                color: #4caf50;
+                cursor: pointer;
+            }
+            
+            .compact-nav-btn {
+                width: 52px;
+                height: 52px;
+                font-size: 1.3rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            /* Disabled button states */
+            .compact-prev-btn:disabled, .compact-next-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
+            
+            .compact-save-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
+            
+            /* Gold RESULT button */
+            .compact-result-btn {
+                background: #1a3a1a !important;
+                border: 2px solid #ffaa44 !important;
+                color: #ffaa44 !important;
+                border-radius: 30px !important;
+                font-size: 1rem !important;
+                font-weight: 800 !important;
+                cursor: pointer;
+            }
+            
+            /* ============================================================
+               TEAM SCORE CARD
+            ============================================================ */
+            .team-score-card {
+                background: #111;
+                border-radius: 16px;
+                text-align: center;
+                margin-top: 0;
+                margin-bottom: 8px;
+                padding: 8px;
+            }
+            
+            /* ============================================================
+               FLIGHT BADGE
+            ============================================================ */
+            .flight-badge {
+                position: absolute;
+                top: -18px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #1a3a1a;
+                border: 2px solid #4caf50;
+                color: #4caf50;
+                font-size: 0.8rem;
+                font-weight: 700;
+                padding: 4px 16px;
+                border-radius: 30px;
+                z-index: 100;
+                white-space: nowrap;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            }
+            
+            /* ============================================================
+               HOLE HEADER
+            ============================================================ */
+            .hole-header-grid {
+                display: grid;
+                grid-template-columns: 1fr auto 1fr;
+                align-items: center;
+                margin-bottom: -2px;
+                width: 100%;
+            }
+            
+            .hole-number-display {
+                font-size: 1.5rem;
+                font-weight: 800;
+                background: #111;
+                display: inline-block;
+                padding: 4px 20px;
+                border-radius: 40px;
+                margin: 0;
+                justify-self: center;
+            }
+            
+            /* ============================================================
+               STATUS BUBBLE
+            ============================================================ */
+            .status-bubble {
+                background: rgba(76,175,80,0.3);
+                border: 1px solid #4caf50;
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 0.7rem;
+                color: #4caf50;
+                margin-bottom: 12px;
+                cursor: pointer;
             }
         `;
         document.head.appendChild(style);
@@ -244,13 +518,13 @@ var GameUI = (function() {
         }
         
         var html = `
-            <div class="hole-header-grid" style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: -2px; width: 100%;">
+            <div class="hole-header-grid">
                 <div class="hole-header-left" style="justify-self: start;">
                     <span class="status-bubble-new" style="display: inline-block; background: ${statusBg}; border: ${statusBorder}; color: ${statusColor}; border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; cursor: pointer;">
                         ${statusText}
                     </span>
                 </div>
-                <div class="hole-number-display" style="font-size: 1.5rem; font-weight: 800; background: #111; display: inline-block; padding: 4px 20px; border-radius: 40px; margin: 0; justify-self: center;">
+                <div class="hole-number-display">
                     ${holeText}
                 </div>
                 <div class="hole-header-right" style="justify-self: end;"></div>
@@ -282,10 +556,6 @@ var GameUI = (function() {
         }
     }
     
-    // ============================================================
-    // Legacy updateHoleHeader
-    // ============================================================
-    
     function updateHoleHeader(containerId, currentHole, currentPar, currentSi) {
         renderHoleHeader(containerId, currentHole, currentPar, currentSi);
     }
@@ -300,7 +570,6 @@ var GameUI = (function() {
         
         if (!prevBtn || !nextBtn) return;
         
-        // Store original navigation handlers if not already stored
         if (!prevBtn._originalOnClick && eventCallbacks.onPrevHole) {
             prevBtn._originalOnClick = function() {
                 if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
@@ -316,15 +585,12 @@ var GameUI = (function() {
         var isFirstHole = (currentIndex === 0);
         var isLastHole = (currentIndex === 17);
         
-        // Prev button: disabled only at first hole
         prevBtn.disabled = isFirstHole;
         if (prevBtn._originalOnClick) {
             prevBtn.onclick = prevBtn._originalOnClick;
         }
         
-        // Next button logic
         if (isGameComplete && !celebrationTriggered) {
-            // Game complete - show trophy
             nextBtn.innerHTML = '🏆';
             nextBtn.style.background = '#ffaa44';
             nextBtn.style.color = '#1a3a1a';
@@ -334,7 +600,6 @@ var GameUI = (function() {
                 if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
             };
         } else if (isLastHole && isCurrentSaved) {
-            // Last hole AND saved - show sign button (gold)
             nextBtn.innerHTML = '✍️';
             nextBtn.style.background = '#ffaa44';
             nextBtn.style.color = '#1a3a1a';
@@ -344,7 +609,6 @@ var GameUI = (function() {
                 if (onSignCardCallback) onSignCardCallback();
             };
         } else {
-            // Normal mode - green arrow, disabled if not saved
             nextBtn.innerHTML = '▶';
             nextBtn.style.background = '#1a3a1a';
             nextBtn.style.color = '#4caf50';
@@ -372,22 +636,6 @@ var GameUI = (function() {
         var badge = document.createElement('div');
         badge.className = 'flight-badge';
         badge.innerText = 'FLIGHT ' + flightNumber;
-        badge.style.cssText = `
-            position: absolute;
-            top: -18px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1a3a1a;
-            border: 2px solid #4caf50;
-            color: #4caf50;
-            font-size: 0.8rem;
-            font-weight: 700;
-            padding: 4px 16px;
-            border-radius: 30px;
-            z-index: 100;
-            white-space: nowrap;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        `;
         
         firstCard.style.position = 'relative';
         firstCard.appendChild(badge);
@@ -418,7 +666,6 @@ var GameUI = (function() {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Store callbacks
         if (onSave) eventCallbacks.onSave = onSave;
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
@@ -435,7 +682,7 @@ var GameUI = (function() {
         }, 50);
         
         var html = `
-            <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
+            <div class="compact-header">
                 <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
                     ${pnText}
                 </button>
@@ -498,10 +745,6 @@ var GameUI = (function() {
         }
         updateCompactSaveButton(holeNumber, false);
     }
-    
-    // ============================================================
-    // Legacy Functions
-    // ============================================================
     
     function updateFlightToggleButton(flightNumber) {
         updateFlightBadge(flightNumber);
@@ -646,10 +889,6 @@ var GameUI = (function() {
         container.innerHTML = html;
     }
     
-    // ============================================================
-    // Flight Tab Display (legacy)
-    // ============================================================
-    
     function updateFlightTab(containerId, flightNumber, canEdit) {
         var container = document.getElementById(containerId);
         if (!container) return;
@@ -719,10 +958,6 @@ var GameUI = (function() {
             return playOrder;
         }
     }
-    
-    // ============================================================
-    // Action Button Rendering (legacy)
-    // ============================================================
     
     function renderActionButtons(containerId, currentHole, isSaveDisabled, onSaveCallback) {
         if (onSaveCallback) {
@@ -859,10 +1094,6 @@ var GameUI = (function() {
         return absValue.toString();
     }
     
-    // ============================================================
-    // Navigation Logic (legacy wrappers)
-    // ============================================================
-    
     function updateNavButtonsWithDisableLogic(isCurrentSaved, hasUnsavedChanges, isGameComplete, celebrationTriggered) {
         // Deprecated - use updateNavigationButtons instead
     }
@@ -898,87 +1129,16 @@ var GameUI = (function() {
         }
     }
     
-    // ============================================================
-    // Centralized Event Listener Attachment
-    // ============================================================
-    
     function attachGlobalEventListeners(onPrevHole, onNextHole) {
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
     }
     
-    // ============================================================
-    // Button Styles (with disabled states)
-    // ============================================================
-    
-    function applyButtonStyles() {
-        if (buttonStylesApplied) return;
-        
-        var style = document.createElement('style');
-        style.id = 'gameui-button-styles';
-        style.textContent = `
-            .scorecard-wrapper {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-            .scorecard-table {
-                border-collapse: collapse;
-                font-size: 0.7rem;
-                min-width: 700px;
-            }
-            .scorecard-table th, .scorecard-table td {
-                text-align: center;
-                border: 1px solid #222;
-                white-space: nowrap;
-            }
-            .scorecard-table th {
-                color: #4caf50;
-                background: #111;
-            }
-            .score-green { color: #4caf50; font-weight: 600; }
-            .score-gold { color: #ffaa44; font-weight: 800; }
-            .score-grey { color: #888; font-weight: 600; }
-            .score-invisible { color: #000; }
-            .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
-            
-            /* Disabled button states - greyed out */
-            .compact-prev-btn:disabled, .compact-next-btn:disabled {
-                background: #2a2a2a !important;
-                color: #666666 !important;
-                border-color: #444444 !important;
-                opacity: 0.6 !important;
-                cursor: not-allowed !important;
-            }
-            .compact-save-btn:disabled {
-                background: #2a2a2a !important;
-                color: #666666 !important;
-                border-color: #444444 !important;
-                opacity: 0.6 !important;
-                cursor: not-allowed !important;
-            }
-            .compact-pn-btn:disabled {
-                background: #2a2a2a !important;
-                color: #666666 !important;
-                border-color: #444444 !important;
-                opacity: 0.6 !important;
-                cursor: not-allowed !important;
-            }
-        `;
-        document.head.appendChild(style);
-        
-        buttonStylesApplied = true;
-    }
-    
-    // ============================================================
-    // Tight Layout Functions
-    // ============================================================
-    
     function applyTightLayout() {
         if (tightLayoutApplied) return;
         
         fixBackground();
-        applyButtonStyles();
-        applyGlobalBubbleStyles();
+        applyGlobalStyles();
         
         var style = document.createElement('style');
         style.id = 'gameui-tight-layout';
@@ -986,18 +1146,12 @@ var GameUI = (function() {
             #courseName { display: none !important; }
             .hole-par { display: none !important; }
             #flightTab { display: none !important; }
-            .team-score-card { margin-top: 0 !important; margin-bottom: 8px !important; padding: 8px !important; }
             .container { padding-top: 30px !important; }
-            .player-card { position: relative; }
         `;
         document.head.appendChild(style);
         
         tightLayoutApplied = true;
     }
-    
-    // ============================================================
-    // Helper
-    // ============================================================
     
     function escapeHtml(str) {
         if (!str) return '';
@@ -1034,7 +1188,7 @@ var GameUI = (function() {
         updateFlightBadge: updateFlightBadge,
         removeFlightBadge: removeFlightBadge,
         
-        // SINGLE SOURCE OF TRUTH - Navigation
+        // Navigation
         updateNavigationButtons: updateNavigationButtons,
         
         // Legacy compatibility
@@ -1061,14 +1215,14 @@ var GameUI = (function() {
         // Bottom menu
         renderBottomMenu: renderBottomMenu,
         
-        // Shared display functions (with clinch support)
+        // Shared display functions
         getFlightOrderedPlayersShared: getFlightOrderedPlayersShared,
         getAllOpponentsShared: getAllOpponentsShared,
         getMatchValueShared: getMatchValueShared,
         getBubbleClassShared: getBubbleClassShared,
         getBubbleValueShared: getBubbleValueShared,
         
-        // Navigation logic (deprecated legacy wrappers)
+        // Navigation logic (legacy wrappers)
         updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
         updateNextButtonForLastHole: updateNextButtonForLastHole,
         setNextButtonToSignMode: setNextButtonToSignMode,
@@ -1079,20 +1233,17 @@ var GameUI = (function() {
         attachGlobalEventListeners: attachGlobalEventListeners,
         
         // Layout and styles
-        applyButtonStyles: applyButtonStyles,
         applyTightLayout: applyTightLayout,
-        tightenScorecardRows: function() {
-            if (typeof GameScorecard !== 'undefined' && GameScorecard.tightenScorecardRows) {
-                GameScorecard.tightenScorecardRows();
-            }
-        },
         makeStatusBubbleClickable: makeStatusBubbleClickable,
         fixBackground: fixBackground,
         
         // Flight indicator (DEPRECATED)
         addFlightIndicator: function() {},
         removeFlightIndicator: function() {},
-        updateFlightIndicator: updateFlightBadge
+        updateFlightIndicator: updateFlightBadge,
+        
+        // Global styles access (for pages that need to ensure styles are loaded)
+        ensureStylesLoaded: applyGlobalStyles
     };
     
 })();
@@ -1105,12 +1256,16 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 4.25
-KEY CHANGES from v4.24:
-   - REMOVED: renderScorecard(), tightenScorecardRows(), getAsSquareHtml() (moved to game-scorecard.js)
-   - ADDED: Now uses GameScorecard.renderScorecard() for table rendering
-   - All other functions unchanged (player cards, bubbles, TR, header, navigation)
-   - This file now handles only UI components outside the scorecard table
-DEPENDS ON: js/game-scorecard.js
+VERSION: 5.00
+KEY CHANGES from v4.25:
+   - ADDED: Complete player card styles (background, border, border-radius, padding)
+   - ADDED: Complete bubble grid and bubble styles (all variants)
+   - ADDED: Player header flex layout styles
+   - ADDED: Scorecard table base styles
+   - ADDED: Compact header button styles
+   - Consolidated all shared UI styles into game-ui.js
+   - Eliminates duplicate CSS across real-game.html, view-game.html, view-history.html
+   - Single source of truth for all game UI styling
+DEPENDS ON: None (pure style injection)
 STATUS: Ready for integration
 */
