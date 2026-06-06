@@ -1,12 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.09
-KEY CHANGES from v8.08:
-   - FIXED: Flight toggle now preserves current hole number (no longer resets to 1)
-   - FIXED: Control bar hole number now stays in sync with header hole number
-   - FIXED: Both currentHole variables now reference the same value
-   - ADDED: Explicit hole number sync after flight toggle
-   - All other functionality unchanged
+VERSION: 8.10
+KEY CHANGES from v8.09:
+   - SIMPLIFIED FIX: Removed renderCompactHeader() from renderDetailView() (only called once at init)
+   - Flight toggle now only updates flight badge and player cards, NOT the entire control bar
+   - Control bar hole number now stays correct when toggling flights
+   - Same pattern as real-game.html and view-game.html
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
 -->
@@ -322,13 +321,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.09</div>
+<div class="version-tag">v8.10</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.09";
+window.VIEW_HISTORY_VERSION = "8.10";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -617,42 +616,39 @@ function renderScorecardView(game) {
         GameUI.updateHoleHeaderNumber(currentHole);
     }
     
-    // FIXED v8.09: Flight toggle now preserves current hole number
+    // SIMPLIFIED: Flight toggle - only update flight badge and player cards
+    // Do NOT recreate the control bar
     function onToggleFlight(flightNumber) {
-        // Save current hole before any changes
-        var savedHole = currentHole;
-        
-        // Update flight
         currentFlight = flightNumber;
         GameUI.updateFlightBadge(flightNumber);
-        
-        // Re-render the detail view
-        renderDetailView();
-        
-        // CRITICAL FIX: Force the hole number back to saved value
-        // The renderDetailView() call may have reset it to 1
-        if (currentHole !== savedHole) {
-            currentHole = savedHole;
-            updateHoleNumberDisplay();
-            // Re-render one more time with correct hole
-            renderDetailView();
-        }
+        // Only re-render player cards, not the entire control bar
+        renderPlayerCardsOnly();
     }
     
-    // Render functions
-    function renderCompactHeader() {
-        GameUI.renderCompactHeader(
-            "compactHeaderContainer",
-            currentFlight,
-            currentHole,
-            null,           // onSave (no save button in viewer)
-            prevHole,
-            nextHole,
-            onToggleFlight,
-            null            // onToggleDisplay (handled by P/N button in GameUI)
-        );
+    // Render only player cards (not the control bar)
+    function renderPlayerCardsOnly() {
+        if (!f1DataString || !f2DataString) return;
+        
+        updateTRDisplay();
+        
+        var currentPlayers = getFlightOrderedPlayers(currentFlight);
+        GameUI.renderPlayerCards("playerCards", currentPlayers, getAllOpponents, getBubbleClass, getBubbleValue, getCurrentScore, false, null);
+        
+        setTimeout(function() {
+            var playerCards = document.querySelectorAll('#playerCards .player-name');
+            for (var i = 0; i < playerCards.length; i++) {
+                var originalName = playerCards[i].innerText;
+                var player = allPlayers.find(function(p) { return p.name === originalName; });
+                if (player && player.label) playerCards[i].innerText = player.label;
+            }
+        }, 10);
+        
+        GameUI.updateFlightBadge(currentFlight);
+        
+        if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
+    // Render everything (used at initialization and when changing holes)
     function renderDetailView() {
         if (!f1DataString || !f2DataString) return;
         
@@ -709,7 +705,7 @@ function renderScorecardView(game) {
     }
     
     // ============================================================
-    // Initialize the scorecard view with correct starting hole
+    // Initialize the scorecard view
     // ============================================================
     
     var playOrder = [];
@@ -731,7 +727,18 @@ function renderScorecardView(game) {
     
     console.log('Initial hole set to:', currentHole);
     
-    renderCompactHeader();
+    // Create control bar ONCE at initialization
+    GameUI.renderCompactHeader(
+        "compactHeaderContainer",
+        currentFlight,
+        currentHole,
+        null,           // onSave (no save button in viewer)
+        prevHole,
+        nextHole,
+        onToggleFlight,
+        null            // onToggleDisplay (handled by P/N button in GameUI)
+    );
+    
     initTicker();
     renderDetailView();
     GameUI.renderBottomMenu("bottomMenuContainer", null);
@@ -906,13 +913,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.09
-KEY CHANGES from v8.08:
-   - FIXED: Flight toggle now preserves current hole number (no longer resets to 1)
-   - FIXED: Control bar hole number now stays in sync with header hole number
-   - FIXED: Both currentHole variables now reference the same value
-   - ADDED: Explicit hole number sync after flight toggle
-   - All other functionality unchanged
+VERSION: 8.10
+KEY CHANGES from v8.09:
+   - SIMPLIFIED FIX: Removed renderCompactHeader() from renderDetailView() (only called once at init)
+   - Flight toggle now only updates flight badge and player cards, NOT the entire control bar
+   - Control bar hole number now stays correct when toggling flights
+   - Same pattern as real-game.html and view-game.html
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
 -->
