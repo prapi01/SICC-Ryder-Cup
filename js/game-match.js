@@ -1,21 +1,20 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.02
-KEY CHANGES from v2.01:
-   - ADDED: calculateCrossFlightWithClinch() - NEW function that returns both match results AND clinch data
-   - This eliminates duplicate sorting between game-match.js and real-game.html
-   - Uses the SAME sorted player arrays for both match calculation AND clinch detection
-   - Prevents index mismatch bugs that occurred when arrays were sorted differently in different places
-   - Original calculateCrossFlight() preserved for backward compatibility
+VERSION: 2.03
+KEY CHANGES from v2.02:
+   - FIXED: filterClinchedByHole() now returns EMPTY object when cascadeStartHole <= 1
+   - Previously it returned ALL clinches, preventing self-healing from H1 cascade
+   - This ensures that re-saving H1 discards ALL existing clinches and recalculates from scratch
+   - This is the correct behavior for self-healing when bugs are fixed
    - All other functions unchanged
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
 */
 
-// FILE: js/game-match.js - VERSION 2.02
+// FILE: js/game-match.js - VERSION 2.03
 // Game 1: Match Play (16 points)
 // Full handicap difference method
-// NOW WITH integrated clinch detection in cross-flight calculation
+// NOW WITH correct cascade self-healing logic
 
 var GameMatch = (function() {
     
@@ -260,7 +259,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // NEW v2.02: calculateCrossFlightWithClinch - returns BOTH match results AND clinch data
+    // v2.02: calculateCrossFlightWithClinch - returns BOTH match results AND clinch data
     // This eliminates the need for duplicate sorting in real-game.html
     // ============================================================
     
@@ -347,19 +346,26 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.02"
+                    cascadeVersion: cascadeVersion || "2.03"
                 }
             };
         }
         return null;
     }
     
-    // Filter clinchedAt to keep only entries from holes BEFORE cascadeStartHole
-    // This is used when cascade starts at a hole > 1
+    // ============================================================
+    // FIXED v2.03: filterClinchedByHole - CORRECT logic for self-healing
+    // When cascade starts at hole 1, discard ALL existing clinches
+    // When cascade starts at hole > 1, preserve clinches from earlier holes
+    // ============================================================
+    
     function filterClinchedByHole(clinchedAt, cascadeStartHole) {
         if (!clinchedAt) return {};
-        if (cascadeStartHole <= 1) return clinchedAt;
         
+        // If cascade starts at hole 1, discard ALL existing clinches (self-healing)
+        if (cascadeStartHole <= 1) return {};
+        
+        // Otherwise, keep only entries from holes BEFORE cascadeStartHole
         var filtered = {};
         for (var matchKey in clinchedAt) {
             var entry = clinchedAt[matchKey];
@@ -472,10 +478,10 @@ var GameMatch = (function() {
         calculateIntraFlight: calculateIntraFlight,
         calculateCrossFlight: calculateCrossFlight,
         
-        // NEW v2.02: Integrated clinch detection
+        // v2.02: Integrated clinch detection
         calculateCrossFlightWithClinch: calculateCrossFlightWithClinch,
         
-        // v2.01: Smart Clinch List API
+        // Smart Clinch List API
         calculateClinch: calculateClinch,
         filterClinchedByHole: filterClinchedByHole,
         updateClinchedAt: updateClinchedAt,
@@ -490,13 +496,12 @@ var GameMatch = (function() {
 
 /*
 FILE: js/game-match.js
-VERSION: 2.02
-KEY CHANGES from v2.01:
-   - ADDED: calculateCrossFlightWithClinch() - NEW function that returns both match results AND clinch data
-   - This eliminates duplicate sorting between game-match.js and real-game.html
-   - Uses the SAME sorted player arrays for both match calculation AND clinch detection
-   - Prevents index mismatch bugs that occurred when arrays were sorted differently in different places
-   - Original calculateCrossFlight() preserved for backward compatibility
+VERSION: 2.03
+KEY CHANGES from v2.02:
+   - FIXED: filterClinchedByHole() now returns EMPTY object when cascadeStartHole <= 1
+   - Previously it returned ALL clinches, preventing self-healing from H1 cascade
+   - This ensures that re-saving H1 discards ALL existing clinches and recalculates from scratch
+   - This is the correct behavior for self-healing when bugs are fixed
    - All other functions unchanged
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
