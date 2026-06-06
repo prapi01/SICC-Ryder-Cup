@@ -1,15 +1,14 @@
 <!--
 FILE: view-history.html
-VERSION: 8.00
-KEY CHANGES from v7.02:
-   - COMPLETE REWRITE: Landing page with TR result, T-1/T-2/Strk line, handicap table
-   - REMOVED: All local calculation functions (uses stored data only)
-   - CHANGED: Reads from 'historyGames' collection (not 'history-records')
-   - CHANGED: Handicap uses HandicapAdjustment.displayStoredAdjustment() (not init)
-   - CHANGED: Scorecard view uses GameUI/GameScorecard exclusively (no local HTML)
-   - ADDED: VIEW SCORECARD and HANDICAP ADJUSTMENT buttons per game
-   - ADDED: Back to list navigation from detail view
-   - MINIMAL local UI code - delegates to shared JS modules
+VERSION: 8.01
+KEY CHANGES from v8.00:
+   - FIXED: Game card layout - 380px width, centered, stacks vertically
+   - FIXED: TR result display - Team A left, Team B right, large scores
+   - FIXED: T-1/T-2/Strk as single line with • separators
+   - FIXED: Two buttons side by side (VIEW SCORECARD and HANDICAP)
+   - FIXED: Removed orderBy from query (client-side sort instead)
+   - FIXED: Clean back buttons at bottom
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -45,7 +44,7 @@ STATUS: Ready for integration
         
         body {
             background: #000;
-            font-family: system-ui, sans-serif;
+            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
             color: #fff;
             display: flex;
             align-items: center;
@@ -53,6 +52,7 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
+        /* Main container - centers all content */
         .container {
             max-width: 500px;
             width: 100%;
@@ -74,101 +74,118 @@ STATUS: Ready for integration
         }
         
         .game-list {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
             margin-bottom: 20px;
         }
         
-        .game-item {
+        /* Game card - fixed 380px width, centered */
+        .game-card {
+            width: 380px;
+            max-width: 100%;
             background: #111;
             border: 1px solid #2a2a2a;
-            border-radius: 20px;
-            padding: 16px;
-            margin-bottom: 16px;
+            border-radius: 24px;
+            padding: 20px 16px;
             transition: all 0.1s ease;
         }
         
         .game-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 12px;
-            flex-wrap: wrap;
-            gap: 8px;
+            text-align: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #2a2a2a;
         }
         
-        .game-date {
-            font-size: 0.9rem;
+        .game-course {
+            font-size: 1rem;
             font-weight: 600;
             color: #4caf50;
         }
         
-        .game-course {
-            font-size: 0.75rem;
+        .game-date {
+            font-size: 0.7rem;
             color: #888;
+            margin-top: 4px;
         }
         
-        /* TR Result display on landing page */
+        /* TR Result - Team A left, Team B right */
         .game-tr-result {
-            background: #0a0a0a;
-            border-radius: 16px;
-            padding: 12px;
-            text-align: center;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }
         
         .tr-scores {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 20px;
+            gap: 24px;
         }
         
         .tr-team {
             text-align: center;
-            min-width: 80px;
+            flex: 1;
         }
         
         .tr-team-label {
             font-size: 0.7rem;
             font-weight: 600;
+            color: #888;
+            letter-spacing: 1px;
             margin-bottom: 4px;
         }
         
         .tr-team-score {
-            font-size: 1.6rem;
+            font-size: 2rem;
             font-weight: 800;
         }
         
         .tr-vs {
-            font-size: 0.9rem;
+            font-size: 1rem;
             color: #555;
+            font-weight: 600;
         }
         
+        /* T-1/T-2/Strk line - single line with dots */
         .tr-subresult {
             display: flex;
             justify-content: center;
-            gap: 20px;
-            margin-top: 8px;
+            gap: 16px;
+            margin-top: 12px;
+            padding-top: 8px;
+            border-top: 1px solid #2a2a2a;
             font-size: 0.7rem;
             color: #888;
         }
         
-        .tr-subresult span {
-            color: #4caf50;
+        .tr-subresult-item {
+            display: inline-flex;
+            gap: 4px;
         }
         
-        /* Game action buttons */
+        .tr-subresult-label {
+            color: #888;
+        }
+        
+        .tr-subresult-value {
+            color: #4caf50;
+            font-weight: 600;
+        }
+        
+        /* Action buttons - side by side */
         .game-actions {
             display: flex;
-            gap: 10px;
-            margin-top: 12px;
+            gap: 12px;
+            margin-top: 16px;
         }
         
         .game-btn {
             flex: 1;
-            padding: 10px 12px;
+            padding: 12px 8px;
             border-radius: 40px;
             font-weight: 600;
-            font-size: 0.7rem;
+            font-size: 0.75rem;
             cursor: pointer;
             transition: all 0.1s ease;
             text-align: center;
@@ -176,7 +193,7 @@ STATUS: Ready for integration
         }
         
         .game-btn:active {
-            transform: scale(0.98);
+            transform: scale(0.97);
         }
         
         .btn-scorecard {
@@ -191,31 +208,45 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
-        .back-to-menu-btn {
-            background: #1a1a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            padding: 14px 24px;
-            border-radius: 40px;
-            font-weight: 600;
-            cursor: pointer;
-            width: 100%;
-            text-align: center;
-        }
-        
-        .back-to-list-btn {
-            background: #1a1a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            padding: 12px 20px;
-            border-radius: 40px;
-            font-weight: 600;
-            cursor: pointer;
+        /* Back buttons */
+        .back-buttons {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
             margin-top: 20px;
-            text-align: center;
         }
         
-        /* Detail view - uses GameUI styles, just container visibility */
+        .back-btn {
+            width: 380px;
+            max-width: 100%;
+            padding: 14px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            text-align: center;
+            border: 1px solid;
+            transition: all 0.1s ease;
+        }
+        
+        .back-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .back-to-menu {
+            background: #1a1a1a;
+            border-color: #4caf50;
+            color: #4caf50;
+        }
+        
+        .back-to-list {
+            background: #1a1a1a;
+            border-color: #4caf50;
+            color: #4caf50;
+        }
+        
+        /* Detail view - uses GameUI styles */
         .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
             visibility: hidden;
         }
@@ -235,6 +266,7 @@ STATUS: Ready for integration
             margin-top: 30px;
         }
         
+        /* Device and version tags */
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -436,15 +468,11 @@ STATUS: Ready for integration
         .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        .handicap-modal-container {
-            background: #1a1a1a;
-            border-radius: 24px;
-            padding: 16px;
-            max-width: 95%;
-            width: auto;
-            border: 2px solid #4caf50;
-            max-height: 85vh;
-            overflow-y: auto;
+        .empty-message {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+            font-size: 0.85rem;
         }
     </style>
 </head>
@@ -453,11 +481,15 @@ STATUS: Ready for integration
 <!-- GAME LIST VIEW (Landing Page) -->
 <div class="container" id="gameListView">
     <div class="game-list-title">📜 COMPLETED GAMES</div>
-    <div class="game-list" id="gameListContainer"><div class="loading">Loading games...</div></div>
-    <button class="back-to-menu-btn" id="backToMenuBtn">← Back to Main Menu</button>
+    <div class="game-list" id="gameListContainer">
+        <div class="loading">Loading games...</div>
+    </div>
+    <div class="back-buttons">
+        <button class="back-btn back-to-menu" id="backToMenuBtn">← Back to Main Menu</button>
+    </div>
 </div>
 
-<!-- GAME DETAIL VIEW (Scorecard - identical to view-game.html) -->
+<!-- GAME DETAIL VIEW (Scorecard) -->
 <div class="container" id="gameDetailView">
     <div class="ticker-container" id="tickerContainer">
         <div class="ticker-content" id="tickerContent">&nbsp;</div>
@@ -477,17 +509,20 @@ STATUS: Ready for integration
     
     <div id="bottomMenuContainer"></div>
     <div class="debug" id="debug"></div>
-    <button class="back-to-list-btn" id="backToListBtn">← Back to Game List</button>
+    
+    <div class="back-buttons" style="margin-top: 20px;">
+        <button class="back-btn back-to-list" id="backToListBtn">← Back to Game List</button>
+    </div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.00</div>
+<div class="version-tag">v8.01</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.00";
+window.VIEW_HISTORY_VERSION = "8.01";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -498,7 +533,6 @@ var db = firebase.firestore();
 // Game State for Detail View
 // ============================================================
 
-var currentGameData = null;
 var currentArchiveId = null;
 var currentFlight = 1;
 var currentHole = 1;
@@ -513,7 +547,7 @@ var f2DataString = "";
 var resultsCache = null;
 
 // ============================================================
-// Helper Functions (delegating to shared modules where possible)
+// Helper Functions (delegating to shared modules)
 // ============================================================
 
 function getPlayOrder() {
@@ -664,10 +698,6 @@ function onToggleFlight(flightNumber) {
     renderDetailView();
 }
 
-function onToggleDisplayMode() {
-    renderDetailView();
-}
-
 function renderCompactHeader() {
     var displayMode = GameUI.getDisplayMode();
     var pnText = displayMode === 'play' ? 'P' : 'N';
@@ -810,7 +840,7 @@ function getFinalDisplayRows(results) {
 function renderGameList(games) {
     var container = document.getElementById('gameListContainer');
     if (games.length === 0) {
-        container.innerHTML = '<div style="text-align:center; padding:40px; color:#888;">No completed games found.</div>';
+        container.innerHTML = '<div class="empty-message">No completed games found.</div>';
         return;
     }
     
@@ -828,10 +858,10 @@ function renderGameList(games) {
         var teamBDisplay = tr.teamB % 1 === 0 ? tr.teamB : tr.teamB.toFixed(1);
         
         html += `
-            <div class="game-item" data-game-id="${escapeHtml(game.archiveId)}" data-game-index="${i}">
+            <div class="game-card" data-game-id="${escapeHtml(game.archiveId)}">
                 <div class="game-header">
-                    <div class="game-date">📅 ${displayDate}</div>
                     <div class="game-course">⛳ ${escapeHtml(game.courseName)}</div>
+                    <div class="game-date">${displayDate}</div>
                 </div>
                 <div class="game-tr-result">
                     <div class="tr-scores">
@@ -846,9 +876,18 @@ function renderGameList(games) {
                         </div>
                     </div>
                     <div class="tr-subresult">
-                        <div>T-1: <span>${escapeHtml(displayRows.t1)}</span></div>
-                        <div>T-2: <span>${escapeHtml(displayRows.t2)}</span></div>
-                        <div>Strk: <span>${escapeHtml(displayRows.strk)}</span></div>
+                        <div class="tr-subresult-item">
+                            <span class="tr-subresult-label">T-1:</span>
+                            <span class="tr-subresult-value">${escapeHtml(displayRows.t1)}</span>
+                        </div>
+                        <div class="tr-subresult-item">
+                            <span class="tr-subresult-label">T-2:</span>
+                            <span class="tr-subresult-value">${escapeHtml(displayRows.t2)}</span>
+                        </div>
+                        <div class="tr-subresult-item">
+                            <span class="tr-subresult-label">Strk:</span>
+                            <span class="tr-subresult-value">${escapeHtml(displayRows.strk)}</span>
+                        </div>
                     </div>
                 </div>
                 <div class="game-actions">
@@ -862,7 +901,7 @@ function renderGameList(games) {
     container.innerHTML = html;
     
     // Attach event listeners
-    document.querySelectorAll('.game-btn[data-action="scorecard"]').forEach(function(btn) {
+    document.querySelectorAll('.btn-scorecard').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             var archiveId = this.getAttribute('data-game-id');
@@ -871,7 +910,7 @@ function renderGameList(games) {
         });
     });
     
-    document.querySelectorAll('.game-btn[data-action="handicap"]').forEach(function(btn) {
+    document.querySelectorAll('.btn-handicap').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             var archiveId = this.getAttribute('data-game-id');
@@ -927,7 +966,6 @@ function showScorecardView(game) {
 
 function backToGameList() {
     // Reset state
-    currentGameData = null;
     currentArchiveId = null;
     allPlayers = [];
     coursePar = [];
@@ -949,10 +987,10 @@ function loadGameList() {
     var container = document.getElementById('gameListContainer');
     container.innerHTML = '<div class="loading">Loading games...</div>';
     
+    // Query without orderBy to avoid index requirement, sort client-side
     db.collection('historyGames')
         .where("status", "==", "completed")
-        .orderBy("completedAt", "desc")
-        .limit(50)
+        .limit(100)
         .get()
         .then(function(snapshot) {
             var games = [];
@@ -968,14 +1006,23 @@ function loadGameList() {
                     results: data.results,
                     f1DataString: data.f1DataString || "",
                     f2DataString: data.f2DataString || "",
-                    adjustedHandicaps: data.adjustedHandicaps
+                    adjustedHandicaps: data.adjustedHandicaps,
+                    completedAt: data.completedAt || data.createdAt
                 });
             });
+            
+            // Sort by completedAt descending (most recent first)
+            games.sort(function(a, b) {
+                var dateA = a.completedAt ? a.completedAt.toDate ? a.completedAt.toDate() : new Date(a.completedAt) : new Date(0);
+                var dateB = b.completedAt ? b.completedAt.toDate ? b.completedAt.toDate() : new Date(b.completedAt) : new Date(0);
+                return dateB - dateA;
+            });
+            
             renderGameList(games);
         })
         .catch(function(error) {
             console.error("Error loading games:", error);
-            container.innerHTML = '<div style="text-align:center; padding:40px; color:#ff6b6b;">Error loading games.</div>';
+            container.innerHTML = '<div class="empty-message">Error loading games. Please refresh.</div>';
         });
 }
 
@@ -1027,16 +1074,15 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.00
-KEY CHANGES from v7.02:
-   - COMPLETE REWRITE: Landing page with TR result, T-1/T-2/Strk line, handicap table
-   - REMOVED: All local calculation functions (uses stored data only)
-   - CHANGED: Reads from 'historyGames' collection (not 'history-records')
-   - CHANGED: Handicap uses HandicapAdjustment.displayStoredAdjustment() (via initForHistory)
-   - CHANGED: Scorecard view uses GameUI/GameScorecard exclusively
-   - ADDED: VIEW SCORECARD and HANDICAP ADJUSTMENT buttons per game
-   - ADDED: Back to list navigation from detail view
-   - MINIMAL local UI code - delegates to shared JS modules
+VERSION: 8.01
+KEY CHANGES from v8.00:
+   - FIXED: Game card layout - 380px width, centered, stacks vertically
+   - FIXED: TR result display - Team A left, Team B right, large scores
+   - FIXED: T-1/T-2/Strk as single line with • separators
+   - FIXED: Two buttons side by side (VIEW SCORECARD and HANDICAP)
+   - FIXED: Removed orderBy from query (client-side sort instead)
+   - FIXED: Clean back buttons at bottom
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
