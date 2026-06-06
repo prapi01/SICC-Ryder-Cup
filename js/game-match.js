@@ -1,22 +1,20 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.06
-KEY CHANGES from v2.04:
-   - ADDED: existingClinched parameter to calculateCrossFlightWithClinch()
-   - ADDED: Check to prevent overwriting existing clinches
-   - If a match already has a clinch recorded at an earlier hole, skip adding a new one
-   - This ensures the first hole where a match clinches is preserved (H12 stays H12)
-   - Prevents clinch from "moving" to later holes (H13, H14, H15)
-   - Removed debug logging (clean version)
+VERSION: 2.07
+KEY CHANGES from v2.06:
+   - ADDED: Debug logging in filterClinchedByHole() to see actual cascadeStartHole value
+   - This will help identify why cascadeStartHole <= 1 condition is not working
+   - Logs the value received and the decision (keep all vs discard all)
+   - Also logs in updateClinchedAt() to show before/after state
    - All other functions unchanged
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for integration
+STATUS: Debug version - remove logging after testing
 */
 
-// FILE: js/game-match.js - VERSION 2.06
+// FILE: js/game-match.js - VERSION 2.07
 // Game 1: Match Play (16 points)
 // Full handicap difference method
-// NOW WITH clinch persistence (first clinch hole preserved)
+// DEBUG VERSION with logging for filterClinchedByHole
 
 var GameMatch = (function() {
     
@@ -261,8 +259,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.06: calculateCrossFlightWithClinch - WITH CLINCH PERSISTENCE
-    // Prevents overwriting existing clinches from earlier holes
+    // v2.07: calculateCrossFlightWithClinch - with debug logging in filter
     // ============================================================
     
     function calculateCrossFlightWithClinch(flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
@@ -304,12 +301,7 @@ var GameMatch = (function() {
                 // Store in array (consistent order for Firestore)
                 matchResultsArray.push(matchValue);
                 
-                // ============================================================
-                // FIXED v2.06: Check if this match already has a clinch
-                // If yes, skip adding a new clinch entry (preserve the original hole)
-                // ============================================================
-                
-                // Check both possible key orders for existing clinch
+                // Check if this match already has a clinch
                 var matchKey1 = playerA.name + "_vs_" + playerB.name;
                 var matchKey2 = playerB.name + "_vs_" + playerA.name;
                 var existingClinch = null;
@@ -326,7 +318,12 @@ var GameMatch = (function() {
                     );
                     
                     if (clinchResult) {
+                        console.log(`    >>> CLINCH! ${clinchResult.matchKey} at hole ${currentHole} with lead ${Math.abs(matchValue)} (remaining=${remainingHoles})`);
                         clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
+                    }
+                } else {
+                    if (Math.abs(matchValue) > remainingHoles) {
+                        console.log(`    --- SKIP: ${matchKey1} already clinched at hole ${existingClinch.clinchedAtHole} (current hole ${currentHole})`);
                     }
                 }
             }
@@ -342,13 +339,12 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // calculateClinch - determines if a match clinches at current hole
+    // calculateClinch
     // ============================================================
     
     function calculateClinch(matchValue, remainingHoles, winnerName, loserName, currentHole, deviceId, cascadeVersion) {
         var lead = Math.abs(matchValue);
         if (lead > remainingHoles && matchValue !== 0) {
-            // Determine winner based on matchValue sign
             var actualWinner = (matchValue > 0) ? winnerName : loserName;
             var actualLoser = (matchValue > 0) ? loserName : winnerName;
             
@@ -362,7 +358,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.06"
+                    cascadeVersion: cascadeVersion || "2.07"
                 }
             };
         }
@@ -370,14 +366,24 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // filterClinchedByHole - keeps only clinches from holes BEFORE cascadeStartHole
+    // FIXED v2.07: filterClinchedByHole with DEBUG LOGGING
     // ============================================================
     
     function filterClinchedByHole(clinchedAt, cascadeStartHole) {
-        if (!clinchedAt) return {};
+        console.log(`[filterClinchedByHole] cascadeStartHole = ${cascadeStartHole} (type: ${typeof cascadeStartHole})`);
+        
+        if (!clinchedAt) {
+            console.log(`[filterClinchedByHole] clinchedAt is empty, returning {}`);
+            return {};
+        }
         
         // If cascade starts at hole 1, discard ALL existing clinches (self-healing)
-        if (cascadeStartHole <= 1) return {};
+        if (cascadeStartHole <= 1) {
+            console.log(`[filterClinchedByHole] cascadeStartHole (${cascadeStartHole}) <= 1 → DISCARDING ALL ${Object.keys(clinchedAt).length} existing clinches`);
+            return {};
+        }
+        
+        console.log(`[filterClinchedByHole] cascadeStartHole (${cascadeStartHole}) > 1 → keeping clinches from holes < ${cascadeStartHole}`);
         
         // Otherwise, keep only entries from holes BEFORE cascadeStartHole
         var filtered = {};
@@ -386,6 +392,9 @@ var GameMatch = (function() {
             var entryHole = (typeof entry === 'number') ? entry : entry.clinchedAtHole;
             if (entryHole < cascadeStartHole) {
                 filtered[matchKey] = entry;
+                console.log(`[filterClinchedByHole]   KEPT: ${matchKey} (hole ${entryHole})`);
+            } else {
+                console.log(`[filterClinchedByHole]   DISCARDED: ${matchKey} (hole ${entryHole})`);
             }
         }
         return filtered;
@@ -393,10 +402,17 @@ var GameMatch = (function() {
     
     // Update clinchedAt with new clinch data (smart merge)
     function updateClinchedAt(existingClinched, newClinchData, cascadeStartHole) {
+        console.log(`[updateClinchedAt] existingClinched has ${Object.keys(existingClinched).length} entries, newClinchData has ${Object.keys(newClinchData).length} entries`);
+        
         var updated = filterClinchedByHole(existingClinched, cascadeStartHole);
+        
+        console.log(`[updateClinchedAt] after filter: ${Object.keys(updated).length} entries`);
+        
         for (var matchKey in newClinchData) {
             updated[matchKey] = newClinchData[matchKey];
+            console.log(`[updateClinchedAt] ADDED: ${matchKey} at hole ${newClinchData[matchKey].clinchedAtHole}`);
         }
+        
         return updated;
     }
     
@@ -490,15 +506,13 @@ var GameMatch = (function() {
 
 /*
 FILE: js/game-match.js
-VERSION: 2.06
-KEY CHANGES from v2.04:
-   - ADDED: existingClinched parameter to calculateCrossFlightWithClinch()
-   - ADDED: Check to prevent overwriting existing clinches
-   - If a match already has a clinch recorded at an earlier hole, skip adding a new one
-   - This ensures the first hole where a match clinches is preserved (H12 stays H12)
-   - Prevents clinch from "moving" to later holes (H13, H14, H15)
-   - Removed debug logging (clean version)
+VERSION: 2.07
+KEY CHANGES from v2.06:
+   - ADDED: Debug logging in filterClinchedByHole() to see actual cascadeStartHole value
+   - This will help identify why cascadeStartHole <= 1 condition is not working
+   - Logs the value received and the decision (keep all vs discard all)
+   - Also logs in updateClinchedAt() to show before/after state
    - All other functions unchanged
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for integration
+STATUS: Debug version - remove logging after testing
 */
