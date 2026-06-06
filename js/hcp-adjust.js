@@ -1,10 +1,13 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.19
-KEY CHANGES from v2.18:
-   - ADDED: Black border line above TEAM A and TEAM B separator rows
-   - Separator rows now have border-top: 2px solid #000 for clean visual separation
-   - Team label styling: bold, green text on dark background
+VERSION: 2.20
+KEY CHANGES from v2.19:
+   - CHANGED: Team grouping is now enabled for ALL displays (both live games and history)
+   - showAdjustmentTable() now defaults sortByTeam = true for all modes
+   - Live game handicap adjustment now shows TEAM A / TEAM B grouping
+   - Removed sortByTeam parameter (always true)
+   - Players sorted by Team (A first, then B), then by starting handicap (ascending)
+   - Black border line above team separator rows preserved
    - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -119,21 +122,15 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // FIXED v2.14: Calculate Performance Adjustment using MATCH POINTS
-    // Each match: Win = 1 point, Loss = 0 points, Tie = 0.5 points
-    // Total points ≥ 3.5 → -1 (CUT stroke)
-    // Total points ≤ 0.5 → +1 (ADD stroke)
-    // Otherwise → 0
+    // Calculate Performance Adjustment using MATCH POINTS
     // ============================================================
     
     function calculatePerformanceAdjustmentFromCache(cache, allPlayersList) {
-        // Initialize match points for all players
         var matchPoints = {};
         for (var i = 0; i < allPlayersList.length; i++) {
             matchPoints[allPlayersList[i].name] = 0;
         }
         
-        // Get clinchedAt data (wins are recorded here)
         var clinchedAt = cache.results?.clinchedAt || {};
         
         if (Object.keys(clinchedAt).length === 0) {
@@ -141,12 +138,8 @@ var HandicapAdjustment = (function() {
             return {};
         }
         
-        console.log("clinchedAt data:", clinchedAt);
-        
-        // Track which matchups have been processed to handle ties
         var processedMatchups = new Set();
         
-        // Get ordered players for all possible matchups
         var teamAPlayers = allPlayersList.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
             if (a.flight !== b.flight) return a.flight - b.flight;
             return a.handicap - b.handicap;
@@ -156,7 +149,6 @@ var HandicapAdjustment = (function() {
             return a.handicap - b.handicap;
         });
         
-        // Process wins from clinchedAt
         for (var matchKey in clinchedAt) {
             if (matchKey.indexOf("_vs_") === -1) continue;
             
@@ -168,16 +160,11 @@ var HandicapAdjustment = (function() {
             if (processedMatchups.has(matchupId)) continue;
             processedMatchups.add(matchupId);
             
-            // Winner gets 1 point
             if (matchPoints[winner] !== undefined) {
                 matchPoints[winner] += 1;
             }
-            // Loser gets 0 points (no addition needed)
-            
-            console.log(`Match: ${winner} beat ${loser} → ${winner} +1 point`);
         }
         
-        // Process ties (AS) - matches not recorded in clinchedAt
         for (var a = 0; a < teamAPlayers.length; a++) {
             for (var b = 0; b < teamBPlayers.length; b++) {
                 var playerA = teamAPlayers[a];
@@ -187,32 +174,21 @@ var HandicapAdjustment = (function() {
                 if (processedMatchups.has(matchupId)) continue;
                 processedMatchups.add(matchupId);
                 
-                // This matchup is a tie (AS) - both get 0.5 points
                 matchPoints[playerA.name] += 0.5;
                 matchPoints[playerB.name] += 0.5;
-                console.log(`Match: ${playerA.name} vs ${playerB.name} → TIE, both +0.5 points`);
             }
         }
         
-        console.log("Match points calculated:", matchPoints);
-        
-        // Apply performance adjustment rules:
-        // Total points ≥ 3.5 → -1 (CUT stroke - handicap DOWN)
-        // Total points ≤ 0.5 → +1 (ADD stroke - handicap UP)
-        // Between 0.5 and 3.5 → 0 (no change)
         var perfAdjustments = {};
         for (var playerName in matchPoints) {
             var points = matchPoints[playerName];
             
             if (points >= 3.5) {
                 perfAdjustments[playerName] = -1;
-                console.log(`  ${playerName}: ${points} points → -1 (CUT stroke - played very well)`);
             } else if (points <= 0.5) {
                 perfAdjustments[playerName] = 1;
-                console.log(`  ${playerName}: ${points} points → +1 (ADD stroke - played poorly)`);
             } else {
                 perfAdjustments[playerName] = 0;
-                console.log(`  ${playerName}: ${points} points → 0 (average)`);
             }
         }
         
@@ -246,7 +222,9 @@ var HandicapAdjustment = (function() {
                 currentHcp: player.handicap,
                 anchorAdj: anchorAdj,
                 perfAdj: perfAdj,
-                rawNew: rawNew
+                rawNew: rawNew,
+                team: player.team,
+                startingHcp: player.handicap
             });
             rawNewList.push(rawNew);
         }
@@ -279,50 +257,25 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Sort players by Team then by startingHcp (for history view)
+    // Display Table - v2.20: Team grouping enabled for ALL displays
     // ============================================================
     
-    function sortPlayersByTeamAndHcp(players, allPlayersList) {
-        // Create a map of team and starting handicap for each player
-        var playerInfo = {};
-        for (var i = 0; i < allPlayersList.length; i++) {
-            var p = allPlayersList[i];
-            playerInfo[p.name] = {
-                team: p.team,
-                startingHcp: p.handicap
-            };
-        }
-        
-        // Sort: Team A first, then Team B, then by startingHcp ascending
-        players.sort(function(a, b) {
-            var teamA = playerInfo[a.name]?.team || 'B';
-            var teamB = playerInfo[b.name]?.team || 'B';
-            
-            if (teamA !== teamB) {
-                return teamA === 'A' ? -1 : 1;
-            }
-            
-            var hcpA = playerInfo[a.name]?.startingHcp || 99;
-            var hcpB = playerInfo[b.name]?.startingHcp || 99;
-            return hcpA - hcpB;
-        });
-        
-        return players;
-    }
-    
-    // ============================================================
-    // Display Table - v2.19: Team grouping with black border
-    // ============================================================
-    
-    function showAdjustmentTable(calculationResult, anchorName, isReadOnly, sortByTeam) {
+    function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
         var newAnchorName = calculationResult.newAnchorName;
         
-        // If sortByTeam is true, we need to group by team
-        if (sortByTeam && calculationResult.playersWithTeam) {
-            players = calculationResult.playersWithTeam;
-        }
+        // Sort players by Team (A first), then by startingHcp
+        players.sort(function(a, b) {
+            var teamA = a.team || 'B';
+            var teamB = b.team || 'B';
+            if (teamA !== teamB) {
+                return teamA === 'A' ? -1 : 1;
+            }
+            var hcpA = a.startingHcp !== undefined ? a.startingHcp : a.currentHcp;
+            var hcpB = b.startingHcp !== undefined ? b.startingHcp : b.currentHcp;
+            return hcpA - hcpB;
+        });
         
         var tableHtml = '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
         tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.7rem; min-width: 375px;">';
@@ -342,19 +295,17 @@ var HandicapAdjustment = (function() {
             var playerTeam = p.team || (currentTeam === null ? 'A' : 'B');
             
             // Add team separator row if team changes
-            if (sortByTeam && playerTeam !== currentTeam) {
+            if (playerTeam !== currentTeam) {
                 if (currentTeam !== null) {
                     // No spacer needed
                 }
                 currentTeam = playerTeam;
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
-                // v2.19: Added border-top: 2px solid #000 for black line above team rows
                 tableHtml += '<tr style="border-top: 2px solid #000; background:#1a3a1a;">';
                 tableHtml += `<td colspan="5" style="padding:6px 2px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}</td>`;
                 tableHtml += '</tr>';
             }
             
-            // Determine Perf column display color
             var perfColor = '#888';
             var perfSign = '';
             if (p.perfAdj > 0) {
@@ -367,7 +318,6 @@ var HandicapAdjustment = (function() {
                 perfSign = '0';
             }
             
-            // Determine Anc column display color
             var ancColor = '#888';
             var ancSign = '';
             if (p.anchorAdj > 0) {
@@ -483,7 +433,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.19: Display stored adjustment from history record with team grouping
+    // v2.20: Display stored adjustment from history record
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList) {
@@ -492,10 +442,7 @@ var HandicapAdjustment = (function() {
             return false;
         }
         
-        // Build player array with team info
-        var playersWithTeam = [];
         var playerMap = {};
-        
         if (allPlayersList) {
             for (var i = 0; i < allPlayersList.length; i++) {
                 playerMap[allPlayersList[i].name] = {
@@ -520,28 +467,19 @@ var HandicapAdjustment = (function() {
             };
         });
         
-        // Sort by Team (A first), then by startingHcp
-        players.sort(function(a, b) {
-            if (a.team !== b.team) {
-                return a.team === 'A' ? -1 : 1;
-            }
-            return a.startingHcp - b.startingHcp;
-        });
-        
         var calculationResult = {
             players: players,
-            playersWithTeam: players,
             needsZeroRise: adjustedHandicaps.needsZeroRise || false,
             zeroRiseAmount: adjustedHandicaps.zeroRiseAmount || 0,
             newAnchorName: adjustedHandicaps.newAnchor
         };
         
-        showAdjustmentTable(calculationResult, anchorName, true, true);
+        showAdjustmentTable(calculationResult, anchorName, true);
         return true;
     }
     
     // ============================================================
-    // v2.10: initForHistory - Reads stored adjustment data
+    // initForHistory - Reads stored adjustment data
     // ============================================================
     
     function initForHistory(gameId, archiveId, returnUrl) {
@@ -566,7 +504,6 @@ var HandicapAdjustment = (function() {
                 if (adjustedHandicaps && adjustedHandicaps.players) {
                     displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList);
                 } else {
-                    // Fallback: try to load from legacy format or recalculate
                     console.log("No stored adjustment data, attempting legacy load");
                     loadFromHistoryLegacy(gameId, returnDestination);
                 }
@@ -577,7 +514,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // LEGACY: Load from historyGames and recalculate (backward compat)
+    // LEGACY: Load from historyGames and recalculate
     // ============================================================
     
     function loadFromHistoryLegacy(gameId, returnUrl) {
@@ -602,39 +539,46 @@ var HandicapAdjustment = (function() {
                 
                 var hcpData = historyData.handicapAdjustment;
                 if (hcpData && hcpData.players) {
+                    var playersWithTeam = hcpData.players.map(function(p) {
+                        var playerInfo = allPlayers.find(function(ap) { return ap.name === p.name; });
+                        return {
+                            name: p.name,
+                            label: p.name.substring(0, 3).toUpperCase(),
+                            currentHcp: p.currentHcp,
+                            anchorAdj: p.anchorAdj || 0,
+                            perfAdj: p.perfAdj || 0,
+                            newHcp: p.newHcp,
+                            team: playerInfo ? playerInfo.team : 'B',
+                            startingHcp: p.currentHcp
+                        };
+                    });
                     var calculationResult = {
-                        players: hcpData.players.map(function(p) {
-                            return {
-                                name: p.name,
-                                label: p.name.substring(0, 3).toUpperCase(),
-                                currentHcp: p.currentHcp,
-                                anchorAdj: p.anchorAdj || 0,
-                                perfAdj: p.perfAdj || 0,
-                                newHcp: p.newHcp
-                            };
-                        }),
+                        players: playersWithTeam,
                         needsZeroRise: hcpData.needsZeroRise || false,
                         zeroRiseAmount: hcpData.zeroRiseAmount || 0,
                         newAnchorName: hcpData.newAnchor
                     };
-                    showAdjustmentTable(calculationResult, hcpData.anchor || "Anchor", true, false);
+                    showAdjustmentTable(calculationResult, hcpData.anchor || "Anchor", true);
                 } else {
+                    var emptyPlayers = allPlayers.map(function(p) {
+                        return {
+                            name: p.name,
+                            label: p.label,
+                            currentHcp: p.handicap,
+                            anchorAdj: 0,
+                            perfAdj: 0,
+                            newHcp: p.handicap,
+                            team: p.team,
+                            startingHcp: p.handicap
+                        };
+                    });
                     var emptyResult = {
-                        players: allPlayers.map(function(p) {
-                            return {
-                                name: p.name,
-                                label: p.label,
-                                currentHcp: p.handicap,
-                                anchorAdj: 0,
-                                perfAdj: 0,
-                                newHcp: p.handicap
-                            };
-                        }),
+                        players: emptyPlayers,
                         needsZeroRise: false,
                         zeroRiseAmount: 0,
                         newAnchorName: null
                     };
-                    showAdjustmentTable(emptyResult, "Not calculated", true, false);
+                    showAdjustmentTable(emptyResult, "Not calculated", true);
                 }
             })
             .catch(function(err) {
@@ -669,7 +613,7 @@ var HandicapAdjustment = (function() {
         
         var anchor = allPlayers[0];
         var calculationResult = calculateAllAdjustments(anchor);
-        showAdjustmentTable(calculationResult, anchor.name, true, false);
+        showAdjustmentTable(calculationResult, anchor.name, true);
     }
     
     // ============================================================
@@ -703,7 +647,7 @@ var HandicapAdjustment = (function() {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false, false);
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                     }
                 });
             } else if (zeroHcpPlayers.length > 1) {
@@ -719,7 +663,7 @@ var HandicapAdjustment = (function() {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false, false);
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                     }
                 });
             }
@@ -849,15 +793,11 @@ var HandicapAdjustment = (function() {
                 if (err) {
                     alert("Error saving handicap data. Please try again.");
                 } else {
-                    showAdjustmentTable(calculationResult, anchorPlayer.name, false, false);
+                    showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                 }
             });
         });
     }
-    
-    // ============================================================
-    // Load from historyGames (for readonly mode) - DEPRECATED, use initForHistory
-    // ============================================================
     
     function initReadOnly(gameId, returnUrl) {
         initForHistory(gameId, null, returnUrl);
@@ -887,8 +827,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    // Version exposure for console debugging
-    window.HANDICAP_ADJUST_VERSION = "2.19";
+    window.HANDICAP_ADJUST_VERSION = "2.20";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -907,11 +846,13 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.19
-KEY CHANGES from v2.18:
-   - ADDED: Black border line above TEAM A and TEAM B separator rows
-   - Separator rows now have border-top: 2px solid #000 for clean visual separation
-   - Team label styling: bold, green text on dark background
+VERSION: 2.20
+KEY CHANGES from v2.19:
+   - CHANGED: Team grouping is now enabled for ALL displays (both live games and history)
+   - showAdjustmentTable() now sorts by Team (A first, then B), then by starting handicap
+   - Live game handicap adjustment now shows TEAM A / TEAM B grouping
+   - Removed sortByTeam parameter (always true)
+   - Black border line above team separator rows preserved
    - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
