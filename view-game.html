@@ -1,10 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.17
-KEY CHANGES from v7.16:
-   - UPDATED bubble display to use GameMatch.getClinchHole() for smart list support
-   - Now handles both old flat clinch format and new smart object format
-   - All other functionality unchanged (celebration, navigation, RHP handler)
+VERSION: 7.18
+KEY CHANGES from v7.17:
+   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
+   - Player cards, bubbles, scorecard table, compact header styles removed
+   - Kept only page-specific styles: container, visibility rules, device tags, modals
+   - All functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -57,6 +58,7 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
+        /* Visibility rules for data-ready state */
         .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
             visibility: hidden;
         }
@@ -76,6 +78,7 @@ STATUS: Ready for integration
             margin-top: 30px;
         }
         
+        /* Device and version tags */
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -104,206 +107,7 @@ STATUS: Ready for integration
             z-index: 1000;
         }
         
-        .status-bubble {
-            background: rgba(76,175,80,0.3);
-            border: 1px solid #4caf50;
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            color: #4caf50;
-            margin-bottom: 12px;
-            cursor: pointer;
-        }
-        
-        .team-score-card {
-            background: #111;
-            border-radius: 16px;
-            text-align: center;
-        }
-        
-        .player-card {
-            background: #111;
-            border-radius: 16px;
-            padding: 14px;
-            margin-bottom: 12px;
-            border: 1px solid #333;
-            position: relative;
-        }
-        .player-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .player-name { font-size: 1rem; font-weight: 600; }
-        .player-handicap { background: #1a3a1a; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; margin-left: 8px; }
-        
-        /* Viewer mode - score value only (no button container) */
-        .score-value {
-            font-size: 1.1rem;
-            font-weight: 700;
-            min-width: 38px;
-            text-align: center;
-            background: #1a1a1a;
-            padding: 5px 0;
-            border-radius: 30px;
-        }
-        
-        /* Hide score-control containers in viewer mode */
-        .score-control {
-            display: none;
-        }
-        
-        /* ============================================================
-           BUBBLE STYLES - matches real-game
-        ============================================================ */
-        .bubbles {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-            margin-top: 10px;
-        }
-        
-        .bubble {
-            white-space: nowrap;
-            text-align: center;
-            padding: 8px 4px;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        /* Small screen adjustments (iPhone SE) */
-        @media (max-width: 380px) {
-            .bubble {
-                padding: 6px 2px;
-                font-size: 0.75rem;
-            }
-            .bubbles {
-                gap: 4px;
-            }
-        }
-        
-        /* Bubble color classes */
-        .bubble-green {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        .bubble-red {
-            background: #3a1a1a;
-            color: #ff6b6b;
-            border: 1px solid #ff6b6b;
-        }
-        .bubble-gold {
-            background: #1a3a1a;
-            color: #ffaa44;
-            border: 2px solid #ffaa44;
-            font-weight: 600;
-        }
-        .bubble-loss-clinch {
-            background: #3a1a1a;
-            color: #ffffff;
-            border: 2px solid #ffffff;
-            font-weight: 600;
-        }
-        .bubble-grey {
-            background: #2a2a2a;
-            color: #888;
-            border: 1px solid #444;
-        }
-        
-        .scorecard-section { margin: 20px 0; }
-        #compactHeaderContainer { margin-bottom: 10px; }
-        .scorecard-wrapper { overflow-x: auto; }
-        
-        .scorecard-table {
-            table-layout: fixed;
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.7rem;
-            min-width: 600px;
-        }
-        .scorecard-table th,
-        .scorecard-table td {
-            min-width: 40px;
-            max-width: 60px;
-            text-align: center;
-            padding: 6px 3px;
-            border: 1px solid #222;
-            white-space: nowrap;
-        }
-        .scorecard-table th:first-child,
-        .scorecard-table td:first-child {
-            width: 50px;
-            position: sticky;
-            left: 0;
-            background: #111;
-            z-index: 1;
-        }
-        .scorecard-table th {
-            color: #4caf50;
-            background: #111;
-        }
-        .score-green { color: #4caf50; font-weight: 600; }
-        .score-invisible { color: #000; }
-        .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
-        
-        .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
-            border-radius: 12px !important;
-        }
-        .compact-flight-btn {
-            border-radius: 30px !important;
-            font-size: 1rem !important;
-            font-weight: 800 !important;
-            flex: 1;
-            height: 52px;
-        }
-        .compact-btn {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            cursor: pointer;
-        }
-        .compact-nav-btn {
-            width: 52px;
-            height: 52px;
-            font-size: 1.3rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        /* Disabled button styling */
-        .compact-prev-btn:disabled, .compact-next-btn:disabled {
-            background: #2a2a2a !important;
-            color: #666666 !important;
-            border-color: #444444 !important;
-            opacity: 0.6 !important;
-            cursor: not-allowed !important;
-        }
-        
-        /* Gold RESULT button styling */
-        .compact-result-btn {
-            background: #1a3a1a !important;
-            border: 2px solid #ffaa44 !important;
-            color: #ffaa44 !important;
-            border-radius: 30px !important;
-            font-size: 1rem !important;
-            font-weight: 800 !important;
-            flex: 1;
-            height: 52px;
-            cursor: pointer;
-        }
-        
-        .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
-        .loading { text-align: center; padding: 40px; color: #888; }
-        
-        /* Modal Overlay for celebration (styles from sign-card.js will be added dynamically) */
+        /* Modal overlay (not in game-ui.js) */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -317,6 +121,9 @@ STATUS: Ready for integration
             z-index: 10001;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
+        
+        .debug { text-align: center; font-size: 0.6rem; color: #555; margin-top: 20px; }
+        .loading { text-align: center; padding: 40px; color: #888; }
     </style>
 </head>
 <body>
@@ -347,13 +154,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.17</div>
+<div class="version-tag">v7.18</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.17";
+window.VIEW_GAME_VERSION = "7.18";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -713,7 +520,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS - UPDATED v7.17: Uses GameMatch.getClinchHole()
+// BUBBLE FUNCTIONS - Uses GameMatch.getClinchHole()
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -729,7 +536,6 @@ function getBubbleClassWithClinch(player, opponent) {
     var lastSyncedHole = cache.lastSyncedHole;
     var clinchedAt = cache.clinchedAt || {};
     
-    // FIXED v7.17: Use GameMatch.getClinchHole() for smart list support
     var clinchHole = GameMatch.getClinchHole(clinchedAt, player.name, opponent.name);
     
     if (player.flight === opponent.flight) {
@@ -842,7 +648,7 @@ function onToggleDisplayMode(displayMode) {
 }
 
 // ============================================================
-// Celebration & RHP for Viewer - FIXED v7.16: Uses shared celebration screen
+// Celebration & RHP for Viewer
 // ============================================================
 
 function showCelebrationModal() {
@@ -857,8 +663,6 @@ function showCelebrationModal() {
         teamB: allPlayers.filter(function(p) { return p.team === "B"; }) 
     };
     
-    // FIXED v7.16: Use the shared celebration screen from sign-card.js
-    // The callback will call openRHPForViewer() when HANDICAP ADJUSTMENT is clicked
     if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
         SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
             openRHPForViewer();
@@ -887,25 +691,22 @@ function openRHPForViewer() {
     var winner = finalTeamA > finalTeamB ? 'A' : (finalTeamB > finalTeamA ? 'B' : 'Tie');
     
     var recordId = gameId + "_H";
-    // Use initForHistory for viewer (reads from history record, not scheduledGames)
     if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForHistory) {
         HandicapAdjustment.initForHistory(gameId, recordId, 'view-game.html');
     } else {
         console.error("HandicapAdjustment.initForHistory not available");
-        // Fallback to original method
         HandicapAdjustment.init(recordId, recordId, winningPlayers, {}, { teamA: finalTeamA, teamB: finalTeamB, winner: winner }, true);
     }
 }
 
 // ============================================================
-// Control Bar - FIXED v7.13: Uses cache data directly
+// Control Bar
 // ============================================================
 
 function renderCompactHeader() {
     var container = document.getElementById('compactHeaderContainer');
     if (!container) return;
     
-    // FIXED v7.13: Get fresh cache data directly
     var cache = GameLoader.getLocalCache();
     if (!cache) return;
     
@@ -929,7 +730,6 @@ function renderCompactHeader() {
                 </button>`;
     } else {
         var playOrder = getPlayOrder();
-        // FIXED v7.13: Use cache data directly for accurate saved holes check
         var hasSavedData = (cache.savedHoles[1]?.includes(currentHole) || false) || 
                           (cache.savedHoles[2]?.includes(currentHole) || false);
         var isLastHole = (playOrder.indexOf(currentHole) === playOrder.length - 1);
@@ -960,7 +760,6 @@ function renderCompactHeader() {
     
     container.innerHTML = html;
     
-    // Attach P/N button handler
     var pnBtn = document.getElementById('compactPnBtn');
     if (pnBtn) {
         pnBtn.onclick = function() {
@@ -970,7 +769,6 @@ function renderCompactHeader() {
         };
     }
     
-    // Attach Flight button handler
     var flightBtn = document.getElementById('compactFlightBtn');
     if (flightBtn) {
         flightBtn.onclick = function() {
@@ -982,13 +780,11 @@ function renderCompactHeader() {
         };
     }
     
-    // Attach Prev button handler
     var prevBtn = document.getElementById('compactPrevBtn');
     if (prevBtn) {
         prevBtn.onclick = prevHole;
     }
     
-    // Attach Next/Result button handler
     if (showResultButton) {
         var resultBtn = document.getElementById('compactResultBtn');
         if (resultBtn) {
@@ -1093,7 +889,6 @@ function updatePlayerNamesToShortform() {
 }
 
 function renderAll() {
-    // FIXED v7.14: Refresh button state first
     renderCompactHeader();
     
     var cache = GameLoader.getLocalCache();
@@ -1279,11 +1074,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.17
-KEY CHANGES from v7.16:
-   - UPDATED bubble display to use GameMatch.getClinchHole() for smart list support
-   - Now handles both old flat clinch format and new smart object format
-   - All other functionality unchanged (celebration, navigation, RHP handler)
+VERSION: 7.18
+KEY CHANGES from v7.17:
+   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
+   - Player cards, bubbles, scorecard table, compact header styles removed
+   - Kept only page-specific styles: container, visibility rules, device tags, modals
+   - All functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
