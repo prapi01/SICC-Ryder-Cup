@@ -1,20 +1,22 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.04
-KEY CHANGES from v2.03:
-   - ADDED: Detailed console logging for clinch detection in calculateCrossFlightWithClinch()
-   - Logs each cross-flight match: player names, matchValue, remainingHoles, and clinch result
-   - Also logs when calculateClinch() is called with its parameters
-   - This will help identify why YHM vs JO clinched at H15 instead of H13
-   - All other functions unchanged from v2.03
+VERSION: 2.06
+KEY CHANGES from v2.04:
+   - ADDED: existingClinched parameter to calculateCrossFlightWithClinch()
+   - ADDED: Check to prevent overwriting existing clinches
+   - If a match already has a clinch recorded at an earlier hole, skip adding a new one
+   - This ensures the first hole where a match clinches is preserved (H12 stays H12)
+   - Prevents clinch from "moving" to later holes (H13, H14, H15)
+   - Removed debug logging (clean version)
+   - All other functions unchanged
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for integration (DEBUG VERSION - remove logging after testing)
+STATUS: Ready for integration
 */
 
-// FILE: js/game-match.js - VERSION 2.04
+// FILE: js/game-match.js - VERSION 2.06
 // Game 1: Match Play (16 points)
 // Full handicap difference method
-// NOW WITH detailed console logging for clinch debugging
+// NOW WITH clinch persistence (first clinch hole preserved)
 
 var GameMatch = (function() {
     
@@ -259,11 +261,11 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.04: calculateCrossFlightWithClinch - with DETAILED LOGGING
-    // This will help identify why YHM vs JO clinched at H15 instead of H13
+    // v2.06: calculateCrossFlightWithClinch - WITH CLINCH PERSISTENCE
+    // Prevents overwriting existing clinches from earlier holes
     // ============================================================
     
-    function calculateCrossFlightWithClinch(flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion) {
+    function calculateCrossFlightWithClinch(flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
         // Sort players by flight then handicap for consistent ordering
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
@@ -277,10 +279,6 @@ var GameMatch = (function() {
             if (a.flight !== b.flight) return a.flight - b.flight;
             return a.handicap - b.handicap;
         });
-        
-        console.log(`\n=== CLINCH DEBUG: Hole ${currentHole} (upToHole=${upToHole}, remainingHoles=${remainingHoles}) ===`);
-        console.log("Team A order:", teamAPlayers.map(p => p.name));
-        console.log("Team B order:", teamBPlayers.map(p => p.name));
         
         // Store match results as an object (key: playerA_vs_playerB, value: net lead)
         var matchResultsObj = {};
@@ -299,8 +297,6 @@ var GameMatch = (function() {
                 // Calculate match result
                 var matchValue = getCrossMatchResult(playerA, playerB, flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar);
                 
-                console.log(`  Match: ${playerA.name} vs ${playerB.name} | matchValue=${matchValue} | abs=${Math.abs(matchValue)}`);
-                
                 // Store in object
                 matchResultsObj[key] = matchValue;
                 matchResultsObj[playerB.name + "_vs_" + playerA.name] = -matchValue;
@@ -308,20 +304,33 @@ var GameMatch = (function() {
                 // Store in array (consistent order for Firestore)
                 matchResultsArray.push(matchValue);
                 
-                // Check for clinch using the SAME matchValue and SAME sorted arrays
-                var clinchResult = calculateClinchWithLogging(
-                    matchValue, remainingHoles, playerA.name, playerB.name,
-                    currentHole, deviceId, cascadeVersion
-                );
+                // ============================================================
+                // FIXED v2.06: Check if this match already has a clinch
+                // If yes, skip adding a new clinch entry (preserve the original hole)
+                // ============================================================
                 
-                if (clinchResult) {
-                    console.log(`    >>> CLINCH! ${clinchResult.matchKey} at hole ${currentHole} with lead ${Math.abs(matchValue)}`);
-                    clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
+                // Check both possible key orders for existing clinch
+                var matchKey1 = playerA.name + "_vs_" + playerB.name;
+                var matchKey2 = playerB.name + "_vs_" + playerA.name;
+                var existingClinch = null;
+                
+                if (existingClinched) {
+                    existingClinch = existingClinched[matchKey1] || existingClinched[matchKey2];
+                }
+                
+                // Only check for new clinch if not already clinched
+                if (!existingClinch) {
+                    var clinchResult = calculateClinch(
+                        matchValue, remainingHoles, playerA.name, playerB.name,
+                        currentHole, deviceId, cascadeVersion
+                    );
+                    
+                    if (clinchResult) {
+                        clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
+                    }
                 }
             }
         }
-        
-        console.log(`=== End of hole ${currentHole} clinch check ===\n`);
         
         return {
             matchResultsObj: matchResultsObj,
@@ -333,19 +342,11 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.04: calculateClinch with logging wrapper
+    // calculateClinch - determines if a match clinches at current hole
     // ============================================================
     
-    function calculateClinchWithLogging(matchValue, remainingHoles, winnerName, loserName, currentHole, deviceId, cascadeVersion) {
+    function calculateClinch(matchValue, remainingHoles, winnerName, loserName, currentHole, deviceId, cascadeVersion) {
         var lead = Math.abs(matchValue);
-        var shouldClinch = (lead > remainingHoles && matchValue !== 0);
-        
-        if (shouldClinch) {
-            console.log(`      --> Clinch condition: lead=${lead} > remainingHoles=${remainingHoles} ? YES`);
-        } else if (lead > 0) {
-            console.log(`      --> No clinch: lead=${lead} > remainingHoles=${remainingHoles} ? NO`);
-        }
-        
         if (lead > remainingHoles && matchValue !== 0) {
             // Determine winner based on matchValue sign
             var actualWinner = (matchValue > 0) ? winnerName : loserName;
@@ -361,7 +362,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.04"
+                    cascadeVersion: cascadeVersion || "2.06"
                 }
             };
         }
@@ -369,34 +370,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.01: calculateClinch (original - kept for backward compatibility)
-    // ============================================================
-    
-    function calculateClinch(matchValue, remainingHoles, winnerName, loserName, currentHole, deviceId, cascadeVersion) {
-        var lead = Math.abs(matchValue);
-        if (lead > remainingHoles && matchValue !== 0) {
-            var actualWinner = (matchValue > 0) ? winnerName : loserName;
-            var actualLoser = (matchValue > 0) ? loserName : winnerName;
-            
-            return {
-                matchKey: actualWinner + "_vs_" + actualLoser,
-                clinchData: {
-                    clinchedAtHole: currentHole,
-                    winner: actualWinner,
-                    loser: actualLoser,
-                    leadAtClinch: lead,
-                    remainingHolesAtClinch: remainingHoles,
-                    recordedAt: new Date().toISOString(),
-                    recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.04"
-                }
-            };
-        }
-        return null;
-    }
-    
-    // ============================================================
-    // FIXED v2.03: filterClinchedByHole - CORRECT logic for self-healing
+    // filterClinchedByHole - keeps only clinches from holes BEFORE cascadeStartHole
     // ============================================================
     
     function filterClinchedByHole(clinchedAt, cascadeStartHole) {
@@ -409,7 +383,6 @@ var GameMatch = (function() {
         var filtered = {};
         for (var matchKey in clinchedAt) {
             var entry = clinchedAt[matchKey];
-            // Handle both old format (number) and new format (object)
             var entryHole = (typeof entry === 'number') ? entry : entry.clinchedAtHole;
             if (entryHole < cascadeStartHole) {
                 filtered[matchKey] = entry;
@@ -517,13 +490,15 @@ var GameMatch = (function() {
 
 /*
 FILE: js/game-match.js
-VERSION: 2.04
-KEY CHANGES from v2.03:
-   - ADDED: Detailed console logging for clinch detection in calculateCrossFlightWithClinch()
-   - Logs each cross-flight match: player names, matchValue, remainingHoles, and clinch result
-   - Also logs when calculateClinch() is called with its parameters
-   - This will help identify why YHM vs JO clinched at H15 instead of H13
-   - All other functions unchanged from v2.03
+VERSION: 2.06
+KEY CHANGES from v2.04:
+   - ADDED: existingClinched parameter to calculateCrossFlightWithClinch()
+   - ADDED: Check to prevent overwriting existing clinches
+   - If a match already has a clinch recorded at an earlier hole, skip adding a new one
+   - This ensures the first hole where a match clinches is preserved (H12 stays H12)
+   - Prevents clinch from "moving" to later holes (H13, H14, H15)
+   - Removed debug logging (clean version)
+   - All other functions unchanged
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for integration (DEBUG VERSION - remove logging after testing)
+STATUS: Ready for integration
 */
