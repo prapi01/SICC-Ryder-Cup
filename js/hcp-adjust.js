@@ -1,14 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.18
-KEY CHANGES from v2.17:
-   - ADDED: Team grouping in handicap table
-   - Table now shows "TEAM A" and "TEAM B" as separator rows
-   - Players sorted by Team (A first, then B), then by startingHcp (ascending)
-   - Separator rows have special styling (bold, different background)
-   - All existing functionality unchanged (anchor, perf adjustment, zero-rise)
-   - displayStoredAdjustment() now uses team grouping
-   - showAdjustmentTable() now accepts optional sortByTeam flag (default true for history view)
+VERSION: 2.19
+KEY CHANGES from v2.18:
+   - ADDED: Black border line above TEAM A and TEAM B separator rows
+   - Separator rows now have border-top: 2px solid #000 for clean visual separation
+   - Team label styling: bold, green text on dark background
+   - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -314,7 +311,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.18: Team grouping support
+    // Display Table - v2.19: Team grouping with black border
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly, sortByTeam) {
@@ -323,12 +320,6 @@ var HandicapAdjustment = (function() {
         var newAnchorName = calculationResult.newAnchorName;
         
         // If sortByTeam is true, we need to group by team
-        // For this we need access to original allPlayers to get team info
-        // Since we don't have allPlayers in this scope, we'll rely on the players array
-        // having team info, or we'll pass it separately
-        
-        // For now, we'll sort by team if sortByTeam is true
-        // We'll assume the players array already has team info (for stored adjustments)
         if (sortByTeam && calculationResult.playersWithTeam) {
             players = calculationResult.playersWithTeam;
         }
@@ -348,18 +339,19 @@ var HandicapAdjustment = (function() {
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
             var displayHcp = hasNewAnchor ? p.newAnchor : p.newHcp;
-            var playerTeam = p.team || (currentTeam === null ? 'A' : 'B'); // fallback
+            var playerTeam = p.team || (currentTeam === null ? 'A' : 'B');
             
             // Add team separator row if team changes
             if (sortByTeam && playerTeam !== currentTeam) {
                 if (currentTeam !== null) {
-                    // Add a subtle spacer row between teams? No, just separator
+                    // No spacer needed
                 }
                 currentTeam = playerTeam;
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
-                tableHtml += '<tr style="border-bottom:1px solid #333; background:#1a3a1a;">';
+                // v2.19: Added border-top: 2px solid #000 for black line above team rows
+                tableHtml += '<tr style="border-top: 2px solid #000; background:#1a3a1a;">';
                 tableHtml += `<td colspan="5" style="padding:6px 2px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}</td>`;
-                tableHtml += '<tr>';
+                tableHtml += '</tr>';
             }
             
             // Determine Perf column display color
@@ -394,7 +386,7 @@ var HandicapAdjustment = (function() {
             tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
             tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
             tableHtml += `<td style="padding:4px 2px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
-            tableHtml += '<tr>';
+            tableHtml += '</tr>';
         }
         
         tableHtml += '</tbody></table></div>';
@@ -491,7 +483,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.18: Display stored adjustment from history record with team grouping
+    // v2.19: Display stored adjustment from history record with team grouping
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList) {
@@ -896,7 +888,7 @@ var HandicapAdjustment = (function() {
     }
     
     // Version exposure for console debugging
-    window.HANDICAP_ADJUST_VERSION = "2.18";
+    window.HANDICAP_ADJUST_VERSION = "2.19";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -915,14 +907,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.18
-KEY CHANGES from v2.17:
-   - ADDED: Team grouping in handicap table
-   - Table now shows "TEAM A" and "TEAM B" as separator rows
-   - Players sorted by Team (A first, then B), then by startingHcp (ascending)
-   - Separator rows have special styling (bold, different background)
-   - displayStoredAdjustment() now accepts allPlayersList parameter for team info
-   - All existing functionality unchanged (anchor, perf adjustment, zero-rise)
+VERSION: 2.19
+KEY CHANGES from v2.18:
+   - ADDED: Black border line above TEAM A and TEAM B separator rows
+   - Separator rows now have border-top: 2px solid #000 for clean visual separation
+   - Team label styling: bold, green text on dark background
+   - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
