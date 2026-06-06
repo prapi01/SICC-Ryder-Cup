@@ -1,15 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 5.42
-KEY CHANGES from v5.41:
-   - FIXED: updateLocalCacheWithResults() now ALWAYS updates clinchedAt, not only when there are new clinches
-   - Previously, clinchedAt was only updated when new clinches were added, leaving old data in cache
-   - This caused H2-H11 to see old clinch data (8 entries) instead of empty
-   - Now forces cache.results.clinchedAt = resultsData.updatedClinched regardless of whether there are updates
-   - This ensures local cache stays in sync with calculated results
+VERSION: 5.43
+KEY CHANGES from v5.42:
+   - UPDATED: calculateHoleResultsWithCumulative() now passes isCascadeStartHole to GameMatch.updateClinchedAt()
+   - isCascadeStartHole = (holeNumber === cascadeStartHole)
+   - This ensures filtering only happens at the cascade start hole
+   - For subsequent holes, no filtering is applied, preserving clinches from earlier in the cascade
+   - This fixes the issue where H12 clinch was being discarded at H13, H14, H15
    - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.11+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for testing - fixes local cache sync issue
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.12+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+STATUS: Ready for testing - fixes cascade filtering
 -->
 
 <!DOCTYPE html>
@@ -396,13 +396,13 @@ STATUS: Ready for testing - fixes local cache sync issue
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.42</div>
+<div class="version-tag">v5.43</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.42";
+window.REAL_GAME_VERSION = "5.43";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1441,7 +1441,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.42";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.43";
     
     console.log(`[CASCADE-DEBUG] calculateHoleResultsWithCumulative: hole=${holeNumber}, remainingHoles=${remainingHoles}, existingClinched count=${Object.keys(cumulativeClinched).length}`);
     
@@ -1555,7 +1555,10 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     }
     
     result.clinchedAtUpdates = clinchedAtUpdates;
-    result.updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole);
+    
+    // FIXED: Pass isCascadeStartHole to updateClinchedAt
+    var isCascadeStartHole = (holeNumber === cascadeStartHole);
+    result.updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole, isCascadeStartHole);
     
     console.log(`[CASCADE-DEBUG] After hole ${holeNumber}: new clinches added = ${Object.keys(clinchedAtUpdates).length}, final clinchedAt count = ${Object.keys(result.updatedClinched).length}`);
     
@@ -2041,14 +2044,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.42
-KEY CHANGES from v5.41:
-   - FIXED: updateLocalCacheWithResults() now ALWAYS updates clinchedAt, not only when there are new clinches
-   - Previously, clinchedAt was only updated when new clinches were added, leaving old data in cache
-   - This caused H2-H11 to see old clinch data (8 entries) instead of empty
-   - Now forces cache.results.clinchedAt = resultsData.updatedClinched regardless of whether there are updates
-   - This ensures local cache stays in sync with calculated results
+VERSION: 5.43
+KEY CHANGES from v5.42:
+   - UPDATED: calculateHoleResultsWithCumulative() now passes isCascadeStartHole to GameMatch.updateClinchedAt()
+   - isCascadeStartHole = (holeNumber === cascadeStartHole)
+   - This ensures filtering only happens at the cascade start hole
+   - For subsequent holes, no filtering is applied, preserving clinches from earlier in the cascade
+   - This fixes the issue where H12 clinch was being discarded at H13, H14, H15
    - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.11+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for testing - fixes local cache sync issue
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.12+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+STATUS: Ready for testing - fixes cascade filtering
 -->
