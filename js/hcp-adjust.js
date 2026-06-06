@@ -1,15 +1,14 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.15
-KEY CHANGES from v2.14:
-   - FIXED: Tighter table layout to eliminate horizontal scroll on mobile
-   - Changed min-width from 460px to 375px (fits iPhone SE and all iPhones)
-   - Reduced player column from 90px to 70px (uses full name, fits)
-   - Reduced Start/Anc/Perf/Final columns from 50-55px to 28-32px each
-   - Reduced cell padding from 6px 4px to 4px 2px
-   - Reduced font size from 0.75rem to 0.7rem
-   - Removed unnecessary whitespace in table
-   - All functionality unchanged (match points calculation, thresholds, etc.)
+VERSION: 2.16
+KEY CHANGES from v2.15:
+   - REMOVED: Hard-coded "..." suffix from all table cell values
+   - Player names now display as "JG" instead of "JG..."
+   - Starting handicap displays as "0" instead of "0..."
+   - Anchor adjustment displays as "0" instead of "0..."
+   - Performance adjustment displays as "0" instead of "0..."
+   - Final handicap displays as "0" instead of "0..."
+   - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -123,7 +122,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // FIXED v2.14: Calculate Performance Adjustment using MATCH POINTS
+    // Calculate Performance Adjustment using MATCH POINTS
     // Each match: Win = 1 point, Loss = 0 points, Tie = 0.5 points
     // Total points ≥ 3.5 → -1 (CUT stroke)
     // Total points ≤ 0.5 → +1 (ADD stroke)
@@ -283,7 +282,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - FIXED v2.15: Tighter layout (375px min-width)
+    // Display Table - FIXED v2.16: Removed hard-coded "..." suffix
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -332,15 +331,16 @@ var HandicapAdjustment = (function() {
             }
             
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
-            tableHtml += `<td style="padding:4px 2px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}...</td>`;
-            tableHtml += `<td style="padding:4px 2px; text-align:center;">${p.currentHcp}...</td>`;
-            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}...</td>`;
-            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}...</td>`;
-            tableHtml += `<td style="padding:4px 2px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}...</td>`;
-            tableHtml += '</td>';
+            // FIXED v2.16: Removed hard-coded "..." from all cells
+            tableHtml += `<td style="padding:4px 2px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}</td>`;
+            tableHtml += `<td style="padding:4px 2px; text-align:center;">${p.currentHcp}</td>`;
+            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
+            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
+            tableHtml += `<td style="padding:4px 2px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
+            tableHtml += '</table>';
         }
         
-        tableHtml += '</tbody></table></div>';
+        tableHtml += '</tbody><td></div>';
         
         var anchorInfoHtml = `<div style="text-align: center; margin-bottom: 10px;"><span style="color: #4caf50; font-size:0.75rem;">✓ Anchor: ${escapeHtml(anchorName)}</span></div>`;
         
@@ -419,7 +419,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // NEW v2.10: Display stored adjustment from history record
+    // Display stored adjustment from history record
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName) {
@@ -455,7 +455,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // NEW v2.10: initForHistory - Reads stored adjustment data
+    // initForHistory - Reads stored adjustment data
     // ============================================================
     
     function initForHistory(gameId, archiveId, returnUrl) {
@@ -817,16 +817,15 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.15
-KEY CHANGES from v2.14:
-   - FIXED: Tighter table layout to eliminate horizontal scroll on mobile
-   - Changed min-width from 460px to 375px (fits iPhone SE and all iPhones)
-   - Reduced player column from 90px to 70px (uses full name, fits)
-   - Reduced Start/Anc/Perf/Final columns from 50-55px to 28-32px each
-   - Reduced cell padding from 6px 4px to 4px 2px
-   - Reduced font size from 0.75rem to 0.7rem
-   - Removed unnecessary whitespace in table
-   - All functionality unchanged (match points calculation, thresholds, etc.)
+VERSION: 2.16
+KEY CHANGES from v2.15:
+   - REMOVED: Hard-coded "..." suffix from all table cell values
+   - Player names now display as "JG" instead of "JG..."
+   - Starting handicap displays as "0" instead of "0..."
+   - Anchor adjustment displays as "0" instead of "0..."
+   - Performance adjustment displays as "0" instead of "0..."
+   - Final handicap displays as "0" instead of "0..."
+   - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
