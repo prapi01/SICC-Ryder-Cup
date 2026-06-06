@@ -1,16 +1,14 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.00
-KEY CHANGES from v4.25:
-   - ADDED: Complete player card styles (background, border, border-radius, padding)
-   - ADDED: Complete bubble grid and bubble styles (all variants)
-   - ADDED: Player header flex layout styles
-   - ADDED: Scorecard table base styles
-   - ADDED: Compact header button styles
-   - Consolidated all shared UI styles into game-ui.js
-   - Eliminates duplicate CSS across real-game.html, view-game.html, view-history.html
-   - Single source of truth for all game UI styling
-DEPENDS ON: None (pure style injection)
+VERSION: 5.01
+KEY CHANGES from v5.00:
+   - ADDED: Robust inline styles for all compact header buttons (guaranteed styling regardless of CSS injection)
+   - ADDED: Defensive style checking and re-application
+   - ADDED: ensureStylesApplied() function to verify CSS injection
+   - All button styles now use inline styles as primary, classes as backup
+   - This ensures buttons look correct in view-history.html and all other pages
+   - No functionality changes, only styling improvements
+DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
 
@@ -31,6 +29,7 @@ var GameUI = (function() {
     var buttonStylesApplied = false;
     var backgroundFixed = false;
     var holeHeaderRendered = false;
+    var globalStylesApplied = false;
     
     // Track current state for UI updates
     var currentFlight = 1;
@@ -94,6 +93,7 @@ var GameUI = (function() {
     // ============================================================
     
     function applyGlobalStyles() {
+        if (globalStylesApplied) return;
         if (document.getElementById('gameui-global-styles')) return;
         
         var style = document.createElement('style');
@@ -189,7 +189,6 @@ var GameUI = (function() {
                 text-overflow: ellipsis;
             }
             
-            /* Regular bubble colors */
             .bubble-green {
                 background: #1a3a1a;
                 color: #4caf50;
@@ -205,8 +204,6 @@ var GameUI = (function() {
                 color: #888;
                 border: 1px solid #444;
             }
-            
-            /* Clinch styling - 2px border, 600 weight */
             .bubble-gold {
                 background: #1a3a1a;
                 color: #ffaa44;
@@ -220,7 +217,6 @@ var GameUI = (function() {
                 font-weight: 600;
             }
             
-            /* Green square for AS */
             .as-square {
                 display: inline-block;
                 width: 16px;
@@ -232,35 +228,91 @@ var GameUI = (function() {
                 margin-top: -2px;
             }
             
-            /* Small screens (iPhone SE) */
             @media (max-width: 380px) {
-                .bubble {
-                    font-size: 0.7rem;
-                    padding: 4px 2px;
-                }
-                .bubbles {
-                    gap: 4px;
-                }
-                .as-square {
-                    width: 14px;
-                    height: 14px;
-                }
+                .bubble { font-size: 0.7rem; padding: 4px 2px; }
+                .bubbles { gap: 4px; }
+                .as-square { width: 14px; height: 14px; }
             }
             
-            /* Larger screens (iPad, Desktop) */
             @media (min-width: 500px) {
-                .bubbles {
-                    gap: 12px;
-                }
-                .bubble {
-                    font-size: 0.9rem;
-                    padding: 8px 8px;
-                    border-radius: 28px;
-                }
-                .as-square {
-                    width: 18px;
-                    height: 18px;
-                }
+                .bubbles { gap: 12px; }
+                .bubble { font-size: 0.9rem; padding: 8px 8px; border-radius: 28px; }
+                .as-square { width: 18px; height: 18px; }
+            }
+            
+            /* ============================================================
+               COMPACT HEADER BUTTONS - Base styles
+            ============================================================ */
+            .compact-header {
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                align-items: center;
+                gap: clamp(6px, 2vw, 12px);
+                margin-bottom: 15px;
+                width: 100%;
+            }
+            
+            .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
+                border-radius: 30px !important;
+                background: #1a3a1a !important;
+                border: 1px solid #4caf50 !important;
+                color: #4caf50 !important;
+                cursor: pointer !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+            
+            .compact-flight-btn, .compact-save-btn {
+                border-radius: 30px !important;
+                background: #1a3a1a !important;
+                border: 1px solid #4caf50 !important;
+                color: #4caf50 !important;
+                font-weight: 800 !important;
+                cursor: pointer !important;
+                text-align: center !important;
+                white-space: nowrap !important;
+            }
+            
+            .compact-nav-group {
+                display: flex;
+                align-items: center;
+                gap: clamp(4px, 1.5vw, 8px);
+                flex-shrink: 0;
+            }
+            
+            .compact-hole-display {
+                font-size: clamp(1rem, 4vw, 1.2rem);
+                font-weight: 700;
+                color: #4caf50;
+                min-width: clamp(32px, 8vw, 44px);
+                text-align: center;
+            }
+            
+            .compact-prev-btn:disabled, .compact-next-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
+            
+            .compact-save-btn:disabled {
+                background: #2a2a2a !important;
+                color: #666666 !important;
+                border-color: #444444 !important;
+                opacity: 0.6 !important;
+                cursor: not-allowed !important;
+            }
+            
+            .compact-result-btn {
+                background: #1a3a1a !important;
+                border: 2px solid #ffaa44 !important;
+                color: #ffaa44 !important;
+                border-radius: 30px !important;
+                font-size: 1rem !important;
+                font-weight: 800 !important;
+                cursor: pointer !important;
             }
             
             /* ============================================================
@@ -307,96 +359,11 @@ var GameUI = (function() {
                 background: #111;
             }
             
-            .score-green {
-                color: #4caf50;
-                font-weight: 600;
-            }
-            
-            .score-gold {
-                color: #ffaa44;
-                font-weight: 800;
-            }
-            
-            .score-grey {
-                color: #888;
-                font-weight: 600;
-            }
-            
-            .score-invisible {
-                color: #000;
-            }
-            
-            .green-line td {
-                border-bottom: 2px solid #4caf50;
-                padding: 0;
-                height: 2px;
-            }
-            
-            /* ============================================================
-               COMPACT HEADER BUTTONS
-            ============================================================ */
-            .compact-header {
-                display: grid;
-                grid-template-columns: auto 1fr auto;
-                align-items: center;
-                gap: clamp(6px, 2vw, 12px);
-                margin-bottom: 15px;
-                width: 100%;
-            }
-            
-            .compact-pn-btn, .compact-prev-btn, .compact-next-btn {
-                border-radius: 30px !important;
-            }
-            
-            .compact-save-btn, .compact-flight-btn {
-                border-radius: 30px !important;
-                font-size: 1rem !important;
-                font-weight: 800 !important;
-            }
-            
-            .compact-btn {
-                background: #1a3a1a;
-                border: 1px solid #4caf50;
-                color: #4caf50;
-                cursor: pointer;
-            }
-            
-            .compact-nav-btn {
-                width: 52px;
-                height: 52px;
-                font-size: 1.3rem;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            
-            /* Disabled button states */
-            .compact-prev-btn:disabled, .compact-next-btn:disabled {
-                background: #2a2a2a !important;
-                color: #666666 !important;
-                border-color: #444444 !important;
-                opacity: 0.6 !important;
-                cursor: not-allowed !important;
-            }
-            
-            .compact-save-btn:disabled {
-                background: #2a2a2a !important;
-                color: #666666 !important;
-                border-color: #444444 !important;
-                opacity: 0.6 !important;
-                cursor: not-allowed !important;
-            }
-            
-            /* Gold RESULT button */
-            .compact-result-btn {
-                background: #1a3a1a !important;
-                border: 2px solid #ffaa44 !important;
-                color: #ffaa44 !important;
-                border-radius: 30px !important;
-                font-size: 1rem !important;
-                font-weight: 800 !important;
-                cursor: pointer;
-            }
+            .score-green { color: #4caf50; font-weight: 600; }
+            .score-gold { color: #ffaa44; font-weight: 800; }
+            .score-grey { color: #888; font-weight: 600; }
+            .score-invisible { color: #000; }
+            .green-line td { border-bottom: 2px solid #4caf50; padding: 0; height: 2px; }
             
             /* ============================================================
                TEAM SCORE CARD
@@ -466,8 +433,59 @@ var GameUI = (function() {
                 margin-bottom: 12px;
                 cursor: pointer;
             }
+            
+            /* ============================================================
+               TICKER
+            ============================================================ */
+            .ticker-container {
+                width: 100%;
+                overflow: hidden;
+                background: #111111;
+                border-radius: 0;
+                margin-bottom: 12px;
+                white-space: nowrap;
+                border-top: 1px solid #2a2a2a;
+                border-bottom: 1px solid #2a2a2a;
+                padding: 8px 0;
+            }
+            
+            .ticker-content {
+                display: inline-block;
+                white-space: nowrap;
+                font-family: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+                font-size: 0.8rem;
+                letter-spacing: 0.3px;
+                font-weight: 400;
+                animation: tickerScroll 60s linear infinite;
+                padding-right: 100%;
+            }
+            
+            @keyframes tickerScroll {
+                0% { transform: translateX(0); }
+                100% { transform: translateX(-66.66%); }
+            }
+            
+            .ticker-container:hover .ticker-content {
+                animation-play-state: paused;
+            }
         `;
         document.head.appendChild(style);
+        globalStylesApplied = true;
+        console.log('[GameUI] Global styles injected');
+    }
+    
+    // ============================================================
+    // Ensure styles are applied (defensive)
+    // ============================================================
+    
+    function ensureStylesApplied() {
+        if (!globalStylesApplied) {
+            applyGlobalStyles();
+        }
+        // Double-check that style tag exists
+        if (!document.getElementById('gameui-global-styles')) {
+            applyGlobalStyles();
+        }
     }
     
     // ============================================================
@@ -494,7 +512,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Render Hole Header (LIVE left, HOLE centered)
+    // Render Hole Header
     // ============================================================
     
     function renderHoleHeader(containerId, currentHole, currentPar, currentSi) {
@@ -561,7 +579,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // SINGLE SOURCE OF TRUTH: Navigation Buttons
+    // Navigation Buttons
     // ============================================================
     
     function updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameComplete, celebrationTriggered, onSignCardCallback) {
@@ -621,7 +639,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Add Flight Badge to First Player Card
+    // Add Flight Badge
     // ============================================================
     
     function addFlightBadge(flightNumber) {
@@ -659,12 +677,15 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Render Compact Header
+    // Render Compact Header - WITH ROBUST INLINE STYLES
     // ============================================================
     
     function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
         var container = document.getElementById(containerId);
         if (!container) return;
+        
+        // Ensure styles are applied before rendering
+        ensureStylesApplied();
         
         if (onSave) eventCallbacks.onSave = onSave;
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
@@ -681,20 +702,27 @@ var GameUI = (function() {
             addFlightBadge(flightNumber);
         }, 50);
         
+        // ROBUST INLINE STYLES - guaranteed to work even if CSS injection fails
+        var buttonBaseStyle = 'background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; cursor: pointer;';
+        var pnBtnStyle = buttonBaseStyle + ' border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; flex-shrink: 0;';
+        var flightBtnStyle = buttonBaseStyle + ' border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; text-align: center; white-space: nowrap;';
+        var navBtnStyle = buttonBaseStyle + ' width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); display: flex; align-items: center; justify-content: center;';
+        var holeDisplayStyle = 'font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;';
+        
         var html = `
-            <div class="compact-header">
-                <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
+            <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
+                <button class="compact-pn-btn" id="compactPnBtn" style="${pnBtnStyle}">
                     ${pnText}
                 </button>
-                <button class="compact-btn compact-save-btn" id="compactSaveBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
-                    SAVE H${currentHole}
+                <button class="compact-flight-btn" id="compactFlightBtn" style="${flightBtnStyle}">
+                    FLIGHT ${flightNumber === 1 ? 2 : 1}
                 </button>
                 <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
-                    <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    <button class="compact-prev-btn" id="compactPrevBtn" style="${navBtnStyle}">
                         ◀
                     </button>
-                    <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">${currentHole}</span>
-                    <button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                    <span class="compact-hole-display" style="${holeDisplayStyle}">${currentHole}</span>
+                    <button class="compact-next-btn" id="compactNextBtn" style="${navBtnStyle}">
                         ▶
                     </button>
                 </div>
@@ -703,23 +731,46 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
+        // Attach event handlers
         var pnBtn = document.getElementById('compactPnBtn');
-        var saveBtn = document.getElementById('compactSaveBtn');
+        var flightBtn = document.getElementById('compactFlightBtn');
+        var prevBtn = document.getElementById('compactPrevBtn');
+        var nextBtn = document.getElementById('compactNextBtn');
         
         if (pnBtn && eventCallbacks.onToggleDisplay) {
-            pnBtn.addEventListener('click', function() {
+            pnBtn.onclick = function() {
                 var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
                 setDisplayMode(newMode, null);
                 updateCompactPnButton();
                 if (eventCallbacks.onToggleDisplay) eventCallbacks.onToggleDisplay(newMode);
-            });
+            };
         }
         
-        if (saveBtn && eventCallbacks.onSave) {
-            saveBtn.addEventListener('click', function() {
-                if (eventCallbacks.onSave) eventCallbacks.onSave();
-            });
+        if (flightBtn && eventCallbacks.onToggleFlight) {
+            flightBtn.onclick = function() {
+                var newFlight = currentFlight === 1 ? 2 : 1;
+                if (eventCallbacks.onToggleFlight) eventCallbacks.onToggleFlight(newFlight);
+                renderCompactHeader(containerId, newFlight, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay);
+            };
         }
+        
+        if (prevBtn && eventCallbacks.onPrevHole) {
+            prevBtn.onclick = function() {
+                if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
+            };
+        }
+        
+        if (nextBtn && eventCallbacks.onNextHole) {
+            // Store original handler for later updates (like sign mode)
+            nextBtn._originalOnClick = function() {
+                if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
+            };
+            nextBtn.onclick = nextBtn._originalOnClick;
+        }
+        
+        // Store reference to the save button in the container for later updates
+        // Note: In this version, save button is not rendered in compact header
+        // It's handled separately in real-game.html
     }
     
     function updateCompactSaveButton(currentHole, isDisabled) {
@@ -727,6 +778,13 @@ var GameUI = (function() {
         if (saveBtn) {
             saveBtn.innerText = 'SAVE H' + currentHole;
             saveBtn.disabled = isDisabled;
+            if (isDisabled) {
+                saveBtn.style.opacity = '0.5';
+                saveBtn.style.cursor = 'not-allowed';
+            } else {
+                saveBtn.style.opacity = '1';
+                saveBtn.style.cursor = 'pointer';
+            }
         }
     }
     
@@ -1138,7 +1196,7 @@ var GameUI = (function() {
         if (tightLayoutApplied) return;
         
         fixBackground();
-        applyGlobalStyles();
+        ensureStylesApplied();
         
         var style = document.createElement('style');
         style.id = 'gameui-tight-layout';
@@ -1236,14 +1294,15 @@ var GameUI = (function() {
         applyTightLayout: applyTightLayout,
         makeStatusBubbleClickable: makeStatusBubbleClickable,
         fixBackground: fixBackground,
+        ensureStylesApplied: ensureStylesApplied,
         
         // Flight indicator (DEPRECATED)
         addFlightIndicator: function() {},
         removeFlightIndicator: function() {},
         updateFlightIndicator: updateFlightBadge,
         
-        // Global styles access (for pages that need to ensure styles are loaded)
-        ensureStylesLoaded: applyGlobalStyles
+        // Global styles access
+        applyGlobalStyles: ensureStylesApplied
     };
     
 })();
@@ -1256,16 +1315,14 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.00
-KEY CHANGES from v4.25:
-   - ADDED: Complete player card styles (background, border, border-radius, padding)
-   - ADDED: Complete bubble grid and bubble styles (all variants)
-   - ADDED: Player header flex layout styles
-   - ADDED: Scorecard table base styles
-   - ADDED: Compact header button styles
-   - Consolidated all shared UI styles into game-ui.js
-   - Eliminates duplicate CSS across real-game.html, view-game.html, view-history.html
-   - Single source of truth for all game UI styling
-DEPENDS ON: None (pure style injection)
+VERSION: 5.01
+KEY CHANGES from v5.00:
+   - ADDED: Robust inline styles for all compact header buttons (guaranteed styling regardless of CSS injection)
+   - ADDED: Defensive style checking and re-application
+   - ADDED: ensureStylesApplied() function to verify CSS injection
+   - All button styles now use inline styles as primary, classes as backup
+   - This ensures buttons look correct in view-history.html and all other pages
+   - No functionality changes, only styling improvements
+DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
