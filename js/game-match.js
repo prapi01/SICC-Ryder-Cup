@@ -1,23 +1,21 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.12
-KEY CHANGES from v2.11:
-   - FIXED: filterClinchedByHole() is now ONLY called when currentHole == cascadeStartHole
-   - For subsequent holes (currentHole > cascadeStartHole), no filtering is applied
-   - This preserves clinches calculated earlier in the same cascade
-   - Added isCascadeStartHole parameter to updateClinchedAt()
-   - When isCascadeStartHole = false, simply merges new clinches without filtering
-   - Removed the confusing "self-healing mode" terminology
-   - All logging updated to show whether filtering was applied
+VERSION: 2.13
+KEY CHANGES from v2.12:
+   - RESTORED: existingClinch check in calculateIntraFlightWithClinch() and calculateCrossFlightWithClinch()
+   - Once a match has a clinch record (from any previous hole), no new clinch will be created for that match
+   - This prevents overwriting clinch holes (e.g., H12 clinch being replaced by H13, H14, H15)
+   - Preserves the original clinch hole for UI bubble display (gold at clinch hole, grey thereafter)
+   - All debug logging retained for verification
    - No other functional changes
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for testing - fixes cascade hole filtering
+STATUS: Ready for testing - restores existingClinch check
 */
 
-// FILE: js/game-match.js - VERSION 2.12
+// FILE: js/game-match.js - VERSION 2.13
 // Game 1: Match Play (16 points)
 // Full handicap difference method
-// FIXED: Only filter at cascade start hole
+// RESTORED existingClinch check
 
 var GameMatch = (function() {
     
@@ -243,7 +241,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // calculateIntraFlightWithClinch (simplified, no existingClinch check for debug)
+    // v2.13: calculateIntraFlightWithClinch - RESTORED existingClinch check
     // ============================================================
     
     function calculateIntraFlightWithClinch(flight, flightPlayers, flightData, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
@@ -259,9 +257,22 @@ var GameMatch = (function() {
                 var playerA = teamA[a];
                 var playerB = teamB[b];
                 var matchKey1 = playerA.name + "_vs_" + playerB.name;
+                var matchKey2 = playerB.name + "_vs_" + playerA.name;
                 var matchValue = intraMatches[matchKey1];
                 
                 if (matchValue === undefined) continue;
+                
+                // RESTORED: Check if this match already has a clinch
+                var existingClinch = null;
+                if (existingClinched) {
+                    existingClinch = existingClinched[matchKey1] || existingClinched[matchKey2];
+                }
+                
+                if (existingClinch) {
+                    var existingHole = existingClinch.clinchedAtHole || existingClinch;
+                    console.log(`[CLINCH-DEBUG] INTRA-FLIGHT ${flight} | ${matchKey1} | lead=${Math.abs(matchValue)} | SKIPPED - already clinched at hole ${existingHole}`);
+                    continue;
+                }
                 
                 var clinchResult = calculateClinch(
                     matchValue, remainingHoles, playerA.name, playerB.name,
@@ -282,7 +293,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // calculateCrossFlightWithClinch (simplified for debug)
+    // v2.13: calculateCrossFlightWithClinch - RESTORED existingClinch check
     // ============================================================
     
     function calculateCrossFlightWithClinch(flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
@@ -316,6 +327,19 @@ var GameMatch = (function() {
                 matchResultsArray.push(matchValue);
                 
                 var matchKey1 = playerA.name + "_vs_" + playerB.name;
+                var matchKey2 = playerB.name + "_vs_" + playerA.name;
+                
+                // RESTORED: Check if this match already has a clinch
+                var existingClinch = null;
+                if (existingClinched) {
+                    existingClinch = existingClinched[matchKey1] || existingClinched[matchKey2];
+                }
+                
+                if (existingClinch) {
+                    var existingHole = existingClinch.clinchedAtHole || existingClinch;
+                    console.log(`[CLINCH-DEBUG] CROSS-FLIGHT | ${matchKey1} | lead=${Math.abs(matchValue)} | SKIPPED - already clinched at hole ${existingHole}`);
+                    continue;
+                }
                 
                 var clinchResult = calculateClinch(
                     matchValue, remainingHoles, playerA.name, playerB.name,
@@ -360,7 +384,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.12"
+                    cascadeVersion: cascadeVersion || "2.13"
                 }
             };
         }
@@ -399,7 +423,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.12: updateClinchedAt - ONLY filters when isCascadeStartHole = true
+    // updateClinchedAt - ONLY filters when isCascadeStartHole = true
     // ============================================================
     
     function updateClinchedAt(existingClinched, newClinchData, cascadeStartHole, isCascadeStartHole) {
@@ -423,8 +447,13 @@ var GameMatch = (function() {
         // Add new clinches from current calculation
         var newCount = 0;
         for (var matchKey in newClinchData) {
-            updated[matchKey] = newClinchData[matchKey];
-            newCount++;
+            // Only add if not already present (defensive)
+            if (!updated[matchKey]) {
+                updated[matchKey] = newClinchData[matchKey];
+                newCount++;
+            } else {
+                console.log(`[CLINCH-DEBUG] Skipping duplicate clinch for ${matchKey} - already exists`);
+            }
         }
         
         if (newCount > 0) {
@@ -636,20 +665,19 @@ var GameMatch = (function() {
 })();
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.12";
+window.GAME_MATCH_VERSION = "2.13";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.12
-KEY CHANGES from v2.11:
-   - FIXED: filterClinchedByHole() is now ONLY called when currentHole == cascadeStartHole
-   - For subsequent holes (currentHole > cascadeStartHole), no filtering is applied
-   - This preserves clinches calculated earlier in the same cascade
-   - Added isCascadeStartHole parameter to updateClinchedAt()
-   - When isCascadeStartHole = false, simply merges new clinches without filtering
-   - Removed the confusing "self-healing mode" terminology
-   - All logging updated to show whether filtering was applied
+VERSION: 2.13
+KEY CHANGES from v2.12:
+   - RESTORED: existingClinch check in calculateIntraFlightWithClinch() and calculateCrossFlightWithClinch()
+   - Once a match has a clinch record (from any previous hole), no new clinch will be created for that match
+   - This prevents overwriting clinch holes (e.g., H12 clinch being replaced by H13, H14, H15)
+   - Preserves the original clinch hole for UI bubble display (gold at clinch hole, grey thereafter)
+   - Added duplicate prevention in updateClinchedAt() as additional safety
+   - All debug logging retained for verification
    - No other functional changes
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for testing - fixes cascade hole filtering
+STATUS: Ready for testing - restores existingClinch check
 */
