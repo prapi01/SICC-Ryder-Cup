@@ -1,12 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.05
-KEY CHANGES from v8.04:
-   - REMOVED: "Back to Game List" button entirely (unnecessary)
-   - Only "Back to Main Menu" button remains on landing page
-   - Detail view now has its own back button to return to list
-   - Cleaner, simpler navigation
-DEPENDS ON: js/firebase-config.js, js/session.js
+VERSION: 8.06
+KEY CHANGES from v8.05:
+   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
+   - Player cards, bubbles, scorecard table now styled by GameUI
+   - Cleaner, smaller file - no redundant styling
+   - Maintains landing page card styles (independent from GameUI)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
 -->
 
@@ -62,7 +62,7 @@ STATUS: Ready for integration
             display: none;
         }
         
-        /* Landing page styles */
+        /* Landing page styles (only - scorecard styles come from GameUI) */
         .game-list-title {
             font-size: 1.2rem;
             font-weight: 600;
@@ -205,7 +205,6 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
-        /* Back button - only one on landing page */
         .back-buttons {
             display: flex;
             flex-direction: column;
@@ -233,7 +232,6 @@ STATUS: Ready for integration
             transform: scale(0.98);
         }
         
-        /* Detail view back button */
         .detail-back-btn {
             width: 100%;
             max-width: 380px;
@@ -316,20 +314,20 @@ STATUS: Ready for integration
     </div>
 </div>
 
-<!-- GAME DETAIL VIEW (Scorecard) -->
+<!-- GAME DETAIL VIEW (Scorecard - styles come from GameUI) -->
 <div class="container game-detail-view" id="gameDetailView">
     <div id="detailContent"></div>
     <button class="detail-back-btn" id="backToListBtn">← Back to Game List</button>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.05</div>
+<div class="version-tag">v8.06</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.05";
+window.VIEW_HISTORY_VERSION = "8.06";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -471,6 +469,7 @@ function renderScorecardView(game) {
     
     detailContent.innerHTML = html;
     
+    // GameUI now provides all styles via applyTightLayout()
     GameUI.applyTightLayout();
     GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
     
@@ -634,21 +633,17 @@ function renderScorecardView(game) {
         if (!container) return;
         
         var html = `
-            <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
-                <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
+            <div class="compact-header">
+                <button class="compact-pn-btn" id="compactPnBtn">
                     ${pnText}
                 </button>
-                <button class="compact-flight-btn" id="compactFlightBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
+                <button class="compact-flight-btn" id="compactFlightBtn">
                     FLIGHT ${oppositeFlight}
                 </button>
-                <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
-                    <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                        ◀
-                    </button>
-                    <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">${currentHole}</span>
-                    <button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                        ▶
-                    </button>
+                <div class="compact-nav-group">
+                    <button class="compact-prev-btn" id="compactPrevBtn">◀</button>
+                    <span class="compact-hole-display">${currentHole}</span>
+                    <button class="compact-next-btn" id="compactNextBtn">▶</button>
                 </div>
             </div>
         `;
@@ -691,8 +686,6 @@ function renderScorecardView(game) {
                 var player = allPlayers.find(function(p) { return p.name === originalName; });
                 if (player && player.label) playerCards[i].innerText = player.label;
             }
-            var scoreControls = document.querySelectorAll('#playerCards .score-control');
-            scoreControls.forEach(function(ctrl) { ctrl.style.display = 'none'; });
         }, 10);
         
         GameUI.updateFlightBadge(currentFlight);
@@ -915,12 +908,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.05
-KEY CHANGES from v8.04:
-   - REMOVED: "Back to Game List" button entirely (unnecessary)
-   - Only "Back to Main Menu" button remains on landing page
-   - Detail view now has its own back button to return to list
-   - Cleaner, simpler navigation
-DEPENDS ON: js/firebase-config.js, js/session.js
+VERSION: 8.06
+KEY CHANGES from v8.05:
+   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
+   - Player cards, bubbles, scorecard table now styled by GameUI
+   - Cleaner, smaller file - no redundant styling
+   - Maintains landing page card styles (independent from GameUI)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
 STATUS: Ready for integration
 -->
