@@ -1,20 +1,21 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.01
-KEY CHANGES from v2.00:
-   - ADDED: calculateClinch() - determines if a match clinches at current hole
-   - ADDED: updateClinchedAt() - smart merge preserving entries from holes < cascadeStartHole
-   - ADDED: getClinchHole() - reads clinch hole for bubble display (handles both old/new format)
-   - ADDED: filterClinchedByHole() - removes entries from holes >= cascadeStartHole
-   - All existing functions unchanged (calculateIntraFlight, calculateCrossFlight, etc.)
+VERSION: 2.02
+KEY CHANGES from v2.01:
+   - ADDED: calculateCrossFlightWithClinch() - NEW function that returns both match results AND clinch data
+   - This eliminates duplicate sorting between game-match.js and real-game.html
+   - Uses the SAME sorted player arrays for both match calculation AND clinch detection
+   - Prevents index mismatch bugs that occurred when arrays were sorted differently in different places
+   - Original calculateCrossFlight() preserved for backward compatibility
+   - All other functions unchanged
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
 */
 
-// FILE: js/game-match.js - VERSION 2.01
+// FILE: js/game-match.js - VERSION 2.02
 // Game 1: Match Play (16 points)
 // Full handicap difference method
-// NOW WITH smart clinch list management
+// NOW WITH integrated clinch detection in cross-flight calculation
 
 var GameMatch = (function() {
     
@@ -226,7 +227,7 @@ var GameMatch = (function() {
         return results;
     }
     
-    // Calculate ALL cross-flight matches
+    // Calculate ALL cross-flight matches (legacy - returns only match results)
     function calculateCrossFlight(flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar) {
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
@@ -259,7 +260,72 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // NEW v2.01: Smart Clinch List Functions
+    // NEW v2.02: calculateCrossFlightWithClinch - returns BOTH match results AND clinch data
+    // This eliminates the need for duplicate sorting in real-game.html
+    // ============================================================
+    
+    function calculateCrossFlightWithClinch(flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion) {
+        // Sort players by flight then handicap for consistent ordering
+        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
+        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
+        
+        teamAPlayers.sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        
+        teamBPlayers.sort(function(a, b) {
+            if (a.flight !== b.flight) return a.flight - b.flight;
+            return a.handicap - b.handicap;
+        });
+        
+        // Store match results as an object (key: playerA_vs_playerB, value: net lead)
+        var matchResultsObj = {};
+        // Store match results as an array (16 values in consistent order)
+        var matchResultsArray = [];
+        // Store clinch updates
+        var clinchedAtUpdates = {};
+        
+        // Loop through all cross-flight matches
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                var playerA = teamAPlayers[a];
+                var playerB = teamBPlayers[b];
+                var key = playerA.name + "_vs_" + playerB.name;
+                
+                // Calculate match result
+                var matchValue = getCrossMatchResult(playerA, playerB, flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar);
+                
+                // Store in object
+                matchResultsObj[key] = matchValue;
+                matchResultsObj[playerB.name + "_vs_" + playerA.name] = -matchValue;
+                
+                // Store in array (consistent order for Firestore)
+                matchResultsArray.push(matchValue);
+                
+                // Check for clinch using the SAME matchValue and SAME sorted arrays
+                var clinchResult = calculateClinch(
+                    matchValue, remainingHoles, playerA.name, playerB.name,
+                    currentHole, deviceId, cascadeVersion
+                );
+                
+                if (clinchResult) {
+                    clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
+                }
+            }
+        }
+        
+        return {
+            matchResultsObj: matchResultsObj,
+            matchResultsArray: matchResultsArray,
+            clinchedAtUpdates: clinchedAtUpdates,
+            teamAPlayers: teamAPlayers,
+            teamBPlayers: teamBPlayers
+        };
+    }
+    
+    // ============================================================
+    // v2.01: Smart Clinch List Functions
     // ============================================================
     
     // Calculate if a match clinches at the current hole
@@ -281,7 +347,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.01"
+                    cascadeVersion: cascadeVersion || "2.02"
                 }
             };
         }
@@ -406,7 +472,10 @@ var GameMatch = (function() {
         calculateIntraFlight: calculateIntraFlight,
         calculateCrossFlight: calculateCrossFlight,
         
-        // NEW v2.01: Smart Clinch List API
+        // NEW v2.02: Integrated clinch detection
+        calculateCrossFlightWithClinch: calculateCrossFlightWithClinch,
+        
+        // v2.01: Smart Clinch List API
         calculateClinch: calculateClinch,
         filterClinchedByHole: filterClinchedByHole,
         updateClinchedAt: updateClinchedAt,
@@ -421,14 +490,14 @@ var GameMatch = (function() {
 
 /*
 FILE: js/game-match.js
-VERSION: 2.01
-KEY CHANGES from v2.00:
-   - ADDED: calculateClinch() - determines if a match clinches at current hole
-   - ADDED: updateClinchedAt() - smart merge preserving entries from holes < cascadeStartHole
-   - ADDED: getClinchHole() - reads clinch hole for bubble display (handles both old/new format)
-   - ADDED: filterClinchedByHole() - removes entries from holes >= cascadeStartHole
-   - ADDED: getClinchWinner() - returns winner name from clinch entry
-   - All existing functions unchanged (calculateIntraFlight, calculateCrossFlight, etc.)
+VERSION: 2.02
+KEY CHANGES from v2.01:
+   - ADDED: calculateCrossFlightWithClinch() - NEW function that returns both match results AND clinch data
+   - This eliminates duplicate sorting between game-match.js and real-game.html
+   - Uses the SAME sorted player arrays for both match calculation AND clinch detection
+   - Prevents index mismatch bugs that occurred when arrays were sorted differently in different places
+   - Original calculateCrossFlight() preserved for backward compatibility
+   - All other functions unchanged
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
 */
