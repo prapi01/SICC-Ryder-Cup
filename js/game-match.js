@@ -1,29 +1,27 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.08
-KEY CHANGES from v2.07:
-   - REMOVED: All debug logging from filterClinchedByHole() and updateClinchedAt()
-   - ADDED: calculateIntraFlightWithClinch() - mirrors calculateCrossFlightWithClinch()
-   - ADDED: getMatchValueFromStoredResults() - moved from real-game.html
-   - ADDED: getAllOpponents() - moved from real-game.html
-   - ADDED: getMatchDisplayValue() - moved from real-game.html (was getBubbleValue)
-   - ADDED: getMatchBubbleClass() - moved from real-game.html (was getBubbleClassWithClinch)
-   - ADDED: getMatchResultsFromCache() - helper to retrieve match values from stored results
-   - All functions now accept dependencies as parameters (no reliance on global variables)
-   - Intra-flight clinch detection now properly checks cumulativeClinched
-   - Cross-flight clinch detection unchanged (already working)
+VERSION: 2.09
+KEY CHANGES from v2.08:
+   - ADDED: Strategic console logging for clinch detection verification
+   - calculateIntraFlightWithClinch() now logs when clinch is detected or skipped
+   - calculateCrossFlightWithClinch() now logs when clinch is detected or skipped
+   - filterClinchedByHole() now logs which clinches are kept/discarded (reduced verbosity)
+   - updateClinchedAt() logs summary of operation
+   - All logging uses "[CLINCH]" prefix for easy filtering in console
+   - No functional changes from v2.08
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for integration
+STATUS: Ready for integration - includes logging for testing
 */
 
-// FILE: js/game-match.js - VERSION 2.08
+// FILE: js/game-match.js - VERSION 2.09
 // Game 1: Match Play (16 points)
 // Full handicap difference method
+// INCLUDES STRATEGIC LOGGING FOR CLINCH VERIFICATION
 
 var GameMatch = (function() {
     
     // ============================================================
-    // Stroke calculation helpers (unchanged from v2.07)
+    // Stroke calculation helpers (unchanged from v2.08)
     // ============================================================
     
     function getStrokeHoles(handicapDiff, courseSi) {
@@ -76,7 +74,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // Core match result calculations (unchanged from v2.07)
+    // Core match result calculations (unchanged from v2.08)
     // ============================================================
     
     function getIntraMatchResult(playerA, playerB, flightData, flightPlayers, courseSi, startingHole, upToHole, coursePar) {
@@ -244,22 +242,17 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // NEW v2.08: calculateIntraFlightWithClinch
-    // Mirrors calculateCrossFlightWithClinch but for intra-flight matches
+    // v2.09: calculateIntraFlightWithClinch WITH LOGGING
     // ============================================================
     
     function calculateIntraFlightWithClinch(flight, flightPlayers, flightData, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
-        // Get the intra-flight match results first
         var intraMatches = calculateIntraFlight(flight, flightPlayers, flightData, courseSi, startingHole, upToHole, coursePar);
         
-        // Store clinch updates
         var clinchedAtUpdates = {};
         
-        // Get Team A and Team B players for this flight
         var teamA = flightPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var teamB = flightPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // Loop through all intra-flight matches
         for (var a = 0; a < teamA.length; a++) {
             for (var b = 0; b < teamB.length; b++) {
                 var playerA = teamA[a];
@@ -270,13 +263,11 @@ var GameMatch = (function() {
                 
                 if (matchValue === undefined) continue;
                 
-                // Check if this match already has a clinch from cumulativeClinched
                 var existingClinch = null;
                 if (existingClinched) {
                     existingClinch = existingClinched[matchKey1] || existingClinched[matchKey2];
                 }
                 
-                // Only check for new clinch if not already clinched
                 if (!existingClinch) {
                     var clinchResult = calculateClinch(
                         matchValue, remainingHoles, playerA.name, playerB.name,
@@ -284,8 +275,12 @@ var GameMatch = (function() {
                     );
                     
                     if (clinchResult) {
+                        console.log(`[CLINCH] INTRA-FLIGHT ${flight} | ${matchKey1} | lead=${Math.abs(matchValue)} | remaining=${remainingHoles} | CLINCHED at hole ${currentHole}`);
                         clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
                     }
+                } else {
+                    var existingHole = existingClinch.clinchedAtHole || existingClinch;
+                    console.log(`[CLINCH] INTRA-FLIGHT ${flight} | ${matchKey1} | lead=${Math.abs(matchValue)} | SKIPPED - already clinched at hole ${existingHole}`);
                 }
             }
         }
@@ -297,7 +292,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // calculateCrossFlightWithClinch (unchanged from v2.07, debug logs removed)
+    // v2.09: calculateCrossFlightWithClinch WITH LOGGING
     // ============================================================
     
     function calculateCrossFlightWithClinch(flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
@@ -345,7 +340,13 @@ var GameMatch = (function() {
                     );
                     
                     if (clinchResult) {
+                        console.log(`[CLINCH] CROSS-FLIGHT | ${matchKey1} | lead=${Math.abs(matchValue)} | remaining=${remainingHoles} | CLINCHED at hole ${currentHole}`);
                         clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
+                    }
+                } else {
+                    var existingHole = existingClinch.clinchedAtHole || existingClinch;
+                    if (Math.abs(matchValue) > remainingHoles) {
+                        console.log(`[CLINCH] CROSS-FLIGHT | ${matchKey1} | lead=${Math.abs(matchValue)} | SKIPPED - already clinched at hole ${existingHole}`);
                     }
                 }
             }
@@ -380,7 +381,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.08"
+                    cascadeVersion: cascadeVersion || "2.09"
                 }
             };
         }
@@ -388,30 +389,57 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // filterClinchedByHole (debug logs removed)
+    // v2.09: filterClinchedByHole WITH REDUCED LOGGING
     // ============================================================
     
     function filterClinchedByHole(clinchedAt, cascadeStartHole) {
         if (!clinchedAt) return {};
         
-        if (cascadeStartHole <= 1) return {};
+        if (cascadeStartHole <= 1) {
+            var count = Object.keys(clinchedAt).length;
+            if (count > 0) {
+                console.log(`[CLINCH] FILTER | cascadeStartHole=${cascadeStartHole} | DISCARDING ${count} existing clinches (self-healing mode)`);
+            }
+            return {};
+        }
         
         var filtered = {};
+        var keptCount = 0;
+        var discardedCount = 0;
+        
         for (var matchKey in clinchedAt) {
             var entry = clinchedAt[matchKey];
             var entryHole = (typeof entry === 'number') ? entry : entry.clinchedAtHole;
             if (entryHole < cascadeStartHole) {
                 filtered[matchKey] = entry;
+                keptCount++;
+            } else {
+                discardedCount++;
             }
         }
+        
+        if (keptCount > 0 || discardedCount > 0) {
+            console.log(`[CLINCH] FILTER | cascadeStartHole=${cascadeStartHole} | KEPT=${keptCount} | DISCARDED=${discardedCount}`);
+        }
+        
         return filtered;
     }
+    
+    // ============================================================
+    // v2.09: updateClinchedAt WITH SUMMARY LOGGING
+    // ============================================================
     
     function updateClinchedAt(existingClinched, newClinchData, cascadeStartHole) {
         var updated = filterClinchedByHole(existingClinched, cascadeStartHole);
         
+        var newCount = 0;
         for (var matchKey in newClinchData) {
             updated[matchKey] = newClinchData[matchKey];
+            newCount++;
+        }
+        
+        if (newCount > 0) {
+            console.log(`[CLINCH] UPDATE | added ${newCount} new clinches | total now=${Object.keys(updated).length}`);
         }
         
         return updated;
@@ -447,23 +475,14 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // NEW v2.08: Functions moved from real-game.html
+    // Functions moved from real-game.html (unchanged from v2.08)
     // ============================================================
     
-    // Get match value from stored results (intra-flight or cross-flight)
-    // Parameters:
-    //   results: cache.results object
-    //   player: player object
-    //   opponent: player object
-    //   holeNumber: current hole number
-    //   getHolePositionFunc: function to convert hole number to position index
-    //   allPlayers: array of all players (for cross-flight lookups)
     function getMatchValueFromStoredResults(results, player, opponent, holeNumber, getHolePositionFunc, allPlayers) {
         if (!results) return 0;
         
         var position = getHolePositionFunc(holeNumber);
         
-        // Intra-flight match (same flight)
         if (player.flight === opponent.flight) {
             var intraMatches = (player.flight === 1) ? results.f1IntraMatches : results.f2IntraMatches;
             if (intraMatches && intraMatches[position]) {
@@ -473,9 +492,7 @@ var GameMatch = (function() {
             return 0;
         }
         
-        // Cross-flight match
         if (results.matchResults && results.matchResults[position]) {
-            // Sort players in the same order used when results were calculated
             var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
                 if (a.flight !== b.flight) return a.flight - b.flight;
                 return a.handicap - b.handicap;
@@ -512,7 +529,6 @@ var GameMatch = (function() {
         return 0;
     }
     
-    // Get all opponents for a player, sorted with intra-flight first
     function getAllOpponents(allPlayers, currentPlayer) {
         var opponents = allPlayers.filter(function(op) { return op.team !== currentPlayer.team; });
         opponents.sort(function(a, b) {
@@ -525,35 +541,20 @@ var GameMatch = (function() {
         return opponents;
     }
     
-    // Get display value for bubble (e.g., "AS" or "3")
     function getMatchDisplayValue(matchValue) {
         var absValue = Math.abs(matchValue);
         if (absValue === 0) return 'AS';
         return absValue.toString();
     }
     
-    // Get bubble CSS class based on match value, clinch status, and save state
-    // Parameters:
-    //   matchValue: the net lead value from getMatchValueFromStoredResults
-    //   clinchedAt: cache.clinchedAt object
-    //   player: player object
-    //   opponent: opponent object
-    //   currentHole: current hole number
-    //   isHoleSavedForFlight: boolean indicating if this flight has saved this hole
-    //   lastSyncedHole: cache.lastSyncedHole (for cross-flight)
-    //   getClinchHoleFunc: function to get clinch hole from clinchedAt
     function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedHole, getClinchHoleFunc) {
-        // Determine if this match should be grey (not yet determined)
         if (player.flight === opponent.flight) {
-            // Intra-flight: need this flight to have saved the hole
             if (!isHoleSavedForFlight) return 'bubble-grey';
         } else {
-            // Cross-flight: need both flights synced up to this hole
             var isSynced = (lastSyncedHole >= currentHole);
             if (!isSynced) return 'bubble-grey';
         }
         
-        // Check if match is already clinched
         var clinchHole = getClinchHoleFunc(clinchedAt, player.name, opponent.name);
         
         if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
@@ -563,7 +564,6 @@ var GameMatch = (function() {
             return 'bubble-green';
         }
         
-        // Not clinched yet - show normal colors
         if (matchValue > 0) return 'bubble-green';
         if (matchValue < 0) return 'bubble-red';
         return 'bubble-green';
@@ -620,46 +620,38 @@ var GameMatch = (function() {
     // ============================================================
     
     return {
-        // Core calculation functions
         calculateIntraFlight: calculateIntraFlight,
         calculateCrossFlight: calculateCrossFlight,
         calculateCrossFlightWithClinch: calculateCrossFlightWithClinch,
-        calculateIntraFlightWithClinch: calculateIntraFlightWithClinch,  // NEW v2.08
+        calculateIntraFlightWithClinch: calculateIntraFlightWithClinch,
         calculateClinch: calculateClinch,
         filterClinchedByHole: filterClinchedByHole,
         updateClinchedAt: updateClinchedAt,
         getClinchHole: getClinchHole,
         getClinchWinner: getClinchWinner,
-        
-        // NEW v2.08: Functions moved from real-game.html
         getMatchValueFromStoredResults: getMatchValueFromStoredResults,
         getAllOpponents: getAllOpponents,
         getMatchDisplayValue: getMatchDisplayValue,
         getMatchBubbleClass: getMatchBubbleClass,
-        
-        // Legacy functions
         calculate: calculate,
         calculatePoints: calculatePoints
     };
 })();
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.08";
+window.GAME_MATCH_VERSION = "2.09";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.08
-KEY CHANGES from v2.07:
-   - REMOVED: All debug logging from filterClinchedByHole() and updateClinchedAt()
-   - ADDED: calculateIntraFlightWithClinch() - mirrors calculateCrossFlightWithClinch()
-   - ADDED: getMatchValueFromStoredResults() - moved from real-game.html
-   - ADDED: getAllOpponents() - moved from real-game.html
-   - ADDED: getMatchDisplayValue() - moved from real-game.html (was getBubbleValue)
-   - ADDED: getMatchBubbleClass() - moved from real-game.html (was getBubbleClassWithClinch)
-   - ADDED: getMatchResultsFromCache() - helper to retrieve match values from stored results
-   - All functions now accept dependencies as parameters (no reliance on global variables)
-   - Intra-flight clinch detection now properly checks cumulativeClinched
-   - Cross-flight clinch detection unchanged (already working)
+VERSION: 2.09
+KEY CHANGES from v2.08:
+   - ADDED: Strategic console logging for clinch detection verification
+   - calculateIntraFlightWithClinch() now logs when clinch is detected or skipped
+   - calculateCrossFlightWithClinch() now logs when clinch is detected or skipped
+   - filterClinchedByHole() now logs which clinches are kept/discarded (reduced verbosity)
+   - updateClinchedAt() logs summary of operation
+   - All logging uses "[CLINCH]" prefix for easy filtering in console
+   - No functional changes from v2.08
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for integration
+STATUS: Ready for integration - includes logging for testing
 */
