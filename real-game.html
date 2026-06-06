@@ -1,11 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.30
-KEY CHANGES from v5.29:
-   - FIXED: Firestore "nested arrays not supported" error
-   - matchResults now written as sparse object (dot notation) because it contains nested arrays
+VERSION: 5.31
+KEY CHANGES from v5.30:
+   - FIXED: Firestore "nested arrays not supported" error still occurring
+   - Now writes f1IntraMatches and f2IntraMatches as sparse objects (dot notation)
+   - matchResults already using sparse dot notation
    - All other arrays (pointsA/B, leader, cumulativePoints, tr arrays, display arrays) remain as FULL arrays
-   - f1IntraMatches and f2IntraMatches remain as full arrays (they contain objects, not arrays)
    - This hybrid approach satisfies Firestore's constraints while maintaining data consistency
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -395,13 +395,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.30</div>
+<div class="version-tag">v5.31</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.30";
+window.REAL_GAME_VERSION = "5.31";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1238,7 +1238,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     // Initialize clinch updates object
     var clinchedAtUpdates = {};
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.30";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.31";
     
     // INTRA-FLIGHT CLINCH DETECTION
     if (f1Available && result.f1IntraMatches) {
@@ -1358,8 +1358,9 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
 }
 
 // ============================================================
-// FIXED v5.30: Hybrid approach - matchResults uses sparse dot notation
-// (because Firestore rejects nested arrays), all other arrays are full arrays
+// FIXED v5.31: ALL problematic fields use sparse dot notation
+// matchResults, f1IntraMatches, f2IntraMatches all use sparse objects
+// All other arrays (flat primitives) remain as full arrays
 // ============================================================
 
 async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1382,27 +1383,29 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     }
     
     // ============================================================
-    // CRITICAL FIX: matchResults contains NESTED ARRAYS which Firestore rejects
-    // Must use sparse dot notation for matchResults only
+    // CRITICAL FIX: ALL fields that contain nested structures or undefined positions
+    // must use sparse dot notation to avoid Firestore "nested arrays" error
     // ============================================================
+    
+    // 1. matchResults - contains nested arrays (16 values per hole)
     if (resultsData.matchResults !== null) {
         updatePayload[`results.matchResults.${position}`] = resultsData.matchResults;
-        // Also update local cache
         if (!cache.results.matchResults) cache.results.matchResults = new Array(18);
         cache.results.matchResults[position] = resultsData.matchResults;
     }
     
-    // f1IntraMatches and f2IntraMatches contain objects (not arrays) - safe as full arrays
+    // 2. f1IntraMatches - array of objects, but positions may be undefined
     if (resultsData.f1IntraMatches !== null) {
+        updatePayload[`results.f1IntraMatches.${position}`] = resultsData.f1IntraMatches;
         if (!cache.results.f1IntraMatches) cache.results.f1IntraMatches = new Array(18);
         cache.results.f1IntraMatches[position] = resultsData.f1IntraMatches;
-        updatePayload["results.f1IntraMatches"] = cache.results.f1IntraMatches;
     }
     
+    // 3. f2IntraMatches - array of objects, but positions may be undefined
     if (resultsData.f2IntraMatches !== null) {
+        updatePayload[`results.f2IntraMatches.${position}`] = resultsData.f2IntraMatches;
         if (!cache.results.f2IntraMatches) cache.results.f2IntraMatches = new Array(18);
         cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
-        updatePayload["results.f2IntraMatches"] = cache.results.f2IntraMatches;
     }
     
     // ============================================================
@@ -1984,12 +1987,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.30
-KEY CHANGES from v5.29:
-   - FIXED: Firestore "nested arrays not supported" error
-   - matchResults now written as sparse object (dot notation) because it contains nested arrays
+VERSION: 5.31
+KEY CHANGES from v5.30:
+   - FIXED: Firestore "nested arrays not supported" error still occurring
+   - Now writes f1IntraMatches and f2IntraMatches as sparse objects (dot notation)
+   - matchResults already using sparse dot notation
    - All other arrays (pointsA/B, leader, cumulativePoints, tr arrays, display arrays) remain as FULL arrays
-   - f1IntraMatches and f2IntraMatches remain as full arrays (they contain objects, not arrays)
    - This hybrid approach satisfies Firestore's constraints while maintaining data consistency
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
