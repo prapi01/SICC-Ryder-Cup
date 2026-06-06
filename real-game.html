@@ -1,13 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 5.28
-KEY CHANGES from v5.27:
-   - ADDED: Intra-flight clinch detection for f1IntraMatches and f2IntraMatches
-   - ADDED: getRemainingHolesFromPlayOrder() helper for accurate remaining holes calculation
-   - FIXED: Remaining holes now based on play order (supports non-1 starting holes)
-   - Clinch detection now covers ALL matches (cross-flight AND intra-flight)
-   - Both cross and intra clinch updates merged before writing to Firestore
-   - All other functionality unchanged
+VERSION: 5.29
+KEY CHANGES from v5.28:
+   - FIXED: Results arrays now written as FULL arrays (length 18) instead of sparse objects
+   - Modified saveResultsToFirestoreWithCumulative() to read existing array, update position, write entire array
+   - Affected fields: game1.pointsA/B, game2.pointsA/B, game2.flight1/2.leader, game2.flight1/2.cumulativePoints
+   - Affected fields: game2.displayT1/T2, game3.leader, game3.displayStrk, game3.pointsA/B, tr.teamA/B, tr.teamAGreen/BGreen
+   - Also fixed matchResults, f1IntraMatches, f2IntraMatches to use array indexing
+   - Ensures consistent data structure across all games (no more sparse objects)
+   - All other functionality identical to v5.28
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -396,13 +397,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.28</div>
+<div class="version-tag">v5.29</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.28";
+window.REAL_GAME_VERSION = "5.29";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -695,7 +696,7 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS - UPDATED v5.28: Uses GameMatch.getClinchHole()
+// BUBBLE FUNCTIONS - Uses GameMatch.getClinchHole()
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -1144,7 +1145,6 @@ function calculatePlayerTotals(upToHole) {
     return playerTotals;
 }
 
-// FIXED v5.28: Added intra-flight clinch detection + play-order-aware remaining holes
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
     var cache = GameLoader.getLocalCache();
     var position = getHolePosition(holeNumber);
@@ -1240,13 +1240,9 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     // Initialize clinch updates object
     var clinchedAtUpdates = {};
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.28";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.29";
     
-    // ============================================================
-    // FIXED v5.28: INTRA-FLIGHT CLINCH DETECTION
-    // ============================================================
-    
-    // Flight 1 intra-flight clinch detection
+    // INTRA-FLIGHT CLINCH DETECTION
     if (f1Available && result.f1IntraMatches) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var teamAPlayersF1 = flight1Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -1269,7 +1265,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
-    // Flight 2 intra-flight clinch detection
     if (f2Available && result.f2IntraMatches) {
         var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
         var teamAPlayersF2 = flight2Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -1292,10 +1287,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
-    // ============================================================
-    // CROSS-FLIGHT CLINCH DETECTION (existing, preserved)
-    // ============================================================
-    
+    // CROSS-FLIGHT CLINCH DETECTION
     if (crossAvailable) {
         var matchResultsArray = calculateMatchResultsArray(holeNumber);
         result.matchResults = matchResultsArray;
@@ -1367,6 +1359,10 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     return result;
 }
 
+// ============================================================
+// FIXED v5.29: Write FULL ARRAYS instead of sparse objects
+// ============================================================
+
 async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
     var resultsData = calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole);
     if (!resultsData) {
@@ -1380,120 +1376,160 @@ async function saveResultsToFirestoreWithCumulative(holeNumber, cumulativeClinch
     var position = resultsData.position;
     var updatePayload = {};
     
+    // Get current cache or create empty results structure
+    var cache = GameLoader.getLocalCache();
+    if (!cache.results) {
+        cache.results = initializeEmptyResults();
+    }
+    
+    // ============================================================
+    // FIXED: Handle per-hole arrays by reading full array from cache,
+    // updating the specific position, and writing the full array back
+    // ============================================================
+    
+    // 1. matchResults (array of 16 values per hole)
+    if (resultsData.matchResults !== null) {
+        if (!cache.results.matchResults) cache.results.matchResults = new Array(18);
+        cache.results.matchResults[position] = resultsData.matchResults;
+        updatePayload["results.matchResults"] = cache.results.matchResults;
+    }
+    
+    // 2. f1IntraMatches (object per hole)
     if (resultsData.f1IntraMatches !== null) {
-        updatePayload[`results.f1IntraMatches.${position}`] = resultsData.f1IntraMatches;
+        if (!cache.results.f1IntraMatches) cache.results.f1IntraMatches = new Array(18);
+        cache.results.f1IntraMatches[position] = resultsData.f1IntraMatches;
+        updatePayload["results.f1IntraMatches"] = cache.results.f1IntraMatches;
     }
+    
+    // 3. f2IntraMatches (object per hole)
     if (resultsData.f2IntraMatches !== null) {
-        updatePayload[`results.f2IntraMatches.${position}`] = resultsData.f2IntraMatches;
+        if (!cache.results.f2IntraMatches) cache.results.f2IntraMatches = new Array(18);
+        cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
+        updatePayload["results.f2IntraMatches"] = cache.results.f2IntraMatches;
     }
     
-    if (resultsData.matchResults !== null) {
-        updatePayload[`results.matchResults.${position}`] = resultsData.matchResults;
-    }
+    // 4. game1.pointsA (full array)
+    if (!cache.results.game1.pointsA) cache.results.game1.pointsA = new Array(18).fill(8);
+    cache.results.game1.pointsA[position] = resultsData.game1PointsA;
+    updatePayload["results.game1.pointsA"] = cache.results.game1.pointsA;
     
-    updatePayload[`results.game2.flight1.leader.${position}`] = resultsData.t1Leader;
-    updatePayload[`results.game2.flight2.leader.${position}`] = resultsData.t2Leader;
-    updatePayload[`results.game2.displayT1.${position}`] = resultsData.t1Display;
-    updatePayload[`results.game2.displayT2.${position}`] = resultsData.t2Display;
-    updatePayload[`results.game2.flight1.cumulativePoints.${position}`] = resultsData.cumulativeF1 !== undefined ? resultsData.cumulativeF1 : 0;
-    updatePayload[`results.game2.flight2.cumulativePoints.${position}`] = resultsData.cumulativeF2 !== undefined ? resultsData.cumulativeF2 : 0;
+    // 5. game1.pointsB (full array)
+    if (!cache.results.game1.pointsB) cache.results.game1.pointsB = new Array(18).fill(8);
+    cache.results.game1.pointsB[position] = resultsData.game1PointsB;
+    updatePayload["results.game1.pointsB"] = cache.results.game1.pointsB;
     
-    if (resultsData.strkLeader !== "AS" || resultsData.strkDisplay !== "AS") {
-        updatePayload[`results.game3.leader.${position}`] = resultsData.strkLeader;
-        updatePayload[`results.game3.displayStrk.${position}`] = resultsData.strkDisplay;
-    }
+    // 6. game2.pointsA (full array)
+    if (!cache.results.game2.pointsA) cache.results.game2.pointsA = new Array(18).fill(1);
+    cache.results.game2.pointsA[position] = resultsData.game2PointsA;
+    updatePayload["results.game2.pointsA"] = cache.results.game2.pointsA;
     
-    updatePayload[`results.game1.pointsA.${position}`] = resultsData.game1PointsA;
-    updatePayload[`results.game1.pointsB.${position}`] = resultsData.game1PointsB;
-    updatePayload[`results.game2.pointsA.${position}`] = resultsData.game2PointsA;
-    updatePayload[`results.game2.pointsB.${position}`] = resultsData.game2PointsB;
-    updatePayload[`results.game3.pointsA.${position}`] = resultsData.game3PointsA;
-    updatePayload[`results.game3.pointsB.${position}`] = resultsData.game3PointsB;
+    // 7. game2.pointsB (full array)
+    if (!cache.results.game2.pointsB) cache.results.game2.pointsB = new Array(18).fill(1);
+    cache.results.game2.pointsB[position] = resultsData.game2PointsB;
+    updatePayload["results.game2.pointsB"] = cache.results.game2.pointsB;
     
-    if (resultsData.matchResults !== null) {
-        updatePayload[`results.tr.teamA.${position}`] = resultsData.trA;
-        updatePayload[`results.tr.teamB.${position}`] = resultsData.trB;
-        updatePayload[`results.tr.teamAGreen.${position}`] = resultsData.trAGreen;
-        updatePayload[`results.tr.teamBGreen.${position}`] = resultsData.trBGreen;
-    }
+    // 8. game2.flight1.leader (full array)
+    if (!cache.results.game2.flight1.leader) cache.results.game2.flight1.leader = new Array(18).fill("AS");
+    cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
+    updatePayload["results.game2.flight1.leader"] = cache.results.game2.flight1.leader;
     
+    // 9. game2.flight2.leader (full array)
+    if (!cache.results.game2.flight2.leader) cache.results.game2.flight2.leader = new Array(18).fill("AS");
+    cache.results.game2.flight2.leader[position] = resultsData.t2Leader;
+    updatePayload["results.game2.flight2.leader"] = cache.results.game2.flight2.leader;
+    
+    // 10. game2.displayT1 (full array)
+    if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill("AS");
+    cache.results.game2.displayT1[position] = resultsData.t1Display;
+    updatePayload["results.game2.displayT1"] = cache.results.game2.displayT1;
+    
+    // 11. game2.displayT2 (full array)
+    if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill("AS");
+    cache.results.game2.displayT2[position] = resultsData.t2Display;
+    updatePayload["results.game2.displayT2"] = cache.results.game2.displayT2;
+    
+    // 12. game2.flight1.cumulativePoints (full array)
+    if (!cache.results.game2.flight1.cumulativePoints) cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
+    cache.results.game2.flight1.cumulativePoints[position] = resultsData.cumulativeF1 !== undefined ? resultsData.cumulativeF1 : 0;
+    updatePayload["results.game2.flight1.cumulativePoints"] = cache.results.game2.flight1.cumulativePoints;
+    
+    // 13. game2.flight2.cumulativePoints (full array)
+    if (!cache.results.game2.flight2.cumulativePoints) cache.results.game2.flight2.cumulativePoints = new Array(18).fill(0);
+    cache.results.game2.flight2.cumulativePoints[position] = resultsData.cumulativeF2 !== undefined ? resultsData.cumulativeF2 : 0;
+    updatePayload["results.game2.flight2.cumulativePoints"] = cache.results.game2.flight2.cumulativePoints;
+    
+    // 14. game3.leader (full array)
+    if (!cache.results.game3.leader) cache.results.game3.leader = new Array(18).fill("AS");
+    cache.results.game3.leader[position] = resultsData.strkLeader;
+    updatePayload["results.game3.leader"] = cache.results.game3.leader;
+    
+    // 15. game3.displayStrk (full array)
+    if (!cache.results.game3.displayStrk) cache.results.game3.displayStrk = new Array(18).fill("AS");
+    cache.results.game3.displayStrk[position] = resultsData.strkDisplay;
+    updatePayload["results.game3.displayStrk"] = cache.results.game3.displayStrk;
+    
+    // 16. game3.pointsA (full array)
+    if (!cache.results.game3.pointsA) cache.results.game3.pointsA = new Array(18).fill(0.5);
+    cache.results.game3.pointsA[position] = resultsData.game3PointsA;
+    updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
+    
+    // 17. game3.pointsB (full array)
+    if (!cache.results.game3.pointsB) cache.results.game3.pointsB = new Array(18).fill(0.5);
+    cache.results.game3.pointsB[position] = resultsData.game3PointsB;
+    updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
+    
+    // 18. tr.teamA (full array)
+    if (!cache.results.tr.teamA) cache.results.tr.teamA = new Array(18).fill(9.5);
+    cache.results.tr.teamA[position] = resultsData.trA;
+    updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
+    
+    // 19. tr.teamB (full array)
+    if (!cache.results.tr.teamB) cache.results.tr.teamB = new Array(18).fill(9.5);
+    cache.results.tr.teamB[position] = resultsData.trB;
+    updatePayload["results.tr.teamB"] = cache.results.tr.teamB;
+    
+    // 20. tr.teamAGreen (full array)
+    if (!cache.results.tr.teamAGreen) cache.results.tr.teamAGreen = new Array(18).fill(true);
+    cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
+    updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
+    
+    // 21. tr.teamBGreen (full array)
+    if (!cache.results.tr.teamBGreen) cache.results.tr.teamBGreen = new Array(18).fill(true);
+    cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
+    updatePayload["results.tr.teamBGreen"] = cache.results.tr.teamBGreen;
+    
+    // 22. game2 flight clinched holes
     updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
     updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
     
+    // 23. clinchedAt
     if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
-        updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
+        cache.results.clinchedAt = resultsData.updatedClinched;
+        updatePayload["results.clinchedAt"] = cache.results.clinchedAt;
     } else if (cumulativeClinched && Object.keys(cumulativeClinched).length > 0) {
         updatePayload["results.clinchedAt"] = cumulativeClinched;
     }
     
-    if (position + 1 > (GameLoader.getLocalCache().results?.computedUpToHole || 0)) {
-        updatePayload["results.computedUpToHole"] = position + 1;
+    // 24. computedUpToHole
+    if (position + 1 > (cache.results.computedUpToHole || 0)) {
+        cache.results.computedUpToHole = position + 1;
+        updatePayload["results.computedUpToHole"] = cache.results.computedUpToHole;
     }
+    
+    // 25. lastComputedAt
     updatePayload["results.lastComputedAt"] = new Date().toISOString();
     
+    // 26. playerTotals
     var currentUpToHole = (position + 1);
     var playerTotals = calculatePlayerTotals(currentUpToHole);
+    cache.results.playerTotals = playerTotals;
     updatePayload["results.playerTotals"] = playerTotals;
     
     try {
         await db.collection("scheduledGames").doc(gameId).update(updatePayload);
         
-        var cache = GameLoader.getLocalCache();
-        if (!cache.results) cache.results = initializeEmptyResults();
-        
-        if (resultsData.f1IntraMatches !== null) {
-            if (!cache.results.f1IntraMatches) cache.results.f1IntraMatches = new Array(18);
-            cache.results.f1IntraMatches[position] = resultsData.f1IntraMatches;
-        }
-        if (resultsData.f2IntraMatches !== null) {
-            if (!cache.results.f2IntraMatches) cache.results.f2IntraMatches = new Array(18);
-            cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
-        }
-        
-        if (resultsData.matchResults !== null) {
-            cache.results.matchResults[position] = resultsData.matchResults;
-        }
-        cache.results.game1.pointsA[position] = resultsData.game1PointsA;
-        cache.results.game1.pointsB[position] = resultsData.game1PointsB;
-        cache.results.game2.pointsA[position] = resultsData.game2PointsA;
-        cache.results.game2.pointsB[position] = resultsData.game2PointsB;
-        cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
-        cache.results.game2.flight2.leader[position] = resultsData.t2Leader;
-        
-        if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill(null);
-        if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill(null);
-        if (!cache.results.game3.displayStrk) cache.results.game3.displayStrk = new Array(18).fill(null);
-        cache.results.game2.displayT1[position] = resultsData.t1Display;
-        cache.results.game2.displayT2[position] = resultsData.t2Display;
-        cache.results.game3.displayStrk[position] = resultsData.strkDisplay;
-        
-        if (!cache.results.game2.flight1.cumulativePoints) cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
-        if (!cache.results.game2.flight2.cumulativePoints) cache.results.game2.flight2.cumulativePoints = new Array(18).fill(0);
-        cache.results.game2.flight1.cumulativePoints[position] = resultsData.cumulativeF1 !== undefined ? resultsData.cumulativeF1 : 0;
-        cache.results.game2.flight2.cumulativePoints[position] = resultsData.cumulativeF2 !== undefined ? resultsData.cumulativeF2 : 0;
-        
-        cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
-        cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
-        
-        cache.results.game3.leader[position] = resultsData.strkLeader;
-        cache.results.game3.pointsA[position] = resultsData.game3PointsA;
-        cache.results.game3.pointsB[position] = resultsData.game3PointsB;
-        
-        if (resultsData.matchResults !== null) {
-            cache.results.tr.teamA[position] = resultsData.trA;
-            cache.results.tr.teamB[position] = resultsData.trB;
-            cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
-            cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
-        }
-        
-        if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
-            cache.results.clinchedAt = resultsData.updatedClinched;
-        }
-        
-        if (position + 1 > cache.results.computedUpToHole) cache.results.computedUpToHole = position + 1;
-        cache.results.lastComputedAt = updatePayload["results.lastComputedAt"];
-        
-        cache.results.playerTotals = playerTotals;
+        // Also update the local cache's results reference
+        // (The individual array updates above already modified cache.results)
         
     } catch (error) {
         console.error('Error saving results:', error);
@@ -1944,14 +1980,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.28
-KEY CHANGES from v5.27:
-   - ADDED: Intra-flight clinch detection for f1IntraMatches and f2IntraMatches
-   - ADDED: getRemainingHolesFromPlayOrder() helper for accurate remaining holes calculation
-   - FIXED: Remaining holes now based on play order (supports non-1 starting holes)
-   - Clinch detection now covers ALL matches (cross-flight AND intra-flight)
-   - Both cross and intra clinch updates merged before writing to Firestore
-   - All other functionality unchanged
+VERSION: 5.29
+KEY CHANGES from v5.28:
+   - FIXED: Results arrays now written as FULL arrays (length 18) instead of sparse objects
+   - Modified saveResultsToFirestoreWithCumulative() to read existing array, update position, write entire array
+   - Affected fields: game1.pointsA/B, game2.pointsA/B, game2.flight1/2.leader, game2.flight1/2.cumulativePoints
+   - Affected fields: game2.displayT1/T2, game3.leader, game3.displayStrk, game3.pointsA/B, tr.teamA/B, tr.teamAGreen/BGreen
+   - Also fixed matchResults, f1IntraMatches, f2IntraMatches to use array indexing
+   - Ensures consistent data structure across all games (no more sparse objects)
+   - All other functionality identical to v5.28
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
