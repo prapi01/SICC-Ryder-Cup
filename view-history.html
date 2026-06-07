@@ -1,11 +1,13 @@
 <!--
 FILE: view-history.html
-VERSION: 8.11
-KEY CHANGES from v8.10:
-   - FIXED: Added GameUI.updateCompactHoleDisplay() in onToggleFlight to preserve hole number
-   - Flight toggle now explicitly updates the control bar hole display
-   - One-line fix - all other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
+VERSION: 8.12
+KEY CHANGES from v8.11:
+   - FIXED: Handicap adjustment now displays stored data directly from history record
+   - Removed dependency on history-record.js and hcp-adjust.js initForHistory
+   - Uses displayStoredAdjustment() with data already in games array
+   - No extra Firestore calls, no recalculation, no missing dependencies
+   - Anc and Perf values now show correctly (non-zero)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
 
@@ -320,13 +322,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.11</div>
+<div class="version-tag">v8.12</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.11";
+window.VIEW_HISTORY_VERSION = "8.12";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -379,19 +381,20 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// Show Handicap Adjustment
+// Show Handicap Adjustment - FIXED v8.12: Use stored data directly
 // ============================================================
 
-function showHandicapAdjustment(archiveId) {
+function showHandicapAdjustment(adjustedHandicaps, anchorName, players) {
+    // Load hcp-adjust.js if not already loaded
     if (typeof HandicapAdjustment === 'undefined') {
         var script = document.createElement('script');
         script.src = 'js/hcp-adjust.js';
         script.onload = function() {
-            HandicapAdjustment.initForHistory(archiveId.replace('_H', ''), archiveId, 'view-history.html');
+            HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players);
         };
         document.head.appendChild(script);
     } else {
-        HandicapAdjustment.initForHistory(archiveId.replace('_H', ''), archiveId, 'view-history.html');
+        HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players);
     }
 }
 
@@ -615,11 +618,10 @@ function renderScorecardView(game) {
         GameUI.updateHoleHeaderNumber(currentHole);
     }
     
-    // FIXED v8.11: Added updateCompactHoleDisplay to preserve hole number on flight toggle
     function onToggleFlight(flightNumber) {
         currentFlight = flightNumber;
         GameUI.updateFlightBadge(flightNumber);
-        GameUI.updateCompactHoleDisplay(currentHole);  // <-- THE FIX
+        GameUI.updateCompactHoleDisplay(currentHole);
         renderPlayerCardsOnly();
     }
     
@@ -768,8 +770,12 @@ function renderGameList(games) {
         var teamADisplay = tr.teamA % 1 === 0 ? tr.teamA : tr.teamA.toFixed(1);
         var teamBDisplay = tr.teamB % 1 === 0 ? tr.teamB : tr.teamB.toFixed(1);
         
+        // Store adjustedHandicaps and players data on the card for easy access
+        var adjustedHandicapsJson = JSON.stringify(game.adjustedHandicaps).replace(/"/g, '&quot;');
+        var playersJson = JSON.stringify(game.players).replace(/"/g, '&quot;');
+        
         html += `
-            <div class="game-card" data-game-index="${i}">
+            <div class="game-card" data-game-index="${i}" data-adjusted-handicaps='${adjustedHandicapsJson}' data-players='${playersJson}'>
                 <div class="game-header">
                     <div class="game-course">⛳ ${escapeHtml(game.courseName)}</div>
                     <div class="game-date">${displayDate}</div>
@@ -822,12 +828,21 @@ function renderGameList(games) {
         });
     });
     
+    // FIXED v8.12: Handicap button uses stored data directly from the card
     document.querySelectorAll('.btn-handicap').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
+            var card = this.closest('.game-card');
             var idx = parseInt(this.getAttribute('data-game-index'));
             var game = allGames[idx];
-            if (game) showHandicapAdjustment(game.archiveId);
+            
+            if (game && game.adjustedHandicaps) {
+                var anchorName = game.adjustedHandicaps.anchor || 'Anchor';
+                showHandicapAdjustment(game.adjustedHandicaps, anchorName, game.players);
+            } else {
+                console.error('No handicap data available for this game');
+                alert('Handicap adjustment data not available for this game.');
+            }
         });
     });
 }
@@ -911,11 +926,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.11
-KEY CHANGES from v8.10:
-   - FIXED: Added GameUI.updateCompactHoleDisplay() in onToggleFlight to preserve hole number
-   - Flight toggle now explicitly updates the control bar hole display
-   - One-line fix - all other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard)
+VERSION: 8.12
+KEY CHANGES from v8.11:
+   - FIXED: Handicap adjustment now displays stored data directly from history record
+   - Removed dependency on history-record.js and hcp-adjust.js initForHistory
+   - Uses displayStoredAdjustment() with data already in games array
+   - No extra Firestore calls, no recalculation, no missing dependencies
+   - Anc and Perf values now show correctly (non-zero)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
