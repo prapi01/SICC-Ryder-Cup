@@ -1,14 +1,12 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - REVISED: Step order now matches logical workflow (Enter Scores → Correct Holes → Game Results → Sign Card → Waiting → Handicap)
-   - UPDATED: All UI styling to match current app (pill-shaped buttons, green theme)
-   - ADDED: Celebration screen preview in handicap step
-   - ADDED: Anchor explanation in handicap step
-   - ADDED: Data persistence tip
-   - UPDATED: Bubble colors and scorecard colors to match current spec
-   - All UI styling matches current game-ui.js and game-scorecard.js
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - SPLIT: Step 5 now shows Match Game (player cards with bubbles: green/red/gold/grey)
+   - SPLIT: Step 6 now shows Team Game + Stroke Game (scorecard with T-1, T-2, Strk rows)
+   - Total steps now 9 (was 8)
+   - Step 7: Sign Card, Step 8: Waiting, Step 9: Handicap Adjustment
+   - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
@@ -379,6 +377,11 @@ STATUS: Ready for integration
             font-size: 1.5rem;
             margin-bottom: 8px;
         }
+        
+        /* Highlight rows for step 6 */
+        .highlight-row {
+            background: rgba(76,175,80,0.15);
+        }
     </style>
 </head>
 <body>
@@ -406,15 +409,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.07</div>
+<div class="version-tag">v1.08</div>
 
 <script>
 // ============================================================
-// Tutorial Data - 8 Steps (Revised Order)
+// Tutorial Data - 9 Steps
 // ============================================================
 
 var currentStep = 1;
-var totalSteps = 8;
+var totalSteps = 9;
 
 function updateStepIndicator() {
     var container = document.getElementById('stepIndicator');
@@ -653,7 +656,7 @@ function renderStep3() {
     addHighlight('saveDemoBtn');
     
     document.getElementById('instructionText').innerHTML = 'Scoring screen for the scorer.<br><br>Scores default to par. Adjust up or down based on actual strokes. <strong>SAVE</strong> to record.<br><br>1. Use <strong>+</strong> and <strong>-</strong> to adjust gross score<br>2. Tap <strong>SAVE</strong> - button flashes red<br>3. Tap <strong>▶</strong> to move to next hole<br><br>You cannot advance until current hole is saved.';
-    document.getElementById('instructionTip').innerHTML = '💡 Tip: The top display shows overall team score. Team with more points wins.<br><br>📌 Bubble colors:<br>  <span class="color-demo" style="background:#1a3a1a; color:#4caf50; border:1px solid #4caf50;">GREEN</span> Winning match<br>  <span class="color-demo" style="background:#3a1a1a; color:#ff6b6b; border:1px solid #ff6b6b;">RED</span> Losing match<br>  <span class="color-demo" style="background:#1a3a1a; color:#ffaa44; border:2px solid #ffaa44;">GOLD</span> WON match on this hole<br>  <span class="color-demo" style="background:#3a1a1a; color:#ffffff; border:2px solid #ffffff;">WHITE</span> LOST match on this hole<br>  <span class="color-demo" style="background:#2a2a2a; color:#888; border:1px solid #444;">GREY</span> Match already decided';
+    document.getElementById('instructionTip').innerHTML = '💡 Tip: The top display shows overall team score. Team with more points wins.<br><br>📌 Bubble colors show match results (explained in Step 5).';
 }
 
 // ============================================================
@@ -714,13 +717,109 @@ function renderStep4() {
 }
 
 // ============================================================
-// STEP 5: Understanding Game Results (Match, Team, Stroke)
+// STEP 5: MATCH GAME - Player cards with bubbles (Green/Red/Gold/Grey)
 // ============================================================
 
 function renderStep5() {
     var html = `
         <div class="demo-header">
-            <div style="margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1rem; font-weight:800;">SCORECARD - Hole 12</span></div>
+            <div style="margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1rem; font-weight:800;">MATCH GAME - Hole 12</span></div>
+        </div>
+        <div class="team-score-card">
+            <div style="display:flex; justify-content:center; gap:16px;">
+                <div><div style="font-size:0.75rem;">TEAM A</div><div style="font-size:1.6rem; font-weight:800; color:#4caf50;">11.5</div></div>
+                <div style="font-size:1.5rem; color:#888;">│</div>
+                <div><div style="font-size:0.75rem;">TEAM B</div><div style="font-size:1.6rem; font-weight:800; color:#ff6b6b;">7.5</div></div>
+            </div>
+        </div>
+        
+        <!-- Player Card 1 - Team A, Flight 1 - Showing match bubbles -->
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">Ang C H</span><span class="player-handicap">ACH 2</span></div>
+                <div class="score-value">5</div>
+            </div>
+            <div class="bubbles">
+                <div class="bubble bubble-green">vs OCB 1</div>
+                <div class="bubble bubble-green">vs JO 2</div>
+                <div class="bubble bubble-gold">vs JG 3</div>
+                <div class="bubble bubble-grey">vs P 4</div>
+            </div>
+        </div>
+        
+        <!-- Player Card 2 - Team A, Flight 1 -->
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">C K</span><span class="player-handicap">CK 10</span></div>
+                <div class="score-value">6</div>
+            </div>
+            <div class="bubbles">
+                <div class="bubble bubble-green">vs OCB 2</div>
+                <div class="bubble bubble-gold">vs JO 3</div>
+                <div class="bubble bubble-grey">vs JG 4</div>
+                <div class="bubble bubble-grey">vs P 5</div>
+            </div>
+        </div>
+        
+        <!-- Player Card 3 - Team B, Flight 1 -->
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">Ong C B</span><span class="player-handicap">OCB 1</span></div>
+                <div class="score-value">4</div>
+            </div>
+            <div class="bubbles">
+                <div class="bubble bubble-red">vs ACH 1</div>
+                <div class="bubble bubble-red">vs CK 2</div>
+                <div class="bubble bubble-green">vs KF 1</div>
+                <div class="bubble bubble-green">vs YHM 1</div>
+            </div>
+        </div>
+        
+        <!-- Player Card 4 - Team B, Flight 1 -->
+        <div class="player-card">
+            <div class="player-header">
+                <div><span class="player-name">James Ong</span><span class="player-handicap">JO 10</span></div>
+                <div class="score-value">7</div>
+            </div>
+            <div class="bubbles">
+                <div class="bubble bubble-red">vs ACH 2</div>
+                <div class="bubble bubble-gold">vs CK 3</div>
+                <div class="bubble bubble-grey">vs KF 4</div>
+                <div class="bubble bubble-grey">vs YHM 5</div>
+            </div>
+        </div>
+        
+        <div style="margin: 12px 16px; padding: 12px; background:#111; border-radius:12px;">
+            <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">🏆 MATCH GAME (16 points per hole)</div>
+            <div style="font-size:0.7rem; color:#ccc; line-height:1.5;">
+                Each player plays 4 matches against the 4 opponents on the other team.<br>
+                Each match worth 1 point → <strong>16 points per hole</strong>.
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('demoScreen').innerHTML = html;
+    
+    document.getElementById('instructionText').innerHTML = '<strong>MATCH GAME - Colored Bubbles (16 points per hole)</strong><br><br>' +
+        'Each player has 4 bubbles showing their match results against the 4 opponents:<br><br>' +
+        '<span class="color-demo" style="background:#1a3a1a; color:#4caf50; border:1px solid #4caf50;">GREEN</span> Winning match (ahead)<br>' +
+        '<span class="color-demo" style="background:#3a1a1a; color:#ff6b6b; border:1px solid #ff6b6b;">RED</span> Losing match (behind)<br>' +
+        '<span class="color-demo" style="background:#1a3a1a; color:#ffaa44; border:2px solid #ffaa44;">GOLD</span> Match WON on this hole (clinch)<br>' +
+        '<span class="color-demo" style="background:#2a2a2a; color:#888; border:1px solid #444;">GREY</span> Match already decided (played after clinch)<br><br>' +
+        'The number shows how many holes the player is winning/losing by.<br>' +
+        '<strong>AS</strong> = All Square (tied match)';
+    
+    document.getElementById('instructionTip').innerHTML = '💡 The total match points from all 16 matches determine 16 of the 19 points per hole.<br><br>📌 GOLD bubbles only appear on the hole where a match is mathematically clinched. After that, the bubble turns GREY.';
+}
+
+// ============================================================
+// STEP 6: TEAM GAME + STROKE GAME - Scorecard with T-1, T-2, Strk rows
+// ============================================================
+
+function renderStep6() {
+    var html = `
+        <div class="demo-header">
+            <div style="margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1rem; font-weight:800;">TEAM & STROKE GAME - Hole 12</span></div>
         </div>
         <div class="team-score-card">
             <div style="display:flex; justify-content:center; gap:16px;">
@@ -733,58 +832,112 @@ function renderStep5() {
             <div class="scorecard-wrapper">
                 <table class="scorecard-table">
                     <thead>
-                        <tr><th>Hole</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>Tot</th> </tr>
+                        <tr><th>Hole</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>Tot</th></tr>
                     </thead>
                     <tbody>
-                        <tr><td style="font-weight:700;">Par</td><td>4</td><td>3</td><td>4</td><td>5</td><td>3</td><td>4</td><td>4</td><td>4</td><td>4</td><td>4</td><td>4</td><td>3</td><td>5</td><td>3</td><td>5</td><td>4</td><td>3</td><td>5</td><td>-</td></tr>
-                        <tr><td style="font-weight:700;">SI</td><td>13</td><td>15</td><td>7</td><td>3</td><td>17</td><td>1</td><td>5</td><td>11</td><td>9</td><td>14</td><td>2</td><td>8</td><td>6</td><td>16</td><td>10</td><td>4</td><td>18</td><td>12</td><td>-</td></tr>
+                        <tr style="background:#111;"><td style="font-weight:700;">Par</td><td>4</td><td>3</td><td>4</td><td>5</td><td>3</td><td>4</td><td>4</td><td>4</td><td>4</td><td>4</td><td>4</td><td>3</td><td>5</td><td>3</td><td>5</td><td>4</td><td>3</td><td>5</td><td>-</td></tr>
+                        <tr style="background:#111;"><td style="font-weight:700;">SI</td><td>13</td><td>15</td><td>7</td><td>3</td><td>17</td><td>1</td><td>5</td><td>11</td><td>9</td><td>14</td><td>2</td><td>8</td><td>6</td><td>16</td><td>10</td><td>4</td><td>18</td><td>12</td><td>-</td></tr>
                         <tr class="green-line"><td colspan="20"></td></tr>
-                        <tr><td style="font-weight:600;">ACH</td><td class="score-green">4</td><td class="score-green">3</td><td class="score-green">5</td><td class="score-green">6</td><td class="score-green">4</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">4</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">3</td><td class="score-green">6</td><td class="score-green">3</td><td class="score-green">6</td><td class="score-green">5</td><td class="score-green">3</td><td class="score-green">5</td><td class="score-green">82</td></tr>
-                        <tr><td style="font-weight:600;">CK</td><td class="score-green">4</td><td class="score-green">4</td><td class="score-green">6</td><td class="score-green">6</td><td class="score-green">4</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">4</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">4</td><td class="score-green">6</td><td class="score-green">3</td><td class="score-green">6</td><td class="score-green">5</td><td class="score-green">3</td><td class="score-green">5</td><td class="score-green">85</td></tr>
-                        <tr class="green-line"><td colspan="20"></td></tr>
-                        <tr><td style="color:#4caf50; font-weight:600;">T-1</td>
-                            <td class="score-green">AS</td><td class="score-green">A1</td><td class="score-green">AS</td><td class="score-green">A1</td><td class="score-green">A2</td><td class="score-green">A3</td><td class="score-green">A4</td><td class="score-green">A5</td><td class="score-green">A6</td><td class="score-green">A6</td><td class="score-green">A7</td><td class="score-gold">A8</td>
-                            <td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td>-</td></tr>
-                        <tr class="green-line"><td colspan="20"></td></tr>
-                        <tr><td style="font-weight:600;">KF</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">7</td><td class="score-green">2</td><td class="score-green">4</td><td class="score-green">6</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">6</td><td class="score-green">5</td><td class="score-green">6</td><td class="score-green">4</td><td class="score-green">7</td><td class="score-green">4</td><td class="score-green">3</td><td class="score-green">5</td><td class="score-green">85</td></tr>
-                        <tr><td style="font-weight:600;">YHM</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">6</td><td class="score-green">4</td><td class="score-green">6</td><td class="score-green">6</td><td class="score-green">5</td><td class="score-green">7</td><td class="score-green">5</td><td class="score-green">8</td><td class="score-green">5</td><td class="score-green">5</td><td class="score-green">4</td><td class="score-green">7</td><td class="score-green">10</td><td class="score-green">4</td><td class="score-green">5</td><td class="score-green">92</td></tr>
-                        <tr class="green-line"><td colspan="20"></td></tr>
-                        <tr><td style="color:#4caf50; font-weight:600;">T-2</td>
-                            <td class="score-green">B1</td><td class="score-green">B1</td><td class="score-green">AS</td><td class="score-green">A1</td><td class="score-green">A1</td><td class="score-green">A2</td><td class="score-green">A3</td><td class="score-green">A4</td><td class="score-green">A4</td><td class="score-green">A5</td><td class="score-green">A6</td><td class="score-gold">A7</td>
-                            <td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td>-</td></tr>
-                        <tr class="green-line"><td colspan="20"></td></tr>
-                        <tr><td style="color:#4caf50; font-weight:600;">Strk</td>
-                            <td class="score-green">A5</td><td class="score-green">A6</td><td class="score-green">A6</td><td class="score-green">A6</td><td class="score-green">A7</td><td class="score-green">A11</td><td class="score-green">A12</td><td class="score-green">A13</td><td class="score-green">A14</td><td class="score-green">A15</td><td class="score-green">A17</td><td class="score-gold">A18</td>
-                            <td class="score-grey">A18</td><td class="score-grey">A18</td><td class="score-grey">A18</td><td class="score-grey">A18</td><td class="score-grey">A18</td><td class="score-grey">A18</td><td>-</td></tr>
+                        
+                        <!-- T-1 ROW (Flight 1 Team Game) - HIGHLIGHTED -->
+                        <tr style="background:rgba(76,175,80,0.15);">
+                            <td style="color:#4caf50; font-weight:600;">T-1</td>
+                            <td class="score-green">AS</td>
+                            <td class="score-green">A1</td>
+                            <td class="score-green">AS</td>
+                            <td class="score-green">A1</td>
+                            <td class="score-green">A2</td>
+                            <td class="score-green">A3</td>
+                            <td class="score-green">A4</td>
+                            <td class="score-green">A5</td>
+                            <td class="score-green">A6</td>
+                            <td class="score-green">A6</td>
+                            <td class="score-green">A7</td>
+                            <td class="score-gold">A8</td>
+                            <td class="score-grey">A8</td>
+                            <td class="score-grey">A8</td>
+                            <td class="score-grey">A8</td>
+                            <td class="score-grey">A8</td>
+                            <td class="score-grey">A8</td>
+                            <td class="score-grey">A8</td>
+                            <td>-</td>
+                        </tr>
+                        
+                        <!-- T-2 ROW (Flight 2 Team Game) - HIGHLIGHTED -->
+                        <tr style="background:rgba(76,175,80,0.15);">
+                            <td style="color:#4caf50; font-weight:600;">T-2</td>
+                            <td class="score-green">B1</td>
+                            <td class="score-green">B1</td>
+                            <td class="score-green">AS</td>
+                            <td class="score-green">A1</td>
+                            <td class="score-green">A1</td>
+                            <td class="score-green">A2</td>
+                            <td class="score-green">A3</td>
+                            <td class="score-green">A4</td>
+                            <td class="score-green">A4</td>
+                            <td class="score-green">A5</td>
+                            <td class="score-green">A6</td>
+                            <td class="score-gold">A7</td>
+                            <td class="score-grey">A7</td>
+                            <td class="score-grey">A7</td>
+                            <td class="score-grey">A7</td>
+                            <td class="score-grey">A7</td>
+                            <td class="score-grey">A7</td>
+                            <td class="score-grey">A7</td>
+                            <td>-</td>
+                        </tr>
+                        
+                        <!-- STRK ROW (Stroke Game) - HIGHLIGHTED -->
+                        <tr style="background:rgba(76,175,80,0.15);">
+                            <td style="color:#4caf50; font-weight:600;">Strk</td>
+                            <td class="score-green">A5</td>
+                            <td class="score-green">A6</td>
+                            <td class="score-green">A6</td>
+                            <td class="score-green">A6</td>
+                            <td class="score-green">A7</td>
+                            <td class="score-green">A11</td>
+                            <td class="score-green">A12</td>
+                            <td class="score-green">A13</td>
+                            <td class="score-green">A14</td>
+                            <td class="score-green">A15</td>
+                            <td class="score-green">A17</td>
+                            <td class="score-gold">A18</td>
+                            <td class="score-grey">A18</td>
+                            <td class="score-grey">A18</td>
+                            <td class="score-grey">A18</td>
+                            <td class="score-grey">A18</td>
+                            <td class="score-grey">A18</td>
+                            <td class="score-grey">A18</td>
+                            <td>-</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
         </div>
         <div style="margin: 12px 16px; padding: 12px; background:#111; border-radius:12px;">
-            <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">📊 HOW THE SCORECARD WORKS</div>
+            <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">📊 TEAM GAME + STROKE GAME</div>
             <div style="font-size:0.7rem; color:#ccc; line-height:1.5;">
-                <strong>Match Game (Bubbles on player cards)</strong> - 16 points per hole<br>
                 <strong>Team Game (T-1, T-2 rows)</strong> - 2 points per hole<br>
+                • T-1 = Flight 1 result (Team A vs Team B within Flight 1)<br>
+                • T-2 = Flight 2 result (Team A vs Team B within Flight 2)<br><br>
                 <strong>Stroke Game (Strk row)</strong> - 1 point per hole<br>
-                <strong>TOTAL = 19 points per hole</strong>
+                • Cumulative net score of all 8 players<br>
+                • Lower net wins → 1 point per hole
             </div>
         </div>
     `;
     
     document.getElementById('demoScreen').innerHTML = html;
     
-    document.getElementById('instructionText').innerHTML = 'The overall team score (TR) comes from THREE separate games:<br><br>' +
-        '<strong>1. MATCH GAME (16 points)</strong> - Shown in colored bubbles on player cards<br>' +
-        '• Each player plays 4 matches against the 4 opponents on the other team<br>' +
-        '• Each match worth 1 point → 16 points per hole, 288 points total<br><br>' +
-        '<strong>2. TEAM GAME (2 points)</strong> - Shown in T-1 and T-2 rows<br>' +
-        '• T-1 = Flight 1 result (Team A vs Team B within Flight 1)<br>' +
-        '• T-2 = Flight 2 result (Team A vs Team B within Flight 2)<br>' +
-        '• Each flight worth 1 point → 2 points per hole, 36 points total<br><br>' +
-        '<strong>3. STROKE GAME (1 point)</strong> - Shown in Strk row<br>' +
-        '• Cumulative net score of all 8 players (gross minus team handicap)<br>' +
-        '• Lower net wins → 1 point per hole, 18 points total<br><br>' +
-        '<strong>TOTAL = 16 + 2 + 1 = 19 points per hole | 342 points total</strong>';
+    document.getElementById('instructionText').innerHTML = '<strong>TEAM GAME + STROKE GAME (3 points per hole)</strong><br><br>' +
+        '<strong>TEAM GAME (2 points)</strong><br>' +
+        '• <strong>T-1 row</strong> - Flight 1: Best 2 players from Team A vs Best 2 from Team B<br>' +
+        '• <strong>T-2 row</strong> - Flight 2: Best 2 players from Team A vs Best 2 from Team B<br>' +
+        '• Each flight worth 1 point → 2 points per hole<br><br>' +
+        '<strong>STROKE GAME (1 point)</strong><br>' +
+        '• <strong>Strk row</strong> - Cumulative net score of all 8 players<br>' +
+        '• Lower cumulative net wins → 1 point per hole<br><br>' +
+        '<strong>TOTAL = Match Game (16) + Team Game (2) + Stroke Game (1) = 19 points per hole</strong>';
     
     document.getElementById('instructionTip').innerHTML = '📌 Scorecard row colors:<br>' +
         '  <span class="color-demo" style="color:#4caf50; font-weight:600;">A6</span> GREEN - Winning or tied (match still alive)<br>' +
@@ -794,10 +947,10 @@ function renderStep5() {
 }
 
 // ============================================================
-// STEP 6: Sign Card
+// STEP 7: Sign Card
 // ============================================================
 
-function renderStep6() {
+function renderStep7() {
     var html = `
         <div class="demo-header">
             <div style="margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1.1rem; font-weight:800;">HOLE 18</span></div>
@@ -857,10 +1010,10 @@ function showSignModal() {
 }
 
 // ============================================================
-// STEP 7: Waiting Screen
+// STEP 8: Waiting Screen
 // ============================================================
 
-function renderStep7() {
+function renderStep8() {
     var html = `
         <div class="demo-header"></div>
         <div style="text-align:center; padding:40px 20px;">
@@ -882,10 +1035,10 @@ function renderStep7() {
 }
 
 // ============================================================
-// STEP 8: Handicap Adjustment
+// STEP 9: Handicap Adjustment
 // ============================================================
 
-function renderStep8() {
+function renderStep9() {
     var html = `
         <div class="demo-header"></div>
         <div style="background:#1a1a1a; border-radius:28px; padding:20px; margin:16px; border:2px solid #4caf50;">
@@ -956,19 +1109,23 @@ function renderStep() {
             break;
         case 5:
             renderStep5();
-            document.getElementById('instructionTitle').innerHTML = 'Step 5: Understanding Game Results';
+            document.getElementById('instructionTitle').innerHTML = 'Step 5: Match Game (Bubbles)';
             break;
         case 6:
             renderStep6();
-            document.getElementById('instructionTitle').innerHTML = 'Step 6: Sign Your Scorecard';
+            document.getElementById('instructionTitle').innerHTML = 'Step 6: Team Game + Stroke Game';
             break;
         case 7:
             renderStep7();
-            document.getElementById('instructionTitle').innerHTML = 'Step 7: Waiting for Other Flight';
+            document.getElementById('instructionTitle').innerHTML = 'Step 7: Sign Your Scorecard';
             break;
         case 8:
             renderStep8();
-            document.getElementById('instructionTitle').innerHTML = 'Step 8: Handicap Adjustment';
+            document.getElementById('instructionTitle').innerHTML = 'Step 8: Waiting for Other Flight';
+            break;
+        case 9:
+            renderStep9();
+            document.getElementById('instructionTitle').innerHTML = 'Step 9: Handicap Adjustment';
             break;
     }
     updateStepIndicator();
@@ -1016,15 +1173,13 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - REVISED: Step order now matches logical workflow (Enter Scores → Correct Holes → Game Results → Sign Card → Waiting → Handicap)
-   - UPDATED: All UI styling to match current app (pill-shaped buttons, green theme)
-   - ADDED: Celebration screen preview in handicap step
-   - ADDED: Anchor explanation in handicap step
-   - ADDED: Data persistence tip
-   - UPDATED: Bubble colors and scorecard colors to match current spec
-   - All UI styling matches current game-ui.js and game-scorecard.js
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - SPLIT: Step 5 now shows Match Game (player cards with bubbles: green/red/gold/grey)
+   - SPLIT: Step 6 now shows Team Game + Stroke Game (scorecard with T-1, T-2, Strk rows)
+   - Total steps now 9 (was 8)
+   - Step 7: Sign Card, Step 8: Waiting, Step 9: Handicap Adjustment
+   - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
