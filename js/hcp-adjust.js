@@ -1,13 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.20
-KEY CHANGES from v2.19:
-   - CHANGED: Team grouping is now enabled for ALL displays (both live games and history)
-   - showAdjustmentTable() now defaults sortByTeam = true for all modes
-   - Live game handicap adjustment now shows TEAM A / TEAM B grouping
-   - Removed sortByTeam parameter (always true)
-   - Players sorted by Team (A first, then B), then by starting handicap (ascending)
-   - Black border line above team separator rows preserved
+VERSION: 2.21
+KEY CHANGES from v2.20:
+   - FIXED: Back button in read-only mode now only closes modal, does NOT reload page
+   - Preserves scroll position and game list state when closing handicap modal
+   - Added returnToPreviousPage flag to control navigation behavior
+   - displayStoredAdjustment() now accepts optional returnToPreviousPage parameter
    - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -28,6 +26,7 @@ var HandicapAdjustment = (function() {
     var isViewOnly = false;
     var isReadOnlyMode = false;
     var returnDestination = null;
+    var returnToPreviousPage = false;  // NEW v2.21: If true, just close modal, don't navigate
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -257,7 +256,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.20: Team grouping enabled for ALL displays
+    // Display Table - v2.21: Back button behavior fixed
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -350,11 +349,20 @@ var HandicapAdjustment = (function() {
         
         var buttonsHtml = '';
         if (isReadOnly) {
-            buttonsHtml = `
-                <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
-                    <button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:8px 16px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">← Back</button>
-                </div>
-            `;
+            // FIXED v2.21: Back button behavior - check if we should just close modal
+            if (returnToPreviousPage) {
+                buttonsHtml = `
+                    <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
+                        <button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:8px 16px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">← Close</button>
+                    </div>
+                `;
+            } else {
+                buttonsHtml = `
+                    <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
+                        <button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:8px 16px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">← Back</button>
+                    </div>
+                `;
+            }
         } else {
             buttonsHtml = `
                 <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
@@ -388,7 +396,11 @@ var HandicapAdjustment = (function() {
             if (backBtn) {
                 backBtn.addEventListener('click', function() {
                     document.getElementById('hcpAdjustModal').remove();
-                    if (returnDestination) {
+                    // FIXED v2.21: If returnToPreviousPage is true, just close modal, don't navigate
+                    if (returnToPreviousPage) {
+                        // Do nothing - just close modal, stay on current page
+                        console.log('[HandicapAdjustment] Closing modal, staying on current page');
+                    } else if (returnDestination) {
                         window.location.href = returnDestination;
                     } else {
                         window.history.back();
@@ -433,14 +445,18 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.20: Display stored adjustment from history record
+    // v2.21: Display stored adjustment from history record
+    // Now accepts optional returnToPreviousPage flag
     // ============================================================
     
-    function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList) {
+    function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList, returnToPrevious) {
         if (!adjustedHandicaps || !adjustedHandicaps.players) {
             console.error("No stored adjustment data available");
             return false;
         }
+        
+        // NEW v2.21: Set flag for Back button behavior
+        returnToPreviousPage = (returnToPrevious === true);
         
         var playerMap = {};
         if (allPlayersList) {
@@ -487,6 +503,7 @@ var HandicapAdjustment = (function() {
         currentArchiveId = archiveId;
         isReadOnlyMode = true;
         returnDestination = returnUrl || "view-history.html?gameId=" + gameId;
+        returnToPreviousPage = false;  // Use navigation for this path
         
         if (archiveId && typeof HistoryRecord !== 'undefined') {
             HistoryRecord.getArchivedGame(archiveId, function(err, archiveData) {
@@ -502,7 +519,7 @@ var HandicapAdjustment = (function() {
                 var allPlayersList = archiveData.players || [];
                 
                 if (adjustedHandicaps && adjustedHandicaps.players) {
-                    displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList);
+                    displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList, false);
                 } else {
                     console.log("No stored adjustment data, attempting legacy load");
                     loadFromHistoryLegacy(gameId, returnDestination);
@@ -603,6 +620,7 @@ var HandicapAdjustment = (function() {
         coursePar = courseParParam || [];
         startingHole = startingHoleParam || 1;
         isReadOnlyMode = true;
+        returnToPreviousPage = false;
         
         if (!allPlayers.length) {
             console.error('No players provided for handicap adjustment');
@@ -626,6 +644,7 @@ var HandicapAdjustment = (function() {
         allPlayers = winningPlayers.teamA.concat(winningPlayers.teamB);
         isViewOnly = isViewOnlyMode || false;
         isReadOnlyMode = false;
+        returnToPreviousPage = false;
         
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
@@ -827,7 +846,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.20";
+    window.HANDICAP_ADJUST_VERSION = "2.21";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -846,13 +865,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.20
-KEY CHANGES from v2.19:
-   - CHANGED: Team grouping is now enabled for ALL displays (both live games and history)
-   - showAdjustmentTable() now sorts by Team (A first, then B), then by starting handicap
-   - Live game handicap adjustment now shows TEAM A / TEAM B grouping
-   - Removed sortByTeam parameter (always true)
-   - Black border line above team separator rows preserved
+VERSION: 2.21
+KEY CHANGES from v2.20:
+   - FIXED: Back button in read-only mode now only closes modal, does NOT reload page
+   - Preserves scroll position and game list state when closing handicap modal
+   - Added returnToPreviousPage flag to control navigation behavior
+   - displayStoredAdjustment() now accepts optional returnToPreviousPage parameter
    - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
