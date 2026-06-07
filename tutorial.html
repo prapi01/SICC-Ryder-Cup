@@ -1,11 +1,10 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - SPLIT: Step 5 now shows Match Game (player cards with bubbles: green/red/gold/grey)
-   - SPLIT: Step 6 now shows Team Game + Stroke Game (scorecard with T-1, T-2, Strk rows)
-   - Total steps now 9 (was 8)
-   - Step 7: Sign Card, Step 8: Waiting, Step 9: Handicap Adjustment
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Step 5 - Changed "16 points per hole" to "16 points"
+   - ADDED: Red clinch bubble example (bubble-white class with white text)
+   - Updated bubble examples to show all 5 states: Green, Red, Gold, White (losing clinch), Grey
    - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
@@ -382,6 +381,21 @@ STATUS: Ready for integration
         .highlight-row {
             background: rgba(76,175,80,0.15);
         }
+        
+        /* Bubble legend */
+        .bubble-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+            justify-content: center;
+        }
+        .bubble-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.65rem;
+        }
     </style>
 </head>
 <body>
@@ -409,7 +423,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.08</div>
+<div class="version-tag">v1.09</div>
 
 <script>
 // ============================================================
@@ -717,13 +731,13 @@ function renderStep4() {
 }
 
 // ============================================================
-// STEP 5: MATCH GAME - Player cards with bubbles (Green/Red/Gold/Grey)
+// STEP 5: MATCH GAME - Player cards with bubbles (Green/Red/Gold/White/Grey)
 // ============================================================
 
 function renderStep5() {
     var html = `
         <div class="demo-header">
-            <div style="margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1rem; font-weight:800;">MATCH GAME - Hole 12</span></div>
+            <div style="margin-top:8px;"><span style="background:#111; padding:4px 20px; border-radius:40px; font-size:1rem; font-weight:800;">MATCH GAME - 16 points</span></div>
         </div>
         <div class="team-score-card">
             <div style="display:flex; justify-content:center; gap:16px;">
@@ -733,7 +747,7 @@ function renderStep5() {
             </div>
         </div>
         
-        <!-- Player Card 1 - Team A, Flight 1 - Showing match bubbles -->
+        <!-- Player Card 1 - Team A, Flight 1 - Showing all bubble types -->
         <div class="player-card">
             <div class="player-header">
                 <div><span class="player-name">Ang C H</span><span class="player-handicap">ACH 2</span></div>
@@ -743,25 +757,11 @@ function renderStep5() {
                 <div class="bubble bubble-green">vs OCB 1</div>
                 <div class="bubble bubble-green">vs JO 2</div>
                 <div class="bubble bubble-gold">vs JG 3</div>
-                <div class="bubble bubble-grey">vs P 4</div>
+                <div class="bubble bubble-white">vs P 2</div>
             </div>
         </div>
         
-        <!-- Player Card 2 - Team A, Flight 1 -->
-        <div class="player-card">
-            <div class="player-header">
-                <div><span class="player-name">C K</span><span class="player-handicap">CK 10</span></div>
-                <div class="score-value">6</div>
-            </div>
-            <div class="bubbles">
-                <div class="bubble bubble-green">vs OCB 2</div>
-                <div class="bubble bubble-gold">vs JO 3</div>
-                <div class="bubble bubble-grey">vs JG 4</div>
-                <div class="bubble bubble-grey">vs P 5</div>
-            </div>
-        </div>
-        
-        <!-- Player Card 3 - Team B, Flight 1 -->
+        <!-- Player Card 2 - Team B, Flight 1 - Showing losing side -->
         <div class="player-card">
             <div class="player-header">
                 <div><span class="player-name">Ong C B</span><span class="player-handicap">OCB 1</span></div>
@@ -775,25 +775,22 @@ function renderStep5() {
             </div>
         </div>
         
-        <!-- Player Card 4 - Team B, Flight 1 -->
-        <div class="player-card">
-            <div class="player-header">
-                <div><span class="player-name">James Ong</span><span class="player-handicap">JO 10</span></div>
-                <div class="score-value">7</div>
-            </div>
-            <div class="bubbles">
-                <div class="bubble bubble-red">vs ACH 2</div>
-                <div class="bubble bubble-gold">vs CK 3</div>
-                <div class="bubble bubble-grey">vs KF 4</div>
-                <div class="bubble bubble-grey">vs YHM 5</div>
-            </div>
+        <!-- Bubble Legend -->
+        <div class="bubble-legend">
+            <div class="bubble-legend-item"><div class="bubble bubble-green" style="padding:2px 6px;">WIN</div><span>Winning match</span></div>
+            <div class="bubble-legend-item"><div class="bubble bubble-red" style="padding:2px 6px;">LOSE</div><span>Losing match</span></div>
+            <div class="bubble-legend-item"><div class="bubble bubble-gold" style="padding:2px 6px;">CLINCH</div><span>Won match on this hole</span></div>
+            <div class="bubble-legend-item"><div class="bubble bubble-white" style="padding:2px 6px;">LOST</div><span>Lost match on this hole</span></div>
+            <div class="bubble-legend-item"><div class="bubble bubble-grey" style="padding:2px 6px;">DONE</div><span>Match already decided</span></div>
         </div>
         
         <div style="margin: 12px 16px; padding: 12px; background:#111; border-radius:12px;">
-            <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">🏆 MATCH GAME (16 points per hole)</div>
+            <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">🏆 MATCH GAME (16 points)</div>
             <div style="font-size:0.7rem; color:#ccc; line-height:1.5;">
                 Each player plays 4 matches against the 4 opponents on the other team.<br>
-                Each match worth 1 point → <strong>16 points per hole</strong>.
+                Each match worth 1 point → <strong>16 points per hole</strong>.<br>
+                The number shows how many holes the player is winning/losing by.<br>
+                <strong>AS</strong> = All Square (tied match).
             </div>
         </div>
     `;
@@ -804,12 +801,13 @@ function renderStep5() {
         'Each player has 4 bubbles showing their match results against the 4 opponents:<br><br>' +
         '<span class="color-demo" style="background:#1a3a1a; color:#4caf50; border:1px solid #4caf50;">GREEN</span> Winning match (ahead)<br>' +
         '<span class="color-demo" style="background:#3a1a1a; color:#ff6b6b; border:1px solid #ff6b6b;">RED</span> Losing match (behind)<br>' +
-        '<span class="color-demo" style="background:#1a3a1a; color:#ffaa44; border:2px solid #ffaa44;">GOLD</span> Match WON on this hole (clinch)<br>' +
+        '<span class="color-demo" style="background:#1a3a1a; color:#ffaa44; border:2px solid #ffaa44;">GOLD</span> Won match on this hole (winning clinch)<br>' +
+        '<span class="color-demo" style="background:#3a1a1a; color:#ffffff; border:2px solid #ffffff;">WHITE</span> Lost match on this hole (losing clinch)<br>' +
         '<span class="color-demo" style="background:#2a2a2a; color:#888; border:1px solid #444;">GREY</span> Match already decided (played after clinch)<br><br>' +
         'The number shows how many holes the player is winning/losing by.<br>' +
         '<strong>AS</strong> = All Square (tied match)';
     
-    document.getElementById('instructionTip').innerHTML = '💡 The total match points from all 16 matches determine 16 of the 19 points per hole.<br><br>📌 GOLD bubbles only appear on the hole where a match is mathematically clinched. After that, the bubble turns GREY.';
+    document.getElementById('instructionTip').innerHTML = '💡 The total match points from all 16 matches determine 16 of the 19 points per hole.<br><br>📌 GOLD/WHITE bubbles only appear on the hole where a match is mathematically clinched. After that, the bubble turns GREY.';
 }
 
 // ============================================================
@@ -1051,7 +1049,7 @@ function renderStep9() {
                         <th style="padding:8px;">Anc</th>
                         <th style="padding:8px;">Perf</th>
                         <th style="padding:8px;">Final</th>
-                     </tr></thead>
+                    </tr></thead>
                     <tbody>
                         <tr style="border-bottom:1px solid #333;"><td style="padding:8px; text-align:left;">Jeff Goh</td><td style="padding:8px;">0</td><td style="padding:8px; color:#ff6b6b;">+2</td><td style="padding:8px; color:#ff6b6b;">+1</td><td style="padding:8px; color:#4caf50;">3</td></tr>
                         <tr style="border-bottom:1px solid #333;"><td style="padding:8px; text-align:left;">Ang C H</td><td style="padding:8px;">2</td><td style="padding:8px; color:#4caf50;">-1</td><td style="padding:8px; color:#ff6b6b;">+1</td><td style="padding:8px; color:#4caf50;">2</td></tr>
@@ -1066,7 +1064,7 @@ function renderStep9() {
             </div>
             <div style="margin-top:16px; padding:12px; background:#0a0a0a; border-radius:12px;">
                 <div style="font-size:0.7rem; color:#ffaa44; margin-bottom:4px;">🏆 What is Anchor?</div>
-                <div style="font-size:0.65rem; color:#ccc;">The player with the lowest starting handicap. All other players\' adjustments are calculated relative to the Anchor.</div>
+                <div style="font-size:0.65rem; color:#ccc;">The player with the lowest starting handicap. All other players' adjustments are calculated relative to the Anchor.</div>
             </div>
         </div>
     `;
@@ -1173,12 +1171,12 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - SPLIT: Step 5 now shows Match Game (player cards with bubbles: green/red/gold/grey)
-   - SPLIT: Step 6 now shows Team Game + Stroke Game (scorecard with T-1, T-2, Strk rows)
-   - Total steps now 9 (was 8)
-   - Step 7: Sign Card, Step 8: Waiting, Step 9: Handicap Adjustment
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Step 5 - Changed "16 points per hole" to "16 points"
+   - ADDED: Red clinch bubble example (bubble-white class with white text)
+   - Updated bubble examples to show all 5 states: Green, Red, Gold, White (losing clinch), Grey
+   - Added bubble legend with all 5 states
    - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
