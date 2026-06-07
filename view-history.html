@@ -1,12 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.12
-KEY CHANGES from v8.11:
-   - FIXED: Handicap adjustment now displays stored data directly from history record
-   - Removed dependency on history-record.js and hcp-adjust.js initForHistory
-   - Uses displayStoredAdjustment() with data already in games array
-   - No extra Firestore calls, no recalculation, no missing dependencies
-   - Anc and Perf values now show correctly (non-zero)
+VERSION: 8.13
+KEY CHANGES from v8.12:
+   - FIXED: Handicap modal Back button now stays on view-history.html (no navigation to index)
+   - Passes returnToPreviousPage=true to displayStoredAdjustment
+   - Modal now closes without page reload or navigation
+   - Preserves scroll position and game list state
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
@@ -322,13 +321,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.12</div>
+<div class="version-tag">v8.13</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.12";
+window.VIEW_HISTORY_VERSION = "8.13";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -381,20 +380,21 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// Show Handicap Adjustment - FIXED v8.12: Use stored data directly
+// Show Handicap Adjustment - FIXED v8.13: Pass true to stay on page
 // ============================================================
 
 function showHandicapAdjustment(adjustedHandicaps, anchorName, players) {
-    // Load hcp-adjust.js if not already loaded
     if (typeof HandicapAdjustment === 'undefined') {
         var script = document.createElement('script');
         script.src = 'js/hcp-adjust.js';
         script.onload = function() {
-            HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players);
+            // Pass true to keep modal on same page (no navigation to index)
+            HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players, true);
         };
         document.head.appendChild(script);
     } else {
-        HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players);
+        // Pass true to keep modal on same page (no navigation to index)
+        HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players, true);
     }
 }
 
@@ -770,12 +770,8 @@ function renderGameList(games) {
         var teamADisplay = tr.teamA % 1 === 0 ? tr.teamA : tr.teamA.toFixed(1);
         var teamBDisplay = tr.teamB % 1 === 0 ? tr.teamB : tr.teamB.toFixed(1);
         
-        // Store adjustedHandicaps and players data on the card for easy access
-        var adjustedHandicapsJson = JSON.stringify(game.adjustedHandicaps).replace(/"/g, '&quot;');
-        var playersJson = JSON.stringify(game.players).replace(/"/g, '&quot;');
-        
         html += `
-            <div class="game-card" data-game-index="${i}" data-adjusted-handicaps='${adjustedHandicapsJson}' data-players='${playersJson}'>
+            <div class="game-card" data-game-index="${i}">
                 <div class="game-header">
                     <div class="game-course">⛳ ${escapeHtml(game.courseName)}</div>
                     <div class="game-date">${displayDate}</div>
@@ -828,11 +824,10 @@ function renderGameList(games) {
         });
     });
     
-    // FIXED v8.12: Handicap button uses stored data directly from the card
+    // FIXED v8.13: Handicap button uses stored data directly with returnToPreviousPage = true
     document.querySelectorAll('.btn-handicap').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
-            var card = this.closest('.game-card');
             var idx = parseInt(this.getAttribute('data-game-index'));
             var game = allGames[idx];
             
@@ -926,13 +921,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.12
-KEY CHANGES from v8.11:
-   - FIXED: Handicap adjustment now displays stored data directly from history record
-   - Removed dependency on history-record.js and hcp-adjust.js initForHistory
-   - Uses displayStoredAdjustment() with data already in games array
-   - No extra Firestore calls, no recalculation, no missing dependencies
-   - Anc and Perf values now show correctly (non-zero)
+VERSION: 8.13
+KEY CHANGES from v8.12:
+   - FIXED: Handicap modal Back button now stays on view-history.html (no navigation to index)
+   - Passes returnToPreviousPage=true to displayStoredAdjustment
+   - Modal now closes without page reload or navigation
+   - Preserves scroll position and game list state
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
