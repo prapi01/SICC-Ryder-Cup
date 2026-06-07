@@ -1,10 +1,9 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Step 5 - Changed "16 points per hole" to "16 points"
-   - ADDED: Red clinch bubble example (bubble-white class with white text)
-   - Updated bubble examples to show all 5 states: Green, Red, Gold, White (losing clinch), Grey
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Step 6 instruction text - clarified Team Game (2 points) and Stroke Game (1 point)
+   - Updated description to match current app logic
    - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
@@ -423,7 +422,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.09</div>
+<div class="version-tag">v1.10</div>
 
 <script>
 // ============================================================
@@ -835,78 +834,27 @@ function renderStep6() {
                     <tbody>
                         <tr style="background:#111;"><td style="font-weight:700;">Par</td><td>4</td><td>3</td><td>4</td><td>5</td><td>3</td><td>4</td><td>4</td><td>4</td><td>4</td><td>4</td><td>4</td><td>3</td><td>5</td><td>3</td><td>5</td><td>4</td><td>3</td><td>5</td><td>-</td></tr>
                         <tr style="background:#111;"><td style="font-weight:700;">SI</td><td>13</td><td>15</td><td>7</td><td>3</td><td>17</td><td>1</td><td>5</td><td>11</td><td>9</td><td>14</td><td>2</td><td>8</td><td>6</td><td>16</td><td>10</td><td>4</td><td>18</td><td>12</td><td>-</td></tr>
-                        <tr class="green-line"><td colspan="20"></td></tr>
+                        <tr class="green-line"><td colspan="20"></tr>
                         
                         <!-- T-1 ROW (Flight 1 Team Game) - HIGHLIGHTED -->
                         <tr style="background:rgba(76,175,80,0.15);">
                             <td style="color:#4caf50; font-weight:600;">T-1</td>
-                            <td class="score-green">AS</td>
-                            <td class="score-green">A1</td>
-                            <td class="score-green">AS</td>
-                            <td class="score-green">A1</td>
-                            <td class="score-green">A2</td>
-                            <td class="score-green">A3</td>
-                            <td class="score-green">A4</td>
-                            <td class="score-green">A5</td>
-                            <td class="score-green">A6</td>
-                            <td class="score-green">A6</td>
-                            <td class="score-green">A7</td>
-                            <td class="score-gold">A8</td>
-                            <td class="score-grey">A8</td>
-                            <td class="score-grey">A8</td>
-                            <td class="score-grey">A8</td>
-                            <td class="score-grey">A8</td>
-                            <td class="score-grey">A8</td>
-                            <td class="score-grey">A8</td>
-                            <td>-</td>
+                            <td class="score-green">AS</td><td class="score-green">A1</td><td class="score-green">AS</td><td class="score-green">A1</td><td class="score-green">A2</td><td class="score-green">A3</td><td class="score-green">A4</td><td class="score-green">A5</td><td class="score-green">A6</td><td class="score-green">A6</td><td class="score-green">A7</td><td class="score-gold">A8</td>
+                            <td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td>-</td>
                         </tr>
                         
                         <!-- T-2 ROW (Flight 2 Team Game) - HIGHLIGHTED -->
                         <tr style="background:rgba(76,175,80,0.15);">
                             <td style="color:#4caf50; font-weight:600;">T-2</td>
-                            <td class="score-green">B1</td>
-                            <td class="score-green">B1</td>
-                            <td class="score-green">AS</td>
-                            <td class="score-green">A1</td>
-                            <td class="score-green">A1</td>
-                            <td class="score-green">A2</td>
-                            <td class="score-green">A3</td>
-                            <td class="score-green">A4</td>
-                            <td class="score-green">A4</td>
-                            <td class="score-green">A5</td>
-                            <td class="score-green">A6</td>
-                            <td class="score-gold">A7</td>
-                            <td class="score-grey">A7</td>
-                            <td class="score-grey">A7</td>
-                            <td class="score-grey">A7</td>
-                            <td class="score-grey">A7</td>
-                            <td class="score-grey">A7</td>
-                            <td class="score-grey">A7</td>
-                            <td>-</td>
+                            <td class="score-green">B1</td><td class="score-green">B1</td><td class="score-green">AS</td><td class="score-green">A1</td><td class="score-green">A1</td><td class="score-green">A2</td><td class="score-green">A3</td><td class="score-green">A4</td><td class="score-green">A4</td><td class="score-green">A5</td><td class="score-green">A6</td><td class="score-gold">A7</td>
+                            <td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td>-</td>
                         </tr>
                         
                         <!-- STRK ROW (Stroke Game) - HIGHLIGHTED -->
                         <tr style="background:rgba(76,175,80,0.15);">
                             <td style="color:#4caf50; font-weight:600;">Strk</td>
-                            <td class="score-green">A5</td>
-                            <td class="score-green">A6</td>
-                            <td class="score-green">A6</td>
-                            <td class="score-green">A6</td>
-                            <td class="score-green">A7</td>
-                            <td class="score-green">A11</td>
-                            <td class="score-green">A12</td>
-                            <td class="score-green">A13</td>
-                            <td class="score-green">A14</td>
-                            <td class="score-green">A15</td>
-                            <td class="score-green">A17</td>
-                            <td class="score-gold">A18</td>
-                            <td class="score-grey">A18</td>
-                            <td class="score-grey">A18</td>
-                            <td class="score-grey">A18</td>
-                            <td class="score-grey">A18</td>
-                            <td class="score-grey">A18</td>
-                            <td class="score-grey">A18</td>
-                            <td>-</td>
+                            <td class="score-green">A5</td><td class="score-green">A6</td><td class="score-green">A6</td><td class="score-green">A6</td><td class="score-green">A7</td><td class="score-green">A11</td><td class="score-green">A12</td><td class="score-green">A13</td><td class="score-green">A14</td><td class="score-green">A15</td><td class="score-green">A17</td><td class="score-gold">A18</td>
+                            <td class="score-grey">A18</td><td class="score-grey">A18</td><td class="score-grey">A18</td><td class="score-grey">A18</td><td class="score-grey">A18</td><td class="score-grey">A18</td><td>-</td>
                         </tr>
                     </tbody>
                 </table>
@@ -920,7 +868,7 @@ function renderStep6() {
                 • T-2 = Flight 2 result (Team A vs Team B within Flight 2)<br><br>
                 <strong>Stroke Game (Strk row)</strong> - 1 point per hole<br>
                 • Cumulative net score of all 8 players<br>
-                • Lower net wins → 1 point per hole
+                • Lower net wins → 1 point
             </div>
         </div>
     `;
@@ -1049,7 +997,7 @@ function renderStep9() {
                         <th style="padding:8px;">Anc</th>
                         <th style="padding:8px;">Perf</th>
                         <th style="padding:8px;">Final</th>
-                    </tr></thead>
+                    </table></thead>
                     <tbody>
                         <tr style="border-bottom:1px solid #333;"><td style="padding:8px; text-align:left;">Jeff Goh</td><td style="padding:8px;">0</td><td style="padding:8px; color:#ff6b6b;">+2</td><td style="padding:8px; color:#ff6b6b;">+1</td><td style="padding:8px; color:#4caf50;">3</td></tr>
                         <tr style="border-bottom:1px solid #333;"><td style="padding:8px; text-align:left;">Ang C H</td><td style="padding:8px;">2</td><td style="padding:8px; color:#4caf50;">-1</td><td style="padding:8px; color:#ff6b6b;">+1</td><td style="padding:8px; color:#4caf50;">2</td></tr>
@@ -1171,12 +1119,10 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Step 5 - Changed "16 points per hole" to "16 points"
-   - ADDED: Red clinch bubble example (bubble-white class with white text)
-   - Updated bubble examples to show all 5 states: Green, Red, Gold, White (losing clinch), Grey
-   - Added bubble legend with all 5 states
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Step 6 instruction text - clarified Team Game (2 points) and Stroke Game (1 point)
+   - Updated description to match current app logic
    - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
