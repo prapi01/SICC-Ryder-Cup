@@ -1,12 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 5.59
-KEY CHANGES from v5.58:
-   - FIXED: computedUpToHole now always updates to the maximum value
-   - Previously only updated if newComputedUpToHole > currentComputedUpToHole
-   - Now uses Math.max() to ensure computedUpToHole never goes backward
-   - Critical for cascade loop to know how many holes are saved
-   - All existing fixes preserved (clinch preservation, f2IntraMatches writes, cascade loop)
+VERSION: 5.60
+KEY CHANGES from v5.59:
+   - ADDED: Cache-busting version check to force reload on new deployments
+   - Prevents users from running stale cached versions after updates
+   - Uses localStorage to track version and redirects with ?v= parameter
+   - All existing functionality preserved (clinch preservation, f2IntraMatches writes, cascade loop, computedUpToHole fix)
    - All debug logging retained
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -297,14 +296,26 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.59</div>
+<div class="version-tag">v5.60</div>
 
 <script>
 // ============================================================
+// VERSION CACHE-BUSTING - Forces reload on new deployment
+// ============================================================
+var APP_VERSION = "5.60";
+var CACHE_KEY = "real_game_version";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
+    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+}
+
+// ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.59";
-console.log("[REAL-GAME] Initializing v5.59 with computedUpToHole fix");
+window.REAL_GAME_VERSION = "5.60";
+console.log("[REAL-GAME] Initializing v5.60 with cache-busting");
 
 // ============================================================
 // DEBUG CONFIGURATION - Set target hole to monitor
@@ -1364,7 +1375,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.59";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.60";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -2050,13 +2061,12 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.59
-KEY CHANGES from v5.58:
-   - FIXED: computedUpToHole now always updates to the maximum value
-   - Previously only updated if newComputedUpToHole > currentComputedUpToHole
-   - Now uses Math.max() to ensure computedUpToHole never goes backward
-   - Critical for cascade loop to know how many holes are saved
-   - All existing fixes preserved (clinch preservation, f2IntraMatches writes, cascade loop)
+VERSION: 5.60
+KEY CHANGES from v5.59:
+   - ADDED: Cache-busting version check to force reload on new deployments
+   - Prevents users from running stale cached versions after updates
+   - Uses localStorage to track version and redirects with ?v= parameter
+   - All existing functionality preserved (clinch preservation, f2IntraMatches writes, cascade loop, computedUpToHole fix)
    - All debug logging retained
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
