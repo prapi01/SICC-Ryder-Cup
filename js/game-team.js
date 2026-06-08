@@ -1,20 +1,21 @@
 /*
 FILE: js/game-team.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Cumulative values are now ONLY calculated for holes where BOTH flights have saved data
-   - Previously, cumulative values were carried forward to unsaved holes (causing false clinches)
-   - Now uses a "last known cumulative" approach but only for display, NOT for clinch detection
-   - The cumulative array now properly reflects that unsaved holes have no calculated value (0)
-   - Clinch detection now only considers positions up to the last hole where BOTH flights have data
-   - This prevents false T-1/T-2 clinches on unsaved holes
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: T-1 (Flight 1) now calculates independently of Flight 2 status
+   - FIXED: T-2 (Flight 2) now calculates independently of Flight 1 status
+   - Previously both required BOTH flights to have saved data (WRONG)
+   - T-1 updates immediately when Flight 1 saves a hole
+   - T-2 updates immediately when Flight 2 saves a hole
+   - Stroke game (Strk) still requires BOTH flights (cumulative net of all 8 players)
+   - Clinch detection for T-1/T-2 now works with independent data
    - All other functions unchanged
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_TEAM_VERSION = "1.09";
+window.GAME_TEAM_VERSION = "1.10";
 
 var GameTeam = (function() {
     
@@ -113,7 +114,7 @@ var GameTeam = (function() {
         return results;
     }
 
-    // Legacy calculate function (no clinch detection)
+    // Main calculate function - FIXED v1.10: T-1 and T-2 independent
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat) {
         // Calculate minimum handicap across all players for Relative format
         var minHandicap = calculateMinHandicap(allPlayers);
@@ -136,7 +137,7 @@ var GameTeam = (function() {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
         
-        // Get players by team (still needed for base data)
+        // Get players by team
         var flight1A = flight1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var flight1B = flight1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var flight2A = flight2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -156,16 +157,18 @@ var GameTeam = (function() {
             var f1Hole = GameData.parseHoleData(f1DataString, holeNum);
             var f2Hole = GameData.parseHoleData(f2DataString, holeNum);
             
-            // CRITICAL FIX v1.09: Only calculate if BOTH flights have saved this hole
-            // Otherwise, leave cumulative as 0 (no carry forward)
-            var bothFlightsSaved = (f1Hole && f1Hole.saved) && (f2Hole && f2Hole.saved);
+            // FIXED v1.10: T-1 (Flight 1) only requires Flight 1 saved
+            // T-2 (Flight 2) only requires Flight 2 saved
+            var f1Available = (f1Hole && f1Hole.saved);
+            var f2Available = (f2Hole && f2Hole.saved);
 
             // ============================================================
-            // FLIGHT 1 - Sort by net score for this hole
+            // FLIGHT 1 (T-1) - Independent of Flight 2
             // ============================================================
             var flight1Match1 = 0, flight1Match2 = 0;
+            var flight1Total = 0;
             
-            if (bothFlightsSaved && flight1A.length >= 2 && flight1B.length >= 2) {
+            if (f1Available && flight1A.length >= 2 && flight1B.length >= 2) {
                 // Get gross scores for Team A
                 var teamAGross1 = [f1Hole.scores.a1, f1Hole.scores.a2];
                 // Get gross scores for Team B
@@ -200,14 +203,21 @@ var GameTeam = (function() {
                 } else {
                     flight1Match2 = 0;  // Tie
                 }
+                
+                flight1Total = flight1Match1 + flight1Match2;
+                runningFlight1 += flight1Total;
             }
+            
+            // Update Flight 1 cumulative (T-1) - independent of Flight 2
+            cumulativeFlight1[idx] = f1Available ? runningFlight1 : 0;
 
             // ============================================================
-            // FLIGHT 2 - Sort by net score for this hole
+            // FLIGHT 2 (T-2) - Independent of Flight 1
             // ============================================================
             var flight2Match1 = 0, flight2Match2 = 0;
+            var flight2Total = 0;
             
-            if (bothFlightsSaved && flight2A.length >= 2 && flight2B.length >= 2) {
+            if (f2Available && flight2A.length >= 2 && flight2B.length >= 2) {
                 // Get gross scores for Team A
                 var teamAGross2 = [f2Hole.scores.a1, f2Hole.scores.a2];
                 // Get gross scores for Team B
@@ -242,29 +252,22 @@ var GameTeam = (function() {
                 } else {
                     flight2Match2 = 0;  // Tie
                 }
-            }
-
-            var flight1Total = flight1Match1 + flight1Match2;
-            var flight2Total = flight2Match1 + flight2Match2;
-
-            // Only update running totals if BOTH flights saved this hole
-            if (bothFlightsSaved) {
-                runningFlight1 += flight1Total;
+                
+                flight2Total = flight2Match1 + flight2Match2;
                 runningFlight2 += flight2Total;
             }
             
-            // CRITICAL FIX v1.09: For unsaved holes, cumulative remains 0 (not carried forward)
-            // This prevents false clinch detection on holes that haven't been played yet
-            cumulativeFlight1[idx] = bothFlightsSaved ? runningFlight1 : 0;
-            cumulativeFlight2[idx] = bothFlightsSaved ? runningFlight2 : 0;
+            // Update Flight 2 cumulative (T-2) - independent of Flight 1
+            cumulativeFlight2[idx] = f2Available ? runningFlight2 : 0;
 
-            // For display purposes, we still show the last known cumulative value
-            // But for clinch detection, we use the actual cumulative (0 for unsaved holes)
-            if (bothFlightsSaved) {
+            // ============================================================
+            // DISPLAY FOR T-1 AND T-2 (Independent)
+            // ============================================================
+            
+            // Flight 1 display (T-1)
+            if (f1Available) {
                 flight1Leaders[idx] = runningFlight1 > 0 ? "A" : (runningFlight1 < 0 ? "B" : "AS");
-                flight2Leaders[idx] = runningFlight2 > 0 ? "A" : (runningFlight2 < 0 ? "B" : "AS");
                 
-                // Display strings
                 if (runningFlight1 > 0) {
                     displayT1[idx] = "A" + runningFlight1;
                     teamGameTR[idx] = { A: 1, B: 0 };
@@ -275,7 +278,16 @@ var GameTeam = (function() {
                     displayT1[idx] = "AS";
                     teamGameTR[idx] = { A: 0.5, B: 0.5 };
                 }
-
+            } else {
+                flight1Leaders[idx] = "AS";
+                displayT1[idx] = "AS";
+                teamGameTR[idx] = { A: 0.5, B: 0.5 };
+            }
+            
+            // Flight 2 display (T-2)
+            if (f2Available) {
+                flight2Leaders[idx] = runningFlight2 > 0 ? "A" : (runningFlight2 < 0 ? "B" : "AS");
+                
                 if (runningFlight2 > 0) {
                     displayT2[idx] = "A" + runningFlight2;
                 } else if (runningFlight2 < 0) {
@@ -284,23 +296,28 @@ var GameTeam = (function() {
                     displayT2[idx] = "AS";
                 }
             } else {
-                // For unsaved holes, keep display as "AS" (not calculated)
-                flight1Leaders[idx] = "AS";
                 flight2Leaders[idx] = "AS";
-                displayT1[idx] = "AS";
                 displayT2[idx] = "AS";
-                teamGameTR[idx] = { A: 0.5, B: 0.5 };
             }
 
+            // Points calculation (only where data exists)
             var flight1PointsA = 0, flight1PointsB = 0;
-            if (flight1Total > 0) { flight1PointsA = 1; flight1PointsB = 0; }
-            else if (flight1Total < 0) { flight1PointsA = 0; flight1PointsB = 1; }
-            else { flight1PointsA = 0.5; flight1PointsB = 0.5; }
+            if (f1Available) {
+                if (flight1Total > 0) { flight1PointsA = 1; flight1PointsB = 0; }
+                else if (flight1Total < 0) { flight1PointsA = 0; flight1PointsB = 1; }
+                else { flight1PointsA = 0.5; flight1PointsB = 0.5; }
+            } else {
+                flight1PointsA = 0; flight1PointsB = 0;
+            }
 
             var flight2PointsA = 0, flight2PointsB = 0;
-            if (flight2Total > 0) { flight2PointsA = 1; flight2PointsB = 0; }
-            else if (flight2Total < 0) { flight2PointsA = 0; flight2PointsB = 1; }
-            else { flight2PointsA = 0.5; flight2PointsB = 0.5; }
+            if (f2Available) {
+                if (flight2Total > 0) { flight2PointsA = 1; flight2PointsB = 0; }
+                else if (flight2Total < 0) { flight2PointsA = 0; flight2PointsB = 1; }
+                else { flight2PointsA = 0.5; flight2PointsB = 0.5; }
+            } else {
+                flight2PointsA = 0; flight2PointsB = 0;
+            }
 
             pointsAArray[idx] = flight1PointsA + flight2PointsA;
             pointsBArray[idx] = flight1PointsB + flight2PointsB;
@@ -322,8 +339,8 @@ var GameTeam = (function() {
     }
 
     // ============================================================
-    // v1.09: calculateWithClinched - returns team game results WITH clinch detection
-    // Now ONLY considers holes where BOTH flights have saved data
+    // v1.10: calculateWithClinched - returns team game results WITH clinch detection
+    // Clinch detection now works independently per flight
     // ============================================================
     
     function calculateWithClinched(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat, remainingHolesByHole, computedUpToHole) {
@@ -334,16 +351,13 @@ var GameTeam = (function() {
         var flight1ClinchedHole = null;
         var flight2ClinchedHole = null;
         
-        // CRITICAL FIX v1.09: Only check positions up to computedUpToHole (where data exists)
-        // For positions beyond computedUpToHole, cumulative is 0, so no clinch possible
-        var maxPosition = (computedUpToHole !== undefined && computedUpToHole !== null) ? computedUpToHole : 18;
-        
-        for (var position = 0; position < maxPosition; position++) {
+        // Only check positions where cumulative values are non-zero (data exists)
+        for (var position = 0; position < 18; position++) {
             var cumulative1 = Math.abs(baseResults.flight1Cumulative[position]);
             var cumulative2 = Math.abs(baseResults.flight2Cumulative[position]);
             var remainingHoles = remainingHolesByHole[position];
             
-            // Flight 1 clinch check - only if cumulative > 0
+            // Flight 1 clinch check (T-1) - only if cumulative > 0
             if (flight1ClinchedHole === null && cumulative1 > 0) {
                 var maxOpponentPoints1 = remainingHoles * 2;
                 if (cumulative1 > maxOpponentPoints1) {
@@ -351,7 +365,7 @@ var GameTeam = (function() {
                 }
             }
             
-            // Flight 2 clinch check - only if cumulative > 0
+            // Flight 2 clinch check (T-2) - only if cumulative > 0
             if (flight2ClinchedHole === null && cumulative2 > 0) {
                 var maxOpponentPoints2 = remainingHoles * 2;
                 if (cumulative2 > maxOpponentPoints2) {
@@ -381,7 +395,7 @@ var GameTeam = (function() {
     return {
         // Legacy
         calculate: calculate,
-        // v1.09: With clinch detection (requires computedUpToHole)
+        // v1.10: With clinch detection (independent per flight)
         calculateWithClinched: calculateWithClinched
     };
 })();
@@ -390,18 +404,19 @@ var GameTeam = (function() {
 window.GameTeam = GameTeam;
 
 // Re-expose version for console debugging
-window.GAME_TEAM_VERSION = "1.09";
+window.GAME_TEAM_VERSION = "1.10";
 
 /*
 FILE: js/game-team.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Cumulative values are now ONLY calculated for holes where BOTH flights have saved data
-   - Previously, cumulative values were carried forward to unsaved holes (causing false clinches)
-   - Now uses a "last known cumulative" approach but only for display, NOT for clinch detection
-   - The cumulative array now properly reflects that unsaved holes have no calculated value (0)
-   - Clinch detection now only considers positions up to the last hole where BOTH flights have data
-   - This prevents false T-1/T-2 clinches on unsaved holes
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: T-1 (Flight 1) now calculates independently of Flight 2 status
+   - FIXED: T-2 (Flight 2) now calculates independently of Flight 1 status
+   - Previously both required BOTH flights to have saved data (WRONG)
+   - T-1 updates immediately when Flight 1 saves a hole
+   - T-2 updates immediately when Flight 2 saves a hole
+   - Stroke game (Strk) still requires BOTH flights (cumulative net of all 8 players)
+   - Clinch detection for T-1/T-2 now works with independent data
    - All other functions unchanged
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
