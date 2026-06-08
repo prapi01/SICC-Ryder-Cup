@@ -1,13 +1,13 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: Step 5 - Updated bubble descriptions (GOLD/WHITE/GREY)
-   - FIXED: Step 6 - Team Game description (Best 2 vs Best 2, each flight 1 point)
-   - FIXED: Step 6 - Added P/N button tip (starting hole not Hole 1)
-   - FIXED: Step 8 - Removed celebration screen line
-   - FIXED: Step 9 - Changed "Celebration screen" to "Final Result screen"
-   - FIXED: Step 9 - Handicap table now uses proper table structure with team grouping
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - REMOVED: All instances of the word "clinch" from UI and descriptions
+   - CHANGED: Step 5 - "Grey" description now "Match already won/lost"
+   - CHANGED: Step 5 - AS replaced with green square icon
+   - REMOVED: "Total match points from all 16 matches" tip
+   - CHANGED: Step 6 - Simplified Team Game + Stroke Game description
+   - CHANGED: Step 9 - Simplified Anchor Adjustment description (Win/Lose by 2 holes → CUT/ADD 1 stroke)
    - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
@@ -197,6 +197,17 @@ STATUS: Ready for integration
             background: #2a2a2a;
             color: #888;
             border: 1px solid #444;
+        }
+        
+        /* Green square for AS */
+        .as-square {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            background-color: #4caf50;
+            border-radius: 3px;
+            vertical-align: middle;
+            margin-left: 2px;
         }
         
         /* Scorecard table styles - matches current app */
@@ -468,7 +479,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.11</div>
+<div class="version-tag">v1.12</div>
 
 <script>
 // ============================================================
@@ -823,7 +834,7 @@ function renderStep5() {
             <div class="bubble-legend-item"><div class="bubble bubble-red" style="padding:2px 6px;">LOSE</div><span>Losing match</span></div>
             <div class="bubble-legend-item"><div class="bubble bubble-gold" style="padding:2px 6px;">GOLD</div><span>Won match on this hole</span></div>
             <div class="bubble-legend-item"><div class="bubble bubble-white" style="padding:2px 6px;">WHITE</div><span>Lost match on this hole</span></div>
-            <div class="bubble-legend-item"><div class="bubble bubble-grey" style="padding:2px 6px;">GREY</div><span>Match already decided</span></div>
+            <div class="bubble-legend-item"><div class="bubble bubble-grey" style="padding:2px 6px;">GREY</div><span>Match already won/lost</span></div>
         </div>
         
         <div style="margin: 12px 16px; padding: 12px; background:#111; border-radius:12px;">
@@ -832,7 +843,7 @@ function renderStep5() {
                 Each player plays 4 matches against the 4 opponents on the other team.<br>
                 Each match worth 1 point → <strong>16 points per hole</strong>.<br>
                 The number shows how many holes the player is winning/losing by.<br>
-                <strong>AS</strong> = All Square (tied match).
+                <strong><span class="as-square"></span></strong> = All Square (tied match).
             </div>
         </div>
     `;
@@ -845,11 +856,11 @@ function renderStep5() {
         '<span class="color-demo" style="background:#3a1a1a; color:#ff6b6b; border:1px solid #ff6b6b;">RED</span> Losing match (behind)<br>' +
         '<span class="color-demo" style="background:#1a3a1a; color:#ffaa44; border:2px solid #ffaa44;">GOLD</span> Won match on this hole<br>' +
         '<span class="color-demo" style="background:#3a1a1a; color:#ffffff; border:2px solid #ffffff;">WHITE</span> Lost match on this hole<br>' +
-        '<span class="color-demo" style="background:#2a2a2a; color:#888; border:1px solid #444;">GREY</span> Match already decided (played after clinch)<br><br>' +
+        '<span class="color-demo" style="background:#2a2a2a; color:#888; border:1px solid #444;">GREY</span> Match already won/lost<br><br>' +
         'The number shows how many holes the player is winning/losing by.<br>' +
-        '<strong>AS</strong> = All Square (tied match)';
+        '<strong><span class="as-square"></span></strong> = All Square (tied match)';
     
-    document.getElementById('instructionTip').innerHTML = '💡 The total match points from all 16 matches determine 16 of the 19 points.<br><br>📌 GOLD/WHITE bubbles only appear on the hole where a match is mathematically won/lost. After that, the bubble turns GREY.';
+    document.getElementById('instructionTip').innerHTML = '📌 GOLD/WHITE bubbles only appear on the hole where a match is mathematically won/lost. After that, the bubble turns GREY.';
 }
 
 // ============================================================
@@ -881,13 +892,13 @@ function renderStep6() {
                         
                         <tr style="background:rgba(76,175,80,0.15);">
                             <td style="color:#4caf50; font-weight:600;">T-1</td>
-                            <td class="score-green">AS</td><td class="score-green">A1</td><td class="score-green">AS</td><td class="score-green">A1</td><td class="score-green">A2</td><td class="score-green">A3</td><td class="score-green">A4</td><td class="score-green">A5</td><td class="score-green">A6</td>
+                            <td class="score-green"><span class="as-square"></span></td><td class="score-green">A1</td><td class="score-green"><span class="as-square"></span></td><td class="score-green">A1</td><td class="score-green">A2</td><td class="score-green">A3</td><td class="score-green">A4</td><td class="score-green">A5</td><td class="score-green">A6</td>
                             <td class="score-green">A6</td><td class="score-green">A7</td><td class="score-gold">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td class="score-grey">A8</td><td>-</td>
                         </tr>
                         
                         <tr style="background:rgba(76,175,80,0.15);">
                             <td style="color:#4caf50; font-weight:600;">T-2</td>
-                            <td class="score-green">B1</td><td class="score-green">B1</td><td class="score-green">AS</td><td class="score-green">A1</td><td class="score-green">A1</td><td class="score-green">A2</td><td class="score-green">A3</td><td class="score-green">A4</td><td class="score-green">A4</td>
+                            <td class="score-green">B1</td><td class="score-green">B1</td><td class="score-green"><span class="as-square"></span></td><td class="score-green">A1</td><td class="score-green">A1</td><td class="score-green">A2</td><td class="score-green">A3</td><td class="score-green">A4</td><td class="score-green">A4</td>
                             <td class="score-green">A5</td><td class="score-green">A6</td><td class="score-gold">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td class="score-grey">A7</td><td>-</td>
                         </tr>
                         
@@ -904,12 +915,12 @@ function renderStep6() {
             <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">📊 TEAM GAME + STROKE GAME (3 points)</div>
             <div style="font-size:0.7rem; color:#ccc; line-height:1.5;">
                 <strong>Team Game (T-1, T-2 rows)</strong> - 2 points per hole<br>
-                • T-1 = Flight 1: Best 2 players from Team A vs Best 2 from Team B<br>
-                • T-2 = Flight 2: Best 2 players from Team A vs Best 2 from Team B<br>
-                • Each flight worth 1 point → 2 points per hole<br><br>
+                • T-1 row - Flight 1: Best 2 players from Team A vs Best 2 from Team B<br>
+                • T-2 row - Flight 2: Best 2 players from Team A vs Best 2 from Team B<br>
+                • Each flight worth 1 point → 2 points<br><br>
                 <strong>Stroke Game (Strk row)</strong> - 1 point per hole<br>
                 • Cumulative net score of all 8 players<br>
-                • Lower cumulative net wins → 1 point per hole
+                • Lower cumulative net wins → 1 point
             </div>
         </div>
     `;
@@ -920,11 +931,11 @@ function renderStep6() {
         '<strong>TEAM GAME (2 points)</strong><br>' +
         '• <strong>T-1 row</strong> - Flight 1: Best 2 players from Team A vs Best 2 from Team B<br>' +
         '• <strong>T-2 row</strong> - Flight 2: Best 2 players from Team A vs Best 2 from Team B<br>' +
-        '• Each flight worth 1 point → 2 points per hole<br><br>' +
+        '• Each flight worth 1 point → 2 points<br><br>' +
         '<strong>STROKE GAME (1 point)</strong><br>' +
         '• <strong>Strk row</strong> - Cumulative net score of all 8 players<br>' +
-        '• Lower cumulative net wins → 1 point per hole<br><br>' +
-        '<strong>TOTAL = Match Game (16) + Team Game (2) + Stroke Game (1) = 19 points per hole</strong>';
+        '• Lower cumulative net wins → 1 point<br><br>' +
+        '<strong>TOTAL = Match Game (16) + Team Game (2) + Stroke Game (1) = 19 points</strong>';
     
     document.getElementById('instructionTip').innerHTML = '📌 Scorecard row colors:<br>' +
         '  <span class="color-demo" style="color:#4caf50; font-weight:600;">A6</span> GREEN - Winning or tied (match still alive)<br>' +
@@ -1071,8 +1082,7 @@ function renderStep9() {
     
     document.getElementById('instructionText').innerHTML = 'After both flights sign their scorecard, the game is completed. The Final Result screen appears. Tap <strong>HANDICAP ADJUSTMENT</strong> to see the calculated adjustments.<br><br>' +
         '<strong>Anchor Adjustment (Anc)</strong> - Based on 18-hole match against anchor (lowest handicap):<br>' +
-        '• Win by 2 holes → CUT 1 stroke <span style="color:#4caf50;">(negative number)</span><br>' +
-        '• Lose by 2 holes → ADD 1 stroke <span style="color:#ff6b6b;">(positive number)</span><br><br>' +
+        '• Win/Lose by 2 holes → CUT/ADD 1 stroke<br><br>' +
         '<strong>Performance Adjustment (Perf)</strong> - Based on 4 matches against other team:<br>' +
         '• Net match wins ≥ +3.5 → CUT 1 stroke<br>' +
         '• Net match wins ≤ +0.5 → ADD 1 stroke<br>' +
@@ -1169,14 +1179,14 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: Step 5 - Updated bubble descriptions (GOLD/WHITE/GREY)
-   - FIXED: Step 6 - Team Game description (Best 2 vs Best 2, each flight 1 point)
-   - FIXED: Step 6 - Added P/N button tip (starting hole not Hole 1)
-   - FIXED: Step 8 - Removed celebration screen line
-   - FIXED: Step 9 - Changed "Celebration screen" to "Final Result screen"
-   - FIXED: Step 9 - Handicap table now uses proper table structure with team grouping
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - REMOVED: All instances of the word "clinch" from UI and descriptions
+   - CHANGED: Step 5 - "Grey" description now "Match already won/lost"
+   - CHANGED: Step 5 - AS replaced with green square icon
+   - REMOVED: "Total match points from all 16 matches" tip
+   - CHANGED: Step 6 - Simplified Team Game + Stroke Game description
+   - CHANGED: Step 9 - Simplified Anchor Adjustment description (Win/Lose by 2 holes → CUT/ADD 1 stroke)
    - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
