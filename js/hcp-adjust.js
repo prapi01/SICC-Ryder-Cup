@@ -1,11 +1,12 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.23
-KEY CHANGES from v2.22:
-   - REMOVED: "X will be the NEW ANCHOR" message from handicap table
-   - This message was unnecessary and misleading when multiple players tie for lowest handicap
-   - The anchor is already displayed at the top of the table
-   - No functional changes to calculation logic
+VERSION: 2.24
+KEY CHANGES from v2.23:
+   - REMOVED: "Anchor: X" text line from top of handicap table
+   - ADDED: Gold highlighting for anchor player's Starting Handicap (St)
+   - Anchor player's St value now displayed in gold (#ffaa44) instead of white
+   - More subtle, visual-only indication of who the anchor is
+   - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -256,7 +257,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.23: Removed "NEW ANCHOR" message
+    // Display Table - v2.24: Removed anchor text line, gold St for anchor
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -292,6 +293,7 @@ var HandicapAdjustment = (function() {
             var p = players[i];
             var displayHcp = hasNewAnchor ? p.newAnchor : p.newHcp;
             var playerTeam = p.team || (currentTeam === null ? 'A' : 'B');
+            var isAnchor = (p.name === anchorName);
             
             // Add team separator row if team changes
             if (playerTeam !== currentTeam) {
@@ -302,7 +304,7 @@ var HandicapAdjustment = (function() {
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
                 tableHtml += '<tr style="border-top: 2px solid #000; background:#1a3a1a;">';
                 tableHtml += `<td colspan="5" style="padding:6px 2px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}<tr>`;
-                tableHtml += '</tr>';
+                tableHtml += '</table>';
             }
             
             var perfColor = '#888';
@@ -329,9 +331,12 @@ var HandicapAdjustment = (function() {
                 ancSign = '0';
             }
             
+            // v2.24: Highlight anchor's Starting Handicap (St) in gold
+            var stColor = isAnchor ? '#ffaa44' : '#ffffff';
+            
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
             tableHtml += `<td style="padding:4px 2px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}</td>`;
-            tableHtml += `<td style="padding:4px 2px; text-align:center;">${p.currentHcp}</td>`;
+            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${stColor}; font-weight:600;">${p.currentHcp}</td>`;
             tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
             tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
             tableHtml += `<td style="padding:4px 2px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
@@ -340,10 +345,7 @@ var HandicapAdjustment = (function() {
         
         tableHtml += '</tbody></table></div>';
         
-        var anchorInfoHtml = `<div style="text-align: center; margin-bottom: 10px;"><span style="color: #4caf50; font-size:0.75rem;">✓ Anchor: ${escapeHtml(anchorName)}</span></div>`;
-        
-        // v2.23: Removed the "NEW ANCHOR" message line entirely
-        var messageHtml = '';
+        // v2.24: Removed the anchor info line entirely - anchor now identified by gold St value
         
         var buttonsHtml = '';
         if (isReadOnly) {
@@ -382,9 +384,7 @@ var HandicapAdjustment = (function() {
         var modalHtml = `
             <div class="modal-overlay" id="hcpAdjustModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10000;">
                 <div style="background:#1a1a1a; border-radius:24px; padding:12px; max-width:95%; width:auto; border:2px solid #4caf50;">
-                    <div style="font-size:1.2rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:4px;">🏌️ HANDICAP ADJUSTMENT</div>
-                    ${messageHtml}
-                    ${anchorInfoHtml}
+                    <div style="font-size:1.2rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:12px;">🏌️ HANDICAP ADJUSTMENT</div>
                     ${tableHtml}
                     ${buttonsHtml}
                 </div>
@@ -977,7 +977,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.23";
+    window.HANDICAP_ADJUST_VERSION = "2.24";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -996,12 +996,13 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.23
-KEY CHANGES from v2.22:
-   - REMOVED: "X will be the NEW ANCHOR" message from handicap table
-   - This message was unnecessary and misleading when multiple players tie for lowest handicap
-   - The anchor is already displayed at the top of the table
-   - No functional changes to calculation logic
+VERSION: 2.24
+KEY CHANGES from v2.23:
+   - REMOVED: "Anchor: X" text line from top of handicap table
+   - ADDED: Gold highlighting for anchor player's Starting Handicap (St)
+   - Anchor player's St value now displayed in gold (#ffaa44) instead of white
+   - More subtle, visual-only indication of who the anchor is
+   - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
