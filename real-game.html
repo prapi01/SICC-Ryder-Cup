@@ -1,15 +1,16 @@
 <!--
 FILE: real-game.html
-VERSION: 5.51
-KEY CHANGES from v5.50:
-   - FIXED: initializeEmptyResults() now initializes TR arrays with null instead of 9.5
-   - teamA and teamB arrays filled with null (displayed as "-")
-   - teamAGreen and teamBGreen arrays filled with false
-   - This eliminates stale 9.5 values completely
-   - All holes without complete data now correctly show "-"
-   - No need for complex null handling in updateLocalCacheWithResults
+VERSION: 5.52
+KEY CHANGES from v5.51:
+   - REMOVED: Duplicate intra-flight clinch calculations from calculateHoleResultsWithCumulative()
+   - Intra-flight clinches now handled EXCLUSIVELY by GameMatch.calculateCrossFlightWithClinch()
+   - Removed separate f1IntraMatches and f2IntraMatches calculations
+   - Simplified clinchedAtUpdates - now only from crossResult
+   - updateClinchedAt now only filters on actual cascade resets (when cascadeStartHole != currentHole)
+   - This prevents clinches from being discarded on normal sequential saves
+   - All clinch detection now centralized in game-match.js
    - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.04+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -298,13 +299,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.51</div>
+<div class="version-tag">v5.52</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.51";
+window.REAL_GAME_VERSION = "5.52";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1082,7 +1083,6 @@ function updateLocalCacheWithResults(resultsData) {
     if (!cache.results.tr.teamAGreen) cache.results.tr.teamAGreen = new Array(18).fill(false);
     if (!cache.results.tr.teamBGreen) cache.results.tr.teamBGreen = new Array(18).fill(false);
     
-    // Always update TR values (including null)
     cache.results.tr.teamA[position] = resultsData.trA;
     cache.results.tr.teamB[position] = resultsData.trB;
     cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
@@ -1094,7 +1094,6 @@ function updateLocalCacheWithResults(resultsData) {
     cache.results.clinchedAt = resultsData.updatedClinched;
     console.log(`[CASCADE-DEBUG] updateLocalCacheWithResults: clinchedAt updated, new count = ${Object.keys(cache.results.clinchedAt).length}`);
     
-    // Update t1Row and t2Row from team game results for scorecard display
     if (resultsData.t1Display !== undefined && resultsData.t1Display !== null) {
         cache.t1Row[position] = resultsData.t1Display;
     }
@@ -1153,7 +1152,6 @@ async function saveHole() {
 // Results Calculation
 // ============================================================
 
-// FIXED v5.51: Initialize TR arrays with null instead of 9.5
 function initializeEmptyResults() {
     return {
         version: 1,
@@ -1168,7 +1166,6 @@ function initializeEmptyResults() {
             pointsB: new Array(18).fill(1)
         },
         game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
-        // FIXED: TR arrays now start with null (displayed as "-") instead of 9.5
         tr: { 
             teamA: new Array(18).fill(null), 
             teamB: new Array(18).fill(null), 
@@ -1235,7 +1232,7 @@ function getHoleAtPosition(position) {
 }
 
 // ============================================================
-// MAIN RESULTS CALCULATION
+// MAIN RESULTS CALCULATION - FIXED v5.52: No duplicate clinch logic
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1263,46 +1260,21 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var flight1ClinchedHoleResult = teamGameResults.flight1ClinchedHole;
     var flight2ClinchedHoleResult = teamGameResults.flight2ClinchedHole;
     
-    // MATCH BUBBLES (Intra-flight) - For display only, not team game
+    // ============================================================
+    // FIXED v5.52: All clinch detection now in GameMatch.calculateCrossFlightWithClinch
+    // No separate intra-flight clinch calculations here
+    // ============================================================
+    
+    var matchResultsArray = null;
     var f1IntraMatchesForHole = null;
     var f2IntraMatchesForHole = null;
     var clinchedAtUpdates = {};
+    var game1PointsA = 0, game1PointsB = 0;
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.51";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.52";
     
-    // Flight 1 intra-flight match bubbles (NOT team game)
-    if (f1Available) {
-        var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
-        var flight1Data = cache.f1DataString;
-        var intra1Result = GameMatch.calculateIntraFlightWithClinch(
-            1, flight1Players, flight1Data, courseSi, startingHole, holeNumber, coursePar,
-            remainingHoles, holeNumber, deviceId, cascadeVersion, cumulativeClinched
-        );
-        f1IntraMatchesForHole = intra1Result.intraMatches;
-        for (var matchKey in intra1Result.clinchedAtUpdates) {
-            clinchedAtUpdates[matchKey] = intra1Result.clinchedAtUpdates[matchKey];
-        }
-    }
-    
-    // Flight 2 intra-flight match bubbles (NOT team game)
-    if (f2Available) {
-        var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
-        var flight2Data = cache.f2DataString;
-        var intra2Result = GameMatch.calculateIntraFlightWithClinch(
-            2, flight2Players, flight2Data, courseSi, startingHole, holeNumber, coursePar,
-            remainingHoles, holeNumber, deviceId, cascadeVersion, cumulativeClinched
-        );
-        f2IntraMatchesForHole = intra2Result.intraMatches;
-        for (var matchKey in intra2Result.clinchedAtUpdates) {
-            clinchedAtUpdates[matchKey] = intra2Result.clinchedAtUpdates[matchKey];
-        }
-    }
-    
-    // CROSS-FLIGHT MATCHES (Only when both flights have data)
-    var matchResultsArray = null;
-    var game1PointsA = 0, game1PointsB = 0;
-    
+    // CROSS-FLIGHT MATCHES (includes intra-flight match results for bubbles)
     if (crossAvailable) {
         var crossResult = GameMatch.calculateCrossFlightWithClinch(
             cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar,
@@ -1310,6 +1282,11 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         );
         matchResultsArray = crossResult.matchResultsArray;
         var matchResultsObj = crossResult.matchResultsObj;
+        
+        // Store intra-flight match results for bubble display
+        // Note: These come from calculateCrossFlightWithClinch which also handles intra-flight
+        f1IntraMatchesForHole = crossResult.f1IntraMatches || null;
+        f2IntraMatchesForHole = crossResult.f2IntraMatches || null;
         
         for (var matchKey in crossResult.clinchedAtUpdates) {
             clinchedAtUpdates[matchKey] = crossResult.clinchedAtUpdates[matchKey];
@@ -1379,8 +1356,9 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         console.log(`[TR-DEBUG] Hole ${holeNumber}: incomplete data - TR set to null`);
     }
     
-    // Update clinchedAt
-    var isCascadeStartHole = (holeNumber === cascadeStartHole);
+    // Update clinchedAt - only filter on actual cascade resets (when cascadeStartHole != currentHole)
+    // For normal sequential saves, cascadeStartHole equals currentHole, so no filtering
+    var isCascadeStartHole = (holeNumber !== cascadeStartHole);
     var updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole, isCascadeStartHole);
     
     var result = {
@@ -1682,7 +1660,6 @@ function renderAll() {
     
     GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
     
-    // Handle null TR values (display as "-")
     var displayTeamA = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamA : "-";
     var displayTeamB = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamB : "-";
     var displayTeamAGreen = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamAGreen : false;
@@ -1910,15 +1887,16 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.51
-KEY CHANGES from v5.50:
-   - FIXED: initializeEmptyResults() now initializes TR arrays with null instead of 9.5
-   - teamA and teamB arrays filled with null (displayed as "-")
-   - teamAGreen and teamBGreen arrays filled with false
-   - This eliminates stale 9.5 values completely
-   - All holes without complete data now correctly show "-"
-   - No need for complex null handling in updateLocalCacheWithResults
+VERSION: 5.52
+KEY CHANGES from v5.51:
+   - REMOVED: Duplicate intra-flight clinch calculations from calculateHoleResultsWithCumulative()
+   - Intra-flight clinches now handled EXCLUSIVELY by GameMatch.calculateCrossFlightWithClinch()
+   - Removed separate f1IntraMatches and f2IntraMatches calculations
+   - Simplified clinchedAtUpdates - now only from crossResult
+   - updateClinchedAt now only filters on actual cascade resets (when cascadeStartHole != currentHole)
+   - This prevents clinches from being discarded on normal sequential saves
+   - All clinch detection now centralized in game-match.js
    - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.04+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
