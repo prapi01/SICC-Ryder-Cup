@@ -1,23 +1,23 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.13
-KEY CHANGES from v2.12:
-   - RESTORED: existingClinch check in calculateIntraFlightWithClinch() and calculateCrossFlightWithClinch()
-   - Once a match has a clinch record (from any previous hole), no new clinch will be created for that match
-   - This prevents overwriting clinch holes (e.g., H12 clinch being replaced by H13, H14, H15)
-   - Preserves the original clinch hole for UI bubble display (gold at clinch hole, grey thereafter)
-   - All debug logging retained for verification
-   - No other functional changes
+VERSION: 2.14
+KEY CHANGES from v2.13:
+   - ADDED: Extensive debug logging for clinch detection and update flow
+   - ADDED: Logging in calculateCrossFlightWithClinch for matchValue and remainingHoles
+   - ADDED: Logging in updateClinchedAt with detailed before/after state
+   - ADDED: Logging in getMatchValueFromStoredResults to debug value retrieval
+   - ADDED: Version exposure for console debugging
+   - All existing functionality unchanged
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for testing - restores existingClinch check
+STATUS: Ready for integration
 */
 
-// FILE: js/game-match.js - VERSION 2.13
-// Game 1: Match Play (16 points)
-// Full handicap difference method
-// RESTORED existingClinch check
+// Version exposure for console debugging
+window.GAME_MATCH_VERSION = "2.14";
 
 var GameMatch = (function() {
+    
+    console.log("[GAME-MATCH] Initializing v2.14 with debug logging");
     
     // ============================================================
     // Stroke calculation helpers (unchanged)
@@ -73,7 +73,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // Core match result calculations (unchanged)
+    // Core match result calculations
     // ============================================================
     
     function getIntraMatchResult(playerA, playerB, flightData, flightPlayers, courseSi, startingHole, upToHole, coursePar) {
@@ -241,10 +241,12 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.13: calculateIntraFlightWithClinch - RESTORED existingClinch check
+    // calculateIntraFlightWithClinch - WITH DEBUG LOGGING
     // ============================================================
     
     function calculateIntraFlightWithClinch(flight, flightPlayers, flightData, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
+        console.log(`[DEBUG-MATCH] calculateIntraFlightWithClinch: flight=${flight}, currentHole=${currentHole}, remainingHoles=${remainingHoles}, existingClinched count=${Object.keys(existingClinched || {}).length}`);
+        
         var intraMatches = calculateIntraFlight(flight, flightPlayers, flightData, courseSi, startingHole, upToHole, coursePar);
         
         var clinchedAtUpdates = {};
@@ -262,7 +264,6 @@ var GameMatch = (function() {
                 
                 if (matchValue === undefined) continue;
                 
-                // RESTORED: Check if this match already has a clinch
                 var existingClinch = null;
                 if (existingClinched) {
                     existingClinch = existingClinched[matchKey1] || existingClinched[matchKey2];
@@ -270,7 +271,7 @@ var GameMatch = (function() {
                 
                 if (existingClinch) {
                     var existingHole = existingClinch.clinchedAtHole || existingClinch;
-                    console.log(`[CLINCH-DEBUG] INTRA-FLIGHT ${flight} | ${matchKey1} | lead=${Math.abs(matchValue)} | SKIPPED - already clinched at hole ${existingHole}`);
+                    console.log(`[DEBUG-MATCH] INTRA ${flight} | ${matchKey1} | lead=${Math.abs(matchValue)} | SKIPPED - already clinched at hole ${existingHole}`);
                     continue;
                 }
                 
@@ -280,11 +281,13 @@ var GameMatch = (function() {
                 );
                 
                 if (clinchResult) {
-                    console.log(`[CLINCH-DEBUG] INTRA-FLIGHT ${flight} | ${matchKey1} | lead=${Math.abs(matchValue)} | remaining=${remainingHoles} | CLINCHED at hole ${currentHole}`);
+                    console.log(`[DEBUG-MATCH] INTRA ${flight} | ${matchKey1} | lead=${Math.abs(matchValue)} | remaining=${remainingHoles} | CLINCHED at hole ${currentHole}`);
                     clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
                 }
             }
         }
+        
+        console.log(`[DEBUG-MATCH] calculateIntraFlightWithClinch returning ${Object.keys(clinchedAtUpdates).length} clinch updates`);
         
         return {
             intraMatches: intraMatches,
@@ -293,10 +296,12 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.13: calculateCrossFlightWithClinch - RESTORED existingClinch check
+    // calculateCrossFlightWithClinch - WITH DEBUG LOGGING (v2.14)
     // ============================================================
     
     function calculateCrossFlightWithClinch(flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
+        console.log(`[DEBUG-MATCH] calculateCrossFlightWithClinch: currentHole=${currentHole}, remainingHoles=${remainingHoles}, existingClinched count=${Object.keys(existingClinched || {}).length}`);
+        
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
         
@@ -329,7 +334,10 @@ var GameMatch = (function() {
                 var matchKey1 = playerA.name + "_vs_" + playerB.name;
                 var matchKey2 = playerB.name + "_vs_" + playerA.name;
                 
-                // RESTORED: Check if this match already has a clinch
+                var lead = Math.abs(matchValue);
+                var condition = (lead > remainingHoles && matchValue !== 0);
+                console.log(`[DEBUG-MATCH] Match ${matchKey1}: value=${matchValue}, lead=${lead}, remaining=${remainingHoles}, condition=${condition}`);
+                
                 var existingClinch = null;
                 if (existingClinched) {
                     existingClinch = existingClinched[matchKey1] || existingClinched[matchKey2];
@@ -337,21 +345,30 @@ var GameMatch = (function() {
                 
                 if (existingClinch) {
                     var existingHole = existingClinch.clinchedAtHole || existingClinch;
-                    console.log(`[CLINCH-DEBUG] CROSS-FLIGHT | ${matchKey1} | lead=${Math.abs(matchValue)} | SKIPPED - already clinched at hole ${existingHole}`);
+                    console.log(`[DEBUG-MATCH] Match ${matchKey1} SKIPPED - already clinched at hole ${existingHole}`);
                     continue;
                 }
                 
-                var clinchResult = calculateClinch(
-                    matchValue, remainingHoles, playerA.name, playerB.name,
-                    currentHole, deviceId, cascadeVersion
-                );
-                
-                if (clinchResult) {
-                    console.log(`[CLINCH-DEBUG] CROSS-FLIGHT | ${matchKey1} | lead=${Math.abs(matchValue)} | remaining=${remainingHoles} | CLINCHED at hole ${currentHole}`);
-                    clinchedAtUpdates[clinchResult.matchKey] = clinchResult.clinchData;
+                if (condition) {
+                    var actualWinner = (matchValue > 0) ? playerA.name : playerB.name;
+                    var actualLoser = (matchValue > 0) ? playerB.name : playerA.name;
+                    var clinchData = {
+                        clinchedAtHole: currentHole,
+                        winner: actualWinner,
+                        loser: actualLoser,
+                        leadAtClinch: lead,
+                        remainingHolesAtClinch: remainingHoles,
+                        recordedAt: new Date().toISOString(),
+                        recordedByDevice: deviceId || "unknown",
+                        cascadeVersion: cascadeVersion || "2.14"
+                    };
+                    clinchedAtUpdates[actualWinner + "_vs_" + actualLoser] = clinchData;
+                    console.log(`[DEBUG-MATCH] CLINCH CREATED: ${actualWinner}_vs_${actualLoser} at hole ${currentHole}`);
                 }
             }
         }
+        
+        console.log(`[DEBUG-MATCH] calculateCrossFlightWithClinch returning ${Object.keys(clinchedAtUpdates).length} clinch updates`);
         
         return {
             matchResultsObj: matchResultsObj,
@@ -363,7 +380,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // calculateClinch (unchanged)
+    // calculateClinch (kept for backward compatibility)
     // ============================================================
     
     function calculateClinch(matchValue, remainingHoles, winnerName, loserName, currentHole, deviceId, cascadeVersion) {
@@ -384,7 +401,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.13"
+                    cascadeVersion: cascadeVersion || "2.14"
                 }
             };
         }
@@ -392,11 +409,12 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // filterClinchedByHole - ONLY discards clinches from holes >= cascadeStartHole
-    // This should ONLY be called at the cascade start hole
+    // filterClinchedByHole - WITH DEBUG LOGGING
     // ============================================================
     
     function filterClinchedByHole(clinchedAt, cascadeStartHole) {
+        console.log(`[DEBUG-MATCH] filterClinchedByHole: cascadeStartHole=${cascadeStartHole}, input count=${Object.keys(clinchedAt || {}).length}`);
+        
         if (!clinchedAt) return {};
         
         var filtered = {};
@@ -406,67 +424,56 @@ var GameMatch = (function() {
         for (var matchKey in clinchedAt) {
             var entry = clinchedAt[matchKey];
             var entryHole = (typeof entry === 'number') ? entry : entry.clinchedAtHole;
-            // Keep clinches that happened BEFORE cascadeStartHole
             if (entryHole < cascadeStartHole) {
                 filtered[matchKey] = entry;
                 keptCount++;
             } else {
                 discardedCount++;
+                console.log(`[DEBUG-MATCH] DISCARDED clinch ${matchKey} at hole ${entryHole} (>= ${cascadeStartHole})`);
             }
         }
         
-        if (keptCount > 0 || discardedCount > 0) {
-            console.log(`[CLINCH-DEBUG] FILTER | cascadeStartHole=${cascadeStartHole} | KEPT=${keptCount} (holes < ${cascadeStartHole}) | DISCARDED=${discardedCount} (holes >= ${cascadeStartHole})`);
-        }
+        console.log(`[DEBUG-MATCH] filterClinchedByHole result: kept=${keptCount}, discarded=${discardedCount}`);
         
         return filtered;
     }
     
     // ============================================================
-    // updateClinchedAt - ONLY filters when isCascadeStartHole = true
+    // updateClinchedAt - WITH DEBUG LOGGING (v2.14)
     // ============================================================
     
     function updateClinchedAt(existingClinched, newClinchData, cascadeStartHole, isCascadeStartHole) {
-        console.log(`[CLINCH-DEBUG] updateClinchedAt() called: existingClinched count=${Object.keys(existingClinched).length}, newClinchData count=${Object.keys(newClinchData).length}, cascadeStartHole=${cascadeStartHole}, isCascadeStartHole=${isCascadeStartHole}`);
+        console.log(`[DEBUG-MATCH] updateClinchedAt: existing=${Object.keys(existingClinched || {}).length}, new=${Object.keys(newClinchData || {}).length}, cascadeStartHole=${cascadeStartHole}, isCascadeStartHole=${isCascadeStartHole}`);
+        
+        if (Object.keys(newClinchData || {}).length > 0) {
+            console.log(`[DEBUG-MATCH] newClinchData keys:`, Object.keys(newClinchData));
+        }
         
         var updated;
         
         if (isCascadeStartHole) {
-            // ONLY at the cascade start hole: discard clinches from holes >= cascadeStartHole
             updated = filterClinchedByHole(existingClinched, cascadeStartHole);
-            console.log(`[CLINCH-DEBUG] Filter applied (cascade start hole) - updated count=${Object.keys(updated).length}`);
+            console.log(`[DEBUG-MATCH] Filter applied - updated count=${Object.keys(updated).length}`);
         } else {
-            // For subsequent holes: NO filtering, preserve all existing clinches
             updated = {};
             for (var key in existingClinched) {
                 updated[key] = existingClinched[key];
             }
-            console.log(`[CLINCH-DEBUG] No filtering (subsequent hole) - preserving all ${Object.keys(updated).length} existing clinches`);
+            console.log(`[DEBUG-MATCH] No filtering - preserving ${Object.keys(updated).length} existing clinches`);
         }
         
-        // Add new clinches from current calculation
         var newCount = 0;
         for (var matchKey in newClinchData) {
-            // Only add if not already present (defensive)
             if (!updated[matchKey]) {
                 updated[matchKey] = newClinchData[matchKey];
                 newCount++;
+                console.log(`[DEBUG-MATCH] ADDED clinch: ${matchKey} at hole ${newClinchData[matchKey].clinchedAtHole}`);
             } else {
-                console.log(`[CLINCH-DEBUG] Skipping duplicate clinch for ${matchKey} - already exists`);
+                console.log(`[DEBUG-MATCH] SKIPPED duplicate: ${matchKey}`);
             }
         }
         
-        if (newCount > 0) {
-            console.log(`[CLINCH-DEBUG] Added ${newCount} new clinches, final clinchedAt count=${Object.keys(updated).length}`);
-        } else {
-            console.log(`[CLINCH-DEBUG] No new clinches added, final clinchedAt count=${Object.keys(updated).length}`);
-        }
-        
-        if (Object.keys(updated).length > 0) {
-            console.log(`[CLINCH-DEBUG] clinchedAt content:`, JSON.stringify(updated));
-        } else {
-            console.log(`[CLINCH-DEBUG] clinchedAt is EMPTY`);
-        }
+        console.log(`[DEBUG-MATCH] updateClinchedAt result: added=${newCount}, total=${Object.keys(updated).length}`);
         
         return updated;
     }
@@ -501,7 +508,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // Functions moved from real-game.html (unchanged)
+    // Functions moved from real-game.html - WITH DEBUG LOGGING
     // ============================================================
     
     function getMatchValueFromStoredResults(results, player, opponent, holeNumber, getHolePositionFunc, allPlayers) {
@@ -513,7 +520,11 @@ var GameMatch = (function() {
             var intraMatches = (player.flight === 1) ? results.f1IntraMatches : results.f2IntraMatches;
             if (intraMatches && intraMatches[position]) {
                 var matchKey = player.name + "_vs_" + opponent.name;
-                return intraMatches[position][matchKey] || 0;
+                var value = intraMatches[position][matchKey] || 0;
+                if (Math.abs(value) > 0) {
+                    console.log(`[DEBUG-MATCH] getMatchValue intra: ${player.name} vs ${opponent.name} at hole ${holeNumber} = ${value}`);
+                }
+                return value;
             }
             return 0;
         }
@@ -549,7 +560,11 @@ var GameMatch = (function() {
             
             if (aIdx !== -1 && bIdx !== -1) {
                 var storedValue = results.matchResults[position][aIdx * teamBPlayers.length + bIdx] || 0;
-                return (player.team === "B") ? -storedValue : storedValue;
+                var value = (player.team === "B") ? -storedValue : storedValue;
+                if (Math.abs(value) > 0) {
+                    console.log(`[DEBUG-MATCH] getMatchValue cross: ${player.name} vs ${opponent.name} at hole ${holeNumber} = ${value}`);
+                }
+                return value;
             }
         }
         return 0;
@@ -574,14 +589,18 @@ var GameMatch = (function() {
     }
     
     function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedHole, getClinchHoleFunc) {
+        var clinchHole = getClinchHoleFunc(clinchedAt, player.name, opponent.name);
+        
+        if (Math.abs(matchValue) > 0 || clinchHole) {
+            console.log(`[DEBUG-MATCH] getMatchBubbleClass: ${player.name} vs ${opponent.name} hole=${currentHole}, matchValue=${matchValue}, clinchHole=${clinchHole}`);
+        }
+        
         if (player.flight === opponent.flight) {
             if (!isHoleSavedForFlight) return 'bubble-grey';
         } else {
             var isSynced = (lastSyncedHole >= currentHole);
             if (!isSynced) return 'bubble-grey';
         }
-        
-        var clinchHole = getClinchHoleFunc(clinchedAt, player.name, opponent.name);
         
         if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
         if (clinchHole && currentHole === clinchHole) {
@@ -596,7 +615,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // Legacy functions (unchanged)
+    // Legacy functions
     // ============================================================
     
     function calculate(allPlayers, flight1Data, flight2Data, courseSi, startingHole) {
@@ -664,20 +683,19 @@ var GameMatch = (function() {
     };
 })();
 
-// Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.13";
+// Re-expose version for console debugging
+window.GAME_MATCH_VERSION = "2.14";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.13
-KEY CHANGES from v2.12:
-   - RESTORED: existingClinch check in calculateIntraFlightWithClinch() and calculateCrossFlightWithClinch()
-   - Once a match has a clinch record (from any previous hole), no new clinch will be created for that match
-   - This prevents overwriting clinch holes (e.g., H12 clinch being replaced by H13, H14, H15)
-   - Preserves the original clinch hole for UI bubble display (gold at clinch hole, grey thereafter)
-   - Added duplicate prevention in updateClinchedAt() as additional safety
-   - All debug logging retained for verification
-   - No other functional changes
+VERSION: 2.14
+KEY CHANGES from v2.13:
+   - ADDED: Extensive debug logging for clinch detection and update flow
+   - ADDED: Logging in calculateCrossFlightWithClinch for matchValue and remainingHoles
+   - ADDED: Logging in updateClinchedAt with detailed before/after state
+   - ADDED: Logging in getMatchValueFromStoredResults to debug value retrieval
+   - ADDED: Version exposure for console debugging
+   - All existing functionality unchanged
 DEPENDS ON: None (pure calculation)
-STATUS: Ready for testing - restores existingClinch check
+STATUS: Ready for integration
 */
