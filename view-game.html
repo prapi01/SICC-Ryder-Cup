@@ -1,11 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.18
-KEY CHANGES from v7.17:
-   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
-   - Player cards, bubbles, scorecard table, compact header styles removed
-   - Kept only page-specific styles: container, visibility rules, device tags, modals
-   - All functionality unchanged
+VERSION: 7.19
+KEY CHANGES from v7.18:
+   - ADDED: Cache-busting version check to force reload on new deployments
+   - Prevents users from running stale cached versions after updates
+   - Uses localStorage to track version and redirects with ?v= parameter
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -154,13 +154,26 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.18</div>
+<div class="version-tag">v7.19</div>
 
 <script>
 // ============================================================
+// VERSION CACHE-BUSTING - Forces reload on new deployment
+// ============================================================
+var APP_VERSION = "7.19";
+var CACHE_KEY = "view_game_version";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
+    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+}
+
+// ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.18";
+window.VIEW_GAME_VERSION = "7.19";
+console.log("[VIEW-GAME] Initializing v7.19 with cache-busting");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1074,12 +1087,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.18
-KEY CHANGES from v7.17:
-   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
-   - Player cards, bubbles, scorecard table, compact header styles removed
-   - Kept only page-specific styles: container, visibility rules, device tags, modals
-   - All functionality unchanged
+VERSION: 7.19
+KEY CHANGES from v7.18:
+   - ADDED: Cache-busting version check to force reload on new deployments
+   - Prevents users from running stale cached versions after updates
+   - Uses localStorage to track version and redirects with ?v= parameter
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
