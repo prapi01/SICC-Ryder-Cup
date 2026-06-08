@@ -1,10 +1,11 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.16
-KEY CHANGES from v3.15:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
+VERSION: 3.17
+KEY CHANGES from v3.16:
+   - ADDED: Anchor player highlighting in gold text
+   - Reads 'anchor' field from game data
+   - Anchor player's name and handicap displayed in gold (#ffaa44)
+   - Visual confirmation for both flights of who the anchor is
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
@@ -201,7 +202,6 @@ STATUS: Ready for integration
         .player-name { 
             font-size: clamp(11px, 3.5vw, 13px); 
             font-weight: 500; 
-            color: #fff;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -214,7 +214,6 @@ STATUS: Ready for integration
             background: rgba(76,175,80,0.2);
             padding: 1px clamp(4px, 2vw, 6px);
             border-radius: 12px;
-            color: #4caf50;
             flex-shrink: 0;
         }
         
@@ -423,12 +422,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.16</div>
+<div class="version-tag">v3.17</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.16
+// FILE: pre-game.html - VERSION 3.17
 
-var VERSION = "3.16";
+var VERSION = "3.17";
 var CACHE_KEY = "pre_game_version";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -1068,6 +1067,26 @@ function getViewButtonClass() {
     return "role-btn-default";
 }
 
+// ============================================================
+// NEW v3.17: Render team with anchor highlighting
+// ============================================================
+
+function renderTeam(teamPlayers, anchorName) {
+    var html = '';
+    for (var i = 0; i < teamPlayers.length; i++) {
+        var p = teamPlayers[i];
+        var isAnchor = (anchorName === p.name);
+        var nameColor = isAnchor ? '#ffaa44' : '#ffffff';
+        var hcpColor = isAnchor ? '#ffaa44' : '#4caf50';
+        
+        html += '<div class="player-row">' +
+            '<span class="player-name" style="color: ' + nameColor + ';">' + escapeHtml(p.name) + '</span>' +
+            '<span class="player-handicap" style="color: ' + hcpColor + ';">' + p.handicap + '</span>' +
+            '</div>';
+    }
+    return html;
+}
+
 function render() {
     if (!gameData) return;
     
@@ -1076,6 +1095,7 @@ function render() {
     var startingHole = gameData.startingHole || 1;
     var teamGameFormat = gameData.teamGameFormat || "tournament";
     var formatDisplayName = getFormatDisplayName(teamGameFormat);
+    var anchorName = gameData.anchor || null;
     
     var dateDisplay = '';
     if (gameData.date) {
@@ -1098,15 +1118,6 @@ function render() {
     var flight2Players = players.filter(function(p) { return p.flight === 2; });
     var flight2A = flight2Players.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var flight2B = flight2Players.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    function renderTeam(teamPlayers) {
-        var html = '';
-        for (var i = 0; i < teamPlayers.length; i++) {
-            var p = teamPlayers[i];
-            html += '<div class="player-row"><span class="player-name">' + escapeHtml(p.name) + '</span><span class="player-handicap">' + p.handicap + '</span></div>';
-        }
-        return html;
-    }
     
     var now = Date.now();
     var isF1Locked = locks.f1 && locks.f1.ex && locks.f1.ex > now;
@@ -1202,8 +1213,8 @@ function render() {
                 ${flight1LockInfo}
             </div>
             <div class="teams-grid">
-                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight1A)}</div>
-                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight1B)}</div>
+                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight1A, anchorName)}</div>
+                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight1B, anchorName)}</div>
             </div>
         </div>
         
@@ -1213,8 +1224,8 @@ function render() {
                 ${flight2LockInfo}
             </div>
             <div class="teams-grid">
-                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight2A)}</div>
-                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight2B)}</div>
+                <div class="team"><div class="team-title">TEAM A</div>${renderTeam(flight2A, anchorName)}</div>
+                <div class="team"><div class="team-title">TEAM B</div>${renderTeam(flight2B, anchorName)}</div>
             </div>
         </div>
         
@@ -1274,11 +1285,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.16
-KEY CHANGES from v3.15:
-   - ADDED: js/firebase-config.js for dynamic Firebase config (dev/prod)
-   - REMOVED: Hardcoded FIREBASE_CONFIG variable
-   - REMOVED: Manual firebase.initializeApp() call
+VERSION: 3.17
+KEY CHANGES from v3.16:
+   - ADDED: Anchor player highlighting in gold text
+   - Reads 'anchor' field from game data
+   - Anchor player's name and handicap displayed in gold (#ffaa44)
+   - Visual confirmation for both flights of who the anchor is
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
