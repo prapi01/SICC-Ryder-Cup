@@ -1,13 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.49
-KEY CHANGES from v5.48:
-   - FIXED: TR (Total Result) now shows "-" when data is incomplete
-   - Replaced the "last known TR" behavior with dash for clarity
-   - When both flights have saved the hole → show actual TR values
-   - When only one flight has data → show "-" (incomplete data)
-   - This is more honest and less confusing than showing stale values
-   - Also fixes GameUI.updateTR to handle dash values properly
+VERSION: 5.50
+KEY CHANGES from v5.49:
+   - FIXED: calculateHoleResultsWithCumulative() no longer returns null for holes with no data
+   - Now returns result object with trA = null, trB = null for incomplete holes
+   - This allows updateLocalCacheWithResults() to properly set TR to null (displayed as "-")
+   - Previously, null return meant cache retained old 9.5 values
+   - TR now correctly shows "-" for holes where no data exists
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -298,13 +297,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.49</div>
+<div class="version-tag">v5.50</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.49";
+window.REAL_GAME_VERSION = "5.50";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1078,15 +1077,14 @@ function updateLocalCacheWithResults(resultsData) {
     cache.results.game3.pointsB[position] = resultsData.game3PointsB;
     
     if (!cache.results.tr.teamA) cache.results.tr.teamA = new Array(18).fill(9.5);
-    cache.results.tr.teamA[position] = resultsData.trA;
-    
     if (!cache.results.tr.teamB) cache.results.tr.teamB = new Array(18).fill(9.5);
-    cache.results.tr.teamB[position] = resultsData.trB;
-    
     if (!cache.results.tr.teamAGreen) cache.results.tr.teamAGreen = new Array(18).fill(true);
-    cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
-    
     if (!cache.results.tr.teamBGreen) cache.results.tr.teamBGreen = new Array(18).fill(true);
+    
+    // FIXED v5.50: Always update TR values (including null) to overwrite stale 9.5
+    cache.results.tr.teamA[position] = resultsData.trA;
+    cache.results.tr.teamB[position] = resultsData.trB;
+    cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
     cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
     
     cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
@@ -1229,7 +1227,7 @@ function getHoleAtPosition(position) {
 }
 
 // ============================================================
-// MAIN RESULTS CALCULATION - FIXED v5.49: TR shows "-" when incomplete
+// MAIN RESULTS CALCULATION - FIXED v5.50: Never returns null
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1242,9 +1240,9 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var f2Available = (f2Hole && f2Hole.saved);
     var crossAvailable = f1Available && f2Available;
     
-    if (!f1Available && !f2Available) {
-        return null;
-    }
+    // FIXED v5.50: Always return a result object, never null
+    // This ensures updateLocalCacheWithResults() is always called
+    // and stale 9.5 values get overwritten with null (displayed as "-")
     
     var remainingHolesByPosition = new Array(18);
     for (var pos = 0; pos < 18; pos++) {
@@ -1252,9 +1250,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         remainingHolesByPosition[pos] = getRemainingHolesFromPlayOrder(holeForPos);
     }
     
-    // ============================================================
     // TEAM GAME - EXCLUSIVELY from GameTeam.calculateWithClinched
-    // ============================================================
     var teamGameResults = GameTeam.calculateWithClinched(
         allPlayers, cache.f1DataString, cache.f2DataString, 
         courseSi, startingHole, teamGameFormat, remainingHolesByPosition
@@ -1263,15 +1259,13 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var flight1ClinchedHoleResult = teamGameResults.flight1ClinchedHole;
     var flight2ClinchedHoleResult = teamGameResults.flight2ClinchedHole;
     
-    // ============================================================
     // MATCH BUBBLES (Intra-flight) - For display only, not team game
-    // ============================================================
     var f1IntraMatchesForHole = null;
     var f2IntraMatchesForHole = null;
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.49";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.50";
     
     // Flight 1 intra-flight match bubbles (NOT team game)
     if (f1Available) {
@@ -1301,11 +1295,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
-    // ============================================================
     // CROSS-FLIGHT MATCHES (Only when both flights have data)
-    // ============================================================
     var matchResultsArray = null;
-    var crossClinchedUpdates = {};
     var game1PointsA = 0, game1PointsB = 0;
     
     if (crossAvailable) {
@@ -1337,22 +1328,17 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         }
     }
     
-    // ============================================================
     // STROKE GAME (Only when both flights have data)
-    // ============================================================
     var strkLeader = "AS";
     var strkDisplay = "AS";
-    var strokeResults = null;
     
     if (crossAvailable) {
-        strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, coursePar);
+        var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, coursePar);
         strkLeader = strokeResults.leader[position] === "A" ? "A" : strokeResults.leader[position] === "B" ? "B" : "AS";
         strkDisplay = strokeResults.displayStrk?.[position] || "AS";
     }
     
-    // ============================================================
     // BUILD RESULT OBJECT USING GameTeam RESULTS
-    // ============================================================
     var cumulativeF1 = teamGameResults.flight1Cumulative[position];
     var cumulativeF2 = teamGameResults.flight2Cumulative[position];
     var t1Leader = teamGameResults.flight1Leaders[position];
@@ -1372,11 +1358,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var game3PointsA = (strkLeader === "A") ? 1 : (strkLeader === "B") ? 0 : 0.5;
     var game3PointsB = (strkLeader === "A") ? 0 : (strkLeader === "B") ? 1 : 0.5;
     
-    // ============================================================
-    // FIXED v5.49: TR shows "-" when data is incomplete
-    // When both flights have data, calculate and show actual TR
-    // When only one flight has data, show "-" to indicate incomplete
-    // ============================================================
+    // TR values - FIXED v5.50: Always set trA/trB (null for incomplete data)
     var trA, trB, trAGreen, trBGreen;
     
     if (crossAvailable) {
@@ -1387,12 +1369,12 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         trBGreen = (trB > trA);
         console.log(`[TR-DEBUG] Hole ${holeNumber}: BOTH flights saved - TR = ${trA} - ${trB}`);
     } else {
-        // Only one flight has data - show "-" to indicate incomplete data
+        // Only one flight or no data - show null (displayed as "-")
         trA = null;
         trB = null;
         trAGreen = false;
         trBGreen = false;
-        console.log(`[TR-DEBUG] Hole ${holeNumber}: Only ${f1Available ? 'F1' : 'F2'} saved - TR = "-" (incomplete data)`);
+        console.log(`[TR-DEBUG] Hole ${holeNumber}: crossAvailable=${crossAvailable}, f1Available=${f1Available}, f2Available=${f2Available} - TR set to null`);
     }
     
     // Update clinchedAt
@@ -1434,7 +1416,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         cumulativeF2: cumulativeF2
     };
     
-    console.log(`[CASCADE-DEBUG] Hole ${holeNumber}: T-1 display = ${t1Display}, T-2 display = ${t2Display}, TR = ${trA === null ? '-' : trA + ' - ' + trB}`);
+    console.log(`[CASCADE-DEBUG] Hole ${holeNumber}: T-1=${t1Display}, T-2=${t2Display}, TR=${trA === null ? '-' : trA + '-' + trB}`);
     
     return result;
 }
@@ -1503,7 +1485,7 @@ function setupRealtimeListener() {
 }
 
 // ============================================================
-// Navigation and Modal Functions
+// Navigation and Modal Functions (unchanged)
 // ============================================================
 
 function nextHole() {
@@ -1698,7 +1680,7 @@ function renderAll() {
     
     GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
     
-    // FIXED v5.49: Handle null TR values (show "-" for incomplete data)
+    // Handle null TR values (display as "-")
     var displayTeamA = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamA : "-";
     var displayTeamB = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamB : "-";
     var displayTeamAGreen = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamAGreen : false;
@@ -1926,14 +1908,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.49
-KEY CHANGES from v5.48:
-   - FIXED: TR (Total Result) now shows "-" when data is incomplete
-   - Replaced the "last known TR" behavior with dash for clarity
-   - When both flights have saved the hole → show actual TR values
-   - When only one flight has data → show "-" (incomplete data)
-   - This is more honest and less confusing than showing stale values
-   - Also fixes GameUI.updateTR to handle dash values properly
+VERSION: 5.50
+KEY CHANGES from v5.49:
+   - FIXED: calculateHoleResultsWithCumulative() no longer returns null for holes with no data
+   - Now returns result object with trA = null, trB = null for incomplete holes
+   - This allows updateLocalCacheWithResults() to properly set TR to null (displayed as "-")
+   - Previously, null return meant cache retained old 9.5 values
+   - TR now correctly shows "-" for holes where no data exists
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
