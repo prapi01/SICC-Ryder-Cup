@@ -8,6 +8,7 @@ KEY CHANGES from v2.21:
    - After selection, recalculates all adjustments and updates Firestore
    - Updates both scheduledGames and historyRecord (if exists)
    - Proper error handling and rollback on failure
+   - FIXED: Syntax error on line 534 (missing closing parenthesis)
    - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -304,7 +305,7 @@ var HandicapAdjustment = (function() {
                 currentTeam = playerTeam;
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
                 tableHtml += '<tr style="border-top: 2px solid #000; background:#1a3a1a;">';
-                tableHtml += `<td colspan="5" style="padding:6px 2px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}</td>`;
+                tableHtml += `<td colspan="5" style="padding:6px 2px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}<tr>`;
                 tableHtml += '</tr>';
             }
             
@@ -341,7 +342,7 @@ var HandicapAdjustment = (function() {
             tableHtml += '</tr>';
         }
         
-        tableHtml += '</tbody></table></div>';
+        tableHtml += '</tbody><table></div>';
         
         var anchorInfoHtml = `<div style="text-align: center; margin-bottom: 10px;"><span style="color: #4caf50; font-size:0.75rem;">✓ Anchor: ${escapeHtml(anchorName)}</span></div>`;
         
@@ -772,7 +773,8 @@ var HandicapAdjustment = (function() {
         
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
-        var zeroHcpPlayers = allPlayers.filter(function(p) { return p.handicap === 0);
+        // FIXED: Missing closing parenthesis
+        var zeroHcpPlayers = allPlayers.filter(function(p) { return p.handicap === 0; });
         hasMultipleZeroHandicap = (zeroHcpPlayers.length > 1);
         
         loadGameData(gameId, function(gameData) {
@@ -1023,6 +1025,7 @@ KEY CHANGES from v2.21:
    - After selection, recalculates all adjustments and updates Firestore
    - Updates both scheduledGames and historyRecord (if exists)
    - Proper error handling and rollback on failure
+   - FIXED: Syntax error on line 534 (missing closing parenthesis)
    - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
