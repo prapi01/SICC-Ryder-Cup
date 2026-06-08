@@ -1,23 +1,21 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.14
-KEY CHANGES from v2.13:
-   - ADDED: Extensive debug logging for clinch detection and update flow
-   - ADDED: Logging in calculateCrossFlightWithClinch for matchValue and remainingHoles
-   - ADDED: Logging in updateClinchedAt with detailed before/after state
-   - ADDED: Logging in getMatchValueFromStoredResults to debug value retrieval
-   - ADDED: Version exposure for console debugging
-   - All existing functionality unchanged
+VERSION: 2.15
+KEY CHANGES from v2.14:
+   - ADDED: Special case for hole 18 tied matches (AS) in getMatchBubbleClass
+   - At hole 18, if matchValue === 0 (AS), returns 'bubble-gold' for both players
+   - This provides special last-hole visual treatment for tied matches
+   - All existing debug logging and functionality preserved
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.14";
+window.GAME_MATCH_VERSION = "2.15";
 
 var GameMatch = (function() {
     
-    console.log("[GAME-MATCH] Initializing v2.14 with debug logging");
+    console.log("[GAME-MATCH] Initializing v2.15 with hole 18 tied match gold bubble");
     
     // ============================================================
     // Stroke calculation helpers (unchanged)
@@ -588,8 +586,18 @@ var GameMatch = (function() {
         return absValue.toString();
     }
     
+    // ============================================================
+    // getMatchBubbleClass - v2.15: Added hole 18 tied match special case
+    // ============================================================
+    
     function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedHole, getClinchHoleFunc) {
         var clinchHole = getClinchHoleFunc(clinchedAt, player.name, opponent.name);
+        
+        // SPECIAL CASE: Last hole (18) with tied match - show gold for both
+        if (currentHole === 18 && matchValue === 0) {
+            console.log(`[DEBUG-MATCH] HOLE 18 TIED MATCH: ${player.name} vs ${opponent.name} -> bubble-gold`);
+            return 'bubble-gold';
+        }
         
         if (Math.abs(matchValue) > 0 || clinchHole) {
             console.log(`[DEBUG-MATCH] getMatchBubbleClass: ${player.name} vs ${opponent.name} hole=${currentHole}, matchValue=${matchValue}, clinchHole=${clinchHole}`);
@@ -684,18 +692,16 @@ var GameMatch = (function() {
 })();
 
 // Re-expose version for console debugging
-window.GAME_MATCH_VERSION = "2.14";
+window.GAME_MATCH_VERSION = "2.15";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.14
-KEY CHANGES from v2.13:
-   - ADDED: Extensive debug logging for clinch detection and update flow
-   - ADDED: Logging in calculateCrossFlightWithClinch for matchValue and remainingHoles
-   - ADDED: Logging in updateClinchedAt with detailed before/after state
-   - ADDED: Logging in getMatchValueFromStoredResults to debug value retrieval
-   - ADDED: Version exposure for console debugging
-   - All existing functionality unchanged
+VERSION: 2.15
+KEY CHANGES from v2.14:
+   - ADDED: Special case for hole 18 tied matches (AS) in getMatchBubbleClass
+   - At hole 18, if matchValue === 0 (AS), returns 'bubble-gold' for both players
+   - This provides special last-hole visual treatment for tied matches
+   - All existing debug logging and functionality preserved
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
 */
