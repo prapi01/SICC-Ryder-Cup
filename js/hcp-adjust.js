@@ -1,11 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.24
-KEY CHANGES from v2.23:
-   - REMOVED: "Anchor: X" text line from top of handicap table
-   - ADDED: Gold highlighting for anchor player's Starting Handicap (St)
-   - Anchor player's St value now displayed in gold (#ffaa44) instead of white
-   - More subtle, visual-only indication of who the anchor is
+VERSION: 2.25
+KEY CHANGES from v2.24:
+   - FIXED: Table column alignment - team separator now properly spans all columns
+   - FIXED: Added missing table header structure
+   - FIXED: Separator row now has correct colspan=5
+   - Removed redundant "St" from separator row
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -257,13 +257,12 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.24: Removed anchor text line, gold St for anchor
+    // Display Table - v2.25: Fixed table structure
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
-        var newAnchorName = calculationResult.newAnchorName;
         
         // Sort players by Team (A first), then by startingHcp
         players.sort(function(a, b) {
@@ -279,32 +278,34 @@ var HandicapAdjustment = (function() {
         
         var tableHtml = '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
         tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.7rem; min-width: 375px;">';
+        
+        // Table Header
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
-        tableHtml += '<th style="padding:4px 2px; text-align:left; width:70px;">Player</th>';
-        tableHtml += '<th style="padding:4px 2px; text-align:center; width:28px;">St</th>';
-        tableHtml += '<th style="padding:4px 2px; text-align:center; width:32px;">Anc</th>';
-        tableHtml += '<th style="padding:4px 2px; text-align:center; width:32px;">Perf</th>';
-        tableHtml += '<th style="padding:4px 2px; text-align:center; width:32px;">Final</th>';
-        tableHtml += '</thead><tbody>';
+        tableHtml += '<th style="padding:8px 4px; text-align:left; width:70px;">Player</th>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:28px;">St</th>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Anc</th>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Perf</th>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Final</th>';
+        tableHtml += '</tr></thead><tbody>';
         
         var currentTeam = null;
         
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
             var displayHcp = hasNewAnchor ? p.newAnchor : p.newHcp;
-            var playerTeam = p.team || (currentTeam === null ? 'A' : 'B');
+            var playerTeam = p.team || 'B';
             var isAnchor = (p.name === anchorName);
             
             // Add team separator row if team changes
             if (playerTeam !== currentTeam) {
                 if (currentTeam !== null) {
-                    // No spacer needed
+                    // No separator needed between teams - just continue
                 }
                 currentTeam = playerTeam;
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
-                tableHtml += '<tr style="border-top: 2px solid #000; background:#1a3a1a;">';
-                tableHtml += `<td colspan="5" style="padding:6px 2px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}<tr>`;
-                tableHtml += '</table>';
+                tableHtml += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
+                tableHtml += `<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}</td>`;
+                tableHtml += '</tr>';
             }
             
             var perfColor = '#888';
@@ -331,21 +332,19 @@ var HandicapAdjustment = (function() {
                 ancSign = '0';
             }
             
-            // v2.24: Highlight anchor's Starting Handicap (St) in gold
+            // Gold highlighting for anchor's Starting Handicap
             var stColor = isAnchor ? '#ffaa44' : '#ffffff';
             
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
-            tableHtml += `<td style="padding:4px 2px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}</td>`;
-            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${stColor}; font-weight:600;">${p.currentHcp}</td>`;
-            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
-            tableHtml += `<td style="padding:4px 2px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
-            tableHtml += `<td style="padding:4px 2px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${stColor}; font-weight:600;">${p.currentHcp}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
             tableHtml += '</tr>';
         }
         
         tableHtml += '</tbody></table></div>';
-        
-        // v2.24: Removed the anchor info line entirely - anchor now identified by gold St value
         
         var buttonsHtml = '';
         if (isReadOnly) {
@@ -977,7 +976,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.24";
+    window.HANDICAP_ADJUST_VERSION = "2.25";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -996,12 +995,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.24
-KEY CHANGES from v2.23:
-   - REMOVED: "Anchor: X" text line from top of handicap table
-   - ADDED: Gold highlighting for anchor player's Starting Handicap (St)
-   - Anchor player's St value now displayed in gold (#ffaa44) instead of white
-   - More subtle, visual-only indication of who the anchor is
+VERSION: 2.25
+KEY CHANGES from v2.24:
+   - FIXED: Table column alignment - team separator now properly spans all columns
+   - FIXED: Added missing table header structure
+   - FIXED: Separator row now has correct colspan=5
+   - Removed redundant "St" from separator row
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
