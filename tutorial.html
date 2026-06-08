@@ -1,13 +1,12 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - REMOVED: All instances of the word "clinch" from UI and descriptions
-   - CHANGED: Step 5 - "Grey" description now "Match already won/lost"
-   - CHANGED: Step 5 - AS replaced with green square icon
-   - REMOVED: "Total match points from all 16 matches" tip
-   - CHANGED: Step 6 - Simplified Team Game + Stroke Game description
-   - CHANGED: Step 9 - Simplified Anchor Adjustment description (Win/Lose by 2 holes → CUT/ADD 1 stroke)
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: Step 3 & 4 - TR display now shows total of 19 points (proper styling, team colors)
+   - REMOVED: All "per hole" references from Step 5 and Step 6
+   - FIXED: Step 5 - Simplified description (no "per hole")
+   - FIXED: Step 6 - Simplified description (no "per hole")
+   - FIXED: Step 9 - Removed "No adjustment otherwise" line
    - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
@@ -479,7 +478,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.12</div>
+<div class="version-tag">v1.13</div>
 
 <script>
 // ============================================================
@@ -635,10 +634,11 @@ function renderStep3() {
         </div>
         <div class="team-score-card">
             <div style="display:flex; justify-content:center; gap:16px;">
-                <div><div style="font-size:0.75rem;">TEAM A</div><div style="font-size:1.3rem; font-weight:800;">8</div></div>
-                <div style="font-size:1rem;">│</div>
-                <div><div style="font-size:0.75rem;">TEAM B</div><div style="font-size:1.3rem; font-weight:800;">5</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">11</div></div>
+                <div style="font-size:1.5rem; color:#888;">│</div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7</div></div>
             </div>
+            <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>
         <div class="player-card">
             <div class="player-header">
@@ -726,7 +726,7 @@ function renderStep3() {
     addHighlight('saveDemoBtn');
     
     document.getElementById('instructionText').innerHTML = 'Scoring screen for the scorer.<br><br>Scores default to par. Adjust up or down based on actual strokes. <strong>SAVE</strong> to record.<br><br>1. Use <strong>+</strong> and <strong>-</strong> to adjust gross score<br>2. Tap <strong>SAVE</strong> - button flashes red<br>3. Tap <strong>▶</strong> to move to next hole<br><br>You cannot advance until current hole is saved.';
-    document.getElementById('instructionTip').innerHTML = '💡 Tip: The top display shows overall team score. Team with more points wins.<br><br>📌 Bubble colors show match results (explained in Step 5).';
+    document.getElementById('instructionTip').innerHTML = '💡 Tip: The top display shows overall team score (total of 19 points). Team with more points wins.<br><br>📌 Bubble colors show match results (explained in Step 5).';
 }
 
 // ============================================================
@@ -740,10 +740,11 @@ function renderStep4() {
         </div>
         <div class="team-score-card">
             <div style="display:flex; justify-content:center; gap:16px;">
-                <div><div style="font-size:0.75rem;">TEAM A</div><div style="font-size:1.3rem; font-weight:800;">3</div></div>
-                <div style="font-size:1rem;">│</div>
-                <div><div style="font-size:0.75rem;">TEAM B</div><div style="font-size:1.3rem; font-weight:800;">2</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">8</div></div>
+                <div style="font-size:1.5rem; color:#888;">│</div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">5</div></div>
             </div>
+            <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>
         <div class="player-card">
             <div class="player-header">
@@ -797,10 +798,11 @@ function renderStep5() {
         </div>
         <div class="team-score-card">
             <div style="display:flex; justify-content:center; gap:16px;">
-                <div><div style="font-size:0.75rem;">TEAM A</div><div style="font-size:1.6rem; font-weight:800; color:#4caf50;">11.5</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">11.5</div></div>
                 <div style="font-size:1.5rem; color:#888;">│</div>
-                <div><div style="font-size:0.75rem;">TEAM B</div><div style="font-size:1.6rem; font-weight:800; color:#ff6b6b;">7.5</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7.5</div></div>
             </div>
+            <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>
         
         <div class="player-card">
@@ -841,7 +843,7 @@ function renderStep5() {
             <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">🏆 MATCH GAME (16 points)</div>
             <div style="font-size:0.7rem; color:#ccc; line-height:1.5;">
                 Each player plays 4 matches against the 4 opponents on the other team.<br>
-                Each match worth 1 point → <strong>16 points per hole</strong>.<br>
+                Each match worth 1 point → total 16 points.<br>
                 The number shows how many holes the player is winning/losing by.<br>
                 <strong><span class="as-square"></span></strong> = All Square (tied match).
             </div>
@@ -874,10 +876,11 @@ function renderStep6() {
         </div>
         <div class="team-score-card">
             <div style="display:flex; justify-content:center; gap:16px;">
-                <div><div style="font-size:0.75rem;">TEAM A</div><div style="font-size:1.6rem; font-weight:800; color:#4caf50;">11.5</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">11.5</div></div>
                 <div style="font-size:1.5rem; color:#888;">│</div>
-                <div><div style="font-size:0.75rem;">TEAM B</div><div style="font-size:1.6rem; font-weight:800; color:#ff6b6b;">7.5</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7.5</div></div>
             </div>
+            <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>
         <div class="scorecard-section">
             <div class="scorecard-wrapper">
@@ -914,11 +917,11 @@ function renderStep6() {
         <div style="margin: 12px 16px; padding: 12px; background:#111; border-radius:12px;">
             <div style="font-size:0.8rem; color:#ffaa44; margin-bottom:8px;">📊 TEAM GAME + STROKE GAME (3 points)</div>
             <div style="font-size:0.7rem; color:#ccc; line-height:1.5;">
-                <strong>Team Game (T-1, T-2 rows)</strong> - 2 points per hole<br>
+                <strong>Team Game (T-1, T-2 rows)</strong> - 2 points<br>
                 • T-1 row - Flight 1: Best 2 players from Team A vs Best 2 from Team B<br>
                 • T-2 row - Flight 2: Best 2 players from Team A vs Best 2 from Team B<br>
                 • Each flight worth 1 point → 2 points<br><br>
-                <strong>Stroke Game (Strk row)</strong> - 1 point per hole<br>
+                <strong>Stroke Game (Strk row)</strong> - 1 point<br>
                 • Cumulative net score of all 8 players<br>
                 • Lower cumulative net wins → 1 point
             </div>
@@ -927,7 +930,7 @@ function renderStep6() {
     
     document.getElementById('demoScreen').innerHTML = html;
     
-    document.getElementById('instructionText').innerHTML = '<strong>TEAM GAME + STROKE GAME (3 points per hole)</strong><br><br>' +
+    document.getElementById('instructionText').innerHTML = '<strong>TEAM GAME + STROKE GAME (3 points)</strong><br><br>' +
         '<strong>TEAM GAME (2 points)</strong><br>' +
         '• <strong>T-1 row</strong> - Flight 1: Best 2 players from Team A vs Best 2 from Team B<br>' +
         '• <strong>T-2 row</strong> - Flight 2: Best 2 players from Team A vs Best 2 from Team B<br>' +
@@ -955,10 +958,11 @@ function renderStep7() {
         </div>
         <div class="team-score-card">
             <div style="display:flex; justify-content:center; gap:16px;">
-                <div><div style="font-size:0.75rem;">TEAM A</div><div style="font-size:1.3rem; font-weight:800;">11</div></div>
-                <div style="font-size:1rem;">│</div>
-                <div><div style="font-size:0.75rem;">TEAM B</div><div style="font-size:1.3rem; font-weight:800;">7</div></div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#4caf50;">TEAM A</div><div style="font-size:1.8rem; font-weight:800; color:#4caf50;">11</div></div>
+                <div style="font-size:1.5rem; color:#888;">│</div>
+                <div><div style="font-size:0.85rem; font-weight:600; color:#ff6b6b;">TEAM B</div><div style="font-size:1.8rem; font-weight:800; color:#ff6b6b;">7</div></div>
             </div>
+            <div style="font-size:0.65rem; color:#888; margin-top:8px;">Total of 19 points</div>
         </div>
         <div class="compact-header">
             <button class="compact-btn" style="min-width:60px;">P</button>
@@ -1085,8 +1089,7 @@ function renderStep9() {
         '• Win/Lose by 2 holes → CUT/ADD 1 stroke<br><br>' +
         '<strong>Performance Adjustment (Perf)</strong> - Based on 4 matches against other team:<br>' +
         '• Net match wins ≥ +3.5 → CUT 1 stroke<br>' +
-        '• Net match wins ≤ +0.5 → ADD 1 stroke<br>' +
-        '• No adjustment otherwise<br><br>' +
+        '• Net match wins ≤ +0.5 → ADD 1 stroke<br><br>' +
         '<strong>New handicaps are automatically saved to player profiles.</strong>';
     document.getElementById('instructionTip').innerHTML = '💡 Tip: After handicap adjustment, view results anytime in VIEW PREVIOUS GAMES.<br><br>📌 The Anchor may change if the lowest handicap player changes after adjustments.';
 }
@@ -1179,14 +1182,13 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - REMOVED: All instances of the word "clinch" from UI and descriptions
-   - CHANGED: Step 5 - "Grey" description now "Match already won/lost"
-   - CHANGED: Step 5 - AS replaced with green square icon
-   - REMOVED: "Total match points from all 16 matches" tip
-   - CHANGED: Step 6 - Simplified Team Game + Stroke Game description
-   - CHANGED: Step 9 - Simplified Anchor Adjustment description (Win/Lose by 2 holes → CUT/ADD 1 stroke)
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: Step 3 & 4 - TR display now shows total of 19 points (proper styling, team colors)
+   - REMOVED: All "per hole" references from Step 5 and Step 6
+   - FIXED: Step 5 - Simplified description (no "per hole")
+   - FIXED: Step 6 - Simplified description (no "per hole")
+   - FIXED: Step 9 - Removed "No adjustment otherwise" line
    - All UI styling matches current app
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
