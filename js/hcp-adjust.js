@@ -1,11 +1,10 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.25
-KEY CHANGES from v2.24:
-   - FIXED: Table column alignment - team separator now properly spans all columns
-   - FIXED: Added missing table header structure
-   - FIXED: Separator row now has correct colspan=5
-   - Removed redundant "St" from separator row
+VERSION: 2.26
+KEY CHANGES from v2.25:
+   - FIXED: displayHcp now correctly reads from stored data (finalHcp)
+   - FIXED: Properly handles both live calculation (newHcp/newAnchor) and history records (finalHcp)
+   - FIXED: Table now displays correct Final values instead of null
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -257,7 +256,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.25: Fixed table structure
+    // Display Table - v2.26: Fixed final handicap display for history records
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -292,7 +291,33 @@ var HandicapAdjustment = (function() {
         
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
-            var displayHcp = hasNewAnchor ? p.newAnchor : p.newHcp;
+            
+            // Determine final handicap - handle both live calculation and stored history data
+            var displayHcp = null;
+            if (p.newHcp !== undefined && p.newHcp !== null) {
+                displayHcp = p.newHcp;
+            } else if (p.newAnchor !== undefined && p.newAnchor !== null) {
+                displayHcp = p.newAnchor;
+            } else if (p.finalHcp !== undefined && p.finalHcp !== null) {
+                displayHcp = p.finalHcp;
+            } else if (p.newHcp !== undefined) {
+                displayHcp = p.newHcp;
+            }
+            
+            // If still null, try to calculate from rawNew + zeroRise
+            if (displayHcp === null && p.rawNew !== undefined) {
+                if (hasNewAnchor && calculationResult.zeroRiseAmount) {
+                    displayHcp = p.rawNew + calculationResult.zeroRiseAmount;
+                } else {
+                    displayHcp = p.rawNew;
+                }
+            }
+            
+            // Final fallback
+            if (displayHcp === null || displayHcp === undefined) {
+                displayHcp = p.currentHcp;
+            }
+            
             var playerTeam = p.team || 'B';
             var isAnchor = (p.name === anchorName);
             
@@ -580,11 +605,13 @@ var HandicapAdjustment = (function() {
             return {
                 name: p.name,
                 label: p.label || p.name.substring(0, 3).toUpperCase(),
-                currentHcp: p.startingHcp,
+                currentHcp: p.startingHcp || p.currentHcp,
                 anchorAdj: p.anchorAdj || 0,
                 perfAdj: p.perfAdj || 0,
-                newHcp: p.finalHcp,
+                finalHcp: p.finalHcp,  // Store as finalHcp for history display
+                newHcp: null,
                 newAnchor: null,
+                rawNew: null,
                 team: teamInfo.team,
                 startingHcp: teamInfo.startingHcp
             };
@@ -672,7 +699,9 @@ var HandicapAdjustment = (function() {
                             currentHcp: p.currentHcp,
                             anchorAdj: p.anchorAdj || 0,
                             perfAdj: p.perfAdj || 0,
-                            newHcp: p.newHcp,
+                            finalHcp: p.newHcp,
+                            newHcp: null,
+                            newAnchor: null,
                             team: playerInfo ? playerInfo.team : 'B',
                             startingHcp: p.currentHcp
                         };
@@ -692,7 +721,9 @@ var HandicapAdjustment = (function() {
                             currentHcp: p.handicap,
                             anchorAdj: 0,
                             perfAdj: 0,
-                            newHcp: p.handicap,
+                            finalHcp: p.handicap,
+                            newHcp: null,
+                            newAnchor: null,
                             team: p.team,
                             startingHcp: p.handicap
                         };
@@ -976,7 +1007,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.25";
+    window.HANDICAP_ADJUST_VERSION = "2.26";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -995,12 +1026,11 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.25
-KEY CHANGES from v2.24:
-   - FIXED: Table column alignment - team separator now properly spans all columns
-   - FIXED: Added missing table header structure
-   - FIXED: Separator row now has correct colspan=5
-   - Removed redundant "St" from separator row
+VERSION: 2.26
+KEY CHANGES from v2.25:
+   - FIXED: displayHcp now correctly reads from stored data (finalHcp)
+   - FIXED: Properly handles both live calculation (newHcp/newAnchor) and history records (finalHcp)
+   - FIXED: Table now displays correct Final values instead of null
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
