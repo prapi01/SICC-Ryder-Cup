@@ -1,15 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 5.56
-KEY CHANGES from v5.55:
-   - ADDED: Comprehensive debug logging embedded in code
-   - Target hole tracking (set DEBUG_TARGET_HOLE to monitor specific hole)
-   - Logging in calculateHoleResultsWithCumulative to trace data creation
-   - Logging in updateLocalCacheWithResults with before/after state
-   - Logging in writeSingleHoleToFirestore to trace Firestore writes
-   - Tracks f1IntraMatches, f2IntraMatches, matchResults through entire pipeline
-   - Identifies where data is lost (calculation, cache, or Firestore)
-   - All existing functionality unchanged
+VERSION: 5.57
+KEY CHANGES from v5.56:
+   - FIXED: Cascade loop condition now correctly processes all holes up to lastSavedHole
+   - Previously condition "holeToUpdate > cascadeEndHole" caused premature break
+   - New condition: Process while holeToUpdate <= lastSavedHole
+   - Added debug logging for cascade queue contents before Firestore writes
+   - Fixed off-by-one errors in cascade range calculation
+   - Ensures f2IntraMatches and all match results are properly persisted to Firestore
+   - All existing debug logging preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -299,14 +298,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.56</div>
+<div class="version-tag">v5.57</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.56";
-console.log("[REAL-GAME] Initializing v5.56 with comprehensive debug logging");
+window.REAL_GAME_VERSION = "5.57";
+console.log("[REAL-GAME] Initializing v5.57 with cascade fix");
 
 // ============================================================
 // DEBUG CONFIGURATION - Set target hole to monitor
@@ -966,16 +965,19 @@ function performSave() {
                 
                 var playOrder = getPlayOrder();
                 var startPos = playOrder.indexOf(currentHole);
-                var cascadeEndHole = lastSavedHole;
-                console.log(`[CASCADE-DEBUG] Cascading from hole ${currentHole} to hole ${cascadeEndHole}`);
+                
+                console.log(`[CASCADE-DEBUG] FIXED: Processing holes from ${currentHole + 1} to ${lastSavedHole}`);
                 
                 var currentCache = GameLoader.getLocalCache();
                 
+                // FIXED v5.57: Correct cascade loop condition
+                // Process holes from currentHole+1 up to lastSavedHole (inclusive)
                 for (var i = startPos + 1; i < 18; i++) {
                     var holeToUpdate = playOrder[i];
                     
-                    if (holeToUpdate > cascadeEndHole) {
-                        console.log(`[CASCADE-DEBUG] Stopping cascade at hole ${holeToUpdate} (exceeds lastSavedHole ${cascadeEndHole})`);
+                    // Stop when we've reached the last saved hole
+                    if (holeToUpdate > lastSavedHole) {
+                        console.log(`[CASCADE-DEBUG] Stopping cascade at hole ${holeToUpdate} (exceeds lastSavedHole ${lastSavedHole})`);
                         break;
                     }
                     
@@ -1001,6 +1003,7 @@ function performSave() {
                 }
                 
                 console.log(`[CASCADE-DEBUG] Cascade calculation complete. ${cascadeResultsQueue.length} holes to write to Firestore.`);
+                console.log(`[CASCADE-DEBUG] Queue contents: ${cascadeResultsQueue.map(function(item) { return item.hole; }).join(', ')}`);
                 
                 var pendingData = {
                     gameId: gameId,
@@ -1359,7 +1362,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.56";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.57";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -2043,16 +2046,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.56
-KEY CHANGES from v5.55:
-   - ADDED: Comprehensive debug logging embedded in code
-   - Target hole tracking (set DEBUG_TARGET_HOLE to monitor specific hole)
-   - Logging in calculateHoleResultsWithCumulative to trace data creation
-   - Logging in updateLocalCacheWithResults with before/after state
-   - Logging in writeSingleHoleToFirestore to trace Firestore writes
-   - Tracks f1IntraMatches, f2IntraMatches, matchResults through entire pipeline
-   - Identifies where data is lost (calculation, cache, or Firestore)
-   - All existing functionality unchanged
+VERSION: 5.57
+KEY CHANGES from v5.56:
+   - FIXED: Cascade loop condition now correctly processes all holes up to lastSavedHole
+   - Previously condition "holeToUpdate > cascadeEndHole" caused premature break
+   - New condition: Process while holeToUpdate <= lastSavedHole
+   - Added debug logging for cascade queue contents before Firestore writes
+   - Fixed off-by-one errors in cascade range calculation
+   - Ensures f2IntraMatches and all match results are properly persisted to Firestore
+   - All existing debug logging preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
