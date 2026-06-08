@@ -1,14 +1,12 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.03
-KEY CHANGES from v5.02:
-   - FIXED: Conditional button rendering in renderCompactHeader()
-   - When onSave callback provided → shows SAVE button (real-game.html)
-   - When onToggleFlight callback provided → shows FLIGHT button (view-game.html, view-history.html)
-   - Both buttons if both callbacks provided (future-proof)
-   - FLIGHT button no longer appears in real-game.html
-   - SAVE button no longer appears in view-game.html / view-history.html
-   - All existing functionality unchanged for other features
+VERSION: 5.04
+KEY CHANGES from v5.03:
+   - FIXED: updateTR() now handles null and non-numeric values safely
+   - No longer calls .toFixed() on null, undefined, or dash values
+   - Displays "-" for null or invalid TR values
+   - Prevents "toFixed is not a function" errors when TR is null
+   - All existing functionality unchanged
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
@@ -699,7 +697,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Render Compact Header - FIXED v5.03: Conditional button rendering
+    // Render Compact Header - Conditional button rendering
     // ============================================================
     
     function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
@@ -971,17 +969,29 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // TR (Title Result) Display
+    // TR (Title Result) Display - FIXED v5.04: Handles null and non-numeric values
     // ============================================================
     
     function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        var teamADisplay = teamAPoints % 1 === 0 ? teamAPoints : teamAPoints.toFixed(1);
-        var teamBDisplay = teamBPoints % 1 === 0 ? teamBPoints : teamBPoints.toFixed(1);
+        // Helper function to format display value safely
+        function formatDisplayValue(value) {
+            if (value === null || value === undefined || value === "-") {
+                return "-";
+            }
+            if (typeof value === 'number') {
+                return value % 1 === 0 ? value.toString() : value.toFixed(1);
+            }
+            return value.toString();
+        }
         
-        var isTie = (teamAPoints === teamBPoints);
+        var teamADisplay = formatDisplayValue(teamAPoints);
+        var teamBDisplay = formatDisplayValue(teamBPoints);
+        
+        // Determine colors - treat null/dash as neutral (green)
+        var isTie = (teamAPoints === teamBPoints) || (teamADisplay === "-" && teamBDisplay === "-");
         var teamAColor = (isTie || teamAGreen) ? '#4caf50' : '#ff6b6b';
         var teamBColor = (isTie || teamBGreen) ? '#4caf50' : '#ff6b6b';
         var separatorColor = '#888';
@@ -1376,16 +1386,14 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.03
-KEY CHANGES from v5.02:
-   - FIXED: Conditional button rendering in renderCompactHeader()
-   - When onSave callback provided → shows SAVE button (real-game.html)
-   - When onToggleFlight callback provided → shows FLIGHT button (view-game.html, view-history.html)
-   - Both buttons if both callbacks provided (future-proof)
-   - FLIGHT button no longer appears in real-game.html
-   - SAVE button no longer appears in view-game.html / view-history.html
-   - Added saveBtn to controlBarElements for reference
-   - All existing functionality unchanged for other features
+VERSION: 5.04
+KEY CHANGES from v5.03:
+   - FIXED: updateTR() now handles null and non-numeric values safely
+   - No longer calls .toFixed() on null, undefined, or dash values
+   - Displays "-" for null or invalid TR values
+   - Prevents "toFixed is not a function" errors when TR is null
+   - Added formatDisplayValue() helper function
+   - All existing functionality unchanged
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
