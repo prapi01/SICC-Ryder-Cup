@@ -1,14 +1,14 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.02
-KEY CHANGES from v5.01:
-   - FIXED: Flight toggle no longer recreates the entire control bar (was resetting hole display)
-   - Flight button now only updates its own text and calls the callback
-   - Removed recursive renderCompactHeader() call from flight button handler
-   - Control bar is now created ONCE and never recreated
-   - Hole display updates via updateCompactHoleDisplay() work correctly
-   - This fixes the flight toggle bug in view-history.html
-   - All other functionality unchanged
+VERSION: 5.03
+KEY CHANGES from v5.02:
+   - FIXED: Conditional button rendering in renderCompactHeader()
+   - When onSave callback provided → shows SAVE button (real-game.html)
+   - When onToggleFlight callback provided → shows FLIGHT button (view-game.html, view-history.html)
+   - Both buttons if both callbacks provided (future-proof)
+   - FLIGHT button no longer appears in real-game.html
+   - SAVE button no longer appears in view-game.html / view-history.html
+   - All existing functionality unchanged for other features
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
@@ -41,6 +41,7 @@ var GameUI = (function() {
     var controlBarElements = {
         pnBtn: null,
         flightBtn: null,
+        saveBtn: null,
         prevBtn: null,
         nextBtn: null,
         holeDisplay: null,
@@ -698,7 +699,7 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Render Compact Header - FIXED v5.02 (no recreation on flight toggle)
+    // Render Compact Header - FIXED v5.03: Conditional button rendering
     // ============================================================
     
     function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
@@ -710,6 +711,7 @@ var GameUI = (function() {
         // Store container ID for later updates
         controlBarElements.containerId = containerId;
         
+        // Store callbacks
         if (onSave) eventCallbacks.onSave = onSave;
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
@@ -722,21 +724,47 @@ var GameUI = (function() {
         var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
         var oppositeFlight = flightNumber === 1 ? 2 : 1;
         
-        // ROBUST INLINE STYLES
+        // Determine which buttons to show based on callbacks
+        var hasSave = (onSave !== null);
+        var hasFlightToggle = (onToggleFlight !== null);
+        
+        // Button base styles
         var buttonBaseStyle = 'background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; cursor: pointer;';
         var pnBtnStyle = buttonBaseStyle + ' border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; flex-shrink: 0;';
-        var flightBtnStyle = buttonBaseStyle + ' border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; text-align: center; white-space: nowrap;';
         var navBtnStyle = buttonBaseStyle + ' width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); display: flex; align-items: center; justify-content: center;';
         var holeDisplayStyle = 'font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;';
+        
+        // Build middle button HTML based on available callbacks
+        var middleButtonHtml = '';
+        if (hasSave && hasFlightToggle) {
+            // Both buttons - side by side
+            middleButtonHtml = `
+                <div style="display: flex; gap: 8px; width: 100%;">
+                    <button class="compact-save-btn" id="compactSaveBtn" style="flex: 1; height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 800; background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50;">SAVE H${currentHole}</button>
+                    <button class="compact-flight-btn" id="compactFlightBtn" style="flex: 1; height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 800; background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50;">FLIGHT ${oppositeFlight}</button>
+                </div>
+            `;
+        } else if (hasSave) {
+            // SAVE button only (real-game.html)
+            middleButtonHtml = `
+                <button class="compact-save-btn" id="compactSaveBtn" style="width: 100%; height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 800; background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50;">SAVE H${currentHole}</button>
+            `;
+        } else if (hasFlightToggle) {
+            // FLIGHT button only (view-game.html, view-history.html)
+            middleButtonHtml = `
+                <button class="compact-flight-btn" id="compactFlightBtn" style="width: 100%; height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 800; background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50;">FLIGHT ${oppositeFlight}</button>
+            `;
+        } else {
+            // No middle button (fallback)
+            middleButtonHtml = `<div style="width: 100%;"></div>`;
+        }
         
         var html = `
             <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
                 <button class="compact-pn-btn" id="compactPnBtn" style="${pnBtnStyle}">
                     ${pnText}
                 </button>
-                <button class="compact-flight-btn" id="compactFlightBtn" style="${flightBtnStyle}">
-                    FLIGHT ${oppositeFlight}
-                </button>
+                ${middleButtonHtml}
                 <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
                     <button class="compact-prev-btn" id="compactPrevBtn" style="${navBtnStyle}">
                         ◀
@@ -754,11 +782,12 @@ var GameUI = (function() {
         // Store element references for later updates
         controlBarElements.pnBtn = document.getElementById('compactPnBtn');
         controlBarElements.flightBtn = document.getElementById('compactFlightBtn');
+        controlBarElements.saveBtn = document.getElementById('compactSaveBtn');
         controlBarElements.prevBtn = document.getElementById('compactPrevBtn');
         controlBarElements.nextBtn = document.getElementById('compactNextBtn');
         controlBarElements.holeDisplay = document.querySelector('.compact-hole-display');
         
-        // Attach event handlers - FIXED: flight button does NOT recreate control bar
+        // Attach P/N button handler
         if (controlBarElements.pnBtn && eventCallbacks.onToggleDisplay) {
             controlBarElements.pnBtn.onclick = function() {
                 var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
@@ -768,8 +797,14 @@ var GameUI = (function() {
             };
         }
         
-        // FIXED v5.02: Flight button only updates its text and calls callback
-        // Does NOT call renderCompactHeader again
+        // Attach SAVE button handler (only if save button exists)
+        if (controlBarElements.saveBtn && eventCallbacks.onSave) {
+            controlBarElements.saveBtn.onclick = function() {
+                if (eventCallbacks.onSave) eventCallbacks.onSave();
+            };
+        }
+        
+        // Attach FLIGHT button handler (only if flight button exists)
         if (controlBarElements.flightBtn && eventCallbacks.onToggleFlight) {
             controlBarElements.flightBtn.onclick = function() {
                 var newFlight = currentFlight === 1 ? 2 : 1;
@@ -780,12 +815,14 @@ var GameUI = (function() {
             };
         }
         
+        // Attach PREV button handler
         if (controlBarElements.prevBtn && eventCallbacks.onPrevHole) {
             controlBarElements.prevBtn.onclick = function() {
                 if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
             };
         }
         
+        // Attach NEXT button handler
         if (controlBarElements.nextBtn && eventCallbacks.onNextHole) {
             controlBarElements.nextBtn._originalOnClick = function() {
                 if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
@@ -1339,16 +1376,16 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.02
-KEY CHANGES from v5.01:
-   - FIXED: Flight toggle no longer recreates the entire control bar (was resetting hole display)
-   - Flight button now only updates its own text and calls the callback
-   - Removed recursive renderCompactHeader() call from flight button handler
-   - Control bar is now created ONCE and never recreated
-   - Hole display updates via updateCompactHoleDisplay() work correctly
-   - This fixes the flight toggle bug in view-history.html
-   - Added updateFlightButtonText() for external flight button text updates
-   - All other functionality unchanged
+VERSION: 5.03
+KEY CHANGES from v5.02:
+   - FIXED: Conditional button rendering in renderCompactHeader()
+   - When onSave callback provided → shows SAVE button (real-game.html)
+   - When onToggleFlight callback provided → shows FLIGHT button (view-game.html, view-history.html)
+   - Both buttons if both callbacks provided (future-proof)
+   - FLIGHT button no longer appears in real-game.html
+   - SAVE button no longer appears in view-game.html / view-history.html
+   - Added saveBtn to controlBarElements for reference
+   - All existing functionality unchanged for other features
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
