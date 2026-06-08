@@ -1,11 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.48
-KEY CHANGES from v5.47:
-   - FIXED: TR (Total Result) now ONLY updates when BOTH flights have saved the hole
-   - When only one flight has data, TR stays at 9.5-9.5 (starting position)
-   - Prevents confusing partial scores like 1.5-1.5 from appearing
-   - TR now correctly represents complete data only
+VERSION: 5.49
+KEY CHANGES from v5.48:
+   - FIXED: TR (Total Result) now shows "-" when data is incomplete
+   - Replaced the "last known TR" behavior with dash for clarity
+   - When both flights have saved the hole → show actual TR values
+   - When only one flight has data → show "-" (incomplete data)
+   - This is more honest and less confusing than showing stale values
+   - Also fixes GameUI.updateTR to handle dash values properly
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -296,13 +298,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.48</div>
+<div class="version-tag">v5.49</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.48";
+window.REAL_GAME_VERSION = "5.49";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1227,7 +1229,7 @@ function getHoleAtPosition(position) {
 }
 
 // ============================================================
-// MAIN RESULTS CALCULATION - FIXED v5.48: TR stays at 9.5 until both flights have data
+// MAIN RESULTS CALCULATION - FIXED v5.49: TR shows "-" when incomplete
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1269,7 +1271,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.48";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.49";
     
     // Flight 1 intra-flight match bubbles (NOT team game)
     if (f1Available) {
@@ -1371,8 +1373,9 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var game3PointsB = (strkLeader === "A") ? 0 : (strkLeader === "B") ? 1 : 0.5;
     
     // ============================================================
-    // FIXED v5.48: TR values - ONLY update when BOTH flights have data
-    // Otherwise, use last known TR from previous hole (or default 9.5-9.5)
+    // FIXED v5.49: TR shows "-" when data is incomplete
+    // When both flights have data, calculate and show actual TR
+    // When only one flight has data, show "-" to indicate incomplete
     // ============================================================
     var trA, trB, trAGreen, trBGreen;
     
@@ -1384,34 +1387,12 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         trBGreen = (trB > trA);
         console.log(`[TR-DEBUG] Hole ${holeNumber}: BOTH flights saved - TR = ${trA} - ${trB}`);
     } else {
-        // Only one flight has data - use last known TR from previous hole
-        // Get previous position TR from cache if available
-        var lastTrA = 9.5;
-        var lastTrB = 9.5;
-        var lastTrAGreen = true;
-        var lastTrBGreen = true;
-        
-        // Find the last hole where both flights had data
-        for (var prevPos = position - 1; prevPos >= 0; prevPos--) {
-            var prevHoleNum = getHoleAtPosition(prevPos);
-            var prevF1Hole = cache.flight1Data[prevHoleNum];
-            var prevF2Hole = cache.flight2Data[prevHoleNum];
-            var prevCrossAvailable = (prevF1Hole && prevF1Hole.saved) && (prevF2Hole && prevF2Hole.saved);
-            
-            if (prevCrossAvailable && cache.results && cache.results.tr && cache.results.tr.teamA[prevPos] !== undefined) {
-                lastTrA = cache.results.tr.teamA[prevPos];
-                lastTrB = cache.results.tr.teamB[prevPos];
-                lastTrAGreen = cache.results.tr.teamAGreen[prevPos];
-                lastTrBGreen = cache.results.tr.teamBGreen[prevPos];
-                break;
-            }
-        }
-        
-        trA = lastTrA;
-        trB = lastTrB;
-        trAGreen = lastTrAGreen;
-        trBGreen = lastTrBGreen;
-        console.log(`[TR-DEBUG] Hole ${holeNumber}: Only ${f1Available ? 'F1' : 'F2'} saved - TR stays at ${trA} - ${trB} (from last complete hole)`);
+        // Only one flight has data - show "-" to indicate incomplete data
+        trA = null;
+        trB = null;
+        trAGreen = false;
+        trBGreen = false;
+        console.log(`[TR-DEBUG] Hole ${holeNumber}: Only ${f1Available ? 'F1' : 'F2'} saved - TR = "-" (incomplete data)`);
     }
     
     // Update clinchedAt
@@ -1453,7 +1434,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         cumulativeF2: cumulativeF2
     };
     
-    console.log(`[CASCADE-DEBUG] Hole ${holeNumber}: T-1 display = ${t1Display}, T-2 display = ${t2Display}, TR = ${trA} - ${trB}`);
+    console.log(`[CASCADE-DEBUG] Hole ${holeNumber}: T-1 display = ${t1Display}, T-2 display = ${t2Display}, TR = ${trA === null ? '-' : trA + ' - ' + trB}`);
     
     return result;
 }
@@ -1716,7 +1697,14 @@ function renderAll() {
     var tr = GameLoader.getTRForHole(currentHole);
     
     GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
+    
+    // FIXED v5.49: Handle null TR values (show "-" for incomplete data)
+    var displayTeamA = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamA : "-";
+    var displayTeamB = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamB : "-";
+    var displayTeamAGreen = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamAGreen : false;
+    var displayTeamBGreen = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamBGreen : false;
+    
+    GameUI.updateTR("trDisplay", displayTeamA, displayTeamB, displayTeamAGreen, displayTeamBGreen);
     
     var currentPlayers = getFlightOrderedPlayers(editableFlight);
     
@@ -1938,13 +1926,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.48
-KEY CHANGES from v5.47:
-   - FIXED: TR (Total Result) now ONLY updates when BOTH flights have saved the hole
-   - When only one flight has data, TR stays at 9.5-9.5 (starting position)
-   - Prevents confusing partial scores like 1.5-1.5 from appearing
-   - TR now correctly represents complete data only
-   - Added logic to find last known TR from previous complete hole
+VERSION: 5.49
+KEY CHANGES from v5.48:
+   - FIXED: TR (Total Result) now shows "-" when data is incomplete
+   - Replaced the "last known TR" behavior with dash for clarity
+   - When both flights have saved the hole → show actual TR values
+   - When only one flight has data → show "-" (incomplete data)
+   - This is more honest and less confusing than showing stale values
+   - Also fixes GameUI.updateTR to handle dash values properly
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
