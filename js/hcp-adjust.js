@@ -1,15 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.22
-KEY CHANGES from v2.21:
-   - ADDED: Read anchor from game document (instead of auto-selecting lowest handicap)
-   - ADDED: "Change Anchor" button on handicap table when multiple 0-handicap players exist
-   - Change Anchor button opens dropdown modal to select new anchor
-   - After selection, recalculates all adjustments and updates Firestore
-   - Updates both scheduledGames and historyRecord (if exists)
-   - Proper error handling and rollback on failure
-   - FIXED: Syntax error on line 534 (missing closing parenthesis)
-   - All existing functionality unchanged
+VERSION: 2.23
+KEY CHANGES from v2.22:
+   - REMOVED: "X will be the NEW ANCHOR" message from handicap table
+   - This message was unnecessary and misleading when multiple players tie for lowest handicap
+   - The anchor is already displayed at the top of the table
+   - No functional changes to calculation logic
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -30,7 +26,7 @@ var HandicapAdjustment = (function() {
     var isReadOnlyMode = false;
     var returnDestination = null;
     var returnToPreviousPage = false;
-    var hasMultipleZeroHandicap = false;  // NEW v2.22: Track if multiple 0-handicap players exist
+    var hasMultipleZeroHandicap = false;
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -260,7 +256,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.22: Added Change Anchor button
+    // Display Table - v2.23: Removed "NEW ANCHOR" message
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -342,14 +338,12 @@ var HandicapAdjustment = (function() {
             tableHtml += '</tr>';
         }
         
-        tableHtml += '</tbody><table></div>';
+        tableHtml += '</tbody></table></div>';
         
         var anchorInfoHtml = `<div style="text-align: center; margin-bottom: 10px;"><span style="color: #4caf50; font-size:0.75rem;">✓ Anchor: ${escapeHtml(anchorName)}</span></div>`;
         
+        // v2.23: Removed the "NEW ANCHOR" message line entirely
         var messageHtml = '';
-        if (hasNewAnchor && newAnchorName) {
-            messageHtml = `<div style="font-size:0.8rem; color:#ffaa44; text-align:center; margin-bottom:10px;">🎉 ${escapeHtml(newAnchorName)} will be the NEW ANCHOR! 🎉</div>`;
-        }
         
         var buttonsHtml = '';
         if (isReadOnly) {
@@ -367,7 +361,6 @@ var HandicapAdjustment = (function() {
                 `;
             }
         } else {
-            // NEW v2.22: Add Change Anchor button if multiple 0-handicap players exist
             var changeAnchorHtml = '';
             if (hasMultipleZeroHandicap) {
                 changeAnchorHtml = `
@@ -426,7 +419,6 @@ var HandicapAdjustment = (function() {
                 });
             }
             
-            // NEW v2.22: Change Anchor button handler
             var changeAnchorBtn = document.getElementById('changeAnchorBtn');
             if (changeAnchorBtn) {
                 changeAnchorBtn.addEventListener('click', function() {
@@ -497,7 +489,6 @@ var HandicapAdjustment = (function() {
         
         document.getElementById('changeAnchorCancelBtn').addEventListener('click', function() {
             document.getElementById('changeAnchorModal').remove();
-            // Re-show the original handicap table
             if (currentTableData) {
                 showAdjustmentTable(currentTableData, anchorPlayer.name, false);
             }
@@ -518,7 +509,6 @@ var HandicapAdjustment = (function() {
     
     // NEW v2.22: Update anchor and recalculate
     function updateAnchorAndRecalculate(newAnchor) {
-        // Show loading indicator
         var loadingModal = document.createElement('div');
         loadingModal.className = 'modal-overlay';
         loadingModal.id = 'loadingModal';
@@ -530,7 +520,6 @@ var HandicapAdjustment = (function() {
         `;
         document.body.appendChild(loadingModal);
         
-        // First, update anchor in Firestore (scheduledGames)
         var updatePromise = db.collection('scheduledGames').doc(currentGameId).update({
             anchor: newAnchor.name,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -540,22 +529,18 @@ var HandicapAdjustment = (function() {
             console.log('Anchor updated in scheduledGames:', newAnchor.name);
             anchorPlayer = newAnchor;
             
-            // Recalculate all adjustments
             var calculationResult = calculateAllAdjustments(newAnchor);
             currentTableData = calculationResult;
             
-            // Save to Firestore
             saveAdjustmentToFirestore(newAnchor, calculationResult, function(err) {
                 loadingModal.remove();
                 if (err) {
                     console.error('Error saving recalculated handicaps:', err);
                     alert('Error saving new handicap data. Please try again.');
-                    // Re-show old table
                     if (currentTableData) {
                         showAdjustmentTable(currentTableData, anchorPlayer.name, false);
                     }
                 } else {
-                    // Show updated table
                     showAdjustmentTable(calculationResult, newAnchor.name, false);
                 }
             });
@@ -773,7 +758,6 @@ var HandicapAdjustment = (function() {
         
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // FIXED: Missing closing parenthesis
         var zeroHcpPlayers = allPlayers.filter(function(p) { return p.handicap === 0; });
         hasMultipleZeroHandicap = (zeroHcpPlayers.length > 1);
         
@@ -783,7 +767,6 @@ var HandicapAdjustment = (function() {
                 return;
             }
             
-            // NEW v2.22: Read anchor from game document if exists
             var storedAnchor = gameData.anchor;
             var anchorFound = null;
             
@@ -792,7 +775,6 @@ var HandicapAdjustment = (function() {
             }
             
             if (anchorFound) {
-                // Use stored anchor
                 anchorPlayer = anchorFound;
                 var calculationResult = calculateAllAdjustments(anchorPlayer);
                 currentTableData = calculationResult;
@@ -806,7 +788,6 @@ var HandicapAdjustment = (function() {
                     }
                 });
             } else if (zeroHcpPlayers.length === 1) {
-                // Single 0-handicap player
                 anchorPlayer = zeroHcpPlayers[0];
                 var calculationResult = calculateAllAdjustments(anchorPlayer);
                 currentTableData = calculationResult;
@@ -820,10 +801,8 @@ var HandicapAdjustment = (function() {
                     }
                 });
             } else if (zeroHcpPlayers.length > 1) {
-                // Multiple 0-handicap players - need selection
                 showAnchorSelectionModal(zeroHcpPlayers);
             } else {
-                // No 0-handicap players - use lowest handicap
                 var lowestHcpPlayer = allPlayers[0];
                 anchorPlayer = lowestHcpPlayer;
                 var calculationResult = calculateAllAdjustments(anchorPlayer);
@@ -998,7 +977,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.22";
+    window.HANDICAP_ADJUST_VERSION = "2.23";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1017,16 +996,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.22
-KEY CHANGES from v2.21:
-   - ADDED: Read anchor from game document (instead of auto-selecting lowest handicap)
-   - ADDED: "Change Anchor" button on handicap table when multiple 0-handicap players exist
-   - Change Anchor button opens dropdown modal to select new anchor
-   - After selection, recalculates all adjustments and updates Firestore
-   - Updates both scheduledGames and historyRecord (if exists)
-   - Proper error handling and rollback on failure
-   - FIXED: Syntax error on line 534 (missing closing parenthesis)
-   - All existing functionality unchanged
+VERSION: 2.23
+KEY CHANGES from v2.22:
+   - REMOVED: "X will be the NEW ANCHOR" message from handicap table
+   - This message was unnecessary and misleading when multiple players tie for lowest handicap
+   - The anchor is already displayed at the top of the table
+   - No functional changes to calculation logic
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
