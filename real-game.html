@@ -1,14 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.57
-KEY CHANGES from v5.56:
-   - FIXED: Cascade loop condition now correctly processes all holes up to lastSavedHole
-   - Previously condition "holeToUpdate > cascadeEndHole" caused premature break
-   - New condition: Process while holeToUpdate <= lastSavedHole
-   - Added debug logging for cascade queue contents before Firestore writes
-   - Fixed off-by-one errors in cascade range calculation
-   - Ensures f2IntraMatches and all match results are properly persisted to Firestore
-   - All existing debug logging preserved
+VERSION: 5.58
+KEY CHANGES from v5.57:
+   - FIXED: isCascadeStartHole logic (was inverted, causing clinch data loss)
+   - Changed from (holeNumber !== cascadeStartHole) to (holeNumber === cascadeStartHole)
+   - This preserves clinches from earlier holes (e.g., hole 12) when processing later holes
+   - No other changes - all v5.57 fixes preserved (cascade loop, Firestore writes, debug logging)
+   - All existing functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -298,14 +296,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.57</div>
+<div class="version-tag">v5.58</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.57";
-console.log("[REAL-GAME] Initializing v5.57 with cascade fix");
+window.REAL_GAME_VERSION = "5.58";
+console.log("[REAL-GAME] Initializing v5.58 with clinch preservation fix");
 
 // ============================================================
 // DEBUG CONFIGURATION - Set target hole to monitor
@@ -1362,7 +1360,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.57";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.58";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -1492,8 +1490,10 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         if(isTarget) console.log(`[DEBUG-CALC] TR set to null (incomplete data)`);
     }
     
-    // Update clinchedAt - only filter on actual cascade resets
-    var isCascadeStartHole = (holeNumber !== cascadeStartHole);
+    // FIXED v5.58: Corrected isCascadeStartHole logic
+    // Previously: (holeNumber !== cascadeStartHole) - WRONG - caused clinch data loss
+    // Now: (holeNumber === cascadeStartHole) - CORRECT - only filters at the start hole
+    var isCascadeStartHole = (holeNumber === cascadeStartHole);
     var updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole, isCascadeStartHole);
     
     var result = {
@@ -2046,15 +2046,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.57
-KEY CHANGES from v5.56:
-   - FIXED: Cascade loop condition now correctly processes all holes up to lastSavedHole
-   - Previously condition "holeToUpdate > cascadeEndHole" caused premature break
-   - New condition: Process while holeToUpdate <= lastSavedHole
-   - Added debug logging for cascade queue contents before Firestore writes
-   - Fixed off-by-one errors in cascade range calculation
-   - Ensures f2IntraMatches and all match results are properly persisted to Firestore
-   - All existing debug logging preserved
+VERSION: 5.58
+KEY CHANGES from v5.57:
+   - FIXED: isCascadeStartHole logic (was inverted, causing clinch data loss)
+   - Changed from (holeNumber !== cascadeStartHole) to (holeNumber === cascadeStartHole)
+   - This preserves clinches from earlier holes (e.g., hole 12) when processing later holes
+   - No other changes - all v5.57 fixes preserved (cascade loop, Firestore writes, debug logging)
+   - All existing functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
