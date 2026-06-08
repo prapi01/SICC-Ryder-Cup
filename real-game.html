@@ -1,14 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.47
-KEY CHANGES from v5.46:
-   - REMOVED: All duplicate team game calculation logic from calculateHoleResultsWithCumulative()
-   - REMOVED: Intra-flight match calculations (f1IntraMatches, f2IntraMatches) - these are match bubbles
-   - Team game now EXCLUSIVELY uses GameTeam.calculateWithClinched() results
-   - t1Row and t2Row now properly updated from teamGameResults.displayT1 and displayT2
-   - t1Display and t2Display now properly passed to scorecard rendering
-   - T-1 and T-2 rows now show correct values independent of other flight
-   - All other functionality unchanged (save, cascade, ticker, etc.)
+VERSION: 5.48
+KEY CHANGES from v5.47:
+   - FIXED: TR (Total Result) now ONLY updates when BOTH flights have saved the hole
+   - When only one flight has data, TR stays at 9.5-9.5 (starting position)
+   - Prevents confusing partial scores like 1.5-1.5 from appearing
+   - TR now correctly represents complete data only
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -298,13 +296,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.47</div>
+<div class="version-tag">v5.48</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.47";
+window.REAL_GAME_VERSION = "5.48";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1095,7 +1093,7 @@ function updateLocalCacheWithResults(resultsData) {
     cache.results.clinchedAt = resultsData.updatedClinched;
     console.log(`[CASCADE-DEBUG] updateLocalCacheWithResults: clinchedAt updated, new count = ${Object.keys(cache.results.clinchedAt).length}`);
     
-    // FIXED v5.47: Update t1Row and t2Row from team game results for scorecard display
+    // Update t1Row and t2Row from team game results for scorecard display
     if (resultsData.t1Display !== undefined && resultsData.t1Display !== null) {
         cache.t1Row[position] = resultsData.t1Display;
     }
@@ -1229,7 +1227,7 @@ function getHoleAtPosition(position) {
 }
 
 // ============================================================
-// MAIN RESULTS CALCULATION - FIXED v5.47: Uses GameTeam exclusively
+// MAIN RESULTS CALCULATION - FIXED v5.48: TR stays at 9.5 until both flights have data
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1271,7 +1269,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.47";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.48";
     
     // Flight 1 intra-flight match bubbles (NOT team game)
     if (f1Available) {
@@ -1372,11 +1370,49 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var game3PointsA = (strkLeader === "A") ? 1 : (strkLeader === "B") ? 0 : 0.5;
     var game3PointsB = (strkLeader === "A") ? 0 : (strkLeader === "B") ? 1 : 0.5;
     
-    // TR values
-    var trA = game1PointsA + game2PointsA + game3PointsA;
-    var trB = game1PointsB + game2PointsB + game3PointsB;
-    var trAGreen = (trA > trB);
-    var trBGreen = (trB > trA);
+    // ============================================================
+    // FIXED v5.48: TR values - ONLY update when BOTH flights have data
+    // Otherwise, use last known TR from previous hole (or default 9.5-9.5)
+    // ============================================================
+    var trA, trB, trAGreen, trBGreen;
+    
+    if (crossAvailable) {
+        // Both flights have data - calculate TR normally
+        trA = game1PointsA + game2PointsA + game3PointsA;
+        trB = game1PointsB + game2PointsB + game3PointsB;
+        trAGreen = (trA > trB);
+        trBGreen = (trB > trA);
+        console.log(`[TR-DEBUG] Hole ${holeNumber}: BOTH flights saved - TR = ${trA} - ${trB}`);
+    } else {
+        // Only one flight has data - use last known TR from previous hole
+        // Get previous position TR from cache if available
+        var lastTrA = 9.5;
+        var lastTrB = 9.5;
+        var lastTrAGreen = true;
+        var lastTrBGreen = true;
+        
+        // Find the last hole where both flights had data
+        for (var prevPos = position - 1; prevPos >= 0; prevPos--) {
+            var prevHoleNum = getHoleAtPosition(prevPos);
+            var prevF1Hole = cache.flight1Data[prevHoleNum];
+            var prevF2Hole = cache.flight2Data[prevHoleNum];
+            var prevCrossAvailable = (prevF1Hole && prevF1Hole.saved) && (prevF2Hole && prevF2Hole.saved);
+            
+            if (prevCrossAvailable && cache.results && cache.results.tr && cache.results.tr.teamA[prevPos] !== undefined) {
+                lastTrA = cache.results.tr.teamA[prevPos];
+                lastTrB = cache.results.tr.teamB[prevPos];
+                lastTrAGreen = cache.results.tr.teamAGreen[prevPos];
+                lastTrBGreen = cache.results.tr.teamBGreen[prevPos];
+                break;
+            }
+        }
+        
+        trA = lastTrA;
+        trB = lastTrB;
+        trAGreen = lastTrAGreen;
+        trBGreen = lastTrBGreen;
+        console.log(`[TR-DEBUG] Hole ${holeNumber}: Only ${f1Available ? 'F1' : 'F2'} saved - TR stays at ${trA} - ${trB} (from last complete hole)`);
+    }
     
     // Update clinchedAt
     var isCascadeStartHole = (holeNumber === cascadeStartHole);
@@ -1417,7 +1453,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         cumulativeF2: cumulativeF2
     };
     
-    console.log(`[CASCADE-DEBUG] Hole ${holeNumber}: T-1 display = ${t1Display}, T-2 display = ${t2Display}`);
+    console.log(`[CASCADE-DEBUG] Hole ${holeNumber}: T-1 display = ${t1Display}, T-2 display = ${t2Display}, TR = ${trA} - ${trB}`);
     
     return result;
 }
@@ -1735,7 +1771,6 @@ function renderAll() {
     var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
     var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
     
-    // FIXED v5.47: Use displayT1 and displayT2 from results (set by GameTeam)
     var t1Display = cache.results?.game2?.displayT1 || null;
     var t2Display = cache.results?.game2?.displayT2 || null;
     var strkDisplay = cache.results?.game3?.displayStrk || null;
@@ -1903,15 +1938,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.47
-KEY CHANGES from v5.46:
-   - REMOVED: All duplicate team game calculation logic from calculateHoleResultsWithCumulative()
-   - REMOVED: Intra-flight match calculations (f1IntraMatches, f2IntraMatches) - these are match bubbles
-   - Team game now EXCLUSIVELY uses GameTeam.calculateWithClinched() results
-   - t1Row and t2Row now properly updated from teamGameResults.displayT1 and displayT2
-   - t1Display and t2Display now properly passed to scorecard rendering
-   - T-1 and T-2 rows now show correct values independent of other flight
-   - All other functionality unchanged (save, cascade, ticker, etc.)
+VERSION: 5.48
+KEY CHANGES from v5.47:
+   - FIXED: TR (Total Result) now ONLY updates when BOTH flights have saved the hole
+   - When only one flight has data, TR stays at 9.5-9.5 (starting position)
+   - Prevents confusing partial scores like 1.5-1.5 from appearing
+   - TR now correctly represents complete data only
+   - Added logic to find last known TR from previous complete hole
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
