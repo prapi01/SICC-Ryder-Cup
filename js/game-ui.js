@@ -1,17 +1,18 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.04
-KEY CHANGES from v5.03:
-   - FIXED: updateTR() now handles null and non-numeric values safely
-   - No longer calls .toFixed() on null, undefined, or dash values
-   - Displays "-" for null or invalid TR values
-   - Prevents "toFixed is not a function" errors when TR is null
+VERSION: 5.05
+KEY CHANGES from v5.04:
+   - ADDED: Debug logging in updateTR() for value formatting
+   - ADDED: Debug logging in renderPlayerCards() for bubble class
+   - ADDED: Version exposure for console debugging
    - All existing functionality unchanged
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
 
 var GameUI = (function() {
+    
+    console.log("[GAME-UI] Initializing v5.05 with debug logging");
     
     // ============================================================
     // Constants
@@ -706,10 +707,8 @@ var GameUI = (function() {
         
         ensureStylesApplied();
         
-        // Store container ID for later updates
         controlBarElements.containerId = containerId;
         
-        // Store callbacks
         if (onSave) eventCallbacks.onSave = onSave;
         if (onPrevHole) eventCallbacks.onPrevHole = onPrevHole;
         if (onNextHole) eventCallbacks.onNextHole = onNextHole;
@@ -722,20 +721,16 @@ var GameUI = (function() {
         var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
         var oppositeFlight = flightNumber === 1 ? 2 : 1;
         
-        // Determine which buttons to show based on callbacks
         var hasSave = (onSave !== null);
         var hasFlightToggle = (onToggleFlight !== null);
         
-        // Button base styles
         var buttonBaseStyle = 'background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; cursor: pointer;';
         var pnBtnStyle = buttonBaseStyle + ' border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; flex-shrink: 0;';
         var navBtnStyle = buttonBaseStyle + ' width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); display: flex; align-items: center; justify-content: center;';
         var holeDisplayStyle = 'font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;';
         
-        // Build middle button HTML based on available callbacks
         var middleButtonHtml = '';
         if (hasSave && hasFlightToggle) {
-            // Both buttons - side by side
             middleButtonHtml = `
                 <div style="display: flex; gap: 8px; width: 100%;">
                     <button class="compact-save-btn" id="compactSaveBtn" style="flex: 1; height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 800; background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50;">SAVE H${currentHole}</button>
@@ -743,17 +738,14 @@ var GameUI = (function() {
                 </div>
             `;
         } else if (hasSave) {
-            // SAVE button only (real-game.html)
             middleButtonHtml = `
                 <button class="compact-save-btn" id="compactSaveBtn" style="width: 100%; height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 800; background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50;">SAVE H${currentHole}</button>
             `;
         } else if (hasFlightToggle) {
-            // FLIGHT button only (view-game.html, view-history.html)
             middleButtonHtml = `
                 <button class="compact-flight-btn" id="compactFlightBtn" style="width: 100%; height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 800; background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50;">FLIGHT ${oppositeFlight}</button>
             `;
         } else {
-            // No middle button (fallback)
             middleButtonHtml = `<div style="width: 100%;"></div>`;
         }
         
@@ -777,7 +769,6 @@ var GameUI = (function() {
         
         container.innerHTML = html;
         
-        // Store element references for later updates
         controlBarElements.pnBtn = document.getElementById('compactPnBtn');
         controlBarElements.flightBtn = document.getElementById('compactFlightBtn');
         controlBarElements.saveBtn = document.getElementById('compactSaveBtn');
@@ -785,7 +776,6 @@ var GameUI = (function() {
         controlBarElements.nextBtn = document.getElementById('compactNextBtn');
         controlBarElements.holeDisplay = document.querySelector('.compact-hole-display');
         
-        // Attach P/N button handler
         if (controlBarElements.pnBtn && eventCallbacks.onToggleDisplay) {
             controlBarElements.pnBtn.onclick = function() {
                 var newMode = currentDisplayMode === 'play' ? 'natural' : 'play';
@@ -795,32 +785,26 @@ var GameUI = (function() {
             };
         }
         
-        // Attach SAVE button handler (only if save button exists)
         if (controlBarElements.saveBtn && eventCallbacks.onSave) {
             controlBarElements.saveBtn.onclick = function() {
                 if (eventCallbacks.onSave) eventCallbacks.onSave();
             };
         }
         
-        // Attach FLIGHT button handler (only if flight button exists)
         if (controlBarElements.flightBtn && eventCallbacks.onToggleFlight) {
             controlBarElements.flightBtn.onclick = function() {
                 var newFlight = currentFlight === 1 ? 2 : 1;
-                // Update button text immediately for responsiveness
                 controlBarElements.flightBtn.innerText = 'FLIGHT ' + (newFlight === 1 ? 2 : 1);
-                // Call the callback to let the page update its internal state
                 if (eventCallbacks.onToggleFlight) eventCallbacks.onToggleFlight(newFlight);
             };
         }
         
-        // Attach PREV button handler
         if (controlBarElements.prevBtn && eventCallbacks.onPrevHole) {
             controlBarElements.prevBtn.onclick = function() {
                 if (eventCallbacks.onPrevHole) eventCallbacks.onPrevHole();
             };
         }
         
-        // Attach NEXT button handler
         if (controlBarElements.nextBtn && eventCallbacks.onNextHole) {
             controlBarElements.nextBtn._originalOnClick = function() {
                 if (eventCallbacks.onNextHole) eventCallbacks.onNextHole();
@@ -890,10 +874,12 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // Player Cards with Bubbles
+    // Player Cards with Bubbles - WITH DEBUG LOGGING
     // ============================================================
     
     function renderPlayerCards(containerId, players, getOpponents, getBubbleClass, getBubbleValue, getCurrentScore, canEdit, onScoreChange) {
+        console.log(`[DEBUG-UI] renderPlayerCards called with ${players.length} players, canEdit=${canEdit}`);
+        
         var container = document.getElementById(containerId);
         if (!container) return;
         
@@ -909,6 +895,10 @@ var GameUI = (function() {
                 var opp = opponents[j];
                 var bubbleClass = getBubbleClass(player, opp);
                 var bubbleValue = getBubbleValue(player, opp);
+                
+                if (bubbleClass !== 'bubble-green' && bubbleClass !== 'bubble-red') {
+                    console.log(`[DEBUG-UI] ${player.label} vs ${opp.label}: class=${bubbleClass}, value=${bubbleValue}`);
+                }
                 
                 var displayValue = bubbleValue;
                 if (displayValue === 'AS') {
@@ -969,14 +959,13 @@ var GameUI = (function() {
     }
     
     // ============================================================
-    // TR (Title Result) Display - FIXED v5.04: Handles null and non-numeric values
+    // TR (Title Result) Display - WITH DEBUG LOGGING
     // ============================================================
     
     function updateTR(containerId, teamAPoints, teamBPoints, teamAGreen, teamBGreen) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Helper function to format display value safely
         function formatDisplayValue(value) {
             if (value === null || value === undefined || value === "-") {
                 return "-";
@@ -990,7 +979,10 @@ var GameUI = (function() {
         var teamADisplay = formatDisplayValue(teamAPoints);
         var teamBDisplay = formatDisplayValue(teamBPoints);
         
-        // Determine colors - treat null/dash as neutral (green)
+        if (teamADisplay !== "-" || teamBDisplay !== "-") {
+            console.log(`[DEBUG-UI] updateTR: ${teamADisplay} - ${teamBDisplay}`);
+        }
+        
         var isTie = (teamAPoints === teamBPoints) || (teamADisplay === "-" && teamBDisplay === "-");
         var teamAColor = (isTie || teamAGreen) ? '#4caf50' : '#ff6b6b';
         var teamBColor = (isTie || teamBGreen) ? '#4caf50' : '#ff6b6b';
@@ -1294,7 +1286,6 @@ var GameUI = (function() {
     // ============================================================
     
     return {
-        // Core rendering
         renderScorecard: renderScorecard,
         renderPlayerCards: renderPlayerCards,
         updateTR: updateTR,
@@ -1302,97 +1293,62 @@ var GameUI = (function() {
         renderHoleHeader: renderHoleHeader,
         updateHoleHeaderNumber: updateHoleHeaderNumber,
         updateFlightTab: updateFlightTab,
-        
-        // Compact header
         renderCompactHeader: renderCompactHeader,
         updateCompactSaveButton: updateCompactSaveButton,
         updateCompactPnButton: updateCompactPnButton,
         updateCompactHoleDisplay: updateCompactHoleDisplay,
-        
-        // Flight badge
         addFlightBadge: addFlightBadge,
         updateFlightBadge: updateFlightBadge,
         removeFlightBadge: removeFlightBadge,
-        
-        // Flight button text update
         updateFlightButtonText: updateFlightButtonText,
-        
-        // Navigation
         updateNavigationButtons: updateNavigationButtons,
-        
-        // Legacy compatibility
         updateFlightToggleButton: updateFlightToggleButton,
         updateFlightButtonText: updateFlightButtonText,
         updatePnButtonText: updateCompactPnButton,
-        
-        // Display mode
         getDisplayMode: getDisplayMode,
         setDisplayMode: setDisplayMode,
         updateToggleButtons: updateToggleButtons,
         toggleDisplayMode: toggleDisplayMode,
         getDisplayHoles: getDisplayHoles,
-        
-        // Flight toggle
         toggleFlight: toggleFlight,
         getCurrentFlight: getCurrentFlight,
-        
-        // Action buttons (legacy)
         renderActionButtons: renderActionButtons,
         updateSaveButton: updateSaveButton,
         resetSaveButton: resetSaveButton,
-        
-        // Bottom menu
         renderBottomMenu: renderBottomMenu,
-        
-        // Shared display functions
         getFlightOrderedPlayersShared: getFlightOrderedPlayersShared,
         getAllOpponentsShared: getAllOpponentsShared,
         getMatchValueShared: getMatchValueShared,
         getBubbleClassShared: getBubbleClassShared,
         getBubbleValueShared: getBubbleValueShared,
-        
-        // Navigation logic (legacy wrappers)
         updateNavButtonsWithDisableLogic: updateNavButtonsWithDisableLogic,
         updateNextButtonForLastHole: updateNextButtonForLastHole,
         setNextButtonToSignMode: setNextButtonToSignMode,
         setNextButtonToSeeResults: setNextButtonToSeeResults,
         ensureNoStuckModals: ensureNoStuckModals,
-        
-        // Event listeners
         attachGlobalEventListeners: attachGlobalEventListeners,
-        
-        // Layout and styles
         applyTightLayout: applyTightLayout,
         makeStatusBubbleClickable: makeStatusBubbleClickable,
         fixBackground: fixBackground,
         ensureStylesApplied: ensureStylesApplied,
-        
-        // Flight indicator (DEPRECATED)
         addFlightIndicator: function() {},
         removeFlightIndicator: function() {},
         updateFlightIndicator: updateFlightBadge,
-        
-        // Global styles access
         applyGlobalStyles: ensureStylesApplied
     };
     
 })();
 
-// ============================================================
-// DUAL EXPORT
-// ============================================================
 window.gameUI = GameUI;
 window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.04
-KEY CHANGES from v5.03:
-   - FIXED: updateTR() now handles null and non-numeric values safely
-   - No longer calls .toFixed() on null, undefined, or dash values
-   - Displays "-" for null or invalid TR values
-   - Prevents "toFixed is not a function" errors when TR is null
-   - Added formatDisplayValue() helper function
+VERSION: 5.05
+KEY CHANGES from v5.04:
+   - ADDED: Debug logging in updateTR() for value formatting
+   - ADDED: Debug logging in renderPlayerCards() for bubble class
+   - ADDED: Version exposure for console debugging
    - All existing functionality unchanged
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
