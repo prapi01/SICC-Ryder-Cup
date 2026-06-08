@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.58
-KEY CHANGES from v5.57:
-   - FIXED: isCascadeStartHole logic (was inverted, causing clinch data loss)
-   - Changed from (holeNumber !== cascadeStartHole) to (holeNumber === cascadeStartHole)
-   - This preserves clinches from earlier holes (e.g., hole 12) when processing later holes
-   - No other changes - all v5.57 fixes preserved (cascade loop, Firestore writes, debug logging)
-   - All existing functionality unchanged
+VERSION: 5.59
+KEY CHANGES from v5.58:
+   - FIXED: computedUpToHole now always updates to the maximum value
+   - Previously only updated if newComputedUpToHole > currentComputedUpToHole
+   - Now uses Math.max() to ensure computedUpToHole never goes backward
+   - Critical for cascade loop to know how many holes are saved
+   - All existing fixes preserved (clinch preservation, f2IntraMatches writes, cascade loop)
+   - All debug logging retained
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -296,14 +297,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.58</div>
+<div class="version-tag">v5.59</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.58";
-console.log("[REAL-GAME] Initializing v5.58 with clinch preservation fix");
+window.REAL_GAME_VERSION = "5.59";
+console.log("[REAL-GAME] Initializing v5.59 with computedUpToHole fix");
 
 // ============================================================
 // DEBUG CONFIGURATION - Set target hole to monitor
@@ -512,13 +513,16 @@ async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
     
     var newComputedUpToHole = position + 1;
     var currentComputedUpToHole = cache.results.computedUpToHole || 0;
-    console.log(`[COMPUTED-DEBUG] Hole ${holeNumber}: position=${position}, newComputedUpToHole=${newComputedUpToHole}, currentComputedUpToHole=${currentComputedUpToHole}`);
+    // FIXED v5.59: Always update to the maximum value
+    // This ensures computedUpToHole never gets stuck or goes backward
+    var finalComputedUpToHole = Math.max(newComputedUpToHole, currentComputedUpToHole);
+    console.log(`[COMPUTED-DEBUG] Hole ${holeNumber}: position=${position}, newComputedUpToHole=${newComputedUpToHole}, currentComputedUpToHole=${currentComputedUpToHole}, final=${finalComputedUpToHole}`);
     
-    if (newComputedUpToHole > currentComputedUpToHole) {
-        updatePayload["results.computedUpToHole"] = newComputedUpToHole;
-        console.log(`[COMPUTED-DEBUG] UPDATING computedUpToHole to ${newComputedUpToHole}`);
+    if (finalComputedUpToHole > currentComputedUpToHole) {
+        updatePayload["results.computedUpToHole"] = finalComputedUpToHole;
+        console.log(`[COMPUTED-DEBUG] UPDATING computedUpToHole to ${finalComputedUpToHole}`);
     } else {
-        console.log(`[COMPUTED-DEBUG] NOT updating computedUpToHole (${newComputedUpToHole} <= ${currentComputedUpToHole})`);
+        console.log(`[COMPUTED-DEBUG] NOT updating computedUpToHole (${finalComputedUpToHole} <= ${currentComputedUpToHole})`);
     }
     
     var now = new Date().toISOString();
@@ -1360,7 +1364,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.58";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.59";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -2046,13 +2050,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.58
-KEY CHANGES from v5.57:
-   - FIXED: isCascadeStartHole logic (was inverted, causing clinch data loss)
-   - Changed from (holeNumber !== cascadeStartHole) to (holeNumber === cascadeStartHole)
-   - This preserves clinches from earlier holes (e.g., hole 12) when processing later holes
-   - No other changes - all v5.57 fixes preserved (cascade loop, Firestore writes, debug logging)
-   - All existing functionality unchanged
+VERSION: 5.59
+KEY CHANGES from v5.58:
+   - FIXED: computedUpToHole now always updates to the maximum value
+   - Previously only updated if newComputedUpToHole > currentComputedUpToHole
+   - Now uses Math.max() to ensure computedUpToHole never goes backward
+   - Critical for cascade loop to know how many holes are saved
+   - All existing fixes preserved (clinch preservation, f2IntraMatches writes, cascade loop)
+   - All debug logging retained
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
