@@ -1,13 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - ADDED: Anchor selection modal when multiple players have 0 handicap
-   - Modal appears after clicking COMMIT GAME, before game is created
-   - Cannot be bypassed (no close button, backdrop click disabled)
-   - Selected anchor is stored in the game document
-   - If only one player has 0 handicap, no modal (auto-assigned as anchor)
-   - All existing functionality preserved
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - FIXED: initializeEmptyResults() now initializes TR arrays with null instead of 9.5
+   - teamA and teamB arrays filled with null (displayed as "-" in real-game)
+   - teamAGreen and teamBGreen arrays filled with false
+   - Prevents stale 9.5 values from appearing in new games
+   - Consistent with real-game.html v5.51 TR initialization
+   - All existing functionality preserved (anchor selection, etc.)
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
@@ -259,12 +259,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.23</div>
+<div class="version-tag">v1.24</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.23
+// FILE: setup-game.html - VERSION 1.24
 
-var VERSION = "1.23";
+var VERSION = "1.24";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -370,6 +370,7 @@ function rotateDataString(naturalData, startingHole) {
     return rotated.join('');
 }
 
+// FIXED v1.24: Initialize TR arrays with null instead of 9.5
 function initializeEmptyResults() {
     var emptyResults = {
         version: 1,
@@ -397,11 +398,12 @@ function initializeEmptyResults() {
             pointsA: new Array(18).fill(0.5),
             pointsB: new Array(18).fill(0.5)
         },
+        // FIXED: TR arrays now start with null (displayed as "-") instead of 9.5
         tr: {
-            teamA: new Array(18).fill(9.5),
-            teamB: new Array(18).fill(9.5),
-            teamAGreen: new Array(18).fill(true),
-            teamBGreen: new Array(18).fill(true)
+            teamA: new Array(18).fill(null),
+            teamB: new Array(18).fill(null),
+            teamAGreen: new Array(18).fill(false),
+            teamBGreen: new Array(18).fill(false)
         },
         computedUpToHole: 0,
         lastComputedAt: null
@@ -681,7 +683,7 @@ function setStartingHole(type, value) {
 }
 
 // ============================================================
-// NEW v1.23: Anchor Selection Modal
+// Anchor Selection Modal (from v1.23)
 // ============================================================
 
 function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
@@ -740,7 +742,7 @@ function commitGame() {
         return;
     }
     
-    // NEW v1.23: Check for multiple players with 0 handicap
+    // Check for multiple players with 0 handicap
     var zeroHandicapPlayers = state.players.filter(function(p) { return p.handicap === 0; });
     
     if (zeroHandicapPlayers.length > 1) {
@@ -777,7 +779,7 @@ function createGameWithAnchor(anchorPlayer) {
         gameType: "real",
         startingHole: state.startingHole,
         teamGameFormat: state.teamGameFormat,
-        anchor: anchorPlayer.name,  // NEW v1.23: Store anchor in game document
+        anchor: anchorPlayer.name,
         updatedAt: new Date().toISOString(),
         
         f1: {
@@ -1131,14 +1133,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - ADDED: Anchor selection modal when multiple players have 0 handicap
-   - Modal appears after clicking COMMIT GAME, before game is created
-   - Cannot be bypassed (no close button, backdrop click disabled)
-   - Selected anchor is stored in the game document (anchor field)
-   - If only one player has 0 handicap, no modal (auto-assigned as anchor)
-   - All existing functionality preserved
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - FIXED: initializeEmptyResults() now initializes TR arrays with null instead of 9.5
+   - teamA and teamB arrays filled with null (displayed as "-" in real-game)
+   - teamAGreen and teamBGreen arrays filled with false
+   - Prevents stale 9.5 values from appearing in new games
+   - Consistent with real-game.html v5.51 TR initialization
+   - All existing functionality preserved (anchor selection, etc.)
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
