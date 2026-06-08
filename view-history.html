@@ -1,11 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.13
-KEY CHANGES from v8.12:
-   - FIXED: Handicap modal Back button now stays on view-history.html (no navigation to index)
-   - Passes returnToPreviousPage=true to displayStoredAdjustment
-   - Modal now closes without page reload or navigation
-   - Preserves scroll position and game list state
+VERSION: 8.14
+KEY CHANGES from v8.13:
+   - ADDED: Cache-busting version check to force reload on new deployments
+   - Prevents users from running stale cached versions after updates
+   - Uses localStorage to track version and redirects with ?v= parameter
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
@@ -321,13 +321,26 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.13</div>
+<div class="version-tag">v8.14</div>
 
 <script>
 // ============================================================
+// VERSION CACHE-BUSTING - Forces reload on new deployment
+// ============================================================
+var APP_VERSION = "8.14";
+var CACHE_KEY = "view_history_version";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
+    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+}
+
+// ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.13";
+window.VIEW_HISTORY_VERSION = "8.14";
+console.log("[VIEW-HISTORY] Initializing v8.14 with cache-busting");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -380,7 +393,7 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// Show Handicap Adjustment - FIXED v8.13: Pass true to stay on page
+// Show Handicap Adjustment - v8.13 fix preserved
 // ============================================================
 
 function showHandicapAdjustment(adjustedHandicaps, anchorName, players) {
@@ -388,12 +401,10 @@ function showHandicapAdjustment(adjustedHandicaps, anchorName, players) {
         var script = document.createElement('script');
         script.src = 'js/hcp-adjust.js';
         script.onload = function() {
-            // Pass true to keep modal on same page (no navigation to index)
             HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players, true);
         };
         document.head.appendChild(script);
     } else {
-        // Pass true to keep modal on same page (no navigation to index)
         HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players, true);
     }
 }
@@ -470,11 +481,9 @@ function renderScorecardView(game) {
     
     detailContent.innerHTML = html;
     
-    // Apply GameUI styles and layout
     GameUI.applyTightLayout();
     GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
     
-    // Helper functions for data access
     function getPlayOrder() {
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
@@ -591,7 +600,6 @@ function renderScorecardView(game) {
         }
     }
     
-    // Navigation functions
     function nextHole() {
         var playOrder = getPlayOrder();
         var currentIndex = playOrder.indexOf(currentHole);
@@ -625,7 +633,6 @@ function renderScorecardView(game) {
         renderPlayerCardsOnly();
     }
     
-    // Render only player cards (not the control bar)
     function renderPlayerCardsOnly() {
         if (!f1DataString || !f2DataString) return;
         
@@ -648,7 +655,6 @@ function renderScorecardView(game) {
         if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
-    // Render everything (used at initialization and when changing holes)
     function renderDetailView() {
         if (!f1DataString || !f2DataString) return;
         
@@ -704,15 +710,10 @@ function renderScorecardView(game) {
         if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
-    // ============================================================
-    // Initialize the scorecard view
-    // ============================================================
-    
     var playOrder = [];
     for (var i = startingHole; i <= 18; i++) playOrder.push(i);
     for (var i = 1; i < startingHole; i++) playOrder.push(i);
     
-    // Find first hole that has saved data for at least one flight
     var startHole = playOrder[0];
     for (var i = 0; i < playOrder.length; i++) {
         var hole = playOrder[i];
@@ -727,16 +728,15 @@ function renderScorecardView(game) {
     
     console.log('Initial hole set to:', currentHole);
     
-    // Create control bar ONCE at initialization
     GameUI.renderCompactHeader(
         "compactHeaderContainer",
         currentFlight,
         currentHole,
-        null,           // onSave (no save button in viewer)
+        null,
         prevHole,
         nextHole,
         onToggleFlight,
-        null            // onToggleDisplay (handled by P/N button in GameUI)
+        null
     );
     
     initTicker();
@@ -824,7 +824,6 @@ function renderGameList(games) {
         });
     });
     
-    // FIXED v8.13: Handicap button uses stored data directly with returnToPreviousPage = true
     document.querySelectorAll('.btn-handicap').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -921,12 +920,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.13
-KEY CHANGES from v8.12:
-   - FIXED: Handicap modal Back button now stays on view-history.html (no navigation to index)
-   - Passes returnToPreviousPage=true to displayStoredAdjustment
-   - Modal now closes without page reload or navigation
-   - Preserves scroll position and game list state
+VERSION: 8.14
+KEY CHANGES from v8.13:
+   - ADDED: Cache-busting version check to force reload on new deployments
+   - Prevents users from running stale cached versions after updates
+   - Uses localStorage to track version and redirects with ?v= parameter
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
