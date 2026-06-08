@@ -1,10 +1,10 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.26
-KEY CHANGES from v2.25:
-   - FIXED: displayHcp now correctly reads from stored data (finalHcp)
-   - FIXED: Properly handles both live calculation (newHcp/newAnchor) and history records (finalHcp)
-   - FIXED: Table now displays correct Final values instead of null
+VERSION: 2.27
+KEY CHANGES from v2.26:
+   - FIXED: St column now correctly displays "0" instead of "undefined" for players with 0 handicap
+   - FIXED: Explicit handling of 0 as a valid numeric value (not treated as falsy)
+   - FIXED: Added proper fallback logic for all handicap fields
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -256,7 +256,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.26: Fixed final handicap display for history records
+    // Display Table - v2.27: Fixed St column for 0 handicap values
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -285,7 +285,7 @@ var HandicapAdjustment = (function() {
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Anc</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Perf</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Final</th>';
-        tableHtml += '</tr></thead><tbody>';
+        tableHtml += '<tr></thead><tbody>';
         
         var currentTeam = null;
         
@@ -294,18 +294,13 @@ var HandicapAdjustment = (function() {
             
             // Determine final handicap - handle both live calculation and stored history data
             var displayHcp = null;
-            if (p.newHcp !== undefined && p.newHcp !== null) {
+            if (p.finalHcp !== undefined && p.finalHcp !== null) {
+                displayHcp = p.finalHcp;
+            } else if (p.newHcp !== undefined && p.newHcp !== null) {
                 displayHcp = p.newHcp;
             } else if (p.newAnchor !== undefined && p.newAnchor !== null) {
                 displayHcp = p.newAnchor;
-            } else if (p.finalHcp !== undefined && p.finalHcp !== null) {
-                displayHcp = p.finalHcp;
-            } else if (p.newHcp !== undefined) {
-                displayHcp = p.newHcp;
-            }
-            
-            // If still null, try to calculate from rawNew + zeroRise
-            if (displayHcp === null && p.rawNew !== undefined) {
+            } else if (p.rawNew !== undefined && p.rawNew !== null) {
                 if (hasNewAnchor && calculationResult.zeroRiseAmount) {
                     displayHcp = p.rawNew + calculationResult.zeroRiseAmount;
                 } else {
@@ -317,6 +312,14 @@ var HandicapAdjustment = (function() {
             if (displayHcp === null || displayHcp === undefined) {
                 displayHcp = p.currentHcp;
             }
+            
+            // FIXED v2.27: Get starting handicap - handle 0 correctly (not treated as falsy)
+            var startingHcp = p.currentHcp;
+            if (startingHcp === undefined || startingHcp === null) {
+                startingHcp = p.startingHcp;
+            }
+            // Ensure 0 is displayed as "0", not as falsy fallback
+            var stDisplayValue = (startingHcp !== undefined && startingHcp !== null) ? startingHcp : "?";
             
             var playerTeam = p.team || 'B';
             var isAnchor = (p.name === anchorName);
@@ -362,7 +365,7 @@ var HandicapAdjustment = (function() {
             
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
             tableHtml += `<td style="padding:6px 4px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${stColor}; font-weight:600;">${p.currentHcp}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${stColor}; font-weight:600;">${stDisplayValue}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
@@ -605,15 +608,15 @@ var HandicapAdjustment = (function() {
             return {
                 name: p.name,
                 label: p.label || p.name.substring(0, 3).toUpperCase(),
-                currentHcp: p.startingHcp || p.currentHcp,
+                currentHcp: p.startingHcp,
+                startingHcp: p.startingHcp,
                 anchorAdj: p.anchorAdj || 0,
                 perfAdj: p.perfAdj || 0,
-                finalHcp: p.finalHcp,  // Store as finalHcp for history display
-                newHcp: null,
-                newAnchor: null,
-                rawNew: null,
+                finalHcp: p.finalHcp,
                 team: teamInfo.team,
-                startingHcp: teamInfo.startingHcp
+                rawNew: null,
+                newHcp: null,
+                newAnchor: null
             };
         });
         
@@ -1007,7 +1010,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.26";
+    window.HANDICAP_ADJUST_VERSION = "2.27";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1026,11 +1029,11 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.26
-KEY CHANGES from v2.25:
-   - FIXED: displayHcp now correctly reads from stored data (finalHcp)
-   - FIXED: Properly handles both live calculation (newHcp/newAnchor) and history records (finalHcp)
-   - FIXED: Table now displays correct Final values instead of null
+VERSION: 2.27
+KEY CHANGES from v2.26:
+   - FIXED: St column now correctly displays "0" instead of "undefined" for players with 0 handicap
+   - FIXED: Explicit handling of 0 as a valid numeric value (not treated as falsy)
+   - FIXED: Added proper fallback logic for all handicap fields
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
