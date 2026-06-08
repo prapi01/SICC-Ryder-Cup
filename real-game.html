@@ -1,13 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 5.46
-KEY CHANGES from v5.45:
-   - FIXED: Removed FLIGHT toggle button from scorer's control bar
-   - Scorer for Flight 1 should NOT be able to toggle to Flight 2
-   - Changed 7th parameter of renderCompactHeader from onToggleFlight to null
-   - Control bar now shows ONLY: P/N button | SAVE button | ◀ | hole | ▶
-   - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.47
+KEY CHANGES from v5.46:
+   - REMOVED: All duplicate team game calculation logic from calculateHoleResultsWithCumulative()
+   - REMOVED: Intra-flight match calculations (f1IntraMatches, f2IntraMatches) - these are match bubbles
+   - Team game now EXCLUSIVELY uses GameTeam.calculateWithClinched() results
+   - t1Row and t2Row now properly updated from teamGameResults.displayT1 and displayT2
+   - t1Display and t2Display now properly passed to scorecard rendering
+   - T-1 and T-2 rows now show correct values independent of other flight
+   - All other functionality unchanged (save, cascade, ticker, etc.)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -296,13 +298,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.46</div>
+<div class="version-tag">v5.47</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.46";
+window.REAL_GAME_VERSION = "5.47";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1093,6 +1095,17 @@ function updateLocalCacheWithResults(resultsData) {
     cache.results.clinchedAt = resultsData.updatedClinched;
     console.log(`[CASCADE-DEBUG] updateLocalCacheWithResults: clinchedAt updated, new count = ${Object.keys(cache.results.clinchedAt).length}`);
     
+    // FIXED v5.47: Update t1Row and t2Row from team game results for scorecard display
+    if (resultsData.t1Display !== undefined && resultsData.t1Display !== null) {
+        cache.t1Row[position] = resultsData.t1Display;
+    }
+    if (resultsData.t2Display !== undefined && resultsData.t2Display !== null) {
+        cache.t2Row[position] = resultsData.t2Display;
+    }
+    if (resultsData.strkDisplay !== undefined && resultsData.strkDisplay !== null) {
+        cache.strkRow[position] = resultsData.strkDisplay;
+    }
+    
     var newComputedUpToHole = position + 1;
     if (newComputedUpToHole > (cache.results.computedUpToHole || 0)) {
         cache.results.computedUpToHole = newComputedUpToHole;
@@ -1216,7 +1229,7 @@ function getHoleAtPosition(position) {
 }
 
 // ============================================================
-// MAIN RESULTS CALCULATION
+// MAIN RESULTS CALCULATION - FIXED v5.47: Uses GameTeam exclusively
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1239,113 +1252,76 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         remainingHolesByPosition[pos] = getRemainingHolesFromPlayOrder(holeForPos);
     }
     
-    var teamGameResults = null;
-    var flight1ClinchedHoleResult = cumulativeFlight1ClinchedHole;
-    var flight2ClinchedHoleResult = cumulativeFlight2ClinchedHole;
+    // ============================================================
+    // TEAM GAME - EXCLUSIVELY from GameTeam.calculateWithClinched
+    // ============================================================
+    var teamGameResults = GameTeam.calculateWithClinched(
+        allPlayers, cache.f1DataString, cache.f2DataString, 
+        courseSi, startingHole, teamGameFormat, remainingHolesByPosition
+    );
     
-    if (f1Available || f2Available) {
-        var teamResults = GameTeam.calculateWithClinched(
-            allPlayers, cache.f1DataString, cache.f2DataString, 
-            courseSi, startingHole, teamGameFormat, remainingHolesByPosition
-        );
-        
-        teamGameResults = teamResults;
-        flight1ClinchedHoleResult = teamResults.flight1ClinchedHole;
-        flight2ClinchedHoleResult = teamResults.flight2ClinchedHole;
-    }
+    var flight1ClinchedHoleResult = teamGameResults.flight1ClinchedHole;
+    var flight2ClinchedHoleResult = teamGameResults.flight2ClinchedHole;
     
-    var result = {
-        position: position,
-        matchResults: null,
-        f1IntraMatches: null,
-        f2IntraMatches: null,
-        t1Leader: "AS",
-        t2Leader: "AS",
-        strkLeader: "AS",
-        game1PointsA: 0,
-        game1PointsB: 0,
-        game2PointsA: 0,
-        game2PointsB: 0,
-        game3PointsA: 0,
-        game3PointsB: 0,
-        trA: 0,
-        trB: 0,
-        trAGreen: false,
-        trBGreen: false,
-        flight1Total: 0,
-        flight2Total: 0,
-        flight1ClinchedHole: flight1ClinchedHoleResult,
-        flight2ClinchedHole: flight2ClinchedHoleResult,
-        clinchedAtUpdates: {},
-        updatedClinched: cumulativeClinched,
-        updatedFlight1ClinchedHole: flight1ClinchedHoleResult,
-        updatedFlight2ClinchedHole: flight2ClinchedHoleResult,
-        t1Display: "AS",
-        t2Display: "AS",
-        strkDisplay: "AS",
-        netThisHoleF1: 0,
-        netThisHoleF2: 0,
-        cumulativeF1: 0,
-        cumulativeF2: 0
-    };
-    
+    // ============================================================
+    // MATCH BUBBLES (Intra-flight) - For display only, not team game
+    // ============================================================
+    var f1IntraMatchesForHole = null;
+    var f2IntraMatchesForHole = null;
+    var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.46";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.47";
     
-    console.log(`[CASCADE-DEBUG] calculateHoleResultsWithCumulative: hole=${holeNumber}, remainingHoles=${remainingHoles}, existingClinched count=${Object.keys(cumulativeClinched).length}`);
-    
-    var clinchedAtUpdates = {};
-    
-    // FLIGHT 1 INTRA-FLIGHT MATCHES
+    // Flight 1 intra-flight match bubbles (NOT team game)
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var flight1Data = cache.f1DataString;
-        
         var intra1Result = GameMatch.calculateIntraFlightWithClinch(
             1, flight1Players, flight1Data, courseSi, startingHole, holeNumber, coursePar,
             remainingHoles, holeNumber, deviceId, cascadeVersion, cumulativeClinched
         );
-        
-        result.f1IntraMatches = intra1Result.intraMatches;
-        
+        f1IntraMatchesForHole = intra1Result.intraMatches;
         for (var matchKey in intra1Result.clinchedAtUpdates) {
             clinchedAtUpdates[matchKey] = intra1Result.clinchedAtUpdates[matchKey];
         }
     }
     
-    // FLIGHT 2 INTRA-FLIGHT MATCHES
+    // Flight 2 intra-flight match bubbles (NOT team game)
     if (f2Available) {
         var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
         var flight2Data = cache.f2DataString;
-        
         var intra2Result = GameMatch.calculateIntraFlightWithClinch(
             2, flight2Players, flight2Data, courseSi, startingHole, holeNumber, coursePar,
             remainingHoles, holeNumber, deviceId, cascadeVersion, cumulativeClinched
         );
-        
-        result.f2IntraMatches = intra2Result.intraMatches;
-        
+        f2IntraMatchesForHole = intra2Result.intraMatches;
         for (var matchKey in intra2Result.clinchedAtUpdates) {
             clinchedAtUpdates[matchKey] = intra2Result.clinchedAtUpdates[matchKey];
         }
     }
     
-    // CROSS-FLIGHT CLINCH DETECTION
+    // ============================================================
+    // CROSS-FLIGHT MATCHES (Only when both flights have data)
+    // ============================================================
+    var matchResultsArray = null;
+    var crossClinchedUpdates = {};
+    var game1PointsA = 0, game1PointsB = 0;
+    
     if (crossAvailable) {
         var crossResult = GameMatch.calculateCrossFlightWithClinch(
             cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar,
             remainingHoles, holeNumber, deviceId, cascadeVersion, cumulativeClinched
         );
-        
-        result.matchResults = crossResult.matchResultsArray;
+        matchResultsArray = crossResult.matchResultsArray;
         var matchResultsObj = crossResult.matchResultsObj;
         
         for (var matchKey in crossResult.clinchedAtUpdates) {
             clinchedAtUpdates[matchKey] = crossResult.clinchedAtUpdates[matchKey];
         }
         
-        var game1PointsA = 0, game1PointsB = 0, matchCount = 0;
+        // Calculate Game 1 points from cross matches
+        var matchCount = 0;
         for (var key in matchResultsObj) {
             if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
                 var firstPlayerName = key.split("_vs_")[0];
@@ -1359,44 +1335,89 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
                 }
             }
         }
-        result.game1PointsA = game1PointsA;
-        result.game1PointsB = game1PointsB;
-        
-        var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, coursePar);
-        result.strkLeader = strokeResults.leader[position] === "A" ? "A" : strokeResults.leader[position] === "B" ? "B" : "AS";
-        result.strkDisplay = strokeResults.displayStrk?.[position] || "AS";
-        
-        if (teamGameResults) {
-            result.cumulativeF1 = teamGameResults.flight1Cumulative[position];
-            result.cumulativeF2 = teamGameResults.flight2Cumulative[position];
-            result.t1Leader = teamGameResults.flight1Leaders[position];
-            result.t2Leader = teamGameResults.flight2Leaders[position];
-            result.t1Display = teamGameResults.displayT1[position];
-            result.t2Display = teamGameResults.displayT2[position];
-        }
-        
-        var flight1PointsA = (result.cumulativeF1 > 0) ? 1 : (result.cumulativeF1 < 0) ? 0 : 0.5;
-        var flight1PointsB = (result.cumulativeF1 > 0) ? 0 : (result.cumulativeF1 < 0) ? 1 : 0.5;
-        var flight2PointsA = (result.cumulativeF2 > 0) ? 1 : (result.cumulativeF2 < 0) ? 0 : 0.5;
-        var flight2PointsB = (result.cumulativeF2 > 0) ? 0 : (result.cumulativeF2 < 0) ? 1 : 0.5;
-        result.game2PointsA = flight1PointsA + flight2PointsA;
-        result.game2PointsB = flight1PointsB + flight2PointsB;
-        
-        result.game3PointsA = (result.strkLeader === "A") ? 1 : (result.strkLeader === "B") ? 0 : 0.5;
-        result.game3PointsB = (result.strkLeader === "A") ? 0 : (result.strkLeader === "B") ? 1 : 0.5;
-        
-        result.trA = result.game1PointsA + result.game2PointsA + result.game3PointsA;
-        result.trB = result.game1PointsB + result.game2PointsB + result.game3PointsB;
-        result.trAGreen = (result.trA > result.trB);
-        result.trBGreen = (result.trB > result.trA);
     }
     
-    result.clinchedAtUpdates = clinchedAtUpdates;
+    // ============================================================
+    // STROKE GAME (Only when both flights have data)
+    // ============================================================
+    var strkLeader = "AS";
+    var strkDisplay = "AS";
+    var strokeResults = null;
     
+    if (crossAvailable) {
+        strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, coursePar);
+        strkLeader = strokeResults.leader[position] === "A" ? "A" : strokeResults.leader[position] === "B" ? "B" : "AS";
+        strkDisplay = strokeResults.displayStrk?.[position] || "AS";
+    }
+    
+    // ============================================================
+    // BUILD RESULT OBJECT USING GameTeam RESULTS
+    // ============================================================
+    var cumulativeF1 = teamGameResults.flight1Cumulative[position];
+    var cumulativeF2 = teamGameResults.flight2Cumulative[position];
+    var t1Leader = teamGameResults.flight1Leaders[position];
+    var t2Leader = teamGameResults.flight2Leaders[position];
+    var t1Display = teamGameResults.displayT1[position];
+    var t2Display = teamGameResults.displayT2[position];
+    
+    // Calculate points from team game
+    var flight1PointsA = (cumulativeF1 > 0) ? 1 : (cumulativeF1 < 0) ? 0 : 0.5;
+    var flight1PointsB = (cumulativeF1 > 0) ? 0 : (cumulativeF1 < 0) ? 1 : 0.5;
+    var flight2PointsA = (cumulativeF2 > 0) ? 1 : (cumulativeF2 < 0) ? 0 : 0.5;
+    var flight2PointsB = (cumulativeF2 > 0) ? 0 : (cumulativeF2 < 0) ? 1 : 0.5;
+    var game2PointsA = flight1PointsA + flight2PointsA;
+    var game2PointsB = flight1PointsB + flight2PointsB;
+    
+    // Game 3 points from stroke game
+    var game3PointsA = (strkLeader === "A") ? 1 : (strkLeader === "B") ? 0 : 0.5;
+    var game3PointsB = (strkLeader === "A") ? 0 : (strkLeader === "B") ? 1 : 0.5;
+    
+    // TR values
+    var trA = game1PointsA + game2PointsA + game3PointsA;
+    var trB = game1PointsB + game2PointsB + game3PointsB;
+    var trAGreen = (trA > trB);
+    var trBGreen = (trB > trA);
+    
+    // Update clinchedAt
     var isCascadeStartHole = (holeNumber === cascadeStartHole);
-    result.updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole, isCascadeStartHole);
+    var updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole, isCascadeStartHole);
     
-    console.log(`[CASCADE-DEBUG] After hole ${holeNumber}: new clinches added = ${Object.keys(clinchedAtUpdates).length}, final clinchedAt count = ${Object.keys(result.updatedClinched).length}`);
+    var result = {
+        position: position,
+        matchResults: matchResultsArray,
+        f1IntraMatches: f1IntraMatchesForHole,
+        f2IntraMatches: f2IntraMatchesForHole,
+        t1Leader: t1Leader,
+        t2Leader: t2Leader,
+        strkLeader: strkLeader,
+        game1PointsA: game1PointsA,
+        game1PointsB: game1PointsB,
+        game2PointsA: game2PointsA,
+        game2PointsB: game2PointsB,
+        game3PointsA: game3PointsA,
+        game3PointsB: game3PointsB,
+        trA: trA,
+        trB: trB,
+        trAGreen: trAGreen,
+        trBGreen: trBGreen,
+        flight1Total: cumulativeF1,
+        flight2Total: cumulativeF2,
+        flight1ClinchedHole: flight1ClinchedHoleResult,
+        flight2ClinchedHole: flight2ClinchedHoleResult,
+        clinchedAtUpdates: clinchedAtUpdates,
+        updatedClinched: updatedClinched,
+        updatedFlight1ClinchedHole: flight1ClinchedHoleResult,
+        updatedFlight2ClinchedHole: flight2ClinchedHoleResult,
+        t1Display: t1Display,
+        t2Display: t2Display,
+        strkDisplay: strkDisplay,
+        netThisHoleF1: 0,
+        netThisHoleF2: 0,
+        cumulativeF1: cumulativeF1,
+        cumulativeF2: cumulativeF2
+    };
+    
+    console.log(`[CASCADE-DEBUG] Hole ${holeNumber}: T-1 display = ${t1Display}, T-2 display = ${t2Display}`);
     
     return result;
 }
@@ -1714,6 +1735,7 @@ function renderAll() {
     var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
     var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
     
+    // FIXED v5.47: Use displayT1 and displayT2 from results (set by GameTeam)
     var t1Display = cache.results?.game2?.displayT1 || null;
     var t2Display = cache.results?.game2?.displayT2 || null;
     var strkDisplay = cache.results?.game3?.displayStrk || null;
@@ -1820,7 +1842,6 @@ async function init() {
         applyPreloadedData(preloadData);
         sessionStorage.removeItem("gameDataPreloaded");
         GameUI.applyTightLayout();
-        // FIXED v5.46: Changed 7th parameter from onToggleFlight to null (removes FLIGHT toggle button for scorer)
         GameUI.renderCompactHeader("compactHeaderContainer", editableFlight, currentHole, saveHole, prevHole, nextHole, null, null);
         GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
         setTimeout(function() { GameUI.addFlightBadge(editableFlight); }, 100);
@@ -1856,7 +1877,6 @@ async function init() {
             var initSuccess = await initializeGameData(collection, cache);
             if (!initSuccess) { document.getElementById("debug").innerHTML = "Error: Failed to initialize"; return; }
             GameUI.applyTightLayout();
-            // FIXED v5.46: Changed 7th parameter from onToggleFlight to null (removes FLIGHT toggle button for scorer)
             GameUI.renderCompactHeader("compactHeaderContainer", editableFlight, currentHole, saveHole, prevHole, nextHole, null, null);
             GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
             setTimeout(function() { GameUI.addFlightBadge(editableFlight); }, 100);
@@ -1883,13 +1903,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.46
-KEY CHANGES from v5.45:
-   - FIXED: Removed FLIGHT toggle button from scorer's control bar
-   - Scorer for Flight 1 should NOT be able to toggle to Flight 2
-   - Changed 7th parameter of renderCompactHeader from onToggleFlight to null
-   - Control bar now shows ONLY: P/N button | SAVE button | ◀ | hole | ▶
-   - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.47
+KEY CHANGES from v5.46:
+   - REMOVED: All duplicate team game calculation logic from calculateHoleResultsWithCumulative()
+   - REMOVED: Intra-flight match calculations (f1IntraMatches, f2IntraMatches) - these are match bubbles
+   - Team game now EXCLUSIVELY uses GameTeam.calculateWithClinched() results
+   - t1Row and t2Row now properly updated from teamGameResults.displayT1 and displayT2
+   - t1Display and t2Display now properly passed to scorecard rendering
+   - T-1 and T-2 rows now show correct values independent of other flight
+   - All other functionality unchanged (save, cascade, ticker, etc.)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
