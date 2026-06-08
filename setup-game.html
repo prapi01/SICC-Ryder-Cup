@@ -1,15 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.22
-KEY CHANGES from v1.21:
-   - ADDED: generateGameId() function for short, readable game IDs
-   - CHANGED: Game creation now uses custom ID format instead of Firestore auto-ID
-   - Format: GM_260605_1503_42 (GM_YYMMDD_HHMM_XX)
-   - WHERE: YYMMDD = 2-digit year, 2-digit month, 2-digit day
-   -        HHMM = 2-digit hour, 2-digit minute
-   -        XX = 2-digit random number (00-99)
-   - Replaced .add() with .doc(gameId).set() for consistent ID format
-   - All other functionality identical to v1.21
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - ADDED: Anchor selection modal when multiple players have 0 handicap
+   - Modal appears after clicking COMMIT GAME, before game is created
+   - Cannot be bypassed (no close button, backdrop click disabled)
+   - Selected anchor is stored in the game document
+   - If only one player has 0 handicap, no modal (auto-assigned as anchor)
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
@@ -189,6 +187,71 @@ STATUS: Ready for integration
         .edit-badge { background: #ffaa44; color: #1a1a1a; padding: 2px 10px; border-radius: 20px; font-size: 0.7rem; margin-left: 10px; display: inline-block; }
         
         .info-note { font-size: 0.7rem; color: #ffaa44; margin-top: 8px; text-align: center; }
+        
+        /* Anchor Selection Modal - cannot be bypassed */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        .anchor-modal {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 28px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #ffaa44;
+        }
+        .anchor-modal-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 16px;
+        }
+        .anchor-modal-message {
+            font-size: 0.85rem;
+            color: #ccc;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+        .anchor-select {
+            width: 100%;
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 12px;
+            border-radius: 30px;
+            font-size: 1rem;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+        .anchor-select option {
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .anchor-confirm-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+        }
+        .anchor-confirm-btn:hover {
+            background: #2a4a2a;
+        }
     </style>
 </head>
 <body>
@@ -196,12 +259,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.22</div>
+<div class="version-tag">v1.23</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.22
+// FILE: setup-game.html - VERSION 1.23
 
-var VERSION = "1.22";
+var VERSION = "1.23";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -216,28 +279,20 @@ var firestoreReady = true;
 var deviceSession = null;
 
 // ============================================================
-// NEW v1.22: Generate Short Game ID
+// Generate Short Game ID
 // Format: GM_YYMMDD_HHMM_XX
-// Example: GM_260605_1503_42
 // ============================================================
 
 function generateGameId() {
     var now = new Date();
-    
-    // Get YYMMDD (2-digit year, month, day)
     var yy = String(now.getFullYear()).slice(-2);
     var mm = String(now.getMonth() + 1).padStart(2, '0');
     var dd = String(now.getDate()).padStart(2, '0');
     var yymmdd = yy + mm + dd;
-    
-    // Get HHMM (24-hour hour and minute)
     var hh = String(now.getHours()).padStart(2, '0');
     var min = String(now.getMinutes()).padStart(2, '0');
     var hhmm = hh + min;
-    
-    // Get random 2-digit number (00-99)
     var random = String(Math.floor(Math.random() * 100)).padStart(2, '0');
-    
     return 'GM_' + yymmdd + '_' + hhmm + '_' + random;
 }
 
@@ -247,13 +302,10 @@ function generateGameId() {
 
 function deletePastGames() {
     if (!firestoreReady) return;
-    
     var today = new Date();
     today.setHours(0, 0, 0, 0);
     var todayStr = today.toISOString().split('T')[0];
-    
     console.log("Checking for past games to delete (date < " + todayStr + ")");
-    
     db.collection("scheduledGames").where("date", "<", todayStr).get()
         .then(function(snapshot) {
             var deletePromises = [];
@@ -308,16 +360,13 @@ function generateDefaultDataNatural(parArray) {
 
 function rotateDataString(naturalData, startingHole) {
     if (startingHole === 1) return naturalData;
-    
     var blocks = [];
     for (var i = 0; i < 18; i++) {
         blocks.push(naturalData.substr(i * 9, 9));
     }
-    
     var rotated = [];
     for (var i = startingHole - 1; i < 18; i++) rotated.push(blocks[i]);
     for (var i = 0; i < startingHole - 1; i++) rotated.push(blocks[i]);
-    
     return rotated.join('');
 }
 
@@ -357,7 +406,6 @@ function initializeEmptyResults() {
         computedUpToHole: 0,
         lastComputedAt: null
     };
-    
     return emptyResults;
 }
 
@@ -632,6 +680,45 @@ function setStartingHole(type, value) {
     render();
 }
 
+// ============================================================
+// NEW v1.23: Anchor Selection Modal
+// ============================================================
+
+function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
+    var optionsHtml = '';
+    for (var i = 0; i < zeroHcpPlayers.length; i++) {
+        optionsHtml += `<option value="${zeroHcpPlayers[i].name}">${zeroHcpPlayers[i].name} (HCP ${zeroHcpPlayers[i].handicap})</option>`;
+    }
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="anchorSelectModal" style="z-index: 10001;">
+            <div class="anchor-modal">
+                <div class="anchor-modal-title">🏌️ SELECT ANCHOR</div>
+                <div class="anchor-modal-message">We have ${zeroHcpPlayers.length} players with 0 handicap.<br>Please select the Anchor for today's game.</div>
+                <select id="anchorSelect" class="anchor-select">
+                    ${optionsHtml}
+                </select>
+                <button id="anchorConfirmBtn" class="anchor-confirm-btn">✓ CONFIRM ANCHOR</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    var modal = document.getElementById('anchorSelectModal');
+    var confirmBtn = document.getElementById('anchorConfirmBtn');
+    
+    // Disable background click and escape key
+    modal.style.pointerEvents = 'auto';
+    
+    confirmBtn.addEventListener('click', function() {
+        var selectedName = document.getElementById('anchorSelect').value;
+        var selectedAnchor = zeroHcpPlayers.find(function(p) { return p.name === selectedName; });
+        modal.remove();
+        if (onConfirm) onConfirm(selectedAnchor);
+    });
+}
+
 function commitGame() {
     var dateInput = document.getElementById("datePicker");
     var selectedDate = dateInput ? dateInput.value : "";
@@ -653,13 +740,29 @@ function commitGame() {
         return;
     }
     
+    // NEW v1.23: Check for multiple players with 0 handicap
+    var zeroHandicapPlayers = state.players.filter(function(p) { return p.handicap === 0; });
+    
+    if (zeroHandicapPlayers.length > 1) {
+        // Show anchor selection modal before creating game
+        showAnchorSelectionModal(zeroHandicapPlayers, function(selectedAnchor) {
+            createGameWithAnchor(selectedAnchor);
+        });
+    } else {
+        // Single or no zero handicap - anchor is the lowest handicap player
+        var sortedByHcp = [...state.players].sort(function(a, b) { return a.handicap - b.handicap; });
+        var defaultAnchor = sortedByHcp[0];
+        createGameWithAnchor(defaultAnchor);
+    }
+}
+
+function createGameWithAnchor(anchorPlayer) {
     var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
     var rotatedData = rotateDataString(naturalData, state.startingHole);
-    
     var emptyResults = initializeEmptyResults();
     
     var gameData = {
-        date: selectedDate,
+        date: document.getElementById("datePicker").value,
         course: state.selectedCourseData,
         players: state.players.map(function(p) {
             return {
@@ -674,6 +777,7 @@ function commitGame() {
         gameType: "real",
         startingHole: state.startingHole,
         teamGameFormat: state.teamGameFormat,
+        anchor: anchorPlayer.name,  // NEW v1.23: Store anchor in game document
         updatedAt: new Date().toISOString(),
         
         f1: {
@@ -709,7 +813,6 @@ function commitGame() {
             alert("Error updating game: " + e.message);
         });
     } else {
-        // NEW v1.22: Use custom game ID format instead of Firestore auto-ID
         gameData.createdAt = new Date().toISOString();
         var newGameId = generateGameId();
         
@@ -1028,16 +1131,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.22
-KEY CHANGES from v1.21:
-   - ADDED: generateGameId() function for short, readable game IDs
-   - CHANGED: Game creation now uses custom ID format instead of Firestore auto-ID
-   - Format: GM_260605_1503_42 (GM_YYMMDD_HHMM_XX)
-   - WHERE: YYMMDD = 2-digit year, 2-digit month, 2-digit day
-   -        HHMM = 2-digit hour, 2-digit minute
-   -        XX = 2-digit random number (00-99)
-   - Replaced .add() with .doc(gameId).set() for consistent ID format
-   - All other functionality identical to v1.21
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - ADDED: Anchor selection modal when multiple players have 0 handicap
+   - Modal appears after clicking COMMIT GAME, before game is created
+   - Cannot be bypassed (no close button, backdrop click disabled)
+   - Selected anchor is stored in the game document (anchor field)
+   - If only one player has 0 handicap, no modal (auto-assigned as anchor)
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
 -->
