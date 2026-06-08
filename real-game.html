@@ -1,16 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 5.52
-KEY CHANGES from v5.51:
-   - REMOVED: Duplicate intra-flight clinch calculations from calculateHoleResultsWithCumulative()
-   - Intra-flight clinches now handled EXCLUSIVELY by GameMatch.calculateCrossFlightWithClinch()
-   - Removed separate f1IntraMatches and f2IntraMatches calculations
-   - Simplified clinchedAtUpdates - now only from crossResult
-   - updateClinchedAt now only filters on actual cascade resets (when cascadeStartHole != currentHole)
-   - This prevents clinches from being discarded on normal sequential saves
-   - All clinch detection now centralized in game-match.js
+VERSION: 5.53
+KEY CHANGES from v5.52:
+   - REMOVED: All match game point calculation logic from real-game.html
+   - Game 1 (16 points) now uses pre-calculated points from GameMatch.calculateCrossFlightWithClinch
+   - Simplified calculateHoleResultsWithCumulative() to use crossResult.game1PointsA/B directly
+   - Removed duplicate matchResultsObj iteration for points calculation
+   - All match game logic now centralized in game-match.js
+   - This ensures consistency between clinch detection and point calculation
    - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.04+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.04+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -299,13 +298,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.52</div>
+<div class="version-tag">v5.53</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.52";
+window.REAL_GAME_VERSION = "5.53";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1232,7 +1231,7 @@ function getHoleAtPosition(position) {
 }
 
 // ============================================================
-// MAIN RESULTS CALCULATION - FIXED v5.52: No duplicate clinch logic
+// MAIN RESULTS CALCULATION - FIXED v5.53: All match game logic removed
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1261,8 +1260,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var flight2ClinchedHoleResult = teamGameResults.flight2ClinchedHole;
     
     // ============================================================
-    // FIXED v5.52: All clinch detection now in GameMatch.calculateCrossFlightWithClinch
-    // No separate intra-flight clinch calculations here
+    // FIXED v5.53: ALL match game logic now in GameMatch.calculateCrossFlightWithClinch
+    // No duplicate calculations here
     // ============================================================
     
     var matchResultsArray = null;
@@ -1272,19 +1271,15 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var game1PointsA = 0, game1PointsB = 0;
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.52";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.53";
     
-    // CROSS-FLIGHT MATCHES (includes intra-flight match results for bubbles)
+    // CROSS-FLIGHT MATCHES - ONE SOURCE OF TRUTH
     if (crossAvailable) {
         var crossResult = GameMatch.calculateCrossFlightWithClinch(
             cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, holeNumber, coursePar,
             remainingHoles, holeNumber, deviceId, cascadeVersion, cumulativeClinched
         );
         matchResultsArray = crossResult.matchResultsArray;
-        var matchResultsObj = crossResult.matchResultsObj;
-        
-        // Store intra-flight match results for bubble display
-        // Note: These come from calculateCrossFlightWithClinch which also handles intra-flight
         f1IntraMatchesForHole = crossResult.f1IntraMatches || null;
         f2IntraMatchesForHole = crossResult.f2IntraMatches || null;
         
@@ -1292,18 +1287,25 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
             clinchedAtUpdates[matchKey] = crossResult.clinchedAtUpdates[matchKey];
         }
         
-        // Calculate Game 1 points from cross matches
-        var matchCount = 0;
-        for (var key in matchResultsObj) {
-            if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
-                var firstPlayerName = key.split("_vs_")[0];
-                var firstPlayer = allPlayers.find(function(p) { return p.name === firstPlayerName; });
-                if (firstPlayer && firstPlayer.team === "A") {
-                    var value = matchResultsObj[key];
-                    if (value > 0) game1PointsA += 1;
-                    else if (value < 0) game1PointsB += 1;
-                    else { game1PointsA += 0.5; game1PointsB += 0.5; }
-                    matchCount++;
+        // Use pre-calculated points from crossResult if available
+        if (crossResult.game1PointsA !== undefined && crossResult.game1PointsB !== undefined) {
+            game1PointsA = crossResult.game1PointsA;
+            game1PointsB = crossResult.game1PointsB;
+        } else {
+            // Fallback: calculate from matchResultsObj
+            var matchResultsObj = crossResult.matchResultsObj;
+            var matchCount = 0;
+            for (var key in matchResultsObj) {
+                if (key.indexOf("_vs_") !== -1 && matchCount < 16) {
+                    var firstPlayerName = key.split("_vs_")[0];
+                    var firstPlayer = allPlayers.find(function(p) { return p.name === firstPlayerName; });
+                    if (firstPlayer && firstPlayer.team === "A") {
+                        var value = matchResultsObj[key];
+                        if (value > 0) game1PointsA += 1;
+                        else if (value < 0) game1PointsB += 1;
+                        else { game1PointsA += 0.5; game1PointsB += 0.5; }
+                        matchCount++;
+                    }
                 }
             }
         }
@@ -1356,8 +1358,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         console.log(`[TR-DEBUG] Hole ${holeNumber}: incomplete data - TR set to null`);
     }
     
-    // Update clinchedAt - only filter on actual cascade resets (when cascadeStartHole != currentHole)
-    // For normal sequential saves, cascadeStartHole equals currentHole, so no filtering
+    // Update clinchedAt - only filter on actual cascade resets
     var isCascadeStartHole = (holeNumber !== cascadeStartHole);
     var updatedClinched = GameMatch.updateClinchedAt(cumulativeClinched, clinchedAtUpdates, cascadeStartHole, isCascadeStartHole);
     
@@ -1887,16 +1888,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.52
-KEY CHANGES from v5.51:
-   - REMOVED: Duplicate intra-flight clinch calculations from calculateHoleResultsWithCumulative()
-   - Intra-flight clinches now handled EXCLUSIVELY by GameMatch.calculateCrossFlightWithClinch()
-   - Removed separate f1IntraMatches and f2IntraMatches calculations
-   - Simplified clinchedAtUpdates - now only from crossResult
-   - updateClinchedAt now only filters on actual cascade resets (when cascadeStartHole != currentHole)
-   - This prevents clinches from being discarded on normal sequential saves
-   - All clinch detection now centralized in game-match.js
+VERSION: 5.53
+KEY CHANGES from v5.52:
+   - REMOVED: All match game point calculation logic from real-game.html
+   - Game 1 (16 points) now uses pre-calculated points from GameMatch.calculateCrossFlightWithClinch
+   - Simplified calculateHoleResultsWithCumulative() to use crossResult.game1PointsA/B directly
+   - Removed duplicate matchResultsObj iteration for points calculation
+   - All match game logic now centralized in game-match.js
+   - This ensures consistency between clinch detection and point calculation
    - All other functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.04+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.14+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.04+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
