@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.50
-KEY CHANGES from v5.49:
-   - FIXED: calculateHoleResultsWithCumulative() no longer returns null for holes with no data
-   - Now returns result object with trA = null, trB = null for incomplete holes
-   - This allows updateLocalCacheWithResults() to properly set TR to null (displayed as "-")
-   - Previously, null return meant cache retained old 9.5 values
-   - TR now correctly shows "-" for holes where no data exists
+VERSION: 5.51
+KEY CHANGES from v5.50:
+   - FIXED: initializeEmptyResults() now initializes TR arrays with null instead of 9.5
+   - teamA and teamB arrays filled with null (displayed as "-")
+   - teamAGreen and teamBGreen arrays filled with false
+   - This eliminates stale 9.5 values completely
+   - All holes without complete data now correctly show "-"
+   - No need for complex null handling in updateLocalCacheWithResults
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
@@ -297,13 +298,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.50</div>
+<div class="version-tag">v5.51</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.50";
+window.REAL_GAME_VERSION = "5.51";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1076,12 +1077,12 @@ function updateLocalCacheWithResults(resultsData) {
     if (!cache.results.game3.pointsB) cache.results.game3.pointsB = new Array(18).fill(0.5);
     cache.results.game3.pointsB[position] = resultsData.game3PointsB;
     
-    if (!cache.results.tr.teamA) cache.results.tr.teamA = new Array(18).fill(9.5);
-    if (!cache.results.tr.teamB) cache.results.tr.teamB = new Array(18).fill(9.5);
-    if (!cache.results.tr.teamAGreen) cache.results.tr.teamAGreen = new Array(18).fill(true);
-    if (!cache.results.tr.teamBGreen) cache.results.tr.teamBGreen = new Array(18).fill(true);
+    if (!cache.results.tr.teamA) cache.results.tr.teamA = new Array(18).fill(null);
+    if (!cache.results.tr.teamB) cache.results.tr.teamB = new Array(18).fill(null);
+    if (!cache.results.tr.teamAGreen) cache.results.tr.teamAGreen = new Array(18).fill(false);
+    if (!cache.results.tr.teamBGreen) cache.results.tr.teamBGreen = new Array(18).fill(false);
     
-    // FIXED v5.50: Always update TR values (including null) to overwrite stale 9.5
+    // Always update TR values (including null)
     cache.results.tr.teamA[position] = resultsData.trA;
     cache.results.tr.teamB[position] = resultsData.trB;
     cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
@@ -1152,6 +1153,7 @@ async function saveHole() {
 // Results Calculation
 // ============================================================
 
+// FIXED v5.51: Initialize TR arrays with null instead of 9.5
 function initializeEmptyResults() {
     return {
         version: 1,
@@ -1166,7 +1168,13 @@ function initializeEmptyResults() {
             pointsB: new Array(18).fill(1)
         },
         game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
-        tr: { teamA: new Array(18).fill(9.5), teamB: new Array(18).fill(9.5), teamAGreen: new Array(18).fill(true), teamBGreen: new Array(18).fill(true) },
+        // FIXED: TR arrays now start with null (displayed as "-") instead of 9.5
+        tr: { 
+            teamA: new Array(18).fill(null), 
+            teamB: new Array(18).fill(null), 
+            teamAGreen: new Array(18).fill(false), 
+            teamBGreen: new Array(18).fill(false) 
+        },
         computedUpToHole: 0,
         lastComputedAt: null,
         clinchedAt: {},
@@ -1227,7 +1235,7 @@ function getHoleAtPosition(position) {
 }
 
 // ============================================================
-// MAIN RESULTS CALCULATION - FIXED v5.50: Never returns null
+// MAIN RESULTS CALCULATION
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1239,10 +1247,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var f1Available = (f1Hole && f1Hole.saved);
     var f2Available = (f2Hole && f2Hole.saved);
     var crossAvailable = f1Available && f2Available;
-    
-    // FIXED v5.50: Always return a result object, never null
-    // This ensures updateLocalCacheWithResults() is always called
-    // and stale 9.5 values get overwritten with null (displayed as "-")
     
     var remainingHolesByPosition = new Array(18);
     for (var pos = 0; pos < 18; pos++) {
@@ -1265,7 +1269,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.50";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.51";
     
     // Flight 1 intra-flight match bubbles (NOT team game)
     if (f1Available) {
@@ -1358,23 +1362,21 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var game3PointsA = (strkLeader === "A") ? 1 : (strkLeader === "B") ? 0 : 0.5;
     var game3PointsB = (strkLeader === "A") ? 0 : (strkLeader === "B") ? 1 : 0.5;
     
-    // TR values - FIXED v5.50: Always set trA/trB (null for incomplete data)
+    // TR values - null for incomplete data
     var trA, trB, trAGreen, trBGreen;
     
     if (crossAvailable) {
-        // Both flights have data - calculate TR normally
         trA = game1PointsA + game2PointsA + game3PointsA;
         trB = game1PointsB + game2PointsB + game3PointsB;
         trAGreen = (trA > trB);
         trBGreen = (trB > trA);
         console.log(`[TR-DEBUG] Hole ${holeNumber}: BOTH flights saved - TR = ${trA} - ${trB}`);
     } else {
-        // Only one flight or no data - show null (displayed as "-")
         trA = null;
         trB = null;
         trAGreen = false;
         trBGreen = false;
-        console.log(`[TR-DEBUG] Hole ${holeNumber}: crossAvailable=${crossAvailable}, f1Available=${f1Available}, f2Available=${f2Available} - TR set to null`);
+        console.log(`[TR-DEBUG] Hole ${holeNumber}: incomplete data - TR set to null`);
     }
     
     // Update clinchedAt
@@ -1485,7 +1487,7 @@ function setupRealtimeListener() {
 }
 
 // ============================================================
-// Navigation and Modal Functions (unchanged)
+// Navigation and Modal Functions
 // ============================================================
 
 function nextHole() {
@@ -1908,13 +1910,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.50
-KEY CHANGES from v5.49:
-   - FIXED: calculateHoleResultsWithCumulative() no longer returns null for holes with no data
-   - Now returns result object with trA = null, trB = null for incomplete holes
-   - This allows updateLocalCacheWithResults() to properly set TR to null (displayed as "-")
-   - Previously, null return meant cache retained old 9.5 values
-   - TR now correctly shows "-" for holes where no data exists
+VERSION: 5.51
+KEY CHANGES from v5.50:
+   - FIXED: initializeEmptyResults() now initializes TR arrays with null instead of 9.5
+   - teamA and teamB arrays filled with null (displayed as "-")
+   - teamAGreen and teamBGreen arrays filled with false
+   - This eliminates stale 9.5 values completely
+   - All holes without complete data now correctly show "-"
+   - No need for complex null handling in updateLocalCacheWithResults
    - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
