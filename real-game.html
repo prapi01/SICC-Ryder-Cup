@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.45
-KEY CHANGES from v5.44:
-   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
-   - Player cards, bubbles, scorecard table, compact header styles removed
-   - Kept only page-specific styles: container, visibility rules, device tags, modals
-   - All functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.46
+KEY CHANGES from v5.45:
+   - FIXED: Removed FLIGHT toggle button from scorer's control bar
+   - Scorer for Flight 1 should NOT be able to toggle to Flight 2
+   - Changed 7th parameter of renderCompactHeader from onToggleFlight to null
+   - Control bar now shows ONLY: P/N button | SAVE button | ◀ | hole | ▶
+   - All other functionality unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -295,13 +296,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.45</div>
+<div class="version-tag">v5.46</div>
 
 <script>
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.45";
+window.REAL_GAME_VERSION = "5.46";
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1290,7 +1291,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.45";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.46";
     
     console.log(`[CASCADE-DEBUG] calculateHoleResultsWithCumulative: hole=${holeNumber}, remainingHoles=${remainingHoles}, existingClinched count=${Object.keys(cumulativeClinched).length}`);
     
@@ -1819,7 +1820,8 @@ async function init() {
         applyPreloadedData(preloadData);
         sessionStorage.removeItem("gameDataPreloaded");
         GameUI.applyTightLayout();
-        GameUI.renderCompactHeader("compactHeaderContainer", editableFlight, currentHole, saveHole, prevHole, nextHole, onToggleFlight, null);
+        // FIXED v5.46: Changed 7th parameter from onToggleFlight to null (removes FLIGHT toggle button for scorer)
+        GameUI.renderCompactHeader("compactHeaderContainer", editableFlight, currentHole, saveHole, prevHole, nextHole, null, null);
         GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
         setTimeout(function() { GameUI.addFlightBadge(editableFlight); }, 100);
         GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
@@ -1854,7 +1856,8 @@ async function init() {
             var initSuccess = await initializeGameData(collection, cache);
             if (!initSuccess) { document.getElementById("debug").innerHTML = "Error: Failed to initialize"; return; }
             GameUI.applyTightLayout();
-            GameUI.renderCompactHeader("compactHeaderContainer", editableFlight, currentHole, saveHole, prevHole, nextHole, onToggleFlight, null);
+            // FIXED v5.46: Changed 7th parameter from onToggleFlight to null (removes FLIGHT toggle button for scorer)
+            GameUI.renderCompactHeader("compactHeaderContainer", editableFlight, currentHole, saveHole, prevHole, nextHole, null, null);
             GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
             setTimeout(function() { GameUI.addFlightBadge(editableFlight); }, 100);
             GameUI.renderBottomMenu("bottomMenuContainer", exitToMainMenu);
@@ -1880,12 +1883,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.45
-KEY CHANGES from v5.44:
-   - REMOVED: Duplicate CSS (now relies on game-ui.js v5.00 for all styles)
-   - Player cards, bubbles, scorecard table, compact header styles removed
-   - Kept only page-specific styles: container, visibility rules, device tags, modals
-   - All functionality unchanged
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.46
+KEY CHANGES from v5.45:
+   - FIXED: Removed FLIGHT toggle button from scorer's control bar
+   - Scorer for Flight 1 should NOT be able to toggle to Flight 2
+   - Changed 7th parameter of renderCompactHeader from onToggleFlight to null
+   - Control bar now shows ONLY: P/N button | SAVE button | ◀ | hole | ▶
+   - All other functionality unchanged
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.13+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.03+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
