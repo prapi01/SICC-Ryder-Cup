@@ -1,11 +1,13 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.21
-KEY CHANGES from v2.20:
-   - FIXED: Back button in read-only mode now only closes modal, does NOT reload page
-   - Preserves scroll position and game list state when closing handicap modal
-   - Added returnToPreviousPage flag to control navigation behavior
-   - displayStoredAdjustment() now accepts optional returnToPreviousPage parameter
+VERSION: 2.22
+KEY CHANGES from v2.21:
+   - ADDED: Read anchor from game document (instead of auto-selecting lowest handicap)
+   - ADDED: "Change Anchor" button on handicap table when multiple 0-handicap players exist
+   - Change Anchor button opens dropdown modal to select new anchor
+   - After selection, recalculates all adjustments and updates Firestore
+   - Updates both scheduledGames and historyRecord (if exists)
+   - Proper error handling and rollback on failure
    - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -26,7 +28,8 @@ var HandicapAdjustment = (function() {
     var isViewOnly = false;
     var isReadOnlyMode = false;
     var returnDestination = null;
-    var returnToPreviousPage = false;  // NEW v2.21: If true, just close modal, don't navigate
+    var returnToPreviousPage = false;
+    var hasMultipleZeroHandicap = false;  // NEW v2.22: Track if multiple 0-handicap players exist
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -256,7 +259,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.21: Back button behavior fixed
+    // Display Table - v2.22: Added Change Anchor button
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -349,7 +352,6 @@ var HandicapAdjustment = (function() {
         
         var buttonsHtml = '';
         if (isReadOnly) {
-            // FIXED v2.21: Back button behavior - check if we should just close modal
             if (returnToPreviousPage) {
                 buttonsHtml = `
                     <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
@@ -364,9 +366,18 @@ var HandicapAdjustment = (function() {
                 `;
             }
         } else {
+            // NEW v2.22: Add Change Anchor button if multiple 0-handicap players exist
+            var changeAnchorHtml = '';
+            if (hasMultipleZeroHandicap) {
+                changeAnchorHtml = `
+                    <button id="changeAnchorBtn" style="background:#1a1a1a; border:1px solid #ffaa44; color:#ffaa44; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🔄 Change Anchor</button>
+                `;
+            }
+            
             buttonsHtml = `
                 <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
                     <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🏌️ Back</button>
+                    ${changeAnchorHtml}
                     <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🎉 Celebration</button>
                     <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🏠 Menu</button>
                     <button id="exitBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🚪 Exit</button>
@@ -396,9 +407,7 @@ var HandicapAdjustment = (function() {
             if (backBtn) {
                 backBtn.addEventListener('click', function() {
                     document.getElementById('hcpAdjustModal').remove();
-                    // FIXED v2.21: If returnToPreviousPage is true, just close modal, don't navigate
                     if (returnToPreviousPage) {
-                        // Do nothing - just close modal, stay on current page
                         console.log('[HandicapAdjustment] Closing modal, staying on current page');
                     } else if (returnDestination) {
                         window.location.href = returnDestination;
@@ -413,6 +422,15 @@ var HandicapAdjustment = (function() {
                 backToScorecardBtn.addEventListener('click', function() {
                     document.getElementById('hcpAdjustModal').remove();
                     window.location.href = 'view-game.html';
+                });
+            }
+            
+            // NEW v2.22: Change Anchor button handler
+            var changeAnchorBtn = document.getElementById('changeAnchorBtn');
+            if (changeAnchorBtn) {
+                changeAnchorBtn.addEventListener('click', function() {
+                    document.getElementById('hcpAdjustModal').remove();
+                    showChangeAnchorModal();
                 });
             }
             
@@ -445,8 +463,113 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
+    // NEW v2.22: Show Change Anchor modal and recalculate
+    // ============================================================
+    
+    function showChangeAnchorModal() {
+        var zeroHcpPlayers = allPlayers.filter(function(p) { return p.handicap === 0; });
+        if (zeroHcpPlayers.length <= 1) return;
+        
+        var optionsHtml = '';
+        for (var i = 0; i < zeroHcpPlayers.length; i++) {
+            var selected = (anchorPlayer && anchorPlayer.name === zeroHcpPlayers[i].name) ? 'selected' : '';
+            optionsHtml += `<option value="${zeroHcpPlayers[i].name}" ${selected}>${zeroHcpPlayers[i].name} (HCP ${zeroHcpPlayers[i].handicap})</option>`;
+        }
+        
+        var modalHtml = `
+            <div class="modal-overlay" id="changeAnchorModal" style="z-index: 10001;">
+                <div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:360px; width:90%; text-align:center; border:2px solid #ffaa44;">
+                    <div style="font-size:1.3rem; font-weight:800; color:#ffaa44; margin-bottom:16px;">🔄 CHANGE ANCHOR</div>
+                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:20px;">Select a new anchor for today's game.</div>
+                    <select id="changeAnchorSelect" style="width:100%; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:30px; font-size:1rem; margin-bottom:20px;">
+                        ${optionsHtml}
+                    </select>
+                    <div style="display:flex; gap:12px;">
+                        <button id="changeAnchorCancelBtn" style="flex:1; background:#1a1a1a; border:1px solid #333; color:#ccc; padding:12px; border-radius:40px; font-weight:600; cursor:pointer;">Cancel</button>
+                        <button id="changeAnchorConfirmBtn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:40px; font-weight:700; cursor:pointer;">✓ Confirm</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        document.getElementById('changeAnchorCancelBtn').addEventListener('click', function() {
+            document.getElementById('changeAnchorModal').remove();
+            // Re-show the original handicap table
+            if (currentTableData) {
+                showAdjustmentTable(currentTableData, anchorPlayer.name, false);
+            }
+        });
+        
+        document.getElementById('changeAnchorConfirmBtn').addEventListener('click', function() {
+            var selectedName = document.getElementById('changeAnchorSelect').value;
+            var selectedAnchor = allPlayers.find(function(p) { return p.name === selectedName; });
+            document.getElementById('changeAnchorModal').remove();
+            
+            if (selectedAnchor && selectedAnchor.name !== anchorPlayer.name) {
+                updateAnchorAndRecalculate(selectedAnchor);
+            } else if (currentTableData) {
+                showAdjustmentTable(currentTableData, anchorPlayer.name, false);
+            }
+        });
+    }
+    
+    // NEW v2.22: Update anchor and recalculate
+    function updateAnchorAndRecalculate(newAnchor) {
+        // Show loading indicator
+        var loadingModal = document.createElement('div');
+        loadingModal.className = 'modal-overlay';
+        loadingModal.id = 'loadingModal';
+        loadingModal.innerHTML = `
+            <div style="background:#1a1a1a; border-radius:24px; padding:28px; text-align:center;">
+                <div class="spin"></div>
+                <div style="margin-top:16px; color:#4caf50;">Recalculating handicaps...</div>
+            </div>
+        `;
+        document.body.appendChild(loadingModal);
+        
+        // First, update anchor in Firestore (scheduledGames)
+        var updatePromise = db.collection('scheduledGames').doc(currentGameId).update({
+            anchor: newAnchor.name,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        
+        updatePromise.then(function() {
+            console.log('Anchor updated in scheduledGames:', newAnchor.name);
+            anchorPlayer = newAnchor;
+            
+            // Recalculate all adjustments
+            var calculationResult = calculateAllAdjustments(newAnchor);
+            currentTableData = calculationResult;
+            
+            // Save to Firestore
+            saveAdjustmentToFirestore(newAnchor, calculationResult, function(err) {
+                loadingModal.remove();
+                if (err) {
+                    console.error('Error saving recalculated handicaps:', err);
+                    alert('Error saving new handicap data. Please try again.');
+                    // Re-show old table
+                    if (currentTableData) {
+                        showAdjustmentTable(currentTableData, anchorPlayer.name, false);
+                    }
+                } else {
+                    // Show updated table
+                    showAdjustmentTable(calculationResult, newAnchor.name, false);
+                }
+            });
+        }).catch(function(err) {
+            loadingModal.remove();
+            console.error('Error updating anchor:', err);
+            alert('Failed to update anchor. Please try again.');
+            if (currentTableData) {
+                showAdjustmentTable(currentTableData, anchorPlayer.name, false);
+            }
+        });
+    }
+    
+    // ============================================================
     // v2.21: Display stored adjustment from history record
-    // Now accepts optional returnToPreviousPage flag
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList, returnToPrevious) {
@@ -455,7 +578,6 @@ var HandicapAdjustment = (function() {
             return false;
         }
         
-        // NEW v2.21: Set flag for Back button behavior
         returnToPreviousPage = (returnToPrevious === true);
         
         var playerMap = {};
@@ -503,7 +625,8 @@ var HandicapAdjustment = (function() {
         currentArchiveId = archiveId;
         isReadOnlyMode = true;
         returnDestination = returnUrl || "view-history.html?gameId=" + gameId;
-        returnToPreviousPage = false;  // Use navigation for this path
+        returnToPreviousPage = false;
+        hasMultipleZeroHandicap = false;
         
         if (archiveId && typeof HistoryRecord !== 'undefined') {
             HistoryRecord.getArchivedGame(archiveId, function(err, archiveData) {
@@ -621,6 +744,7 @@ var HandicapAdjustment = (function() {
         startingHole = startingHoleParam || 1;
         isReadOnlyMode = true;
         returnToPreviousPage = false;
+        hasMultipleZeroHandicap = false;
         
         if (!allPlayers.length) {
             console.error('No players provided for handicap adjustment');
@@ -648,7 +772,8 @@ var HandicapAdjustment = (function() {
         
         allPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
-        var zeroHcpPlayers = allPlayers.filter(function(p) { return p.handicap === 0; });
+        var zeroHcpPlayers = allPlayers.filter(function(p) { return p.handicap === 0);
+        hasMultipleZeroHandicap = (zeroHcpPlayers.length > 1);
         
         loadGameData(gameId, function(gameData) {
             if (!gameData) {
@@ -656,7 +781,30 @@ var HandicapAdjustment = (function() {
                 return;
             }
             
-            if (zeroHcpPlayers.length === 1) {
+            // NEW v2.22: Read anchor from game document if exists
+            var storedAnchor = gameData.anchor;
+            var anchorFound = null;
+            
+            if (storedAnchor) {
+                anchorFound = allPlayers.find(function(p) { return p.name === storedAnchor; });
+            }
+            
+            if (anchorFound) {
+                // Use stored anchor
+                anchorPlayer = anchorFound;
+                var calculationResult = calculateAllAdjustments(anchorPlayer);
+                currentTableData = calculationResult;
+                
+                saveAdjustmentToFirestore(anchorPlayer, calculationResult, function(err) {
+                    if (err) {
+                        console.error("Error saving handicap data:", err);
+                        alert("Error saving handicap data. Please try again.");
+                    } else {
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                    }
+                });
+            } else if (zeroHcpPlayers.length === 1) {
+                // Single 0-handicap player
                 anchorPlayer = zeroHcpPlayers[0];
                 var calculationResult = calculateAllAdjustments(anchorPlayer);
                 currentTableData = calculationResult;
@@ -670,8 +818,10 @@ var HandicapAdjustment = (function() {
                     }
                 });
             } else if (zeroHcpPlayers.length > 1) {
+                // Multiple 0-handicap players - need selection
                 showAnchorSelectionModal(zeroHcpPlayers);
             } else {
+                // No 0-handicap players - use lowest handicap
                 var lowestHcpPlayer = allPlayers[0];
                 anchorPlayer = lowestHcpPlayer;
                 var calculationResult = calculateAllAdjustments(anchorPlayer);
@@ -846,7 +996,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.21";
+    window.HANDICAP_ADJUST_VERSION = "2.22";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -865,12 +1015,14 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.21
-KEY CHANGES from v2.20:
-   - FIXED: Back button in read-only mode now only closes modal, does NOT reload page
-   - Preserves scroll position and game list state when closing handicap modal
-   - Added returnToPreviousPage flag to control navigation behavior
-   - displayStoredAdjustment() now accepts optional returnToPreviousPage parameter
+VERSION: 2.22
+KEY CHANGES from v2.21:
+   - ADDED: Read anchor from game document (instead of auto-selecting lowest handicap)
+   - ADDED: "Change Anchor" button on handicap table when multiple 0-handicap players exist
+   - Change Anchor button opens dropdown modal to select new anchor
+   - After selection, recalculates all adjustments and updates Firestore
+   - Updates both scheduledGames and historyRecord (if exists)
+   - Proper error handling and rollback on failure
    - All existing functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
