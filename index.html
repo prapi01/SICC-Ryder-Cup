@@ -1,11 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.24
-KEY CHANGES from v3.23:
-   - ADDED: Custom modal when clicking TODAY GAME on a completed game
-   - Modal message: "This game is already completed. Scores are now for display only."
-   - User clicks OK to proceed to view-history.html?gameId=xxx
-   - No changes to existing preload, splash, or flicker-free logic
+VERSION: 3.25
+KEY CHANGES from v3.24:
+   - FIXED: When returning to main menu with no cached preload data, preload again
+   - Prevents "Still loading game data" error when new game is created after first load
+   - Checks hasCachedData before rendering instantly
+   - All existing functionality preserved (modal, splash, flicker-free)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -458,12 +458,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.24</div>
+<div class="version-tag">v3.25</div>
 
 <script>
-// FILE: index.html - VERSION 3.24
+// FILE: index.html - VERSION 3.25
 
-var APP_VERSION = "3.24";
+var APP_VERSION = "3.25";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -914,7 +914,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization
+// Initialization - FIXED v3.25: Check cached data on return
 // ============================================================
 
 function initApp() {
@@ -923,7 +923,7 @@ function initApp() {
     mainContainer = document.getElementById("app");
     mainContainer.style.display = "block";
     
-    // Check if this is first load (no cached data or session flag)
+    // Check if we have valid cached preload data
     var hasCachedData = getPreloadedRawGameData() !== null;
     var firstLoadFlag = sessionStorage.getItem('firstLoadCompleted');
     
@@ -958,9 +958,41 @@ function initApp() {
             renderMainUI();
             sessionStorage.setItem('firstLoadCompleted', 'true');
         });
+    } else if (!hasCachedData) {
+        // Returning to main menu but no cached data exists
+        // This happens when a new game was created after first load
+        console.log("No cached preload data found - preloading again");
+        isFirstLoad = true;
+        var loadingScreen = showLoadingScreen();
+        
+        // Fetch games to determine today's game ID for preload
+        db.collection("scheduledGames").get().then(function(snapshot) {
+            var games = [];
+            snapshot.forEach(function(doc) {
+                games.push({ id: doc.id, date: doc.data().date });
+            });
+            
+            var today = getTodayString();
+            var todayGame = games.find(function(g) { return g.date === today; });
+            
+            if (todayGame) {
+                preloadGameData(todayGame.id, function() {
+                    hideLoadingScreen(loadingScreen);
+                    renderMainUI();
+                });
+            } else {
+                hideLoadingScreen(loadingScreen);
+                renderMainUI();
+            }
+        }).catch(function() {
+            hideLoadingScreen(loadingScreen);
+            renderMainUI();
+        });
     } else {
-        // Subsequent returns to main menu - render instantly (no loading screen)
+        // Subsequent returns with valid cached data - render instantly (no loading screen)
+        console.log("Valid cached preload data found - rendering instantly");
         isFirstLoad = false;
+        preloadComplete = true;  // Ensure preloadComplete is set
         renderMainUI();
     }
 }
@@ -1050,12 +1082,12 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.24
-KEY CHANGES from v3.23:
-   - ADDED: Custom modal when clicking TODAY GAME on a completed game
-   - Modal message: "This game is already completed. Scores are now for display only."
-   - User clicks OK to proceed to view-history.html?gameId=xxx
-   - No changes to existing preload, splash, or flicker-free logic
+VERSION: 3.25
+KEY CHANGES from v3.24:
+   - FIXED: When returning to main menu with no cached preload data, preload again
+   - Prevents "Still loading game data" error when new game is created after first load
+   - Checks hasCachedData before rendering instantly
+   - All existing functionality preserved (modal, splash, flicker-free)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
