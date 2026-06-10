@@ -1,13 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.23
-KEY CHANGES from v3.22:
-   - FIXED: No more flicker when returning to Main Menu
-   - REMOVED: Temporary "LOADING" button replacement
-   - ADDED: Empty placeholder with same dimensions as real button
-   - ADDED: Smooth fade-in transition for entire UI after preload
-   - ADDED: B&W loading screen on first app load only
-   - Splash screen preserved (once per session)
+VERSION: 3.24
+KEY CHANGES from v3.23:
+   - ADDED: Custom modal when clicking TODAY GAME on a completed game
+   - Modal message: "This game is already completed. Scores are now for display only."
+   - User clicks OK to proceed to view-history.html?gameId=xxx
+   - No changes to existing preload, splash, or flicker-free logic
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -346,6 +344,73 @@ STATUS: Ready for integration
             margin-top: 20px;
             padding-bottom: env(safe-area-inset-bottom, 10px);
         }
+        
+        /* Modal styles for completed game notification */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+        .game-completed-modal {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 28px;
+            max-width: 340px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        
+        .game-completed-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 16px;
+        }
+        
+        .game-completed-message {
+            font-size: 0.9rem;
+            color: #ccc;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        
+        .game-completed-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        
+        .game-completed-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .game-completed-btn-primary {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        
+        .game-completed-btn-secondary {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+        }
     </style>
     
     <script>
@@ -393,12 +458,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.23</div>
+<div class="version-tag">v3.24</div>
 
 <script>
-// FILE: index.html - VERSION 3.23
+// FILE: index.html - VERSION 3.24
 
-var APP_VERSION = "3.23";
+var APP_VERSION = "3.24";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -540,6 +605,37 @@ function preloadGameData(gameId, callback) {
 }
 
 // ============================================================
+// Modal for Completed Game - v3.24
+// ============================================================
+
+function showGameCompletedModal(gameId) {
+    var modalHtml = `
+        <div class="modal-overlay" id="completedGameModal">
+            <div class="game-completed-modal">
+                <div class="game-completed-title">🏆 GAME COMPLETED</div>
+                <div class="game-completed-message">This game is already finished.</div>
+                <div class="game-completed-message" style="font-size:0.8rem; color:#ffaa44;">Scores are now for display only.</div>
+                <div class="game-completed-buttons">
+                    <button class="game-completed-btn game-completed-btn-secondary" id="cancelModalBtn">Cancel</button>
+                    <button class="game-completed-btn game-completed-btn-primary" id="confirmModalBtn">View Results</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById('cancelModalBtn').addEventListener('click', function() {
+        document.getElementById('completedGameModal').remove();
+    });
+    
+    document.getElementById('confirmModalBtn').addEventListener('click', function() {
+        document.getElementById('completedGameModal').remove();
+        window.location.href = "view-history.html?gameId=" + gameId;
+    });
+}
+
+// ============================================================
 // Main UI Render - Renders ONCE (no flicker)
 // ============================================================
 
@@ -634,7 +730,8 @@ function handleTodayGame() {
                 }
                 
                 if (isCompleted) {
-                    window.location.href = "view-history.html?gameId=" + gameId;
+                    // v3.24: Show modal instead of direct redirect
+                    showGameCompletedModal(gameId);
                 } else {
                     proceedToRealGame(gameId, "real");
                 }
@@ -953,14 +1050,12 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.23
-KEY CHANGES from v3.22:
-   - FIXED: No more flicker when returning to Main Menu
-   - REMOVED: Temporary "LOADING" button replacement
-   - ADDED: Empty placeholder with same dimensions as real button
-   - ADDED: Smooth fade-in transition for entire UI after preload
-   - ADDED: B&W loading screen on first app load only
-   - Splash screen preserved (once per session)
+VERSION: 3.24
+KEY CHANGES from v3.23:
+   - ADDED: Custom modal when clicking TODAY GAME on a completed game
+   - Modal message: "This game is already completed. Scores are now for display only."
+   - User clicks OK to proceed to view-history.html?gameId=xxx
+   - No changes to existing preload, splash, or flicker-free logic
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
