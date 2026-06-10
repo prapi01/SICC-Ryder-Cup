@@ -1,9 +1,10 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.36
-KEY CHANGES from v2.34:
-   - CHANGED: "Today" column header to "Old"
-   - Table frame kept at 400px (min-width: 400px)
+VERSION: 2.37
+KEY CHANGES from v2.36:
+   - CHANGED: Table min-width from 400px to 340px
+   - Fits iPhone SE (375px screen) without horizontal scroll
+   - Professional appearance (not swimming in empty space)
    - All previous cosmetic changes preserved
    - All table structure intact (stable v2.29 base)
    - All functionality unchanged
@@ -274,7 +275,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.36: "Today" → "Old", table frame at 400px
+    // Display Table - v2.37: Table min-width 340px (fits iPhone SE)
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -293,14 +294,14 @@ var HandicapAdjustment = (function() {
             return hcpA - hcpB;
         });
         
-        // v2.36: Table frame kept at 400px (min-width: 400px)
+        // v2.37: Table min-width 340px (fits iPhone SE 375px screen)
         var tableHtml = '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
-        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 400px;">';
+        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 340px;">';
         
-        // Table Header - v2.36: "Today" changed to "Old"
+        // Table Header - v2.36: "Old" column header
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
         tableHtml += '<th style="padding:8px 4px; text-align:left; width:45px; font-size:0.75rem;"></th>';
-        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Old</th>';  // Was "Today"
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Old</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Anc</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Perf</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">New</th>';
@@ -1071,7 +1072,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.36";
+    window.HANDICAP_ADJUST_VERSION = "2.37";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1090,10 +1091,11 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.36
-KEY CHANGES from v2.34:
-   - CHANGED: "Today" column header to "Old"
-   - Table frame kept at 400px (min-width: 400px)
+VERSION: 2.37
+KEY CHANGES from v2.36:
+   - CHANGED: Table min-width from 400px to 340px
+   - Fits iPhone SE (375px screen) without horizontal scroll
+   - Professional appearance (not swimming in empty space)
    - All previous cosmetic changes preserved
    - All table structure intact (stable v2.29 base)
    - All functionality unchanged
