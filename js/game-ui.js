@@ -1,18 +1,19 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.05
-KEY CHANGES from v5.04:
-   - ADDED: Debug logging in updateTR() for value formatting
-   - ADDED: Debug logging in renderPlayerCards() for bubble class
-   - ADDED: Version exposure for console debugging
-   - All existing functionality unchanged
+VERSION: 5.06
+KEY CHANGES from v5.05:
+   - FIXED: Increased bubble gap and padding to prevent text truncation
+   - FIXED: Changed overflow from hidden to visible (no ellipsis truncation)
+   - FIXED: Slightly reduced AS square size on mobile for better fit
+   - FIXED: Better responsive spacing for all screen sizes
+   - Prevents "YHM..." truncation issue on iPhone 14 Pro
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
 
 var GameUI = (function() {
     
-    console.log("[GAME-UI] Initializing v5.05 with debug logging");
+    console.log("[GAME-UI] Initializing v5.06 with improved bubble spacing");
     
     // ============================================================
     // Constants
@@ -119,6 +120,7 @@ var GameUI = (function() {
                 padding: 14px;
                 margin-bottom: 12px;
                 position: relative;
+                width: 100%;
             }
             
             .player-header {
@@ -179,24 +181,24 @@ var GameUI = (function() {
             }
             
             /* ============================================================
-               BUBBLE STYLES
+               BUBBLE STYLES - FIXED v5.06: Increased spacing, no truncation
             ============================================================ */
             .bubbles {
                 display: grid;
                 grid-template-columns: repeat(4, 1fr);
-                gap: clamp(4px, 1.5vw, 10px);
+                gap: clamp(6px, 2vw, 12px);
                 margin-top: 10px;
             }
             
             .bubble {
                 white-space: nowrap;
                 text-align: center;
-                padding: clamp(3px, 1.2vh, 8px) clamp(2px, 1vw, 6px);
-                border-radius: clamp(12px, 3vw, 24px);
+                padding: clamp(4px, 1.5vh, 8px) clamp(4px, 1.5vw, 8px);
+                border-radius: clamp(14px, 3vw, 24px);
                 font-size: clamp(0.7rem, 3.8vw, 0.9rem);
                 font-weight: 600;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                overflow: visible;
+                text-overflow: clip;
             }
             
             .bubble-green {
@@ -229,25 +231,40 @@ var GameUI = (function() {
             
             .as-square {
                 display: inline-block;
-                width: 16px;
-                height: 16px;
+                width: 14px;
+                height: 14px;
                 background-color: #4caf50;
                 border-radius: 3px;
                 vertical-align: middle;
-                margin-left: 4px;
+                margin-left: 3px;
                 margin-top: -2px;
             }
             
             @media (max-width: 380px) {
-                .bubble { font-size: 0.7rem; padding: 4px 2px; }
-                .bubbles { gap: 4px; }
-                .as-square { width: 14px; height: 14px; }
+                .bubbles { gap: 6px; }
+                .bubble { 
+                    font-size: 0.65rem; 
+                    padding: 4px 4px;
+                }
+                .as-square { 
+                    width: 11px; 
+                    height: 11px;
+                    margin-left: 2px;
+                }
             }
             
             @media (min-width: 500px) {
-                .bubbles { gap: 12px; }
-                .bubble { font-size: 0.9rem; padding: 8px 8px; border-radius: 28px; }
-                .as-square { width: 18px; height: 18px; }
+                .bubbles { gap: 14px; }
+                .bubble { 
+                    font-size: 0.9rem; 
+                    padding: 8px 10px;
+                    border-radius: 28px;
+                }
+                .as-square { 
+                    width: 16px; 
+                    height: 16px;
+                    margin-left: 4px;
+                }
             }
             
             /* ============================================================
@@ -1344,12 +1361,13 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.05
-KEY CHANGES from v5.04:
-   - ADDED: Debug logging in updateTR() for value formatting
-   - ADDED: Debug logging in renderPlayerCards() for bubble class
-   - ADDED: Version exposure for console debugging
-   - All existing functionality unchanged
+VERSION: 5.06
+KEY CHANGES from v5.05:
+   - FIXED: Increased bubble gap and padding to prevent text truncation
+   - FIXED: Changed overflow from hidden to visible (no ellipsis truncation)
+   - FIXED: Slightly reduced AS square size on mobile for better fit
+   - FIXED: Better responsive spacing for all screen sizes
+   - Prevents "YHM..." truncation issue on iPhone 14 Pro
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
