@@ -1,11 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.27
-KEY CHANGES from v2.26:
-   - FIXED: St column now correctly displays "0" instead of "undefined" for players with 0 handicap
-   - FIXED: Explicit handling of 0 as a valid numeric value (not treated as falsy)
-   - FIXED: Added proper fallback logic for all handicap fields
-   - All other functionality unchanged
+VERSION: 2.28
+KEY CHANGES from v2.27:
+   - FIXED: Performance adjustment now uses final match results at hole 18 instead of clinchedAt
+   - FIXED: Correct points calculation: Win=1, Loss=0, AS=0.5
+   - FIXED: Removed incorrect fallback logic that gave 0.5 points for non-clinched matches
+   - All other functionality unchanged (St column fix preserved, anchor adjustment preserved)
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -122,6 +122,8 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Calculate Performance Adjustment using MATCH POINTS
+    // FIXED v2.28: Now uses final match results at hole 18 instead of clinchedAt
+    // Correctly awards: Win = 1 point, Loss = 0 points, AS = 0.5 points
     // ============================================================
     
     function calculatePerformanceAdjustmentFromCache(cache, allPlayersList) {
@@ -130,15 +132,14 @@ var HandicapAdjustment = (function() {
             matchPoints[allPlayersList[i].name] = 0;
         }
         
-        var clinchedAt = cache.results?.clinchedAt || {};
-        
-        if (Object.keys(clinchedAt).length === 0) {
-            console.warn("No clinchedAt data found in cache");
+        // Get the final match results at hole 18 (position 17 in 0-indexed array)
+        var results = cache.results;
+        if (!results || !results.matchResults || !results.matchResults[17]) {
+            console.warn("No matchResults data found at hole 18 in cache");
             return {};
         }
         
-        var processedMatchups = new Set();
-        
+        var finalMatchResults = results.matchResults[17];  // Array of 16 values
         var teamAPlayers = allPlayersList.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
             if (a.flight !== b.flight) return a.flight - b.flight;
             return a.handicap - b.handicap;
@@ -148,46 +149,41 @@ var HandicapAdjustment = (function() {
             return a.handicap - b.handicap;
         });
         
-        for (var matchKey in clinchedAt) {
-            if (matchKey.indexOf("_vs_") === -1) continue;
-            
-            var parts = matchKey.split("_vs_");
-            var winner = parts[0];
-            var loser = parts[1];
-            var matchupId = [winner, loser].sort().join("|");
-            
-            if (processedMatchups.has(matchupId)) continue;
-            processedMatchups.add(matchupId);
-            
-            if (matchPoints[winner] !== undefined) {
-                matchPoints[winner] += 1;
-            }
-        }
-        
+        // Process each of the 16 cross-flight matches
         for (var a = 0; a < teamAPlayers.length; a++) {
             for (var b = 0; b < teamBPlayers.length; b++) {
                 var playerA = teamAPlayers[a];
                 var playerB = teamBPlayers[b];
-                var matchupId = [playerA.name, playerB.name].sort().join("|");
+                var matchIndex = a * teamBPlayers.length + b;
+                var matchValue = finalMatchResults[matchIndex] || 0;
                 
-                if (processedMatchups.has(matchupId)) continue;
-                processedMatchups.add(matchupId);
-                
-                matchPoints[playerA.name] += 0.5;
-                matchPoints[playerB.name] += 0.5;
+                if (matchValue > 0) {
+                    // Team A player wins
+                    matchPoints[playerA.name] += 1;
+                    // Team B player gets 0 points (no addition)
+                } else if (matchValue < 0) {
+                    // Team B player wins
+                    matchPoints[playerB.name] += 1;
+                    // Team A player gets 0 points (no addition)
+                } else {
+                    // Match is tied (AS) - both get 0.5 points
+                    matchPoints[playerA.name] += 0.5;
+                    matchPoints[playerB.name] += 0.5;
+                }
             }
         }
         
+        // Apply adjustment based on total points (max 4 points per player)
         var perfAdjustments = {};
         for (var playerName in matchPoints) {
             var points = matchPoints[playerName];
             
             if (points >= 3.5) {
-                perfAdjustments[playerName] = -1;
+                perfAdjustments[playerName] = -1;   // Handicap down (performed well)
             } else if (points <= 0.5) {
-                perfAdjustments[playerName] = 1;
+                perfAdjustments[playerName] = 1;    // Handicap up (performed poorly)
             } else {
-                perfAdjustments[playerName] = 0;
+                perfAdjustments[playerName] = 0;    // No change
             }
         }
         
@@ -285,7 +281,7 @@ var HandicapAdjustment = (function() {
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Anc</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Perf</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Final</th>';
-        tableHtml += '<tr></thead><tbody>';
+        tableHtml += '</table></thead><tbody>';
         
         var currentTeam = null;
         
@@ -1010,7 +1006,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.27";
+    window.HANDICAP_ADJUST_VERSION = "2.28";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1029,12 +1025,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.27
-KEY CHANGES from v2.26:
-   - FIXED: St column now correctly displays "0" instead of "undefined" for players with 0 handicap
-   - FIXED: Explicit handling of 0 as a valid numeric value (not treated as falsy)
-   - FIXED: Added proper fallback logic for all handicap fields
-   - All other functionality unchanged
+VERSION: 2.28
+KEY CHANGES from v2.27:
+   - FIXED: Performance adjustment now uses final match results at hole 18 instead of clinchedAt
+   - FIXED: Correct points calculation: Win=1, Loss=0, AS=0.5
+   - FIXED: Removed incorrect fallback logic that gave 0.5 points for non-clinched matches
+   - All other functionality unchanged (St column fix preserved, anchor adjustment preserved)
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
