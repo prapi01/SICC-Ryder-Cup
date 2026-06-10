@@ -1,11 +1,13 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.28
-KEY CHANGES from v2.27:
-   - FIXED: Performance adjustment now uses final match results at hole 18 instead of clinchedAt
-   - FIXED: Correct points calculation: Win=1, Loss=0, AS=0.5
-   - FIXED: Removed incorrect fallback logic that gave 0.5 points for non-clinched matches
-   - All other functionality unchanged (St column fix preserved, anchor adjustment preserved)
+VERSION: 2.29
+KEY CHANGES from v2.28:
+   - ADDED: Anc column now shows adjustment + raw result in brackets [raw]
+   - ADDED: Perf column now shows adjustment + raw points in brackets [raw]
+   - ADDED: Final handicap 0 players highlighted in gold (#ffaa44)
+   - Raw result in Anc: Red if lost to anchor, Green if won or tied
+   - Raw points in Perf: Always Green
+   - All performance adjustment logic from v2.28 preserved
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -27,6 +29,10 @@ var HandicapAdjustment = (function() {
     var returnDestination = null;
     var returnToPreviousPage = false;
     var hasMultipleZeroHandicap = false;
+    
+    // Store raw values for display in Anc and Perf columns
+    var anchorRawResults = {};     // player.name -> netWon (positive = player lost to anchor)
+    var perfRawPoints = {};        // player.name -> total points (0-4)
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -91,10 +97,14 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Calculate Anchor Adjustment (18-hole match vs anchor)
+    // Also stores raw netWon for display
     // ============================================================
     
     function calculateAnchorAdjustment(player, anchor, flight1DataStr, flight2DataStr) {
-        if (player.name === anchor.name) return 0;
+        if (player.name === anchor.name) {
+            anchorRawResults[player.name] = 0;
+            return 0;
+        }
         
         var playerWon = 0;
         var anchorWon = 0;
@@ -116,6 +126,8 @@ var HandicapAdjustment = (function() {
         }
         
         var netWon = playerWon - anchorWon;
+        anchorRawResults[player.name] = netWon;  // Positive = player lost to anchor, Negative = player won vs anchor
+        
         var adjustment = Math.floor(Math.abs(netWon) / 2);
         return netWon >= 0 ? -adjustment : adjustment;
     }
@@ -123,7 +135,7 @@ var HandicapAdjustment = (function() {
     // ============================================================
     // Calculate Performance Adjustment using MATCH POINTS
     // FIXED v2.28: Now uses final match results at hole 18 instead of clinchedAt
-    // Correctly awards: Win = 1 point, Loss = 0 points, AS = 0.5 points
+    // Also stores raw points for display
     // ============================================================
     
     function calculatePerformanceAdjustmentFromCache(cache, allPlayersList) {
@@ -173,6 +185,11 @@ var HandicapAdjustment = (function() {
             }
         }
         
+        // Store raw points for display
+        for (var playerName in matchPoints) {
+            perfRawPoints[playerName] = matchPoints[playerName];
+        }
+        
         // Apply adjustment based on total points (max 4 points per player)
         var perfAdjustments = {};
         for (var playerName in matchPoints) {
@@ -200,6 +217,10 @@ var HandicapAdjustment = (function() {
             cache = GameLoader.getLocalCache();
         }
         
+        // Clear previous raw values
+        anchorRawResults = {};
+        perfRawPoints = {};
+        
         var perfAdjustments = calculatePerformanceAdjustmentFromCache(cache, allPlayers);
         
         var playersWithAdjustments = [];
@@ -219,7 +240,9 @@ var HandicapAdjustment = (function() {
                 perfAdj: perfAdj,
                 rawNew: rawNew,
                 team: player.team,
-                startingHcp: player.handicap
+                startingHcp: player.handicap,
+                anchorRaw: anchorRawResults[player.name] || 0,
+                perfRaw: perfRawPoints[player.name] || 0
             });
             rawNewList.push(rawNew);
         }
@@ -252,7 +275,8 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.27: Fixed St column for 0 handicap values
+    // Display Table - v2.29: Enhanced Anc/Perf columns with raw results
+    // Also highlights Final handicap 0 in gold
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -272,16 +296,16 @@ var HandicapAdjustment = (function() {
         });
         
         var tableHtml = '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
-        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.7rem; min-width: 375px;">';
+        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.7rem; min-width: 420px;">';
         
         // Table Header
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
         tableHtml += '<th style="padding:8px 4px; text-align:left; width:70px;">Player</th>';
-        tableHtml += '<th style="padding:8px 4px; text-align:center; width:28px;">St</th>';
-        tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Anc</th>';
-        tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Perf</th>';
-        tableHtml += '<th style="padding:8px 4px; text-align:center; width:32px;">Final</th>';
-        tableHtml += '</table></thead><tbody>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px;">St</th>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:55px;">Anc</th>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:55px;">Perf</th>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px;">Final</th>';
+        tableHtml += '<tr></thead><tbody>';
         
         var currentTeam = null;
         
@@ -319,6 +343,7 @@ var HandicapAdjustment = (function() {
             
             var playerTeam = p.team || 'B';
             var isAnchor = (p.name === anchorName);
+            var isFinalZero = (displayHcp === 0);
             
             // Add team separator row if team changes
             if (playerTeam !== currentTeam) {
@@ -332,28 +357,62 @@ var HandicapAdjustment = (function() {
                 tableHtml += '</tr>';
             }
             
-            var perfColor = '#888';
+            // ============================================================
+            // Anc Column: adjustment [raw_result]
+            // Format: {adj} [{raw}]
+            // Raw color: Red if lost to anchor (raw > 0), Green if won or tied (raw <= 0)
+            // ============================================================
+            var ancAdj = p.anchorAdj;
+            var ancRaw = p.anchorRaw;
+            var ancRawAbs = Math.abs(ancRaw);
+            var ancRawColor = (ancRaw > 0) ? '#ff6b6b' : '#4caf50';  // Red if lost, Green if won/tied
+            var ancSign = '';
+            if (ancAdj > 0) {
+                ancSign = '+' + ancAdj;
+            } else if (ancAdj < 0) {
+                ancSign = ancAdj.toString();
+            } else {
+                ancSign = '0';
+            }
+            var ancDisplay = ancSign + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawAbs + ']</span>';
+            
+            // ============================================================
+            // Perf Column: adjustment [raw_points]
+            // Format: {adj} [{raw}]
+            // Raw color: Always Green
+            // ============================================================
+            var perfAdj = p.perfAdj;
+            var perfRaw = p.perfRaw;
+            var perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
             var perfSign = '';
-            if (p.perfAdj > 0) {
-                perfColor = '#4caf50';
-                perfSign = '+' + p.perfAdj;
-            } else if (p.perfAdj < 0) {
-                perfColor = '#ff6b6b';
-                perfSign = p.perfAdj.toString();
+            if (perfAdj > 0) {
+                perfSign = '+' + perfAdj;
+            } else if (perfAdj < 0) {
+                perfSign = perfAdj.toString();
             } else {
                 perfSign = '0';
             }
+            var perfDisplay = perfSign + '<span style="font-size:0.6rem; color:#4caf50;"> [' + perfRawDisplay + ']</span>';
             
-            var ancColor = '#888';
-            var ancSign = '';
-            if (p.anchorAdj > 0) {
-                ancColor = '#4caf50';
-                ancSign = '+' + p.anchorAdj;
-            } else if (p.anchorAdj < 0) {
-                ancColor = '#ff6b6b';
-                ancSign = p.anchorAdj.toString();
-            } else {
-                ancSign = '0';
+            // ============================================================
+            // Final column color: Gold if final handicap is 0, otherwise green
+            // ============================================================
+            var finalColor = isFinalZero ? '#ffaa44' : '#4caf50';
+            
+            // Anc adjustment value color
+            var ancAdjColor = '#888';
+            if (ancAdj > 0) {
+                ancAdjColor = '#4caf50';
+            } else if (ancAdj < 0) {
+                ancAdjColor = '#ff6b6b';
+            }
+            
+            // Perf adjustment value color
+            var perfAdjColor = '#888';
+            if (perfAdj > 0) {
+                perfAdjColor = '#4caf50';
+            } else if (perfAdj < 0) {
+                perfAdjColor = '#4caf50';  // Green for -1 (good performance)
             }
             
             // Gold highlighting for anchor's Starting Handicap
@@ -362,13 +421,13 @@ var HandicapAdjustment = (function() {
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
             tableHtml += `<td style="padding:6px 4px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${stColor}; font-weight:600;">${stDisplayValue}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${ancColor}; font-weight:600;">${ancSign}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${perfColor}; font-weight:600;">${perfSign}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700;">${displayHcp}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${ancAdjColor}; font-weight:600;">${ancDisplay}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${perfAdjColor}; font-weight:600;">${perfDisplay}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${finalColor}; font-weight:700;">${displayHcp}</td>`;
             tableHtml += '</tr>';
         }
         
-        tableHtml += '</tbody></table></div>';
+        tableHtml += '</tbody><table></div>';
         
         var buttonsHtml = '';
         if (isReadOnly) {
@@ -612,7 +671,9 @@ var HandicapAdjustment = (function() {
                 team: teamInfo.team,
                 rawNew: null,
                 newHcp: null,
-                newAnchor: null
+                newAnchor: null,
+                anchorRaw: 0,   // Not available in stored history
+                perfRaw: 0      // Not available in stored history
             };
         });
         
@@ -702,7 +763,9 @@ var HandicapAdjustment = (function() {
                             newHcp: null,
                             newAnchor: null,
                             team: playerInfo ? playerInfo.team : 'B',
-                            startingHcp: p.currentHcp
+                            startingHcp: p.currentHcp,
+                            anchorRaw: 0,
+                            perfRaw: 0
                         };
                     });
                     var calculationResult = {
@@ -724,7 +787,9 @@ var HandicapAdjustment = (function() {
                             newHcp: null,
                             newAnchor: null,
                             team: p.team,
-                            startingHcp: p.handicap
+                            startingHcp: p.handicap,
+                            anchorRaw: 0,
+                            perfRaw: 0
                         };
                     });
                     var emptyResult = {
@@ -887,7 +952,9 @@ var HandicapAdjustment = (function() {
                     currentHcp: p.currentHcp,
                     anchorAdj: p.anchorAdj,
                     perfAdj: p.perfAdj,
-                    newHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp
+                    newHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp,
+                    anchorRaw: p.anchorRaw,
+                    perfRaw: p.perfRaw
                 };
             }),
             needsZeroRise: calculationResult.needsZeroRise,
@@ -1006,7 +1073,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.28";
+    window.HANDICAP_ADJUST_VERSION = "2.29";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1025,12 +1092,14 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.28
-KEY CHANGES from v2.27:
-   - FIXED: Performance adjustment now uses final match results at hole 18 instead of clinchedAt
-   - FIXED: Correct points calculation: Win=1, Loss=0, AS=0.5
-   - FIXED: Removed incorrect fallback logic that gave 0.5 points for non-clinched matches
-   - All other functionality unchanged (St column fix preserved, anchor adjustment preserved)
+VERSION: 2.29
+KEY CHANGES from v2.28:
+   - ADDED: Anc column now shows adjustment + raw result in brackets [raw]
+   - ADDED: Perf column now shows adjustment + raw points in brackets [raw]
+   - ADDED: Final handicap 0 players highlighted in gold (#ffaa44)
+   - Raw result in Anc: Red if lost to anchor, Green if won or tied
+   - Raw points in Perf: Always Green
+   - All performance adjustment logic from v2.28 preserved
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
