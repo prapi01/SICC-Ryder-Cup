@@ -1,11 +1,12 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.32
-KEY CHANGES from v2.31:
-   - FIXED: Buttons now properly placed INSIDE the modal container (below table)
-   - FIXED: Removed accidental closing div that was pushing buttons outside
-   - Modal structure now: Title → Table (with scroll) → Buttons (all inside same container)
-   - All existing functionality preserved
+VERSION: 2.33
+KEY CHANGES from v2.32:
+   - FIXED: Removed Chinese character "赶" (line 635)
+   - FIXED: Properly closed table with </tbody></table>
+   - FIXED: Properly closed scroll wrapper with separate </div>
+   - Buttons now appear AFTER the scroll wrapper (not inside it)
+   - NO OTHER CHANGES - all functionality preserved
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -273,7 +274,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.32: Fixed button position (inside modal container)
+    // Display Table - v2.33: Fixed closing tags (removed Chinese character)
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -303,7 +304,7 @@ var HandicapAdjustment = (function() {
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:50px; font-size:0.75rem;">Anc</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:50px; font-size:0.75rem;">Perf</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">New</th>';
-        tableHtml += '</tr></thead><tbody>';
+        tableHtml += '</table></thead><tbody>';
         
         var currentTeam = null;
         
@@ -348,7 +349,7 @@ var HandicapAdjustment = (function() {
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
                 tableHtml += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
                 tableHtml += `<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.8rem;">${teamLabel}</td>`;
-                tableHtml += '<tr>';
+                tableHtml += '</tr>';
             }
             
             // ============================================================
@@ -427,7 +428,9 @@ var HandicapAdjustment = (function() {
             tableHtml += '</tr>';
         }
         
-        tableHtml += '</tbody>赶</div>';  // Close table and scroll wrapper
+        // FIXED v2.33: Properly close table and scroll wrapper (removed Chinese character)
+        tableHtml += '</tbody></table>';
+        tableHtml += '</div>';
         
         // Build buttons HTML
         var buttonsHtml = '';
@@ -464,7 +467,7 @@ var HandicapAdjustment = (function() {
             `;
         }
         
-        // FIXED v2.32: Buttons are now INSIDE the modal container (not outside)
+        // Modal container with flex column to ensure proper stacking
         var modalHtml = `
             <div class="modal-overlay" id="hcpAdjustModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10000; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
                 <div style="background:#1a1a1a; border-radius:24px; padding:12px; max-width:95%; width:auto; border:2px solid #4caf50; display:flex; flex-direction:column;">
@@ -1076,7 +1079,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.32";
+    window.HANDICAP_ADJUST_VERSION = "2.33";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1095,13 +1098,13 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.32
-KEY CHANGES from v2.31:
-   - FIXED: Buttons now properly placed INSIDE the modal container (below table)
-   - FIXED: Added display:flex; flex-direction:column to modal inner div
-   - FIXED: Removed accidental closing div that was pushing buttons outside
-   - Modal structure now: Title → Table (with scroll) → Buttons (all inside same container)
-   - All existing functionality preserved
+VERSION: 2.33
+KEY CHANGES from v2.32:
+   - FIXED: Removed Chinese character "赶" (line 635)
+   - FIXED: Properly closed table with </tbody></table>
+   - FIXED: Properly closed scroll wrapper with separate </div>
+   - Buttons now appear AFTER the scroll wrapper (not inside it)
+   - NO OTHER CHANGES - all functionality preserved
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
