@@ -1,13 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.38
-KEY CHANGES from v2.37:
-   - ADDED: dataSource parameter to distinguish between 'live' and 'history' mode
-   - FIXED: History records now show "—" for raw values (instead of 0)
-   - FIXED: Live games show actual raw values (including 0 for ties)
-   - Passes dataSource through displayStoredAdjustment and showAdjustmentTable
-   - All table structure intact (stable v2.29 base)
-   - All functionality unchanged
+VERSION: 2.39
+KEY CHANGES from v2.38:
+   - FIXED: Perf column color logic (Green = handicap DOWN, Red = handicap UP)
+   - CHANGED: "Back" button text to "Scorecard" with 📋 icon
+   - CHANGED: "Celebration" button text to "🎉" (icon only)
+   - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -275,7 +273,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.38: Added dataSource for raw value display
+    // Display Table - v2.39: Fixed Perf column colors, updated button texts
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly, dataSource) {
@@ -354,7 +352,7 @@ var HandicapAdjustment = (function() {
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
                 tableHtml += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
                 tableHtml += `<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}</td>`;
-                tableHtml += '</tr>';
+                tableHtml += '<tr>';
             }
             
             // ============================================================
@@ -389,7 +387,7 @@ var HandicapAdjustment = (function() {
             // Perf Column: adjustment [raw_points]
             // Format: {adj} [{raw}]
             // Raw color: Always Green
-            // v2.38: For history mode, show "—" instead of raw value
+            // v2.39: Adjustment color: Green for -1 (good performance), Red for +1 (poor performance)
             // ============================================================
             var perfAdj = p.perfAdj;
             var perfRaw = p.perfRaw;
@@ -424,12 +422,14 @@ var HandicapAdjustment = (function() {
                 ancAdjColor = '#ff6b6b';
             }
             
-            // Perf adjustment value color
+            // v2.39: Perf adjustment value color - FIXED
+            // Green for negative adjustment (good performance, handicap down)
+            // Red for positive adjustment (poor performance, handicap up)
             var perfAdjColor = '#888';
             if (perfAdj > 0) {
-                perfAdjColor = '#4caf50';
+                perfAdjColor = '#ff6b6b';  // Red for handicap increase (poor performance)
             } else if (perfAdj < 0) {
-                perfAdjColor = '#4caf50';
+                perfAdjColor = '#4caf50';  // Green for handicap decrease (good performance)
             }
             
             // Gold highlighting for anchor's Starting Handicap
@@ -446,6 +446,7 @@ var HandicapAdjustment = (function() {
         
         tableHtml += '</tbody></table></div>';
         
+        // v2.39: Updated button texts
         var buttonsHtml = '';
         if (isReadOnly) {
             if (returnToPreviousPage) {
@@ -469,11 +470,12 @@ var HandicapAdjustment = (function() {
                 `;
             }
             
+            // v2.39: "Back" → "Scorecard" with 📋, "Celebration" → "🎉"
             buttonsHtml = `
                 <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
-                    <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🏌️ Back</button>
+                    <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">📋 Scorecard</button>
                     ${changeAnchorHtml}
-                    <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🎉 Celebration</button>
+                    <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🎉</button>
                     <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🏠 Menu</button>
                     <button id="exitBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🚪 Exit</button>
                 </div>
@@ -1100,7 +1102,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.38";
+    window.HANDICAP_ADJUST_VERSION = "2.39";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1119,14 +1121,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.38
-KEY CHANGES from v2.37:
-   - ADDED: dataSource parameter to distinguish between 'live' and 'history' mode
-   - FIXED: History records now show "—" for raw values (instead of 0)
-   - FIXED: Live games show actual raw values (including 0 for ties)
-   - Passes dataSource through displayStoredAdjustment and showAdjustmentTable
-   - All table structure intact (stable v2.29 base)
-   - All functionality unchanged
+VERSION: 2.39
+KEY CHANGES from v2.38:
+   - FIXED: Perf column color logic (Green = handicap DOWN, Red = handicap UP)
+   - CHANGED: "Back" button text to "Scorecard" with 📋 icon
+   - CHANGED: "Celebration" button text to "🎉" (icon only)
+   - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
