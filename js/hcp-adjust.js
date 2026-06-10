@@ -1,13 +1,10 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.30
-KEY CHANGES from v2.29:
-   - FIXED: Font sizes increased for better readability (base 0.8rem)
-   - FIXED: Player column width reduced from 70px to 38px (3-4 chars only)
-   - FIXED: Close button now appears BELOW horizontal scrollbar
-   - FIXED: Raw values (anchorRaw, perfRaw) now saved to Firestore
-   - FIXED: Old history records show "—" instead of 0 for missing raw values
-   - ADDED: white-space: nowrap + ellipsis for player names
+VERSION: 2.32
+KEY CHANGES from v2.31:
+   - FIXED: Buttons now properly placed INSIDE the modal container (below table)
+   - FIXED: Removed accidental closing div that was pushing buttons outside
+   - Modal structure now: Title → Table (with scroll) → Buttons (all inside same container)
    - All existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -276,7 +273,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.30: Improved fonts, column widths, button position
+    // Display Table - v2.32: Fixed button position (inside modal container)
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -295,18 +292,18 @@ var HandicapAdjustment = (function() {
             return hcpA - hcpB;
         });
         
-        // Table wrapper with scroll - ONLY wraps the table (buttons go below)
+        // Table wrapper with scroll - ONLY wraps the table
         var tableHtml = '<div style="overflow-x: auto; margin-bottom: 12px; -webkit-overflow-scrolling: touch;">';
         tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 375px;">';
         
-        // Table Header - v2.30: Adjusted column widths
+        // Table Header - v2.31: Fixed headers (no "P", "St" → "Today", "Fin" → "New")
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
-        tableHtml += '<th style="padding:8px 4px; text-align:left; width:38px; font-size:0.75rem;">P</th>';
-        tableHtml += '<th style="padding:8px 4px; text-align:center; width:28px; font-size:0.75rem;">St</th>';
+        tableHtml += '<th style="padding:8px 4px; text-align:left; width:45px; font-size:0.75rem;"></th>';  // No header for Player column
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Today</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:50px; font-size:0.75rem;">Anc</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:50px; font-size:0.75rem;">Perf</th>';
-        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Fin</th>';
-        tableHtml += '<tr></thead><tbody>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">New</th>';
+        tableHtml += '</tr></thead><tbody>';
         
         var currentTeam = null;
         
@@ -351,7 +348,7 @@ var HandicapAdjustment = (function() {
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
                 tableHtml += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
                 tableHtml += `<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.8rem;">${teamLabel}</td>`;
-                tableHtml += '</tr>';
+                tableHtml += '<tr>';
             }
             
             // ============================================================
@@ -422,7 +419,7 @@ var HandicapAdjustment = (function() {
             var playerLabel = p.label || p.name.substring(0, 3).toUpperCase();
             
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
-            tableHtml += `<td style="padding:6px 4px; text-align:left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 38px; font-size:0.8rem;">${escapeHtml(playerLabel)}</td>`;
+            tableHtml += `<td style="padding:6px 4px; text-align:left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45px; font-size:0.8rem;">${escapeHtml(playerLabel)}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${stColor}; font-weight:600; font-size:0.8rem;">${stDisplayValue}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${ancAdjColor}; font-weight:600; font-size:0.8rem;">${ancDisplay}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${perfAdjColor}; font-weight:600; font-size:0.8rem;">${perfDisplay}</td>`;
@@ -430,8 +427,9 @@ var HandicapAdjustment = (function() {
             tableHtml += '</tr>';
         }
         
-        tableHtml += '</tbody>赶到</div>';
+        tableHtml += '</tbody>赶</div>';  // Close table and scroll wrapper
         
+        // Build buttons HTML
         var buttonsHtml = '';
         if (isReadOnly) {
             if (returnToPreviousPage) {
@@ -466,9 +464,10 @@ var HandicapAdjustment = (function() {
             `;
         }
         
+        // FIXED v2.32: Buttons are now INSIDE the modal container (not outside)
         var modalHtml = `
             <div class="modal-overlay" id="hcpAdjustModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10000; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
-                <div style="background:#1a1a1a; border-radius:24px; padding:12px; max-width:95%; width:auto; border:2px solid #4caf50;">
+                <div style="background:#1a1a1a; border-radius:24px; padding:12px; max-width:95%; width:auto; border:2px solid #4caf50; display:flex; flex-direction:column;">
                     <div style="font-size:1.2rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:12px;">🏌️ HANDICAP ADJUSTMENT</div>
                     ${tableHtml}
                     ${buttonsHtml}
@@ -675,7 +674,6 @@ var HandicapAdjustment = (function() {
                 rawNew: null,
                 newHcp: null,
                 newAnchor: null,
-                // v2.30: Read raw values from stored data, fallback to 0 for old records
                 anchorRaw: p.anchorRaw !== undefined ? p.anchorRaw : 0,
                 perfRaw: p.perfRaw !== undefined ? p.perfRaw : 0
             };
@@ -958,8 +956,8 @@ var HandicapAdjustment = (function() {
                     anchorAdj: p.anchorAdj,
                     perfAdj: p.perfAdj,
                     newHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp,
-                    anchorRaw: p.anchorRaw,   // v2.30: Save raw anchor result
-                    perfRaw: p.perfRaw        // v2.30: Save raw performance points
+                    anchorRaw: p.anchorRaw,
+                    perfRaw: p.perfRaw
                 };
             }),
             needsZeroRise: calculationResult.needsZeroRise,
@@ -1078,7 +1076,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.30";
+    window.HANDICAP_ADJUST_VERSION = "2.32";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1097,14 +1095,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.30
-KEY CHANGES from v2.29:
-   - FIXED: Font sizes increased for better readability (base 0.8rem)
-   - FIXED: Player column width reduced from 70px to 38px (3-4 chars only)
-   - FIXED: Close button now appears BELOW horizontal scrollbar
-   - FIXED: Raw values (anchorRaw, perfRaw) now saved to Firestore
-   - FIXED: Old history records show "—" instead of 0 for missing raw values
-   - ADDED: white-space: nowrap + ellipsis for player names
+VERSION: 2.32
+KEY CHANGES from v2.31:
+   - FIXED: Buttons now properly placed INSIDE the modal container (below table)
+   - FIXED: Added display:flex; flex-direction:column to modal inner div
+   - FIXED: Removed accidental closing div that was pushing buttons outside
+   - Modal structure now: Title → Table (with scroll) → Buttons (all inside same container)
    - All existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
