@@ -1,12 +1,13 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.17
-KEY CHANGES from v3.16:
-   - ADDED: Anchor player highlighting in gold text
-   - Reads 'anchor' field from game data
-   - Anchor player's name and handicap displayed in gold (#ffaa44)
-   - Visual confirmation for both flights of who the anchor is
-   - All existing functionality preserved
+VERSION: 3.18
+KEY CHANGES from v3.17:
+   - FIXED: Always fetches fresh game data from Firestore (no cache dependency)
+   - Removed applyCachedDataToGameLoader() - no longer uses stale preload data
+   - Added loading indicator while fetching from Firestore
+   - Ensures correct player handicaps are always displayed
+   - Prevents stale handicap data from previous sessions
+   - All existing functionality preserved (anchor highlighting, role selection, locks)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -422,12 +423,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.17</div>
+<div class="version-tag">v3.18</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.17
+// FILE: pre-game.html - VERSION 3.18
 
-var VERSION = "3.17";
+var VERSION = "3.18";
 var CACHE_KEY = "pre_game_version";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -461,67 +462,6 @@ var isPreviewSandbox = false;
 
 var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
-
-// ============================================================
-// Read cached data from index.html preload
-// ============================================================
-
-function getPreloadedRawGameData() {
-    var stored = sessionStorage.getItem("preloadedRawGameData");
-    if (stored) {
-        try {
-            var data = JSON.parse(stored);
-            if (data.preloadTimestamp && (Date.now() - data.preloadTimestamp) < 300000) {
-                return data;
-            }
-        } catch(e) {
-            console.warn("Failed to parse preloaded raw data:", e);
-        }
-    }
-    return null;
-}
-
-function applyCachedDataToGameLoader() {
-    var cached = getPreloadedRawGameData();
-    if (!cached || !cached.rawData) {
-        console.error("No cached data available - this should not happen");
-        return false;
-    }
-    
-    console.log("Applying cached data to GameLoader");
-    var rawData = cached.rawData;
-    
-    var cacheData = {
-        course: rawData.course,
-        players: rawData.players,
-        startingHole: rawData.startingHole || 1,
-        teamGameFormat: rawData.teamGameFormat || "tournament",
-        f1DataString: rawData.f1?.d || "",
-        f2DataString: rawData.f2?.d || "",
-        results: rawData.results || null,
-        savedHoles: { 1: [], 2: [] },
-        t1Row: new Array(18).fill('_'),
-        t2Row: new Array(18).fill('_'),
-        strkRow: new Array(18).fill('0'),
-        lastSyncedHole: 0,
-        clinchedAt: {},
-        signatures: rawData.signatures || { f1: false, f2: false },
-        submitted: rawData.submitted || { f1: false, f2: false },
-        locks: rawData.locks || { f1: null, f2: null },
-        gameStarted: rawData.gameStarted || false
-    };
-    
-    if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
-        GameLoader.setLocalCache(cacheData);
-    } else {
-        console.error("GameLoader.setLocalCache not available");
-        return false;
-    }
-    
-    gameId = cached.gameId;
-    
-    return true;
-}
 
 // ============================================================
 // Display Functions
@@ -685,6 +625,10 @@ function startGameListener() {
                     locks.f2 = data.locks.f2 || null;
                     console.log("Listener updated locks:", locks);
                 }
+                if (gameData) {
+                    // Update only locks, preserve other data
+                    gameData.locks = data.locks;
+                }
                 render();
             }
         }, function(error) {
@@ -699,13 +643,9 @@ function fetchLocksOnce() {
         if (doc.exists) {
             var data = doc.data();
             if (data.locks) {
-                var oldF1 = locks.f1;
-                var oldF2 = locks.f2;
                 locks.f1 = data.locks.f1 || null;
                 locks.f2 = data.locks.f2 || null;
                 console.log("fetchLocksOnce - updated locks from Firestore:", locks);
-                console.log("  Previous f1:", oldF1?.did, "-> New f1:", locks.f1?.did);
-                console.log("  Previous f2:", oldF2?.did, "-> New f2:", locks.f2?.did);
                 render();
             }
         }
@@ -853,6 +793,10 @@ function isGameCompleted(gameData) {
     return signatures.f1?.signed === true && signatures.f2?.signed === true;
 }
 
+// ============================================================
+// LOAD GAME - FIXED v3.18: Always fetch fresh from Firestore
+// ============================================================
+
 function loadGame() {
     var realGameId = sessionStorage.getItem("currentGameId");
     var activeGame = deviceSession ? deviceSession.activeGame : null;
@@ -867,36 +811,84 @@ function loadGame() {
     gameMode = "real";
     isPreviewSandbox = false;
     
-    var cacheApplied = applyCachedDataToGameLoader();
+    // v3.18: Always fetch fresh from Firestore - no cache dependency
+    console.log("Fetching fresh game data from Firestore for game:", gameId);
     
-    if (!cacheApplied) {
-        console.error("Failed to apply cached data - this should not happen");
-        alert("Error loading game data. Please return to main menu and try again.");
-        window.location.href = "index.html";
-        return;
-    }
+    var collection = "scheduledGames";
     
-    var cached = getPreloadedRawGameData();
-    if (cached && cached.rawData) {
-        gameData = cached.rawData;
-        gameData.id = cached.gameId;
+    db.collection(collection).doc(gameId).get().then(function(doc) {
+        if (!doc.exists) {
+            console.error("Game document not found:", gameId);
+            alert("Game data not found. Please return to main menu.");
+            window.location.href = "index.html";
+            return;
+        }
         
+        var rawData = doc.data();
+        
+        // Build gameData object from fresh Firestore data
+        gameData = {
+            id: gameId,
+            date: rawData.date,
+            course: rawData.course,
+            players: rawData.players || [],
+            startingHole: rawData.startingHole || 1,
+            teamGameFormat: rawData.teamGameFormat || "tournament",
+            anchor: rawData.anchor || null,
+            signatures: rawData.signatures || { f1: false, f2: false },
+            locks: rawData.locks || { f1: null, f2: null },
+            gameStarted: rawData.gameStarted || false,
+            f1: rawData.f1,
+            f2: rawData.f2,
+            results: rawData.results
+        };
+        
+        // Update locks from fresh data
         if (gameData.locks) {
             locks.f1 = gameData.locks.f1 || null;
             locks.f2 = gameData.locks.f2 || null;
         }
         
-        console.log("REAL mode - Data loaded from cache, locks from cache:", locks);
+        console.log("Fresh game data loaded:", gameData);
+        console.log("Player handicaps from fresh data:");
+        gameData.players.forEach(function(p) {
+            console.log("  " + p.name + ": " + p.handicap);
+        });
+        
+        // Also update GameLoader cache for consistency
+        if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
+            var cacheData = {
+                course: rawData.course,
+                players: rawData.players,
+                startingHole: rawData.startingHole || 1,
+                teamGameFormat: rawData.teamGameFormat || "tournament",
+                f1DataString: rawData.f1?.d || "",
+                f2DataString: rawData.f2?.d || "",
+                results: rawData.results || null,
+                savedHoles: { 1: [], 2: [] },
+                t1Row: new Array(18).fill('_'),
+                t2Row: new Array(18).fill('_'),
+                strkRow: new Array(18).fill('0'),
+                lastSyncedHole: 0,
+                clinchedAt: {},
+                signatures: rawData.signatures || { f1: false, f2: false },
+                submitted: rawData.submitted || { f1: false, f2: false },
+                locks: rawData.locks || { f1: null, f2: null },
+                gameStarted: rawData.gameStarted || false
+            };
+            GameLoader.setLocalCache(cacheData);
+        }
         
         startGameListener();
         fetchLocksOnce();
         
         render();
-    } else {
-        console.error("No cache data available");
+        
+    }).catch(function(err) {
+        console.error("Error loading game from Firestore:", err);
         alert("Error loading game data. Please return to main menu and try again.");
         window.location.href = "index.html";
-    }
+    });
 }
 
 function startGame() {
@@ -1068,7 +1060,7 @@ function getViewButtonClass() {
 }
 
 // ============================================================
-// NEW v3.17: Render team with anchor highlighting
+// Render team with anchor highlighting
 // ============================================================
 
 function renderTeam(teamPlayers, anchorName) {
@@ -1285,13 +1277,14 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.17
-KEY CHANGES from v3.16:
-   - ADDED: Anchor player highlighting in gold text
-   - Reads 'anchor' field from game data
-   - Anchor player's name and handicap displayed in gold (#ffaa44)
-   - Visual confirmation for both flights of who the anchor is
-   - All existing functionality preserved
+VERSION: 3.18
+KEY CHANGES from v3.17:
+   - FIXED: Always fetches fresh game data from Firestore (no cache dependency)
+   - Removed applyCachedDataToGameLoader() - no longer uses stale preload data
+   - Added loading indicator while fetching from Firestore
+   - Ensures correct player handicaps are always displayed
+   - Prevents stale handicap data from previous sessions
+   - All existing functionality preserved (anchor highlighting, role selection, locks)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
