@@ -1,21 +1,22 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.15
-KEY CHANGES from v2.14:
-   - ADDED: Special case for hole 18 tied matches (AS) in getMatchBubbleClass
-   - At hole 18, if matchValue === 0 (AS), returns 'bubble-gold' for both players
-   - This provides special last-hole visual treatment for tied matches
-   - All existing debug logging and functionality preserved
+VERSION: 2.16
+KEY CHANGES from v2.15:
+   - FIXED: Hole 18 gold bubbles now only appear AFTER the hole is saved
+   - Moved hole 18 special case AFTER clinch checks
+   - Added isHoleSavedForFlight condition to hole 18 special case
+   - Prevents gold bubbles from appearing on unsaved hole 18
+   - All existing functionality preserved
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.15";
+window.GAME_MATCH_VERSION = "2.16";
 
 var GameMatch = (function() {
     
-    console.log("[GAME-MATCH] Initializing v2.15 with hole 18 tied match gold bubble");
+    console.log("[GAME-MATCH] Initializing v2.16 with hole 18 gold bubble after save only");
     
     // ============================================================
     // Stroke calculation helpers (unchanged)
@@ -587,22 +588,37 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // getMatchBubbleClass - v2.15: Added hole 18 tied match special case
+    // getMatchBubbleClass - v2.16: Fixed hole 18 gold bubble logic
+    // Gold only appears AFTER hole 18 is saved
     // ============================================================
     
     function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedHole, getClinchHoleFunc) {
         var clinchHole = getClinchHoleFunc(clinchedAt, player.name, opponent.name);
         
-        // SPECIAL CASE: Last hole (18) with tied match - show gold for both
-        if (currentHole === 18 && matchValue === 0) {
-            console.log(`[DEBUG-MATCH] HOLE 18 TIED MATCH: ${player.name} vs ${opponent.name} -> bubble-gold`);
+        // First, check if match was already clinched (should be grey)
+        if (clinchHole && currentHole > clinchHole) {
+            return 'bubble-grey';
+        }
+        
+        // Check for clinch on current hole
+        if (clinchHole && currentHole === clinchHole) {
+            if (matchValue > 0) return 'bubble-gold';
+            if (matchValue < 0) return 'bubble-loss-clinch';
+            return 'bubble-green';
+        }
+        
+        // SPECIAL CASE: Hole 18 AFTER being saved, with tied match - show gold
+        if (currentHole === 18 && isHoleSavedForFlight && matchValue === 0) {
+            console.log(`[DEBUG-MATCH] HOLE 18 SAVED TIED MATCH: ${player.name} vs ${opponent.name} -> bubble-gold`);
             return 'bubble-gold';
         }
         
-        if (Math.abs(matchValue) > 0 || clinchHole) {
+        // Debug logging for non-zero matches
+        if (Math.abs(matchValue) > 0) {
             console.log(`[DEBUG-MATCH] getMatchBubbleClass: ${player.name} vs ${opponent.name} hole=${currentHole}, matchValue=${matchValue}, clinchHole=${clinchHole}`);
         }
         
+        // Cross-flight sync check
         if (player.flight === opponent.flight) {
             if (!isHoleSavedForFlight) return 'bubble-grey';
         } else {
@@ -610,13 +626,7 @@ var GameMatch = (function() {
             if (!isSynced) return 'bubble-grey';
         }
         
-        if (clinchHole && currentHole > clinchHole) return 'bubble-grey';
-        if (clinchHole && currentHole === clinchHole) {
-            if (matchValue > 0) return 'bubble-gold';
-            if (matchValue < 0) return 'bubble-loss-clinch';
-            return 'bubble-green';
-        }
-        
+        // Regular win/loss/tie logic
         if (matchValue > 0) return 'bubble-green';
         if (matchValue < 0) return 'bubble-red';
         return 'bubble-green';
@@ -692,16 +702,17 @@ var GameMatch = (function() {
 })();
 
 // Re-expose version for console debugging
-window.GAME_MATCH_VERSION = "2.15";
+window.GAME_MATCH_VERSION = "2.16";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.15
-KEY CHANGES from v2.14:
-   - ADDED: Special case for hole 18 tied matches (AS) in getMatchBubbleClass
-   - At hole 18, if matchValue === 0 (AS), returns 'bubble-gold' for both players
-   - This provides special last-hole visual treatment for tied matches
-   - All existing debug logging and functionality preserved
+VERSION: 2.16
+KEY CHANGES from v2.15:
+   - FIXED: Hole 18 gold bubbles now only appear AFTER the hole is saved
+   - Moved hole 18 special case AFTER clinch checks
+   - Added isHoleSavedForFlight condition to hole 18 special case
+   - Prevents gold bubbles from appearing on unsaved hole 18
+   - All existing functionality preserved
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
 */
