@@ -1,10 +1,9 @@
 <!--
 FILE: view-history.html
-VERSION: 8.14
-KEY CHANGES from v8.13:
-   - ADDED: Cache-busting version check to force reload on new deployments
-   - Prevents users from running stale cached versions after updates
-   - Uses localStorage to track version and redirects with ?v= parameter
+VERSION: 8.15
+KEY CHANGES from v8.14:
+   - CHANGED: viewport user-scalable from "no" to "yes" to allow pinch zoom
+   - Enables zoom on handicap adjustment table for better readability
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
@@ -14,7 +13,7 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
     <title>SICC Ryder Cup - HISTORY VIEWER</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -321,13 +320,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.14</div>
+<div class="version-tag">v8.15</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "8.14";
+var APP_VERSION = "8.15";
 var CACHE_KEY = "view_history_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -339,8 +338,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.14";
-console.log("[VIEW-HISTORY] Initializing v8.14 with cache-busting");
+window.VIEW_HISTORY_VERSION = "8.15";
+console.log("[VIEW-HISTORY] Initializing v8.15 with zoom enabled");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -920,11 +919,10 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.14
-KEY CHANGES from v8.13:
-   - ADDED: Cache-busting version check to force reload on new deployments
-   - Prevents users from running stale cached versions after updates
-   - Uses localStorage to track version and redirects with ?v= parameter
+VERSION: 8.15
+KEY CHANGES from v8.14:
+   - CHANGED: viewport user-scalable from "no" to "yes" to allow pinch zoom
+   - Enables zoom on handicap adjustment table for better readability
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
