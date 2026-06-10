@@ -1,11 +1,9 @@
 <!--
 FILE: view-game.html
-VERSION: 7.20
-KEY CHANGES from v7.19:
-   - FIXED: Bubble class for hole 18 tied matches now shows gold (bubble-gold)
-   - Replaced custom getBubbleClassWithClinch with GameMatch.getMatchBubbleClass
-   - This ensures consistent bubble logic between real-game and view-game
-   - Hole 18 AS matches now display gold bubbles for both players
+VERSION: 7.21
+KEY CHANGES from v7.20:
+   - ADDED: user-scalable=yes to viewport meta tag (explicitly enable pinch zoom)
+   - Ensures consistent zoom behavior with view-history.html
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js (v2.15+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
@@ -15,24 +13,24 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
     <title>SICC Ryder Cup - VIEWER</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.20"></script>
-    <script src="js/session.js?v=7.20"></script>
-    <script src="js/game-data.js?v=7.20"></script>
+    <script src="js/firebase-config.js?v=7.21"></script>
+    <script src="js/session.js?v=7.21"></script>
+    <script src="js/game-data.js?v=7.21"></script>
     <script src="js/game-match.js?v=2.15"></script>
-    <script src="js/game-team.js?v=7.20"></script>
-    <script src="js/game-stroke.js?v=7.20"></script>
-    <script src="js/game-scorecard.js?v=7.20"></script>
-    <script src="js/game-ui.js?v=7.20"></script>
-    <script src="js/game-loader.js?v=7.20"></script>
-    <script src="js/ticker.js?v=7.20"></script>
-    <script src="js/history-record.js?v=7.20"></script>
-    <script src="js/sign-card.js?v=7.20"></script>
-    <script src="js/hcp-adjust.js?v=7.20"></script>
+    <script src="js/game-team.js?v=7.21"></script>
+    <script src="js/game-stroke.js?v=7.21"></script>
+    <script src="js/game-scorecard.js?v=7.21"></script>
+    <script src="js/game-ui.js?v=7.21"></script>
+    <script src="js/game-loader.js?v=7.21"></script>
+    <script src="js/ticker.js?v=7.21"></script>
+    <script src="js/history-record.js?v=7.21"></script>
+    <script src="js/sign-card.js?v=7.21"></script>
+    <script src="js/hcp-adjust.js?v=7.21"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -155,13 +153,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.20</div>
+<div class="version-tag">v7.21</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "7.20";
+var APP_VERSION = "7.21";
 var CACHE_KEY = "view_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -173,8 +171,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.20";
-console.log("[VIEW-GAME] Initializing v7.20 with hole 18 gold bubble fix");
+window.VIEW_GAME_VERSION = "7.21";
+console.log("[VIEW-GAME] Initializing v7.21 with zoom enabled");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1076,12 +1074,10 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.20
-KEY CHANGES from v7.19:
-   - FIXED: Bubble class for hole 18 tied matches now shows gold (bubble-gold)
-   - Replaced custom getBubbleClassWithClinch with GameMatch.getMatchBubbleClass
-   - This ensures consistent bubble logic between real-game and view-game
-   - Hole 18 AS matches now display gold bubbles for both players
+VERSION: 7.21
+KEY CHANGES from v7.20:
+   - ADDED: user-scalable=yes to viewport meta tag (explicitly enable pinch zoom)
+   - Ensures consistent zoom behavior with view-history.html
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js (v2.15+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
