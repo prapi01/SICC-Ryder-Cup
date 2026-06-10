@@ -1,13 +1,12 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.02
-KEY CHANGES from v3.01:
-   - CHANGED: Now uses FIXED document ID = gameId + "_H" instead of auto-generated ID
-   - ADDED: Existence check before create/update (prevents duplicate records)
-   - CREATE: If record doesn't exist, create with fixed ID
-   - UPDATE: If record exists, update in place (no duplicate)
-   - ELIMINATES: Multiple duplicate history records for same game
-   - All existing functionality preserved (handicap data, upsert logic, etc.)
+VERSION: 3.03
+KEY CHANGES from v3.02:
+   - ADDED: Preserves anchorRaw and perfRaw values in adjustedHandicaps
+   - ADDED: Stores derived data (raw results for Anc and Perf columns)
+   - Ensures all calculated handicap data is saved to Firestore
+   - Prevents loss of raw values when viewing completed games
+   - All existing functionality preserved
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
@@ -225,6 +224,7 @@ var HistoryRecord = (function() {
     
     // ============================================================
     // Update with handicap adjustment (mark as completed)
+    // v3.03: Now preserves anchorRaw and perfRaw values
     // ============================================================
     
     function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
@@ -250,13 +250,16 @@ var HistoryRecord = (function() {
                 var player = startingPlayers[i];
                 var adjustment = handicapData.players.find(function(p) { return p.name === player.name; });
                 
+                // v3.03: Preserve anchorRaw and perfRaw values
                 adjustedHandicaps.players.push({
                     name: player.name,
                     label: player.label,
                     startingHcp: player.handicap,           // Stored permanently
                     anchorAdj: adjustment ? adjustment.anchorAdj : 0,
                     perfAdj: adjustment ? adjustment.perfAdj : 0,
-                    finalHcp: adjustment ? adjustment.newHcp : player.handicap
+                    finalHcp: adjustment ? adjustment.newHcp : player.handicap,
+                    anchorRaw: adjustment ? adjustment.anchorRaw : 0,   // ← ADDED v3.03
+                    perfRaw: adjustment ? adjustment.perfRaw : 0        // ← ADDED v3.03
                 });
             }
         } else {
@@ -268,7 +271,9 @@ var HistoryRecord = (function() {
                     startingHcp: p.currentHcp,
                     anchorAdj: p.anchorAdj || 0,
                     perfAdj: p.perfAdj || 0,
-                    finalHcp: p.newHcp
+                    finalHcp: p.newHcp,
+                    anchorRaw: p.anchorRaw || 0,   // ← ADDED v3.03
+                    perfRaw: p.perfRaw || 0        // ← ADDED v3.03
                 };
             });
         }
@@ -451,16 +456,13 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 3.02
-KEY CHANGES from v3.01:
-   - CHANGED: Now uses FIXED document ID = gameId + "_H" instead of auto-generated ID
-   - ADDED: getHistoryDocId() function for consistent ID generation
-   - ADDED: recordExists() function for checking existence
-   - ADDED: Existence check before create/update (prevents duplicate records)
-   - CREATE: If record doesn't exist, create with fixed ID (gameId_H)
-   - UPDATE: If record exists, update in place (no duplicate)
-   - ELIMINATES: Multiple duplicate history records for same game
-   - All existing functionality preserved (handicap data, upsert logic, etc.)
+VERSION: 3.03
+KEY CHANGES from v3.02:
+   - ADDED: Preserves anchorRaw and perfRaw values in adjustedHandicaps
+   - ADDED: Stores derived data (raw results for Anc and Perf columns)
+   - Ensures all calculated handicap data is saved to Firestore
+   - Prevents loss of raw values when viewing completed games
+   - All existing functionality preserved
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
