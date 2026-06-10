@@ -1,13 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.34
-KEY CHANGES from v2.29:
-   - CHANGED: "St" column header to "Today"
-   - CHANGED: "Final" column header to "New"
-   - REMOVED: "Player" column header (now empty)
-   - CHANGED: Player column width from 70px to 45px
-   - CHANGED: Base font size from 0.7rem to 0.8rem for better readability
-   - All table structure preserved (stable v2.29 base)
+VERSION: 2.36
+KEY CHANGES from v2.34:
+   - CHANGED: "Today" column header to "Old"
+   - Table frame kept at 400px (min-width: 400px)
+   - All previous cosmetic changes preserved
+   - All table structure intact (stable v2.29 base)
    - All functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -276,7 +274,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.34: Cosmetic changes only (headers, widths, font)
+    // Display Table - v2.36: "Today" → "Old", table frame at 400px
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -295,19 +293,18 @@ var HandicapAdjustment = (function() {
             return hcpA - hcpB;
         });
         
-        // v2.34: Increased base font size from 0.7rem to 0.8rem
+        // v2.36: Table frame kept at 400px (min-width: 400px)
         var tableHtml = '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
-        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 420px;">';
+        tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 400px;">';
         
-        // Table Header - v2.34: Changed headers
-        // "Player" column header removed (empty), "St" → "Today", "Final" → "New"
+        // Table Header - v2.36: "Today" changed to "Old"
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
-        tableHtml += '<th style="padding:8px 4px; text-align:left; width:45px; font-size:0.75rem;"></th>';  // No header, width reduced 70→45
-        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Today</th>';  // Was "St"
+        tableHtml += '<th style="padding:8px 4px; text-align:left; width:45px; font-size:0.75rem;"></th>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Old</th>';  // Was "Today"
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Anc</th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Perf</th>';
-        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">New</th>';  // Was "Final"
-        tableHtml += '</tr></thead><tbody>';
+        tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">New</th>';
+        tableHtml += '<tr></thead><tbody>';
         
         var currentTeam = null;
         
@@ -425,7 +422,7 @@ var HandicapAdjustment = (function() {
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${ancAdjColor}; font-weight:600;">${ancDisplay}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${perfAdjColor}; font-weight:600;">${perfDisplay}</td>`;
             tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${finalColor}; font-weight:700;">${displayHcp}</td>`;
-            tableHtml += '<tr>';
+            tableHtml += '</tr>';
         }
         
         tableHtml += '</tbody></table></div>';
@@ -1074,7 +1071,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.34";
+    window.HANDICAP_ADJUST_VERSION = "2.36";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1093,14 +1090,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.34
-KEY CHANGES from v2.29:
-   - CHANGED: "St" column header to "Today"
-   - CHANGED: "Final" column header to "New"
-   - REMOVED: "Player" column header (now empty)
-   - CHANGED: Player column width from 70px to 45px
-   - CHANGED: Base font size from 0.7rem to 0.8rem for better readability
-   - All table structure preserved (stable v2.29 base)
+VERSION: 2.36
+KEY CHANGES from v2.34:
+   - CHANGED: "Today" column header to "Old"
+   - Table frame kept at 400px (min-width: 400px)
+   - All previous cosmetic changes preserved
+   - All table structure intact (stable v2.29 base)
    - All functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
