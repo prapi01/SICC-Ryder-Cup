@@ -1,11 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.37
-KEY CHANGES from v2.36:
-   - CHANGED: Table min-width from 400px to 340px
-   - Fits iPhone SE (375px screen) without horizontal scroll
-   - Professional appearance (not swimming in empty space)
-   - All previous cosmetic changes preserved
+VERSION: 2.38
+KEY CHANGES from v2.37:
+   - ADDED: dataSource parameter to distinguish between 'live' and 'history' mode
+   - FIXED: History records now show "—" for raw values (instead of 0)
+   - FIXED: Live games show actual raw values (including 0 for ties)
+   - Passes dataSource through displayStoredAdjustment and showAdjustmentTable
    - All table structure intact (stable v2.29 base)
    - All functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
@@ -275,12 +275,13 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.37: Table min-width 340px (fits iPhone SE)
+    // Display Table - v2.38: Added dataSource for raw value display
     // ============================================================
     
-    function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
+    function showAdjustmentTable(calculationResult, anchorName, isReadOnly, dataSource) {
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
+        var isHistoryMode = (dataSource === 'history');
         
         // Sort players by Team (A first), then by startingHcp
         players.sort(function(a, b) {
@@ -360,10 +361,19 @@ var HandicapAdjustment = (function() {
             // Anc Column: adjustment [raw_result]
             // Format: {adj} [{raw}]
             // Raw color: Red if lost to anchor (raw > 0), Green if won or tied (raw <= 0)
+            // v2.38: For history mode, show "—" instead of raw value
             // ============================================================
             var ancAdj = p.anchorAdj;
             var ancRaw = p.anchorRaw;
             var ancRawAbs = Math.abs(ancRaw);
+            
+            var ancRawDisplay;
+            if (isHistoryMode) {
+                ancRawDisplay = '—';  // History records have no raw data
+            } else {
+                ancRawDisplay = ancRawAbs;
+            }
+            
             var ancRawColor = (ancRaw > 0) ? '#ff6b6b' : '#4caf50';
             var ancSign = '';
             if (ancAdj > 0) {
@@ -373,16 +383,24 @@ var HandicapAdjustment = (function() {
             } else {
                 ancSign = '0';
             }
-            var ancDisplay = ancSign + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawAbs + ']</span>';
+            var ancDisplay = ancSign + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawDisplay + ']</span>';
             
             // ============================================================
             // Perf Column: adjustment [raw_points]
             // Format: {adj} [{raw}]
             // Raw color: Always Green
+            // v2.38: For history mode, show "—" instead of raw value
             // ============================================================
             var perfAdj = p.perfAdj;
             var perfRaw = p.perfRaw;
-            var perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
+            
+            var perfRawDisplay;
+            if (isHistoryMode) {
+                perfRawDisplay = '—';  // History records have no raw data
+            } else {
+                perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
+            }
+            
             var perfSign = '';
             if (perfAdj > 0) {
                 perfSign = '+' + perfAdj;
@@ -637,6 +655,7 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // v2.21: Display stored adjustment from history record
+    // v2.38: Pass 'history' as dataSource
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList, returnToPrevious) {
@@ -683,7 +702,8 @@ var HandicapAdjustment = (function() {
             newAnchorName: adjustedHandicaps.newAnchor
         };
         
-        showAdjustmentTable(calculationResult, anchorName, true);
+        // v2.38: Pass 'history' as dataSource to show "—" for raw values
+        showAdjustmentTable(calculationResult, anchorName, true, 'history');
         return true;
     }
     
@@ -773,7 +793,8 @@ var HandicapAdjustment = (function() {
                         zeroRiseAmount: hcpData.zeroRiseAmount || 0,
                         newAnchorName: hcpData.newAnchor
                     };
-                    showAdjustmentTable(calculationResult, hcpData.anchor || "Anchor", true);
+                    // v2.38: Pass 'history' as dataSource
+                    showAdjustmentTable(calculationResult, hcpData.anchor || "Anchor", true, 'history');
                 } else {
                     var emptyPlayers = allPlayers.map(function(p) {
                         return {
@@ -797,7 +818,8 @@ var HandicapAdjustment = (function() {
                         zeroRiseAmount: 0,
                         newAnchorName: null
                     };
-                    showAdjustmentTable(emptyResult, "Not calculated", true);
+                    // v2.38: Pass 'history' as dataSource
+                    showAdjustmentTable(emptyResult, "Not calculated", true, 'history');
                 }
             })
             .catch(function(err) {
@@ -809,6 +831,7 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // initForViewer - Simplified viewer mode (LIVE game viewer)
+    // v2.38: Pass 'live' as dataSource
     // ============================================================
     
     function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
@@ -834,11 +857,13 @@ var HandicapAdjustment = (function() {
         
         var anchor = allPlayers[0];
         var calculationResult = calculateAllAdjustments(anchor);
-        showAdjustmentTable(calculationResult, anchor.name, true);
+        // v2.38: Pass 'live' as dataSource to show actual raw values
+        showAdjustmentTable(calculationResult, anchor.name, true, 'live');
     }
     
     // ============================================================
     // Legacy init function (for real-game)
+    // v2.38: Pass 'live' as dataSource
     // ============================================================
     
     function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
@@ -877,7 +902,8 @@ var HandicapAdjustment = (function() {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                        // v2.38: Pass 'live' as dataSource
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false, 'live');
                     }
                 });
             } else if (zeroHcpPlayers.length === 1) {
@@ -890,7 +916,8 @@ var HandicapAdjustment = (function() {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                        // v2.38: Pass 'live' as dataSource
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false, 'live');
                     }
                 });
             } else if (zeroHcpPlayers.length > 1) {
@@ -906,7 +933,8 @@ var HandicapAdjustment = (function() {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                        // v2.38: Pass 'live' as dataSource
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false, 'live');
                     }
                 });
             }
@@ -1038,7 +1066,7 @@ var HandicapAdjustment = (function() {
                 if (err) {
                     alert("Error saving handicap data. Please try again.");
                 } else {
-                    showAdjustmentTable(calculationResult, anchorPlayer.name, false);
+                    showAdjustmentTable(calculationResult, anchorPlayer.name, false, 'live');
                 }
             });
         });
@@ -1072,7 +1100,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.37";
+    window.HANDICAP_ADJUST_VERSION = "2.38";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1091,12 +1119,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.37
-KEY CHANGES from v2.36:
-   - CHANGED: Table min-width from 400px to 340px
-   - Fits iPhone SE (375px screen) without horizontal scroll
-   - Professional appearance (not swimming in empty space)
-   - All previous cosmetic changes preserved
+VERSION: 2.38
+KEY CHANGES from v2.37:
+   - ADDED: dataSource parameter to distinguish between 'live' and 'history' mode
+   - FIXED: History records now show "—" for raw values (instead of 0)
+   - FIXED: Live games show actual raw values (including 0 for ties)
+   - Passes dataSource through displayStoredAdjustment and showAdjustmentTable
    - All table structure intact (stable v2.29 base)
    - All functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
