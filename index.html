@@ -1,13 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.21
-KEY CHANGES from v3.20:
-   - REMOVED: 6-hour grace period logic (unnecessary complexity)
-   - SIMPLIFIED: TODAY GAME button active for entire day regardless of completion status
-   - If game completed, redirect to view-history.html to show results
-   - If game in progress, redirect to pre-game.html normally
-   - Clean, simple logic: TODAY = active, NOT TODAY = inactive
-   - All existing functionality preserved
+VERSION: 3.22
+KEY CHANGES from v3.21:
+   - CHANGED: Splash screen now shows ONCE PER SESSION (not per cooldown)
+   - REMOVED: 10-minute cooldown logic
+   - REMOVED: PWA exception (always showing splash)
+   - ADDED: sessionStorage tracking for splash shown in current session
+   - Splash only shows when app is first opened, not on subsequent returns to main menu
+   - All existing functionality preserved (TODAY GAME logic unchanged)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -364,12 +364,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.21</div>
+<div class="version-tag">v3.22</div>
 
 <script>
-// FILE: index.html - VERSION 3.21
+// FILE: index.html - VERSION 3.22
 
-var APP_VERSION = "3.21";
+var APP_VERSION = "3.22";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -396,39 +396,25 @@ var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
 
 // ============================================================
-// Splash Screen Logic
+// Splash Screen Logic - FIXED v3.22: Once per session
 // ============================================================
 
 function shouldShowSplash() {
-    var isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                       window.navigator.standalone === true;
+    // Check if splash has been shown in this session
+    var splashShownThisSession = sessionStorage.getItem('splashShown');
     
-    if (isStandalone) {
-        console.log("PWA mode detected - showing splash");
-        return true;
+    if (splashShownThisSession === 'true') {
+        console.log("Splash already shown this session - skipping");
+        return false;
     }
     
-    var lastSplashTime = localStorage.getItem('splashLastShown');
-    var now = Date.now();
-    var COOLDOWN_MS = 10 * 60 * 1000;
-    
-    if (!lastSplashTime) {
-        console.log("No previous splash recorded - showing splash");
-        return true;
-    }
-    
-    var timeSinceLastSplash = now - parseInt(lastSplashTime);
-    if (timeSinceLastSplash > COOLDOWN_MS) {
-        console.log("Cooldown expired - showing splash");
-        return true;
-    }
-    
-    console.log("Within cooldown - skipping splash");
-    return false;
+    console.log("No splash recorded this session - showing splash");
+    return true;
 }
 
 function recordSplashShown() {
-    localStorage.setItem('splashLastShown', Date.now().toString());
+    sessionStorage.setItem('splashShown', 'true');
+    console.log("Splash recorded as shown for this session");
 }
 
 function hideSplashAndShowApp() {
@@ -939,14 +925,14 @@ SessionManager.initSession("index.html", "index.html", function(session) {
 
 <!--
 FILE: index.html
-VERSION: 3.21
-KEY CHANGES from v3.20:
-   - REMOVED: 6-hour grace period logic (unnecessary complexity)
-   - SIMPLIFIED: TODAY GAME button active for entire day regardless of completion status
-   - If game completed, redirect to view-history.html to show results
-   - If game in progress, redirect to pre-game.html normally
-   - Clean, simple logic: TODAY = active, NOT TODAY = inactive
-   - All existing functionality preserved
+VERSION: 3.22
+KEY CHANGES from v3.21:
+   - CHANGED: Splash screen now shows ONCE PER SESSION (not per cooldown)
+   - REMOVED: 10-minute cooldown logic
+   - REMOVED: PWA exception (always showing splash)
+   - ADDED: sessionStorage tracking for splash shown in current session
+   - Splash only shows when app is first opened, not on subsequent returns to main menu
+   - All existing functionality preserved (TODAY GAME logic unchanged)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
