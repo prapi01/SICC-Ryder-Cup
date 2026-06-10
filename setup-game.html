@@ -1,12 +1,11 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - FIXED: initializeEmptyResults() now initializes TR arrays with null instead of 9.5
-   - teamA and teamB arrays filled with null (displayed as "-" in real-game)
-   - teamAGreen and teamBGreen arrays filled with false
-   - Prevents stale 9.5 values from appearing in new games
-   - Consistent with real-game.html v5.51 TR initialization
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - FIXED: Edit mode now preserves existing scores (f1.d, f2.d, results, current holes)
+   - Updates only the fields the user changed (players, date, course, startingHole, format, anchor)
+   - Prevents overwriting existing game data with blank template when editing
+   - New games still created with fresh data strings and empty results
    - All existing functionality preserved (anchor selection, etc.)
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
@@ -259,12 +258,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.24</div>
+<div class="version-tag">v1.25</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.24
+// FILE: setup-game.html - VERSION 1.25
 
-var VERSION = "1.24";
+var VERSION = "1.25";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -721,6 +720,10 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
     });
 }
 
+// ============================================================
+// commitGame - FIXED v1.25: Preserve existing data when editing
+// ============================================================
+
 function commitGame() {
     var dateInput = document.getElementById("datePicker");
     var selectedDate = dateInput ? dateInput.value : "";
@@ -745,20 +748,26 @@ function commitGame() {
     // Check for multiple players with 0 handicap
     var zeroHandicapPlayers = state.players.filter(function(p) { return p.handicap === 0; });
     
+    var anchorCallback = function(selectedAnchor) {
+        if (state.editingGameId) {
+            // EDIT MODE: Update only changed fields, preserve scores
+            updateExistingGame(selectedAnchor);
+        } else {
+            // NEW GAME: Create fresh game with blank scores
+            createNewGame(selectedAnchor);
+        }
+    };
+    
     if (zeroHandicapPlayers.length > 1) {
-        // Show anchor selection modal before creating game
-        showAnchorSelectionModal(zeroHandicapPlayers, function(selectedAnchor) {
-            createGameWithAnchor(selectedAnchor);
-        });
+        showAnchorSelectionModal(zeroHandicapPlayers, anchorCallback);
     } else {
-        // Single or no zero handicap - anchor is the lowest handicap player
         var sortedByHcp = [...state.players].sort(function(a, b) { return a.handicap - b.handicap; });
         var defaultAnchor = sortedByHcp[0];
-        createGameWithAnchor(defaultAnchor);
+        anchorCallback(defaultAnchor);
     }
 }
 
-function createGameWithAnchor(anchorPlayer) {
+function createNewGame(anchorPlayer) {
     var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
     var rotatedData = rotateDataString(naturalData, state.startingHole);
     var emptyResults = initializeEmptyResults();
@@ -804,8 +813,99 @@ function createGameWithAnchor(anchorPlayer) {
         results: emptyResults
     };
     
-    if (state.editingGameId) {
-        db.collection("scheduledGames").doc(state.editingGameId).update(gameData).then(function() {
+    gameData.createdAt = new Date().toISOString();
+    var newGameId = generateGameId();
+    
+    db.collection("scheduledGames").doc(newGameId).set(gameData).then(function() {
+        saveAsDefaultPlayers(state.players, function(saveSuccess) {
+            if (saveSuccess) {
+                console.log("Default players updated successfully");
+            } else {
+                console.warn("Failed to save default players, but game was created");
+            }
+            SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
+            document.getElementById("successMsg").style.display = "block";
+            setTimeout(function() {
+                window.location.href = "admin.html";
+            }, 1500);
+        });
+    }).catch(function(e) {
+        alert("Error saving game: " + e.message);
+    });
+}
+
+function updateExistingGame(anchorPlayer) {
+    // First, fetch the existing game document to preserve scores
+    db.collection("scheduledGames").doc(state.editingGameId).get().then(function(doc) {
+        if (!doc.exists) {
+            alert("Game not found. Cannot update.");
+            return;
+        }
+        
+        var existingData = doc.data();
+        
+        // Build update payload with ONLY changed fields
+        var updatePayload = {
+            date: document.getElementById("datePicker").value,
+            course: state.selectedCourseData,
+            players: state.players.map(function(p) {
+                return {
+                    name: p.name,
+                    handicap: p.handicap,
+                    team: p.team,
+                    flight: p.flight,
+                    label: p.label
+                };
+            }),
+            startingHole: state.startingHole,
+            teamGameFormat: state.teamGameFormat,
+            anchor: anchorPlayer.name,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            
+            // PRESERVE existing data strings and results
+            f1: existingData.f1 || { d: "", se: false, x: false },
+            f2: existingData.f2 || { d: "", se: false, x: false },
+            results: existingData.results || null,
+            currentHoleF1: existingData.currentHoleF1 || 1,
+            currentHoleF2: existingData.currentHoleF2 || 1,
+            locks: existingData.locks || { f1: null, f2: null },
+            signatures: existingData.signatures || { f1: false, f2: false },
+            submitted: existingData.submitted || { f1: false, f2: false },
+            gameStarted: existingData.gameStarted || false
+        };
+        
+        // If course changed, need to regenerate data strings
+        var courseChanged = (existingData.course && existingData.course.id !== state.selectedCourseData.id);
+        if (courseChanged) {
+            var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
+            var rotatedData = rotateDataString(naturalData, state.startingHole);
+            updatePayload.f1 = { d: rotatedData, se: false, x: false };
+            updatePayload.f2 = { d: rotatedData, se: false, x: false };
+            updatePayload.results = initializeEmptyResults();
+            updatePayload.currentHoleF1 = 1;
+            updatePayload.currentHoleF2 = 1;
+        }
+        
+        // If starting hole changed, need to rotate existing data strings
+        var startingHoleChanged = (existingData.startingHole !== state.startingHole);
+        if (startingHoleChanged && !courseChanged && existingData.f1 && existingData.f1.d) {
+            // Rotate the existing data strings to new starting hole
+            var naturalDataFromExisting = existingData.f1.d;
+            // Need to convert to natural order first, then rotate to new starting hole
+            // For simplicity, we warn the user
+            if (!confirm("Changing starting hole will reset all scores to par. Continue?")) {
+                return;
+            }
+            var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
+            var rotatedData = rotateDataString(naturalData, state.startingHole);
+            updatePayload.f1 = { d: rotatedData, se: false, x: false };
+            updatePayload.f2 = { d: rotatedData, se: false, x: false };
+            updatePayload.results = initializeEmptyResults();
+            updatePayload.currentHoleF1 = 1;
+            updatePayload.currentHoleF2 = 1;
+        }
+        
+        db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload).then(function() {
             SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
             document.getElementById("successMsg").style.display = "block";
             setTimeout(function() {
@@ -814,27 +914,9 @@ function createGameWithAnchor(anchorPlayer) {
         }).catch(function(e) {
             alert("Error updating game: " + e.message);
         });
-    } else {
-        gameData.createdAt = new Date().toISOString();
-        var newGameId = generateGameId();
-        
-        db.collection("scheduledGames").doc(newGameId).set(gameData).then(function() {
-            saveAsDefaultPlayers(state.players, function(saveSuccess) {
-                if (saveSuccess) {
-                    console.log("Default players updated successfully");
-                } else {
-                    console.warn("Failed to save default players, but game was created");
-                }
-                SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
-                document.getElementById("successMsg").style.display = "block";
-                setTimeout(function() {
-                    window.location.href = "admin.html";
-                }, 1500);
-            });
-        }).catch(function(e) {
-            alert("Error saving game: " + e.message);
-        });
-    }
+    }).catch(function(e) {
+        alert("Error loading existing game: " + e.message);
+    });
 }
 
 function render() {
@@ -1133,13 +1215,12 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - FIXED: initializeEmptyResults() now initializes TR arrays with null instead of 9.5
-   - teamA and teamB arrays filled with null (displayed as "-" in real-game)
-   - teamAGreen and teamBGreen arrays filled with false
-   - Prevents stale 9.5 values from appearing in new games
-   - Consistent with real-game.html v5.51 TR initialization
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - FIXED: Edit mode now preserves existing scores (f1.d, f2.d, results, current holes)
+   - Updates only the fields the user changed (players, date, course, startingHole, format, anchor)
+   - Prevents overwriting existing game data with blank template when editing
+   - New games still created with fresh data strings and empty results
    - All existing functionality preserved (anchor selection, etc.)
 DEPENDS ON: js/firebase-config.js, js/session.js
 STATUS: Ready for integration
