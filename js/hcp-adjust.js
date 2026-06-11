@@ -1,10 +1,12 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.39
-KEY CHANGES from v2.38:
-   - FIXED: Perf column color logic (Green = handicap DOWN, Red = handicap UP)
-   - CHANGED: "Back" button text to "Scorecard" with 📋 icon
-   - CHANGED: "Celebration" button text to "🎉" (icon only)
+VERSION: 2.40
+KEY CHANGES from v2.39:
+   - FIXED: Anc column color logic (Red = CUT, Green = ADD, no + sign)
+   - FIXED: Perf column color logic (Red = CUT, Green = ADD, no + sign)
+   - FIXED: Raw values: Green if won, Red if lost, Grey if 0
+   - Removed all "+" signs from adjustment values (color indicates direction)
+   - All zero values now show as grey (#888)
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -273,7 +275,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.39: Fixed Perf column colors, updated button texts
+    // Display Table - v2.40: Updated color logic (no + signs, red=cut, green=add)
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly, dataSource) {
@@ -352,14 +354,15 @@ var HandicapAdjustment = (function() {
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
                 tableHtml += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
                 tableHtml += `<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}</td>`;
-                tableHtml += '<tr>';
+                tableHtml += '</tr>';
             }
             
             // ============================================================
             // Anc Column: adjustment [raw_result]
-            // Format: {adj} [{raw}]
-            // Raw color: Red if lost to anchor (raw > 0), Green if won or tied (raw <= 0)
-            // v2.38: For history mode, show "—" instead of raw value
+            // v2.40: No + sign, color indicates direction
+            // Red = CUT (negative adjustment, player won vs anchor)
+            // Green = ADD (positive adjustment, player lost to anchor)
+            // Raw color: Green if won (raw > 0), Red if lost (raw < 0), Grey if 0
             // ============================================================
             var ancAdj = p.anchorAdj;
             var ancRaw = p.anchorRaw;
@@ -367,70 +370,76 @@ var HandicapAdjustment = (function() {
             
             var ancRawDisplay;
             if (isHistoryMode) {
-                ancRawDisplay = '—';  // History records have no raw data
+                ancRawDisplay = '—';
             } else {
                 ancRawDisplay = ancRawAbs;
             }
             
-            var ancRawColor = (ancRaw > 0) ? '#ff6b6b' : '#4caf50';
-            var ancSign = '';
-            if (ancAdj > 0) {
-                ancSign = '+' + ancAdj;
-            } else if (ancAdj < 0) {
-                ancSign = ancAdj.toString();
-            } else {
-                ancSign = '0';
+            // Raw color: Green if player won (raw > 0), Red if lost (raw < 0), Grey if 0
+            var ancRawColor = '#888';
+            if (ancRaw > 0) {
+                ancRawColor = '#4caf50';  // Won vs anchor - green
+            } else if (ancRaw < 0) {
+                ancRawColor = '#ff6b6b';   // Lost to anchor - red
             }
-            var ancDisplay = ancSign + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawDisplay + ']</span>';
+            
+            // Adjustment display (no + sign)
+            var ancDisplayValue = '';
+            var ancAdjColor = '#888';
+            if (ancAdj < 0) {
+                // Negative adjustment = CUT (good performance) - RED
+                ancDisplayValue = Math.abs(ancAdj).toString();
+                ancAdjColor = '#ff6b6b';
+            } else if (ancAdj > 0) {
+                // Positive adjustment = ADD (poor performance) - GREEN
+                ancDisplayValue = ancAdj.toString();
+                ancAdjColor = '#4caf50';
+            } else {
+                ancDisplayValue = '0';
+                ancAdjColor = '#888';
+            }
+            
+            var ancDisplay = ancDisplayValue + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawDisplay + ']</span>';
             
             // ============================================================
             // Perf Column: adjustment [raw_points]
-            // Format: {adj} [{raw}]
-            // Raw color: Always Green
-            // v2.39: Adjustment color: Green for -1 (good performance), Red for +1 (poor performance)
+            // v2.40: No + sign, color indicates direction
+            // Red = CUT (negative adjustment, good performance)
+            // Green = ADD (positive adjustment, poor performance)
+            // Raw points always Green
             // ============================================================
             var perfAdj = p.perfAdj;
             var perfRaw = p.perfRaw;
             
             var perfRawDisplay;
             if (isHistoryMode) {
-                perfRawDisplay = '—';  // History records have no raw data
+                perfRawDisplay = '—';
             } else {
                 perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
             }
             
-            var perfSign = '';
-            if (perfAdj > 0) {
-                perfSign = '+' + perfAdj;
-            } else if (perfAdj < 0) {
-                perfSign = perfAdj.toString();
+            // Adjustment display (no + sign)
+            var perfDisplayValue = '';
+            var perfAdjColor = '#888';
+            if (perfAdj < 0) {
+                // Negative adjustment = CUT (good performance) - RED
+                perfDisplayValue = Math.abs(perfAdj).toString();
+                perfAdjColor = '#ff6b6b';
+            } else if (perfAdj > 0) {
+                // Positive adjustment = ADD (poor performance) - GREEN
+                perfDisplayValue = perfAdj.toString();
+                perfAdjColor = '#4caf50';
             } else {
-                perfSign = '0';
+                perfDisplayValue = '0';
+                perfAdjColor = '#888';
             }
-            var perfDisplay = perfSign + '<span style="font-size:0.6rem; color:#4caf50;"> [' + perfRawDisplay + ']</span>';
+            
+            var perfDisplay = perfDisplayValue + '<span style="font-size:0.6rem; color:#4caf50;"> [' + perfRawDisplay + ']</span>';
             
             // ============================================================
             // Final column color: Gold if final handicap is 0, otherwise green
             // ============================================================
             var finalColor = isFinalZero ? '#ffaa44' : '#4caf50';
-            
-            // Anc adjustment value color
-            var ancAdjColor = '#888';
-            if (ancAdj > 0) {
-                ancAdjColor = '#4caf50';
-            } else if (ancAdj < 0) {
-                ancAdjColor = '#ff6b6b';
-            }
-            
-            // v2.39: Perf adjustment value color - FIXED
-            // Green for negative adjustment (good performance, handicap down)
-            // Red for positive adjustment (poor performance, handicap up)
-            var perfAdjColor = '#888';
-            if (perfAdj > 0) {
-                perfAdjColor = '#ff6b6b';  // Red for handicap increase (poor performance)
-            } else if (perfAdj < 0) {
-                perfAdjColor = '#4caf50';  // Green for handicap decrease (good performance)
-            }
             
             // Gold highlighting for anchor's Starting Handicap
             var stColor = isAnchor ? '#ffaa44' : '#ffffff';
@@ -1102,7 +1111,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.39";
+    window.HANDICAP_ADJUST_VERSION = "2.40";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1121,11 +1130,13 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.39
-KEY CHANGES from v2.38:
-   - FIXED: Perf column color logic (Green = handicap DOWN, Red = handicap UP)
-   - CHANGED: "Back" button text to "Scorecard" with 📋 icon
-   - CHANGED: "Celebration" button text to "🎉" (icon only)
+VERSION: 2.40
+KEY CHANGES from v2.39:
+   - FIXED: Anc column color logic (Red = CUT, Green = ADD, no + sign)
+   - FIXED: Perf column color logic (Red = CUT, Green = ADD, no + sign)
+   - FIXED: Raw values: Green if won, Red if lost, Grey if 0
+   - Removed all "+" signs from adjustment values (color indicates direction)
+   - All zero values now show as grey (#888)
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
