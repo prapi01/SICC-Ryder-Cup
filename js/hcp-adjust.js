@@ -1,12 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.40
-KEY CHANGES from v2.39:
-   - FIXED: Anc column color logic (Red = CUT, Green = ADD, no + sign)
-   - FIXED: Perf column color logic (Red = CUT, Green = ADD, no + sign)
-   - FIXED: Raw values: Green if won, Red if lost, Grey if 0
-   - Removed all "+" signs from adjustment values (color indicates direction)
-   - All zero values now show as grey (#888)
+VERSION: 2.41
+KEY CHANGES from v2.40:
+   - REMOVED: History mode raw value hiding (always show actual raw values)
+   - REMOVED: dataSource parameter (no longer needed)
+   - Raw values now always display from the record data
+   - All color logic preserved (Red = CUT, Green = ADD)
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
@@ -275,13 +274,12 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table - v2.40: Updated color logic (no + signs, red=cut, green=add)
+    // Display Table - v2.41: Always show raw values (no history mode hiding)
     // ============================================================
     
-    function showAdjustmentTable(calculationResult, anchorName, isReadOnly, dataSource) {
+    function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
-        var isHistoryMode = (dataSource === 'history');
         
         // Sort players by Team (A first), then by startingHcp
         players.sort(function(a, b) {
@@ -354,7 +352,7 @@ var HandicapAdjustment = (function() {
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
                 tableHtml += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
                 tableHtml += `<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}</td>`;
-                tableHtml += '</tr>';
+                tableHtml += '<tr>';
             }
             
             // ============================================================
@@ -363,17 +361,14 @@ var HandicapAdjustment = (function() {
             // Red = CUT (negative adjustment, player won vs anchor)
             // Green = ADD (positive adjustment, player lost to anchor)
             // Raw color: Green if won (raw > 0), Red if lost (raw < 0), Grey if 0
+            // v2.41: Always show actual raw values (no history mode hiding)
             // ============================================================
             var ancAdj = p.anchorAdj;
             var ancRaw = p.anchorRaw;
             var ancRawAbs = Math.abs(ancRaw);
             
-            var ancRawDisplay;
-            if (isHistoryMode) {
-                ancRawDisplay = '—';
-            } else {
-                ancRawDisplay = ancRawAbs;
-            }
+            // Always show actual raw value
+            var ancRawDisplay = ancRawAbs;
             
             // Raw color: Green if player won (raw > 0), Red if lost (raw < 0), Grey if 0
             var ancRawColor = '#888';
@@ -407,16 +402,13 @@ var HandicapAdjustment = (function() {
             // Red = CUT (negative adjustment, good performance)
             // Green = ADD (positive adjustment, poor performance)
             // Raw points always Green
+            // v2.41: Always show actual raw values (no history mode hiding)
             // ============================================================
             var perfAdj = p.perfAdj;
             var perfRaw = p.perfRaw;
             
-            var perfRawDisplay;
-            if (isHistoryMode) {
-                perfRawDisplay = '—';
-            } else {
-                perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
-            }
+            // Always show actual raw value
+            var perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
             
             // Adjustment display (no + sign)
             var perfDisplayValue = '';
@@ -455,7 +447,7 @@ var HandicapAdjustment = (function() {
         
         tableHtml += '</tbody></table></div>';
         
-        // v2.39: Updated button texts
+        // Buttons HTML
         var buttonsHtml = '';
         if (isReadOnly) {
             if (returnToPreviousPage) {
@@ -479,7 +471,6 @@ var HandicapAdjustment = (function() {
                 `;
             }
             
-            // v2.39: "Back" → "Scorecard" with 📋, "Celebration" → "🎉"
             buttonsHtml = `
                 <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
                     <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">📋 Scorecard</button>
@@ -666,7 +657,7 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // v2.21: Display stored adjustment from history record
-    // v2.38: Pass 'history' as dataSource
+    // v2.41: Removed dataSource parameter (always show raw values)
     // ============================================================
     
     function displayStoredAdjustment(adjustedHandicaps, anchorName, allPlayersList, returnToPrevious) {
@@ -701,8 +692,8 @@ var HandicapAdjustment = (function() {
                 rawNew: null,
                 newHcp: null,
                 newAnchor: null,
-                anchorRaw: 0,   // Not available in stored history
-                perfRaw: 0      // Not available in stored history
+                anchorRaw: p.anchorRaw !== undefined ? p.anchorRaw : 0,
+                perfRaw: p.perfRaw !== undefined ? p.perfRaw : 0
             };
         });
         
@@ -713,8 +704,8 @@ var HandicapAdjustment = (function() {
             newAnchorName: adjustedHandicaps.newAnchor
         };
         
-        // v2.38: Pass 'history' as dataSource to show "—" for raw values
-        showAdjustmentTable(calculationResult, anchorName, true, 'history');
+        // v2.41: Always show raw values (no dataSource parameter)
+        showAdjustmentTable(calculationResult, anchorName, true);
         return true;
     }
     
@@ -794,8 +785,8 @@ var HandicapAdjustment = (function() {
                             newAnchor: null,
                             team: playerInfo ? playerInfo.team : 'B',
                             startingHcp: p.currentHcp,
-                            anchorRaw: 0,
-                            perfRaw: 0
+                            anchorRaw: p.anchorRaw || 0,
+                            perfRaw: p.perfRaw || 0
                         };
                     });
                     var calculationResult = {
@@ -804,8 +795,7 @@ var HandicapAdjustment = (function() {
                         zeroRiseAmount: hcpData.zeroRiseAmount || 0,
                         newAnchorName: hcpData.newAnchor
                     };
-                    // v2.38: Pass 'history' as dataSource
-                    showAdjustmentTable(calculationResult, hcpData.anchor || "Anchor", true, 'history');
+                    showAdjustmentTable(calculationResult, hcpData.anchor || "Anchor", true);
                 } else {
                     var emptyPlayers = allPlayers.map(function(p) {
                         return {
@@ -829,8 +819,7 @@ var HandicapAdjustment = (function() {
                         zeroRiseAmount: 0,
                         newAnchorName: null
                     };
-                    // v2.38: Pass 'history' as dataSource
-                    showAdjustmentTable(emptyResult, "Not calculated", true, 'history');
+                    showAdjustmentTable(emptyResult, "Not calculated", true);
                 }
             })
             .catch(function(err) {
@@ -842,7 +831,6 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // initForViewer - Simplified viewer mode (LIVE game viewer)
-    // v2.38: Pass 'live' as dataSource
     // ============================================================
     
     function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
@@ -868,13 +856,11 @@ var HandicapAdjustment = (function() {
         
         var anchor = allPlayers[0];
         var calculationResult = calculateAllAdjustments(anchor);
-        // v2.38: Pass 'live' as dataSource to show actual raw values
-        showAdjustmentTable(calculationResult, anchor.name, true, 'live');
+        showAdjustmentTable(calculationResult, anchor.name, true);
     }
     
     // ============================================================
     // Legacy init function (for real-game)
-    // v2.38: Pass 'live' as dataSource
     // ============================================================
     
     function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
@@ -913,8 +899,7 @@ var HandicapAdjustment = (function() {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        // v2.38: Pass 'live' as dataSource
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false, 'live');
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                     }
                 });
             } else if (zeroHcpPlayers.length === 1) {
@@ -927,8 +912,7 @@ var HandicapAdjustment = (function() {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        // v2.38: Pass 'live' as dataSource
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false, 'live');
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                     }
                 });
             } else if (zeroHcpPlayers.length > 1) {
@@ -944,8 +928,7 @@ var HandicapAdjustment = (function() {
                         console.error("Error saving handicap data:", err);
                         alert("Error saving handicap data. Please try again.");
                     } else {
-                        // v2.38: Pass 'live' as dataSource
-                        showAdjustmentTable(calculationResult, anchorPlayer.name, false, 'live');
+                        showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                     }
                 });
             }
@@ -1077,7 +1060,7 @@ var HandicapAdjustment = (function() {
                 if (err) {
                     alert("Error saving handicap data. Please try again.");
                 } else {
-                    showAdjustmentTable(calculationResult, anchorPlayer.name, false, 'live');
+                    showAdjustmentTable(calculationResult, anchorPlayer.name, false);
                 }
             });
         });
@@ -1111,7 +1094,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.40";
+    window.HANDICAP_ADJUST_VERSION = "2.41";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1130,13 +1113,12 @@ var HandicapAdjustment = (function() {
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.40
-KEY CHANGES from v2.39:
-   - FIXED: Anc column color logic (Red = CUT, Green = ADD, no + sign)
-   - FIXED: Perf column color logic (Red = CUT, Green = ADD, no + sign)
-   - FIXED: Raw values: Green if won, Red if lost, Grey if 0
-   - Removed all "+" signs from adjustment values (color indicates direction)
-   - All zero values now show as grey (#888)
+VERSION: 2.41
+KEY CHANGES from v2.40:
+   - REMOVED: History mode raw value hiding (always show actual raw values)
+   - REMOVED: dataSource parameter (no longer needed)
+   - Raw values now always display from the record data
+   - All color logic preserved (Red = CUT, Green = ADD)
    - All other functionality unchanged
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
