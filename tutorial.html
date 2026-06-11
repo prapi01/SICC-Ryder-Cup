@@ -1,16 +1,10 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - FIXED: Step 9 handicap table now matches actual hcp-adjust.js layout
-   - Columns: Player | Old | Anc | Perf | New
-   - Removed "+" signs from adjustments (color indicates direction)
-   - Anc column: adjustment color (Red=CUT, Green=ADD, Grey=0) + raw value color (Green=won, Red=lost)
-   - Perf column: adjustment color (Red=CUT, Green=ADD, Grey=0) + raw points always Green
-   - Anchor: Only "Old" and "New" values (the number 0) in gold - not entire row
-   - Removed "What is Anchor?" info box
-   - Simplified legend: Red = CUT stroke | Green = ADD stroke | Gold = Anchor
-   - All other steps unchanged from v1.14
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - REMOVED: Duplicate bubble legend graphic from Step 5 (was repeated below player cards)
+   - Player cards already show bubbles in action, instruction panel explains colors
+   - No other changes - all other steps identical to v1.15
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
@@ -501,7 +495,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.15</div>
+<div class="version-tag">v1.16</div>
 
 <script>
 // ============================================================
@@ -811,7 +805,7 @@ function renderStep4() {
 }
 
 // ============================================================
-// STEP 5: MATCH GAME - Player cards with bubbles
+// STEP 5: MATCH GAME - Player cards with bubbles (REMOVED duplicate legend)
 // ============================================================
 
 function renderStep5() {
@@ -852,14 +846,6 @@ function renderStep5() {
                 <div class="bubble bubble-green">vs KF 1</div>
                 <div class="bubble bubble-green">vs YHM 1</div>
             </div>
-        </div>
-        
-        <div class="bubble-legend">
-            <div class="bubble-legend-item"><div class="bubble bubble-green" style="padding:2px 6px;">WIN</div><span>Winning match</span></div>
-            <div class="bubble-legend-item"><div class="bubble bubble-red" style="padding:2px 6px;">LOSE</div><span>Losing match</span></div>
-            <div class="bubble-legend-item"><div class="bubble bubble-gold" style="padding:2px 6px;">GOLD</div><span>Won match on this hole</span></div>
-            <div class="bubble-legend-item"><div class="bubble bubble-white" style="padding:2px 6px;">WHITE</div><span>Lost match on this hole</span></div>
-            <div class="bubble-legend-item"><div class="bubble bubble-grey" style="padding:2px 6px;">GREY</div><span>Match already won/lost</span></div>
         </div>
         
         <div style="margin: 12px 16px; padding: 12px; background:#111; border-radius:12px;">
@@ -1060,11 +1046,7 @@ function renderStep8() {
 }
 
 // ============================================================
-// STEP 9: Handicap Adjustment - FIXED v1.15 matches actual app
-// Headers: Player | Old | Anc | Perf | New
-// No "+" signs, color indicates direction
-// Anchor: only the "0" value in Old and New columns is gold
-// Legend: Red = CUT stroke | Green = ADD stroke | Gold = Anchor
+// STEP 9: Handicap Adjustment - Matches actual app
 // ============================================================
 
 function renderStep9() {
@@ -1267,17 +1249,11 @@ renderStep();
 </html>
 <!--
 FILE: tutorial.html
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - FIXED: Step 9 handicap table now matches actual hcp-adjust.js layout
-   - Columns: Player | Old | Anc | Perf | New
-   - Removed "+" signs from adjustments (color indicates direction)
-   - Anc column: adjustment color (Red=CUT, Green=ADD, Grey=0) + raw value color (Green=won, Red=lost)
-   - Perf column: adjustment color (Red=CUT, Green=ADD, Grey=0) + raw points always Green
-   - Anchor: Only "Old" and "New" values (the number 0) in gold - not entire row
-   - Removed "What is Anchor?" info box
-   - Simplified legend: Red = CUT stroke | Green = ADD stroke | Gold = Anchor
-   - All other steps unchanged from v1.14
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - REMOVED: Duplicate bubble legend graphic from Step 5 (was repeated below player cards)
+   - Player cards already show bubbles in action, instruction panel explains colors
+   - No other changes - all other steps identical to v1.15
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
