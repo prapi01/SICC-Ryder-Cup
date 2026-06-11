@@ -3,12 +3,13 @@ FILE: tutorial.html
 VERSION: 1.15
 KEY CHANGES from v1.14:
    - FIXED: Step 9 handicap table now matches actual hcp-adjust.js layout
-   - Columns changed from "St | [Raw] | Anc | Perf | Final" to "Old | Anc | Perf | New"
-   - Removed "+" signs from adjustments (now "3 [6]" instead of "+3 [6]")
-   - Added proper button row: Scorecard, Change Anchor, Menu, Exit
-   - Updated color coding to match live app (Red = CUT, Green = ADD)
-   - Anchor player's "Old" handicap now gold (#ffaa44)
-   - Final handicap gold when zero, green otherwise
+   - Columns: Player | Old | Anc | Perf | New
+   - Removed "+" signs from adjustments (color indicates direction)
+   - Anc column: adjustment color (Red=CUT, Green=ADD, Grey=0) + raw value color (Green=won, Red=lost)
+   - Perf column: adjustment color (Red=CUT, Green=ADD, Grey=0) + raw points always Green
+   - Anchor: Only "Old" and "New" values (the number 0) in gold - not entire row
+   - Removed "What is Anchor?" info box
+   - Simplified legend: Red = CUT stroke | Green = ADD stroke | Gold = Anchor
    - All other steps unchanged from v1.14
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
@@ -377,7 +378,7 @@ STATUS: Ready for integration
             margin: 0 2px;
         }
         
-        /* Handicap table styles - v1.15: Matches actual hcp-adjust.js */
+        /* Handicap table styles - v1.15 matches actual app */
         .handicap-table-wrapper {
             overflow-x: auto;
             margin: 12px 0;
@@ -413,60 +414,18 @@ STATUS: Ready for integration
             font-weight: 700;
             font-size: 0.75rem;
         }
-        .handicap-anc-red { color: #ff6b6b; font-weight: 600; }
-        .handicap-anc-green { color: #4caf50; font-weight: 600; }
-        .handicap-perf-red { color: #ff6b6b; font-weight: 600; }
-        .handicap-perf-green { color: #4caf50; font-weight: 600; }
-        .handicap-raw-red { color: #ff6b6b; font-size: 0.6rem; }
-        .handicap-raw-green { color: #4caf50; font-size: 0.6rem; }
-        .handicap-raw-grey { color: #888; font-size: 0.6rem; }
-        .handicap-old-gold { color: #ffaa44; font-weight: 600; }
-        .handicap-old-white { color: #ffffff; font-weight: 600; }
-        .handicap-new-zero { color: #ffaa44; font-weight: 700; }
-        .handicap-new-green { color: #4caf50; font-weight: 700; }
-        
-        /* Celebration preview */
-        .celebration-preview {
-            background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
-            border-radius: 20px;
-            padding: 16px;
-            margin-top: 12px;
-            text-align: center;
-            border: 1px solid #ffaa44;
-        }
-        .celebration-preview .beer {
-            font-size: 1.5rem;
-            margin-bottom: 8px;
-        }
-        
-        /* Highlight rows for step 6 */
-        .highlight-row {
-            background: rgba(76,175,80,0.15);
-        }
-        
-        /* Bubble legend */
-        .bubble-legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            margin-top: 12px;
-            justify-content: center;
-        }
-        .bubble-legend-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 0.65rem;
-        }
-        .badge-new {
-            background: #ffaa44;
-            color: #000;
-            font-size: 0.6rem;
-            border-radius: 30px;
-            padding: 0px 8px;
-            margin-left: 6px;
-            font-weight: bold;
-        }
+        /* Adjustment colors */
+        .adj-red { color: #ff6b6b; font-weight: 600; }
+        .adj-green { color: #4caf50; font-weight: 600; }
+        .adj-grey { color: #888; font-weight: 600; }
+        /* Raw value colors */
+        .raw-green { color: #4caf50; font-size: 0.6rem; }
+        .raw-red { color: #ff6b6b; font-size: 0.6rem; }
+        .raw-grey { color: #888; font-size: 0.6rem; }
+        /* Old/New gold for Anchor */
+        .gold-zero { color: #ffaa44; font-weight: 600; }
+        .normal-white { color: #ffffff; font-weight: 600; }
+        .new-green { color: #4caf50; font-weight: 700; }
         
         /* Handicap action buttons */
         .handicap-buttons {
@@ -490,6 +449,30 @@ STATUS: Ready for integration
             background: #1a3a1a;
             border-color: #4caf50;
             color: #4caf50;
+        }
+        
+        /* Celebration preview */
+        .celebration-preview {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
+            border-radius: 20px;
+            padding: 16px;
+            margin-top: 12px;
+            text-align: center;
+            border: 1px solid #ffaa44;
+        }
+        .celebration-preview .beer {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+        
+        .badge-new {
+            background: #ffaa44;
+            color: #000;
+            font-size: 0.6rem;
+            border-radius: 30px;
+            padding: 0px 8px;
+            margin-left: 6px;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -1079,7 +1062,9 @@ function renderStep8() {
 // ============================================================
 // STEP 9: Handicap Adjustment - FIXED v1.15 matches actual app
 // Headers: Player | Old | Anc | Perf | New
-// No "+" signs, raw values in brackets, proper colors
+// No "+" signs, color indicates direction
+// Anchor: only the "0" value in Old and New columns is gold
+// Legend: Red = CUT stroke | Green = ADD stroke | Gold = Anchor
 // ============================================================
 
 function renderStep9() {
@@ -1103,60 +1088,60 @@ function renderStep9() {
                         <tr class="team-separator"><td colspan="5">🏆 TEAM A</td></tr>
                         <tr>
                             <td>ACH</td>
-                            <td class="handicap-old-gold">0</td>
-                            <td class="handicap-anc-green">0 [0]</td>
-                            <td class="handicap-perf-green">0 [3]</td>
-                            <td class="handicap-new-zero">0</td>
+                            <td class="gold-zero">0</td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [3]</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [3]</span></td>
+                            <td class="gold-zero">0</td>
                         </tr>
                         <tr>
                             <td>KF</td>
-                            <td class="handicap-old-white">2</td>
-                            <td class="handicap-anc-green">3 [6]</td>
-                            <td class="handicap-perf-green">0 [2]</td>
-                            <td class="handicap-new-green">5</td>
+                            <td class="normal-white">2</td>
+                            <td><span class="adj-green">3</span><span class="raw-green"> [6]</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [2]</span></td>
+                            <td class="new-green">5</td>
                         </tr>
                         <tr>
                             <td>CK</td>
-                            <td class="handicap-old-white">10</td>
-                            <td class="handicap-anc-green">0 [1]</td>
-                            <td class="handicap-perf-green">0 [1.5]</td>
-                            <td class="handicap-new-green">10</td>
+                            <td class="normal-white">10</td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [1]</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [1.5]</span></td>
+                            <td class="new-green">10</td>
                         </tr>
                         <tr>
                             <td>YHM</td>
-                            <td class="handicap-old-white">14</td>
-                            <td class="handicap-anc-green">0 [1]</td>
-                            <td class="handicap-perf-green">0 [2.5]</td>
-                            <td class="handicap-new-green">14</td>
+                            <td class="normal-white">14</td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [1]</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
+                            <td class="new-green">14</td>
                         </tr>
                         <tr class="team-separator"><td colspan="5">⚡ TEAM B</td></tr>
                         <tr>
                             <td>JG</td>
-                            <td class="handicap-old-white">0</td>
-                            <td class="handicap-anc-green">1 [3]</td>
-                            <td class="handicap-perf-green">0 [2.5]</td>
-                            <td class="handicap-new-green">1</td>
+                            <td class="normal-white">0</td>
+                            <td><span class="adj-green">1</span><span class="raw-green"> [3]</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
+                            <td class="new-green">1</td>
                         </tr>
                         <tr>
                             <td>OCB</td>
-                            <td class="handicap-old-white">0</td>
-                            <td class="handicap-anc-green">3 [6]</td>
-                            <td class="handicap-perf-red">1 [0]</td>
-                            <td class="handicap-new-green">4</td>
+                            <td class="normal-white">0</td>
+                            <td><span class="adj-green">3</span><span class="raw-green"> [6]</span></td>
+                            <td><span class="adj-green">1</span><span class="raw-green"> [0]</span></td>
+                            <td class="new-green">4</td>
                         </tr>
                         <tr>
                             <td>P</td>
-                            <td class="handicap-old-white">10</td>
-                            <td class="handicap-anc-red">2 [4]</td>
-                            <td class="handicap-perf-red">1 [4]</td>
-                            <td class="handicap-new-green">7</td>
+                            <td class="normal-white">10</td>
+                            <td><span class="adj-red">2</span><span class="raw-red"> [4]</span></td>
+                            <td><span class="adj-red">1</span><span class="raw-green"> [4]</span></td>
+                            <td class="new-green">7</td>
                         </tr>
                         <tr>
                             <td>JO</td>
-                            <td class="handicap-old-white">10</td>
-                            <td class="handicap-anc-green">1 [3]</td>
-                            <td class="handicap-perf-red">1 [0.5]</td>
-                            <td class="handicap-new-green">12</td>
+                            <td class="normal-white">10</td>
+                            <td><span class="adj-green">1</span><span class="raw-green"> [3]</span></td>
+                            <td><span class="adj-green">1</span><span class="raw-green"> [0.5]</span></td>
+                            <td class="new-green">12</td>
                         </tr>
                     </tbody>
                 </table>
@@ -1169,14 +1154,10 @@ function renderStep9() {
                 <button class="handicap-btn" style="background:#1a1a1a; border-color:#333; color:#888;">🚪 Exit</button>
             </div>
             
-            <div style="margin-top:16px; padding:12px; background:#0a2a0a; border-radius:12px;">
-                <div style="font-size:0.7rem; color:#ffaa44; margin-bottom:4px;">🏆 What is Anchor?</div>
-                <div style="font-size:0.65rem; color:#ccc;">The player with the lowest starting handicap. All other players' adjustments are calculated relative to the Anchor.</div>
-            </div>
-            <div style="margin-top:8px; font-size:0.6rem; color:#aaa; text-align:center;">
-                <span style="color:#ff6b6b;">Red</span> = CUT (performed well) &nbsp;|&nbsp;
-                <span style="color:#4caf50;">Green</span> = ADD (performed poorly) &nbsp;|&nbsp;
-                <span style="color:#ffaa44;">Gold</span> = Anchor or New HCP 0
+            <div style="margin-top:12px; font-size:0.65rem; color:#aaa; text-align:center;">
+                <span style="color:#ff6b6b;">Red = CUT stroke</span>&nbsp;&nbsp;|&nbsp;&nbsp;
+                <span style="color:#4caf50;">Green = ADD stroke</span>&nbsp;&nbsp;|&nbsp;&nbsp;
+                <span style="color:#ffaa44;">Gold = Anchor</span>
             </div>
         </div>
     `;
@@ -1192,10 +1173,10 @@ function renderStep9() {
     
     document.getElementById('instructionText').innerHTML = '<strong>🏌️ HANDICAP ADJUSTMENT TABLE</strong><br><br>' +
         '• <strong>Old</strong> - Starting handicap before this match.<br>' +
-        '• <strong>Anc</strong> - Anchor adjustment: 1 stroke per 2 holes won/lost against anchor player. <span style="color:#4caf50;">Green</span> = ADD (poor vs anchor), <span style="color:#ff6b6b;">Red</span> = CUT (good vs anchor). Raw result in brackets.<br>' +
-        '• <strong>Perf</strong> - Performance adjustment based on 4 matches (max 4 points). Points ≥ 3.5 → CUT 1 (<span style="color:#ff6b6b;">Red</span>), Points ≤ 0.5 → ADD 1 (<span style="color:#4caf50;">Green</span>). Raw points in brackets.<br>' +
-        '• <strong>New</strong> = Old + Anc + Perf (with zero-rise applied). <span style="color:#ffaa44;">Gold</span> if New = 0.<br><br>' +
-        '<strong>Anchor player\'s "Old" handicap is shown in gold.</strong>';
+        '• <strong>Anc</strong> - Anchor adjustment: 1 stroke per 2 holes won/lost against anchor. <span style="color:#4caf50;">Green</span> = ADD (loss vs anchor), <span style="color:#ff6b6b;">Red</span> = CUT (won vs anchor). Raw result in brackets: <span class="raw-green">[green]</span> = won, <span class="raw-red">[red]</span> = lost.<br>' +
+        '• <strong>Perf</strong> - Performance adjustment based on 4 matches (max 4 points). Points ≥ 3.5 → <span style="color:#ff6b6b;">CUT 1</span>, Points ≤ 0.5 → <span style="color:#4caf50;">ADD 1</span>. Raw points in brackets always <span class="raw-green">green</span>.<br>' +
+        '• <strong>New</strong> = Old + Anc + Perf (with zero-rise applied).<br><br>' +
+        'The Anchor is the player with the lowest starting handicap. All other players\' adjustments are calculated relative to the Anchor.';
     document.getElementById('instructionTip').innerHTML = '💡 Tip: After handicap adjustment, new handicaps are automatically saved to player profiles. View results anytime in VIEW PREVIOUS GAMES.<br><br>📌 The Anchor may change if the lowest handicap player changes after adjustments. Use "Change Anchor" button if multiple players have handicap 0.';
 }
 
@@ -1289,12 +1270,13 @@ FILE: tutorial.html
 VERSION: 1.15
 KEY CHANGES from v1.14:
    - FIXED: Step 9 handicap table now matches actual hcp-adjust.js layout
-   - Columns changed from "St | [Raw] | Anc | Perf | Final" to "Old | Anc | Perf | New"
-   - Removed "+" signs from adjustments (now "3 [6]" instead of "+3 [6]")
-   - Added proper button row: Scorecard, Change Anchor, Menu, Exit
-   - Updated color coding to match live app (Red = CUT, Green = ADD)
-   - Anchor player's "Old" handicap now gold (#ffaa44)
-   - Final handicap gold when zero, green otherwise
+   - Columns: Player | Old | Anc | Perf | New
+   - Removed "+" signs from adjustments (color indicates direction)
+   - Anc column: adjustment color (Red=CUT, Green=ADD, Grey=0) + raw value color (Green=won, Red=lost)
+   - Perf column: adjustment color (Red=CUT, Green=ADD, Grey=0) + raw points always Green
+   - Anchor: Only "Old" and "New" values (the number 0) in gold - not entire row
+   - Removed "What is Anchor?" info box
+   - Simplified legend: Red = CUT stroke | Green = ADD stroke | Gold = Anchor
    - All other steps unchanged from v1.14
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
