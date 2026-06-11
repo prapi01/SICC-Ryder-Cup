@@ -1,15 +1,14 @@
-/*
+<!--
 FILE: tutorial.html
 VERSION: 1.14
 KEY CHANGES:
    - ADDED: New [Raw] handicap column in Step 9
    - ADDED: Raw score transparency in handicap adjustment table
    - FIXED: All 9 steps retain full functionality
-   - FIXED: Header and footer comment blocks added per development rules
    - UI: Updated handicap table min-width to 480px for Raw column
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
-*/
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -450,9 +449,6 @@ STATUS: Ready for integration
             margin-left: 6px;
             font-weight: bold;
         }
-        
-        /* Cache busting version exposure */
-        window.GAME_SCORECARD_VERSION = '1.14';
     </style>
 </head>
 <body>
@@ -481,10 +477,6 @@ STATUS: Ready for integration
 window.GAME_SCORECARD_VERSION = '1.14';
 console.log('Tutorial loaded - version: 1.14');
 
-// ============================================================
-// Tutorial Data - 9 Steps (Step 9 updated with [Raw] column)
-// ============================================================
-
 var currentStep = 1;
 var totalSteps = 9;
 
@@ -507,7 +499,6 @@ function addHighlight(elementId) {
     }, 100);
 }
 
-// STEP 1: Main Menu
 function renderStep1() {
     var html = `
         <div class="demo-header"></div>
@@ -534,7 +525,6 @@ function renderStep1() {
     document.getElementById('instructionTip').innerHTML = '💡 Tip: The NEXT GAME button changes to TODAY GAME on match day.';
 }
 
-// STEP 2: Role Selection
 function renderStep2() {
     var html = `
         <div class="demo-header"></div>
@@ -588,7 +578,6 @@ function renderStep2() {
     document.getElementById('instructionTip').innerHTML = '💡 Tip: Only one device per flight can score.';
 }
 
-// Helper for steps 3-8
 function renderSimpleStep(title, description, tip) {
     document.getElementById('demoScreen').innerHTML = `<div class="demo-header"></div><div style="padding:40px; text-align:center;"><div style="font-size:1.5rem;">🏌️‍♂️</div><div style="margin-top:16px;color:#4caf50; font-weight:bold;">${title}</div><div style="margin-top:12px; font-size:0.8rem; color:#aaa;">${description}</div></div>`;
     document.getElementById('instructionText').innerHTML = description;
@@ -602,7 +591,6 @@ function renderStep6() { renderSimpleStep("Step 6: Team + Stroke Game", "T-1 (Fl
 function renderStep7() { renderSimpleStep("Step 7: Sign Scorecard", "After saving hole 18, the ▶ button turns into gold ✍️. Tap to sign. Card locked after signing.", "💡 Both flights must sign to complete the match."); }
 function renderStep8() { renderSimpleStep("Step 8: Waiting for Other Flight", "After you sign, wait for the other flight to complete and sign. Match finalizes when both cards are signed.", "💡 Use VIEW ONLY mode on another device to track progress."); }
 
-// STEP 9: UPDATED Handicap Adjustment with [Raw] column
 function renderStep9() {
     var html = `
         <div class="demo-header"></div>
@@ -683,16 +671,14 @@ renderStep();
 
 </body>
 </html>
-/*
+<!--
 FILE: tutorial.html
 VERSION: 1.14
 KEY CHANGES:
    - ADDED: New [Raw] handicap column in Step 9
    - ADDED: Raw score transparency in handicap adjustment table
-   - ADDED: Proper header and footer comment blocks per development rules
-   - ADDED: Cache-busting version exposure via window.GAME_SCORECARD_VERSION
    - FIXED: All 9 steps retain full functionality
    - UI: Updated handicap table min-width to 480px for Raw column
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
-*/
+-->
