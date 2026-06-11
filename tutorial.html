@@ -1,10 +1,12 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - REMOVED: Duplicate bubble legend graphic from Step 5 (was repeated below player cards)
-   - Player cards already show bubbles in action, instruction panel explains colors
-   - No other changes - all other steps identical to v1.15
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED: Step 9 handicap table now matches exact runtime data from console
+   - Updated player order: TEAM A (ACH, KF, CK, YHM), TEAM B (OCB, JG, JO, P)
+   - Updated values to match actual app: KF Anc "3 [6]", OCB Perf "1 [0]", etc.
+   - Removed duplicate bubble legend from Step 5 (preserved from v1.16)
+   - All other steps unchanged
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
@@ -372,7 +374,7 @@ STATUS: Ready for integration
             margin: 0 2px;
         }
         
-        /* Handicap table styles - v1.15 matches actual app */
+        /* Handicap table styles - matches actual app */
         .handicap-table-wrapper {
             overflow-x: auto;
             margin: 12px 0;
@@ -495,7 +497,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.16</div>
+<div class="version-tag">v1.17</div>
 
 <script>
 // ============================================================
@@ -805,7 +807,7 @@ function renderStep4() {
 }
 
 // ============================================================
-// STEP 5: MATCH GAME - Player cards with bubbles (REMOVED duplicate legend)
+// STEP 5: MATCH GAME - Player cards with bubbles (no duplicate legend)
 // ============================================================
 
 function renderStep5() {
@@ -895,7 +897,7 @@ function renderStep6() {
             <div class="scorecard-wrapper">
                 <table class="scorecard-table">
                     <thead>
-                        <tr><th>Hole</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>Tot</th></tr>
+                        <tr><th>Hole</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>Tot</th></table>
                     </thead>
                     <tbody>
                         <tr style="background:#111;"><td style="font-weight:700;">Par</td><td>4</td><td>3</td><td>4</td><td>5</td><td>3</td><td>4</td><td>4</td><td>4</td><td>4</td><td>4</td><td>4</td><td>3</td><td>5</td><td>3</td><td>5</td><td>4</td><td>3</td><td>5</td><td>-</td></tr>
@@ -1046,7 +1048,7 @@ function renderStep8() {
 }
 
 // ============================================================
-// STEP 9: Handicap Adjustment - Matches actual app
+// STEP 9: Handicap Adjustment - EXACT match from console output
 // ============================================================
 
 function renderStep9() {
@@ -1071,59 +1073,59 @@ function renderStep9() {
                         <tr>
                             <td>ACH</td>
                             <td class="gold-zero">0</td>
-                            <td><span class="adj-grey">0</span><span class="raw-green"> [3]</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-grey"> [0]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [3]</span></td>
                             <td class="gold-zero">0</td>
                         </tr>
                         <tr>
                             <td>KF</td>
                             <td class="normal-white">2</td>
-                            <td><span class="adj-green">3</span><span class="raw-green"> [6]</span></td>
+                            <td><span class="adj-green">3</span><span class="raw-red"> [6]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [2]</span></td>
                             <td class="new-green">5</td>
                         </tr>
                         <tr>
                             <td>CK</td>
                             <td class="normal-white">10</td>
-                            <td><span class="adj-grey">0</span><span class="raw-green"> [1]</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-red"> [1]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [1.5]</span></td>
                             <td class="new-green">10</td>
                         </tr>
                         <tr>
                             <td>YHM</td>
                             <td class="normal-white">14</td>
-                            <td><span class="adj-grey">0</span><span class="raw-green"> [1]</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-red"> [1]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
                             <td class="new-green">14</td>
                         </tr>
                         <tr class="team-separator"><td colspan="5">⚡ TEAM B</td></tr>
                         <tr>
-                            <td>JG</td>
-                            <td class="normal-white">0</td>
-                            <td><span class="adj-green">1</span><span class="raw-green"> [3]</span></td>
-                            <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
-                            <td class="new-green">1</td>
-                        </tr>
-                        <tr>
                             <td>OCB</td>
                             <td class="normal-white">0</td>
-                            <td><span class="adj-green">3</span><span class="raw-green"> [6]</span></td>
+                            <td><span class="adj-green">3</span><span class="raw-red"> [6]</span></td>
                             <td><span class="adj-green">1</span><span class="raw-green"> [0]</span></td>
                             <td class="new-green">4</td>
                         </tr>
                         <tr>
-                            <td>P</td>
-                            <td class="normal-white">10</td>
-                            <td><span class="adj-red">2</span><span class="raw-red"> [4]</span></td>
-                            <td><span class="adj-red">1</span><span class="raw-green"> [4]</span></td>
-                            <td class="new-green">7</td>
+                            <td>JG</td>
+                            <td class="normal-white">0</td>
+                            <td><span class="adj-green">1</span><span class="raw-red"> [3]</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
+                            <td class="new-green">1</td>
                         </tr>
                         <tr>
                             <td>JO</td>
                             <td class="normal-white">10</td>
-                            <td><span class="adj-green">1</span><span class="raw-green"> [3]</span></td>
+                            <td><span class="adj-green">1</span><span class="raw-red"> [3]</span></td>
                             <td><span class="adj-green">1</span><span class="raw-green"> [0.5]</span></td>
                             <td class="new-green">12</td>
+                        </tr>
+                        <tr>
+                            <td>P</td>
+                            <td class="normal-white">10</td>
+                            <td><span class="adj-red">2</span><span class="raw-green"> [4]</span></td>
+                            <td><span class="adj-red">1</span><span class="raw-green"> [4]</span></td>
+                            <td class="new-green">7</td>
                         </tr>
                     </tbody>
                 </table>
@@ -1249,11 +1251,13 @@ renderStep();
 </html>
 <!--
 FILE: tutorial.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - REMOVED: Duplicate bubble legend graphic from Step 5 (was repeated below player cards)
-   - Player cards already show bubbles in action, instruction panel explains colors
-   - No other changes - all other steps identical to v1.15
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED: Step 9 handicap table now matches exact runtime data from console
+   - Updated player order: TEAM A (ACH, KF, CK, YHM), TEAM B (OCB, JG, JO, P)
+   - Updated values to match actual app: KF Anc "3 [6]", OCB Perf "1 [0]", etc.
+   - Removed duplicate bubble legend from Step 5 (preserved from v1.16)
+   - All other steps unchanged
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
