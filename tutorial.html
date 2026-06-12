@@ -1,11 +1,10 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - FIXED: Step 6 scorecard table now displays correctly with proper rows
-   - Fixed table structure: Par, SI, green line, Flight 1 players, green line, T-1, green line, Flight 2 players, green line, T-2, green line, Strk
-   - Fixed data values to make sense for demo (not showing "A1", "A2" etc.)
-   - All other steps unchanged from v1.17 (Step 5, Step 9, etc. preserved)
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: Step 1 - Centered the three menu buttons (VIEW PREVIOUS GAMES, DEMO & TUTORIAL, GAME SETTINGS) below the NGB button
+   - Added text-align: center to the container div
+   - All other steps unchanged from v1.19
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
@@ -469,6 +468,217 @@ STATUS: Ready for integration
             margin-left: 6px;
             font-weight: bold;
         }
+        
+        /* Step 1 - Square NGB Button */
+        .ngb-demo {
+            background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
+            border: 2px solid #4caf50;
+            border-radius: 32px;
+            margin: 0 auto 24px auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+            width: 280px;
+            height: 280px;
+        }
+        .ngb-demo .icon { font-size: 3rem; margin-bottom: 16px; display: block; }
+        .ngb-demo .title { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; color: #4caf50; }
+        .ngb-demo .subtitle-text { font-size: 1rem; font-weight: 500; color: #ccc; margin-bottom: 8px; }
+        .ngb-demo .date { font-size: 0.9rem; font-weight: 400; color: #aaa; margin-bottom: 8px; }
+        .ngb-demo .course-name { font-size: 0.85rem; font-weight: 400; color: #888; margin-top: 4px; }
+        
+        .menu-btn-demo {
+            background: linear-gradient(145deg, #1a1a1a, #111);
+            border: 1px solid #4caf50;
+            border-radius: 60px;
+            padding: 14px 20px;
+            width: 280px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 12px;
+        }
+        .menu-btn-demo .label {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #4caf50;
+        }
+        
+        .gsb-demo {
+            background: rgba(17,17,17,0.9);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 60px;
+            padding: 12px 24px;
+            width: 280px;
+            text-align: center;
+            backdrop-filter: blur(4px);
+        }
+        .gsb-demo .label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #ccc;
+        }
+        
+        /* Step 2 - Flight box styles */
+        .flight-box-demo {
+            background: rgba(10,10,10,0.8);
+            border: 1px solid rgba(76,175,80,0.2);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+        .flight-header-demo {
+            background: linear-gradient(90deg, #1a3a1a 0%, #0d2a0d 100%);
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(76,175,80,0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .flight-header-demo h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        .flight-lock-info {
+            font-size: 10px;
+            color: #ffaa44;
+        }
+        .teams-grid-demo {
+            display: flex;
+            padding: 8px;
+            gap: 8px;
+        }
+        .team-demo {
+            flex: 1;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 6px;
+        }
+        .team-title-demo {
+            font-size: 12px;
+            font-weight: 700;
+            text-align: center;
+            padding-bottom: 4px;
+            margin-bottom: 4px;
+            border-bottom: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        .player-row-demo {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 2px 0;
+            font-size: 11px;
+        }
+        .player-name-demo {
+            font-weight: 500;
+            color: #fff;
+        }
+        .player-hcp-demo {
+            font-weight: 600;
+            background: rgba(76,175,80,0.2);
+            padding: 1px 6px;
+            border-radius: 12px;
+            color: #4caf50;
+        }
+        .role-section-demo {
+            margin: 16px 0;
+            padding: 12px;
+            background: #111;
+            border-radius: 20px;
+        }
+        .role-buttons-demo {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .role-btn-demo {
+            flex: 1;
+            padding: 10px 6px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-align: center;
+            cursor: pointer;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            background: #1a3a1a;
+        }
+        .role-status-demo {
+            text-align: center;
+            font-size: 0.7rem;
+            margin-top: 10px;
+            padding: 6px;
+            border-radius: 20px;
+            background: #2a2a1a;
+            color: #ffaa44;
+        }
+        .action-buttons-demo {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .btn-back-demo {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-align: center;
+            background: rgba(26,26,26,0.9);
+            border: 1px solid #333;
+            color: #ccc;
+        }
+        .btn-teeoff-demo {
+            flex: 1;
+            padding: 12px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            text-align: center;
+            background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        
+        /* Step 8 - Waiting screen styles */
+        .waiting-modal-demo {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px;
+            max-width: 340px;
+            width: 90%;
+            margin: 0 auto;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        .waiting-title-demo {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 20px;
+        }
+        .waiting-message-demo {
+            font-size: 0.95rem;
+            color: #ffaa44;
+            margin-bottom: 8px;
+        }
+        .waiting-submessage-demo {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        .waiting-spinner-demo {
+            width: 32px;
+            height: 32px;
+            border: 2px solid #333;
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            margin: 24px auto 0;
+            animation: spin 1s linear infinite;
+        }
     </style>
 </head>
 <body>
@@ -496,7 +706,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.18</div>
+<div class="version-tag">v1.20</div>
 
 <script>
 // ============================================================
@@ -528,30 +738,32 @@ function addHighlight(elementId) {
 }
 
 // ============================================================
-// STEP 1: Main Menu
+// STEP 1: Main Menu - FIXED v1.20 (centered buttons)
 // ============================================================
 
 function renderStep1() {
     var html = `
         <div class="demo-header"></div>
         <div style="padding: 20px; text-align: center;">
-            <div style="background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%); border: 2px solid #555; border-radius: 32px; padding: 24px; margin-bottom: 20px; opacity: 0.7;">
-                <div style="font-size: 3rem; margin-bottom: 12px;">🏆</div>
-                <div style="font-size: 1.3rem; font-weight: 800; color: #888;">NEXT GAME</div>
-                <div style="font-size: 0.85rem; color: #666; margin-top: 8px;">June 15, 2026</div>
-                <div style="font-size: 0.75rem; color: #555;">SICC Bukit Course</div>
+            <div class="ngb-demo">
+                <div class="icon">🏆</div>
+                <div class="title">NEXT GAME</div>
+                <div class="subtitle-text">20 Jun 2026</div>
+                <div class="course-name">SICC Millennium-Peirce Course</div>
             </div>
             
-            <div style="background: linear-gradient(145deg, #1a1a1a, #111); border: 1px solid #4caf50; border-radius: 60px; padding: 14px; margin-bottom: 12px;">
-                <span style="color: #4caf50; font-weight: 600;">📋 VIEW PREVIOUS GAMES</span>
-            </div>
-            
-            <div id="demoBtnHighlight" style="background: linear-gradient(145deg, #1a3a1a, #0d2a0d); border: 2px solid #4caf50; border-radius: 60px; padding: 14px; margin-bottom: 12px; cursor: pointer;">
-                <span style="color: #4caf50; font-weight: 600;">🎮 DEMO & TUTORIAL</span>
-            </div>
-            
-            <div style="background: rgba(17,17,17,0.9); border: 1px solid rgba(255,255,255,0.15); border-radius: 60px; padding: 12px; margin-top: 8px;">
-                <span style="color: #888;">⚙️ GAME SETTINGS</span>
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div class="menu-btn-demo">
+                    <span class="label">📋 VIEW PREVIOUS GAMES</span>
+                </div>
+                
+                <div class="menu-btn-demo" id="demoBtnHighlight" style="border-color: #ffaa44;">
+                    <span class="label" style="color: #ffaa44;">🎮 DEMO & TUTORIAL</span>
+                </div>
+                
+                <div class="gsb-demo">
+                    <span class="label">⚙️ GAME SETTINGS</span>
+                </div>
             </div>
         </div>
     `;
@@ -562,7 +774,7 @@ function renderStep1() {
 }
 
 // ============================================================
-// STEP 2: Role Selection
+// STEP 2: Role Selection - FIXED v1.19 (matches actual app)
 // ============================================================
 
 function renderStep2() {
@@ -574,47 +786,81 @@ function renderStep2() {
                 <div style="font-size:0.65rem; color:#888;">Starting Hole: 1 | Tournament Format</div>
             </div>
             
-            <div style="background:#0a0a0a; border-radius:16px; margin-bottom:16px; overflow:hidden;">
-                <div style="background:#1a3a1a; padding:10px 16px; display:flex; justify-content:space-between;">
-                    <span style="font-weight:700; color:#4caf50;">FLIGHT 1</span>
-                    <span style="font-size:0.65rem; color:#4caf50;">🔓 Available</span>
+            <div class="flight-box-demo">
+                <div class="flight-header-demo">
+                    <h3>FLIGHT 1</h3>
+                    <div class="flight-lock-info">🔓 Available</div>
                 </div>
-                <div style="display:flex; padding:12px; gap:12px;">
-                    <div style="flex:1;"><div style="color:#4caf50; font-weight:700;">TEAM A</div>
-                        <div>Ang C H (2)</div><div>Chenh Hoe (10)</div>
+                <div class="teams-grid-demo">
+                    <div class="team-demo">
+                        <div class="team-title-demo">TEAM A</div>
+                        <div class="player-row-demo">
+                            <span class="player-name-demo">Ang C H</span>
+                            <span class="player-hcp-demo">2</span>
+                        </div>
+                        <div class="player-row-demo">
+                            <span class="player-name-demo">Chenh Hoe</span>
+                            <span class="player-hcp-demo">10</span>
+                        </div>
                     </div>
-                    <div style="flex:1;"><div style="color:#4caf50; font-weight:700;">TEAM B</div>
-                        <div>Jeff Goh (0)</div><div>Ong C B (1)</div>
+                    <div class="team-demo">
+                        <div class="team-title-demo">TEAM B</div>
+                        <div class="player-row-demo">
+                            <span class="player-name-demo">Jeff Goh</span>
+                            <span class="player-hcp-demo">0</span>
+                        </div>
+                        <div class="player-row-demo">
+                            <span class="player-name-demo">Ong C B</span>
+                            <span class="player-hcp-demo">1</span>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <div style="background:#0a0a0a; border-radius:16px; margin-bottom:16px; overflow:hidden;">
-                <div style="background:#1a3a1a; padding:10px 16px; display:flex; justify-content:space-between;">
-                    <span style="font-weight:700; color:#4caf50;">FLIGHT 2</span>
-                    <span style="font-size:0.65rem; color:#4caf50;">🔓 Available</span>
+            <div class="flight-box-demo">
+                <div class="flight-header-demo">
+                    <h3>FLIGHT 2</h3>
+                    <div class="flight-lock-info">🔓 Available</div>
                 </div>
-                <div style="display:flex; padding:12px; gap:12px;">
-                    <div style="flex:1;"><div style="color:#4caf50; font-weight:700;">TEAM A</div>
-                        <div>C K (8)</div><div>Yip H M (12)</div>
+                <div class="teams-grid-demo">
+                    <div class="team-demo">
+                        <div class="team-title-demo">TEAM A</div>
+                        <div class="player-row-demo">
+                            <span class="player-name-demo">C K</span>
+                            <span class="player-hcp-demo">8</span>
+                        </div>
+                        <div class="player-row-demo">
+                            <span class="player-name-demo">Yip H M</span>
+                            <span class="player-hcp-demo">12</span>
+                        </div>
                     </div>
-                    <div style="flex:1;"><div style="color:#4caf50; font-weight:700;">TEAM B</div>
-                        <div>Piti (8)</div><div>James Ong (10)</div>
+                    <div class="team-demo">
+                        <div class="team-title-demo">TEAM B</div>
+                        <div class="player-row-demo">
+                            <span class="player-name-demo">Piti</span>
+                            <span class="player-hcp-demo">8</span>
+                        </div>
+                        <div class="player-row-demo">
+                            <span class="player-name-demo">James Ong</span>
+                            <span class="player-hcp-demo">10</span>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <div style="background:#111; border-radius:20px; padding:16px;">
-                <div style="text-align:center; color:#ffaa44; margin-bottom:12px;">🎮 SELECT YOUR ROLE</div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button id="role1Btn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; border-radius:40px; padding:12px; font-weight:700;">SCORER FLIGHT 1</button>
-                    <button id="role2Btn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; border-radius:40px; padding:12px; font-weight:700;">SCORER FLIGHT 2</button>
-                    <button id="viewBtn" style="flex:1; background:#1a1a1a; border:1px solid #ffaa44; color:#ffaa44; border-radius:40px; padding:12px; font-weight:700;">VIEW ONLY</button>
+            <div class="role-section-demo">
+                <div style="text-align:center; color:#ffaa44; font-size:0.85rem; margin-bottom:8px;">🎮 SELECT YOUR ROLE</div>
+                <div class="role-buttons-demo">
+                    <div class="role-btn-demo" id="role1Btn">SCORE F1</div>
+                    <div class="role-btn-demo" id="role2Btn">SCORE F2</div>
+                    <div class="role-btn-demo" id="viewBtn" style="border-color:#ffaa44; color:#ffaa44;">VIEW ONLY</div>
                 </div>
-                <div style="display:flex; gap:12px; margin-top:16px;">
-                    <button style="flex:1; background:#1a1a1a; border:1px solid #333; color:#ccc; border-radius:40px; padding:12px;">← BACK</button>
-                    <button id="teeOffBtn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; border-radius:40px; padding:12px;">⛳ TEE OFF →</button>
-                </div>
+                <div class="role-status-demo">⚠️ Select a role above, then click TEE OFF</div>
+            </div>
+            
+            <div class="action-buttons-demo">
+                <div class="btn-back-demo">← BACK</div>
+                <div class="btn-teeoff-demo" id="teeOffBtn">⛳ TEE OFF →</div>
             </div>
         </div>
     `;
@@ -916,8 +1162,16 @@ function renderStep6() {
                         <!-- Green line -->
                         <tr class="green-line"><td colspan="20"></tr>
                         <!-- Flight 1 Team A players -->
-                        <tr><td style="font-weight:600;">ACH</td><td>4</td><td>3</td><td>5</td><td>6</td><td>3</td><td>5</td><td>4</td><td>5</td><td>4</td><td>4</td><td>5</td><td>4</td><td>3</td><td>4</td><td>5</td><td>6</td><td>3</td><td>5</td><td>77</td></tr>
-                        <tr><td style="font-weight:600;">CK</td><td>5</td><td>4</td><td>4</td><td>6</td><td>4</td><td>5</td><td>5</td><td>4</td><td>4</td><td>4</td><td>5</td><td>5</td><td>4</td><td>5</td><td>5</td><td>6</td><td>4</td><td>6</td><td>85</td></tr>
+                        <tr><td style="font-weight:600;">ACH</td>
+                            <td>4</td><td>3</td><td>5</td><td>6</td><td>3</td><td>5</td><td>4</td><td>5</td><td>4</td>
+                            <td>4</td><td>5</td><td>4</td><td>3</td><td>4</td><td>5</td><td>6</td><td>3</td><td>5</td>
+                            <td>77</td>
+                        </tr>
+                        <tr><td style="font-weight:600;">CK</td>
+                            <td>5</td><td>4</td><td>4</td><td>6</td><td>4</td><td>5</td><td>5</td><td>4</td><td>4</td>
+                            <td>4</td><td>5</td><td>5</td><td>4</td><td>5</td><td>5</td><td>6</td><td>4</td><td>6</td>
+                            <td>85</td>
+                        </tr>
                         <!-- Green line -->
                         <tr class="green-line"><td colspan="20"></tr>
                         <!-- T-1 row (Flight 1 team game) -->
@@ -946,8 +1200,16 @@ function renderStep6() {
                         <!-- Green line -->
                         <tr class="green-line"><td colspan="20"></tr>
                         <!-- Flight 2 Team B players -->
-                        <tr><td style="font-weight:600;">JG</td><td>4</td><td>3</td><td>4</td><td>5</td><td>3</td><td>4</td><td>4</td><td>4</td><td>3</td><td>4</td><td>5</td><td>4</td><td>3</td><td>4</td><td>4</td><td>5</td><td>3</td><td>5</td><td>71</td></tr>
-                        <tr><td style="font-weight:600;">OCB</td><td>4</td><td>3</td><td>5</td><td>6</td><td>3</td><td>5</td><td>5</td><td>5</td><td>3</td><td>4</td><td>5</td><td>5</td><td>3</td><td>4</td><td>5</td><td>5</td><td>4</td><td>5</td><td>79</td></tr>
+                        <tr><td style="font-weight:600;">JG</td>
+                            <td>4</td><td>3</td><td>4</td><td>5</td><td>3</td><td>4</td><td>4</td><td>4</td><td>3</td>
+                            <td>4</td><td>5</td><td>4</td><td>3</td><td>4</td><td>4</td><td>5</td><td>3</td><td>5</td>
+                            <td>71</td>
+                        </tr>
+                        <tr><td style="font-weight:600;">OCB</td>
+                            <td>4</td><td>3</td><td>5</td><td>6</td><td>3</td><td>5</td><td>5</td><td>5</td><td>3</td>
+                            <td>4</td><td>5</td><td>5</td><td>3</td><td>4</td><td>5</td><td>5</td><td>4</td><td>5</td>
+                            <td>79</td>
+                        </tr>
                         <!-- Green line -->
                         <tr class="green-line"><td colspan="20"></tr>
                         <!-- T-2 row (Flight 2 team game) -->
@@ -972,7 +1234,7 @@ function renderStep6() {
                             <td class="score-grey">A7</td>
                             <td class="score-grey">A7</td>
                             <td>-</td>
-                        </tr>
+                         </tr>
                         <!-- Green line -->
                         <tr class="green-line"><td colspan="20"></tr>
                         <!-- Strk row (Stroke game) -->
@@ -997,7 +1259,7 @@ function renderStep6() {
                             <td class="score-grey">A18</td>
                             <td class="score-grey">A18</td>
                             <td>-</td>
-                        </tr>
+                         </tr>
                     </tbody>
                 </table>
             </div>
@@ -1100,21 +1362,23 @@ function showSignModal() {
 }
 
 // ============================================================
-// STEP 8: Waiting for Other Flight
+// STEP 8: Waiting for Other Flight - FIXED v1.19
 // ============================================================
 
 function renderStep8() {
     var html = `
         <div class="demo-header"></div>
         <div style="text-align:center; padding:40px 20px;">
-            <div style="font-size:1.5rem; margin-bottom:16px;">⌛ CARD SIGNED</div>
-            <div style="color:#ffaa44; margin-bottom:8px;">Waiting for Flight 2...</div>
-            <div style="color:#888; font-size:0.75rem;">The match will complete when both cards are signed.</div>
-            <div class="spin"></div>
-        </div>
-        <div class="celebration-preview">
-            <div class="beer">🍺 🏆 🍺</div>
-            <div style="font-size:0.75rem; color:#4caf50;">When both flights sign → Final results confirmed!</div>
+            <div class="waiting-modal-demo">
+                <div class="waiting-title-demo">⌛ CARD SIGNED</div>
+                <div class="waiting-message-demo">Waiting for Flight 2...</div>
+                <div class="waiting-submessage-demo">The match will complete when both cards are signed.</div>
+                <div class="waiting-spinner-demo"></div>
+            </div>
+            <div class="celebration-preview" style="margin-top:20px;">
+                <div class="beer">🍺 🏆 🍺</div>
+                <div style="font-size:0.75rem; color:#4caf50;">When both flights sign → Final results confirmed!</div>
+            </div>
         </div>
     `;
     
@@ -1125,7 +1389,7 @@ function renderStep8() {
 }
 
 // ============================================================
-// STEP 9: Handicap Adjustment - EXACT match from console output (unchanged)
+// STEP 9: Handicap Adjustment - EXACT match from console output
 // ============================================================
 
 function renderStep9() {
@@ -1153,28 +1417,28 @@ function renderStep9() {
                             <td><span class="adj-grey">0</span><span class="raw-grey"> [0]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [3]</span></td>
                             <td class="gold-zero">0</td>
-                        </tr>
+                         </tr>
                         <tr>
                             <td>KF</td>
                             <td class="normal-white">2</td>
                             <td><span class="adj-green">3</span><span class="raw-red"> [6]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [2]</span></td>
                             <td class="new-green">5</td>
-                        </tr>
+                         </tr>
                         <tr>
                             <td>CK</td>
                             <td class="normal-white">10</td>
                             <td><span class="adj-grey">0</span><span class="raw-red"> [1]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [1.5]</span></td>
                             <td class="new-green">10</td>
-                        </tr>
+                         </tr>
                         <tr>
                             <td>YHM</td>
                             <td class="normal-white">14</td>
                             <td><span class="adj-grey">0</span><span class="raw-red"> [1]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
                             <td class="new-green">14</td>
-                        </tr>
+                         </tr>
                         <tr class="team-separator"><td colspan="5">⚡ TEAM B</td></tr>
                         <tr>
                             <td>OCB</td>
@@ -1182,30 +1446,30 @@ function renderStep9() {
                             <td><span class="adj-green">3</span><span class="raw-red"> [6]</span></td>
                             <td><span class="adj-green">1</span><span class="raw-green"> [0]</span></td>
                             <td class="new-green">4</td>
-                        </tr>
+                         </tr>
                         <tr>
                             <td>JG</td>
                             <td class="normal-white">0</td>
                             <td><span class="adj-green">1</span><span class="raw-red"> [3]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
                             <td class="new-green">1</td>
-                        </tr>
+                         </tr>
                         <tr>
                             <td>JO</td>
                             <td class="normal-white">10</td>
                             <td><span class="adj-green">1</span><span class="raw-red"> [3]</span></td>
                             <td><span class="adj-green">1</span><span class="raw-green"> [0.5]</span></td>
                             <td class="new-green">12</td>
-                        </tr>
+                         </tr>
                         <tr>
                             <td>P</td>
                             <td class="normal-white">10</td>
                             <td><span class="adj-red">2</span><span class="raw-green"> [4]</span></td>
                             <td><span class="adj-red">1</span><span class="raw-green"> [4]</span></td>
                             <td class="new-green">7</td>
-                        </tr>
+                         </tr>
                     </tbody>
-                </table>
+                 </table>
             </div>
             
             <div class="handicap-buttons">
@@ -1328,12 +1592,11 @@ renderStep();
 </html>
 <!--
 FILE: tutorial.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - FIXED: Step 6 scorecard table now displays correctly with proper rows
-   - Fixed table structure: Par, SI, green line, Flight 1 players, green line, T-1, green line, Flight 2 players, green line, T-2, green line, Strk
-   - Fixed data values to make sense for demo (not showing "A1", "A2" etc.)
-   - All other steps unchanged from v1.17 (Step 5, Step 9, etc. preserved)
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: Step 1 - Centered the three menu buttons (VIEW PREVIOUS GAMES, DEMO & TUTORIAL, GAME SETTINGS) below the NGB button
+   - Added text-align: center to the container div
+   - All other steps unchanged from v1.19
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
