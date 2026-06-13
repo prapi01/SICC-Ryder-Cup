@@ -1,13 +1,10 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.19
-KEY CHANGES from v3.18:
-   - ADDED: FirebaseRetry module for robust Firestore queries with exponential backoff
-   - ADDED: Script reference to js/firebase-retry.js
-   - Replaced db.collection().doc().get() with FirebaseRetry.getDocument()
-   - Replaced db.collection().doc().update() with FirebaseRetry.execute() for critical writes
-   - Silent retries on network issues, modal appears only after all retries fail
-   - All existing functionality preserved (anchor highlighting, role selection, locks, takeovers)
+VERSION: 3.20
+KEY CHANGES from v3.19:
+   - REPLACED: "Loading game data..." text with green spinner (.spinner-green)
+   - Visual consistency with other loading states across the app
+   - No functional changes - all existing logic preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -341,7 +338,27 @@ STATUS: Ready for integration
         .role-status-warning { background: #2a2a1a; color: #ffaa44; }
         
         .footer { text-align: center; margin-top: 16px; font-size: 0.55rem; color: #444; }
-        .loading { text-align: center; padding: 40px; color: #888; }
+        
+        /* Green spinner for loading - v3.20 */
+        .spinner-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 60px 20px;
+        }
+        
+        .spinner-green {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(76, 175, 80, 0.2);
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
         
         .modal-overlay {
             position: fixed;
@@ -420,16 +437,19 @@ STATUS: Ready for integration
 <body>
 
 <div class="container" id="app">
-    <div class="loading">Loading game data...</div>
+    <!-- v3.20: Green spinner instead of "Loading game data..." text -->
+    <div class="spinner-container">
+        <div class="spinner-green"></div>
+    </div>
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.19</div>
+<div class="version-tag">v3.20</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.19
+// FILE: pre-game.html - VERSION 3.20
 
-var VERSION = "3.19";
+var VERSION = "3.20";
 var CACHE_KEY = "pre_game_version";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -592,7 +612,6 @@ function resetLocksOnly(callback) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    // v3.19: Use FirebaseRetry for robust update
     FirebaseRetry.execute(function() {
         return db.collection("scheduledGames").doc(gameId).update(resetData);
     }).then(function() {
@@ -643,7 +662,6 @@ function startGameListener() {
 function fetchLocksOnce() {
     if (!firestoreReady || !gameId) return;
     
-    // v3.19: Use FirebaseRetry for robust fetch
     FirebaseRetry.getDocument("scheduledGames", gameId).then(function(doc) {
         if (doc.exists) {
             var data = doc.data();
@@ -777,7 +795,6 @@ function takeoverRole(flight) {
     };
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
-    // v3.19: Use FirebaseRetry for robust update
     FirebaseRetry.execute(function() {
         return db.collection(collection).doc(gameId).update(updatePayload);
     }).then(function() {
@@ -802,7 +819,7 @@ function isGameCompleted(gameData) {
 }
 
 // ============================================================
-// LOAD GAME - v3.19: Uses FirebaseRetry for robust fetching
+// LOAD GAME - v3.20: Uses FirebaseRetry for robust fetching
 // ============================================================
 
 function loadGame() {
@@ -823,10 +840,8 @@ function loadGame() {
     
     var collection = "scheduledGames";
     
-    // v3.19: Use FirebaseRetry.getDocument for robust fetching
     FirebaseRetry.getDocument(collection, gameId, {
         onExit: function() {
-            // User would have seen modal and clicked Retry
             console.log("User retrying after connection issue");
         }
     }).then(function(doc) {
@@ -839,7 +854,6 @@ function loadGame() {
         
         var rawData = doc.data();
         
-        // Build gameData object from fresh Firestore data
         gameData = {
             id: gameId,
             date: rawData.date,
@@ -856,7 +870,6 @@ function loadGame() {
             results: rawData.results
         };
         
-        // Update locks from fresh data
         if (gameData.locks) {
             locks.f1 = gameData.locks.f1 || null;
             locks.f2 = gameData.locks.f2 || null;
@@ -868,7 +881,6 @@ function loadGame() {
             console.log("  " + p.name + ": " + p.handicap);
         });
         
-        // Also update GameLoader cache for consistency
         if (typeof GameLoader !== 'undefined' && GameLoader.setLocalCache) {
             var cacheData = {
                 course: rawData.course,
@@ -1003,7 +1015,6 @@ function startGame() {
     
     console.log("Writing lock with sessionId:", sessionId);
     
-    // v3.19: Use FirebaseRetry for robust update
     FirebaseRetry.execute(function() {
         return db.collection(collection).doc(gameId).update(updatePayload);
     }).then(function() {
@@ -1293,14 +1304,11 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.19
-KEY CHANGES from v3.18:
-   - ADDED: FirebaseRetry module for robust Firestore queries with exponential backoff
-   - ADDED: Script reference to js/firebase-retry.js
-   - Replaced db.collection().doc().get() with FirebaseRetry.getDocument()
-   - Replaced db.collection().doc().update() with FirebaseRetry.execute() for critical writes
-   - Silent retries on network issues, modal appears only after all retries fail
-   - All existing functionality preserved (anchor highlighting, role selection, locks, takeovers)
+VERSION: 3.20
+KEY CHANGES from v3.19:
+   - REPLACED: "Loading game data..." text with green spinner (.spinner-green)
+   - Visual consistency with other loading states across the app
+   - No functional changes - all existing logic preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
