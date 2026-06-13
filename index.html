@@ -1,13 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.26
-KEY CHANGES from v3.25:
-   - ADDED: FirebaseRetry module for robust Firestore queries with exponential backoff
-   - ADDED: Connection error modal with Retry button when all retries fail
-   - Replaced all db.collection().get() with FirebaseRetry.getCollection()
-   - Replaced db.collection().doc().get() with FirebaseRetry.getDocument()
-   - Silent retries on first 4 failures, modal appears only after all retries exhausted
-   - All existing functionality preserved (splash, preload, modal, etc.)
+VERSION: 3.27
+KEY CHANGES from v3.26:
+   - CHANGED: "TODAY GAME" button text to "GAME DAY"
+   - Updated in both the NGB button display and any related text
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
@@ -461,12 +458,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.26</div>
+<div class="version-tag">v3.27</div>
 
 <script>
-// FILE: index.html - VERSION 3.26
+// FILE: index.html - VERSION 3.27
 
-var APP_VERSION = "3.26";
+var APP_VERSION = "3.27";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -584,10 +581,8 @@ function preloadGameData(gameId, callback) {
     
     console.log("Preload: Starting for game", gameId);
     
-    // v3.26: Use FirebaseRetry for robust preloading
     FirebaseRetry.getDocument("scheduledGames", gameId, {
         onExit: function() {
-            // User clicked Exit on connection modal
             window.location.href = "index.html";
         }
     }).then(function(doc) {
@@ -702,7 +697,6 @@ function handleTodayGame() {
         return;
     }
     
-    // v3.26: Use FirebaseRetry for robust query
     FirebaseRetry.getCollection("scheduledGames", {
         onExit: function() {
             window.location.href = "index.html";
@@ -770,7 +764,7 @@ function handleTodayGame() {
 }
 
 function handleNextGame() {
-    alert("This is the next scheduled game.\n\nOn the game day, this button will become 'TODAY GAME'.");
+    alert("This is the next scheduled game.\n\nOn the game day, this button will become 'GAME DAY'.");
 }
 
 function proceedToRealGame(gameId, gameType) {
@@ -815,7 +809,6 @@ function renderMainUI() {
     var appDiv = document.getElementById("app");
     if (!appDiv) return;
     
-    // v3.26: Use FirebaseRetry for robust query
     FirebaseRetry.getCollection("scheduledGames", {
         onExit: function() {
             window.location.href = "index.html";
@@ -841,10 +834,11 @@ function renderMainUI() {
             var isToday = (nextGame.date === today);
             
             if (isToday) {
+                // v3.27: Changed "TODAY GAME" to "GAME DAY"
                 ngbHtml = `
                     <div class="ngb" onclick="handleTodayGame()">
                         <div class="icon">⛳</div>
-                        <div class="title">TODAY GAME</div>
+                        <div class="title">GAME DAY</div>
                         <div class="date">${formattedDate}</div>
                         <div class="course-name">${escapeHtml(courseName)}</div>
                     </div>
@@ -934,7 +928,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - FIXED v3.26 with FirebaseRetry
+// Initialization - v3.26 with FirebaseRetry
 // ============================================================
 
 function initApp() {
@@ -943,16 +937,13 @@ function initApp() {
     mainContainer = document.getElementById("app");
     mainContainer.style.display = "block";
     
-    // Check if we have valid cached preload data
     var hasCachedData = getPreloadedRawGameData() !== null;
     var firstLoadFlag = sessionStorage.getItem('firstLoadCompleted');
     
     if (!firstLoadFlag) {
-        // First load ever in this session - show B&W loading screen
         isFirstLoad = true;
         var loadingScreen = showLoadingScreen();
         
-        // v3.26: Use FirebaseRetry for robust query
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
                 window.location.href = "index.html";
@@ -983,12 +974,10 @@ function initApp() {
             sessionStorage.setItem('firstLoadCompleted', 'true');
         });
     } else if (!hasCachedData) {
-        // Returning to main menu but no cached data exists
         console.log("No cached preload data found - preloading again");
         isFirstLoad = true;
         var loadingScreen = showLoadingScreen();
         
-        // v3.26: Use FirebaseRetry for robust query
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
                 window.location.href = "index.html";
@@ -1016,7 +1005,6 @@ function initApp() {
             renderMainUI();
         });
     } else {
-        // Subsequent returns with valid cached data - render instantly (no loading screen)
         console.log("Valid cached preload data found - rendering instantly");
         isFirstLoad = false;
         preloadComplete = true;
@@ -1109,14 +1097,11 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.26
-KEY CHANGES from v3.25:
-   - ADDED: FirebaseRetry module for robust Firestore queries with exponential backoff
-   - ADDED: Connection error modal with Retry button when all retries fail
-   - Replaced all db.collection().get() with FirebaseRetry.getCollection()
-   - Replaced db.collection().doc().get() with FirebaseRetry.getDocument()
-   - Silent retries on first 4 failures, modal appears only after all retries exhausted
-   - All existing functionality preserved (splash, preload, modal, etc.)
+VERSION: 3.27
+KEY CHANGES from v3.26:
+   - CHANGED: "TODAY GAME" button text to "GAME DAY"
+   - Updated in both the NGB button display and handleNextGame alert text
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
