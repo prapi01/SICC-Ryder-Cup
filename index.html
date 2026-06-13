@@ -1,12 +1,14 @@
 <!--
 FILE: index.html
-VERSION: 3.25
-KEY CHANGES from v3.24:
-   - FIXED: When returning to main menu with no cached preload data, preload again
-   - Prevents "Still loading game data" error when new game is created after first load
-   - Checks hasCachedData before rendering instantly
-   - All existing functionality preserved (modal, splash, flicker-free)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
+VERSION: 3.26
+KEY CHANGES from v3.25:
+   - ADDED: FirebaseRetry module for robust Firestore queries with exponential backoff
+   - ADDED: Connection error modal with Retry button when all retries fail
+   - Replaced all db.collection().get() with FirebaseRetry.getCollection()
+   - Replaced db.collection().doc().get() with FirebaseRetry.getDocument()
+   - Silent retries on first 4 failures, modal appears only after all retries exhausted
+   - All existing functionality preserved (splash, preload, modal, etc.)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
 
@@ -35,6 +37,7 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/firebase-retry.js"></script>
     <script src="js/index-hidden.js"></script>
     
     <style>
@@ -458,12 +461,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.25</div>
+<div class="version-tag">v3.26</div>
 
 <script>
-// FILE: index.html - VERSION 3.25
+// FILE: index.html - VERSION 3.26
 
-var APP_VERSION = "3.25";
+var APP_VERSION = "3.26";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -480,7 +483,7 @@ var currentSession = null;
 
 // Preload tracking
 var preloadComplete = false;
-var isFirstLoad = true;  // Track if this is the first app load (needs B&W loading screen)
+var isFirstLoad = true;
 var mainContainer = null;
 
 // Get splash elements
@@ -581,27 +584,31 @@ function preloadGameData(gameId, callback) {
     
     console.log("Preload: Starting for game", gameId);
     
-    db.collection("scheduledGames").doc(gameId).get()
-        .then(function(doc) {
-            if (doc.exists) {
-                var preloadData = {
-                    gameId: gameId,
-                    rawData: doc.data(),
-                    preloadTimestamp: Date.now()
-                };
-                sessionStorage.setItem("preloadedRawGameData", JSON.stringify(preloadData));
-                preloadComplete = true;
-                console.log("Preload: Complete for game", gameId);
-                if (callback) callback(true);
-            } else {
-                console.log("Preload: Game not found", gameId);
-                if (callback) callback(false);
-            }
-        })
-        .catch(function(err) {
-            console.warn("Preload: Failed", err);
+    // v3.26: Use FirebaseRetry for robust preloading
+    FirebaseRetry.getDocument("scheduledGames", gameId, {
+        onExit: function() {
+            // User clicked Exit on connection modal
+            window.location.href = "index.html";
+        }
+    }).then(function(doc) {
+        if (doc.exists) {
+            var preloadData = {
+                gameId: gameId,
+                rawData: doc.data(),
+                preloadTimestamp: Date.now()
+            };
+            sessionStorage.setItem("preloadedRawGameData", JSON.stringify(preloadData));
+            preloadComplete = true;
+            console.log("Preload: Complete for game", gameId);
+            if (callback) callback(true);
+        } else {
+            console.log("Preload: Game not found", gameId);
             if (callback) callback(false);
-        });
+        }
+    }).catch(function(err) {
+        console.warn("Preload: Failed after retries", err);
+        if (callback) callback(false);
+    });
 }
 
 // ============================================================
@@ -695,7 +702,12 @@ function handleTodayGame() {
         return;
     }
     
-    db.collection("scheduledGames").get().then(function(snapshot) {
+    // v3.26: Use FirebaseRetry for robust query
+    FirebaseRetry.getCollection("scheduledGames", {
+        onExit: function() {
+            window.location.href = "index.html";
+        }
+    }).then(function(snapshot) {
         var games = [];
         snapshot.forEach(function(doc) {
             games.push({ id: doc.id, date: doc.data().date, course: doc.data().course });
@@ -717,7 +729,11 @@ function handleTodayGame() {
         
         var gameId = todayGame.id;
         
-        db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+        FirebaseRetry.getDocument("scheduledGames", gameId, {
+            onExit: function() {
+                window.location.href = "index.html";
+            }
+        }).then(function(doc) {
             if (doc.exists) {
                 var data = doc.data();
                 var signatures = data.signatures || {};
@@ -730,7 +746,6 @@ function handleTodayGame() {
                 }
                 
                 if (isCompleted) {
-                    // v3.24: Show modal instead of direct redirect
                     showGameCompletedModal(gameId);
                 } else {
                     proceedToRealGame(gameId, "real");
@@ -800,7 +815,12 @@ function renderMainUI() {
     var appDiv = document.getElementById("app");
     if (!appDiv) return;
     
-    db.collection("scheduledGames").get().then(function(snapshot) {
+    // v3.26: Use FirebaseRetry for robust query
+    FirebaseRetry.getCollection("scheduledGames", {
+        onExit: function() {
+            window.location.href = "index.html";
+        }
+    }).then(function(snapshot) {
         var games = [];
         snapshot.forEach(function(doc) {
             games.push({ id: doc.id, date: doc.data().date, course: doc.data().course, startingHole: doc.data().startingHole });
@@ -914,7 +934,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - FIXED v3.25: Check cached data on return
+// Initialization - FIXED v3.26 with FirebaseRetry
 // ============================================================
 
 function initApp() {
@@ -932,8 +952,12 @@ function initApp() {
         isFirstLoad = true;
         var loadingScreen = showLoadingScreen();
         
-        // Fetch games to determine today's game ID for preload
-        db.collection("scheduledGames").get().then(function(snapshot) {
+        // v3.26: Use FirebaseRetry for robust query
+        FirebaseRetry.getCollection("scheduledGames", {
+            onExit: function() {
+                window.location.href = "index.html";
+            }
+        }).then(function(snapshot) {
             var games = [];
             snapshot.forEach(function(doc) {
                 games.push({ id: doc.id, date: doc.data().date });
@@ -960,13 +984,16 @@ function initApp() {
         });
     } else if (!hasCachedData) {
         // Returning to main menu but no cached data exists
-        // This happens when a new game was created after first load
         console.log("No cached preload data found - preloading again");
         isFirstLoad = true;
         var loadingScreen = showLoadingScreen();
         
-        // Fetch games to determine today's game ID for preload
-        db.collection("scheduledGames").get().then(function(snapshot) {
+        // v3.26: Use FirebaseRetry for robust query
+        FirebaseRetry.getCollection("scheduledGames", {
+            onExit: function() {
+                window.location.href = "index.html";
+            }
+        }).then(function(snapshot) {
             var games = [];
             snapshot.forEach(function(doc) {
                 games.push({ id: doc.id, date: doc.data().date });
@@ -992,7 +1019,7 @@ function initApp() {
         // Subsequent returns with valid cached data - render instantly (no loading screen)
         console.log("Valid cached preload data found - rendering instantly");
         isFirstLoad = false;
-        preloadComplete = true;  // Ensure preloadComplete is set
+        preloadComplete = true;
         renderMainUI();
     }
 }
@@ -1082,12 +1109,14 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.25
-KEY CHANGES from v3.24:
-   - FIXED: When returning to main menu with no cached preload data, preload again
-   - Prevents "Still loading game data" error when new game is created after first load
-   - Checks hasCachedData before rendering instantly
-   - All existing functionality preserved (modal, splash, flicker-free)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js
+VERSION: 3.26
+KEY CHANGES from v3.25:
+   - ADDED: FirebaseRetry module for robust Firestore queries with exponential backoff
+   - ADDED: Connection error modal with Retry button when all retries fail
+   - Replaced all db.collection().get() with FirebaseRetry.getCollection()
+   - Replaced db.collection().doc().get() with FirebaseRetry.getDocument()
+   - Silent retries on first 4 failures, modal appears only after all retries exhausted
+   - All existing functionality preserved (splash, preload, modal, etc.)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
