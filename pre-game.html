@@ -1,14 +1,14 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.18
-KEY CHANGES from v3.17:
-   - FIXED: Always fetches fresh game data from Firestore (no cache dependency)
-   - Removed applyCachedDataToGameLoader() - no longer uses stale preload data
-   - Added loading indicator while fetching from Firestore
-   - Ensures correct player handicaps are always displayed
-   - Prevents stale handicap data from previous sessions
-   - All existing functionality preserved (anchor highlighting, role selection, locks)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+VERSION: 3.19
+KEY CHANGES from v3.18:
+   - ADDED: FirebaseRetry module for robust Firestore queries with exponential backoff
+   - ADDED: Script reference to js/firebase-retry.js
+   - Replaced db.collection().doc().get() with FirebaseRetry.getDocument()
+   - Replaced db.collection().doc().update() with FirebaseRetry.execute() for critical writes
+   - Silent retries on network issues, modal appears only after all retries fail
+   - All existing functionality preserved (anchor highlighting, role selection, locks, takeovers)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
 
@@ -22,6 +22,7 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/firebase-retry.js"></script>
     
     <script src="js/game-data.js"></script>
     <script src="js/game-match.js"></script>
@@ -423,12 +424,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.18</div>
+<div class="version-tag">v3.19</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.18
+// FILE: pre-game.html - VERSION 3.19
 
-var VERSION = "3.18";
+var VERSION = "3.19";
 var CACHE_KEY = "pre_game_version";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -591,7 +592,10 @@ function resetLocksOnly(callback) {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     
-    db.collection("scheduledGames").doc(gameId).update(resetData).then(function() {
+    // v3.19: Use FirebaseRetry for robust update
+    FirebaseRetry.execute(function() {
+        return db.collection("scheduledGames").doc(gameId).update(resetData);
+    }).then(function() {
         console.log("Locks reset only - scores preserved");
         locks.f1 = null;
         locks.f2 = null;
@@ -639,7 +643,8 @@ function startGameListener() {
 function fetchLocksOnce() {
     if (!firestoreReady || !gameId) return;
     
-    db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+    // v3.19: Use FirebaseRetry for robust fetch
+    FirebaseRetry.getDocument("scheduledGames", gameId).then(function(doc) {
         if (doc.exists) {
             var data = doc.data();
             if (data.locks) {
@@ -772,7 +777,10 @@ function takeoverRole(flight) {
     };
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
-    db.collection(collection).doc(gameId).update(updatePayload).then(function() {
+    // v3.19: Use FirebaseRetry for robust update
+    FirebaseRetry.execute(function() {
+        return db.collection(collection).doc(gameId).update(updatePayload);
+    }).then(function() {
         console.log("Role takeover successful for Flight", flight);
         if (flight === 1) {
             locks.f1 = updatePayload["locks.f1"];
@@ -794,7 +802,7 @@ function isGameCompleted(gameData) {
 }
 
 // ============================================================
-// LOAD GAME - FIXED v3.18: Always fetch fresh from Firestore
+// LOAD GAME - v3.19: Uses FirebaseRetry for robust fetching
 // ============================================================
 
 function loadGame() {
@@ -811,12 +819,17 @@ function loadGame() {
     gameMode = "real";
     isPreviewSandbox = false;
     
-    // v3.18: Always fetch fresh from Firestore - no cache dependency
     console.log("Fetching fresh game data from Firestore for game:", gameId);
     
     var collection = "scheduledGames";
     
-    db.collection(collection).doc(gameId).get().then(function(doc) {
+    // v3.19: Use FirebaseRetry.getDocument for robust fetching
+    FirebaseRetry.getDocument(collection, gameId, {
+        onExit: function() {
+            // User would have seen modal and clicked Retry
+            console.log("User retrying after connection issue");
+        }
+    }).then(function(doc) {
         if (!doc.exists) {
             console.error("Game document not found:", gameId);
             alert("Game data not found. Please return to main menu.");
@@ -990,7 +1003,10 @@ function startGame() {
     
     console.log("Writing lock with sessionId:", sessionId);
     
-    db.collection(collection).doc(gameId).update(updatePayload).then(function() {
+    // v3.19: Use FirebaseRetry for robust update
+    FirebaseRetry.execute(function() {
+        return db.collection(collection).doc(gameId).update(updatePayload);
+    }).then(function() {
         localStorage.setItem("userRole", tempSelectedRole);
         
         var targetPage = "real-game.html";
@@ -1277,14 +1293,14 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.18
-KEY CHANGES from v3.17:
-   - FIXED: Always fetches fresh game data from Firestore (no cache dependency)
-   - Removed applyCachedDataToGameLoader() - no longer uses stale preload data
-   - Added loading indicator while fetching from Firestore
-   - Ensures correct player handicaps are always displayed
-   - Prevents stale handicap data from previous sessions
-   - All existing functionality preserved (anchor highlighting, role selection, locks)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+VERSION: 3.19
+KEY CHANGES from v3.18:
+   - ADDED: FirebaseRetry module for robust Firestore queries with exponential backoff
+   - ADDED: Script reference to js/firebase-retry.js
+   - Replaced db.collection().doc().get() with FirebaseRetry.getDocument()
+   - Replaced db.collection().doc().update() with FirebaseRetry.execute() for critical writes
+   - Silent retries on network issues, modal appears only after all retries fail
+   - All existing functionality preserved (anchor highlighting, role selection, locks, takeovers)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
