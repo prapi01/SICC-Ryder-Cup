@@ -1,13 +1,14 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: Step 1 - Centered the three menu buttons (VIEW PREVIOUS GAMES, DEMO & TUTORIAL, GAME SETTINGS) below the NGB button
-   - Added text-align: center to the container div
-   - All other steps unchanged from v1.19
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - RESTORED: Step 6 scorecard table to working v1.17 version
+   - KEPT: Step 1 "GAME DAY" button text (from v1.18)
+   - All other steps unchanged
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -706,7 +707,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.20</div>
+<div class="version-tag">v1.19</div>
 
 <script>
 // ============================================================
@@ -738,7 +739,7 @@ function addHighlight(elementId) {
 }
 
 // ============================================================
-// STEP 1: Main Menu - FIXED v1.20 (centered buttons)
+// STEP 1: Main Menu - UPDATED v1.18: "TODAY GAME" → "GAME DAY"
 // ============================================================
 
 function renderStep1() {
@@ -746,8 +747,8 @@ function renderStep1() {
         <div class="demo-header"></div>
         <div style="padding: 20px; text-align: center;">
             <div class="ngb-demo">
-                <div class="icon">🏆</div>
-                <div class="title">NEXT GAME</div>
+                <div class="icon">⛳</div>
+                <div class="title">GAME DAY</div>
                 <div class="subtitle-text">20 Jun 2026</div>
                 <div class="course-name">SICC Millennium-Peirce Course</div>
             </div>
@@ -769,12 +770,12 @@ function renderStep1() {
     `;
     
     document.getElementById('demoScreen').innerHTML = html;
-    document.getElementById('instructionText').innerHTML = 'This is your home screen.<br><br>• <strong>TODAY GAME / NEXT GAME</strong> - Shows scheduled game. On game day, becomes TODAY GAME.<br>• <strong>VIEW PREVIOUS GAMES</strong> - See results and handicap adjustments from past matches.<br>• <strong>DEMO & TUTORIAL</strong> - You are here!<br>• <strong>GAME SETTINGS</strong> - Admin functions: schedule games, manage courses, edit player handicaps.';
-    document.getElementById('instructionTip').innerHTML = '💡 Tip: The NEXT GAME button changes to TODAY GAME on match day.';
+    document.getElementById('instructionText').innerHTML = 'This is your home screen.<br><br>• <strong>GAME DAY / NEXT GAME</strong> - Shows scheduled game. On game day, becomes GAME DAY.<br>• <strong>VIEW PREVIOUS GAMES</strong> - See results and handicap adjustments from past matches.<br>• <strong>DEMO & TUTORIAL</strong> - You are here!<br>• <strong>GAME SETTINGS</strong> - Admin functions: schedule games, manage courses, edit player handicaps.';
+    document.getElementById('instructionTip').innerHTML = '💡 Tip: The NEXT GAME button changes to GAME DAY on match day.';
 }
 
 // ============================================================
-// STEP 2: Role Selection - FIXED v1.19 (matches actual app)
+// STEP 2: Role Selection
 // ============================================================
 
 function renderStep2() {
@@ -1122,7 +1123,7 @@ function renderStep5() {
 }
 
 // ============================================================
-// STEP 6: TEAM GAME + STROKE GAME - FIXED v1.18
+// STEP 6: TEAM GAME + STROKE GAME - WORKING v1.17 VERSION (RESTORED)
 // ============================================================
 
 function renderStep6() {
@@ -1145,23 +1146,19 @@ function renderStep6() {
                         <tr><th>Hole</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>Tot</th></tr>
                     </thead>
                     <tbody>
-                        <!-- Par row -->
                         <tr style="background:#111;">
                             <td style="font-weight:700;">Par</td>
                             <td>4</td><td>3</td><td>4</td><td>5</td><td>3</td><td>4</td><td>4</td><td>4</td><td>3</td>
                             <td>4</td><td>5</td><td>4</td><td>3</td><td>4</td><td>4</td><td>5</td><td>3</td><td>5</td>
                             <td>-</td>
                         </tr>
-                        <!-- SI row -->
                         <tr style="background:#111;">
                             <td style="font-weight:700;">SI</td>
                             <td>13</td><td>15</td><td>7</td><td>3</td><td>17</td><td>1</td><td>5</td><td>11</td><td>9</td>
                             <td>14</td><td>2</td><td>8</td><td>6</td><td>16</td><td>10</td><td>4</td><td>18</td><td>12</td>
                             <td>-</td>
                         </tr>
-                        <!-- Green line -->
                         <tr class="green-line"><td colspan="20"></tr>
-                        <!-- Flight 1 Team A players -->
                         <tr><td style="font-weight:600;">ACH</td>
                             <td>4</td><td>3</td><td>5</td><td>6</td><td>3</td><td>5</td><td>4</td><td>5</td><td>4</td>
                             <td>4</td><td>5</td><td>4</td><td>3</td><td>4</td><td>5</td><td>6</td><td>3</td><td>5</td>
@@ -1172,9 +1169,7 @@ function renderStep6() {
                             <td>4</td><td>5</td><td>5</td><td>4</td><td>5</td><td>5</td><td>6</td><td>4</td><td>6</td>
                             <td>85</td>
                         </tr>
-                        <!-- Green line -->
                         <tr class="green-line"><td colspan="20"></tr>
-                        <!-- T-1 row (Flight 1 team game) -->
                         <tr style="background:rgba(76,175,80,0.15);">
                             <td style="color:#4caf50; font-weight:600;">T-1</td>
                             <td class="score-green"><span class="as-square"></span></td>
@@ -1197,9 +1192,7 @@ function renderStep6() {
                             <td class="score-grey">A8</td>
                             <td>-</td>
                         </tr>
-                        <!-- Green line -->
                         <tr class="green-line"><td colspan="20"></tr>
-                        <!-- Flight 2 Team B players -->
                         <tr><td style="font-weight:600;">JG</td>
                             <td>4</td><td>3</td><td>4</td><td>5</td><td>3</td><td>4</td><td>4</td><td>4</td><td>3</td>
                             <td>4</td><td>5</td><td>4</td><td>3</td><td>4</td><td>4</td><td>5</td><td>3</td><td>5</td>
@@ -1210,9 +1203,7 @@ function renderStep6() {
                             <td>4</td><td>5</td><td>5</td><td>3</td><td>4</td><td>5</td><td>5</td><td>4</td><td>5</td>
                             <td>79</td>
                         </tr>
-                        <!-- Green line -->
                         <tr class="green-line"><td colspan="20"></tr>
-                        <!-- T-2 row (Flight 2 team game) -->
                         <tr style="background:rgba(76,175,80,0.15);">
                             <td style="color:#4caf50; font-weight:600;">T-2</td>
                             <td class="score-green">B1</td>
@@ -1234,10 +1225,8 @@ function renderStep6() {
                             <td class="score-grey">A7</td>
                             <td class="score-grey">A7</td>
                             <td>-</td>
-                         </tr>
-                        <!-- Green line -->
+                        </tr>
                         <tr class="green-line"><td colspan="20"></tr>
-                        <!-- Strk row (Stroke game) -->
                         <tr style="background:rgba(76,175,80,0.15);">
                             <td style="color:#4caf50; font-weight:600;">Strk</td>
                             <td class="score-green">A5</td>
@@ -1259,7 +1248,7 @@ function renderStep6() {
                             <td class="score-grey">A18</td>
                             <td class="score-grey">A18</td>
                             <td>-</td>
-                         </tr>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -1362,7 +1351,7 @@ function showSignModal() {
 }
 
 // ============================================================
-// STEP 8: Waiting for Other Flight - FIXED v1.19
+// STEP 8: Waiting for Other Flight
 // ============================================================
 
 function renderStep8() {
@@ -1417,59 +1406,59 @@ function renderStep9() {
                             <td><span class="adj-grey">0</span><span class="raw-grey"> [0]</span></td>
                             <td><span class="adj-grey">0</span><span class="raw-green"> [3]</span></td>
                             <td class="gold-zero">0</td>
-                         </tr>
+                        </tr>
                         <tr>
                             <td>KF</td>
-                            <td class="normal-white">2</td>
-                            <td><span class="adj-green">3</span><span class="raw-red"> [6]</span></td>
-                            <td><span class="adj-grey">0</span><span class="raw-green"> [2]</span></td>
-                            <td class="new-green">5</td>
-                         </tr>
+                            <td class="normal-white">2</span></td>
+                            <td class="adj-green">3</span><span class="raw-red"> [6]</span></span></td>
+                            <td class="adj-grey">0</span><span class="raw-green"> [2]</span></span></td>
+                            <td class="new-green">5</span></td>
+                        </tr>
                         <tr>
-                            <td>CK</td>
-                            <td class="normal-white">10</td>
-                            <td><span class="adj-grey">0</span><span class="raw-red"> [1]</span></td>
-                            <td><span class="adj-grey">0</span><span class="raw-green"> [1.5]</span></td>
-                            <td class="new-green">10</td>
-                         </tr>
+                            <td>CK</span></td>
+                            <td class="normal-white">10</span></td>
+                            <td class="adj-grey">0</span><span class="raw-red"> [1]</span></span></td>
+                            <td class="adj-grey">0</span><span class="raw-green"> [1.5]</span></span></td>
+                            <td class="new-green">10</span></td>
+                        </tr>
                         <tr>
-                            <td>YHM</td>
-                            <td class="normal-white">14</td>
-                            <td><span class="adj-grey">0</span><span class="raw-red"> [1]</span></td>
-                            <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
-                            <td class="new-green">14</td>
-                         </tr>
-                        <tr class="team-separator"><td colspan="5">⚡ TEAM B</td></tr>
+                            <td>YHM</span></td>
+                            <td class="normal-white">14</span></td>
+                            <td class="adj-grey">0</span><span class="raw-red"> [1]</span></span></td>
+                            <td class="adj-grey">0</span><span class="raw-green"> [2.5]</span></span></td>
+                            <td class="new-green">14</span></td>
+                        </tr>
+                        <tr class="team-separator"><td colspan="5">⚡ TEAM B</span></td></tr>
                         <tr>
-                            <td>OCB</td>
-                            <td class="normal-white">0</td>
-                            <td><span class="adj-green">3</span><span class="raw-red"> [6]</span></td>
-                            <td><span class="adj-green">1</span><span class="raw-green"> [0]</span></td>
-                            <td class="new-green">4</td>
-                         </tr>
+                            <td>OCB</span></td>
+                            <td class="normal-white">0</span></td>
+                            <td class="adj-green">3</span><span class="raw-red"> [6]</span></span></td>
+                            <td class="adj-green">1</span><span class="raw-green"> [0]</span></span></td>
+                            <td class="new-green">4</span></td>
+                        </tr>
                         <tr>
-                            <td>JG</td>
-                            <td class="normal-white">0</td>
-                            <td><span class="adj-green">1</span><span class="raw-red"> [3]</span></td>
-                            <td><span class="adj-grey">0</span><span class="raw-green"> [2.5]</span></td>
-                            <td class="new-green">1</td>
-                         </tr>
+                            <td>JG</span></td>
+                            <td class="normal-white">0</span></td>
+                            <td class="adj-green">1</span><span class="raw-red"> [3]</span></span></td>
+                            <td class="adj-grey">0</span><span class="raw-green"> [2.5]</span></span></td>
+                            <td class="new-green">1</span></td>
+                        </tr>
                         <tr>
-                            <td>JO</td>
-                            <td class="normal-white">10</td>
-                            <td><span class="adj-green">1</span><span class="raw-red"> [3]</span></td>
-                            <td><span class="adj-green">1</span><span class="raw-green"> [0.5]</span></td>
-                            <td class="new-green">12</td>
-                         </tr>
+                            <td>JO</span></td>
+                            <td class="normal-white">10</span></td>
+                            <td class="adj-green">1</span><span class="raw-red"> [3]</span></span></td>
+                            <td class="adj-green">1</span><span class="raw-green"> [0.5]</span></span></td>
+                            <td class="new-green">12</span></td>
+                        </tr>
                         <tr>
-                            <td>P</td>
-                            <td class="normal-white">10</td>
-                            <td><span class="adj-red">2</span><span class="raw-green"> [4]</span></td>
-                            <td><span class="adj-red">1</span><span class="raw-green"> [4]</span></td>
-                            <td class="new-green">7</td>
-                         </tr>
+                            <td>P</span></td>
+                            <td class="normal-white">10</span></td>
+                            <td class="adj-red">2</span><span class="raw-green"> [4]</span></span></td>
+                            <td class="adj-red">1</span><span class="raw-green"> [4]</span></span></td>
+                            <td class="new-green">7</span></td>
+                        </tr>
                     </tbody>
-                 </table>
+                </table>
             </div>
             
             <div class="handicap-buttons">
@@ -1592,11 +1581,11 @@ renderStep();
 </html>
 <!--
 FILE: tutorial.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: Step 1 - Centered the three menu buttons (VIEW PREVIOUS GAMES, DEMO & TUTORIAL, GAME SETTINGS) below the NGB button
-   - Added text-align: center to the container div
-   - All other steps unchanged from v1.19
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - RESTORED: Step 6 scorecard table to working v1.17 version
+   - KEPT: Step 1 "GAME DAY" button text (from v1.18)
+   - All other steps unchanged
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
