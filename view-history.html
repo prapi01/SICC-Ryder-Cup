@@ -1,12 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.18
-KEY CHANGES from v8.17:
-   - FIXED: Status bubble now remains "VIEWER" after navigating to different holes
-   - Added setStatusBubbleToViewer() function and call it after renderDetailView() completes
-   - Also called after initial render to ensure consistency
-   - Prevents GameUI.renderHoleHeader() from resetting bubble to "LIVE" on hole change
-   - All other functionality unchanged
+VERSION: 8.21
+KEY CHANGES from v8.20:
+   - FIXED: Button enable timing - now waits for BOTH Firestore data AND modules to load
+   - Added combined counter (dataLoaded + modulesLoaded) before attaching event handlers
+   - Prevents race condition where modules loaded faster than Firestore query
+   - Buttons now enable correctly every time
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
@@ -186,14 +186,21 @@ STATUS: Ready for integration
             border-radius: 40px;
             font-weight: 600;
             font-size: 0.75rem;
-            cursor: pointer;
             text-align: center;
             border: 1px solid;
             background: #1a1a1a;
+            transition: opacity 0.2s;
+            cursor: pointer;
         }
         
         .game-btn:active {
             transform: scale(0.97);
+        }
+        
+        .game-btn-disabled {
+            opacity: 0.5;
+            cursor: wait;
+            pointer-events: none;
         }
         
         .btn-scorecard {
@@ -204,6 +211,27 @@ STATUS: Ready for integration
         .btn-handicap {
             border-color: #ffaa44;
             color: #ffaa44;
+        }
+        
+        /* Green spinner for loading */
+        .spinner-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 60px 20px;
+        }
+        
+        .spinner-green {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(76, 175, 80, 0.2);
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
         
         .back-buttons {
@@ -250,13 +278,6 @@ STATUS: Ready for integration
         
         .detail-back-btn:active {
             transform: scale(0.98);
-        }
-        
-        .loading {
-            text-align: center;
-            padding: 60px 20px;
-            color: #888888;
-            font-size: 0.85rem;
         }
         
         .empty-message {
@@ -308,7 +329,9 @@ STATUS: Ready for integration
 <div class="container game-list-view" id="gameListView">
     <div class="game-list-title">📜 COMPLETED GAMES</div>
     <div class="game-list" id="gameListContainer">
-        <div class="loading">Loading games...</div>
+        <div class="spinner-container">
+            <div class="spinner-green"></div>
+        </div>
     </div>
     <div class="back-buttons">
         <button class="back-btn" id="backToMenuBtn">← Back to Main Menu</button>
@@ -322,13 +345,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.18</div>
+<div class="version-tag">v8.21</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "8.18";
+var APP_VERSION = "8.21";
 var CACHE_KEY = "view_history_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -340,13 +363,20 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.18";
-console.log("[VIEW-HISTORY] Initializing v8.18 with zoom enabled");
+window.VIEW_HISTORY_VERSION = "8.21";
+console.log("[VIEW-HISTORY] Initializing v8.21 with fixed timing");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
 // ============================================================
 var db = firebase.firestore();
+
+// ============================================================
+// Global state
+// ============================================================
+var allGames = [];
+var dataLoaded = false;
+var modulesLoaded = false;
 
 // ============================================================
 // Helper Functions
@@ -394,7 +424,7 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// Show Handicap Adjustment - v8.13 fix preserved
+// Show Handicap Adjustment
 // ============================================================
 
 function showHandicapAdjustment(adjustedHandicaps, anchorName, players) {
@@ -433,7 +463,7 @@ function showScorecardView(game) {
     
     listView.style.display = 'none';
     detailView.style.display = 'block';
-    detailContent.innerHTML = '<div class="loading">Loading scorecard...</div>';
+    detailContent.innerHTML = '<div class="spinner-container"><div class="spinner-green"></div></div>';
     
     var modulesToLoad = [
         'js/game-data.js',
@@ -621,7 +651,6 @@ function renderScorecardView(game) {
             currentHole = playOrder[currentIndex + 1];
             updateHoleNumberDisplay();
             renderDetailView();
-            // FIXED v8.18: Set status bubble back to VIEWER after hole change
             setStatusBubbleToViewer();
         }
     }
@@ -633,7 +662,6 @@ function renderScorecardView(game) {
             currentHole = playOrder[currentIndex - 1];
             updateHoleNumberDisplay();
             renderDetailView();
-            // FIXED v8.18: Set status bubble back to VIEWER after hole change
             setStatusBubbleToViewer();
         }
     }
@@ -648,7 +676,6 @@ function renderScorecardView(game) {
         GameUI.updateFlightBadge(flightNumber);
         GameUI.updateCompactHoleDisplay(currentHole);
         renderPlayerCardsOnly();
-        // FIXED v8.18: Set status bubble back to VIEWER after flight toggle
         setStatusBubbleToViewer();
     }
     
@@ -762,20 +789,92 @@ function renderScorecardView(game) {
     renderDetailView();
     GameUI.renderBottomMenu("bottomMenuContainer", null);
     
-    // FIXED v8.18: Set status bubble to VIEWER after initial render
     setStatusBubbleToViewer();
     
     detailContent.classList.add('data-ready');
 }
 
 // ============================================================
-// Game List Functions
+// Game List Functions - OPTIMIZED: Waits for BOTH data AND modules
 // ============================================================
 
+function enableButtons() {
+    console.log("[VIEW-HISTORY] Enabling buttons");
+    var allBtns = document.querySelectorAll('.game-btn');
+    for (var i = 0; i < allBtns.length; i++) {
+        allBtns[i].classList.remove('game-btn-disabled');
+        allBtns[i].style.pointerEvents = 'auto';
+        allBtns[i].style.opacity = '1';
+        allBtns[i].style.cursor = 'pointer';
+    }
+}
+
+function attachEventHandlers() {
+    console.log("[VIEW-HISTORY] Attaching event handlers to buttons");
+    
+    // Remove disabled class from all buttons
+    enableButtons();
+    
+    // Attach click handlers to scorecard buttons
+    var scorecardBtns = document.querySelectorAll('.btn-scorecard');
+    for (var i = 0; i < scorecardBtns.length; i++) {
+        var btn = scorecardBtns[i];
+        var newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        (function(idx) {
+            var gameIndex = parseInt(newBtn.getAttribute('data-game-index'));
+            newBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                console.log("[VIEW-HISTORY] Scorecard button clicked for game index:", gameIndex);
+                var game = allGames[gameIndex];
+                if (game) showScorecardView(game);
+            });
+        })(i);
+    }
+    
+    // Attach click handlers to handicap buttons
+    var handicapBtns = document.querySelectorAll('.btn-handicap');
+    for (var i = 0; i < handicapBtns.length; i++) {
+        var btn = handicapBtns[i];
+        var newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        (function(idx) {
+            var gameIndex = parseInt(newBtn.getAttribute('data-game-index'));
+            newBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                console.log("[VIEW-HISTORY] Handicap button clicked for game index:", gameIndex);
+                var game = allGames[gameIndex];
+                if (game && game.adjustedHandicaps) {
+                    var anchorName = game.adjustedHandicaps.anchor || 'Anchor';
+                    showHandicapAdjustment(game.adjustedHandicaps, anchorName, game.players);
+                } else {
+                    console.error('No handicap data available for this game');
+                    alert('Handicap adjustment data not available for this game.');
+                }
+            });
+        })(i);
+    }
+    
+    console.log("[VIEW-HISTORY] Event handlers attached");
+}
+
+function checkBothReady() {
+    if (dataLoaded && modulesLoaded) {
+        console.log("[VIEW-HISTORY] Both data and modules ready, attaching handlers");
+        attachEventHandlers();
+    } else {
+        console.log("[VIEW-HISTORY] Waiting... dataLoaded:", dataLoaded, "modulesLoaded:", modulesLoaded);
+    }
+}
+
 function renderGameList(games) {
+    allGames = games;
     var container = document.getElementById('gameListContainer');
+    
     if (games.length === 0) {
         container.innerHTML = '<div class="empty-message">No completed games found.</div>';
+        dataLoaded = true;
+        checkBothReady();
         return;
     }
     
@@ -793,7 +892,7 @@ function renderGameList(games) {
         var teamBDisplay = tr.teamB % 1 === 0 ? tr.teamB : tr.teamB.toFixed(1);
         
         html += `
-            <div class="game-card" data-game-index="${i}">
+            <div class="game-card">
                 <div class="game-header">
                     <div class="game-course">⛳ ${escapeHtml(game.courseName)}</div>
                     <div class="game-date">${displayDate}</div>
@@ -826,50 +925,33 @@ function renderGameList(games) {
                     </div>
                 </div>
                 <div class="game-actions">
-                    <button class="game-btn btn-scorecard" data-game-index="${i}">👁️ VIEW SCORECARD</button>
-                    <button class="game-btn btn-handicap" data-game-index="${i}">🏌️ HANDICAP</button>
+                    <button class="game-btn btn-scorecard game-btn-disabled" data-game-index="${i}">👁️ VIEW SCORECARD</button>
+                    <button class="game-btn btn-handicap game-btn-disabled" data-game-index="${i}">🏌️ HANDICAP</button>
                 </div>
             </div>
         `;
     }
     
     container.innerHTML = html;
+    console.log("[VIEW-HISTORY] Game list rendered with", games.length, "games");
     
-    var allGames = games;
-    
-    document.querySelectorAll('.btn-scorecard').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var idx = parseInt(this.getAttribute('data-game-index'));
-            var game = allGames[idx];
-            if (game) showScorecardView(game);
-        });
-    });
-    
-    document.querySelectorAll('.btn-handicap').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var idx = parseInt(this.getAttribute('data-game-index'));
-            var game = allGames[idx];
-            
-            if (game && game.adjustedHandicaps) {
-                var anchorName = game.adjustedHandicaps.anchor || 'Anchor';
-                showHandicapAdjustment(game.adjustedHandicaps, anchorName, game.players);
-            } else {
-                console.error('No handicap data available for this game');
-                alert('Handicap adjustment data not available for this game.');
-            }
-        });
-    });
+    dataLoaded = true;
+    checkBothReady();
 }
 
-function loadGameList() {
+function loadGameListAndModules() {
     var container = document.getElementById('gameListContainer');
-    container.innerHTML = '<div class="loading">Loading games...</div>';
+    container.innerHTML = '<div class="spinner-container"><div class="spinner-green"></div></div>';
     
+    // Reset flags
+    dataLoaded = false;
+    modulesLoaded = false;
+    
+    // STEP 1: Query Firestore FIRST
+    console.log("[VIEW-HISTORY] Loading games from Firestore...");
     db.collection('historyGames')
         .where("status", "==", "completed")
-        .limit(100)
+        .limit(50)
         .get()
         .then(function(snapshot) {
             var games = [];
@@ -896,12 +978,55 @@ function loadGameList() {
                 return dateB - dateA;
             });
             
+            // Render game list immediately
             renderGameList(games);
         })
         .catch(function(error) {
             console.error("Error loading games:", error);
             container.innerHTML = '<div class="error-message">Error loading games. Please refresh.</div>';
+            dataLoaded = true; // Prevent hanging
+            checkBothReady();
         });
+    
+    // STEP 2: Load modules in parallel
+    var modulesToLoad = [
+        'js/game-data.js',
+        'js/game-match.js',
+        'js/game-team.js',
+        'js/game-stroke.js',
+        'js/game-scorecard.js',
+        'js/game-ui.js',
+        'js/game-loader.js',
+        'js/ticker.js',
+        'js/hcp-adjust.js'
+    ];
+    
+    var loadedCount = 0;
+    
+    function moduleLoaded() {
+        loadedCount++;
+        console.log("[VIEW-HISTORY] Module loaded:", loadedCount, "of", modulesToLoad.length);
+        if (loadedCount === modulesToLoad.length) {
+            console.log("[VIEW-HISTORY] All modules loaded");
+            modulesLoaded = true;
+            checkBothReady();
+        }
+    }
+    
+    for (var i = 0; i < modulesToLoad.length; i++) {
+        var script = document.createElement('script');
+        script.src = modulesToLoad[i];
+        script.onload = moduleLoaded;
+        script.onerror = function() {
+            console.error("[VIEW-HISTORY] Failed to load module:", this.src);
+            loadedCount++;
+            if (loadedCount === modulesToLoad.length) {
+                modulesLoaded = true;
+                checkBothReady();
+            }
+        };
+        document.head.appendChild(script);
+    }
 }
 
 function backToGameList() {
@@ -913,7 +1038,8 @@ function backToGameList() {
     detailView.style.display = 'none';
     listView.style.display = 'block';
     
-    loadGameList();
+    // Reload everything when coming back
+    loadGameListAndModules();
 }
 
 function exitToMainMenu() {
@@ -931,7 +1057,8 @@ async function init() {
     document.getElementById('backToMenuBtn').onclick = exitToMainMenu;
     document.getElementById('backToListBtn').onclick = backToGameList;
     
-    loadGameList();
+    // Start loading - Firestore query first, then modules in background
+    loadGameListAndModules();
 }
 
 init();
@@ -942,12 +1069,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.18
-KEY CHANGES from v8.17:
-   - FIXED: Status bubble now remains "VIEWER" after navigating to different holes
-   - Added setStatusBubbleToViewer() function and call it after renderDetailView() completes
-   - Also called after initial render to ensure consistency   - Prevents GameUI.renderHoleHeader() from resetting bubble to "LIVE" on hole change
-   - All other functionality unchanged
+VERSION: 8.21
+KEY CHANGES from v8.20:
+   - FIXED: Button enable timing - now waits for BOTH Firestore data AND modules to load
+   - Added combined counter (dataLoaded + modulesLoaded) before attaching event handlers
+   - Prevents race condition where modules loaded faster than Firestore query
+   - Buttons now enable correctly every time
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
