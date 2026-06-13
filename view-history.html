@@ -1,13 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.21
-KEY CHANGES from v8.20:
-   - FIXED: Button enable timing - now waits for BOTH Firestore data AND modules to load
-   - Added combined counter (dataLoaded + modulesLoaded) before attaching event handlers
-   - Prevents race condition where modules loaded faster than Firestore query
-   - Buttons now enable correctly every time
-   - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
+VERSION: 8.22
+KEY CHANGES from v8.21:
+   - ADDED: Script reference to js/firebase-retry.js
+   - REPLACED: Manual Firestore query with FirebaseRetry.queryWhereLimit()
+   - Consistent retry behavior with other pages (exponential backoff, green modal)
+   - All existing functionality preserved (parallel module loading, button state, status bubble)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
 
@@ -22,6 +21,7 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/firebase-retry.js"></script>
     
     <style>
         * {
@@ -345,13 +345,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.21</div>
+<div class="version-tag">v8.22</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "8.21";
+var APP_VERSION = "8.22";
 var CACHE_KEY = "view_history_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -363,8 +363,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.21";
-console.log("[VIEW-HISTORY] Initializing v8.21 with fixed timing");
+window.VIEW_HISTORY_VERSION = "8.22";
+console.log("[VIEW-HISTORY] Initializing v8.22 with FirebaseRetry");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -795,7 +795,7 @@ function renderScorecardView(game) {
 }
 
 // ============================================================
-// Game List Functions - OPTIMIZED: Waits for BOTH data AND modules
+// Game List Functions - v8.22: Uses FirebaseRetry for robust queries
 // ============================================================
 
 function enableButtons() {
@@ -947,12 +947,9 @@ function loadGameListAndModules() {
     dataLoaded = false;
     modulesLoaded = false;
     
-    // STEP 1: Query Firestore FIRST
-    console.log("[VIEW-HISTORY] Loading games from Firestore...");
-    db.collection('historyGames')
-        .where("status", "==", "completed")
-        .limit(50)
-        .get()
+    // STEP 1: Query Firestore FIRST using FirebaseRetry (v8.22)
+    console.log("[VIEW-HISTORY] Loading games from Firestore with FirebaseRetry...");
+    FirebaseRetry.queryWhereLimit("historyGames", "status", "==", "completed", 50)
         .then(function(snapshot) {
             var games = [];
             snapshot.forEach(function(doc) {
@@ -982,8 +979,8 @@ function loadGameListAndModules() {
             renderGameList(games);
         })
         .catch(function(error) {
-            console.error("Error loading games:", error);
-            container.innerHTML = '<div class="error-message">Error loading games. Please refresh.</div>';
+            console.error("[VIEW-HISTORY] Error loading games after retries:", error);
+            container.innerHTML = '<div class="error-message">Unable to load games. Please check your connection and refresh.</div>';
             dataLoaded = true; // Prevent hanging
             checkBothReady();
         });
@@ -1069,13 +1066,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.21
-KEY CHANGES from v8.20:
-   - FIXED: Button enable timing - now waits for BOTH Firestore data AND modules to load
-   - Added combined counter (dataLoaded + modulesLoaded) before attaching event handlers
-   - Prevents race condition where modules loaded faster than Firestore query
-   - Buttons now enable correctly every time
-   - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
+VERSION: 8.22
+KEY CHANGES from v8.21:
+   - ADDED: Script reference to js/firebase-retry.js
+   - REPLACED: Manual Firestore query with FirebaseRetry.queryWhereLimit()
+   - Consistent retry behavior with other pages (exponential backoff, green modal)
+   - All existing functionality preserved (parallel module loading, button state, status bubble)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
