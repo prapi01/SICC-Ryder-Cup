@@ -1,15 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 5.66
-KEY CHANGES from v5.65:
-   - ADDED: Flight toggle feature (F1/F2 button) to view other flight's match bubbles
-   - ADDED: viewOtherFlight variable to track view mode
-   - MODIFIED: Control bar layout - [P] [F2] [SAVE H7] [◀] [7] [▶]
-   - MODIFIED: Render logic to show other flight (read-only, no +/- buttons, SAVE disabled)
-   - MODIFIED: Flight badge shows gold when viewing other flight
-   - MODIFIED: Toggle button text/color changes based on mode
-   - SAVE button disabled when viewing other flight
-   - All existing functionality preserved (cascade, save, clinch detection, ticker, etc.)
+VERSION: 5.67
+KEY CHANGES from v5.66:
+   - FIXED: Toggle button color now updates correctly when switching between scoring and view mode
+   - ADDED: renderCompactHeaderWithFlightToggle() call inside renderAll() to refresh control bar on every render
+   - Toggle button now shows correct color (GREEN for view mode, GOLD for scoring mode)
+   - Toggle button text updates correctly based on current mode
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.15+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -23,20 +20,20 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=5.66"></script>
-    <script src="js/session.js?v=5.66"></script>
-    <script src="js/game-data.js?v=5.66"></script>
+    <script src="js/firebase-config.js?v=5.67"></script>
+    <script src="js/session.js?v=5.67"></script>
+    <script src="js/game-data.js?v=5.67"></script>
     <script src="js/game-match.js?v=2.15"></script>
-    <script src="js/game-team.js?v=5.66"></script>
-    <script src="js/game-stroke.js?v=5.66"></script>
-    <script src="js/game-scorecard.js?v=5.66"></script>
-    <script src="js/game-ui.js?v=5.66"></script>
-    <script src="js/game-loader.js?v=5.66"></script>
-    <script src="js/card-submit.js?v=5.66"></script>
-    <script src="js/sign-card.js?v=5.66"></script>
-    <script src="js/hcp-adjust.js?v=5.66"></script>
-    <script src="js/ticker.js?v=5.66"></script>
-    <script src="js/history-record.js?v=5.66"></script>
+    <script src="js/game-team.js?v=5.67"></script>
+    <script src="js/game-stroke.js?v=5.67"></script>
+    <script src="js/game-scorecard.js?v=5.67"></script>
+    <script src="js/game-ui.js?v=5.67"></script>
+    <script src="js/game-loader.js?v=5.67"></script>
+    <script src="js/card-submit.js?v=5.67"></script>
+    <script src="js/sign-card.js?v=5.67"></script>
+    <script src="js/hcp-adjust.js?v=5.67"></script>
+    <script src="js/ticker.js?v=5.67"></script>
+    <script src="js/history-record.js?v=5.67"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -299,13 +296,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.66</div>
+<div class="version-tag">v5.67</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "5.66";
+var APP_VERSION = "5.67";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -317,11 +314,11 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.66";
-console.log("[REAL-GAME] Initializing v5.66 with flight toggle feature");
+window.REAL_GAME_VERSION = "5.67";
+console.log("[REAL-GAME] Initializing v5.67 with fixed toggle button color");
 
 // ============================================================
-// DEBUG CONFIGURATION - Set target hole to monitor
+// DEBUG CONFIGURATION
 // ============================================================
 var DEBUG_TARGET_HOLE = 14;
 var DEBUG_CALL_COUNTERS = {
@@ -363,7 +360,7 @@ var activeCompleteModal = null;
 var usedPreloadedData = false;
 var takeoverDetected = false;
 
-// v5.66: Flight toggle for viewing other flight
+// v5.67: Flight toggle for viewing other flight
 var viewOtherFlight = false;  // true = viewing other flight (read-only)
 
 // Firestore real-time listener
@@ -387,7 +384,7 @@ function getHighestBothSaved(cache) {
 }
 
 // ============================================================
-// Pending Writes Queue
+// Pending Writes Queue (unchanged)
 // ============================================================
 
 function getPendingWritesKey() {
@@ -631,7 +628,7 @@ function applyPreloadedData(preloadData) {
 }
 
 // ============================================================
-// Ticker Functions - UNIFIED v5.64: Uses cached playerTotals
+// Ticker Functions
 // ============================================================
 
 function getPlayerScoreForTicker(player) {
@@ -698,7 +695,6 @@ function getFlightOrderedPlayers(flight) {
     return teamA.concat(teamB);
 }
 
-// v5.66: Get current display flight (scoring flight or other flight based on viewOtherFlight)
 function getCurrentDisplayFlight() {
     if (viewOtherFlight) {
         return editableFlight === 1 ? 2 : 1;
@@ -706,7 +702,6 @@ function getCurrentDisplayFlight() {
     return editableFlight;
 }
 
-// v5.66: Check if current display is editable (scoring mode)
 function isCurrentDisplayEditable() {
     return !viewOtherFlight && canEdit && !takeoverDetected && !isGameCompleteFlag;
 }
@@ -819,7 +814,6 @@ function updateSaveButtonState() {
     var saveBtn = document.getElementById('compactSaveBtn');
     if (!saveBtn) return;
     
-    // v5.66: Disable save button when viewing other flight
     if (viewOtherFlight) {
         saveBtn.disabled = true;
         saveBtn.style.opacity = '0.5';
@@ -920,7 +914,6 @@ function performSave() {
             return;
         }
         
-        // v5.66: Cannot save when viewing other flight
         if (viewOtherFlight) {
             reject(new Error("Cannot save while viewing other flight."));
             return;
@@ -1078,6 +1071,141 @@ function performSave() {
             }
         });
     });
+}
+
+function updateLocalCacheWithResults(resultsData) {
+    var position = resultsData.position;
+    var holeNumber = getHoleAtPosition(position);
+    var isTarget = (holeNumber === DEBUG_TARGET_HOLE);
+    
+    if(isTarget) {
+        DEBUG_CALL_COUNTERS.update++;
+        console.log(`[DEBUG-UPDATE] === UPDATE #${DEBUG_CALL_COUNTERS.update} for HOLE ${holeNumber} (position ${position}) (TARGET) ===`);
+        console.log(`[DEBUG-UPDATE] Received f1IntraMatches: ${resultsData.f1IntraMatches ? Object.keys(resultsData.f1IntraMatches).length + ' entries' : 'null'}`);
+        console.log(`[DEBUG-UPDATE] Received f2IntraMatches: ${resultsData.f2IntraMatches ? Object.keys(resultsData.f2IntraMatches).length + ' entries' : 'null'}`);
+        console.log(`[DEBUG-UPDATE] Received matchResults: ${resultsData.matchResults ? resultsData.matchResults.length + ' values' : 'null'}`);
+        if(resultsData.f2IntraMatches) {
+            console.log(`[DEBUG-UPDATE] f2IntraMatches content:`, resultsData.f2IntraMatches);
+        }
+    }
+    
+    var cache = GameLoader.getLocalCache();
+    if (!cache.results) {
+        cache.results = initializeEmptyResults();
+    }
+    
+    if(isTarget) {
+        var beforeF2 = cache.results.f2IntraMatches?.[position];
+        console.log(`[DEBUG-UPDATE] BEFORE: cache.f2IntraMatches[${position}] =`, beforeF2);
+    }
+    
+    if (resultsData.matchResults !== null) {
+        if (!cache.results.matchResults) cache.results.matchResults = new Array(18);
+        cache.results.matchResults[position] = resultsData.matchResults;
+    }
+    
+    if (resultsData.f1IntraMatches !== null) {
+        if (!cache.results.f1IntraMatches) cache.results.f1IntraMatches = new Array(18);
+        cache.results.f1IntraMatches[position] = resultsData.f1IntraMatches;
+    }
+    
+    if (resultsData.f2IntraMatches !== null) {
+        if (!cache.results.f2IntraMatches) cache.results.f2IntraMatches = new Array(18);
+        cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
+        if(isTarget) console.log(`[DEBUG-UPDATE] Setting cache.f2IntraMatches[${position}]`);
+    } else {
+        if(isTarget) console.warn(`[DEBUG-UPDATE] resultsData.f2IntraMatches is NULL - not updating cache!`);
+    }
+    
+    if (!cache.results.game1.pointsA) cache.results.game1.pointsA = new Array(18).fill(8);
+    cache.results.game1.pointsA[position] = resultsData.game1PointsA;
+    
+    if (!cache.results.game1.pointsB) cache.results.game1.pointsB = new Array(18).fill(8);
+    cache.results.game1.pointsB[position] = resultsData.game1PointsB;
+    
+    if (!cache.results.game2.pointsA) cache.results.game2.pointsA = new Array(18).fill(1);
+    cache.results.game2.pointsA[position] = resultsData.game2PointsA;
+    
+    if (!cache.results.game2.pointsB) cache.results.game2.pointsB = new Array(18).fill(1);
+    cache.results.game2.pointsB[position] = resultsData.game2PointsB;
+    
+    if (!cache.results.game2.flight1.leader) cache.results.game2.flight1.leader = new Array(18).fill("AS");
+    cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
+    
+    if (!cache.results.game2.flight2.leader) cache.results.game2.flight2.leader = new Array(18).fill("AS");
+    cache.results.game2.flight2.leader[position] = resultsData.t2Leader;
+    
+    if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill("AS");
+    cache.results.game2.displayT1[position] = resultsData.t1Display;
+    
+    if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill("AS");
+    cache.results.game2.displayT2[position] = resultsData.t2Display;
+    
+    if (!cache.results.game2.flight1.cumulativePoints) cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
+    cache.results.game2.flight1.cumulativePoints[position] = resultsData.cumulativeF1 !== undefined ? resultsData.cumulativeF1 : 0;
+    
+    if (!cache.results.game2.flight2.cumulativePoints) cache.results.game2.flight2.cumulativePoints = new Array(18).fill(0);
+    cache.results.game2.flight2.cumulativePoints[position] = resultsData.cumulativeF2 !== undefined ? resultsData.cumulativeF2 : 0;
+    
+    if (!cache.results.game3.leader) cache.results.game3.leader = new Array(18).fill("AS");
+    cache.results.game3.leader[position] = resultsData.strkLeader;
+    
+    if (!cache.results.game3.displayStrk) cache.results.game3.displayStrk = new Array(18).fill("AS");
+    cache.results.game3.displayStrk[position] = resultsData.strkDisplay;
+    
+    if (!cache.results.game3.pointsA) cache.results.game3.pointsA = new Array(18).fill(0.5);
+    cache.results.game3.pointsA[position] = resultsData.game3PointsA;
+    
+    if (!cache.results.game3.pointsB) cache.results.game3.pointsB = new Array(18).fill(0.5);
+    cache.results.game3.pointsB[position] = resultsData.game3PointsB;
+    
+    if (!cache.results.tr.teamA) cache.results.tr.teamA = new Array(18).fill(null);
+    if (!cache.results.tr.teamB) cache.results.tr.teamB = new Array(18).fill(null);
+    if (!cache.results.tr.teamAGreen) cache.results.tr.teamAGreen = new Array(18).fill(false);
+    if (!cache.results.tr.teamBGreen) cache.results.tr.teamBGreen = new Array(18).fill(false);
+    
+    cache.results.tr.teamA[position] = resultsData.trA;
+    cache.results.tr.teamB[position] = resultsData.trB;
+    cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
+    cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
+    
+    cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
+    cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
+    
+    var oldClinchedCount = Object.keys(cache.results.clinchedAt || {}).length;
+    cache.results.clinchedAt = resultsData.updatedClinched;
+    var newClinchedCount = Object.keys(cache.results.clinchedAt || {}).length;
+    console.log(`[DEBUG-CACHE] clinchedAt: ${oldClinchedCount} -> ${newClinchedCount}`);
+    if (newClinchedCount > oldClinchedCount) {
+        console.log(`[DEBUG-CACHE] New clinches:`, Object.keys(cache.results.clinchedAt));
+    }
+    
+    if (resultsData.t1Display !== undefined && resultsData.t1Display !== null) {
+        cache.t1Row[position] = resultsData.t1Display;
+    }
+    if (resultsData.t2Display !== undefined && resultsData.t2Display !== null) {
+        cache.t2Row[position] = resultsData.t2Display;
+    }
+    if (resultsData.strkDisplay !== undefined && resultsData.strkDisplay !== null) {
+        cache.strkRow[position] = resultsData.strkDisplay;
+    }
+    
+    var highestBothSaved = getHighestBothSaved(cache);
+    var playerTotals = calculatePlayerTotals(highestBothSaved);
+    cache.results.playerTotals = playerTotals;
+    
+    if(isTarget) {
+        var afterF2 = cache.results.f2IntraMatches?.[position];
+        console.log(`[DEBUG-UPDATE] AFTER: cache.f2IntraMatches[${position}] =`, afterF2);
+        if(afterF2) {
+            console.log(`[DEBUG-UPDATE] AFTER content:`, afterF2);
+        }
+        if(beforeF2 === undefined && afterF2) {
+            console.log(`[DEBUG-UPDATE] SUCCESS: f2IntraMatches was SAVED to cache`);
+        } else if(beforeF2 === undefined && afterF2 === undefined) {
+            console.error(`[DEBUG-UPDATE] FAILURE: f2IntraMatches was NOT saved to cache!`);
+        }
+    }
 }
 
 async function saveHole() {
@@ -1246,7 +1374,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.66";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.67";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -1489,6 +1617,12 @@ function nextHole() {
         return;
     }
     
+    // v5.67: When viewing other flight, we don't advance holes
+    if (viewOtherFlight) {
+        console.log(`[DEBUG-NAV] Cannot advance hole while viewing other flight`);
+        return;
+    }
+    
     var isLast = (currentHole === 18);
     var isSaved = isHoleSaved(editableFlight, currentHole);
     
@@ -1524,6 +1658,12 @@ function nextHole() {
 }
 
 function prevHole() {
+    // v5.67: When viewing other flight, we don't navigate holes
+    if (viewOtherFlight) {
+        console.log(`[DEBUG-NAV] Cannot navigate holes while viewing other flight`);
+        return;
+    }
+    
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHole);
     
@@ -1542,13 +1682,9 @@ function updateHoleNumberDisplay() {
     GameUI.updateHoleHeaderNumber(currentHole);
 }
 
-// v5.66: Toggle flight view (switch between scoring flight and viewing other flight)
 function onToggleFlightView() {
     viewOtherFlight = !viewOtherFlight;
     console.log(`[REAL-GAME] Toggle flight view: viewOtherFlight = ${viewOtherFlight}`);
-    
-    // When switching back to scoring mode, reset viewOtherFlight and keep current hole
-    // When switching to view mode, show the other flight's state (read-only)
     renderAll();
 }
 
@@ -1670,140 +1806,7 @@ function updatePlayerNamesToShortform() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS - v5.66: Supports flight toggle
-// ============================================================
-
-function renderAll() {
-    console.log(`[DEBUG-RENDER] renderAll called, currentHole=${currentHole}, editableFlight=${editableFlight}, viewOtherFlight=${viewOtherFlight}`);
-    
-    var cache = GameLoader.getLocalCache();
-    var currentPar = coursePar[currentHole - 1];
-    var currentSi = courseSi[currentHole - 1];
-    var tr = GameLoader.getTRForHole(currentHole);
-    
-    GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
-    
-    var displayTeamA = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamA : "-";
-    var displayTeamB = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamB : "-";
-    var displayTeamAGreen = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamAGreen : false;
-    var displayTeamBGreen = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamBGreen : false;
-    
-    GameUI.updateTR("trDisplay", displayTeamA, displayTeamB, displayTeamAGreen, displayTeamBGreen);
-    
-    // v5.66: Determine which flight to display and whether editing is allowed
-    var displayFlight = getCurrentDisplayFlight();
-    var canEditLocal = isCurrentDisplayEditable();
-    
-    var currentPlayers = getFlightOrderedPlayers(displayFlight);
-    
-    // Store original editableFlight for lock check (view mode shouldn't trigger lock checks)
-    var stillOwnsLock = true;
-    if (!viewOtherFlight) {
-        stillOwnsLock = checkLockOwnership();
-        canEditLocal = canEditLocal && stillOwnsLock;
-    }
-    
-    function getOpponentsForPlayer(player) {
-        return GameMatch.getAllOpponents(allPlayers, player);
-    }
-    
-    function getMatchValueForPlayer(player, opponent) {
-        var results = cache.results;
-        return GameMatch.getMatchValueFromStoredResults(results, player, opponent, currentHole, getHolePosition, allPlayers);
-    }
-    
-    function getBubbleDisplayValue(player, opponent) {
-        var matchValue = getMatchValueForPlayer(player, opponent);
-        return GameMatch.getMatchDisplayValue(matchValue);
-    }
-    
-    function getBubbleClass(player, opponent) {
-        var matchValue = getMatchValueForPlayer(player, opponent);
-        var clinchedAt = cache.clinchedAt || {};
-        var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
-        var lastSyncedHole = cache.lastSyncedHole;
-        
-        var bubbleClass = GameMatch.getMatchBubbleClass(
-            matchValue, clinchedAt, player, opponent, currentHole,
-            isHoleSavedForFlight, lastSyncedHole, GameMatch.getClinchHole
-        );
-        
-        if (bubbleClass === 'bubble-loss-clinch' || bubbleClass === 'bubble-gold') {
-            console.log(`[DEBUG-RENDER] ${player.label} vs ${opponent.label}: matchValue=${matchValue}, bubbleClass=${bubbleClass}, clinchedAt count=${Object.keys(clinchedAt).length}`);
-        }
-        
-        return bubbleClass;
-    }
-    
-    GameUI.renderPlayerCards("playerCards", currentPlayers, getOpponentsForPlayer, getBubbleClass, getBubbleDisplayValue, getCurrentScore, canEditLocal,
-        function(playerName, flight, delta) {
-            if (isGameCompleteFlag) return;
-            if (takeoverDetected) return;
-            if (!canEdit) return;
-            if (viewOtherFlight) return;  // Cannot edit when viewing other flight
-            var player = allPlayers.find(p => p.name === playerName && p.flight === flight);
-            if (!player) return;
-            var current = getCurrentScore(player);
-            var newScore = Math.max(1, Math.min(99, current + delta));
-            localChanges[flight + "_" + currentHole + "_" + player.name] = newScore;
-            renderAll();
-        }
-    );
-    updatePlayerNamesToShortform();
-    
-    // v5.66: Update flight badge - gold when viewing other flight, green when scoring
-    if (viewOtherFlight) {
-        // Show gold badge for the flight being viewed
-        GameUI.updateFlightBadge(displayFlight);
-        var badge = document.querySelector('.flight-badge');
-        if (badge) {
-            badge.style.borderColor = '#ffaa44';
-            badge.style.color = '#ffaa44';
-        }
-    } else {
-        GameUI.updateFlightBadge(editableFlight);
-        var badge = document.querySelector('.flight-badge');
-        if (badge) {
-            badge.style.borderColor = '#4caf50';
-            badge.style.color = '#4caf50';
-        }
-    }
-    
-    var holes = getDisplayHoles();
-    window.savedHoles = cache.savedHoles;
-    
-    var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
-    var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
-    
-    var t1Display = cache.results?.game2?.displayT1 || null;
-    var t2Display = cache.results?.game2?.displayT2 || null;
-    var strkDisplay = cache.results?.game3?.displayStrk || null;
-    
-    if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
-        GameScorecard.renderScorecard(
-            "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
-            cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
-            t1ClinchedHole, t2ClinchedHole,
-            t1Display, t2Display, strkDisplay
-        );
-    }
-    
-    var playOrder = getPlayOrder();
-    var isCurrentSaved = false;
-    if (!viewOtherFlight) {
-        isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) { return key.startsWith(editableFlight + "_" + currentHole + "_"); }).length === 0;
-    } else {
-        // For view mode, check if the displayed flight has saved this hole
-        isCurrentSaved = isHoleSaved(displayFlight, currentHole);
-    }
-    GameUI.updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameCompleteFlag, celebrationTriggered, showSignCardModal);
-    if (typeof Ticker !== 'undefined') Ticker.refresh();
-    
-    updateSaveButtonState();
-}
-
-// ============================================================
-// Control Bar Rendering - v5.66: New layout with flight toggle button
+// Control Bar Rendering - v5.67: New layout with flight toggle button
 // ============================================================
 
 function renderCompactHeaderWithFlightToggle() {
@@ -1816,7 +1819,9 @@ function renderCompactHeaderWithFlightToggle() {
     var displayMode = GameUI.getDisplayMode();
     var pnText = displayMode === 'play' ? 'P' : 'N';
     
-    // v5.66: Determine toggle button text and color
+    // v5.67: Determine toggle button text and color
+    // When viewOtherFlight = true (viewing other flight) -> button shows editableFlight (green)
+    // When viewOtherFlight = false (scoring mode) -> button shows other flight (gold)
     var toggleButtonText = viewOtherFlight ? (editableFlight === 1 ? 'F1' : 'F2') : (editableFlight === 1 ? 'F2' : 'F1');
     var toggleButtonColor = viewOtherFlight ? '#4caf50' : '#ffaa44';
     var toggleButtonBg = '#1a3a1a';
@@ -1878,6 +1883,137 @@ function renderCompactHeaderWithFlightToggle() {
             nextHole();
         }
     };
+}
+
+// ============================================================
+// RENDER FUNCTIONS - v5.67: Calls renderCompactHeaderWithFlightToggle on every render
+// ============================================================
+
+function renderAll() {
+    console.log(`[DEBUG-RENDER] renderAll called, currentHole=${currentHole}, editableFlight=${editableFlight}, viewOtherFlight=${viewOtherFlight}`);
+    
+    // v5.67: Refresh control bar on every render to update toggle button
+    renderCompactHeaderWithFlightToggle();
+    
+    var cache = GameLoader.getLocalCache();
+    var currentPar = coursePar[currentHole - 1];
+    var currentSi = courseSi[currentHole - 1];
+    var tr = GameLoader.getTRForHole(currentHole);
+    
+    GameUI.renderHoleHeader("holeHeader", currentHole, currentPar, currentSi);
+    
+    var displayTeamA = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamA : "-";
+    var displayTeamB = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamB : "-";
+    var displayTeamAGreen = (tr.teamA !== null && tr.teamA !== undefined) ? tr.teamAGreen : false;
+    var displayTeamBGreen = (tr.teamB !== null && tr.teamB !== undefined) ? tr.teamBGreen : false;
+    
+    GameUI.updateTR("trDisplay", displayTeamA, displayTeamB, displayTeamAGreen, displayTeamBGreen);
+    
+    var displayFlight = getCurrentDisplayFlight();
+    var canEditLocal = isCurrentDisplayEditable();
+    
+    var currentPlayers = getFlightOrderedPlayers(displayFlight);
+    
+    var stillOwnsLock = true;
+    if (!viewOtherFlight) {
+        stillOwnsLock = checkLockOwnership();
+        canEditLocal = canEditLocal && stillOwnsLock;
+    }
+    
+    function getOpponentsForPlayer(player) {
+        return GameMatch.getAllOpponents(allPlayers, player);
+    }
+    
+    function getMatchValueForPlayer(player, opponent) {
+        var results = cache.results;
+        return GameMatch.getMatchValueFromStoredResults(results, player, opponent, currentHole, getHolePosition, allPlayers);
+    }
+    
+    function getBubbleDisplayValue(player, opponent) {
+        var matchValue = getMatchValueForPlayer(player, opponent);
+        return GameMatch.getMatchDisplayValue(matchValue);
+    }
+    
+    function getBubbleClass(player, opponent) {
+        var matchValue = getMatchValueForPlayer(player, opponent);
+        var clinchedAt = cache.clinchedAt || {};
+        var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
+        var lastSyncedHole = cache.lastSyncedHole;
+        
+        var bubbleClass = GameMatch.getMatchBubbleClass(
+            matchValue, clinchedAt, player, opponent, currentHole,
+            isHoleSavedForFlight, lastSyncedHole, GameMatch.getClinchHole
+        );
+        
+        if (bubbleClass === 'bubble-loss-clinch' || bubbleClass === 'bubble-gold') {
+            console.log(`[DEBUG-RENDER] ${player.label} vs ${opponent.label}: matchValue=${matchValue}, bubbleClass=${bubbleClass}, clinchedAt count=${Object.keys(clinchedAt).length}`);
+        }
+        
+        return bubbleClass;
+    }
+    
+    GameUI.renderPlayerCards("playerCards", currentPlayers, getOpponentsForPlayer, getBubbleClass, getBubbleDisplayValue, getCurrentScore, canEditLocal,
+        function(playerName, flight, delta) {
+            if (isGameCompleteFlag) return;
+            if (takeoverDetected) return;
+            if (!canEdit) return;
+            if (viewOtherFlight) return;
+            var player = allPlayers.find(p => p.name === playerName && p.flight === flight);
+            if (!player) return;
+            var current = getCurrentScore(player);
+            var newScore = Math.max(1, Math.min(99, current + delta));
+            localChanges[flight + "_" + currentHole + "_" + player.name] = newScore;
+            renderAll();
+        }
+    );
+    updatePlayerNamesToShortform();
+    
+    if (viewOtherFlight) {
+        GameUI.updateFlightBadge(displayFlight);
+        var badge = document.querySelector('.flight-badge');
+        if (badge) {
+            badge.style.borderColor = '#ffaa44';
+            badge.style.color = '#ffaa44';
+        }
+    } else {
+        GameUI.updateFlightBadge(editableFlight);
+        var badge = document.querySelector('.flight-badge');
+        if (badge) {
+            badge.style.borderColor = '#4caf50';
+            badge.style.color = '#4caf50';
+        }
+    }
+    
+    var holes = getDisplayHoles();
+    window.savedHoles = cache.savedHoles;
+    
+    var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
+    var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
+    
+    var t1Display = cache.results?.game2?.displayT1 || null;
+    var t2Display = cache.results?.game2?.displayT2 || null;
+    var strkDisplay = cache.results?.game3?.displayStrk || null;
+    
+    if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
+        GameScorecard.renderScorecard(
+            "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
+            cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
+            t1ClinchedHole, t2ClinchedHole,
+            t1Display, t2Display, strkDisplay
+        );
+    }
+    
+    var playOrder = getPlayOrder();
+    var isCurrentSaved = false;
+    if (!viewOtherFlight) {
+        isCurrentSaved = isHoleSaved(editableFlight, currentHole) && Object.keys(localChanges).filter(function(key) { return key.startsWith(editableFlight + "_" + currentHole + "_"); }).length === 0;
+    } else {
+        isCurrentSaved = isHoleSaved(displayFlight, currentHole);
+    }
+    GameUI.updateNavigationButtons(currentHole, playOrder, isCurrentSaved, isGameCompleteFlag, celebrationTriggered, showSignCardModal);
+    if (typeof Ticker !== 'undefined') Ticker.refresh();
+    
+    updateSaveButtonState();
 }
 
 async function exitToMainMenu() {
@@ -2031,16 +2167,13 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.66
-KEY CHANGES from v5.65:
-   - ADDED: Flight toggle feature (F1/F2 button) to view other flight's match bubbles
-   - ADDED: viewOtherFlight variable to track view mode
-   - MODIFIED: Control bar layout - [P] [F2] [SAVE H7] [◀] [7] [▶]
-   - MODIFIED: Render logic to show other flight (read-only, no +/- buttons, SAVE disabled)
-   - MODIFIED: Flight badge shows gold when viewing other flight
-   - MODIFIED: Toggle button text/color changes based on mode
-   - SAVE button disabled when viewing other flight
-   - All existing functionality preserved (cascade, save, clinch detection, ticker, etc.)
+VERSION: 5.67
+KEY CHANGES from v5.66:
+   - FIXED: Toggle button color now updates correctly when switching between scoring and view mode
+   - ADDED: renderCompactHeaderWithFlightToggle() call inside renderAll() to refresh control bar on every render
+   - Toggle button now shows correct color (GREEN for view mode, GOLD for scoring mode)
+   - Toggle button text updates correctly based on current mode
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-data.js, js/game-match.js (v2.15+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
