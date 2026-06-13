@@ -1,10 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.15
-KEY CHANGES from v8.14:
-   - CHANGED: viewport user-scalable from "no" to "yes" to allow pinch zoom
-   - Enables zoom on handicap adjustment table for better readability
-   - All existing functionality preserved
+VERSION: 8.18
+KEY CHANGES from v8.17:
+   - FIXED: Status bubble now remains "VIEWER" after navigating to different holes
+   - Added setStatusBubbleToViewer() function and call it after renderDetailView() completes
+   - Also called after initial render to ensure consistency
+   - Prevents GameUI.renderHoleHeader() from resetting bubble to "LIVE" on hole change
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
@@ -320,13 +322,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.15</div>
+<div class="version-tag">v8.18</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "8.15";
+var APP_VERSION = "8.18";
 var CACHE_KEY = "view_history_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -338,8 +340,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.15";
-console.log("[VIEW-HISTORY] Initializing v8.15 with zoom enabled");
+window.VIEW_HISTORY_VERSION = "8.18";
+console.log("[VIEW-HISTORY] Initializing v8.18 with zoom enabled");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -405,6 +407,18 @@ function showHandicapAdjustment(adjustedHandicaps, anchorName, players) {
         document.head.appendChild(script);
     } else {
         HandicapAdjustment.displayStoredAdjustment(adjustedHandicaps, anchorName, players, true);
+    }
+}
+
+// ============================================================
+// Status Bubble Helper - Ensures bubble shows "VIEWER" after each render
+// ============================================================
+
+function setStatusBubbleToViewer() {
+    var statusBubble = document.querySelector('.status-bubble-new');
+    if (statusBubble && statusBubble.innerText !== "VIEWER") {
+        statusBubble.innerText = "VIEWER";
+        console.log("[VIEW-HISTORY] Status bubble set to VIEWER");
     }
 }
 
@@ -607,6 +621,8 @@ function renderScorecardView(game) {
             currentHole = playOrder[currentIndex + 1];
             updateHoleNumberDisplay();
             renderDetailView();
+            // FIXED v8.18: Set status bubble back to VIEWER after hole change
+            setStatusBubbleToViewer();
         }
     }
     
@@ -617,6 +633,8 @@ function renderScorecardView(game) {
             currentHole = playOrder[currentIndex - 1];
             updateHoleNumberDisplay();
             renderDetailView();
+            // FIXED v8.18: Set status bubble back to VIEWER after hole change
+            setStatusBubbleToViewer();
         }
     }
     
@@ -630,6 +648,8 @@ function renderScorecardView(game) {
         GameUI.updateFlightBadge(flightNumber);
         GameUI.updateCompactHoleDisplay(currentHole);
         renderPlayerCardsOnly();
+        // FIXED v8.18: Set status bubble back to VIEWER after flight toggle
+        setStatusBubbleToViewer();
     }
     
     function renderPlayerCardsOnly() {
@@ -741,6 +761,9 @@ function renderScorecardView(game) {
     initTicker();
     renderDetailView();
     GameUI.renderBottomMenu("bottomMenuContainer", null);
+    
+    // FIXED v8.18: Set status bubble to VIEWER after initial render
+    setStatusBubbleToViewer();
     
     detailContent.classList.add('data-ready');
 }
@@ -919,11 +942,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.15
-KEY CHANGES from v8.14:
-   - CHANGED: viewport user-scalable from "no" to "yes" to allow pinch zoom
-   - Enables zoom on handicap adjustment table for better readability
-   - All existing functionality preserved
+VERSION: 8.18
+KEY CHANGES from v8.17:
+   - FIXED: Status bubble now remains "VIEWER" after navigating to different holes
+   - Added setStatusBubbleToViewer() function and call it after renderDetailView() completes
+   - Also called after initial render to ensure consistency   - Prevents GameUI.renderHoleHeader() from resetting bubble to "LIVE" on hole change
+   - All other functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
 STATUS: Ready for integration
 -->
