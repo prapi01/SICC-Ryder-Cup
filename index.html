@@ -1,10 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.33
-KEY CHANGES from v3.32:
-   - FIXED: Icon now properly centered using margin: 0 auto (no transform conflict)
-   - ADDED: Glow effect (green drop-shadow) on icon at impact
-   - IMPROVED: Smoother transition for icon filter and opacity
+VERSION: 3.34
+KEY CHANGES from v3.33:
+   - FIXED: Race condition between splashShown and firstLoadCompleted flags
+   - Unified session flag 'appInitialized' to control both splash and first load
+   - Simplified initialization logic - single source of truth
+   - Splash now plays correctly on fresh browser start
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -438,12 +439,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.33</div>
+<div class="version-tag">v3.34</div>
 
 <script>
-// FILE: index.html - VERSION 3.33
+// FILE: index.html - VERSION 3.34
 
-var APP_VERSION = "3.33";
+var APP_VERSION = "3.34";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -460,11 +461,13 @@ var currentSession = null;
 
 // Preload tracking
 var preloadComplete = false;
-var isFirstLoad = true;
 var mainContainer = null;
 var greyIconScreen = null;
 var dataReady = false;
 var splashAnimationCompleted = false;
+
+// v3.34: Unified session flag - 'appInitialized' controls both splash and first load
+var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // Get splash elements
 var splashOverlay = document.getElementById('splashOverlay');
@@ -477,20 +480,19 @@ var splashSubtitle = document.getElementById('splashSubtitle');
 // ============================================================
 
 function shouldShowSplash() {
-    var splashShownThisSession = sessionStorage.getItem('splashShown');
-    
-    if (splashShownThisSession === 'true') {
+    // v3.34: Use unified flag
+    if (!isFirstLoad) {
         console.log("Splash already shown this session - skipping");
         return false;
     }
     
-    console.log("No splash recorded this session - showing premium splash");
+    console.log("First load this session - showing premium splash");
     return true;
 }
 
 function recordSplashShown() {
-    sessionStorage.setItem('splashShown', 'true');
-    console.log("Splash recorded as shown for this session");
+    sessionStorage.setItem('appInitialized', 'true');
+    console.log("App marked as initialized for this session");
 }
 
 // v3.33: Premium splash sequence - centered icon drop with glow
@@ -1002,7 +1004,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.33: Premium splash with centered icon + glow
+// Initialization - v3.34: Unified session flag
 // ============================================================
 
 function initApp() {
@@ -1012,11 +1014,10 @@ function initApp() {
     mainContainer.style.display = "block";
     
     var hasCachedData = getPreloadedRawGameData() !== null;
-    var firstLoadFlag = sessionStorage.getItem('firstLoadCompleted');
     
-    if (!firstLoadFlag) {
-        // First load ever - premium splash sequence
-        console.log("First load - premium splash sequence");
+    if (isFirstLoad) {
+        // First load this session - premium splash sequence
+        console.log("First load this session - premium splash sequence");
         
         // Start loading data immediately
         FirebaseRetry.getCollection("scheduledGames", {
@@ -1037,17 +1038,17 @@ function initApp() {
                     // Data ready - start the beautiful splash animation
                     startSplashAnimation();
                     renderMainUI();
-                    sessionStorage.setItem('firstLoadCompleted', 'true');
+                    recordSplashShown();
                 });
             } else {
                 startSplashAnimation();
                 renderMainUI();
-                sessionStorage.setItem('firstLoadCompleted', 'true');
+                recordSplashShown();
             }
         }).catch(function() {
             startSplashAnimation();
             renderMainUI();
-            sessionStorage.setItem('firstLoadCompleted', 'true');
+            recordSplashShown();
         });
     } else if (!hasCachedData) {
         // Returning but no cached data - grey icon screen
@@ -1092,12 +1093,10 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.33: Premium splash with centered icon
+// Start the app - v3.34: Unified session flag
 // ============================================================
 
 if (shouldShowSplash()) {
-    recordSplashShown();
-    
     console.log("[SPLASH] Premium splash mode - B&W screen with hidden icon");
     
     SessionManager.initSession("index.html", "index.html", function(session) {
@@ -1126,11 +1125,12 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.33
-KEY CHANGES from v3.32:
-   - FIXED: Icon now properly centered using margin: 0 auto (no transform conflict)
-   - ADDED: Glow effect (green drop-shadow) on icon at impact
-   - IMPROVED: Smoother transition for icon filter and opacity
+VERSION: 3.34
+KEY CHANGES from v3.33:
+   - FIXED: Race condition between splashShown and firstLoadCompleted flags
+   - Unified session flag 'appInitialized' to control both splash and first load
+   - Simplified initialization logic - single source of truth
+   - Splash now plays correctly on fresh browser start
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
