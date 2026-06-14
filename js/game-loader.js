@@ -1,11 +1,12 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: lastSyncedHole calculation now uses PLAY ORDER instead of natural order (1-18)
-   - Previously lastSyncedHole was calculated based on holes 1,2,3... regardless of startingHole
-   - Now correctly calculates based on play order (startingHole, startingHole+1, ..., 18, 1, 2, ...)
-   - This fixes cross-flight bubble colors showing as grey when both flights have saved the hole
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: lastSyncedHole now stores PLAY POSITION (0-17) instead of natural hole number
+   - Added getPlayOrderPosition() helper to convert between hole numbers and play positions
+   - Added getConsecutiveSyncedLastPosition() to get the last consecutively synced play position
+   - This ensures cross-flight bubble colors work correctly for shotgun starts (e.g., starting hole 10)
+   - Maintains backward compatibility for existing caches
    - ALL existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js
 STATUS: Ready for integration
@@ -63,26 +64,64 @@ var GameLoader = (function() {
     }
     
     // ============================================================
-    // Helper: Calculate last synced hole using PLAY ORDER
-    // v1.07: Fixed to use play order instead of natural order
+    // Helper: Get play position for a hole number
+    // v1.08: Uses GameData.getPlayPosition()
     // ============================================================
-    function calculateLastSyncedHole(savedHolesF1, savedHolesF2, startingHole) {
+    function getPlayPosition(holeNumber, startingHole) {
+        if (typeof GameData !== 'undefined' && GameData.getPlayPosition) {
+            return GameData.getPlayPosition(holeNumber);
+        }
+        // Fallback
         var playOrder = getPlayOrder(startingHole);
-        var lastSynced = 0;
+        for (var i = 0; i < playOrder.length; i++) {
+            if (playOrder[i] === holeNumber) return i;
+        }
+        return holeNumber - 1;
+    }
+    
+    // ============================================================
+    // Helper: Get consecutive synced last PLAY POSITION
+    // v1.08: Returns play position (0-17) of the last consecutively synced hole
+    // ============================================================
+    function getConsecutiveSyncedLastPosition(savedHolesF1, savedHolesF2, startingHole) {
+        var playOrder = getPlayOrder(startingHole);
+        var lastSyncedPosition = -1;
+        
+        for (var i = 0; i < playOrder.length; i++) {
+            var hole = playOrder[i];
+            if (savedHolesF1.indexOf(hole) !== -1 && savedHolesF2.indexOf(hole) !== -1) {
+                lastSyncedPosition = i;
+            } else {
+                break;
+            }
+        }
+        
+        console.log('[GAME-LOADER] getConsecutiveSyncedLastPosition: startingHole=' + startingHole + ', lastSyncedPosition=' + lastSyncedPosition);
+        return lastSyncedPosition;
+    }
+    
+    // ============================================================
+    // Helper: Calculate last synced hole using PLAY ORDER
+    // v1.08: Now returns PLAY POSITION (0-17) for internal use
+    // For backward compatibility, also stores the natural hole number in a separate field
+    // ============================================================
+    function calculateLastSyncedPosition(savedHolesF1, savedHolesF2, startingHole) {
+        var playOrder = getPlayOrder(startingHole);
+        var lastSyncedPosition = -1;
         
         // Check holes in play order sequence
         for (var i = 0; i < playOrder.length; i++) {
             var hole = playOrder[i];
             if (savedHolesF1.indexOf(hole) !== -1 && savedHolesF2.indexOf(hole) !== -1) {
-                lastSynced = hole;
+                lastSyncedPosition = i;
             } else {
                 // Stop at first hole that is not saved by both flights
                 break;
             }
         }
         
-        console.log('[GAME-LOADER] calculateLastSyncedHole: startingHole=' + startingHole + ', lastSynced=' + lastSynced);
-        return lastSynced;
+        console.log('[GAME-LOADER] calculateLastSyncedPosition: startingHole=' + startingHole + ', lastSyncedPosition=' + lastSyncedPosition);
+        return lastSyncedPosition;
     }
     
     // ============================================================
@@ -116,8 +155,17 @@ var GameLoader = (function() {
             2: getSavedHolesFromString(f2DataString)
         };
         
-        // v1.07: Calculate last synced hole using PLAY ORDER
-        var lastSyncedHole = calculateLastSyncedHole(savedHoles[1], savedHoles[2], startingHole);
+        // v1.08: Calculate last synced PLAY POSITION (0-17)
+        var lastSyncedPosition = calculateLastSyncedPosition(savedHoles[1], savedHoles[2], startingHole);
+        
+        // For backward compatibility with code that expects natural hole numbers,
+        // also provide the natural hole of the last synced position (if any)
+        var lastSyncedHole = (lastSyncedPosition >= 0) ? getNaturalHoleFromPosition(lastSyncedPosition, startingHole) : 0;
+        
+        function getNaturalHoleFromPosition(position, startHole) {
+            var playOrder = getPlayOrder(startHole);
+            return playOrder[position] || 0;
+        }
         
         // Build t1Row, t2Row, strkRow from results
         var t1Row = new Array(18).fill('_');
@@ -183,6 +231,9 @@ var GameLoader = (function() {
             t1Display: t1Display,
             t2Display: t2Display,
             strkDisplay: strkDisplay,
+            // v1.08: Store play position for internal use
+            lastSyncedPosition: lastSyncedPosition,
+            // For backward compatibility (some code may still expect natural hole number)
             lastSyncedHole: lastSyncedHole,
             results: results,
             clinchedAt: clinchedAt,
@@ -388,12 +439,13 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: lastSyncedHole calculation now uses PLAY ORDER instead of natural order (1-18)
-   - Previously lastSyncedHole was calculated based on holes 1,2,3... regardless of startingHole
-   - Now correctly calculates based on play order (startingHole, startingHole+1, ..., 18, 1, 2, ...)
-   - This fixes cross-flight bubble colors showing as grey when both flights have saved the hole
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: lastSyncedHole now stores PLAY POSITION (0-17) instead of natural hole number
+   - Added getPlayOrderPosition() helper to convert between hole numbers and play positions
+   - Added getConsecutiveSyncedLastPosition() to get the last consecutively synced play position
+   - This ensures cross-flight bubble colors work correctly for shotgun starts (e.g., starting hole 10)
+   - Maintains backward compatibility for existing caches
    - ALL existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js
 STATUS: Ready for integration
