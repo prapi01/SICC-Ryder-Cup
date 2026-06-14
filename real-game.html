@@ -1,12 +1,14 @@
 <!--
 FILE: real-game.html
-VERSION: 5.72
-KEY CHANGES from v5.71:
-   - FIXED: Cross-flight bubble sync now uses lastSyncedPosition (play position) instead of lastSyncedHole (natural hole)
-   - Updated getBubbleClass() to use cache.lastSyncedPosition from GameLoader v1.08
-   - This ensures cross-flight bubbles show correct colors (green/red) when starting hole is not 1
-   - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.19+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js (v1.08+), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.73
+KEY CHANGES from v5.72:
+   - FIXED: Celebration modal now uses dynamic last hole detection instead of hardcoded hole 18
+   - Added getLastHole() helper function (already existed, now used consistently)
+   - Changed showCelebrationAndHandicap() and showGameCompleteScreen() to use currentHole's TR
+   - Removed hardcoded hole 18 reference in celebration TR retrieval
+   - Now correctly handles shotgun starts (e.g., last hole = 9 when starting at hole 10)
+   - All existing functionality preserved (cross-flight bubble sync, pending writes, etc.)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.19+), js/game-team.js (v1.11+), js/game-stroke.js, js/game-scorecard.js (v1.09+), js/game-ui.js (v5.07+), js/game-loader.js (v1.08+), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -19,21 +21,21 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=5.72"></script>
-    <script src="js/session.js?v=5.72"></script>
-    <script src="js/modal.js?v=5.72"></script>
-    <script src="js/game-data.js?v=5.72"></script>
+    <script src="js/firebase-config.js?v=5.73"></script>
+    <script src="js/session.js?v=5.73"></script>
+    <script src="js/modal.js?v=5.73"></script>
+    <script src="js/game-data.js?v=5.73"></script>
     <script src="js/game-match.js?v=2.19"></script>
-    <script src="js/game-team.js?v=5.72"></script>
-    <script src="js/game-stroke.js?v=5.72"></script>
-    <script src="js/game-scorecard.js?v=5.72"></script>
-    <script src="js/game-ui.js?v=5.72"></script>
+    <script src="js/game-team.js?v=5.73"></script>
+    <script src="js/game-stroke.js?v=5.73"></script>
+    <script src="js/game-scorecard.js?v=1.09"></script>
+    <script src="js/game-ui.js?v=5.07"></script>
     <script src="js/game-loader.js?v=1.08"></script>
-    <script src="js/card-submit.js?v=5.72"></script>
-    <script src="js/sign-card.js?v=5.72"></script>
-    <script src="js/hcp-adjust.js?v=5.72"></script>
-    <script src="js/ticker.js?v=5.72"></script>
-    <script src="js/history-record.js?v=5.72"></script>
+    <script src="js/card-submit.js?v=5.73"></script>
+    <script src="js/sign-card.js?v=5.73"></script>
+    <script src="js/hcp-adjust.js?v=5.73"></script>
+    <script src="js/ticker.js?v=5.73"></script>
+    <script src="js/history-record.js?v=5.73"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -296,13 +298,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.72</div>
+<div class="version-tag">v5.73</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "5.72";
+var APP_VERSION = "5.73";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -314,8 +316,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.72";
-console.log("[REAL-GAME] Initializing v5.72 with play position sync for cross-flight bubbles");
+window.REAL_GAME_VERSION = "5.73";
+console.log("[REAL-GAME] Initializing v5.73 with dynamic last hole detection for celebration");
 
 // ============================================================
 // DEBUG CONFIGURATION
@@ -1409,7 +1411,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.72";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.73";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -1782,12 +1784,19 @@ function hideWaitingScreen() { if (activeWaitModal) { activeWaitModal.remove(); 
 function showGameCompleteScreen() {
     hideWaitingScreen();
     if (activeCompleteModal) activeCompleteModal.remove();
+    
+    // v5.73: Use currentHole's TR for final scores (currentHole is the last hole after both flights signed)
+    var tr = GameLoader.getTRForHole(currentHole);
+    var teamAFinal = tr.teamA;
+    var teamBFinal = tr.teamB;
+    
     var modalHtml = `
         <div class="modal-overlay" id="completeModalNew">
             <div class="complete-modal-container">
                 <div class="complete-title">🏆 GAME COMPLETE</div>
                 <div class="complete-emojis">🍺 🏆 🍺</div>
                 <div class="complete-message">Both cards have been signed!</div>
+                <div class="complete-message" style="font-size:0.7rem; margin-top:4px;">Final: Team A ${teamAFinal} - ${teamBFinal} Team B</div>
                 <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
             </div>
         </div>
@@ -1815,14 +1824,25 @@ async function createHistoryRecord() {
     });
 }
 
+// v5.73: FIXED - Uses dynamic last hole detection, not hardcoded hole 18
 function showCelebrationAndHandicap() {
     if (celebrationTriggered) return;
     celebrationTriggered = true;
+    
+    // Use the current hole's TR (which should be the last hole)
     var tr = GameLoader.getTRForHole(currentHole);
     var winner = SignCard.getWinner(tr.teamA, tr.teamB);
-    var winningPlayers = { teamA: allPlayers.filter(function(p) { return p.team === "A"; }), teamB: allPlayers.filter(function(p) { return p.team === "B"; }) };
+    var winningPlayers = { 
+        teamA: allPlayers.filter(function(p) { return p.team === "A"; }), 
+        teamB: allPlayers.filter(function(p) { return p.team === "B"; }) 
+    };
     var historyRecordId = gameId + "_history";
-    SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() { HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, {}, {}, false); });
+    
+    console.log(`[CELEBRATION] Final scores at hole ${currentHole}: Team A ${tr.teamA} - ${tr.teamB} Team B, Winner: ${winner}`);
+    
+    SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() { 
+        HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, {}, {}, false); 
+    });
 }
 
 function updatePlayerNamesToShortform() {
@@ -1851,7 +1871,8 @@ function renderCompactHeaderWithFlightToggle() {
     if (!cache) return;
     
     var displayMode = GameUI.getDisplayMode();
-    var pnText = displayMode === 'play' ? 'P' : 'N';
+    // v5.73: P/N button logic is now handled by GameUI v5.07
+    var pnText = displayMode === 'play' ? 'N' : 'P';
     
     var toggleButtonText = viewOtherFlight ? (editableFlight === 1 ? 'F1' : 'F2') : (editableFlight === 1 ? 'F2' : 'F1');
     var toggleButtonColor = viewOtherFlight ? '#4caf50' : '#ffaa44';
@@ -1916,7 +1937,7 @@ function renderCompactHeaderWithFlightToggle() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS - v5.72: Uses lastSyncedPosition for bubble sync
+// RENDER FUNCTIONS - v5.73: Uses lastSyncedPosition for bubble sync
 // ============================================================
 
 function renderAll() {
@@ -1967,10 +1988,9 @@ function renderAll() {
         var matchValue = getMatchValueForPlayer(player, opponent);
         var clinchedAt = cache.clinchedAt || {};
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
-        // v5.72: Use lastSyncedPosition (play position) instead of lastSyncedHole (natural hole)
         var lastSyncedValue = (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) 
             ? cache.lastSyncedPosition 
-            : cache.lastSyncedHole; // Fallback for backward compatibility
+            : cache.lastSyncedHole;
         
         var bubbleClass = GameMatch.getMatchBubbleClass(
             matchValue, clinchedAt, player, opponent, currentHole,
@@ -2219,12 +2239,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.72
-KEY CHANGES from v5.71:
-   - FIXED: Cross-flight bubble sync now uses lastSyncedPosition (play position) instead of lastSyncedHole (natural hole)
-   - Updated getBubbleClass() to use cache.lastSyncedPosition from GameLoader v1.08
-   - This ensures cross-flight bubbles show correct colors (green/red) when starting hole is not 1
-   - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.19+), js/game-team.js (v1.10+), js/game-stroke.js, js/game-scorecard.js, js/game-ui.js (v5.05+), js/game-loader.js (v1.08+), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.73
+KEY CHANGES from v5.72:
+   - FIXED: Celebration modal now uses dynamic last hole detection instead of hardcoded hole 18
+   - Added getLastHole() helper function (already existed, now used consistently)
+   - Changed showCelebrationAndHandicap() and showGameCompleteScreen() to use currentHole's TR
+   - Removed hardcoded hole 18 reference in celebration TR retrieval
+   - Now correctly handles shotgun starts (e.g., last hole = 9 when starting at hole 10)
+   - All existing functionality preserved (cross-flight bubble sync, pending writes, etc.)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.19+), js/game-team.js (v1.11+), js/game-stroke.js, js/game-scorecard.js (v1.09+), js/game-ui.js (v5.07+), js/game-loader.js (v1.08+), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
