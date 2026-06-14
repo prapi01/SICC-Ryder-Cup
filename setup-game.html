@@ -1,13 +1,11 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - FIXED: Edit mode now preserves existing scores (f1.d, f2.d, results, current holes)
-   - Updates only the fields the user changed (players, date, course, startingHole, format, anchor)
-   - Prevents overwriting existing game data with blank template when editing
-   - New games still created with fresh data strings and empty results
-   - All existing functionality preserved (anchor selection, etc.)
-DEPENDS ON: js/firebase-config.js, js/session.js
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - REPLACED: System alert() with Modal.alert() in validation and error handling
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (edit mode, anchor selection, preserve scores)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
 
@@ -21,6 +19,7 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/modal.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -258,12 +257,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.25</div>
+<div class="version-tag">v1.26</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.25
+// FILE: setup-game.html - VERSION 1.26
 
-var VERSION = "1.25";
+var VERSION = "1.26";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -369,7 +368,6 @@ function rotateDataString(naturalData, startingHole) {
     return rotated.join('');
 }
 
-// FIXED v1.24: Initialize TR arrays with null instead of 9.5
 function initializeEmptyResults() {
     var emptyResults = {
         version: 1,
@@ -397,7 +395,6 @@ function initializeEmptyResults() {
             pointsA: new Array(18).fill(0.5),
             pointsB: new Array(18).fill(0.5)
         },
-        // FIXED: TR arrays now start with null (displayed as "-") instead of 9.5
         tr: {
             teamA: new Array(18).fill(null),
             teamB: new Array(18).fill(null),
@@ -722,6 +719,7 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
 
 // ============================================================
 // commitGame - FIXED v1.25: Preserve existing data when editing
+// v1.26: Uses Modal.alert instead of system alert
 // ============================================================
 
 function commitGame() {
@@ -736,12 +734,12 @@ function commitGame() {
     }
     
     if (!validateTeamFlight()) {
-        alert("Each flight needs exactly 2 Team A and 2 Team B players");
+        Modal.alert("Each flight needs exactly 2 Team A and 2 Team B players");
         return;
     }
     
     if (!state.selectedCourseData) {
-        alert("Please select a course");
+        Modal.alert("Please select a course");
         return;
     }
     
@@ -830,7 +828,7 @@ function createNewGame(anchorPlayer) {
             }, 1500);
         });
     }).catch(function(e) {
-        alert("Error saving game: " + e.message);
+        Modal.alert("Error saving game: " + e.message);
     });
 }
 
@@ -838,7 +836,7 @@ function updateExistingGame(anchorPlayer) {
     // First, fetch the existing game document to preserve scores
     db.collection("scheduledGames").doc(state.editingGameId).get().then(function(doc) {
         if (!doc.exists) {
-            alert("Game not found. Cannot update.");
+            Modal.alert("Game not found. Cannot update.");
             return;
         }
         
@@ -889,20 +887,36 @@ function updateExistingGame(anchorPlayer) {
         // If starting hole changed, need to rotate existing data strings
         var startingHoleChanged = (existingData.startingHole !== state.startingHole);
         if (startingHoleChanged && !courseChanged && existingData.f1 && existingData.f1.d) {
-            // Rotate the existing data strings to new starting hole
-            var naturalDataFromExisting = existingData.f1.d;
-            // Need to convert to natural order first, then rotate to new starting hole
-            // For simplicity, we warn the user
-            if (!confirm("Changing starting hole will reset all scores to par. Continue?")) {
-                return;
-            }
-            var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
-            var rotatedData = rotateDataString(naturalData, state.startingHole);
-            updatePayload.f1 = { d: rotatedData, se: false, x: false };
-            updatePayload.f2 = { d: rotatedData, se: false, x: false };
-            updatePayload.results = initializeEmptyResults();
-            updatePayload.currentHoleF1 = 1;
-            updatePayload.currentHoleF2 = 1;
+            // v1.26: Use Modal.confirm for confirmation instead of system confirm
+            Modal.confirm(
+                "Changing starting hole will reset all scores to par. Continue?",
+                function() {
+                    // On confirm - reset scores
+                    var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
+                    var rotatedData = rotateDataString(naturalData, state.startingHole);
+                    updatePayload.f1 = { d: rotatedData, se: false, x: false };
+                    updatePayload.f2 = { d: rotatedData, se: false, x: false };
+                    updatePayload.results = initializeEmptyResults();
+                    updatePayload.currentHoleF1 = 1;
+                    updatePayload.currentHoleF2 = 1;
+                    
+                    db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload).then(function() {
+                        SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
+                        document.getElementById("successMsg").style.display = "block";
+                        setTimeout(function() {
+                            window.location.href = "manage-games.html";
+                        }, 1500);
+                    }).catch(function(e) {
+                        Modal.alert("Error updating game: " + e.message);
+                    });
+                },
+                function() {
+                    // On cancel - do nothing, stay on edit page
+                    console.log("Starting hole change cancelled");
+                    render();
+                }
+            );
+            return;
         }
         
         db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload).then(function() {
@@ -912,10 +926,10 @@ function updateExistingGame(anchorPlayer) {
                 window.location.href = "manage-games.html";
             }, 1500);
         }).catch(function(e) {
-            alert("Error updating game: " + e.message);
+            Modal.alert("Error updating game: " + e.message);
         });
     }).catch(function(e) {
-        alert("Error loading existing game: " + e.message);
+        Modal.alert("Error loading existing game: " + e.message);
     });
 }
 
@@ -1215,13 +1229,11 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - FIXED: Edit mode now preserves existing scores (f1.d, f2.d, results, current holes)
-   - Updates only the fields the user changed (players, date, course, startingHole, format, anchor)
-   - Prevents overwriting existing game data with blank template when editing
-   - New games still created with fresh data strings and empty results
-   - All existing functionality preserved (anchor selection, etc.)
-DEPENDS ON: js/firebase-config.js, js/session.js
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - REPLACED: System alert() with Modal.alert() in validation and error handling
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (edit mode, anchor selection, preserve scores)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
