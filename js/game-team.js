@@ -1,25 +1,36 @@
 /*
 FILE: js/game-team.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: T-1 (Flight 1) now calculates independently of Flight 2 status
-   - FIXED: T-2 (Flight 2) now calculates independently of Flight 1 status
-   - Previously both required BOTH flights to have saved data (WRONG)
-   - T-1 updates immediately when Flight 1 saves a hole
-   - T-2 updates immediately when Flight 2 saves a hole
-   - Stroke game (Strk) still requires BOTH flights (cumulative net of all 8 players)
-   - Clinch detection for T-1/T-2 now works with independent data
-   - All other functions unchanged
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - FIXED: Relative mode (zero-rise) now applies PER FLIGHT, not overall
+   - Added calculateMinHandicapPerFlight() to get min handicap for each flight separately
+   - Modified calculate() to pass flight-specific min handicap to getNetScoreWithFormat()
+   - Flight 1 players use Flight 1's minimum handicap for zero-rise
+   - Flight 2 players use Flight 2's minimum handicap for zero-rise
+   - All other functionality preserved (T-1/T-2 independent, clinch detection)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_TEAM_VERSION = "1.10";
+window.GAME_TEAM_VERSION = "1.11";
 
 var GameTeam = (function() {
     
-    // Calculate minimum handicap across all players (for Relative format)
+    // v1.11: Calculate minimum handicap for a specific flight
+    function calculateMinHandicapForFlight(players, flight) {
+        var flightPlayers = players.filter(function(p) { return p.flight === flight; });
+        if (!flightPlayers || flightPlayers.length === 0) return 0;
+        var min = flightPlayers[0].handicap;
+        for (var i = 1; i < flightPlayers.length; i++) {
+            if (flightPlayers[i].handicap < min) {
+                min = flightPlayers[i].handicap;
+            }
+        }
+        return min;
+    }
+    
+    // Legacy: Calculate minimum handicap across all players (kept for compatibility but not used for per-flight)
     function calculateMinHandicap(players) {
         if (!players || players.length === 0) return 0;
         var min = players[0].handicap;
@@ -32,6 +43,7 @@ var GameTeam = (function() {
     }
     
     // Get net score based on team game format
+    // v1.11: minHandicap now passed as flight-specific value for relative mode
     function getNetScoreWithFormat(gross, playerHandicap, si, teamGameFormat, minHandicap) {
         var effectiveHandicap;
         
@@ -39,7 +51,7 @@ var GameTeam = (function() {
             // Tournament: use player's own handicap
             effectiveHandicap = playerHandicap;
         } else {
-            // Relative: zero-rise - subtract lowest handicap
+            // Relative: zero-rise - subtract flight's lowest handicap
             effectiveHandicap = playerHandicap - minHandicap;
         }
         
@@ -51,6 +63,7 @@ var GameTeam = (function() {
     }
 
     // Helper: Sort players by net score (lowest = best)
+    // v1.11: minHandicap passed as flight-specific value
     function sortPlayersByNetScore(players, grossScores, si, teamGameFormat, minHandicap, courseSi) {
         var playersWithNet = [];
         for (var i = 0; i < players.length; i++) {
@@ -71,6 +84,7 @@ var GameTeam = (function() {
     }
     
     // Helper: Build intra-flight match results object for a flight on a specific hole
+    // v1.11: minHandicap passed as flight-specific value
     function buildIntraMatchResults(teamAPlayers, teamBPlayers, teamAGross, teamBGross, si, teamGameFormat, minHandicap, courseSi) {
         var results = {};
         
@@ -114,10 +128,11 @@ var GameTeam = (function() {
         return results;
     }
 
-    // Main calculate function - FIXED v1.10: T-1 and T-2 independent
+    // Main calculate function - v1.11: Per-flight zero-rise for Relative mode
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat) {
-        // Calculate minimum handicap across all players for Relative format
-        var minHandicap = calculateMinHandicap(allPlayers);
+        // v1.11: Calculate minimum handicap PER FLIGHT for Relative format
+        var minHandicapFlight1 = calculateMinHandicapForFlight(allPlayers, 1);
+        var minHandicapFlight2 = calculateMinHandicapForFlight(allPlayers, 2);
         
         var cumulativeFlight1 = new Array(18).fill(0);
         var cumulativeFlight2 = new Array(18).fill(0);
@@ -157,114 +172,101 @@ var GameTeam = (function() {
             var f1Hole = GameData.parseHoleData(f1DataString, holeNum);
             var f2Hole = GameData.parseHoleData(f2DataString, holeNum);
             
-            // FIXED v1.10: T-1 (Flight 1) only requires Flight 1 saved
-            // T-2 (Flight 2) only requires Flight 2 saved
             var f1Available = (f1Hole && f1Hole.saved);
             var f2Available = (f2Hole && f2Hole.saved);
 
             // ============================================================
             // FLIGHT 1 (T-1) - Independent of Flight 2
+            // Uses minHandicapFlight1 for zero-rise in Relative mode
             // ============================================================
             var flight1Match1 = 0, flight1Match2 = 0;
             var flight1Total = 0;
             
             if (f1Available && flight1A.length >= 2 && flight1B.length >= 2) {
-                // Get gross scores for Team A
                 var teamAGross1 = [f1Hole.scores.a1, f1Hole.scores.a2];
-                // Get gross scores for Team B
                 var teamBGross1 = [f1Hole.scores.b1, f1Hole.scores.b2];
                 
-                // Store intra-flight match results for bubble display
-                flight1IntraMatches[idx] = buildIntraMatchResults(flight1A, flight1B, teamAGross1, teamBGross1, si, teamGameFormat, minHandicap, courseSi);
+                // v1.11: Pass flight-specific min handicap for Flight 1
+                flight1IntraMatches[idx] = buildIntraMatchResults(flight1A, flight1B, teamAGross1, teamBGross1, si, teamGameFormat, minHandicapFlight1, courseSi);
                 
-                // Sort Team A players by net score (lowest = best)
-                var sortedTeamA1 = sortPlayersByNetScore(flight1A, teamAGross1, si, teamGameFormat, minHandicap, courseSi);
-                // Sort Team B players by net score (lowest = best)
-                var sortedTeamB1 = sortPlayersByNetScore(flight1B, teamBGross1, si, teamGameFormat, minHandicap, courseSi);
+                // v1.11: Pass flight-specific min handicap for Flight 1
+                var sortedTeamA1 = sortPlayersByNetScore(flight1A, teamAGross1, si, teamGameFormat, minHandicapFlight1, courseSi);
+                var sortedTeamB1 = sortPlayersByNetScore(flight1B, teamBGross1, si, teamGameFormat, minHandicapFlight1, courseSi);
                 
-                // Best vs Best (index 0)
                 var bestANet = sortedTeamA1[0].netScore;
                 var bestBNet = sortedTeamB1[0].netScore;
                 if (bestANet < bestBNet) {
-                    flight1Match1 = 1;  // Team A wins best match
+                    flight1Match1 = 1;
                 } else if (bestANet > bestBNet) {
-                    flight1Match1 = -1; // Team B wins best match
+                    flight1Match1 = -1;
                 } else {
-                    flight1Match1 = 0;  // Tie
+                    flight1Match1 = 0;
                 }
                 
-                // Second vs Second (index 1)
                 var secondANet = sortedTeamA1[1].netScore;
                 var secondBNet = sortedTeamB1[1].netScore;
                 if (secondANet < secondBNet) {
-                    flight1Match2 = 1;  // Team A wins second match
+                    flight1Match2 = 1;
                 } else if (secondANet > secondBNet) {
-                    flight1Match2 = -1; // Team B wins second match
+                    flight1Match2 = -1;
                 } else {
-                    flight1Match2 = 0;  // Tie
+                    flight1Match2 = 0;
                 }
                 
                 flight1Total = flight1Match1 + flight1Match2;
                 runningFlight1 += flight1Total;
             }
             
-            // Update Flight 1 cumulative (T-1) - independent of Flight 2
             cumulativeFlight1[idx] = f1Available ? runningFlight1 : 0;
 
             // ============================================================
             // FLIGHT 2 (T-2) - Independent of Flight 1
+            // Uses minHandicapFlight2 for zero-rise in Relative mode
             // ============================================================
             var flight2Match1 = 0, flight2Match2 = 0;
             var flight2Total = 0;
             
             if (f2Available && flight2A.length >= 2 && flight2B.length >= 2) {
-                // Get gross scores for Team A
                 var teamAGross2 = [f2Hole.scores.a1, f2Hole.scores.a2];
-                // Get gross scores for Team B
                 var teamBGross2 = [f2Hole.scores.b1, f2Hole.scores.b2];
                 
-                // Store intra-flight match results for bubble display
-                flight2IntraMatches[idx] = buildIntraMatchResults(flight2A, flight2B, teamAGross2, teamBGross2, si, teamGameFormat, minHandicap, courseSi);
+                // v1.11: Pass flight-specific min handicap for Flight 2
+                flight2IntraMatches[idx] = buildIntraMatchResults(flight2A, flight2B, teamAGross2, teamBGross2, si, teamGameFormat, minHandicapFlight2, courseSi);
                 
-                // Sort Team A players by net score (lowest = best)
-                var sortedTeamA2 = sortPlayersByNetScore(flight2A, teamAGross2, si, teamGameFormat, minHandicap, courseSi);
-                // Sort Team B players by net score (lowest = best)
-                var sortedTeamB2 = sortPlayersByNetScore(flight2B, teamBGross2, si, teamGameFormat, minHandicap, courseSi);
+                // v1.11: Pass flight-specific min handicap for Flight 2
+                var sortedTeamA2 = sortPlayersByNetScore(flight2A, teamAGross2, si, teamGameFormat, minHandicapFlight2, courseSi);
+                var sortedTeamB2 = sortPlayersByNetScore(flight2B, teamBGross2, si, teamGameFormat, minHandicapFlight2, courseSi);
                 
-                // Best vs Best (index 0)
                 var bestANet2 = sortedTeamA2[0].netScore;
                 var bestBNet2 = sortedTeamB2[0].netScore;
                 if (bestANet2 < bestBNet2) {
-                    flight2Match1 = 1;  // Team A wins best match
+                    flight2Match1 = 1;
                 } else if (bestANet2 > bestBNet2) {
-                    flight2Match1 = -1; // Team B wins best match
+                    flight2Match1 = -1;
                 } else {
-                    flight2Match1 = 0;  // Tie
+                    flight2Match1 = 0;
                 }
                 
-                // Second vs Second (index 1)
                 var secondANet2 = sortedTeamA2[1].netScore;
                 var secondBNet2 = sortedTeamB2[1].netScore;
                 if (secondANet2 < secondBNet2) {
-                    flight2Match2 = 1;  // Team A wins second match
+                    flight2Match2 = 1;
                 } else if (secondANet2 > secondBNet2) {
-                    flight2Match2 = -1; // Team B wins second match
+                    flight2Match2 = -1;
                 } else {
-                    flight2Match2 = 0;  // Tie
+                    flight2Match2 = 0;
                 }
                 
                 flight2Total = flight2Match1 + flight2Match2;
                 runningFlight2 += flight2Total;
             }
             
-            // Update Flight 2 cumulative (T-2) - independent of Flight 1
             cumulativeFlight2[idx] = f2Available ? runningFlight2 : 0;
 
             // ============================================================
             // DISPLAY FOR T-1 AND T-2 (Independent)
             // ============================================================
             
-            // Flight 1 display (T-1)
             if (f1Available) {
                 flight1Leaders[idx] = runningFlight1 > 0 ? "A" : (runningFlight1 < 0 ? "B" : "AS");
                 
@@ -284,7 +286,6 @@ var GameTeam = (function() {
                 teamGameTR[idx] = { A: 0.5, B: 0.5 };
             }
             
-            // Flight 2 display (T-2)
             if (f2Available) {
                 flight2Leaders[idx] = runningFlight2 > 0 ? "A" : (runningFlight2 < 0 ? "B" : "AS");
                 
@@ -300,7 +301,6 @@ var GameTeam = (function() {
                 displayT2[idx] = "AS";
             }
 
-            // Points calculation (only where data exists)
             var flight1PointsA = 0, flight1PointsB = 0;
             if (f1Available) {
                 if (flight1Total > 0) { flight1PointsA = 1; flight1PointsB = 0; }
@@ -339,25 +339,20 @@ var GameTeam = (function() {
     }
 
     // ============================================================
-    // v1.10: calculateWithClinched - returns team game results WITH clinch detection
-    // Clinch detection now works independently per flight
+    // calculateWithClinched - returns team game results WITH clinch detection
     // ============================================================
     
     function calculateWithClinched(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat, remainingHolesByHole, computedUpToHole) {
-        // First get all the standard results
         var baseResults = calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat);
         
-        // Now calculate clinch holes based on cumulative values
         var flight1ClinchedHole = null;
         var flight2ClinchedHole = null;
         
-        // Only check positions where cumulative values are non-zero (data exists)
         for (var position = 0; position < 18; position++) {
             var cumulative1 = Math.abs(baseResults.flight1Cumulative[position]);
             var cumulative2 = Math.abs(baseResults.flight2Cumulative[position]);
             var remainingHoles = remainingHolesByHole[position];
             
-            // Flight 1 clinch check (T-1) - only if cumulative > 0
             if (flight1ClinchedHole === null && cumulative1 > 0) {
                 var maxOpponentPoints1 = remainingHoles * 2;
                 if (cumulative1 > maxOpponentPoints1) {
@@ -365,7 +360,6 @@ var GameTeam = (function() {
                 }
             }
             
-            // Flight 2 clinch check (T-2) - only if cumulative > 0
             if (flight2ClinchedHole === null && cumulative2 > 0) {
                 var maxOpponentPoints2 = remainingHoles * 2;
                 if (cumulative2 > maxOpponentPoints2) {
@@ -374,7 +368,6 @@ var GameTeam = (function() {
             }
         }
         
-        // Return everything including clinch holes
         return {
             flight1Cumulative: baseResults.flight1Cumulative,
             flight2Cumulative: baseResults.flight2Cumulative,
@@ -393,10 +386,10 @@ var GameTeam = (function() {
     }
     
     return {
-        // Legacy
         calculate: calculate,
-        // v1.10: With clinch detection (independent per flight)
-        calculateWithClinched: calculateWithClinched
+        calculateWithClinched: calculateWithClinched,
+        // v1.11: Expose per-flight min handicap calculator for debugging
+        calculateMinHandicapForFlight: calculateMinHandicapForFlight
     };
 })();
 
@@ -404,20 +397,18 @@ var GameTeam = (function() {
 window.GameTeam = GameTeam;
 
 // Re-expose version for console debugging
-window.GAME_TEAM_VERSION = "1.10";
+window.GAME_TEAM_VERSION = "1.11";
 
 /*
 FILE: js/game-team.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: T-1 (Flight 1) now calculates independently of Flight 2 status
-   - FIXED: T-2 (Flight 2) now calculates independently of Flight 1 status
-   - Previously both required BOTH flights to have saved data (WRONG)
-   - T-1 updates immediately when Flight 1 saves a hole
-   - T-2 updates immediately when Flight 2 saves a hole
-   - Stroke game (Strk) still requires BOTH flights (cumulative net of all 8 players)
-   - Clinch detection for T-1/T-2 now works with independent data
-   - All other functions unchanged
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - FIXED: Relative mode (zero-rise) now applies PER FLIGHT, not overall
+   - Added calculateMinHandicapForFlight() to get min handicap for each flight separately
+   - Modified calculate() to pass flight-specific min handicap to getNetScoreWithFormat()
+   - Flight 1 players use Flight 1's minimum handicap for zero-rise
+   - Flight 2 players use Flight 2's minimum handicap for zero-rise
+   - All other functionality preserved (T-1/T-2 independent, clinch detection)
 DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
 STATUS: Ready for integration
 */
