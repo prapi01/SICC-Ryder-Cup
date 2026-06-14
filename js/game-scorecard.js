@@ -1,11 +1,11 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: T-1/T-2/Strk rows now properly display values when using Play Order (non-1 starting hole)
-   - Added debug logging for T-1/T-2/Strk display to help diagnose visibility issues
-   - Fixed isSynced logic to properly check saved holes for the correct hole numbers
-   - Ensures displayVal is properly set when val contains numeric values (e.g., "2", "5", "8")
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: t1Row, t2Row, strkRow are now accessed using PLAY ORDER POSITION, not hole number
+   - Added getPlayOrderPosition() helper to convert hole number to correct array index
+   - This fixes T-1/T-2/Strk display when starting hole is not 1 (e.g., hole 10)
+   - Now correctly displays "B2", "A2", "A5" values on scorecard
    - All other functionality preserved (green line rows, sticky columns, responsive design)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
@@ -14,7 +14,7 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.05";
+window.GAME_SCORECARD_VERSION = "1.06";
 
 var GameScorecard = (function() {
     
@@ -23,6 +23,24 @@ var GameScorecard = (function() {
     // ============================================================
     function getAsSquareHtml() {
         return '<span class="as-square"></span>';
+    }
+    
+    // ============================================================
+    // Helper: Get play order position for a hole number
+    // v1.06: Used to correctly index t1Row, t2Row, strkRow arrays
+    // ============================================================
+    function getPlayOrderPosition(holeNumber, startingHole) {
+        if (startingHole === 1) {
+            return holeNumber - 1;
+        }
+        var playOrder = [];
+        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        
+        for (var i = 0; i < playOrder.length; i++) {
+            if (playOrder[i] === holeNumber) return i;
+        }
+        return holeNumber - 1;
     }
     
     // ============================================================
@@ -54,7 +72,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - FIXED v1.05: Proper T-1/T-2/Strk display
+    // Scorecard Rendering - FIXED v1.06: Correct T-1/T-2/Strk indexing
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -69,6 +87,19 @@ var GameScorecard = (function() {
         t1ClinchedHole = (t1ClinchedHole !== undefined) ? t1ClinchedHole : null;
         t2ClinchedHole = (t2ClinchedHole !== undefined) ? t2ClinchedHole : null;
         
+        // Get startingHole from the first hole in the display order
+        var startingHole = holes[0];
+        if (startingHole > 1) {
+            // Check if the sequence is play order (e.g., 10,11,12...)
+            var isPlayOrder = (holes[1] === startingHole + 1);
+            if (!isPlayOrder && holes[1] === 1) {
+                // Natural order with starting hole not 1 - rare case
+                startingHole = 1;
+            }
+        } else {
+            startingHole = 1;
+        }
+        
         // Build savedHoles
         var savedHoles = { 1: [], 2: [] };
         for (var h = 1; h <= 18; h++) {
@@ -80,6 +111,7 @@ var GameScorecard = (function() {
         console.log('[SCORECARD] savedHoles F1:', savedHoles[1]);
         console.log('[SCORECARD] savedHoles F2:', savedHoles[2]);
         console.log('[SCORECARD] holes array (display order):', holes);
+        console.log('[SCORECARD] startingHole detected:', startingHole);
         
         var flight1Players = players.filter(function(p) { return p.flight === 1; });
         var flight2Players = players.filter(function(p) { return p.flight === 2; });
@@ -142,11 +174,13 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row - v1.05: Fixed display logic
+        // T-1 row - v1.06: Use play order position for indexing
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
-            var val = t1Row[holeNum - 1] || '_';
+            // v1.06: Get the correct array index based on play order position
+            var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
+            var val = t1Row[arrayIndex] || '_';
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1);
             
             var displayVal = '';
@@ -161,7 +195,6 @@ var GameScorecard = (function() {
                 colorClass = 'score-green';
             }
             
-            // v1.05: Check for numeric values (e.g., "2", "5", "8") from cumulative display
             if (val === '0' || val === 0) {
                 if (isSynced) {
                     displayVal = 'AS';
@@ -169,21 +202,18 @@ var GameScorecard = (function() {
                 }
             } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
                 if (isSynced) {
-                    if (t1Display && t1Display[holeNum - 1]) {
-                        displayVal = t1Display[holeNum - 1];
+                    if (t1Display && t1Display[arrayIndex]) {
+                        displayVal = t1Display[arrayIndex];
                     } else {
                         displayVal = val;
                     }
                     cellClass = colorClass;
                 }
             } else if (val && val !== '_' && val !== 'AS') {
-                // v1.05: Handle numeric or prefixed values (e.g., "A2", "B3", "2", "5")
                 if (isSynced) {
-                    // If t1Display is available, use it (contains formatted strings like "A2", "B3")
-                    if (t1Display && t1Display[holeNum - 1] && t1Display[holeNum - 1] !== 'AS') {
-                        displayVal = t1Display[holeNum - 1];
+                    if (t1Display && t1Display[arrayIndex] && t1Display[arrayIndex] !== 'AS') {
+                        displayVal = t1Display[arrayIndex];
                     } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
-                        // Numeric value - treat as margin
                         var numVal = parseInt(val);
                         if (numVal > 0) {
                             displayVal = 'A' + numVal;
@@ -196,11 +226,6 @@ var GameScorecard = (function() {
                         displayVal = val;
                     }
                     cellClass = colorClass;
-                    
-                    // Debug logging for T-1
-                    if (holeNum <= 18) {
-                        console.log('[SCORECARD] T-1 hole ' + holeNum + ': val=' + val + ', displayVal=' + displayVal + ', isSynced=' + isSynced);
-                    }
                 }
             }
             
@@ -235,11 +260,12 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row - v1.05: Fixed display logic
+        // T-2 row - v1.06: Use play order position for indexing
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
-            var val = t2Row[holeNum - 1] || '_';
+            var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
+            var val = t2Row[arrayIndex] || '_';
             var isSynced = (savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
@@ -261,8 +287,8 @@ var GameScorecard = (function() {
                 }
             } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
                 if (isSynced) {
-                    if (t2Display && t2Display[holeNum - 1]) {
-                        displayVal = t2Display[holeNum - 1];
+                    if (t2Display && t2Display[arrayIndex]) {
+                        displayVal = t2Display[arrayIndex];
                     } else {
                         displayVal = val;
                     }
@@ -270,8 +296,8 @@ var GameScorecard = (function() {
                 }
             } else if (val && val !== '_' && val !== 'AS') {
                 if (isSynced) {
-                    if (t2Display && t2Display[holeNum - 1] && t2Display[holeNum - 1] !== 'AS') {
-                        displayVal = t2Display[holeNum - 1];
+                    if (t2Display && t2Display[arrayIndex] && t2Display[arrayIndex] !== 'AS') {
+                        displayVal = t2Display[arrayIndex];
                     } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
                         var numVal = parseInt(val);
                         if (numVal > 0) {
@@ -285,10 +311,6 @@ var GameScorecard = (function() {
                         displayVal = val;
                     }
                     cellClass = colorClass;
-                    
-                    if (holeNum <= 18) {
-                        console.log('[SCORECARD] T-2 hole ' + holeNum + ': val=' + val + ', displayVal=' + displayVal + ', isSynced=' + isSynced);
-                    }
                 }
             }
             
@@ -302,12 +324,12 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - unchanged (requires both flights)
+        // Strk row - v1.06: Use play order position for indexing
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
-            var val = strkRow[holeNum - 1] || '_';
-            // Strk requires BOTH flights saved (unchanged)
+            var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
+            var val = strkRow[arrayIndex] || '_';
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
@@ -320,8 +342,8 @@ var GameScorecard = (function() {
                 }
             } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
                 if (isSynced) {
-                    if (strkDisplay && strkDisplay[holeNum - 1]) {
-                        displayVal = strkDisplay[holeNum - 1];
+                    if (strkDisplay && strkDisplay[arrayIndex]) {
+                        displayVal = strkDisplay[arrayIndex];
                     } else {
                         displayVal = val;
                     }
@@ -333,8 +355,8 @@ var GameScorecard = (function() {
                 }
             } else if (val && val !== '_') {
                 if (isSynced) {
-                    if (strkDisplay && strkDisplay[holeNum - 1]) {
-                        displayVal = strkDisplay[holeNum - 1];
+                    if (strkDisplay && strkDisplay[arrayIndex]) {
+                        displayVal = strkDisplay[arrayIndex];
                     } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
                         var numVal = parseInt(val);
                         if (numVal > 0) {
@@ -358,7 +380,7 @@ var GameScorecard = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></td>';
+        html += '</tbody></tr>';
         container.innerHTML = html;
         
         // FIXED v1.04: Only remove empty first cell from rows with MORE than 1 cell
@@ -464,7 +486,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.05"; }
+        getVersion: function() { return "1.06"; }
     };
     
 })();
@@ -476,12 +498,12 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: T-1/T-2/Strk rows now properly display values when using Play Order (non-1 starting hole)
-   - Added debug logging for T-1/T-2/Strk display to help diagnose visibility issues
-   - Fixed isSynced logic to properly check saved holes for the correct hole numbers
-   - Ensures displayVal is properly set when val contains numeric values (e.g., "2", "5", "8")
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: t1Row, t2Row, strkRow are now accessed using PLAY ORDER POSITION, not hole number
+   - Added getPlayOrderPosition() helper to convert hole number to correct array index
+   - This fixes T-1/T-2/Strk display when starting hole is not 1 (e.g., hole 10)
+   - Now correctly displays "B2", "A2", "A5" values on scorecard
    - All other functionality preserved (green line rows, sticky columns, responsive design)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
