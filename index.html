@@ -1,12 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.42
-KEY CHANGES from v3.41:
-   - SIMPLIFIED: First launch waits for window.load + 500ms before animation
-   - REMOVED: Complex CSS detection (was unreliable)
-   - REMOVED: Scale pulse (wasn't working)
-   - B&W screen shows immediately, then animation plays when fully loaded
-   - Guarantees animation works on first launch every time
+VERSION: 3.43
+KEY CHANGES from v3.42:
+   - FIXED: Check if window.load already fired before adding listener
+   - If document.readyState === 'complete', start animation immediately
+   - Prevents infinite wait on already-loaded pages
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -123,7 +121,7 @@ STATUS: Ready for integration
             text-align: center;
             letter-spacing: 2px;
             transition: all 0.3s ease;
-            will-change: background, color, transform;
+            will-change: background, color;
         }
         
         /* Subtitle - initially grey */
@@ -440,12 +438,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.42</div>
+<div class="version-tag">v3.43</div>
 
 <script>
-// FILE: index.html - VERSION 3.42
+// FILE: index.html - VERSION 3.43
 
-var APP_VERSION = "3.42";
+var APP_VERSION = "3.43";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -454,7 +452,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.42: Determine if this is first load of the session
+// v3.43: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -495,20 +493,26 @@ function recordSplashShown() {
     console.log("[SPLASH] App marked as initialized");
 }
 
-// v3.42: Simple, reliable - start animation after window.load + 500ms
+// v3.43: Check if already loaded, otherwise wait for load event
 function startSplashAnimationWhenReady() {
     if (animationStarted) return;
     
-    console.log("[SPLASH] Waiting for window.load + 500ms...");
+    function beginAnimation() {
+        console.log("[SPLASH] Starting premium animation");
+        startSplashAnimation();
+    }
     
-    // Wait for all assets to load (CSS guaranteed ready)
-    window.addEventListener('load', function() {
-        console.log("[SPLASH] window.load fired, waiting additional 500ms...");
-        setTimeout(function() {
-            console.log("[SPLASH] Starting premium animation");
-            startSplashAnimation();
-        }, 500);
-    });
+    // Check if page is already fully loaded
+    if (document.readyState === 'complete') {
+        console.log("[SPLASH] Page already loaded, starting animation immediately");
+        beginAnimation();
+    } else {
+        console.log("[SPLASH] Waiting for window.load event...");
+        window.addEventListener('load', function() {
+            console.log("[SPLASH] window.load fired, starting animation");
+            beginAnimation();
+        });
+    }
 }
 
 function startSplashAnimation() {
@@ -1003,7 +1007,7 @@ function renderMainUI() {
             initHiddenAdmin();
         }
         
-        // v3.42: Different paths for first-load vs non-first-load
+        // v3.43: Different paths for first-load vs non-first-load
         if (isFirstLoad) {
             dataReady = true;
             checkAndHideSplash();
@@ -1027,7 +1031,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.42: Simple, reliable first launch
+// Initialization - v3.43: Check if already loaded
 // ============================================================
 
 function initApp() {
@@ -1042,7 +1046,7 @@ function initApp() {
         // FIRST LOAD: B&W screen immediately, wait for load, then animate
         console.log("[INDEX] First load - B&W screen, waiting for load event");
         
-        // Start waiting for window.load before animation
+        // Start waiting for page load before animation
         startSplashAnimationWhenReady();
         
         // Load data in background
@@ -1108,7 +1112,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.42
+// Start the app - v3.43
 // ============================================================
 
 if (isFirstLoad) {
@@ -1123,7 +1127,7 @@ if (isFirstLoad) {
         }
     });
 } else {
-    // v3.42: Non-first-load - grey icon already visible
+    // v3.43: Non-first-load - grey icon already visible
     console.log("[INDEX] Non-first-load - grey icon already visible");
     
     // Remove splash overlay if it exists (from first load in same session edge case)
@@ -1146,13 +1150,11 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.42
-KEY CHANGES from v3.41:
-   - SIMPLIFIED: First launch waits for window.load + 500ms before animation
-   - REMOVED: Complex CSS detection (was unreliable)
-   - REMOVED: Scale pulse (wasn't working)
-   - B&W screen shows immediately, then animation plays when fully loaded
-   - Guarantees animation works on first launch every time
+VERSION: 3.43
+KEY CHANGES from v3.42:
+   - FIXED: Check if window.load already fired before adding listener
+   - If document.readyState === 'complete', start animation immediately
+   - Prevents infinite wait on already-loaded pages
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
