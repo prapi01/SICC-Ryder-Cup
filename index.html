@@ -1,11 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.39
-KEY CHANGES from v3.38:
-   - ADDED: Slow glow pulse on title while waiting for CSS to load
-   - B&W screen appears immediately, then animation starts when CSS is ready
-   - First launch now shows intentional waiting state (not broken)
-   - Subtle pulse tells user "something beautiful is loading"
+VERSION: 3.40
+KEY CHANGES from v3.39:
+   - FIXED: Immediate grey icon screen on page load (no blank screen on back navigation)
+   - Grey icon created synchronously before any other JavaScript runs
+   - CHANGED: Glow effect replaced with scale pulse (works on white text)
+   - Title gently scales up/down by 2% while waiting for CSS
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -122,7 +122,7 @@ STATUS: Ready for integration
             text-align: center;
             letter-spacing: 2px;
             transition: all 0.3s ease;
-            will-change: background, color, text-shadow;
+            will-change: background, color, transform;
         }
         
         /* Subtitle - initially grey */
@@ -135,15 +135,15 @@ STATUS: Ready for integration
             transition: color 0.3s ease;
         }
         
-        /* v3.39: Subtle glow pulse while waiting for CSS */
-        @keyframes subtleGlow {
-            0% { text-shadow: 0 0 0px rgba(76,175,80,0); }
-            50% { text-shadow: 0 0 8px rgba(76,175,80,0.6); }
-            100% { text-shadow: 0 0 0px rgba(76,175,80,0); }
+        /* v3.40: Subtle scale pulse while waiting for CSS (works on white text) */
+        @keyframes subtlePulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
         }
         
-        .pulse-glow {
-            animation: subtleGlow 2s ease-in-out infinite;
+        .pulse-scale {
+            animation: subtlePulse 2s ease-in-out infinite;
         }
         
         /* Keyframes for splash effects */
@@ -450,18 +450,32 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.39</div>
+<div class="version-tag">v3.40</div>
 
 <script>
-// FILE: index.html - VERSION 3.39
+// FILE: index.html - VERSION 3.40
 
-var APP_VERSION = "3.39";
+var APP_VERSION = "3.40";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+}
+
+// v3.40: IMMEDIATE grey icon screen for non-first-load
+// This runs synchronously before anything else
+var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
+
+// If not first load, show grey icon screen IMMEDIATELY (no blank screen)
+if (!isFirstLoad) {
+    console.log("[INDEX] Non-first-load - creating grey icon screen immediately");
+    var immediateGreyScreen = document.createElement('div');
+    immediateGreyScreen.id = 'greyIconScreen';
+    immediateGreyScreen.innerHTML = '<div class="grey-icon">⛳</div>';
+    immediateGreyScreen.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:#000000; display:flex; align-items:center; justify-content:center; z-index:20000;';
+    document.body.appendChild(immediateGreyScreen);
 }
 
 // Firebase is already initialized in firebase-config.js
@@ -478,9 +492,6 @@ var dataReady = false;
 var splashAnimationCompleted = false;
 var animationStarted = false;
 var cssReady = false;
-
-// v3.38: Determine if this is first load of the session
-var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // Get splash elements
 var splashOverlay = document.getElementById('splashOverlay');
@@ -507,17 +518,17 @@ function recordSplashShown() {
     console.log("App marked as initialized for this session");
 }
 
-// v3.39: Start glow pulse while waiting for CSS to load
-function startGlowPulse() {
-    console.log("[SPLASH] Starting subtle glow pulse while waiting for CSS");
-    splashTitle.classList.add('pulse-glow');
+// v3.40: Start scale pulse while waiting for CSS to load
+function startScalePulse() {
+    console.log("[SPLASH] Starting subtle scale pulse while waiting for CSS");
+    splashTitle.classList.add('pulse-scale');
 }
 
-function stopGlowPulse() {
-    splashTitle.classList.remove('pulse-glow');
+function stopScalePulse() {
+    splashTitle.classList.remove('pulse-scale');
 }
 
-// v3.39: Check if CSS keyframes are loaded and ready
+// v3.40: Check if CSS keyframes are loaded and ready
 function isCSSReady() {
     // Check if the splashShake keyframe is defined (CSS loaded)
     var styleSheets = document.styleSheets;
@@ -550,17 +561,17 @@ function isCSSReady() {
     return hasKeyframes || document.readyState === 'complete';
 }
 
-// v3.39: Wait for CSS to be ready, then start animation
+// v3.40: Wait for CSS to be ready, then start animation
 function waitForCSSAndStartAnimation() {
     if (cssReady) return;
     
-    // Start glow pulse immediately
-    startGlowPulse();
+    // Start scale pulse immediately
+    startScalePulse();
     
     function checkCSS() {
         if (isCSSReady()) {
             console.log("[SPLASH] CSS ready - stopping pulse and starting animation");
-            stopGlowPulse();
+            stopScalePulse();
             cssReady = true;
             startSplashAnimation();
         } else {
@@ -573,7 +584,7 @@ function waitForCSSAndStartAnimation() {
     setTimeout(checkCSS, 100);
 }
 
-// v3.36: Start animation - on impact, remove grayscale to reveal colour
+// v3.40: Start animation - on impact, remove grayscale to reveal colour
 function startSplashAnimation() {
     if (animationStarted) return;
     animationStarted = true;
@@ -672,31 +683,34 @@ function checkAndHideSplash() {
 }
 
 // ============================================================
-// v3.38: Grey Icon Screen for non-first-load navigation
+// v3.40: Grey Icon Screen functions (for non-first-load)
 // ============================================================
 
 function showGreyIconScreen() {
-    console.log("[INDEX] Showing grey icon screen immediately");
-    
-    if (greyIconScreen) {
-        greyIconScreen.remove();
+    console.log("[INDEX] Showing grey icon screen");
+    // Grey icon may already exist from immediate creation
+    if (!document.getElementById('greyIconScreen')) {
+        var screen = document.createElement('div');
+        screen.id = 'greyIconScreen';
+        screen.innerHTML = '<div class="grey-icon">⛳</div>';
+        screen.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:#000000; display:flex; align-items:center; justify-content:center; z-index:19999; opacity:1; transition:opacity 0.4s ease;';
+        document.body.appendChild(screen);
+        greyIconScreen = screen;
+    } else {
+        greyIconScreen = document.getElementById('greyIconScreen');
+        greyIconScreen.style.opacity = '1';
     }
-    
-    greyIconScreen = document.createElement('div');
-    greyIconScreen.id = 'greyIconScreen';
-    greyIconScreen.innerHTML = '<div class="grey-icon">⛳</div>';
-    document.body.appendChild(greyIconScreen);
-    return greyIconScreen;
 }
 
 function hideGreyIconScreen() {
-    if (greyIconScreen) {
-        greyIconScreen.style.opacity = '0';
+    var screen = document.getElementById('greyIconScreen');
+    if (screen) {
+        screen.style.opacity = '0';
         setTimeout(function() {
-            if (greyIconScreen) greyIconScreen.remove();
-            greyIconScreen = null;
+            if (screen && screen.parentNode) screen.remove();
         }, 400);
     }
+    greyIconScreen = null;
 }
 
 // ============================================================
@@ -1093,7 +1107,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.39: Wait for CSS before animation
+// Initialization - v3.40: Grey icon already shown for non-first-load
 // ============================================================
 
 function initApp() {
@@ -1105,10 +1119,10 @@ function initApp() {
     var hasCachedData = getPreloadedRawGameData() !== null;
     
     if (isFirstLoad) {
-        // First load this session - B&W screen with glow pulse, then animation
-        console.log("[INDEX] First load - B&W screen with glow pulse, waiting for CSS");
+        // First load this session - B&W screen with scale pulse, then animation
+        console.log("[INDEX] First load - B&W screen with scale pulse, waiting for CSS");
         
-        // Start glow pulse while waiting for CSS
+        // Start scale pulse while waiting for CSS
         waitForCSSAndStartAnimation();
         
         // Load data in background
@@ -1139,9 +1153,8 @@ function initApp() {
             recordSplashShown();
         });
     } else if (!hasCachedData) {
-        // Non-first-load, no cached data - show grey icon immediately
-        console.log("[INDEX] Non-first-load - showing grey icon screen immediately");
-        showGreyIconScreen();
+        // Non-first-load, no cached data - grey icon already shown
+        console.log("[INDEX] Non-first-load, no cached data - grey icon already visible");
         
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
@@ -1167,9 +1180,8 @@ function initApp() {
             renderMainUI();
         });
     } else {
-        // Non-first-load, has cached data - show grey icon briefly
-        console.log("[INDEX] Non-first-load - showing grey icon screen briefly");
-        showGreyIconScreen();
+        // Non-first-load, has cached data - grey icon already shown
+        console.log("[INDEX] Non-first-load, has cached data - grey icon already visible");
         preloadComplete = true;
         
         setTimeout(function() {
@@ -1184,11 +1196,11 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.39
+// Start the app - v3.40: Immediate grey icon for non-first-load
 // ============================================================
 
 if (shouldShowSplash()) {
-    console.log("[INDEX] First load - premium splash mode with glow pulse");
+    console.log("[INDEX] First load - premium splash mode with scale pulse");
     
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1199,12 +1211,8 @@ if (shouldShowSplash()) {
         }
     });
 } else {
-    // Non-first-load - remove splash overlay immediately, show grey icon
-    console.log("[INDEX] Non-first-load - removing splash, showing grey icon");
-    
-    if (splashOverlay) {
-        splashOverlay.remove();
-    }
+    // v3.40: Grey icon already shown synchronously at page load
+    console.log("[INDEX] Non-first-load - grey icon already visible");
     
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1221,12 +1229,12 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.39
-KEY CHANGES from v3.38:
-   - ADDED: Slow glow pulse on title while waiting for CSS to load
-   - B&W screen appears immediately, then animation starts when CSS is ready
-   - First launch now shows intentional waiting state (not broken)
-   - Subtle pulse tells user "something beautiful is loading"
+VERSION: 3.40
+KEY CHANGES from v3.39:
+   - FIXED: Immediate grey icon screen on page load (no blank screen on back navigation)
+   - Grey icon created synchronously before any other JavaScript runs
+   - CHANGED: Glow effect replaced with scale pulse (works on white text)
+   - Title gently scales up/down by 2% while waiting for CSS
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
