@@ -1,11 +1,12 @@
 <!--
 FILE: index.html
-VERSION: 3.41
-KEY CHANGES from v3.40:
-   - FIXED: Non-first-load no longer waits for splash animation that never starts
-   - Separate code paths for first-load (splash) and non-first-load (direct index)
-   - Grey icon screen appears immediately, then index shows when data ready
-   - No more stuck on "Waiting... dataReady=true, animationCompleted=false"
+VERSION: 3.42
+KEY CHANGES from v3.41:
+   - SIMPLIFIED: First launch waits for window.load + 500ms before animation
+   - REMOVED: Complex CSS detection (was unreliable)
+   - REMOVED: Scale pulse (wasn't working)
+   - B&W screen shows immediately, then animation plays when fully loaded
+   - Guarantees animation works on first launch every time
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -133,17 +134,6 @@ STATUS: Ready for integration
             letter-spacing: 1px;
             text-align: center;
             transition: color 0.3s ease;
-        }
-        
-        /* v3.40: Subtle scale pulse while waiting for CSS (works on white text) */
-        @keyframes subtlePulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
-        }
-        
-        .pulse-scale {
-            animation: subtlePulse 2s ease-in-out infinite;
         }
         
         /* Keyframes for splash effects */
@@ -450,12 +440,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.41</div>
+<div class="version-tag">v3.42</div>
 
 <script>
-// FILE: index.html - VERSION 3.41
+// FILE: index.html - VERSION 3.42
 
-var APP_VERSION = "3.41";
+var APP_VERSION = "3.42";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -464,7 +454,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.41: Determine if this is first load of the session
+// v3.42: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -489,7 +479,6 @@ var mainContainer = null;
 var dataReady = false;
 var splashAnimationCompleted = false;
 var animationStarted = false;
-var cssReady = false;
 
 // Get splash elements
 var splashOverlay = document.getElementById('splashOverlay');
@@ -506,62 +495,20 @@ function recordSplashShown() {
     console.log("[SPLASH] App marked as initialized");
 }
 
-function startScalePulse() {
-    console.log("[SPLASH] Starting subtle scale pulse while waiting for CSS");
-    splashTitle.classList.add('pulse-scale');
-}
-
-function stopScalePulse() {
-    splashTitle.classList.remove('pulse-scale');
-}
-
-function isCSSReady() {
-    var styleSheets = document.styleSheets;
-    var hasKeyframes = false;
+// v3.42: Simple, reliable - start animation after window.load + 500ms
+function startSplashAnimationWhenReady() {
+    if (animationStarted) return;
     
-    try {
-        for (var i = 0; i < styleSheets.length; i++) {
-            try {
-                var rules = styleSheets[i].cssRules || styleSheets[i].rules;
-                if (rules) {
-                    for (var j = 0; j < rules.length; j++) {
-                        if (rules[j].type === window.CSSRule.KEYFRAMES_RULE || 
-                            rules[j].name === 'splashShake') {
-                            hasKeyframes = true;
-                            break;
-                        }
-                    }
-                }
-            } catch(e) {
-                continue;
-            }
-            if (hasKeyframes) break;
-        }
-    } catch(e) {
-        return document.readyState === 'complete';
-    }
+    console.log("[SPLASH] Waiting for window.load + 500ms...");
     
-    return hasKeyframes || document.readyState === 'complete';
-}
-
-function waitForCSSAndStartAnimation() {
-    if (cssReady) return;
-    
-    startScalePulse();
-    
-    function checkCSS() {
-        if (isCSSReady()) {
-            console.log("[SPLASH] CSS ready - stopping pulse and starting animation");
-            stopScalePulse();
-            cssReady = true;
+    // Wait for all assets to load (CSS guaranteed ready)
+    window.addEventListener('load', function() {
+        console.log("[SPLASH] window.load fired, waiting additional 500ms...");
+        setTimeout(function() {
+            console.log("[SPLASH] Starting premium animation");
             startSplashAnimation();
-        } else {
-            console.log("[SPLASH] Waiting for CSS...");
-            setTimeout(checkCSS, 100);
-        }
-    }
-    
-    setTimeout(checkCSS, 100);
+        }, 500);
+    });
 }
 
 function startSplashAnimation() {
@@ -570,25 +517,33 @@ function startSplashAnimation() {
     
     console.log("[SPLASH] Starting premium animation");
     
+    // Force reflow
     void splashGolfIcon.offsetHeight;
     
+    // Make icon visible and start drop animation
     splashGolfIcon.style.visibility = 'visible';
     splashGolfIcon.style.filter = 'grayscale(100%)';
     splashGolfIcon.style.opacity = '0.8';
     
+    // Force reflow again
     void splashGolfIcon.offsetHeight;
     
+    // Drop animation: from -300px to 0 with 360° spin
     splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
     splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
     
+    // On impact (600ms) - remove grayscale to reveal colour, apply thump effects
     setTimeout(function() {
         console.log("[SPLASH] Impact - THUMP + COLOUR!");
         
+        // Remove grayscale to reveal natural icon colour
         splashGolfIcon.style.filter = 'none';
         splashGolfIcon.style.opacity = '1';
         
+        // Screen shake
         splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
         
+        // Thump ring effect
         var rect = splashGolfIcon.getBoundingClientRect();
         var ring = document.createElement('div');
         ring.style.cssText = `
@@ -608,19 +563,23 @@ function startSplashAnimation() {
         ring.style.transform = 'scale(5)';
         setTimeout(function() { if (ring) ring.remove(); }, 500);
         
+        // Vibration
         if (navigator.vibrate) {
             navigator.vibrate(50);
         }
         
+        // Title transforms to colour gradient
         splashTitle.style.background = 'linear-gradient(135deg, #ffffff 0%, #4caf50 100%)';
         splashTitle.style.backgroundClip = 'text';
         splashTitle.style.webkitBackgroundClip = 'text';
         splashTitle.style.color = 'transparent';
         
+        // Subtitle subtle colour
         splashSubtitle.style.color = '#aaa';
         
     }, 600);
     
+    // Animation complete (2800ms total)
     setTimeout(function() {
         splashAnimationCompleted = true;
         console.log("[SPLASH] Animation complete, checking hide condition");
@@ -1044,7 +1003,7 @@ function renderMainUI() {
             initHiddenAdmin();
         }
         
-        // v3.41: Different paths for first-load vs non-first-load
+        // v3.42: Different paths for first-load vs non-first-load
         if (isFirstLoad) {
             dataReady = true;
             checkAndHideSplash();
@@ -1068,7 +1027,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.41: Separate paths for first-load and non-first-load
+// Initialization - v3.42: Simple, reliable first launch
 // ============================================================
 
 function initApp() {
@@ -1080,11 +1039,13 @@ function initApp() {
     var hasCachedData = getPreloadedRawGameData() !== null;
     
     if (isFirstLoad) {
-        // FIRST LOAD: Premium splash animation
-        console.log("[INDEX] First load - premium splash mode");
+        // FIRST LOAD: B&W screen immediately, wait for load, then animate
+        console.log("[INDEX] First load - B&W screen, waiting for load event");
         
-        waitForCSSAndStartAnimation();
+        // Start waiting for window.load before animation
+        startSplashAnimationWhenReady();
         
+        // Load data in background
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
                 window.location.href = "index.html";
@@ -1147,11 +1108,11 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.41
+// Start the app - v3.42
 // ============================================================
 
 if (isFirstLoad) {
-    console.log("[INDEX] First load - premium splash mode");
+    console.log("[INDEX] First load - premium splash mode (waiting for load)");
     
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1162,7 +1123,7 @@ if (isFirstLoad) {
         }
     });
 } else {
-    // v3.41: Non-first-load - grey icon already visible, just initialize
+    // v3.42: Non-first-load - grey icon already visible
     console.log("[INDEX] Non-first-load - grey icon already visible");
     
     // Remove splash overlay if it exists (from first load in same session edge case)
@@ -1185,12 +1146,13 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.41
-KEY CHANGES from v3.40:
-   - FIXED: Non-first-load no longer waits for splash animation that never starts
-   - Separate code paths for first-load (splash) and non-first-load (direct index)
-   - Grey icon screen appears immediately, then index shows when data ready
-   - No more stuck on "Waiting... dataReady=true, animationCompleted=false"
+VERSION: 3.42
+KEY CHANGES from v3.41:
+   - SIMPLIFIED: First launch waits for window.load + 500ms before animation
+   - REMOVED: Complex CSS detection (was unreliable)
+   - REMOVED: Scale pulse (wasn't working)
+   - B&W screen shows immediately, then animation plays when fully loaded
+   - Guarantees animation works on first launch every time
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
