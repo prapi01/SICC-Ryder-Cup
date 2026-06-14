@@ -1,20 +1,19 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: T-2 row now properly handles 'AS' value (was being skipped, leaving cell empty)
-   - Added explicit handling for val === 'AS' to set displayVal to green square and cellClass to colorClass
-   - Also fixed T-1 and Strk rows for consistency (though they may not have had the issue)
-   - Removed debug logging (can be re-enabled if needed)
-   - All other functionality preserved
-DEPENDS ON: None (pure display)
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Strk row now shows GOLD on the LAST HOLE (any result: Axx, Bxx, or AS)
+   - Uses getLastHole() based on startingHole to determine last hole (supports shotgun starts)
+   - Removed hardcoded hole 18 check
+   - All other functionality preserved from v1.08 (AS handling, T-1/T-2 colors, etc.)
+DEPENDS ON: GameData (for getLastHole)
 STATUS: Ready for integration
 */
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.08";
+window.GAME_SCORECARD_VERSION = "1.09";
 
 var GameScorecard = (function() {
     
@@ -23,6 +22,17 @@ var GameScorecard = (function() {
     // ============================================================
     function getAsSquareHtml() {
         return '<span class="as-square"></span>';
+    }
+    
+    // ============================================================
+    // Helper: Get last hole based on starting hole
+    // ============================================================
+    function getLastHole(startingHole) {
+        if (typeof GameData !== 'undefined' && GameData.getLastHole) {
+            return GameData.getLastHole(startingHole);
+        }
+        // Fallback
+        return (startingHole === 1) ? 18 : startingHole - 1;
     }
     
     // ============================================================
@@ -71,7 +81,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.08: Fixed 'AS' handling
+    // Scorecard Rendering - v1.09: Strk gold on last hole
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -96,6 +106,9 @@ var GameScorecard = (function() {
         } else {
             startingHole = 1;
         }
+        
+        // v1.09: Get last hole for Strk gold condition
+        var lastHoleNumber = getLastHole(startingHole);
         
         // Build savedHoles
         var savedHoles = { 1: [], 2: [] };
@@ -147,7 +160,7 @@ var GameScorecard = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td>';
+            html += '<tr>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -165,7 +178,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row - v1.08: Fixed 'AS' handling
+        // T-1 row
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -185,7 +198,6 @@ var GameScorecard = (function() {
                 colorClass = 'score-green';
             }
             
-            // v1.08: Handle 'AS' value explicitly
             if (val === 'AS') {
                 if (isSynced) {
                     displayVal = getAsSquareHtml();
@@ -238,7 +250,7 @@ var GameScorecard = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<td>';
+            html += '<tr>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -256,7 +268,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row - v1.08: Fixed 'AS' handling
+        // T-2 row
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -276,7 +288,6 @@ var GameScorecard = (function() {
                 colorClass = 'score-green';
             }
             
-            // v1.08: Handle 'AS' value explicitly
             if (val === 'AS') {
                 if (isSynced) {
                     displayVal = getAsSquareHtml();
@@ -326,7 +337,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - v1.08: Fixed 'AS' handling
+        // Strk row - v1.09: Gold on last hole (any result)
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -337,32 +348,26 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
-            // v1.08: Handle 'AS' value explicitly
-            if (val === 'AS') {
-                if (isSynced) {
+            // v1.09: Determine color - GOLD on last hole, GREEN otherwise
+            var isLastHole = (holeNum === lastHoleNumber);
+            
+            if (isSynced) {
+                if (isLastHole) {
+                    cellClass = 'score-gold';
+                } else {
+                    cellClass = 'score-green';
+                }
+                
+                // Build display value
+                if (val === 'AS' || val === 0 || val === '0') {
                     displayVal = getAsSquareHtml();
-                    cellClass = 'score-green';
-                }
-            } else if (val === '0' || val === 0) {
-                if (isSynced) {
-                    displayVal = 'AS';
-                    cellClass = 'score-green';
-                }
-            } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
-                if (isSynced) {
+                } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
                     if (strkDisplay && strkDisplay[arrayIndex]) {
                         displayVal = strkDisplay[arrayIndex];
                     } else {
                         displayVal = val;
                     }
-                    cellClass = 'score-green';
-                    
-                    if (holeNum === 18 && (val === 'A' || val === 'B')) {
-                        cellClass = 'score-gold';
-                    }
-                }
-            } else if (val && val !== '_') {
-                if (isSynced) {
+                } else if (val && val !== '_') {
                     if (strkDisplay && strkDisplay[arrayIndex]) {
                         displayVal = strkDisplay[arrayIndex];
                     } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
@@ -377,13 +382,13 @@ var GameScorecard = (function() {
                     } else {
                         displayVal = val;
                     }
-                    cellClass = 'score-green';
+                }
+                
+                if (displayVal === 'AS') {
+                    displayVal = getAsSquareHtml();
                 }
             }
             
-            if (displayVal === 'AS') {
-                displayVal = getAsSquareHtml();
-            }
             html += '<td class="' + cellClass + '">' + displayVal + '<\/td>';
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
@@ -391,7 +396,7 @@ var GameScorecard = (function() {
         html += '</tbody></table>';
         container.innerHTML = html;
         
-        // FIXED v1.04: Only remove empty first cell from rows with MORE than 1 cell
+        // Remove empty first cell from rows with MORE than 1 cell
         var allRows = container.querySelectorAll('tr');
         for (var i = 0; i < allRows.length; i++) {
             var cells = allRows[i].cells;
@@ -494,7 +499,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.08"; }
+        getVersion: function() { return "1.09"; }
     };
     
 })();
@@ -506,13 +511,12 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: T-2 row now properly handles 'AS' value (was being skipped, leaving cell empty)
-   - Added explicit handling for val === 'AS' to set displayVal to green square and cellClass to colorClass
-   - Also fixed T-1 and Strk rows for consistency (though they may not have had the issue)
-   - Removed debug logging (can be re-enabled if needed)
-   - All other functionality preserved
-DEPENDS ON: None (pure display)
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Strk row now shows GOLD on the LAST HOLE (any result: Axx, Bxx, or AS)
+   - Uses getLastHole() based on startingHole to determine last hole (supports shotgun starts)
+   - Removed hardcoded hole 18 check
+   - All other functionality preserved from v1.08 (AS handling, T-1/T-2 colors, etc.)
+DEPENDS ON: GameData (for getLastHole)
 STATUS: Ready for integration
 */
