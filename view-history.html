@@ -1,12 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.22
-KEY CHANGES from v8.21:
-   - ADDED: Script reference to js/firebase-retry.js
-   - REPLACED: Manual Firestore query with FirebaseRetry.queryWhereLimit()
-   - Consistent retry behavior with other pages (exponential backoff, green modal)
-   - All existing functionality preserved (parallel module loading, button state, status bubble)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
+VERSION: 8.23
+KEY CHANGES from v8.22:
+   - REPLACED: Green spinner with grey icon screen for consistent loading experience
+   - Removed spinner CSS and related styles
+   - Grey icon appears while loading games
+   - All existing functionality preserved (FirebaseRetry, parallel module loading, button state)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
 STATUS: Ready for integration
 -->
 
@@ -213,25 +213,18 @@ STATUS: Ready for integration
             color: #ffaa44;
         }
         
-        /* Green spinner for loading */
-        .spinner-container {
+        /* v8.23: Grey icon screen for loading (replaces green spinner) */
+        .grey-icon-container {
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 60px 20px;
         }
         
-        .spinner-green {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(76, 175, 80, 0.2);
-            border-top-color: #4caf50;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        .grey-icon-loading {
+            font-size: 5rem;
+            filter: grayscale(100%);
+            opacity: 0.6;
         }
         
         .back-buttons {
@@ -329,8 +322,8 @@ STATUS: Ready for integration
 <div class="container game-list-view" id="gameListView">
     <div class="game-list-title">📜 COMPLETED GAMES</div>
     <div class="game-list" id="gameListContainer">
-        <div class="spinner-container">
-            <div class="spinner-green"></div>
+        <div class="grey-icon-container">
+            <div class="grey-icon-loading">⛳</div>
         </div>
     </div>
     <div class="back-buttons">
@@ -345,13 +338,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.22</div>
+<div class="version-tag">v8.23</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "8.22";
+var APP_VERSION = "8.23";
 var CACHE_KEY = "view_history_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -363,8 +356,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.22";
-console.log("[VIEW-HISTORY] Initializing v8.22 with FirebaseRetry");
+window.VIEW_HISTORY_VERSION = "8.23";
+console.log("[VIEW-HISTORY] Initializing v8.23 with grey icon loading");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -463,7 +456,7 @@ function showScorecardView(game) {
     
     listView.style.display = 'none';
     detailView.style.display = 'block';
-    detailContent.innerHTML = '<div class="spinner-container"><div class="spinner-green"></div></div>';
+    detailContent.innerHTML = '<div class="grey-icon-container"><div class="grey-icon-loading">⛳</div></div>';
     
     var modulesToLoad = [
         'js/game-data.js',
@@ -795,7 +788,7 @@ function renderScorecardView(game) {
 }
 
 // ============================================================
-// Game List Functions - v8.22: Uses FirebaseRetry for robust queries
+// Game List Functions - v8.23: Uses grey icon for loading
 // ============================================================
 
 function enableButtons() {
@@ -812,10 +805,8 @@ function enableButtons() {
 function attachEventHandlers() {
     console.log("[VIEW-HISTORY] Attaching event handlers to buttons");
     
-    // Remove disabled class from all buttons
     enableButtons();
     
-    // Attach click handlers to scorecard buttons
     var scorecardBtns = document.querySelectorAll('.btn-scorecard');
     for (var i = 0; i < scorecardBtns.length; i++) {
         var btn = scorecardBtns[i];
@@ -832,7 +823,6 @@ function attachEventHandlers() {
         })(i);
     }
     
-    // Attach click handlers to handicap buttons
     var handicapBtns = document.querySelectorAll('.btn-handicap');
     for (var i = 0; i < handicapBtns.length; i++) {
         var btn = handicapBtns[i];
@@ -941,13 +931,11 @@ function renderGameList(games) {
 
 function loadGameListAndModules() {
     var container = document.getElementById('gameListContainer');
-    container.innerHTML = '<div class="spinner-container"><div class="spinner-green"></div></div>';
+    container.innerHTML = '<div class="grey-icon-container"><div class="grey-icon-loading">⛳</div></div>';
     
-    // Reset flags
     dataLoaded = false;
     modulesLoaded = false;
     
-    // STEP 1: Query Firestore FIRST using FirebaseRetry (v8.22)
     console.log("[VIEW-HISTORY] Loading games from Firestore with FirebaseRetry...");
     FirebaseRetry.queryWhereLimit("historyGames", "status", "==", "completed", 50)
         .then(function(snapshot) {
@@ -975,17 +963,15 @@ function loadGameListAndModules() {
                 return dateB - dateA;
             });
             
-            // Render game list immediately
             renderGameList(games);
         })
         .catch(function(error) {
             console.error("[VIEW-HISTORY] Error loading games after retries:", error);
             container.innerHTML = '<div class="error-message">Unable to load games. Please check your connection and refresh.</div>';
-            dataLoaded = true; // Prevent hanging
+            dataLoaded = true;
             checkBothReady();
         });
     
-    // STEP 2: Load modules in parallel
     var modulesToLoad = [
         'js/game-data.js',
         'js/game-match.js',
@@ -1035,7 +1021,6 @@ function backToGameList() {
     detailView.style.display = 'none';
     listView.style.display = 'block';
     
-    // Reload everything when coming back
     loadGameListAndModules();
 }
 
@@ -1054,7 +1039,6 @@ async function init() {
     document.getElementById('backToMenuBtn').onclick = exitToMainMenu;
     document.getElementById('backToListBtn').onclick = backToGameList;
     
-    // Start loading - Firestore query first, then modules in background
     loadGameListAndModules();
 }
 
@@ -1066,12 +1050,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.22
-KEY CHANGES from v8.21:
-   - ADDED: Script reference to js/firebase-retry.js
-   - REPLACED: Manual Firestore query with FirebaseRetry.queryWhereLimit()
-   - Consistent retry behavior with other pages (exponential backoff, green modal)
-   - All existing functionality preserved (parallel module loading, button state, status bubble)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-ui.js (loaded dynamically for scorecard), js/hcp-adjust.js (for displayStoredAdjustment only)
+VERSION: 8.23
+KEY CHANGES from v8.22:
+   - REPLACED: Green spinner with grey icon screen for consistent loading experience
+   - Removed spinner CSS and related styles
+   - Grey icon appears while loading games
+   - All existing functionality preserved (FirebaseRetry, parallel module loading, button state)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
 STATUS: Ready for integration
 -->
