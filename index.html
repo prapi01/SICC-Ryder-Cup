@@ -1,11 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.37
-KEY CHANGES from v3.36:
-   - FIXED: Back navigation from tutorial/view-history no longer shows blank screen
-   - When splash is skipped, splashOverlay is completely removed (not just hidden)
-   - App container is shown immediately
-   - Prevents splash from blocking the view on returning to index
+VERSION: 3.38
+KEY CHANGES from v3.37:
+   - IMPROVED: All navigation to index (except first load) now shows grey icon screen immediately
+   - No more blank screen when returning from tutorial, view-history, admin, etc.
+   - Grey icon appears instantly, data loads in background, then fades to index
+   - First load still shows premium colour splash animation
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -71,7 +71,7 @@ STATUS: Ready for integration
             opacity: 1;
         }
         
-        /* Splash Overlay - B&W screen initially */
+        /* Splash Overlay - B&W screen initially (for first load) */
         #splashOverlay {
             position: fixed;
             top: 0;
@@ -150,7 +150,7 @@ STATUS: Ready for integration
             100% { transform: translate(0, 0); }
         }
         
-        /* Grey icon screen for cached loads */
+        /* Grey icon screen for non-first-load navigation */
         #greyIconScreen {
             position: fixed;
             top: 0;
@@ -426,7 +426,7 @@ STATUS: Ready for integration
 </head>
 <body>
 
-<!-- Splash Overlay - B&W screen with hidden icon -->
+<!-- Splash Overlay - B&W screen with hidden icon (for first load) -->
 <div id="splashOverlay">
     <div class="splash-icon-container">
         <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
@@ -435,16 +435,16 @@ STATUS: Ready for integration
     <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
 </div>
 
-<!-- Main Container - Hidden Initially, Fades In After Splash -->
+<!-- Main Container - Hidden Initially, Fades In After Load -->
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.37</div>
+<div class="version-tag">v3.38</div>
 
 <script>
-// FILE: index.html - VERSION 3.37
+// FILE: index.html - VERSION 3.38
 
-var APP_VERSION = "3.37";
+var APP_VERSION = "3.38";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -467,7 +467,7 @@ var dataReady = false;
 var splashAnimationCompleted = false;
 var animationStarted = false;
 
-// v3.34: Unified session flag - 'appInitialized' controls both splash and first load
+// v3.38: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // Get splash elements
@@ -477,12 +477,12 @@ var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
 
 // ============================================================
-// Splash Screen Logic - Premium sequence (once per session)
+// Splash Screen Logic - Premium sequence (first load only)
 // ============================================================
 
 function shouldShowSplash() {
     if (!isFirstLoad) {
-        console.log("Splash already shown this session - skipping");
+        console.log("Not first load - using grey icon screen instead");
         return false;
     }
     
@@ -585,21 +585,7 @@ function hideSplashAndShowIndex() {
     }, 600);
 }
 
-function removeSplashImmediately() {
-    if (splashOverlay) {
-        console.log("[SPLASH] Removing splash overlay immediately (skipped)");
-        splashOverlay.remove();
-    }
-    var appDiv = document.getElementById("app");
-    if (appDiv && !appDiv.classList.contains('visible')) {
-        appDiv.classList.add('visible');
-    }
-}
-
 function checkAndHideSplash() {
-    // Hide when BOTH conditions are met:
-    // 1. Animation is complete (2800ms passed)
-    // 2. Data is ready (Firestore loaded)
     if (splashAnimationCompleted && dataReady) {
         hideSplashAndShowIndex();
     } else {
@@ -608,10 +594,13 @@ function checkAndHideSplash() {
 }
 
 // ============================================================
-// v3.28: Simplified Grey Icon Loading Screen (for cached loads)
+// v3.38: Grey Icon Screen for non-first-load navigation
 // ============================================================
 
 function showGreyIconScreen() {
+    console.log("[INDEX] Showing grey icon screen immediately");
+    
+    // Remove any existing grey screen
     if (greyIconScreen) {
         greyIconScreen.remove();
     }
@@ -727,7 +716,7 @@ function showGameCompletedModal(gameId) {
 }
 
 // ============================================================
-// Main UI Render - Renders ONCE (no flicker)
+// Main UI Render
 // ============================================================
 
 function escapeHtml(str) {
@@ -898,7 +887,6 @@ function renderMainUI() {
     var appDiv = document.getElementById("app");
     if (!appDiv) return;
     
-    // Data loading happens in background - UI will appear when ready
     FirebaseRetry.getCollection("scheduledGames", {
         onExit: function() {
             window.location.href = "index.html";
@@ -1006,26 +994,34 @@ function renderMainUI() {
             initHiddenAdmin();
         }
         
-        // Mark data as ready - this will trigger splash hide if animation is complete
+        // Mark data as ready
         dataReady = true;
-        checkAndHideSplash();
         
-        // Hide grey icon screen if visible
+        // Hide grey icon screen if this was a non-first-load navigation
         hideGreyIconScreen();
+        
+        // If splash is still active (first load), let it handle the transition
+        if (splashOverlay && splashOverlay.parentNode) {
+            checkAndHideSplash();
+        } else {
+            // No splash overlay - just show index
+            appDiv.classList.add('visible');
+        }
         
     }).catch(function(e) {
         console.warn(e);
         hideGreyIconScreen();
         appDiv.innerHTML = '<div style="text-align:center; padding:40px; color:#888;">Error loading games. Please refresh.</div>';
         appDiv.classList.add('visible');
-        // On error, still mark data as ready to allow splash to hide
-        dataReady = true;
-        checkAndHideSplash();
+        if (splashOverlay && splashOverlay.parentNode) {
+            dataReady = true;
+            checkAndHideSplash();
+        }
     });
 }
 
 // ============================================================
-// Initialization - v3.37: Fix back navigation
+// Initialization - v3.38: Immediate grey icon for non-first-load
 // ============================================================
 
 function initApp() {
@@ -1037,10 +1033,10 @@ function initApp() {
     var hasCachedData = getPreloadedRawGameData() !== null;
     
     if (isFirstLoad) {
-        // First load this session - start animation immediately
-        console.log("First load - starting splash animation immediately");
+        // First load this session - premium splash animation
+        console.log("[INDEX] First load - using premium splash animation");
         
-        // Start animation right away (no waiting for data)
+        // Start animation right away
         startSplashAnimation();
         
         // Load data in background
@@ -1071,8 +1067,8 @@ function initApp() {
             recordSplashShown();
         });
     } else if (!hasCachedData) {
-        // Returning but no cached data - grey icon screen
-        console.log("No cached preload data - showing grey icon screen");
+        // v3.38: Non-first-load, no cached data - show grey icon immediately
+        console.log("[INDEX] Non-first-load - showing grey icon screen immediately");
         showGreyIconScreen();
         
         FirebaseRetry.getCollection("scheduledGames", {
@@ -1099,17 +1095,12 @@ function initApp() {
             renderMainUI();
         });
     } else {
-        // v3.37: Valid cached data - remove splash immediately, show grey icon briefly, then index
-        console.log("Valid cached data - removing splash, showing grey icon screen briefly");
-        
-        // Remove splash overlay immediately (prevents blank screen on back navigation)
-        removeSplashImmediately();
-        
-        // Show grey icon screen briefly
+        // v3.38: Non-first-load, has cached data - show grey icon briefly
+        console.log("[INDEX] Non-first-load - showing grey icon screen briefly");
         showGreyIconScreen();
         preloadComplete = true;
         
-        // Short delay before showing index
+        // Short delay to show grey screen, then render
         setTimeout(function() {
             renderMainUI();
         }, 300);
@@ -1122,11 +1113,11 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.37: Fix back navigation
+// Start the app - v3.38
 // ============================================================
 
 if (shouldShowSplash()) {
-    console.log("[SPLASH] Premium splash mode - starting animation immediately");
+    console.log("[INDEX] First load - premium splash mode");
     
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1137,9 +1128,13 @@ if (shouldShowSplash()) {
         }
     });
 } else {
-    // v3.37: Splash skipped - remove overlay immediately, then proceed
-    console.log("[SPLASH] Splash skipped - removing overlay immediately");
-    removeSplashImmediately();
+    // v3.38: Non-first-load - remove splash overlay immediately, show grey icon
+    console.log("[INDEX] Non-first-load - removing splash, showing grey icon");
+    
+    // Remove splash overlay immediately
+    if (splashOverlay) {
+        splashOverlay.remove();
+    }
     
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1156,12 +1151,12 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.37
-KEY CHANGES from v3.36:
-   - FIXED: Back navigation from tutorial/view-history no longer shows blank screen
-   - When splash is skipped, splashOverlay is completely removed (not just hidden)
-   - App container is shown immediately
-   - Prevents splash from blocking the view on returning to index
+VERSION: 3.38
+KEY CHANGES from v3.37:
+   - IMPROVED: All navigation to index (except first load) now shows grey icon screen immediately
+   - No more blank screen when returning from tutorial, view-history, admin, etc.
+   - Grey icon appears instantly, data loads in background, then fades to index
+   - First load still shows premium colour splash animation
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
