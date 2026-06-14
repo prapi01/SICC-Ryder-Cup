@@ -1,6 +1,14 @@
-<!-- FILE: courses.html - VERSION 1.31 -->
-<!-- Course Management for SICC Ryder Cup App -->
-<!-- KEY CHANGES: Added js/firebase-config.js for dynamic config -->
+<!--
+FILE: courses.html
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - REPLACED: System confirm() with Modal.confirm() in deleteCourse()
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (course management, add/edit)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+STATUS: Ready for integration
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,6 +19,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/modal.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
@@ -92,12 +101,12 @@
     <div class="loading">Loading courses...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.31</div>
+<div class="version-tag">v1.32</div>
 
 <script>
-// FILE: courses.html - VERSION 1.31
+// FILE: courses.html - VERSION 1.32
 
-var VERSION = "1.31";
+var VERSION = "1.32";
 var CACHE_KEY = "courses_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -172,14 +181,26 @@ function loadCourses() {
     });
 }
 
+// v1.32: Replace system confirm() with Modal.confirm()
 function deleteCourse(courseId) {
     if (!firestoreReady) return;
-    if (confirm("Delete this course?")) {
-        SessionManager.addNavigationHistory("courses.html", "course_deleted", { courseId: courseId });
-        db.collection("courses").doc(courseId).delete().then(function() {
-            loadCourses();
-        }).catch(function(e) { console.warn(e); });
-    }
+    
+    Modal.confirm(
+        "Delete this course? This action cannot be undone.",
+        function() {
+            // On confirm - proceed with deletion
+            SessionManager.addNavigationHistory("courses.html", "course_deleted", { courseId: courseId });
+            db.collection("courses").doc(courseId).delete().then(function() {
+                loadCourses();
+            }).catch(function(e) { 
+                Modal.alert("Error deleting course: " + e.message);
+            });
+        },
+        function() {
+            // On cancel - do nothing
+            console.log("Deletion cancelled");
+        }
+    );
 }
 
 function startAddCourse() {
@@ -235,7 +256,7 @@ function prevHole() {
 function saveCourse() {
     if (!firestoreReady) return;
     if (!state.newCourse.name.trim()) {
-        alert("Please enter a course name");
+        Modal.alert("Please enter a course name");
         return;
     }
     
@@ -249,7 +270,9 @@ function saveCourse() {
             state.screen = "main";
             state.editingCourseId = null;
             loadCourses();
-        }).catch(function(e) { console.warn(e); });
+        }).catch(function(e) { 
+            Modal.alert("Error updating course: " + e.message);
+        });
     } else {
         SessionManager.addNavigationHistory("courses.html", "course_created", { courseName: state.newCourse.name });
         db.collection("courses").add({
@@ -259,7 +282,9 @@ function saveCourse() {
         }).then(function() {
             state.screen = "main";
             loadCourses();
-        }).catch(function(e) { console.warn(e); });
+        }).catch(function(e) { 
+            Modal.alert("Error creating course: " + e.message);
+        });
     }
 }
 
@@ -501,7 +526,7 @@ window.saveCourseName = function() {
         state.currentHole = 1;
         render();
     } else {
-        alert("Please enter a course name");
+        Modal.alert("Please enter a course name");
     }
 };
 
@@ -545,5 +570,13 @@ SessionManager.initSession("courses.html", "admin.html", function(session) {
 </body>
 </html>
 
-<!-- FILE: courses.html - VERSION 1.31 -->
-<!-- KEY CHANGES: Added js/firebase-config.js for dynamic config -->
+<!--
+FILE: courses.html
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - REPLACED: System confirm() with Modal.confirm() in deleteCourse()
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (course management, add/edit)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+STATUS: Ready for integration
+-->
