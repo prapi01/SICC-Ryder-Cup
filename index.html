@@ -1,13 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.30
-KEY CHANGES from v3.29:
-   - FIXED: Splash animation now starts ONLY after Firestore data is loaded
-   - Initial state: Black screen (no animation, just background)
-   - Data loads silently in background
-   - THEN full 2800ms golf ball drop animation plays uninterrupted
-   - THEN fades to index - no rushing, no truncation
-   - Premium, intentional feel
+VERSION: 3.31
+KEY CHANGES from v3.30:
+   - FIXED: Splash content now visible BEFORE animation starts (no 50ms delay)
+   - Removed opacity:0 from .splash-content (content visible immediately)
+   - Animation starts with content already visible for smooth drop effect
+   - Splash now properly visible on first load in new window
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -73,7 +71,7 @@ STATUS: Ready for integration
             opacity: 1;
         }
         
-        /* Colour Splash overlay - initially visible but with hidden content */
+        /* Colour Splash overlay - initially black background, content visible */
         #splashOverlay {
             position: fixed;
             top: 0;
@@ -92,10 +90,10 @@ STATUS: Ready for integration
             will-change: opacity;
         }
         
-        /* v3.30: Splash content container (initially hidden) */
+        /* v3.31: Splash content container - visible immediately */
         .splash-content {
-            opacity: 0;
-            transition: opacity 0.1s ease;
+            opacity: 1;
+            transition: none;
         }
         
         /* v3.28: Simplified grey icon loading screen (no text) */
@@ -442,9 +440,9 @@ STATUS: Ready for integration
 </head>
 <body>
 
-<!-- Colour Splash Overlay - Initially Black Screen, Content Hidden -->
+<!-- Colour Splash Overlay - Initially Black Background, Content Visible -->
 <div id="splashOverlay">
-    <div class="splash-content" id="splashContent">
+    <div class="splash-content">
         <div class="splash-icon-container">
             <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
         </div>
@@ -457,12 +455,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.30</div>
+<div class="version-tag">v3.31</div>
 
 <script>
-// FILE: index.html - VERSION 3.30
+// FILE: index.html - VERSION 3.31
 
-var APP_VERSION = "3.30";
+var APP_VERSION = "3.31";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -488,7 +486,7 @@ var dataReady = false;
 
 // Get splash elements
 var splashOverlay = document.getElementById('splashOverlay');
-var splashContent = document.getElementById('splashContent');
+var splashContent = document.querySelector('.splash-content');
 var splashGolfIcon = document.getElementById('splashGolfIcon');
 var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
@@ -514,33 +512,34 @@ function recordSplashShown() {
     console.log("Splash recorded as shown for this session");
 }
 
-// v3.30: Premium splash sequence - full animation after data ready
+// v3.31: Premium splash sequence - content visible, then animate
 function startSplashAnimation() {
     if (splashAnimationStarted) return;
     splashAnimationStarted = true;
     
-    console.log("[SPLASH] Starting animation");
+    console.log("[SPLASH] Starting animation - content already visible");
     
-    // First, show the splash content (fade in)
-    splashContent.style.transition = 'opacity 0.2s ease';
-    splashContent.style.opacity = '1';
+    // Force a reflow to ensure CSS is applied
+    void splashGolfIcon.offsetHeight;
     
-    // Small delay to ensure content is visible before animation
-    setTimeout(function() {
-        // Golf ball drop animation
-        splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
-        splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
-        
-        // Title fade in
-        splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-        splashTitle.style.opacity = '1';
-        splashTitle.style.transform = 'translateY(0)';
-        
-        // Subtitle fade in
-        splashSubtitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-        splashSubtitle.style.opacity = '1';
-        splashSubtitle.style.transform = 'translateY(0)';
-    }, 50);
+    // v3.31: No delay - animate immediately since content is already visible
+    requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+            // Golf ball drop animation
+            splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+            splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
+            
+            // Title fade in
+            splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+            splashTitle.style.opacity = '1';
+            splashTitle.style.transform = 'translateY(0)';
+            
+            // Subtitle fade in
+            splashSubtitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+            splashSubtitle.style.opacity = '1';
+            splashSubtitle.style.transform = 'translateY(0)';
+        });
+    });
     
     // Thump ring effect
     setTimeout(function() {
@@ -1028,7 +1027,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.30: Premium splash sequence
+// Initialization - v3.31: Premium splash with content visible
 // ============================================================
 
 function initApp() {
@@ -1042,13 +1041,13 @@ function initApp() {
     
     if (!firstLoadFlag) {
         // First load ever - premium sequence:
-        // 1. Black screen (already showing)
+        // 1. Black screen with splash content visible
         // 2. Load data silently
         // 3. THEN start splash animation
         // 4. THEN show index after animation
-        console.log("First load - premium splash sequence");
+        console.log("First load - premium splash sequence (content visible)");
         
-        // Start loading data immediately (splash content hidden initially)
+        // Start loading data immediately (splash content already visible)
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
                 window.location.href = "index.html";
@@ -1124,15 +1123,15 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.30: Premium sequence
+// Start the app - v3.31: Splash content visible from the start
 // ============================================================
 
 if (shouldShowSplash()) {
     recordSplashShown();
     
-    // Splash overlay is visible but content is hidden (opacity: 0)
-    // User sees black screen
-    console.log("[SPLASH] Black screen - loading data in background");
+    // Splash overlay is visible with content (golf icon, title, subtitle)
+    // User sees the golf icon immediately (not just black screen)
+    console.log("[SPLASH] Splash content visible - loading data in background");
     
     // Initialize session and start loading
     SessionManager.initSession("index.html", "index.html", function(session) {
@@ -1161,14 +1160,12 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.30
-KEY CHANGES from v3.29:
-   - FIXED: Splash animation now starts ONLY after Firestore data is loaded
-   - Initial state: Black screen (no animation, just background)
-   - Data loads silently in background
-   - THEN full 2800ms golf ball drop animation plays uninterrupted
-   - THEN fades to index - no rushing, no truncation
-   - Premium, intentional feel
+VERSION: 3.31
+KEY CHANGES from v3.30:
+   - FIXED: Splash content now visible BEFORE animation starts (no 50ms delay)
+   - Removed opacity:0 from .splash-content (content visible immediately)
+   - Animation starts with content already visible for smooth drop effect
+   - Splash now properly visible on first load in new window
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
