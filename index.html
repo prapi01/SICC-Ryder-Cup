@@ -1,12 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.29
-KEY CHANGES from v3.28:
-   - FIXED: Splash screen now waits for DOM ready + paint before animation starts
-   - Added DOMContentLoaded + requestAnimationFrame for proper timing
-   - Added minimum display time (2800ms) guarantee
-   - Added will-change hints for smoother animation
-   - Prevents splash truncation on first load in new browser window
+VERSION: 3.30
+KEY CHANGES from v3.29:
+   - FIXED: Splash animation now starts ONLY after Firestore data is loaded
+   - Initial state: Black screen (no animation, just background)
+   - Data loads silently in background
+   - THEN full 2800ms golf ball drop animation plays uninterrupted
+   - THEN fades to index - no rushing, no truncation
+   - Premium, intentional feel
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -32,9 +33,6 @@ STATUS: Ready for integration
     <link rel="apple-touch-icon" sizes="152x152" href="/images/ICON.png">
     <link rel="apple-touch-icon" sizes="120x120" href="/images/ICON.png">
     <link rel="apple-touch-icon" sizes="76x76" href="/images/ICON.png">
-    
-    <!-- Preload critical CSS for splash screen -->
-    <link rel="preload" href="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js" as="script">
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -75,14 +73,14 @@ STATUS: Ready for integration
             opacity: 1;
         }
         
-        /* Colour Splash overlay */
+        /* Colour Splash overlay - initially visible but with hidden content */
         #splashOverlay {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: linear-gradient(145deg, #0a1a0a 0%, #000000 100%);
+            background: #000000;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -92,6 +90,12 @@ STATUS: Ready for integration
             transition: opacity 0.6s ease;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
             will-change: opacity;
+        }
+        
+        /* v3.30: Splash content container (initially hidden) */
+        .splash-content {
+            opacity: 0;
+            transition: opacity 0.1s ease;
         }
         
         /* v3.28: Simplified grey icon loading screen (no text) */
@@ -438,25 +442,27 @@ STATUS: Ready for integration
 </head>
 <body>
 
-<!-- Colour Splash Overlay - Created Immediately -->
+<!-- Colour Splash Overlay - Initially Black Screen, Content Hidden -->
 <div id="splashOverlay">
-    <div class="splash-icon-container">
-        <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
+    <div class="splash-content" id="splashContent">
+        <div class="splash-icon-container">
+            <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
+        </div>
+        <div class="splash-title" id="splashTitle">SICC RYDER CUP</div>
+        <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
     </div>
-    <div class="splash-title" id="splashTitle">SICC RYDER CUP</div>
-    <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
 </div>
 
 <!-- Main Container - Hidden Initially, Fades In After Preload -->
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.29</div>
+<div class="version-tag">v3.30</div>
 
 <script>
-// FILE: index.html - VERSION 3.29
+// FILE: index.html - VERSION 3.30
 
-var APP_VERSION = "3.29";
+var APP_VERSION = "3.30";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -477,11 +483,12 @@ var isFirstLoad = true;
 var mainContainer = null;
 var greyIconScreen = null;
 var splashAnimationStarted = false;
-var splashMinimumTimeReached = false;
-var splashStartTime = null;
+var splashAnimationComplete = false;
+var dataReady = false;
 
 // Get splash elements
 var splashOverlay = document.getElementById('splashOverlay');
+var splashContent = document.getElementById('splashContent');
 var splashGolfIcon = document.getElementById('splashGolfIcon');
 var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
@@ -507,34 +514,33 @@ function recordSplashShown() {
     console.log("Splash recorded as shown for this session");
 }
 
-// v3.29: Robust splash animation with paint guarantee
+// v3.30: Premium splash sequence - full animation after data ready
 function startSplashAnimation() {
     if (splashAnimationStarted) return;
     splashAnimationStarted = true;
-    splashStartTime = Date.now();
     
-    console.log("[SPLASH] Starting animation at", splashStartTime);
+    console.log("[SPLASH] Starting animation");
     
-    // Force a reflow to ensure CSS is applied
-    void splashOverlay.offsetHeight;
+    // First, show the splash content (fade in)
+    splashContent.style.transition = 'opacity 0.2s ease';
+    splashContent.style.opacity = '1';
     
-    requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-            // Golf ball drop animation
-            splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
-            splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
-            
-            // Title fade in
-            splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-            splashTitle.style.opacity = '1';
-            splashTitle.style.transform = 'translateY(0)';
-            
-            // Subtitle fade in
-            splashSubtitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-            splashSubtitle.style.opacity = '1';
-            splashSubtitle.style.transform = 'translateY(0)';
-        });
-    });
+    // Small delay to ensure content is visible before animation
+    setTimeout(function() {
+        // Golf ball drop animation
+        splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+        splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
+        
+        // Title fade in
+        splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+        splashTitle.style.opacity = '1';
+        splashTitle.style.transform = 'translateY(0)';
+        
+        // Subtitle fade in
+        splashSubtitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+        splashSubtitle.style.opacity = '1';
+        splashSubtitle.style.transform = 'translateY(0)';
+    }, 50);
     
     // Thump ring effect
     setTimeout(function() {
@@ -571,27 +577,36 @@ function startSplashAnimation() {
         }, 700);
     }
     
-    // Minimum display time: ensure splash visible for at least 2800ms
+    // Animation duration: 2800ms
     setTimeout(function() {
-        splashMinimumTimeReached = true;
-        console.log("[SPLASH] Minimum time reached");
+        splashAnimationComplete = true;
+        console.log("[SPLASH] Animation complete");
         checkAndHideSplash();
     }, 2800);
 }
 
-function hideSplash() {
+function hideSplashAndShowIndex() {
     if (!splashOverlay) return;
-    console.log("[SPLASH] Hiding splash");
+    console.log("[SPLASH] Hiding splash and showing index");
     splashOverlay.style.opacity = '0';
     setTimeout(function() {
         if (splashOverlay) splashOverlay.remove();
+        // Ensure main container is visible
+        var appDiv = document.getElementById("app");
+        if (appDiv && !appDiv.classList.contains('visible')) {
+            appDiv.classList.add('visible');
+        }
     }, 600);
 }
 
 function checkAndHideSplash() {
-    // Only hide when minimum time is reached AND any async operations are done
-    if (splashMinimumTimeReached) {
-        hideSplash();
+    // Only hide when both conditions are met:
+    // 1. Data is ready (preload complete)
+    // 2. Animation is complete
+    if (dataReady && splashAnimationComplete) {
+        hideSplashAndShowIndex();
+    } else {
+        console.log("[SPLASH] Waiting... dataReady=" + dataReady + ", animationComplete=" + splashAnimationComplete);
     }
 }
 
@@ -996,9 +1011,13 @@ function renderMainUI() {
             initHiddenAdmin();
         }
         
-        // Hide grey icon screen if visible and fade in container
+        // v3.30: Don't show index yet - wait for splash animation
+        // Just store that data is ready
+        dataReady = true;
+        checkAndHideSplash();
+        
+        // Hide grey icon screen if visible
         hideGreyIconScreen();
-        appDiv.classList.add('visible');
         
     }).catch(function(e) {
         console.warn(e);
@@ -1009,7 +1028,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.29: Robust splash with paint guarantee
+// Initialization - v3.30: Premium splash sequence
 // ============================================================
 
 function initApp() {
@@ -1022,18 +1041,14 @@ function initApp() {
     var firstLoadFlag = sessionStorage.getItem('firstLoadCompleted');
     
     if (!firstLoadFlag) {
-        // First load ever - colour splash will handle the loading
-        console.log("First load - colour splash active");
+        // First load ever - premium sequence:
+        // 1. Black screen (already showing)
+        // 2. Load data silently
+        // 3. THEN start splash animation
+        // 4. THEN show index after animation
+        console.log("First load - premium splash sequence");
         
-        // Start the splash animation after DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                startSplashAnimation();
-            });
-        } else {
-            startSplashAnimation();
-        }
-        
+        // Start loading data immediately (splash content hidden initially)
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
                 window.location.href = "index.html";
@@ -1049,23 +1064,22 @@ function initApp() {
             
             if (todayGame) {
                 preloadGameData(todayGame.id, function() {
+                    // Data ready - now start the splash animation
+                    startSplashAnimation();
                     renderMainUI();
                     sessionStorage.setItem('firstLoadCompleted', 'true');
-                    // Splash will hide after minimum time
-                    splashMinimumTimeReached = true;
-                    checkAndHideSplash();
                 });
             } else {
+                // No game today - data ready
+                startSplashAnimation();
                 renderMainUI();
                 sessionStorage.setItem('firstLoadCompleted', 'true');
-                splashMinimumTimeReached = true;
-                checkAndHideSplash();
             }
         }).catch(function() {
+            // Even on error, show splash and continue
+            startSplashAnimation();
             renderMainUI();
             sessionStorage.setItem('firstLoadCompleted', 'true');
-            splashMinimumTimeReached = true;
-            checkAndHideSplash();
         });
     } else if (!hasCachedData) {
         // Returning to main menu but no cached data exists - show grey icon screen
@@ -1110,28 +1124,17 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.29: Wait for DOM ready before splash
+// Start the app - v3.30: Premium sequence
 // ============================================================
 
 if (shouldShowSplash()) {
     recordSplashShown();
     
-    // Ensure DOM is ready before starting animation
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            // Small delay to ensure CSS is fully parsed
-            setTimeout(function() {
-                startSplashAnimation();
-            }, 50);
-        });
-    } else {
-        setTimeout(function() {
-            startSplashAnimation();
-        }, 50);
-    }
+    // Splash overlay is visible but content is hidden (opacity: 0)
+    // User sees black screen
+    console.log("[SPLASH] Black screen - loading data in background");
     
-    // Minimum display time already handled in startSplashAnimation
-    // Session init happens in parallel
+    // Initialize session and start loading
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
         currentSession = session;
@@ -1158,13 +1161,14 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.29
-KEY CHANGES from v3.28:
-   - FIXED: Splash screen now waits for DOM ready + paint before animation starts
-   - Added DOMContentLoaded + requestAnimationFrame for proper timing
-   - Added minimum display time (2800ms) guarantee
-   - Added will-change hints for smoother animation
-   - Prevents splash truncation on first load in new browser window
+VERSION: 3.30
+KEY CHANGES from v3.29:
+   - FIXED: Splash animation now starts ONLY after Firestore data is loaded
+   - Initial state: Black screen (no animation, just background)
+   - Data loads silently in background
+   - THEN full 2800ms golf ball drop animation plays uninterrupted
+   - THEN fades to index - no rushing, no truncation
+   - Premium, intentional feel
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
