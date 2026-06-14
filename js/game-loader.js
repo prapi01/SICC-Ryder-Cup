@@ -1,9 +1,10 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: Added t1Row, t2Row, strkRow to return object (were missing)
-   - FIXED: Added t1Display, t2Display, strkDisplay to return object (were missing)
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: Replaced internal getSavedHolesFromString() with call to GameData.getSavedHolesFromString()
+   - This ensures saved holes are correctly converted using starting hole value
+   - Fixes bug where scores saved on hole 10 appeared on hole 1 in savedHoles
    - ALL existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js
 STATUS: Ready for integration
@@ -24,19 +25,24 @@ var GameLoader = (function() {
     
     // ============================================================
     // Helper: Parse saved holes from data string
+    // v1.06: Now uses GameData.getSavedHolesFromString() which handles starting hole conversion
     // ============================================================
     function getSavedHolesFromString(dataString) {
+        // Delegate to GameData's fixed version (v2.04+)
+        if (typeof GameData !== 'undefined' && GameData.getSavedHolesFromString) {
+            return GameData.getSavedHolesFromString(dataString);
+        }
+        
+        // Fallback for when GameData is not available (should not happen)
         var saved = [];
         if (!dataString) return saved;
         
-        // Parse T/F pattern
         var i = 0;
         var holeNum = 1;
         while (i < dataString.length && holeNum <= 18) {
             if (dataString[i] === 'T') {
                 saved.push(holeNum);
-                // Skip the 8 score characters (a1,a2,b1,b2)
-                i += 9; // 'T' + 8 scores
+                i += 9;
             } else if (dataString[i] === 'F') {
                 break;
             } else {
@@ -72,7 +78,7 @@ var GameLoader = (function() {
             flight2Data[h] = GameData.parseHoleData(f2DataString, h);
         }
         
-        // Get saved holes
+        // Get saved holes - v1.06: Now uses fixed version with starting hole conversion
         var savedHoles = {
             1: getSavedHolesFromString(f1DataString),
             2: getSavedHolesFromString(f2DataString)
@@ -358,10 +364,11 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: Added t1Row, t2Row, strkRow to return object (were missing)
-   - FIXED: Added t1Display, t2Display, strkDisplay to return object (were missing)
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: Replaced internal getSavedHolesFromString() with call to GameData.getSavedHolesFromString()
+   - This ensures saved holes are correctly converted using starting hole value
+   - Fixes bug where scores saved on hole 10 appeared on hole 1 in savedHoles
    - ALL existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js
 STATUS: Ready for integration
