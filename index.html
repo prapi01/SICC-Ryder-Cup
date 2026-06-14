@@ -1,10 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.27
-KEY CHANGES from v3.26:
-   - CHANGED: "TODAY GAME" button text to "GAME DAY"
-   - Updated in both the NGB button display and any related text
-   - All existing functionality preserved
+VERSION: 3.28
+KEY CHANGES from v3.27:
+   - REMOVED: B&W loading screen with text (unified loading experience)
+   - ADDED: Simplified grey icon screen (just the golf icon, no text)
+   - First launch: Colour splash animation fades directly to index (no grey screen)
+   - Other loading states: Grey icon screen (clean, minimal, brand-consistent)
+   - Removed green spinner dependency (replaced by grey icon screen)
+   - All existing functionality preserved (FirebaseRetry, session, preload, etc.)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
@@ -69,7 +72,7 @@ STATUS: Ready for integration
             opacity: 1;
         }
         
-        /* Splash overlay */
+        /* Colour Splash overlay */
         #splashOverlay {
             position: fixed;
             top: 0;
@@ -83,12 +86,12 @@ STATUS: Ready for integration
             justify-content: center;
             z-index: 10000;
             opacity: 1;
-            transition: opacity 0.8s ease;
+            transition: opacity 0.6s ease;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        /* B&W Loading Screen - first load only */
-        #loadingScreen {
+        /* v3.28: Simplified grey icon loading screen (no text) */
+        #greyIconScreen {
             position: fixed;
             top: 0;
             left: 0;
@@ -104,29 +107,10 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        .loading-content {
-            text-align: center;
-        }
-        
-        .loading-icon {
+        .grey-icon {
             font-size: 5rem;
             filter: grayscale(100%);
             opacity: 0.6;
-        }
-        
-        .loading-title {
-            font-size: 0.9rem;
-            color: #444;
-            letter-spacing: 4px;
-            margin-top: 16px;
-            font-weight: 300;
-        }
-        
-        .loading-subtitle {
-            font-size: 0.65rem;
-            color: #333;
-            margin-top: 6px;
-            letter-spacing: 1px;
         }
         
         /* Golf icon container for splash */
@@ -445,7 +429,7 @@ STATUS: Ready for integration
 </head>
 <body>
 
-<!-- Splash Overlay - Created Immediately -->
+<!-- Colour Splash Overlay - Created Immediately -->
 <div id="splashOverlay">
     <div class="splash-icon-container">
         <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
@@ -458,12 +442,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.27</div>
+<div class="version-tag">v3.28</div>
 
 <script>
-// FILE: index.html - VERSION 3.27
+// FILE: index.html - VERSION 3.28
 
-var APP_VERSION = "3.27";
+var APP_VERSION = "3.28";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -482,6 +466,7 @@ var currentSession = null;
 var preloadComplete = false;
 var isFirstLoad = true;
 var mainContainer = null;
+var greyIconScreen = null;
 
 // Get splash elements
 var splashOverlay = document.getElementById('splashOverlay');
@@ -515,33 +500,36 @@ function hideSplashAndContinue(callback) {
     setTimeout(function() {
         splashOverlay.remove();
         if (callback) callback();
-    }, 800);
+    }, 600);
 }
 
 // ============================================================
-// B&W Loading Screen - First load only
+// v3.28: Simplified Grey Icon Loading Screen (no text)
 // ============================================================
 
-function showLoadingScreen() {
-    var loadingDiv = document.createElement('div');
-    loadingDiv.id = 'loadingScreen';
-    loadingDiv.innerHTML = `
-        <div class="loading-content">
-            <div class="loading-icon">⛳</div>
-            <div class="loading-title">SICC RYDER CUP</div>
-            <div class="loading-subtitle">Match Play · Team Game · Net Stroke</div>
-        </div>
+function showGreyIconScreen() {
+    // Remove existing if any
+    if (greyIconScreen) {
+        greyIconScreen.remove();
+    }
+    
+    greyIconScreen = document.createElement('div');
+    greyIconScreen.id = 'greyIconScreen';
+    greyIconScreen.innerHTML = `
+        <div class="grey-icon">⛳</div>
     `;
-    document.body.appendChild(loadingDiv);
-    return loadingDiv;
+    document.body.appendChild(greyIconScreen);
+    return greyIconScreen;
 }
 
-function hideLoadingScreen(loadingDiv) {
-    if (!loadingDiv) return;
-    loadingDiv.style.opacity = '0';
-    setTimeout(function() {
-        loadingDiv.remove();
-    }, 400);
+function hideGreyIconScreen() {
+    if (greyIconScreen) {
+        greyIconScreen.style.opacity = '0';
+        setTimeout(function() {
+            if (greyIconScreen) greyIconScreen.remove();
+            greyIconScreen = null;
+        }, 400);
+    }
 }
 
 // ============================================================
@@ -834,7 +822,6 @@ function renderMainUI() {
             var isToday = (nextGame.date === today);
             
             if (isToday) {
-                // v3.27: Changed "TODAY GAME" to "GAME DAY"
                 ngbHtml = `
                     <div class="ngb" onclick="handleTodayGame()">
                         <div class="icon">⛳</div>
@@ -917,18 +904,20 @@ function renderMainUI() {
             initHiddenAdmin();
         }
         
-        // Fade in the container
+        // Hide grey icon screen if visible and fade in container
+        hideGreyIconScreen();
         appDiv.classList.add('visible');
         
     }).catch(function(e) {
         console.warn(e);
+        hideGreyIconScreen();
         appDiv.innerHTML = '<div style="text-align:center; padding:40px; color:#888;">Error loading games. Please refresh.</div>';
         appDiv.classList.add('visible');
     });
 }
 
 // ============================================================
-// Initialization - v3.26 with FirebaseRetry
+// Initialization - v3.28: Unified loading experience
 // ============================================================
 
 function initApp() {
@@ -941,8 +930,9 @@ function initApp() {
     var firstLoadFlag = sessionStorage.getItem('firstLoadCompleted');
     
     if (!firstLoadFlag) {
-        isFirstLoad = true;
-        var loadingScreen = showLoadingScreen();
+        // First load ever - colour splash already showing, NO grey icon screen
+        // Colour splash will fade directly to index
+        console.log("First load - using colour splash only");
         
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
@@ -959,24 +949,21 @@ function initApp() {
             
             if (todayGame) {
                 preloadGameData(todayGame.id, function() {
-                    hideLoadingScreen(loadingScreen);
                     renderMainUI();
                     sessionStorage.setItem('firstLoadCompleted', 'true');
                 });
             } else {
-                hideLoadingScreen(loadingScreen);
                 renderMainUI();
                 sessionStorage.setItem('firstLoadCompleted', 'true');
             }
         }).catch(function() {
-            hideLoadingScreen(loadingScreen);
             renderMainUI();
             sessionStorage.setItem('firstLoadCompleted', 'true');
         });
     } else if (!hasCachedData) {
-        console.log("No cached preload data found - preloading again");
-        isFirstLoad = true;
-        var loadingScreen = showLoadingScreen();
+        // Returning to main menu but no cached data exists - show grey icon screen
+        console.log("No cached preload data found - showing grey icon screen");
+        showGreyIconScreen();
         
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
@@ -993,20 +980,18 @@ function initApp() {
             
             if (todayGame) {
                 preloadGameData(todayGame.id, function() {
-                    hideLoadingScreen(loadingScreen);
                     renderMainUI();
                 });
             } else {
-                hideLoadingScreen(loadingScreen);
                 renderMainUI();
             }
         }).catch(function() {
-            hideLoadingScreen(loadingScreen);
             renderMainUI();
         });
     } else {
-        console.log("Valid cached preload data found - rendering instantly");
-        isFirstLoad = false;
+        // Subsequent returns with valid cached data - grey icon screen briefly, then index
+        console.log("Valid cached preload data found - showing grey icon screen briefly");
+        showGreyIconScreen();
         preloadComplete = true;
         renderMainUI();
     }
@@ -1017,7 +1002,10 @@ function displayDeviceId() {
     document.getElementById("deviceTag").innerHTML = deviceDisplay;
 }
 
+// ============================================================
 // Start the app
+// ============================================================
+
 if (shouldShowSplash()) {
     recordSplashShown();
     
@@ -1081,6 +1069,7 @@ if (shouldShowSplash()) {
         });
     }, 2800);
 } else {
+    // No splash needed - hide it immediately and proceed
     splashOverlay.style.display = 'none';
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1097,11 +1086,14 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.27
-KEY CHANGES from v3.26:
-   - CHANGED: "TODAY GAME" button text to "GAME DAY"
-   - Updated in both the NGB button display and handleNextGame alert text
-   - All existing functionality preserved
+VERSION: 3.28
+KEY CHANGES from v3.27:
+   - REMOVED: B&W loading screen with text (unified loading experience)
+   - ADDED: Simplified grey icon screen (just the golf icon, no text)
+   - First launch: Colour splash animation fades directly to index (no grey screen)
+   - Other loading states: Grey icon screen (clean, minimal, brand-consistent)
+   - Removed green spinner dependency (replaced by grey icon screen)
+   - All existing functionality preserved (FirebaseRetry, session, preload, etc.)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
