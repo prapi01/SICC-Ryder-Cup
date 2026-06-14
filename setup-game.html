@@ -1,13 +1,12 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - ADDED: Dirty state tracking for edit mode
-   - ADDED: Unsaved changes warning modal when leaving edit page
-   - ADDED: beforeunload event listener to warn on tab/browser close
-   - Modal options: [UPDATE & SAVE] [DISCARD] [CANCEL]
-   - Only shows modal if changes were actually made
-   - New game creation mode unaffected (no dirty tracking needed)
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - REPLACED: Inline unsaved changes modal with Modal.confirmWithThreeButtons()
+   - Uses standard modal UI from js/modal.js v1.01 (green border, grey title, proper styling)
+   - Modal buttons: [Cancel] [DISCARD] [UPDATE & SAVE]
+   - DISCARD button has red styling, UPDATE & SAVE button has gold styling
+   - All existing functionality preserved (dirty state tracking, beforeunload handler)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -260,12 +259,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.27</div>
+<div class="version-tag">v1.28</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.27
+// FILE: setup-game.html - VERSION 1.28
 
-var VERSION = "1.27";
+var VERSION = "1.28";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -442,14 +441,12 @@ var state = {
 // ============================================================
 
 function captureInitialFormState() {
-    // Capture current values of all editable fields
     var datePicker = document.getElementById("datePicker");
     var courseSelect = document.getElementById("courseSelect");
     var shotgunHoleSelect = document.getElementById("shotgunHoleSelect");
     var tournamentRadio = document.getElementById("formatTournament");
     var relativeRadio = document.getElementById("formatRelative");
     
-    // Capture player data
     var playersSnapshot = JSON.parse(JSON.stringify(state.players));
     
     initialFormState = {
@@ -466,7 +463,7 @@ function captureInitialFormState() {
 }
 
 function checkForChanges() {
-    if (!state.isEditMode) return false; // Only track changes in edit mode
+    if (!state.isEditMode) return false;
     
     var datePicker = document.getElementById("datePicker");
     var courseSelect = document.getElementById("courseSelect");
@@ -477,7 +474,6 @@ function checkForChanges() {
     var currentStartingHoleType = state.startingHoleType;
     var currentTeamGameFormat = state.teamGameFormat;
     
-    // Check player data changes (deep compare)
     var playersChanged = false;
     if (initialFormState && initialFormState.players) {
         if (state.players.length !== initialFormState.players.length) {
@@ -525,42 +521,30 @@ function attachBeforeUnloadHandler() {
     beforeUnloadHandlerAttached = true;
 }
 
-function showUnsavedChangesModal(onSaveAndExit, onDiscardAndExit) {
-    Modal.confirmWithCustomButtons(
-        "You have unsaved changes.",
-        function() {
-            // UPDATE & SAVE button
-            if (onSaveAndExit) onSaveAndExit();
-        },
-        function() {
-            // DISCARD button
-            if (onDiscardAndExit) onDiscardAndExit();
-        },
-        "UPDATE & SAVE",
-        "DISCARD"
-    );
-}
-
 // ============================================================
-// Modified goBack function with dirty check - v1.27
+// Modified goBack function with dirty check - v1.28: Uses Modal.confirmWithThreeButtons
 // ============================================================
 
 function goBack() {
     if (state.isEditMode && checkForChanges()) {
-        showUnsavedChangesModal(
+        // v1.28: Use standard Modal.confirmWithThreeButtons
+        Modal.confirmWithThreeButtons(
+            "You have unsaved changes.",
             function() {
-                // Save and exit
+                // UPDATE & SAVE - save and exit
                 commitGame();
             },
             function() {
-                // Discard and exit
+                // DISCARD - discard changes and exit
                 isDirty = false;
-                if (state.isEditMode) {
-                    window.location.href = "manage-games.html";
-                } else {
-                    window.location.href = "admin.html";
-                }
-            }
+                window.location.href = "manage-games.html";
+            },
+            function() {
+                // CANCEL - stay on page
+                console.log("Cancel - staying on edit page");
+            },
+            "UPDATE & SAVE",
+            "DISCARD"
         );
     } else {
         // No changes, exit directly
@@ -868,7 +852,7 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
 }
 
 // ============================================================
-// commitGame - v1.27: Added dirty reset after successful save
+// commitGame - v1.28: Uses standard Modal functions
 // ============================================================
 
 function commitGame() {
@@ -892,7 +876,6 @@ function commitGame() {
         return;
     }
     
-    // Check for multiple players with 0 handicap
     var zeroHandicapPlayers = state.players.filter(function(p) { return p.handicap === 0; });
     
     var anchorCallback = function(selectedAnchor) {
@@ -1043,7 +1026,7 @@ function updateExistingGame(anchorPlayer) {
                     db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload).then(function() {
                         SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
                         document.getElementById("successMsg").style.display = "block";
-                        isDirty = false; // v1.27: Reset dirty state after successful save
+                        isDirty = false;
                         setTimeout(function() {
                             window.location.href = "manage-games.html";
                         }, 1500);
@@ -1062,7 +1045,7 @@ function updateExistingGame(anchorPlayer) {
         db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload).then(function() {
             SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
             document.getElementById("successMsg").style.display = "block";
-            isDirty = false; // v1.27: Reset dirty state after successful save
+            isDirty = false;
             setTimeout(function() {
                 window.location.href = "manage-games.html";
             }, 1500);
@@ -1073,10 +1056,6 @@ function updateExistingGame(anchorPlayer) {
         Modal.alert("Error loading existing game: " + e.message);
     });
 }
-
-// ============================================================
-// Event handlers with dirty tracking - v1.27
-// ============================================================
 
 function onDateChange() {
     if (state.isEditMode) checkForChanges();
@@ -1270,7 +1249,6 @@ function render() {
     
     document.getElementById("app").innerHTML = html;
     
-    // v1.27: Capture initial state after render for edit mode
     if (state.isEditMode && !initialFormState) {
         captureInitialFormState();
         attachBeforeUnloadHandler();
@@ -1365,7 +1343,6 @@ function render() {
         });
     });
     
-    // v1.27: Attach commit button handler
     var commitBtn = document.getElementById("commitBtn");
     if (commitBtn) {
         commitBtn.onclick = function() {
@@ -1373,7 +1350,6 @@ function render() {
         };
     }
     
-    // v1.27: Cancel button and back link use goBack() with dirty check
     var cancelBtn = document.getElementById("cancelBtn");
     if (cancelBtn) {
         cancelBtn.onclick = function() {
@@ -1403,60 +1379,6 @@ function escapeHtml(str) {
     });
 }
 
-// ============================================================
-// v1.27: Add Modal.confirmWithCustomButtons if not exists
-// ============================================================
-
-if (typeof Modal !== 'undefined' && !Modal.confirmWithCustomButtons) {
-    Modal.confirmWithCustomButtons = function(message, onConfirm, onCancel, confirmText, cancelText) {
-        var existingModal = document.getElementById('sharedModal');
-        if (existingModal) existingModal.remove();
-        
-        var confirmBtnText = confirmText || "OK";
-        var cancelBtnText = cancelText || "Cancel";
-        
-        var modalHtml = `
-            <div class="shared-modal-container">
-                <div class="shared-modal-title">UNSAVED CHANGES</div>
-                <div class="shared-modal-message">${escapeHtml(message)}</div>
-                <div class="shared-modal-buttons">
-                    <button class="shared-modal-btn shared-modal-btn-cancel" id="sharedModalCancelBtn">${cancelBtnText}</button>
-                    <button class="shared-modal-btn shared-modal-btn-confirm" id="sharedModalConfirmBtn">${confirmBtnText}</button>
-                </div>
-            </div>
-        `;
-        
-        var overlay = document.createElement('div');
-        overlay.id = 'sharedModal';
-        overlay.className = 'shared-modal-overlay';
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.95);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 30000;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-        `;
-        overlay.innerHTML = modalHtml;
-        document.body.appendChild(overlay);
-        
-        document.getElementById('sharedModalCancelBtn').onclick = function() {
-            overlay.remove();
-            if (onCancel && typeof onCancel === 'function') onCancel();
-        };
-        
-        document.getElementById('sharedModalConfirmBtn').onclick = function() {
-            overlay.remove();
-            if (onConfirm && typeof onConfirm === 'function') onConfirm();
-        };
-    };
-}
-
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
     deviceSession = session;
@@ -1476,14 +1398,13 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - ADDED: Dirty state tracking for edit mode
-   - ADDED: Unsaved changes warning modal when leaving edit page
-   - ADDED: beforeunload event listener to warn on tab/browser close
-   - Modal options: [UPDATE & SAVE] [DISCARD] [CANCEL]
-   - Only shows modal if changes were actually made
-   - New game creation mode unaffected (no dirty tracking needed)
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - REPLACED: Inline unsaved changes modal with Modal.confirmWithThreeButtons()
+   - Uses standard modal UI from js/modal.js v1.01 (green border, grey title, proper styling)
+   - Modal buttons: [Cancel] [DISCARD] [UPDATE & SAVE]
+   - DISCARD button has red styling, UPDATE & SAVE button has gold styling
+   - All existing functionality preserved (dirty state tracking, beforeunload handler)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
