@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.85
-KEY CHANGES from v5.84:
-   - FIXED: Cross-flight calculations now use lastSyncedNaturalHole as upToHole
-   - Previously used current hole number (e.g., 12) which excluded holes 1 and 2
-   - Now correctly includes ALL synced holes in cumulative match results
-   - This ensures that when holes 1 and 2 are saved, holes 12-18 get updated cumulative values
-   - All other functionality preserved from v5.84
+VERSION: 5.86
+KEY CHANGES from v5.85:
+   - FIXED: Cascade now recalculates ALL holes from position 0 to lastSyncedPosition
+   - Previously only recalculated holes AFTER the saved position
+   - This ensures that when saving hole 2 (position 10), holes 12-18 (positions 2-8) are also recalculated
+   - Works for ANY starting hole and ANY save order
+   - The cascade is now truly invincible - always recalculates all synced holes
+   - All other functionality preserved from v5.85
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.22), js/game-team.js (v1.11), js/game-stroke.js (v1.06), js/game-scorecard.js (v1.10), js/game-ui.js (v5.07), js/game-loader.js (v1.08), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -20,9 +21,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=5.85"></script>
-    <script src="js/session.js?v=5.85"></script>
-    <script src="js/modal.js?v=5.85"></script>
+    <script src="js/firebase-config.js?v=5.86"></script>
+    <script src="js/session.js?v=5.86"></script>
+    <script src="js/modal.js?v=5.86"></script>
     <script src="js/game-data.js?v=2.06"></script>
     <script src="js/game-match.js?v=2.22"></script>
     <script src="js/game-team.js?v=1.11"></script>
@@ -30,11 +31,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.10"></script>
     <script src="js/game-ui.js?v=5.07"></script>
     <script src="js/game-loader.js?v=1.08"></script>
-    <script src="js/card-submit.js?v=5.85"></script>
-    <script src="js/sign-card.js?v=5.85"></script>
-    <script src="js/hcp-adjust.js?v=5.85"></script>
-    <script src="js/ticker.js?v=5.85"></script>
-    <script src="js/history-record.js?v=5.85"></script>
+    <script src="js/card-submit.js?v=5.86"></script>
+    <script src="js/sign-card.js?v=5.86"></script>
+    <script src="js/hcp-adjust.js?v=5.86"></script>
+    <script src="js/ticker.js?v=5.86"></script>
+    <script src="js/history-record.js?v=5.86"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -297,13 +298,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.85</div>
+<div class="version-tag">v5.86</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "5.85";
+var APP_VERSION = "5.86";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -315,8 +316,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.85";
-console.log("[REAL-GAME] Initializing v5.85 - cross-flight uses lastSyncedNaturalHole for upToHole");
+window.REAL_GAME_VERSION = "5.86";
+console.log("[REAL-GAME] Initializing v5.86 - invincible cascade recalculates all synced holes from position 0");
 
 // ============================================================
 // DEBUG CONFIGURATION
@@ -1004,16 +1005,17 @@ function performSave() {
                 }
                 
                 // ============================================================
-                // v5.84: INVINCIBLE CASCADE - Recalculate ALL synced holes
+                // v5.86: INVINCIBLE CASCADE - Recalculate ALL synced holes from position 0
                 // This ensures that when saving ANY hole, ALL holes that are
                 // consecutively saved by both flights get recalculated.
-                // This is critical for shotgun starts and backward navigation.
+                // This is critical for shotgun starts, backward navigation, and
+                // when saving holes that affect earlier positions in play order.
                 // ============================================================
                 
                 var playOrder = getPlayOrder();
                 var lastSyncedPos = cache.lastSyncedPosition;
                 
-                console.log(`[CASCADE-DEBUG] v5.84: Recalculating ALL holes from position 0 to ${lastSyncedPos}`);
+                console.log(`[CASCADE-DEBUG] v5.86: Recalculating ALL holes from position 0 to ${lastSyncedPos}`);
                 
                 var currentCache = GameLoader.getLocalCache();
                 
@@ -1420,7 +1422,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.85";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.86";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -1938,7 +1940,7 @@ function renderCompactHeaderWithFlightToggle() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS - v5.85: Pass lastSyncedPosition to getMatchBubbleClass
+// RENDER FUNCTIONS - v5.86: Pass lastSyncedPosition to getMatchBubbleClass
 // ============================================================
 
 function renderAll() {
@@ -1990,7 +1992,7 @@ function renderAll() {
         var clinchedAt = cache.clinchedAt || {};
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         
-        // v5.85: ALWAYS use lastSyncedPosition (play position) for cross-flight sync
+        // v5.86: ALWAYS use lastSyncedPosition (play position) for cross-flight sync
         // This is what game-match.js v2.22 expects for proper shotgun start detection
         var lastSyncedValue = (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) 
             ? cache.lastSyncedPosition 
@@ -2247,13 +2249,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.85
-KEY CHANGES from v5.84:
-   - FIXED: Cross-flight calculations now use lastSyncedNaturalHole as upToHole
-   - Previously used current hole number (e.g., 12) which excluded holes 1 and 2
-   - Now correctly includes ALL synced holes in cumulative match results
-   - This ensures that when holes 1 and 2 are saved, holes 12-18 get updated cumulative values
-   - All other functionality preserved from v5.84
+VERSION: 5.86
+KEY CHANGES from v5.85:
+   - FIXED: Cascade now recalculates ALL holes from position 0 to lastSyncedPosition
+   - Previously only recalculated holes AFTER the saved position
+   - This ensures that when saving hole 2 (position 10), holes 12-18 (positions 2-8) are also recalculated
+   - Works for ANY starting hole and ANY save order
+   - The cascade is now truly invincible - always recalculates all synced holes
+   - All other functionality preserved from v5.85
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.22), js/game-team.js (v1.11), js/game-stroke.js (v1.06), js/game-scorecard.js (v1.10), js/game-ui.js (v5.07), js/game-loader.js (v1.08), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
