@@ -1,10 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - REPLACED: System alert() with Modal.alert() in validation and error handling
-   - ADDED: js/modal.js dependency for consistent custom modals
-   - All existing functionality preserved (edit mode, anchor selection, preserve scores)
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - ADDED: Dirty state tracking for edit mode
+   - ADDED: Unsaved changes warning modal when leaving edit page
+   - ADDED: beforeunload event listener to warn on tab/browser close
+   - Modal options: [UPDATE & SAVE] [DISCARD] [CANCEL]
+   - Only shows modal if changes were actually made
+   - New game creation mode unaffected (no dirty tracking needed)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -257,12 +260,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.26</div>
+<div class="version-tag">v1.27</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.26
+// FILE: setup-game.html - VERSION 1.27
 
-var VERSION = "1.26";
+var VERSION = "1.27";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -275,6 +278,13 @@ if (storedVersion !== VERSION) {
 var db = firebase.firestore();
 var firestoreReady = true;
 var deviceSession = null;
+
+// ============================================================
+// v1.27: Dirty state tracking for edit mode
+// ============================================================
+var isDirty = false;
+var initialFormState = null;
+var beforeUnloadHandlerAttached = false;
 
 // ============================================================
 // Generate Short Game ID
@@ -426,6 +436,141 @@ var state = {
     startingHoleType: "hole1",
     teamGameFormat: "tournament"
 };
+
+// ============================================================
+// v1.27: Dirty state tracking functions
+// ============================================================
+
+function captureInitialFormState() {
+    // Capture current values of all editable fields
+    var datePicker = document.getElementById("datePicker");
+    var courseSelect = document.getElementById("courseSelect");
+    var shotgunHoleSelect = document.getElementById("shotgunHoleSelect");
+    var tournamentRadio = document.getElementById("formatTournament");
+    var relativeRadio = document.getElementById("formatRelative");
+    
+    // Capture player data
+    var playersSnapshot = JSON.parse(JSON.stringify(state.players));
+    
+    initialFormState = {
+        date: datePicker ? datePicker.value : "",
+        courseId: state.selectedCourseId,
+        startingHole: state.startingHole,
+        startingHoleType: state.startingHoleType,
+        teamGameFormat: state.teamGameFormat,
+        players: playersSnapshot
+    };
+    
+    isDirty = false;
+    console.log("[DIRTY] Initial state captured");
+}
+
+function checkForChanges() {
+    if (!state.isEditMode) return false; // Only track changes in edit mode
+    
+    var datePicker = document.getElementById("datePicker");
+    var courseSelect = document.getElementById("courseSelect");
+    
+    var currentDate = datePicker ? datePicker.value : "";
+    var currentCourseId = state.selectedCourseId;
+    var currentStartingHole = state.startingHole;
+    var currentStartingHoleType = state.startingHoleType;
+    var currentTeamGameFormat = state.teamGameFormat;
+    
+    // Check player data changes (deep compare)
+    var playersChanged = false;
+    if (initialFormState && initialFormState.players) {
+        if (state.players.length !== initialFormState.players.length) {
+            playersChanged = true;
+        } else {
+            for (var i = 0; i < state.players.length; i++) {
+                var current = state.players[i];
+                var initial = initialFormState.players[i];
+                if (current.name !== initial.name ||
+                    current.handicap !== initial.handicap ||
+                    current.team !== initial.team ||
+                    current.flight !== initial.flight) {
+                    playersChanged = true;
+                    break;
+                }
+            }
+        }
+    }
+    
+    var wasDirty = isDirty;
+    isDirty = (currentDate !== initialFormState?.date ||
+               currentCourseId !== initialFormState?.courseId ||
+               currentStartingHole !== initialFormState?.startingHole ||
+               currentStartingHoleType !== initialFormState?.startingHoleType ||
+               currentTeamGameFormat !== initialFormState?.teamGameFormat ||
+               playersChanged);
+    
+    if (wasDirty !== isDirty) {
+        console.log("[DIRTY] Changed:", isDirty);
+    }
+    
+    return isDirty;
+}
+
+function attachBeforeUnloadHandler() {
+    if (beforeUnloadHandlerAttached) return;
+    
+    window.addEventListener('beforeunload', function(e) {
+        if (state.isEditMode && isDirty) {
+            e.preventDefault();
+            e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+            return e.returnValue;
+        }
+    });
+    beforeUnloadHandlerAttached = true;
+}
+
+function showUnsavedChangesModal(onSaveAndExit, onDiscardAndExit) {
+    Modal.confirmWithCustomButtons(
+        "You have unsaved changes.",
+        function() {
+            // UPDATE & SAVE button
+            if (onSaveAndExit) onSaveAndExit();
+        },
+        function() {
+            // DISCARD button
+            if (onDiscardAndExit) onDiscardAndExit();
+        },
+        "UPDATE & SAVE",
+        "DISCARD"
+    );
+}
+
+// ============================================================
+// Modified goBack function with dirty check - v1.27
+// ============================================================
+
+function goBack() {
+    if (state.isEditMode && checkForChanges()) {
+        showUnsavedChangesModal(
+            function() {
+                // Save and exit
+                commitGame();
+            },
+            function() {
+                // Discard and exit
+                isDirty = false;
+                if (state.isEditMode) {
+                    window.location.href = "manage-games.html";
+                } else {
+                    window.location.href = "admin.html";
+                }
+            }
+        );
+    } else {
+        // No changes, exit directly
+        if (state.isEditMode) {
+            window.location.href = "manage-games.html";
+        } else {
+            window.location.href = "admin.html";
+        }
+    }
+}
 
 function loadDefaultPlayers(callback) {
     if (!firestoreReady) {
@@ -616,26 +761,31 @@ function loadCourses(callback) {
 function updatePlayerName(idx, value) {
     state.players[idx].name = value;
     state.players[idx].label = generateLabel(value);
+    if (state.isEditMode) checkForChanges();
     render();
 }
 
 function updatePlayerHandicap(idx, value) {
     state.players[idx].handicap = parseInt(value) || 0;
+    if (state.isEditMode) checkForChanges();
     render();
 }
 
 function updatePlayerTeam(idx, value) {
     state.players[idx].team = value;
+    if (state.isEditMode) checkForChanges();
     render();
 }
 
 function updatePlayerFlight(idx, value) {
     state.players[idx].flight = parseInt(value);
+    if (state.isEditMode) checkForChanges();
     render();
 }
 
 function setTeamGameFormat(format) {
     state.teamGameFormat = format;
+    if (state.isEditMode) checkForChanges();
     render();
 }
 
@@ -675,6 +825,7 @@ function setStartingHole(type, value) {
     } else if (type === "shotgun") {
         state.startingHole = value || 1;
     }
+    if (state.isEditMode) checkForChanges();
     render();
 }
 
@@ -706,7 +857,6 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
     var modal = document.getElementById('anchorSelectModal');
     var confirmBtn = document.getElementById('anchorConfirmBtn');
     
-    // Disable background click and escape key
     modal.style.pointerEvents = 'auto';
     
     confirmBtn.addEventListener('click', function() {
@@ -718,8 +868,7 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
 }
 
 // ============================================================
-// commitGame - FIXED v1.25: Preserve existing data when editing
-// v1.26: Uses Modal.alert instead of system alert
+// commitGame - v1.27: Added dirty reset after successful save
 // ============================================================
 
 function commitGame() {
@@ -748,10 +897,8 @@ function commitGame() {
     
     var anchorCallback = function(selectedAnchor) {
         if (state.editingGameId) {
-            // EDIT MODE: Update only changed fields, preserve scores
             updateExistingGame(selectedAnchor);
         } else {
-            // NEW GAME: Create fresh game with blank scores
             createNewGame(selectedAnchor);
         }
     };
@@ -833,7 +980,6 @@ function createNewGame(anchorPlayer) {
 }
 
 function updateExistingGame(anchorPlayer) {
-    // First, fetch the existing game document to preserve scores
     db.collection("scheduledGames").doc(state.editingGameId).get().then(function(doc) {
         if (!doc.exists) {
             Modal.alert("Game not found. Cannot update.");
@@ -842,7 +988,6 @@ function updateExistingGame(anchorPlayer) {
         
         var existingData = doc.data();
         
-        // Build update payload with ONLY changed fields
         var updatePayload = {
             date: document.getElementById("datePicker").value,
             course: state.selectedCourseData,
@@ -860,7 +1005,6 @@ function updateExistingGame(anchorPlayer) {
             anchor: anchorPlayer.name,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
             
-            // PRESERVE existing data strings and results
             f1: existingData.f1 || { d: "", se: false, x: false },
             f2: existingData.f2 || { d: "", se: false, x: false },
             results: existingData.results || null,
@@ -872,7 +1016,6 @@ function updateExistingGame(anchorPlayer) {
             gameStarted: existingData.gameStarted || false
         };
         
-        // If course changed, need to regenerate data strings
         var courseChanged = (existingData.course && existingData.course.id !== state.selectedCourseData.id);
         if (courseChanged) {
             var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
@@ -884,14 +1027,11 @@ function updateExistingGame(anchorPlayer) {
             updatePayload.currentHoleF2 = 1;
         }
         
-        // If starting hole changed, need to rotate existing data strings
         var startingHoleChanged = (existingData.startingHole !== state.startingHole);
         if (startingHoleChanged && !courseChanged && existingData.f1 && existingData.f1.d) {
-            // v1.26: Use Modal.confirm for confirmation instead of system confirm
             Modal.confirm(
                 "Changing starting hole will reset all scores to par. Continue?",
                 function() {
-                    // On confirm - reset scores
                     var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
                     var rotatedData = rotateDataString(naturalData, state.startingHole);
                     updatePayload.f1 = { d: rotatedData, se: false, x: false };
@@ -903,6 +1043,7 @@ function updateExistingGame(anchorPlayer) {
                     db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload).then(function() {
                         SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
                         document.getElementById("successMsg").style.display = "block";
+                        isDirty = false; // v1.27: Reset dirty state after successful save
                         setTimeout(function() {
                             window.location.href = "manage-games.html";
                         }, 1500);
@@ -911,7 +1052,6 @@ function updateExistingGame(anchorPlayer) {
                     });
                 },
                 function() {
-                    // On cancel - do nothing, stay on edit page
                     console.log("Starting hole change cancelled");
                     render();
                 }
@@ -922,6 +1062,7 @@ function updateExistingGame(anchorPlayer) {
         db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload).then(function() {
             SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
             document.getElementById("successMsg").style.display = "block";
+            isDirty = false; // v1.27: Reset dirty state after successful save
             setTimeout(function() {
                 window.location.href = "manage-games.html";
             }, 1500);
@@ -931,6 +1072,34 @@ function updateExistingGame(anchorPlayer) {
     }).catch(function(e) {
         Modal.alert("Error loading existing game: " + e.message);
     });
+}
+
+// ============================================================
+// Event handlers with dirty tracking - v1.27
+// ============================================================
+
+function onDateChange() {
+    if (state.isEditMode) checkForChanges();
+}
+
+function onCourseChange(courseId) {
+    for (var i = 0; i < state.courses.length; i++) {
+        if (state.courses[i].id === courseId) {
+            state.selectedCourseId = courseId;
+            state.selectedCourseData = state.courses[i];
+            break;
+        }
+    }
+    if (state.isEditMode) checkForChanges();
+    render();
+}
+
+function onStartingHoleChange() {
+    if (state.isEditMode) checkForChanges();
+}
+
+function onTeamGameFormatChange(format) {
+    setTeamGameFormat(format);
 }
 
 function render() {
@@ -1026,7 +1195,7 @@ function render() {
         
         <div class="card">
             <div class="card-title">🏟️ COURSE SELECTION</div>
-            <select id="courseSelect" class="course-select" onchange="changeCourse(this.value)">
+            <select id="courseSelect" class="course-select">
                 ${courseOptions}
             </select>
         </div>
@@ -1090,21 +1259,35 @@ function render() {
         </div>
         
         <div class="button-group">
-            <button class="btn btn-secondary" onclick="goBack()">← Cancel</button>
-            <button class="btn btn-primary" onclick="commitGame()">✓ ${state.isEditMode ? 'UPDATE GAME' : 'COMMIT GAME'}</button>
+            <button class="btn btn-secondary" id="cancelBtn">← Cancel</button>
+            <button class="btn btn-primary" id="commitBtn">✓ ${state.isEditMode ? 'UPDATE GAME' : 'COMMIT GAME'}</button>
         </div>
         
         <div id="successMsg" style="display:none;" class="success-msg">✓ Game ${state.isEditMode ? 'updated' : 'scheduled'} successfully! Redirecting...</div>
         
-        <div class="back-link" onclick="goBack()">← Back to Game Settings</div>
+        <div class="back-link" id="backLink">← Back to Game Settings</div>
     `;
     
     document.getElementById("app").innerHTML = html;
+    
+    // v1.27: Capture initial state after render for edit mode
+    if (state.isEditMode && !initialFormState) {
+        captureInitialFormState();
+        attachBeforeUnloadHandler();
+    }
     
     var datePicker = document.getElementById("datePicker");
     if (datePicker) {
         datePicker.addEventListener("change", function() {
             state.userSelectedDate = this.value;
+            if (state.isEditMode) onDateChange();
+        });
+    }
+    
+    var courseSelect = document.getElementById("courseSelect");
+    if (courseSelect) {
+        courseSelect.addEventListener("change", function() {
+            onCourseChange(this.value);
         });
     }
     
@@ -1116,10 +1299,13 @@ function render() {
                 var select = document.getElementById("shotgunHoleSelect");
                 var holeValue = select ? parseInt(select.value) : 1;
                 setStartingHole("shotgun", holeValue);
+                if (state.isEditMode) onStartingHoleChange();
             } else if (type === "hole1") {
                 setStartingHole("hole1", 1);
+                if (state.isEditMode) onStartingHoleChange();
             } else if (type === "hole10") {
                 setStartingHole("hole10", 10);
+                if (state.isEditMode) onStartingHoleChange();
             }
         });
     });
@@ -1132,20 +1318,21 @@ function render() {
             } else {
                 setStartingHole("shotgun", parseInt(this.value));
             }
+            if (state.isEditMode) onStartingHoleChange();
         });
     }
     
     document.querySelectorAll(".format-option").forEach(function(opt) {
         opt.addEventListener("click", function() {
             var format = this.dataset.format;
-            setTeamGameFormat(format);
+            onTeamGameFormatChange(format);
         });
     });
     
     document.querySelectorAll("input[name='teamGameFormat']").forEach(function(radio) {
         radio.addEventListener("change", function() {
             if (this.checked) {
-                setTeamGameFormat(this.value);
+                onTeamGameFormatChange(this.value);
             }
         });
     });
@@ -1177,27 +1364,33 @@ function render() {
             updatePlayerFlight(idx, this.value);
         });
     });
+    
+    // v1.27: Attach commit button handler
+    var commitBtn = document.getElementById("commitBtn");
+    if (commitBtn) {
+        commitBtn.onclick = function() {
+            commitGame();
+        };
+    }
+    
+    // v1.27: Cancel button and back link use goBack() with dirty check
+    var cancelBtn = document.getElementById("cancelBtn");
+    if (cancelBtn) {
+        cancelBtn.onclick = function() {
+            goBack();
+        };
+    }
+    
+    var backLink = document.getElementById("backLink");
+    if (backLink) {
+        backLink.onclick = function() {
+            goBack();
+        };
+    }
 }
 
-window.changeCourse = function(courseId) {
-    for (var i = 0; i < state.courses.length; i++) {
-        if (state.courses[i].id === courseId) {
-            state.selectedCourseId = courseId;
-            state.selectedCourseData = state.courses[i];
-            break;
-        }
-    }
-    render();
-};
-
-window.goBack = function() {
-    if (state.isEditMode) {
-        window.location.href = "manage-games.html";
-    } else {
-        window.location.href = "admin.html";
-    }
-};
-
+window.changeCourse = onCourseChange;
+window.goBack = goBack;
 window.commitGame = commitGame;
 
 function escapeHtml(str) {
@@ -1208,6 +1401,60 @@ function escapeHtml(str) {
         if (m === ">") return "&gt;";
         return m;
     });
+}
+
+// ============================================================
+// v1.27: Add Modal.confirmWithCustomButtons if not exists
+// ============================================================
+
+if (typeof Modal !== 'undefined' && !Modal.confirmWithCustomButtons) {
+    Modal.confirmWithCustomButtons = function(message, onConfirm, onCancel, confirmText, cancelText) {
+        var existingModal = document.getElementById('sharedModal');
+        if (existingModal) existingModal.remove();
+        
+        var confirmBtnText = confirmText || "OK";
+        var cancelBtnText = cancelText || "Cancel";
+        
+        var modalHtml = `
+            <div class="shared-modal-container">
+                <div class="shared-modal-title">UNSAVED CHANGES</div>
+                <div class="shared-modal-message">${escapeHtml(message)}</div>
+                <div class="shared-modal-buttons">
+                    <button class="shared-modal-btn shared-modal-btn-cancel" id="sharedModalCancelBtn">${cancelBtnText}</button>
+                    <button class="shared-modal-btn shared-modal-btn-confirm" id="sharedModalConfirmBtn">${confirmBtnText}</button>
+                </div>
+            </div>
+        `;
+        
+        var overlay = document.createElement('div');
+        overlay.id = 'sharedModal';
+        overlay.className = 'shared-modal-overlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 30000;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        `;
+        overlay.innerHTML = modalHtml;
+        document.body.appendChild(overlay);
+        
+        document.getElementById('sharedModalCancelBtn').onclick = function() {
+            overlay.remove();
+            if (onCancel && typeof onCancel === 'function') onCancel();
+        };
+        
+        document.getElementById('sharedModalConfirmBtn').onclick = function() {
+            overlay.remove();
+            if (onConfirm && typeof onConfirm === 'function') onConfirm();
+        };
+    };
 }
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
@@ -1229,11 +1476,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - REPLACED: System alert() with Modal.alert() in validation and error handling
-   - ADDED: js/modal.js dependency for consistent custom modals
-   - All existing functionality preserved (edit mode, anchor selection, preserve scores)
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - ADDED: Dirty state tracking for edit mode
+   - ADDED: Unsaved changes warning modal when leaving edit page
+   - ADDED: beforeunload event listener to warn on tab/browser close
+   - Modal options: [UPDATE & SAVE] [DISCARD] [CANCEL]
+   - Only shows modal if changes were actually made
+   - New game creation mode unaffected (no dirty tracking needed)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
