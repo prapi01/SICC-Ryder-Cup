@@ -1,12 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.35
-KEY CHANGES from v3.34:
-   - FIXED: Animation starts immediately (no waiting for Firestore)
-   - FIXED: Icon glow (colour) now applies reliably on impact
-   - Firestore loads in background while splash plays
-   - User never sees black screen waiting for data
-   - Splash fades to index when data ready OR minimum time reached
+VERSION: 3.37
+KEY CHANGES from v3.36:
+   - FIXED: Back navigation from tutorial/view-history no longer shows blank screen
+   - When splash is skipped, splashOverlay is completely removed (not just hidden)
+   - App container is shown immediately
+   - Prevents splash from blocking the view on returning to index
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -440,12 +439,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.35</div>
+<div class="version-tag">v3.37</div>
 
 <script>
-// FILE: index.html - VERSION 3.35
+// FILE: index.html - VERSION 3.37
 
-var APP_VERSION = "3.35";
+var APP_VERSION = "3.37";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -496,7 +495,7 @@ function recordSplashShown() {
     console.log("App marked as initialized for this session");
 }
 
-// v3.35: Start animation immediately - no waiting for data
+// v3.36: Start animation immediately - on impact, remove grayscale to reveal colour
 function startSplashAnimation() {
     if (animationStarted) return;
     animationStarted = true;
@@ -518,12 +517,12 @@ function startSplashAnimation() {
     splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
     splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
     
-    // On impact (600ms) - apply GLOW and colour transformation regardless of data
+    // On impact (600ms) - remove grayscale to reveal colour, apply thump effects
     setTimeout(function() {
-        console.log("[SPLASH] Impact - THUMP + GLOW + COLOUR!");
+        console.log("[SPLASH] Impact - THUMP + COLOUR!");
         
-        // GLOW EFFECT on icon (colour)
-        splashGolfIcon.style.filter = 'drop-shadow(0 0 20px rgba(76,175,80,0.8))';
+        // Remove grayscale to reveal natural icon colour
+        splashGolfIcon.style.filter = 'none';
         splashGolfIcon.style.opacity = '1';
         
         // Screen shake
@@ -584,6 +583,17 @@ function hideSplashAndShowIndex() {
             appDiv.classList.add('visible');
         }
     }, 600);
+}
+
+function removeSplashImmediately() {
+    if (splashOverlay) {
+        console.log("[SPLASH] Removing splash overlay immediately (skipped)");
+        splashOverlay.remove();
+    }
+    var appDiv = document.getElementById("app");
+    if (appDiv && !appDiv.classList.contains('visible')) {
+        appDiv.classList.add('visible');
+    }
 }
 
 function checkAndHideSplash() {
@@ -1015,7 +1025,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.35: Animation starts immediately
+// Initialization - v3.37: Fix back navigation
 // ============================================================
 
 function initApp() {
@@ -1089,11 +1099,20 @@ function initApp() {
             renderMainUI();
         });
     } else {
-        // Valid cached data - grey icon screen briefly
-        console.log("Valid cached data - showing grey icon screen briefly");
+        // v3.37: Valid cached data - remove splash immediately, show grey icon briefly, then index
+        console.log("Valid cached data - removing splash, showing grey icon screen briefly");
+        
+        // Remove splash overlay immediately (prevents blank screen on back navigation)
+        removeSplashImmediately();
+        
+        // Show grey icon screen briefly
         showGreyIconScreen();
         preloadComplete = true;
-        renderMainUI();
+        
+        // Short delay before showing index
+        setTimeout(function() {
+            renderMainUI();
+        }, 300);
     }
 }
 
@@ -1103,7 +1122,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.35: Animation starts immediately
+// Start the app - v3.37: Fix back navigation
 // ============================================================
 
 if (shouldShowSplash()) {
@@ -1118,8 +1137,10 @@ if (shouldShowSplash()) {
         }
     });
 } else {
-    // Skip splash - hide it immediately
-    splashOverlay.style.display = 'none';
+    // v3.37: Splash skipped - remove overlay immediately, then proceed
+    console.log("[SPLASH] Splash skipped - removing overlay immediately");
+    removeSplashImmediately();
+    
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
         currentSession = session;
@@ -1135,13 +1156,12 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.35
-KEY CHANGES from v3.34:
-   - FIXED: Animation starts immediately (no waiting for Firestore)
-   - FIXED: Icon glow (colour) now applies reliably on impact
-   - Firestore loads in background while splash plays
-   - User never sees black screen waiting for data
-   - Splash fades to index when data ready OR minimum time reached
+VERSION: 3.37
+KEY CHANGES from v3.36:
+   - FIXED: Back navigation from tutorial/view-history no longer shows blank screen
+   - When splash is skipped, splashOverlay is completely removed (not just hidden)
+   - App container is shown immediately
+   - Prevents splash from blocking the view on returning to index
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
