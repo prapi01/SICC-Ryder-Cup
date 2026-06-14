@@ -1,19 +1,19 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.03
-KEY CHANGES:
-   - ADDED: getMatchValueFromResults() - shared function for match bubble retrieval
-   - Handles correct orientation (Team A vs Team B regardless of argument order)
-   - Inverts value when viewing from Team B perspective
-   - Eliminates duplicate code across all game pages
+VERSION: 2.04
+KEY CHANGES from v2.03:
+   - FIXED: getSavedHolesFromString() now converts storage positions to actual hole numbers
+   - FIXED: savedHoles array now contains actual hole numbers (not storage positions + 1)
+   - Uses getHoleAtStoragePosition() for conversion with starting hole
+   - This fixes the bug where scores saved on hole 10 appeared on hole 1 in savedHoles
    - All existing functions unchanged
 DEPENDS ON: None
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.03
+// FILE: js/game-data.js - VERSION 2.04
 // String-based data manager for SICC Ryder Cup
-// ADDED: getMatchValueFromResults() for shared match bubble logic
+// FIXED: savedHoles conversion with starting hole
 
 var GameData = (function() {
     
@@ -112,6 +112,35 @@ var GameData = (function() {
         } else {
             return getPlayOrder();
         }
+    }
+    
+    // ============================================================
+    // v2.04: FIXED - Convert storage positions to actual hole numbers
+    // ============================================================
+    
+    function getSavedHolesFromString(dataString) {
+        var saved = [];
+        if (!dataString) return saved;
+        
+        // Parse T/F pattern
+        var i = 0;
+        var storagePos = 0;
+        while (i < dataString.length && storagePos < 18) {
+            if (dataString[i] === 'T') {
+                // v2.04: Convert storage position to actual hole number
+                var actualHole = getHoleAtStoragePosition(storagePos);
+                saved.push(actualHole);
+                // Skip the 8 score characters (a1,a2,b1,b2)
+                i += 9; // 'T' + 8 scores
+            } else if (dataString[i] === 'F') {
+                // 'F' means not saved, but we still need to advance
+                i += 9;
+            } else {
+                i++;
+            }
+            storagePos++;
+        }
+        return saved;
     }
     
     // ============================================================
@@ -319,10 +348,10 @@ var GameData = (function() {
                 pointsB: new Array(18).fill(0.5)
             },
             tr: {
-                teamA: new Array(18).fill(9.5),
-                teamB: new Array(18).fill(9.5),
-                teamAGreen: new Array(18).fill(true),
-                teamBGreen: new Array(18).fill(true)
+                teamA: new Array(18).fill(null),
+                teamB: new Array(18).fill(null),
+                teamAGreen: new Array(18).fill(false),
+                teamBGreen: new Array(18).fill(false)
             },
             computedUpToHole: 0,
             lastComputedAt: null
@@ -662,6 +691,10 @@ var GameData = (function() {
             });
     }
     
+    // ============================================================
+    // Public API - v2.04: Added getSavedHolesFromString
+    // ============================================================
+    
     return {
         setCourse: setCourse,
         setPlayers: setPlayers,
@@ -690,6 +723,8 @@ var GameData = (function() {
         getStorageIndexForHole: getStorageIndexForHole,
         resetFullGame: resetFullGame,
         initializeEmptyResults: initializeEmptyResults,
+        // v2.04: Added saved holes conversion function
+        getSavedHolesFromString: getSavedHolesFromString,
         // Match index functions
         getMatchIndex: getMatchIndex,
         getMatchValueFromResults: getMatchValueFromResults
@@ -698,12 +733,12 @@ var GameData = (function() {
 
 /*
 FILE: js/game-data.js
-VERSION: 2.03
-KEY CHANGES:
-   - ADDED: getMatchValueFromResults() - shared function for match bubble retrieval
-   - Handles correct orientation (Team A vs Team B regardless of argument order)
-   - Inverts value when viewing from Team B perspective
-   - Eliminates duplicate code across all game pages
+VERSION: 2.04
+KEY CHANGES from v2.03:
+   - FIXED: getSavedHolesFromString() now converts storage positions to actual hole numbers
+   - FIXED: savedHoles array now contains actual hole numbers (not storage positions + 1)
+   - Uses getHoleAtStoragePosition() for conversion with starting hole
+   - This fixes the bug where scores saved on hole 10 appeared on hole 1 in savedHoles
    - All existing functions unchanged
 DEPENDS ON: None
 STATUS: Ready for integration
