@@ -1,10 +1,10 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - RESTORED: Step 6 scorecard table to working v1.17 version
-   - KEPT: Step 1 "GAME DAY" button text (from v1.18)
-   - All other steps unchanged
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - REPLACED: Native browser confirm() with custom modal for EXIT TUTORIAL button
+   - Custom modal matches app UI design (green border, grey title, CANCEL/EXIT buttons)
+   - All other steps unchanged from v1.19
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
@@ -707,7 +707,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.19</div>
+<div class="version-tag">v1.20</div>
 
 <script>
 // ============================================================
@@ -736,6 +736,42 @@ function addHighlight(elementId) {
             el.classList.add('highlight');
         }
     }, 100);
+}
+
+// ============================================================
+// Custom Exit Modal Function
+// ============================================================
+
+function showExitModal() {
+    // Remove any existing modal
+    var existingModal = document.getElementById('exitModal');
+    if (existingModal) existingModal.remove();
+    
+    var modalHtml = `
+        <div class="modal-overlay" id="exitModal" style="z-index: 20000;">
+            <div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:340px; width:90%; text-align:center; border:2px solid #4caf50;">
+                <div style="font-size:1.1rem; font-weight:600; color:#888; margin-bottom:12px;">EXIT TUTORIAL</div>
+                <div style="font-size:0.85rem; color:#ccc; margin-bottom:24px; line-height:1.4;">
+                    Exit tutorial and return to main menu?
+                </div>
+                <div style="display:flex; gap:12px;">
+                    <button id="exitModalCancelBtn" style="flex:1; background:#1a1a1a; border:1px solid #333; color:#888; padding:12px; border-radius:40px; font-weight:600; font-size:0.9rem; cursor:pointer;">CANCEL</button>
+                    <button id="exitModalConfirmBtn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:40px; font-weight:700; font-size:0.9rem; cursor:pointer;">EXIT</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById('exitModalCancelBtn').onclick = function() {
+        document.getElementById('exitModal').remove();
+    };
+    
+    document.getElementById('exitModalConfirmBtn').onclick = function() {
+        document.getElementById('exitModal').remove();
+        window.location.href = 'index.html';
+    };
 }
 
 // ============================================================
@@ -1399,16 +1435,16 @@ function renderStep9() {
                         </tr>
                     </thead>
                     <tbody>
-                        <tr class="team-separator"><td colspan="5">🏆 TEAM A</td></tr>
+                        <tr class="team-separator"><td colspan="5">🏆 TEAM A</span></td></tr>
                         <tr>
-                            <td>ACH</td>
-                            <td class="gold-zero">0</td>
-                            <td><span class="adj-grey">0</span><span class="raw-grey"> [0]</span></td>
-                            <td><span class="adj-grey">0</span><span class="raw-green"> [3]</span></td>
-                            <td class="gold-zero">0</td>
+                            <td>ACH</span></td>
+                            <td class="gold-zero">0</span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-grey"> [0]</span></span></td>
+                            <td><span class="adj-grey">0</span><span class="raw-green"> [3]</span></span></td>
+                            <td class="gold-zero">0</span></td>
                         </tr>
                         <tr>
-                            <td>KF</td>
+                            <td>KF</span></td>
                             <td class="normal-white">2</span></td>
                             <td class="adj-green">3</span><span class="raw-red"> [6]</span></span></td>
                             <td class="adj-grey">0</span><span class="raw-green"> [2]</span></span></td>
@@ -1548,7 +1584,7 @@ function renderStep() {
 }
 
 // ============================================================
-// Navigation
+// Navigation - UPDATED v1.20: Custom modal for EXIT button
 // ============================================================
 
 document.getElementById('prevBtn').addEventListener('click', function() {
@@ -1568,9 +1604,7 @@ document.getElementById('nextBtn').addEventListener('click', function() {
 });
 
 document.getElementById('skipBtn').addEventListener('click', function() {
-    if (confirm('Exit tutorial and return to main menu?')) {
-        window.location.href = 'index.html';
-    }
+    showExitModal();
 });
 
 // Initialize
@@ -1581,11 +1615,11 @@ renderStep();
 </html>
 <!--
 FILE: tutorial.html
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - RESTORED: Step 6 scorecard table to working v1.17 version
-   - KEPT: Step 1 "GAME DAY" button text (from v1.18)
-   - All other steps unchanged
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - REPLACED: Native browser confirm() with custom modal for EXIT TUTORIAL button
+   - Custom modal matches app UI design (green border, grey title, CANCEL/EXIT buttons)
+   - All other steps unchanged from v1.19
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
