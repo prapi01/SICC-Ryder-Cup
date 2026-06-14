@@ -1,23 +1,31 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.17
-KEY CHANGES from v2.16:
-   - FIXED: Hole 18 special case now uses dynamic LAST HOLE based on starting hole
-   - Gold bubbles now only appear on the actual last hole of the game (not hardcoded to 18)
-   - For starting hole = 10, last hole = 9
-   - For starting hole = 5, last hole = 4
-   - For starting hole = 1, last hole = 18
+VERSION: 2.18
+KEY CHANGES from v2.17:
+   - CHANGED: Now uses GameData.getLastHole() for dynamic last hole calculation
+   - Removed internal getLastHole() function (now uses shared utility)
    - All existing functionality preserved
-DEPENDS ON: None (pure calculation)
+DEPENDS ON: GameData (for getLastHole and getStartingHole)
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.17";
+window.GAME_MATCH_VERSION = "2.18";
 
 var GameMatch = (function() {
     
-    console.log("[GAME-MATCH] Initializing v2.17 with dynamic last hole for gold bubbles");
+    console.log("[GAME-MATCH] Initializing v2.18 with shared last hole utility");
+    
+    // ============================================================
+    // Helper: Get last hole using shared GameData utility
+    // ============================================================
+    function getLastHole(startingHole) {
+        if (typeof GameData !== 'undefined' && GameData.getLastHole) {
+            return GameData.getLastHole(startingHole);
+        }
+        // Fallback
+        return (startingHole === 1) ? 18 : startingHole - 1;
+    }
     
     // ============================================================
     // Stroke calculation helpers (unchanged)
@@ -360,7 +368,7 @@ var GameMatch = (function() {
                         remainingHolesAtClinch: remainingHoles,
                         recordedAt: new Date().toISOString(),
                         recordedByDevice: deviceId || "unknown",
-                        cascadeVersion: cascadeVersion || "2.17"
+                        cascadeVersion: cascadeVersion || "2.18"
                     };
                     clinchedAtUpdates[actualWinner + "_vs_" + actualLoser] = clinchData;
                     console.log(`[DEBUG-MATCH] CLINCH CREATED: ${actualWinner}_vs_${actualLoser} at hole ${currentHole}`);
@@ -401,7 +409,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.17"
+                    cascadeVersion: cascadeVersion || "2.18"
                 }
             };
         }
@@ -508,16 +516,6 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // Helper: Calculate last hole based on starting hole
-    // ============================================================
-    function getLastHole(startingHole) {
-        // If starting hole is 1, last hole is 18
-        // If starting hole is 10, last hole is 9
-        // If starting hole is 5, last hole is 4
-        return (startingHole === 1) ? 18 : startingHole - 1;
-    }
-    
-    // ============================================================
     // Functions moved from real-game.html
     // ============================================================
     
@@ -599,7 +597,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // getMatchBubbleClass - v2.17: Dynamic last hole for gold bubbles
+    // getMatchBubbleClass - v2.18: Uses shared getLastHole utility
     // ============================================================
     
     function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedHole, getClinchHoleFunc, startingHole) {
@@ -617,8 +615,7 @@ var GameMatch = (function() {
             return 'bubble-green';
         }
         
-        // v2.17: SPECIAL CASE - Last hole of the game (based on starting hole)
-        // Calculate the actual last hole dynamically
+        // v2.18: SPECIAL CASE - Last hole of the game (using shared utility)
         var lastHole = getLastHole(startingHole);
         if (currentHole === lastHole && isHoleSavedForFlight && matchValue === 0) {
             console.log(`[DEBUG-MATCH] LAST HOLE ${lastHole} SAVED TIED MATCH: ${player.name} vs ${opponent.name} -> bubble-gold`);
@@ -710,24 +707,20 @@ var GameMatch = (function() {
         getMatchBubbleClass: getMatchBubbleClass,
         calculate: calculate,
         calculatePoints: calculatePoints,
-        // v2.17: Expose getLastHole for debugging
         getLastHole: getLastHole
     };
 })();
 
 // Re-expose version for console debugging
-window.GAME_MATCH_VERSION = "2.17";
+window.GAME_MATCH_VERSION = "2.18";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.17
-KEY CHANGES from v2.16:
-   - FIXED: Hole 18 special case now uses dynamic LAST HOLE based on starting hole
-   - Gold bubbles now only appear on the actual last hole of the game (not hardcoded to 18)
-   - For starting hole = 10, last hole = 9
-   - For starting hole = 5, last hole = 4
-   - For starting hole = 1, last hole = 18
+VERSION: 2.18
+KEY CHANGES from v2.17:
+   - CHANGED: Now uses GameData.getLastHole() for dynamic last hole calculation
+   - Removed internal getLastHole() function (now uses shared utility)
    - All existing functionality preserved
-DEPENDS ON: None (pure calculation)
+DEPENDS ON: GameData (for getLastHole and getStartingHole)
 STATUS: Ready for integration
 */
