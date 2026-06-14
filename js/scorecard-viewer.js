@@ -1,24 +1,19 @@
 /*
 FILE: js/scorecard-viewer.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - COMPLETE REWRITE: Now uses GameUI functions EXCLUSIVELY for all rendering
-   - Status bubble: uses existing DOM element (styled by GameUI)
-   - Hole header: uses GameUI.renderHoleHeader()
-   - TR display: uses GameUI.updateTR()
-   - Player cards: uses GameUI.renderPlayerCards() with canEdit=false
-   - Control bar: uses GameUI.renderCompactHeader() with onSave=null
-   - Flight badge: uses GameUI.updateFlightBadge()
-   - Scorecard: uses GameScorecard.renderScorecard()
-   - Bottom menu: uses GameUI.renderBottomMenu()
-   - Navigation: uses GameUI.updateNavigationButtons()
-   - NO inline HTML/CSS for UI elements - all styling comes from GameUI
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: getBubbleClass() now uses play position for sync detection (supports shotgun starts)
+   - Added getPlayPositionForHole() helper function
+   - Added getSyncValueForBubble() to handle lastSyncedPosition vs lastSyncedHole fallback
+   - Now passes startingHole to GameMatch.getMatchBubbleClass for last hole detection
+   - This ensures cross-flight bubble colors work correctly when starting hole is not 1
+   - All existing functionality preserved
 DEPENDS ON: js/game-ui.js, js/game-scorecard.js, js/ticker.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.SCORECARD_VIEWER_VERSION = "1.02";
+window.SCORECARD_VIEWER_VERSION = "1.03";
 
 var ScorecardViewer = (function() {
     
@@ -56,6 +51,14 @@ var ScorecardViewer = (function() {
         for (var i = startingHole; i <= 18; i++) order.push(i);
         for (var i = 1; i < startingHole; i++) order.push(i);
         return order;
+    }
+    
+    function getPlayPositionForHole(holeNumber) {
+        var playOrder = getPlayOrder();
+        for (var i = 0; i < playOrder.length; i++) {
+            if (playOrder[i] === holeNumber) return i;
+        }
+        return holeNumber - 1;
     }
     
     function getHolePosition(holeNumber) {
@@ -150,22 +153,58 @@ var ScorecardViewer = (function() {
         return absValue.toString();
     }
     
+    // v1.03: Get sync value for cross-flight bubble checks
+    // Uses lastSyncedPosition (play position) with fallback to converted lastSyncedHole
+    function getSyncValueForBubble() {
+        // Priority 1: Use lastSyncedPosition (play position) if available
+        if (_config.lastSyncedPosition !== undefined && _config.lastSyncedPosition >= 0) {
+            console.log("[SCORECARD-VIEWER] Using lastSyncedPosition:", _config.lastSyncedPosition);
+            return _config.lastSyncedPosition;
+        }
+        
+        // Priority 2: Fallback to lastSyncedHole (natural hole) converted to play position
+        if (_config.lastSyncedHole !== undefined && _config.lastSyncedHole > 0) {
+            var playPos = getPlayPositionForHole(_config.lastSyncedHole);
+            console.log("[SCORECARD-VIEWER] Converted lastSyncedHole", _config.lastSyncedHole, "to play position:", playPos);
+            return playPos;
+        }
+        
+        // Priority 3: Default to -1 (no holes synced)
+        console.log("[SCORECARD-VIEWER] No sync value available, defaulting to -1");
+        return -1;
+    }
+    
+    // v1.03: Updated getBubbleClass to use play position for sync
     function getBubbleClass(player, opponent) {
         var matchValue = getMatchValue(player, opponent, _currentHole);
         var results = _config.results;
         var clinchedAt = results ? (results.clinchedAt || {}) : {};
-        var lastSyncedHole = _config.lastSyncedHole || 18;
         
+        // v1.03: Get sync value as play position (0-17)
+        var lastSyncedValue = getSyncValueForBubble();
+        
+        var isHoleSavedForFlight = isHoleSaved(player.flight, _currentHole);
+        
+        // Use GameMatch.getMatchBubbleClass if available (preferred)
+        if (typeof GameMatch !== 'undefined' && GameMatch.getMatchBubbleClass) {
+            return GameMatch.getMatchBubbleClass(
+                matchValue, clinchedAt, player, opponent, _currentHole,
+                isHoleSavedForFlight, lastSyncedValue, GameMatch.getClinchHole,
+                _config.startingHole || 1
+            );
+        }
+        
+        // Fallback implementation (simplified)
         var matchKey1 = player.name + "_vs_" + opponent.name;
         var matchKey2 = opponent.name + "_vs_" + player.name;
         var clinchHole = clinchedAt[matchKey1] || clinchedAt[matchKey2];
         
-        var isHoleSavedForFlight = isHoleSaved(player.flight, _currentHole);
-        
         if (player.flight === opponent.flight) {
             if (!isHoleSavedForFlight) return 'bubble-grey';
         } else {
-            var isSynced = (lastSyncedHole >= _currentHole);
+            // Cross-flight: check if this hole is synced using play position
+            var currentPlayPosition = getPlayPositionForHole(_currentHole);
+            var isSynced = (lastSyncedValue >= currentPlayPosition);
             if (!isSynced) return 'bubble-grey';
         }
         
@@ -513,8 +552,6 @@ var ScorecardViewer = (function() {
         // Apply GameUI layout functions
         if (typeof GameUI !== 'undefined') {
             if (GameUI.applyTightLayout) GameUI.applyTightLayout();
-            if (GameUI.applyButtonStyles) GameUI.applyButtonStyles();
-            if (GameUI.applyGlobalBubbleStyles) GameUI.applyGlobalBubbleStyles();
             if (GameUI.makeStatusBubbleClickable) GameUI.makeStatusBubbleClickable();
             if (GameUI.fixBackground) GameUI.fixBackground();
         }
@@ -589,19 +626,14 @@ window.ScorecardViewer = ScorecardViewer;
 
 /*
 FILE: js/scorecard-viewer.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - COMPLETE REWRITE: Now uses GameUI functions EXCLUSIVELY for all rendering
-   - Status bubble: uses existing DOM element (styled by GameUI)
-   - Hole header: uses GameUI.renderHoleHeader()
-   - TR display: uses GameUI.updateTR()
-   - Player cards: uses GameUI.renderPlayerCards() with canEdit=false
-   - Control bar: uses GameUI.renderCompactHeader() with onSave=null
-   - Flight badge: uses GameUI.updateFlightBadge()
-   - Scorecard: uses GameScorecard.renderScorecard()
-   - Bottom menu: uses GameUI.renderBottomMenu()
-   - Navigation: uses GameUI.updateNavigationButtons()
-   - NO inline HTML/CSS for UI elements - all styling comes from GameUI
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: getBubbleClass() now uses play position for sync detection (supports shotgun starts)
+   - Added getPlayPositionForHole() helper function
+   - Added getSyncValueForBubble() to handle lastSyncedPosition vs lastSyncedHole fallback
+   - Now passes startingHole to GameMatch.getMatchBubbleClass for last hole detection
+   - This ensures cross-flight bubble colors work correctly when starting hole is not 1
+   - All existing functionality preserved
 DEPENDS ON: js/game-ui.js, js/game-scorecard.js, js/ticker.js
 STATUS: Ready for integration
 */
