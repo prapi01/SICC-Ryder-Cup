@@ -1,10 +1,11 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Replaced internal getSavedHolesFromString() with call to GameData.getSavedHolesFromString()
-   - This ensures saved holes are correctly converted using starting hole value
-   - Fixes bug where scores saved on hole 10 appeared on hole 1 in savedHoles
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: lastSyncedHole calculation now uses PLAY ORDER instead of natural order (1-18)
+   - Previously lastSyncedHole was calculated based on holes 1,2,3... regardless of startingHole
+   - Now correctly calculates based on play order (startingHole, startingHole+1, ..., 18, 1, 2, ...)
+   - This fixes cross-flight bubble colors showing as grey when both flights have saved the hole
    - ALL existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js
 STATUS: Ready for integration
@@ -25,15 +26,13 @@ var GameLoader = (function() {
     
     // ============================================================
     // Helper: Parse saved holes from data string
-    // v1.06: Now uses GameData.getSavedHolesFromString() which handles starting hole conversion
+    // v1.06: Uses GameData.getSavedHolesFromString() which handles starting hole conversion
     // ============================================================
     function getSavedHolesFromString(dataString) {
-        // Delegate to GameData's fixed version (v2.04+)
         if (typeof GameData !== 'undefined' && GameData.getSavedHolesFromString) {
             return GameData.getSavedHolesFromString(dataString);
         }
         
-        // Fallback for when GameData is not available (should not happen)
         var saved = [];
         if (!dataString) return saved;
         
@@ -51,6 +50,39 @@ var GameLoader = (function() {
             holeNum++;
         }
         return saved;
+    }
+    
+    // ============================================================
+    // Helper: Get play order based on starting hole
+    // ============================================================
+    function getPlayOrder(startingHole) {
+        var order = [];
+        for (var i = startingHole; i <= 18; i++) order.push(i);
+        for (var i = 1; i < startingHole; i++) order.push(i);
+        return order;
+    }
+    
+    // ============================================================
+    // Helper: Calculate last synced hole using PLAY ORDER
+    // v1.07: Fixed to use play order instead of natural order
+    // ============================================================
+    function calculateLastSyncedHole(savedHolesF1, savedHolesF2, startingHole) {
+        var playOrder = getPlayOrder(startingHole);
+        var lastSynced = 0;
+        
+        // Check holes in play order sequence
+        for (var i = 0; i < playOrder.length; i++) {
+            var hole = playOrder[i];
+            if (savedHolesF1.indexOf(hole) !== -1 && savedHolesF2.indexOf(hole) !== -1) {
+                lastSynced = hole;
+            } else {
+                // Stop at first hole that is not saved by both flights
+                break;
+            }
+        }
+        
+        console.log('[GAME-LOADER] calculateLastSyncedHole: startingHole=' + startingHole + ', lastSynced=' + lastSynced);
+        return lastSynced;
     }
     
     // ============================================================
@@ -78,21 +110,14 @@ var GameLoader = (function() {
             flight2Data[h] = GameData.parseHoleData(f2DataString, h);
         }
         
-        // Get saved holes - v1.06: Now uses fixed version with starting hole conversion
+        // Get saved holes - v1.06: Uses fixed version with starting hole conversion
         var savedHoles = {
             1: getSavedHolesFromString(f1DataString),
             2: getSavedHolesFromString(f2DataString)
         };
         
-        // Calculate last synced hole (highest hole where both flights have saved)
-        var lastSyncedHole = 0;
-        for (var h = 1; h <= 18; h++) {
-            if (savedHoles[1].indexOf(h) !== -1 && savedHoles[2].indexOf(h) !== -1) {
-                lastSyncedHole = h;
-            } else {
-                break;
-            }
-        }
+        // v1.07: Calculate last synced hole using PLAY ORDER
+        var lastSyncedHole = calculateLastSyncedHole(savedHoles[1], savedHoles[2], startingHole);
         
         // Build t1Row, t2Row, strkRow from results
         var t1Row = new Array(18).fill('_');
@@ -122,7 +147,7 @@ var GameLoader = (function() {
             }
         }
         
-        // Build display arrays from results (NEW v1.05)
+        // Build display arrays from results
         var t1Display = null;
         var t2Display = null;
         var strkDisplay = null;
@@ -152,7 +177,6 @@ var GameLoader = (function() {
             flight1Data: flight1Data,
             flight2Data: flight2Data,
             savedHoles: savedHoles,
-            // FIXED v1.05: Added missing properties
             t1Row: t1Row,
             t2Row: t2Row,
             strkRow: strkRow,
@@ -364,11 +388,12 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Replaced internal getSavedHolesFromString() with call to GameData.getSavedHolesFromString()
-   - This ensures saved holes are correctly converted using starting hole value
-   - Fixes bug where scores saved on hole 10 appeared on hole 1 in savedHoles
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: lastSyncedHole calculation now uses PLAY ORDER instead of natural order (1-18)
+   - Previously lastSyncedHole was calculated based on holes 1,2,3... regardless of startingHole
+   - Now correctly calculates based on play order (startingHole, startingHole+1, ..., 18, 1, 2, ...)
+   - This fixes cross-flight bubble colors showing as grey when both flights have saved the hole
    - ALL existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js
 STATUS: Ready for integration
