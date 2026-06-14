@@ -1,11 +1,12 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.20
-KEY CHANGES from v3.19:
-   - REPLACED: "Loading game data..." text with green spinner (.spinner-green)
-   - Visual consistency with other loading states across the app
-   - No functional changes - all existing logic preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+VERSION: 3.21
+KEY CHANGES from v3.20:
+   - REPLACED: System alert() with Modal.alert() in error cases
+   - REPLACED: System confirm() with Modal.confirm() where applicable
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (role selection, lock management, reset modal)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
 
@@ -20,6 +21,7 @@ STATUS: Ready for integration
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <script src="js/firebase-retry.js"></script>
+    <script src="js/modal.js"></script>
     
     <script src="js/game-data.js"></script>
     <script src="js/game-match.js"></script>
@@ -444,12 +446,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.20</div>
+<div class="version-tag">v3.21</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.20
+// FILE: pre-game.html - VERSION 3.21
 
-var VERSION = "3.20";
+var VERSION = "3.21";
 var CACHE_KEY = "pre_game_version";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -540,10 +542,12 @@ function showAdminResetModal() {
         
         GameData.resetFullGame(gameId, startingHoleVal, coursePar, function(success) {
             if (success) {
-                alert("Game has been reset. Page will reload.");
-                window.location.reload();
+                Modal.alert("Game has been reset. Page will reload.");
+                setTimeout(function() {
+                    window.location.reload();
+                }, 1500);
             } else {
-                alert("Reset failed. Please try again.");
+                Modal.alert("Reset failed. Please try again.");
             }
         });
     });
@@ -685,14 +689,14 @@ function canTakeRole(role) {
         var otherLockValid = locks.f2 && locks.f2.ex && locks.f2.ex > now;
         var otherLockIsMe = otherLockValid && locks.f2.did === myDeviceIdFull;
         if (otherLockIsMe) {
-            alert("You already have Flight 2. Only one role per device.");
+            Modal.alert("You already have Flight 2. Only one role per device.");
             return false;
         }
     } else if (role === "update2") {
         var otherLockValid2 = locks.f1 && locks.f1.ex && locks.f1.ex > now;
         var otherLockIsMe2 = otherLockValid2 && locks.f1.did === myDeviceIdFull;
         if (otherLockIsMe2) {
-            alert("You already have Flight 1. Only one role per device.");
+            Modal.alert("You already have Flight 1. Only one role per device.");
             return false;
         }
     }
@@ -806,9 +810,9 @@ function takeoverRole(flight) {
         }
         tempSelectedRole = flight === 1 ? "update1" : "update2";
         render();
-        alert(`You have taken over Flight ${flight}. Click TEE OFF to enter the game.`);
+        Modal.alert(`You have taken over Flight ${flight}. Click TEE OFF to enter the game.`);
     }).catch(function(e) {
-        alert("Error taking over role: " + e.message);
+        Modal.alert("Error taking over role: " + e.message);
     });
 }
 
@@ -827,8 +831,10 @@ function loadGame() {
     var activeGame = deviceSession ? deviceSession.activeGame : null;
     
     if (!realGameId) {
-        alert("No game selected. Please return to main menu.");
-        window.location.href = "index.html";
+        Modal.alert("No game selected. Please return to main menu.");
+        setTimeout(function() {
+            window.location.href = "index.html";
+        }, 1500);
         return;
     }
     
@@ -847,8 +853,10 @@ function loadGame() {
     }).then(function(doc) {
         if (!doc.exists) {
             console.error("Game document not found:", gameId);
-            alert("Game data not found. Please return to main menu.");
-            window.location.href = "index.html";
+            Modal.alert("Game data not found. Please return to main menu.");
+            setTimeout(function() {
+                window.location.href = "index.html";
+            }, 1500);
             return;
         }
         
@@ -911,14 +919,16 @@ function loadGame() {
         
     }).catch(function(err) {
         console.error("Error loading game from Firestore:", err);
-        alert("Error loading game data. Please return to main menu and try again.");
-        window.location.href = "index.html";
+        Modal.alert("Error loading game data. Please return to main menu and try again.");
+        setTimeout(function() {
+            window.location.href = "index.html";
+        }, 1500);
     });
 }
 
 function startGame() {
     if (!tempSelectedRole) {
-        alert("Please select a role first");
+        Modal.alert("Please select a role first");
         return;
     }
     
@@ -958,13 +968,13 @@ function startGame() {
     var isF2LockedByMe = isF2Locked && locks.f2.did === myDeviceIdFull;
     
     if (tempSelectedRole === "update1" && isF1Locked && !isF1LockedByMe) {
-        alert("Flight 1 was locked by another device. Please take over the role.");
+        Modal.alert("Flight 1 was locked by another device. Please take over the role.");
         tempSelectedRole = null;
         render();
         return;
     }
     if (tempSelectedRole === "update2" && isF2Locked && !isF2LockedByMe) {
-        alert("Flight 2 was locked by another device. Please take over the role.");
+        Modal.alert("Flight 2 was locked by another device. Please take over the role.");
         tempSelectedRole = null;
         render();
         return;
@@ -974,7 +984,7 @@ function startGame() {
         var otherLockValid = locks.f2 && locks.f2.ex && locks.f2.ex > now;
         var otherLockIsMe = otherLockValid && locks.f2.did === myDeviceIdFull;
         if (otherLockIsMe) {
-            alert("You already have Flight 2. Only one role per device.");
+            Modal.alert("You already have Flight 2. Only one role per device.");
             tempSelectedRole = null;
             render();
             return;
@@ -983,7 +993,7 @@ function startGame() {
         var otherLockValid2 = locks.f1 && locks.f1.ex && locks.f1.ex > now;
         var otherLockIsMe2 = otherLockValid2 && locks.f1.did === myDeviceIdFull;
         if (otherLockIsMe2) {
-            alert("You already have Flight 1. Only one role per device.");
+            Modal.alert("You already have Flight 1. Only one role per device.");
             tempSelectedRole = null;
             render();
             return;
@@ -1042,7 +1052,7 @@ function startGame() {
         }
     }).catch(function(e) {
         console.error("Error locking role:", e);
-        alert("Error locking role: " + e.message);
+        Modal.alert("Error locking role: " + e.message);
     });
 }
 
@@ -1304,11 +1314,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.20
-KEY CHANGES from v3.19:
-   - REPLACED: "Loading game data..." text with green spinner (.spinner-green)
-   - Visual consistency with other loading states across the app
-   - No functional changes - all existing logic preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+VERSION: 3.21
+KEY CHANGES from v3.20:
+   - REPLACED: System alert() with Modal.alert() in error cases
+   - REPLACED: System confirm() with Modal.confirm() where applicable
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (role selection, lock management, reset modal)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
