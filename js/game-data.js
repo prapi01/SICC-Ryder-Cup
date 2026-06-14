@@ -1,21 +1,22 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.05
-KEY CHANGES from v2.04:
-   - ADDED: getLastHole(startingHole) - returns the last hole based on starting hole
-   - ADDED: isLastHole(holeNumber, startingHole) - returns true if hole is the last hole
-   - ADDED: isFirstHole(holeNumber, startingHole) - returns true if hole is the first hole
-   - ADDED: getPlayOrderWithLastHole() - returns play order with last hole highlighted
-   - These utilities are shared across all game files for consistent last-hole logic
+VERSION: 2.06
+KEY CHANGES from v2.05:
+   - ADDED: getPlayPosition(holeNumber) - returns play position (0-17) for a natural hole number
+   - ADDED: getNaturalHole(playPosition) - returns natural hole number for a play position
+   - ADDED: getLastPlayPosition() - returns the last play position (0-17) based on starting hole
+   - ADDED: isSyncedPosition(playPosition, lastSyncedPosition) - checks if a play position is synced
+   - ADDED: getConsecutiveSyncedCount() - returns number of consecutively synced holes from start
+   - ADDED: getConsecutiveSyncedLastPosition() - returns last play position that is consecutively synced
+   - These utilities provide a consistent internal play position system for all game logic
    - All existing functions unchanged
 DEPENDS ON: None
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.05
+// FILE: js/game-data.js - VERSION 2.06
 // String-based data manager for SICC Ryder Cup
-// ADDED: getMatchValueFromResults() for shared match bubble logic
-// ADDED: last hole utilities based on starting hole
+// ADDED: internal play position utilities for consistent sync detection
 
 var GameData = (function() {
     
@@ -75,6 +76,102 @@ var GameData = (function() {
         var order = [];
         for (var i = 1; i <= 18; i++) order.push(i);
         return order;
+    }
+    
+    // ============================================================
+    // v2.06: INTERNAL PLAY POSITION UTILITIES
+    // These convert between natural hole numbers and internal play positions (0-17)
+    // Play position is always sequential regardless of starting hole
+    // ============================================================
+    
+    /**
+     * Convert a natural hole number (1-18) to internal play position (0-17)
+     * @param {number} holeNumber - Natural hole number (1-18)
+     * @returns {number} - Play position (0-17)
+     */
+    function getPlayPosition(holeNumber) {
+        return getStorageIndexForHole(holeNumber);
+    }
+    
+    /**
+     * Convert internal play position (0-17) to natural hole number (1-18)
+     * @param {number} playPosition - Play position (0-17)
+     * @returns {number} - Natural hole number (1-18)
+     */
+    function getNaturalHole(playPosition) {
+        return getHoleAtStoragePosition(playPosition);
+    }
+    
+    /**
+     * Get the last play position of the game based on starting hole
+     * Play positions are 0-17, last position is always 17
+     * But the NATURAL hole at last position depends on starting hole
+     * @returns {number} - Last play position (always 17)
+     */
+    function getLastPlayPosition() {
+        return 17;
+    }
+    
+    /**
+     * Get the play position of the last natural hole
+     * Example: startingHole=10, last natural hole=9, play position of hole 9 = 17
+     * @returns {number} - Play position of the last natural hole
+     */
+    function getLastNaturalHolePlayPosition() {
+        var lastNaturalHole = getLastHole();
+        return getPlayPosition(lastNaturalHole);
+    }
+    
+    /**
+     * Check if a play position is synced (both flights have saved up to that position)
+     * @param {number} playPosition - Play position to check (0-17)
+     * @param {number} lastSyncedPosition - The last consecutively synced play position
+     * @returns {boolean} - True if the position is <= lastSyncedPosition
+     */
+    function isSyncedPosition(playPosition, lastSyncedPosition) {
+        return playPosition <= lastSyncedPosition;
+    }
+    
+    /**
+     * Get the number of consecutively synced holes from the start of play
+     * @param {Array} savedHolesF1 - Array of natural hole numbers saved by Flight 1
+     * @param {Array} savedHolesF2 - Array of natural hole numbers saved by Flight 2
+     * @returns {number} - Number of consecutively synced holes (not play position)
+     */
+    function getConsecutiveSyncedCount(savedHolesF1, savedHolesF2) {
+        var playOrder = getPlayOrder();
+        var count = 0;
+        
+        for (var i = 0; i < playOrder.length; i++) {
+            var hole = playOrder[i];
+            if (savedHolesF1.indexOf(hole) !== -1 && savedHolesF2.indexOf(hole) !== -1) {
+                count++;
+            } else {
+                break;
+            }
+        }
+        return count;
+    }
+    
+    /**
+     * Get the last play position that is consecutively synced (both flights)
+     * @param {Array} savedHolesF1 - Array of natural hole numbers saved by Flight 1
+     * @param {Array} savedHolesF2 - Array of natural hole numbers saved by Flight 2
+     * @returns {number} - Last synced play position (-1 if none)
+     */
+    function getConsecutiveSyncedLastPosition(savedHolesF1, savedHolesF2) {
+        var playOrder = getPlayOrder();
+        var lastSyncedPosition = -1;
+        
+        for (var i = 0; i < playOrder.length; i++) {
+            var hole = playOrder[i];
+            if (savedHolesF1.indexOf(hole) !== -1 && savedHolesF2.indexOf(hole) !== -1) {
+                lastSyncedPosition = i;
+            } else {
+                break;
+            }
+        }
+        return lastSyncedPosition;
     }
     
     // ============================================================
@@ -701,7 +798,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v2.05: Added last hole utilities
+    // Public API - v2.06: Added play position utilities
     // ============================================================
     
     return {
@@ -739,6 +836,14 @@ var GameData = (function() {
         isLastHole: isLastHole,
         isFirstHole: isFirstHole,
         getPlayOrderWithLastHole: getPlayOrderWithLastHole,
+        // v2.06: Play position utilities
+        getPlayPosition: getPlayPosition,
+        getNaturalHole: getNaturalHole,
+        getLastPlayPosition: getLastPlayPosition,
+        getLastNaturalHolePlayPosition: getLastNaturalHolePlayPosition,
+        isSyncedPosition: isSyncedPosition,
+        getConsecutiveSyncedCount: getConsecutiveSyncedCount,
+        getConsecutiveSyncedLastPosition: getConsecutiveSyncedLastPosition,
         // Match index functions
         getMatchIndex: getMatchIndex,
         getMatchValueFromResults: getMatchValueFromResults
@@ -747,13 +852,15 @@ var GameData = (function() {
 
 /*
 FILE: js/game-data.js
-VERSION: 2.05
-KEY CHANGES from v2.04:
-   - ADDED: getLastHole(startingHole) - returns the last hole based on starting hole
-   - ADDED: isLastHole(holeNumber, startingHole) - returns true if hole is the last hole
-   - ADDED: isFirstHole(holeNumber, startingHole) - returns true if hole is the first hole
-   - ADDED: getPlayOrderWithLastHole() - returns play order with last hole highlighted
-   - These utilities are shared across all game files for consistent last-hole logic
+VERSION: 2.06
+KEY CHANGES from v2.05:
+   - ADDED: getPlayPosition(holeNumber) - returns play position (0-17) for a natural hole number
+   - ADDED: getNaturalHole(playPosition) - returns natural hole number for a play position
+   - ADDED: getLastPlayPosition() - returns the last play position (0-17) based on starting hole
+   - ADDED: isSyncedPosition(playPosition, lastSyncedPosition) - checks if a play position is synced
+   - ADDED: getConsecutiveSyncedCount() - returns number of consecutively synced holes from start
+   - ADDED: getConsecutiveSyncedLastPosition() - returns last play position that is consecutively synced
+   - These utilities provide a consistent internal play position system for all game logic
    - All existing functions unchanged
 DEPENDS ON: None
 STATUS: Ready for integration
