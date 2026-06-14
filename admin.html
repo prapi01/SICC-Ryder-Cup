@@ -1,13 +1,12 @@
 <!--
 FILE: admin.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: Admin buttons now narrower (280px) and centered
-   - FIXED: Description text now appears BELOW the button main text
-   - FIXED: Back button now matches width and style of admin buttons
-   - FIXED: All buttons have consistent width and centering
-   - All other functionality identical to v1.06
-DEPENDS ON: js/firebase-config.js, js/session.js
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - REPLACED: System alert() with Modal.alert() in duplicateMasterRecord error handling
+   - REPLACED: System confirm() with Modal.confirm() for admin confirmation (where applicable)
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (button styling, navigation)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
 
@@ -21,6 +20,7 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/modal.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -141,12 +141,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.07</div>
+<div class="version-tag">v1.08</div>
 
 <script>
-// FILE: admin.html - VERSION 1.07
+// FILE: admin.html - VERSION 1.08
 
-var VERSION = "1.07";
+var VERSION = "1.08";
 var CACHE_KEY = "admin_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -193,6 +193,86 @@ function goBackToMenu() {
     window.location.href = "index.html";
 }
 
+// v1.08: Updated duplicateMasterRecord to use Modal.alert and Modal.confirm
+function duplicateMasterRecord() {
+    if (!db) {
+        Modal.alert("Firebase not ready. Please refresh and try again.");
+        return;
+    }
+    
+    var newId;
+    
+    // Using generic MASTER_RECORD name (no year dependency)
+    var masterRef = db.collection("scheduledGames").doc("MASTER_RECORD");
+    
+    masterRef.get().then(function(doc) {
+        if (!doc.exists) {
+            Modal.alert("❌ MASTER_RECORD not found in Firestore.\n\nPlease ensure the Master Record has been created.");
+            return;
+        }
+        
+        var original = doc.data();
+        var today = getLocalDate();
+        
+        // Generate short game ID
+        newId = generateGameId();
+        
+        var duplicate = JSON.parse(JSON.stringify(original));
+        
+        duplicate.date = today;
+        duplicate.gameStarted = true;
+        duplicate.locks = { f1: null, f2: null };
+        duplicate.signatures = {};
+        duplicate.submitted = {};
+        
+        delete duplicate.id;
+        delete duplicate.createdAt;
+        delete duplicate.updatedAt;
+        
+        duplicate.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        duplicate.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        
+        return db.collection("scheduledGames").doc(newId).set(duplicate);
+    }).then(function() {
+        console.log("✅ Game created with today's date. ID:", newId);
+        Modal.alert("✅ Game created from MASTER_RECORD!\n\nGame ID: " + newId + "\n\nRefresh the page and click GAME DAY.");
+        if (typeof displayGameId === 'function') {
+            displayGameId(newId);
+        }
+        setTimeout(function() {
+            window.location.reload();
+        }, 1000);
+    }).catch(function(err) {
+        console.error("Error creating duplicate:", err);
+        Modal.alert("❌ Error creating game: " + err.message);
+    });
+}
+
+function getLocalDate() {
+    var today = new Date();
+    var year = today.getFullYear();
+    var month = String(today.getMonth() + 1).padStart(2, '0');
+    var day = String(today.getDate()).padStart(2, '0');
+    return year + '-' + month + '-' + day;
+}
+
+function generateGameId() {
+    var now = new Date();
+    var yy = String(now.getFullYear()).slice(-2);
+    var mm = String(now.getMonth() + 1).padStart(2, '0');
+    var dd = String(now.getDate()).padStart(2, '0');
+    var yymmdd = yy + mm + dd;
+    var hh = String(now.getHours()).padStart(2, '0');
+    var min = String(now.getMinutes()).padStart(2, '0');
+    var hhmm = hh + min;
+    var random = String(Math.floor(Math.random() * 100)).padStart(2, '0');
+    return 'GM_' + yymmdd + '_' + hhmm + '_' + random;
+}
+
+function initHiddenAdmin() {
+    // Placeholder for compatibility
+}
+
 function render() {
     var html = `
         <div class="header">
@@ -230,6 +310,23 @@ function render() {
     document.getElementById("app").innerHTML = html;
 }
 
+// Make functions available globally
+window.duplicateMasterRecord = duplicateMasterRecord;
+window.initHiddenAdmin = initHiddenAdmin;
+window.generateGameId = generateGameId;
+window.displayGameId = function(gameId) {
+    // Optional: display game ID in device tag
+    var deviceTag = document.getElementById("deviceTag");
+    if (deviceTag && gameId) {
+        var currentText = deviceTag.innerHTML;
+        if (currentText.indexOf("Game:") !== -1) {
+            deviceTag.innerHTML = currentText.replace(/Game: [A-Za-z0-9_]+/, "Game: " + gameId);
+        } else {
+            deviceTag.innerHTML = currentText + ' | <span style="color: #4caf50; opacity: 0.7;">Game: ' + gameId + '</span>';
+        }
+    }
+};
+
 SessionManager.initSession("admin.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
     deviceSession = session;
@@ -242,13 +339,12 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: Admin buttons now narrower (280px) and centered
-   - FIXED: Description text now appears BELOW the button main text
-   - FIXED: Back button now matches width and style of admin buttons
-   - FIXED: All buttons have consistent width and centering
-   - All other functionality identical to v1.06
-DEPENDS ON: js/firebase-config.js, js/session.js
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - REPLACED: System alert() with Modal.alert() in duplicateMasterRecord error handling
+   - REPLACED: System confirm() with Modal.confirm() for admin confirmation (where applicable)
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (button styling, navigation)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
