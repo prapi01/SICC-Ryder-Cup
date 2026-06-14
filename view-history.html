@@ -1,12 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.23
-KEY CHANGES from v8.22:
-   - REPLACED: Green spinner with grey icon screen for consistent loading experience
-   - Removed spinner CSS and related styles
-   - Grey icon appears while loading games
-   - All existing functionality preserved (FirebaseRetry, parallel module loading, button state)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
+VERSION: 8.24
+KEY CHANGES from v8.23:
+   - REPLACED: System alert() with Modal.alert() when handicap data missing
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (grey icon loading, FirebaseRetry, parallel module loading)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
 STATUS: Ready for integration
 -->
 
@@ -22,6 +21,7 @@ STATUS: Ready for integration
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <script src="js/firebase-retry.js"></script>
+    <script src="js/modal.js"></script>
     
     <style>
         * {
@@ -338,13 +338,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.23</div>
+<div class="version-tag">v8.24</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "8.23";
+var APP_VERSION = "8.24";
 var CACHE_KEY = "view_history_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -356,8 +356,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.23";
-console.log("[VIEW-HISTORY] Initializing v8.23 with grey icon loading");
+window.VIEW_HISTORY_VERSION = "8.24";
+console.log("[VIEW-HISTORY] Initializing v8.24 with custom modal");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -789,6 +789,7 @@ function renderScorecardView(game) {
 
 // ============================================================
 // Game List Functions - v8.23: Uses grey icon for loading
+// v8.24: Uses Modal.alert for error messages
 // ============================================================
 
 function enableButtons() {
@@ -839,7 +840,8 @@ function attachEventHandlers() {
                     showHandicapAdjustment(game.adjustedHandicaps, anchorName, game.players);
                 } else {
                     console.error('No handicap data available for this game');
-                    alert('Handicap adjustment data not available for this game.');
+                    // v8.24: Use Modal.alert instead of system alert
+                    Modal.alert('Handicap adjustment data not available for this game.');
                 }
             });
         })(i);
@@ -1050,12 +1052,11 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.23
-KEY CHANGES from v8.22:
-   - REPLACED: Green spinner with grey icon screen for consistent loading experience
-   - Removed spinner CSS and related styles
-   - Grey icon appears while loading games
-   - All existing functionality preserved (FirebaseRetry, parallel module loading, button state)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
+VERSION: 8.24
+KEY CHANGES from v8.23:
+   - REPLACED: System alert() with Modal.alert() when handicap data missing
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved (grey icon loading, FirebaseRetry, parallel module loading)
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
 STATUS: Ready for integration
 -->
