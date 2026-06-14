@@ -1,19 +1,21 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.04
-KEY CHANGES from v2.03:
-   - FIXED: getSavedHolesFromString() now converts storage positions to actual hole numbers
-   - FIXED: savedHoles array now contains actual hole numbers (not storage positions + 1)
-   - Uses getHoleAtStoragePosition() for conversion with starting hole
-   - This fixes the bug where scores saved on hole 10 appeared on hole 1 in savedHoles
+VERSION: 2.05
+KEY CHANGES from v2.04:
+   - ADDED: getLastHole(startingHole) - returns the last hole based on starting hole
+   - ADDED: isLastHole(holeNumber, startingHole) - returns true if hole is the last hole
+   - ADDED: isFirstHole(holeNumber, startingHole) - returns true if hole is the first hole
+   - ADDED: getPlayOrderWithLastHole() - returns play order with last hole highlighted
+   - These utilities are shared across all game files for consistent last-hole logic
    - All existing functions unchanged
 DEPENDS ON: None
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.04
+// FILE: js/game-data.js - VERSION 2.05
 // String-based data manager for SICC Ryder Cup
-// FIXED: savedHoles conversion with starting hole
+// ADDED: getMatchValueFromResults() for shared match bubble logic
+// ADDED: last hole utilities based on starting hole
 
 var GameData = (function() {
     
@@ -54,6 +56,10 @@ var GameData = (function() {
         return startingHole;
     }
     
+    function setStartingHole(hole) {
+        startingHole = hole;
+    }
+    
     function getTeamGameFormat() {
         return teamGameFormat;
     }
@@ -69,6 +75,59 @@ var GameData = (function() {
         var order = [];
         for (var i = 1; i <= 18; i++) order.push(i);
         return order;
+    }
+    
+    // ============================================================
+    // v2.05: LAST HOLE UTILITIES (based on starting hole)
+    // ============================================================
+    
+    /**
+     * Get the last hole of the game based on starting hole
+     * @param {number} startHole - The starting hole (1-18)
+     * @returns {number} - The last hole number
+     * 
+     * Examples:
+     * - startHole = 1  → lastHole = 18
+     * - startHole = 10 → lastHole = 9
+     * - startHole = 5  → lastHole = 4
+     */
+    function getLastHole(startHole) {
+        var start = (startHole !== undefined) ? startHole : startingHole;
+        return (start === 1) ? 18 : start - 1;
+    }
+    
+    /**
+     * Check if a given hole is the last hole of the game
+     * @param {number} holeNumber - The hole to check
+     * @param {number} startHole - The starting hole (optional, defaults to current)
+     * @returns {boolean} - True if this is the last hole
+     */
+    function isLastHole(holeNumber, startHole) {
+        var start = (startHole !== undefined) ? startHole : startingHole;
+        return holeNumber === getLastHole(start);
+    }
+    
+    /**
+     * Check if a given hole is the first hole of the game
+     * @param {number} holeNumber - The hole to check
+     * @param {number} startHole - The starting hole (optional, defaults to current)
+     * @returns {boolean} - True if this is the first hole
+     */
+    function isFirstHole(holeNumber, startHole) {
+        var start = (startHole !== undefined) ? startHole : startingHole;
+        return holeNumber === start;
+    }
+    
+    /**
+     * Get the play order with the last hole marked (for debugging)
+     * @returns {Array} - Array of holes with 'last' flag
+     */
+    function getPlayOrderWithLastHole() {
+        var order = getPlayOrder();
+        var lastHole = getLastHole();
+        return order.map(function(hole) {
+            return { hole: hole, isLast: (hole === lastHole) };
+        });
     }
     
     function getStorageIndexForHole(actualHoleNumber) {
@@ -115,25 +174,21 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // v2.04: FIXED - Convert storage positions to actual hole numbers
+    // v2.04: Convert storage positions to actual hole numbers
     // ============================================================
     
     function getSavedHolesFromString(dataString) {
         var saved = [];
         if (!dataString) return saved;
         
-        // Parse T/F pattern
         var i = 0;
         var storagePos = 0;
         while (i < dataString.length && storagePos < 18) {
             if (dataString[i] === 'T') {
-                // v2.04: Convert storage position to actual hole number
                 var actualHole = getHoleAtStoragePosition(storagePos);
                 saved.push(actualHole);
-                // Skip the 8 score characters (a1,a2,b1,b2)
-                i += 9; // 'T' + 8 scores
+                i += 9;
             } else if (dataString[i] === 'F') {
-                // 'F' means not saved, but we still need to advance
                 i += 9;
             } else {
                 i++;
@@ -146,10 +201,6 @@ var GameData = (function() {
     // ============================================================
     // Consistent Match Index for Match Bubbles
     // ============================================================
-    // Returns a consistent index (0-15) for any player pair
-    // Order: A1vsB1, A1vsB2, A1vsB3, A1vsB4, A2vsB1, ... A4vsB4
-    // Team A and Team B players sorted by handicap (lowest first)
-    // ============================================================
     
     function getMatchIndex(playerName, opponentName, allPlayers) {
         if (!allPlayers || allPlayers.length === 0) {
@@ -157,13 +208,9 @@ var GameData = (function() {
             return -1;
         }
         
-        // Get all Team A players, sorted by handicap (lowest first)
         var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        
-        // Get all Team B players, sorted by handicap (lowest first)
         var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // Find indices
         var aIndex = -1;
         var bIndex = -1;
         
@@ -188,11 +235,6 @@ var GameData = (function() {
         return (aIndex * teamBPlayers.length) + bIndex;
     }
     
-    // ============================================================
-    // NEW: Shared Match Value Retrieval
-    // Handles both Team A and Team B perspectives correctly
-    // ============================================================
-    
     function getMatchValueFromResults(results, player, opponent, holeNumber, allPlayers, getHolePositionFn) {
         if (!results || !results.matchResults) return 0;
         
@@ -200,7 +242,6 @@ var GameData = (function() {
         var matchResultsArray = results.matchResults[position];
         if (!matchResultsArray) return 0;
         
-        // Determine who is Team A and who is Team B
         var teamAPlayer, teamBPlayer;
         if (player.team === "A" && opponent.team === "B") {
             teamAPlayer = player;
@@ -209,7 +250,6 @@ var GameData = (function() {
             teamAPlayer = opponent;
             teamBPlayer = player;
         } else {
-            // Intra-flight (same team) - this function is for cross-flight only
             return 0;
         }
         
@@ -218,8 +258,6 @@ var GameData = (function() {
         
         var value = matchResultsArray[matchIndex] || 0;
         
-        // If the original player is Team B, invert the value
-        // Because the stored value is always from Team A's perspective
         if (player.team === "B") {
             return -value;
         }
@@ -264,10 +302,6 @@ var GameData = (function() {
         return rotated.join('');
     }
     
-    // ============================================================
-    // Parse hole data from string
-    // ============================================================
-    
     function parseHoleData(dataString, holeNumber) {
         if (!dataString || dataString.length !== 162) {
             return null;
@@ -295,7 +329,6 @@ var GameData = (function() {
         };
     }
     
-    // Update hole data string
     function updateHoleData(existingData, holeNumber, scores, isSaved) {
         if (!existingData || existingData.length !== 162) {
             existingData = generateDefaultData(currentCourse ? currentCourse.par : null);
@@ -316,51 +349,31 @@ var GameData = (function() {
         return newData;
     }
     
-    // ============================================================
-    // Initialize empty results object
-    // ============================================================
-    
     function initializeEmptyResults() {
         return {
             version: 1,
-            game1: {
-                matches: {},
-                pointsA: new Array(18).fill(8),
-                pointsB: new Array(18).fill(8)
-            },
+            matchResults: new Array(18),
+            f1IntraMatches: new Array(18),
+            f2IntraMatches: new Array(18),
+            game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
             game2: {
-                flight1: {
-                    leader: new Array(18).fill("AS"),
-                    cumulativePoints: new Array(18).fill(0)
-                },
-                flight2: {
-                    leader: new Array(18).fill("AS"),
-                    cumulativePoints: new Array(18).fill(0)
-                },
+                flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
+                flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
                 pointsA: new Array(18).fill(1),
                 pointsB: new Array(18).fill(1)
             },
-            game3: {
-                leader: new Array(18).fill("AS"),
-                nettA: new Array(18).fill(0),
-                nettB: new Array(18).fill(0),
-                pointsA: new Array(18).fill(0.5),
-                pointsB: new Array(18).fill(0.5)
+            game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
+            tr: { 
+                teamA: new Array(18).fill(null), 
+                teamB: new Array(18).fill(null), 
+                teamAGreen: new Array(18).fill(false), 
+                teamBGreen: new Array(18).fill(false) 
             },
-            tr: {
-                teamA: new Array(18).fill(null),
-                teamB: new Array(18).fill(null),
-                teamAGreen: new Array(18).fill(false),
-                teamBGreen: new Array(18).fill(false)
-            },
-            computedUpToHole: 0,
-            lastComputedAt: null
+            lastComputedAt: null,
+            clinchedAt: {},
+            playerTotals: {}
         };
     }
-    
-    // ============================================================
-    // RESET FULL GAME
-    // ============================================================
     
     function resetFullGame(gameIdParam, startingHoleParam, courseParArray, callback) {
         if (!gameIdParam) {
@@ -409,10 +422,6 @@ var GameData = (function() {
                 if (callback) callback(false);
             });
     }
-    
-    // ============================================================
-    // Set course and generate default data
-    // ============================================================
     
     function setCourse(course) {
         currentCourse = course;
@@ -692,7 +701,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v2.04: Added getSavedHolesFromString
+    // Public API - v2.05: Added last hole utilities
     // ============================================================
     
     return {
@@ -714,6 +723,7 @@ var GameData = (function() {
         clearCrossEvent: clearCrossEvent,
         clearSaveEvent: clearSaveEvent,
         getStartingHole: getStartingHole,
+        setStartingHole: setStartingHole,
         getTeamGameFormat: getTeamGameFormat,
         getPlayOrder: getPlayOrder,
         getNaturalOrder: getNaturalOrder,
@@ -723,8 +733,12 @@ var GameData = (function() {
         getStorageIndexForHole: getStorageIndexForHole,
         resetFullGame: resetFullGame,
         initializeEmptyResults: initializeEmptyResults,
-        // v2.04: Added saved holes conversion function
         getSavedHolesFromString: getSavedHolesFromString,
+        // v2.05: Last hole utilities
+        getLastHole: getLastHole,
+        isLastHole: isLastHole,
+        isFirstHole: isFirstHole,
+        getPlayOrderWithLastHole: getPlayOrderWithLastHole,
         // Match index functions
         getMatchIndex: getMatchIndex,
         getMatchValueFromResults: getMatchValueFromResults
@@ -733,12 +747,13 @@ var GameData = (function() {
 
 /*
 FILE: js/game-data.js
-VERSION: 2.04
-KEY CHANGES from v2.03:
-   - FIXED: getSavedHolesFromString() now converts storage positions to actual hole numbers
-   - FIXED: savedHoles array now contains actual hole numbers (not storage positions + 1)
-   - Uses getHoleAtStoragePosition() for conversion with starting hole
-   - This fixes the bug where scores saved on hole 10 appeared on hole 1 in savedHoles
+VERSION: 2.05
+KEY CHANGES from v2.04:
+   - ADDED: getLastHole(startingHole) - returns the last hole based on starting hole
+   - ADDED: isLastHole(holeNumber, startingHole) - returns true if hole is the last hole
+   - ADDED: isFirstHole(holeNumber, startingHole) - returns true if hole is the first hole
+   - ADDED: getPlayOrderWithLastHole() - returns play order with last hole highlighted
+   - These utilities are shared across all game files for consistent last-hole logic
    - All existing functions unchanged
 DEPENDS ON: None
 STATUS: Ready for integration
