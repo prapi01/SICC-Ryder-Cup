@@ -1,22 +1,23 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.16
-KEY CHANGES from v2.15:
-   - FIXED: Hole 18 gold bubbles now only appear AFTER the hole is saved
-   - Moved hole 18 special case AFTER clinch checks
-   - Added isHoleSavedForFlight condition to hole 18 special case
-   - Prevents gold bubbles from appearing on unsaved hole 18
+VERSION: 2.17
+KEY CHANGES from v2.16:
+   - FIXED: Hole 18 special case now uses dynamic LAST HOLE based on starting hole
+   - Gold bubbles now only appear on the actual last hole of the game (not hardcoded to 18)
+   - For starting hole = 10, last hole = 9
+   - For starting hole = 5, last hole = 4
+   - For starting hole = 1, last hole = 18
    - All existing functionality preserved
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.16";
+window.GAME_MATCH_VERSION = "2.17";
 
 var GameMatch = (function() {
     
-    console.log("[GAME-MATCH] Initializing v2.16 with hole 18 gold bubble after save only");
+    console.log("[GAME-MATCH] Initializing v2.17 with dynamic last hole for gold bubbles");
     
     // ============================================================
     // Stroke calculation helpers (unchanged)
@@ -240,7 +241,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // calculateIntraFlightWithClinch - WITH DEBUG LOGGING
+    // calculateIntraFlightWithClinch
     // ============================================================
     
     function calculateIntraFlightWithClinch(flight, flightPlayers, flightData, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
@@ -295,7 +296,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // calculateCrossFlightWithClinch - WITH DEBUG LOGGING (v2.14)
+    // calculateCrossFlightWithClinch
     // ============================================================
     
     function calculateCrossFlightWithClinch(flight1Data, flight2Data, allPlayers, courseSi, startingHole, upToHole, coursePar, remainingHoles, currentHole, deviceId, cascadeVersion, existingClinched) {
@@ -359,7 +360,7 @@ var GameMatch = (function() {
                         remainingHolesAtClinch: remainingHoles,
                         recordedAt: new Date().toISOString(),
                         recordedByDevice: deviceId || "unknown",
-                        cascadeVersion: cascadeVersion || "2.14"
+                        cascadeVersion: cascadeVersion || "2.17"
                     };
                     clinchedAtUpdates[actualWinner + "_vs_" + actualLoser] = clinchData;
                     console.log(`[DEBUG-MATCH] CLINCH CREATED: ${actualWinner}_vs_${actualLoser} at hole ${currentHole}`);
@@ -379,7 +380,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // calculateClinch (kept for backward compatibility)
+    // calculateClinch
     // ============================================================
     
     function calculateClinch(matchValue, remainingHoles, winnerName, loserName, currentHole, deviceId, cascadeVersion) {
@@ -400,7 +401,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.14"
+                    cascadeVersion: cascadeVersion || "2.17"
                 }
             };
         }
@@ -408,7 +409,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // filterClinchedByHole - WITH DEBUG LOGGING
+    // filterClinchedByHole
     // ============================================================
     
     function filterClinchedByHole(clinchedAt, cascadeStartHole) {
@@ -438,7 +439,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // updateClinchedAt - WITH DEBUG LOGGING (v2.14)
+    // updateClinchedAt
     // ============================================================
     
     function updateClinchedAt(existingClinched, newClinchData, cascadeStartHole, isCascadeStartHole) {
@@ -507,7 +508,17 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // Functions moved from real-game.html - WITH DEBUG LOGGING
+    // Helper: Calculate last hole based on starting hole
+    // ============================================================
+    function getLastHole(startingHole) {
+        // If starting hole is 1, last hole is 18
+        // If starting hole is 10, last hole is 9
+        // If starting hole is 5, last hole is 4
+        return (startingHole === 1) ? 18 : startingHole - 1;
+    }
+    
+    // ============================================================
+    // Functions moved from real-game.html
     // ============================================================
     
     function getMatchValueFromStoredResults(results, player, opponent, holeNumber, getHolePositionFunc, allPlayers) {
@@ -588,11 +599,10 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // getMatchBubbleClass - v2.16: Fixed hole 18 gold bubble logic
-    // Gold only appears AFTER hole 18 is saved
+    // getMatchBubbleClass - v2.17: Dynamic last hole for gold bubbles
     // ============================================================
     
-    function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedHole, getClinchHoleFunc) {
+    function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedHole, getClinchHoleFunc, startingHole) {
         var clinchHole = getClinchHoleFunc(clinchedAt, player.name, opponent.name);
         
         // First, check if match was already clinched (should be grey)
@@ -607,9 +617,11 @@ var GameMatch = (function() {
             return 'bubble-green';
         }
         
-        // SPECIAL CASE: Hole 18 AFTER being saved, with tied match - show gold
-        if (currentHole === 18 && isHoleSavedForFlight && matchValue === 0) {
-            console.log(`[DEBUG-MATCH] HOLE 18 SAVED TIED MATCH: ${player.name} vs ${opponent.name} -> bubble-gold`);
+        // v2.17: SPECIAL CASE - Last hole of the game (based on starting hole)
+        // Calculate the actual last hole dynamically
+        var lastHole = getLastHole(startingHole);
+        if (currentHole === lastHole && isHoleSavedForFlight && matchValue === 0) {
+            console.log(`[DEBUG-MATCH] LAST HOLE ${lastHole} SAVED TIED MATCH: ${player.name} vs ${opponent.name} -> bubble-gold`);
             return 'bubble-gold';
         }
         
@@ -697,21 +709,24 @@ var GameMatch = (function() {
         getMatchDisplayValue: getMatchDisplayValue,
         getMatchBubbleClass: getMatchBubbleClass,
         calculate: calculate,
-        calculatePoints: calculatePoints
+        calculatePoints: calculatePoints,
+        // v2.17: Expose getLastHole for debugging
+        getLastHole: getLastHole
     };
 })();
 
 // Re-expose version for console debugging
-window.GAME_MATCH_VERSION = "2.16";
+window.GAME_MATCH_VERSION = "2.17";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.16
-KEY CHANGES from v2.15:
-   - FIXED: Hole 18 gold bubbles now only appear AFTER the hole is saved
-   - Moved hole 18 special case AFTER clinch checks
-   - Added isHoleSavedForFlight condition to hole 18 special case
-   - Prevents gold bubbles from appearing on unsaved hole 18
+VERSION: 2.17
+KEY CHANGES from v2.16:
+   - FIXED: Hole 18 special case now uses dynamic LAST HOLE based on starting hole
+   - Gold bubbles now only appear on the actual last hole of the game (not hardcoded to 18)
+   - For starting hole = 10, last hole = 9
+   - For starting hole = 5, last hole = 4
+   - For starting hole = 1, last hole = 18
    - All existing functionality preserved
 DEPENDS ON: None (pure calculation)
 STATUS: Ready for integration
