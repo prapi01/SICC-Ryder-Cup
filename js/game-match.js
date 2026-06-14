@@ -1,20 +1,23 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.18
-KEY CHANGES from v2.17:
-   - CHANGED: Now uses GameData.getLastHole() for dynamic last hole calculation
-   - Removed internal getLastHole() function (now uses shared utility)
+VERSION: 2.19
+KEY CHANGES from v2.18:
+   - CHANGED: Sync check now uses PLAY POSITION instead of natural hole number
+   - Added getPlayPosition() helper using GameData utility
+   - Modified getMatchBubbleClass() to accept lastSyncedPosition parameter
+   - Cross-flight bubble sync now compares play positions, not natural hole numbers
+   - This fixes cross-flight bubbles showing as grey when starting hole is not 1
    - All existing functionality preserved
-DEPENDS ON: GameData (for getLastHole and getStartingHole)
+DEPENDS ON: GameData (for getLastHole, getStartingHole, getPlayPosition)
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.18";
+window.GAME_MATCH_VERSION = "2.19";
 
 var GameMatch = (function() {
     
-    console.log("[GAME-MATCH] Initializing v2.18 with shared last hole utility");
+    console.log("[GAME-MATCH] Initializing v2.19 with play position sync check");
     
     // ============================================================
     // Helper: Get last hole using shared GameData utility
@@ -25,6 +28,18 @@ var GameMatch = (function() {
         }
         // Fallback
         return (startingHole === 1) ? 18 : startingHole - 1;
+    }
+    
+    // ============================================================
+    // Helper: Get play position for a hole number
+    // v2.19: Uses GameData.getPlayPosition()
+    // ============================================================
+    function getPlayPosition(holeNumber) {
+        if (typeof GameData !== 'undefined' && GameData.getPlayPosition) {
+            return GameData.getPlayPosition(holeNumber);
+        }
+        // Fallback (assuming starting hole = 1)
+        return holeNumber - 1;
     }
     
     // ============================================================
@@ -368,7 +383,7 @@ var GameMatch = (function() {
                         remainingHolesAtClinch: remainingHoles,
                         recordedAt: new Date().toISOString(),
                         recordedByDevice: deviceId || "unknown",
-                        cascadeVersion: cascadeVersion || "2.18"
+                        cascadeVersion: cascadeVersion || "2.19"
                     };
                     clinchedAtUpdates[actualWinner + "_vs_" + actualLoser] = clinchData;
                     console.log(`[DEBUG-MATCH] CLINCH CREATED: ${actualWinner}_vs_${actualLoser} at hole ${currentHole}`);
@@ -409,7 +424,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.18"
+                    cascadeVersion: cascadeVersion || "2.19"
                 }
             };
         }
@@ -597,10 +612,10 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // getMatchBubbleClass - v2.18: Uses shared getLastHole utility
+    // getMatchBubbleClass - v2.19: Uses play position for sync check
     // ============================================================
     
-    function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedHole, getClinchHoleFunc, startingHole) {
+    function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedValue, getClinchHoleFunc, startingHole) {
         var clinchHole = getClinchHoleFunc(clinchedAt, player.name, opponent.name);
         
         // First, check if match was already clinched (should be grey)
@@ -615,7 +630,7 @@ var GameMatch = (function() {
             return 'bubble-green';
         }
         
-        // v2.18: SPECIAL CASE - Last hole of the game (using shared utility)
+        // SPECIAL CASE - Last hole of the game (using shared utility)
         var lastHole = getLastHole(startingHole);
         if (currentHole === lastHole && isHoleSavedForFlight && matchValue === 0) {
             console.log(`[DEBUG-MATCH] LAST HOLE ${lastHole} SAVED TIED MATCH: ${player.name} vs ${opponent.name} -> bubble-gold`);
@@ -627,12 +642,19 @@ var GameMatch = (function() {
             console.log(`[DEBUG-MATCH] getMatchBubbleClass: ${player.name} vs ${opponent.name} hole=${currentHole}, matchValue=${matchValue}, clinchHole=${clinchHole}`);
         }
         
-        // Cross-flight sync check
+        // Cross-flight sync check - v2.19: Use PLAY POSITION for comparison
         if (player.flight === opponent.flight) {
+            // Intra-flight: only need current hole saved by this flight
             if (!isHoleSavedForFlight) return 'bubble-grey';
         } else {
-            var isSynced = (lastSyncedHole >= currentHole);
-            if (!isSynced) return 'bubble-grey';
+            // Cross-flight: need both flights to have saved up to current play position
+            // lastSyncedValue is now a PLAY POSITION (0-17) from GameLoader v1.08
+            var currentPlayPosition = getPlayPosition(currentHole);
+            var isSynced = (lastSyncedValue >= currentPlayPosition);
+            if (!isSynced) {
+                console.log(`[DEBUG-MATCH] Cross-flight NOT SYNCED: lastSyncedValue=${lastSyncedValue}, currentPlayPosition=${currentPlayPosition} -> bubble-grey`);
+                return 'bubble-grey';
+            }
         }
         
         // Regular win/loss/tie logic
@@ -707,20 +729,24 @@ var GameMatch = (function() {
         getMatchBubbleClass: getMatchBubbleClass,
         calculate: calculate,
         calculatePoints: calculatePoints,
-        getLastHole: getLastHole
+        getLastHole: getLastHole,
+        getPlayPosition: getPlayPosition
     };
 })();
 
 // Re-expose version for console debugging
-window.GAME_MATCH_VERSION = "2.18";
+window.GAME_MATCH_VERSION = "2.19";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.18
-KEY CHANGES from v2.17:
-   - CHANGED: Now uses GameData.getLastHole() for dynamic last hole calculation
-   - Removed internal getLastHole() function (now uses shared utility)
+VERSION: 2.19
+KEY CHANGES from v2.18:
+   - CHANGED: Sync check now uses PLAY POSITION instead of natural hole number
+   - Added getPlayPosition() helper using GameData utility
+   - Modified getMatchBubbleClass() to accept lastSyncedPosition parameter
+   - Cross-flight bubble sync now compares play positions, not natural hole numbers
+   - This fixes cross-flight bubbles showing as grey when starting hole is not 1
    - All existing functionality preserved
-DEPENDS ON: GameData (for getLastHole and getStartingHole)
+DEPENDS ON: GameData (for getLastHole, getStartingHole, getPlayPosition)
 STATUS: Ready for integration
 */
