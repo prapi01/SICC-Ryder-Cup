@@ -1,10 +1,11 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - REPLACED: Native browser confirm() with custom modal for EXIT TUTORIAL button
-   - Custom modal matches app UI design (green border, grey title, CANCEL/EXIT buttons)
-   - All other steps unchanged from v1.19
+VERSION: 1.22
+KEY CHANGES from v1.20:
+   - FIXED: Exit from modal now hides tutorial content immediately before navigation
+   - Prevents brief flash of tutorial page after clicking EXIT
+   - Shows grey icon screen instantly when exit is confirmed
+   - All existing functionality preserved
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
@@ -680,6 +681,25 @@ STATUS: Ready for integration
             margin: 24px auto 0;
             animation: spin 1s linear infinite;
         }
+        
+        /* v1.22: Full-screen overlay for exit transition */
+        .exit-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #000000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20000;
+        }
+        .exit-grey-icon {
+            font-size: 5rem;
+            filter: grayscale(100%);
+            opacity: 0.6;
+        }
     </style>
 </head>
 <body>
@@ -707,7 +727,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.20</div>
+<div class="version-tag">v1.22</div>
 
 <script>
 // ============================================================
@@ -739,7 +759,7 @@ function addHighlight(elementId) {
 }
 
 // ============================================================
-// Custom Exit Modal Function
+// Custom Exit Modal Function - v1.22: Hide content immediately
 // ============================================================
 
 function showExitModal() {
@@ -770,7 +790,28 @@ function showExitModal() {
     
     document.getElementById('exitModalConfirmBtn').onclick = function() {
         document.getElementById('exitModal').remove();
-        window.location.href = 'index.html';
+        
+        // v1.22: IMMEDIATELY hide the entire tutorial content and show grey icon
+        var container = document.querySelector('.container');
+        var stepIndicator = document.querySelector('.step-indicator');
+        var instructionPanel = document.querySelector('.instruction-panel');
+        var navButtons = document.querySelector('.navigation-buttons');
+        
+        if (container) container.style.visibility = 'hidden';
+        if (stepIndicator) stepIndicator.style.visibility = 'hidden';
+        if (instructionPanel) instructionPanel.style.visibility = 'hidden';
+        if (navButtons) navButtons.style.visibility = 'hidden';
+        
+        // Show full-screen grey icon overlay
+        var exitOverlay = document.createElement('div');
+        exitOverlay.className = 'exit-overlay';
+        exitOverlay.innerHTML = '<div class="exit-grey-icon">⛳</div>';
+        document.body.appendChild(exitOverlay);
+        
+        // Small delay to ensure overlay is rendered, then navigate
+        setTimeout(function() {
+            window.location.href = 'index.html';
+        }, 50);
     };
 }
 
@@ -1179,7 +1220,7 @@ function renderStep6() {
             <div class="scorecard-wrapper">
                 <table class="scorecard-table">
                     <thead>
-                        <tr><th>Hole</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>Tot</th></tr>
+                        <tr><th>Hole</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>Tot</th></table>
                     </thead>
                     <tbody>
                         <tr style="background:#111;">
@@ -1584,7 +1625,7 @@ function renderStep() {
 }
 
 // ============================================================
-// Navigation - UPDATED v1.20: Custom modal for EXIT button
+// Navigation - v1.22: Custom modal for EXIT button
 // ============================================================
 
 document.getElementById('prevBtn').addEventListener('click', function() {
@@ -1615,11 +1656,12 @@ renderStep();
 </html>
 <!--
 FILE: tutorial.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - REPLACED: Native browser confirm() with custom modal for EXIT TUTORIAL button
-   - Custom modal matches app UI design (green border, grey title, CANCEL/EXIT buttons)
-   - All other steps unchanged from v1.19
+VERSION: 1.22
+KEY CHANGES from v1.20:
+   - FIXED: Exit from modal now hides tutorial content immediately before navigation
+   - Prevents brief flash of tutorial page after clicking EXIT
+   - Shows grey icon screen instantly when exit is confirmed
+   - All existing functionality preserved
 DEPENDS ON: None (standalone)
 STATUS: Ready for integration
 -->
