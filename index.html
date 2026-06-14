@@ -1,11 +1,15 @@
 <!--
 FILE: index.html
-VERSION: 3.31
-KEY CHANGES from v3.30:
-   - FIXED: Splash content now visible BEFORE animation starts (no 50ms delay)
-   - Removed opacity:0 from .splash-content (content visible immediately)
-   - Animation starts with content already visible for smooth drop effect
-   - Splash now properly visible on first load in new window
+VERSION: 3.32
+KEY CHANGES from v3.31:
+   - NEW: Premium splash sequence with icon drop from high above
+   - B&W screen initially (title white, icon hidden)
+   - Firestore loads data silently in background
+   - Icon drops from off-screen (-300px), spins 360°, lands
+   - THUMP effect: screen shake + radial ring
+   - Title transforms from white to colour gradient on impact
+   - Admire for 2 seconds, then fades to index
+   - No more "stuck" icon - icon only appears when dropping
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -71,7 +75,7 @@ STATUS: Ready for integration
             opacity: 1;
         }
         
-        /* Colour Splash overlay - initially black background, content visible */
+        /* Splash Overlay - B&W screen initially */
         #splashOverlay {
             position: fixed;
             top: 0;
@@ -90,13 +94,60 @@ STATUS: Ready for integration
             will-change: opacity;
         }
         
-        /* v3.31: Splash content container - visible immediately */
-        .splash-content {
-            opacity: 1;
-            transition: none;
+        /* Icon container - preserves layout height */
+        .splash-icon-container {
+            height: 100px;
+            margin-bottom: 20px;
+            position: relative;
         }
         
-        /* v3.28: Simplified grey icon loading screen (no text) */
+        /* Golf icon - starts hidden and off-screen */
+        .splash-golf-icon {
+            font-size: 5rem;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%) translateY(-300px);
+            visibility: hidden;
+            will-change: transform, filter;
+        }
+        
+        /* Title - initially white */
+        .splash-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #ffffff;
+            text-align: center;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+            will-change: background, color;
+        }
+        
+        /* Subtitle - initially grey */
+        .splash-subtitle {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 8px;
+            letter-spacing: 1px;
+            text-align: center;
+            transition: color 0.3s ease;
+        }
+        
+        /* Keyframes for splash effects */
+        @keyframes splashShake {
+            0% { transform: translate(1px, 1px); }
+            10% { transform: translate(-1px, -2px); }
+            20% { transform: translate(-3px, 0px); }
+            30% { transform: translate(3px, 2px); }
+            40% { transform: translate(1px, -1px); }
+            50% { transform: translate(-1px, 2px); }
+            60% { transform: translate(-3px, 1px); }
+            70% { transform: translate(3px, 1px); }
+            80% { transform: translate(-1px, -1px); }
+            90% { transform: translate(1px, 2px); }
+            100% { transform: translate(0, 0); }
+        }
+        
+        /* Grey icon screen for cached loads */
         #greyIconScreen {
             position: fixed;
             top: 0;
@@ -118,74 +169,6 @@ STATUS: Ready for integration
             font-size: 5rem;
             filter: grayscale(100%);
             opacity: 0.6;
-            will-change: transform;
-        }
-        
-        /* Golf icon container for splash */
-        .splash-icon-container {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        
-        .splash-golf-icon {
-            font-size: 6rem;
-            display: inline-block;
-            transform: translateY(-300px);
-            filter: drop-shadow(0 0 20px rgba(76,175,80,0.5));
-            will-change: transform;
-        }
-        
-        .splash-title {
-            font-size: 1.8rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%);
-            background-clip: text;
-            -webkit-background-clip: text;
-            color: transparent;
-            text-align: center;
-            letter-spacing: 2px;
-            opacity: 0;
-            will-change: opacity, transform;
-        }
-        
-        .splash-subtitle {
-            font-size: 0.75rem;
-            color: #888;
-            margin-top: 8px;
-            letter-spacing: 1px;
-            opacity: 0;
-            will-change: opacity, transform;
-        }
-        
-        @keyframes splashDropDown {
-            0% { transform: translateY(-300px) rotate(0deg); }
-            55% { transform: translateY(10px) rotate(180deg); }
-            75% { transform: translateY(-5px) rotate(270deg); }
-            100% { transform: translateY(0) rotate(360deg); }
-        }
-        
-        @keyframes splashFadeInUp {
-            0% { opacity: 0; transform: translateY(20px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes splashThumpRing {
-            0% { transform: scale(0); opacity: 0.8; }
-            100% { transform: scale(4); opacity: 0; }
-        }
-        
-        @keyframes splashShake {
-            0% { transform: translate(1px, 1px); }
-            10% { transform: translate(-1px, -2px); }
-            20% { transform: translate(-3px, 0px); }
-            30% { transform: translate(3px, 2px); }
-            40% { transform: translate(1px, -1px); }
-            50% { transform: translate(-1px, 2px); }
-            60% { transform: translate(-3px, 1px); }
-            70% { transform: translate(3px, 1px); }
-            80% { transform: translate(-1px, -1px); }
-            90% { transform: translate(1px, 2px); }
-            100% { transform: translate(0, 0); }
         }
         
         /* Device tag - respects safe area */
@@ -440,27 +423,25 @@ STATUS: Ready for integration
 </head>
 <body>
 
-<!-- Colour Splash Overlay - Initially Black Background, Content Visible -->
+<!-- Splash Overlay - B&W screen with hidden icon -->
 <div id="splashOverlay">
-    <div class="splash-content">
-        <div class="splash-icon-container">
-            <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
-        </div>
-        <div class="splash-title" id="splashTitle">SICC RYDER CUP</div>
-        <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
+    <div class="splash-icon-container">
+        <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
     </div>
+    <div class="splash-title" id="splashTitle">SICC RYDER CUP</div>
+    <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
 </div>
 
-<!-- Main Container - Hidden Initially, Fades In After Preload -->
+<!-- Main Container - Hidden Initially, Fades In After Splash -->
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.31</div>
+<div class="version-tag">v3.32</div>
 
 <script>
-// FILE: index.html - VERSION 3.31
+// FILE: index.html - VERSION 3.32
 
-var APP_VERSION = "3.31";
+var APP_VERSION = "3.32";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -480,19 +461,17 @@ var preloadComplete = false;
 var isFirstLoad = true;
 var mainContainer = null;
 var greyIconScreen = null;
-var splashAnimationStarted = false;
-var splashAnimationComplete = false;
 var dataReady = false;
+var splashAnimationCompleted = false;
 
 // Get splash elements
 var splashOverlay = document.getElementById('splashOverlay');
-var splashContent = document.querySelector('.splash-content');
 var splashGolfIcon = document.getElementById('splashGolfIcon');
 var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
 
 // ============================================================
-// Splash Screen Logic - Once per session
+// Splash Screen Logic - Premium sequence (once per session)
 // ============================================================
 
 function shouldShowSplash() {
@@ -503,7 +482,7 @@ function shouldShowSplash() {
         return false;
     }
     
-    console.log("No splash recorded this session - showing splash");
+    console.log("No splash recorded this session - showing premium splash");
     return true;
 }
 
@@ -512,76 +491,76 @@ function recordSplashShown() {
     console.log("Splash recorded as shown for this session");
 }
 
-// v3.31: Premium splash sequence - content visible, then animate
+// v3.32: Premium splash sequence - icon drops from high above, thumps, title turns colour
 function startSplashAnimation() {
-    if (splashAnimationStarted) return;
-    splashAnimationStarted = true;
+    console.log("[SPLASH] Starting premium animation - icon drop from high above");
     
-    console.log("[SPLASH] Starting animation - content already visible");
-    
-    // Force a reflow to ensure CSS is applied
+    // Force reflow
     void splashGolfIcon.offsetHeight;
     
-    // v3.31: No delay - animate immediately since content is already visible
-    requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-            // Golf ball drop animation
-            splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
-            splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
-            
-            // Title fade in
-            splashTitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-            splashTitle.style.opacity = '1';
-            splashTitle.style.transform = 'translateY(0)';
-            
-            // Subtitle fade in
-            splashSubtitle.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-            splashSubtitle.style.opacity = '1';
-            splashSubtitle.style.transform = 'translateY(0)';
-        });
-    });
+    // Make icon visible and start drop animation
+    splashGolfIcon.style.visibility = 'visible';
+    splashGolfIcon.style.filter = 'grayscale(100%)';
+    splashGolfIcon.style.opacity = '0.8';
     
-    // Thump ring effect
+    // Force reflow again
+    void splashGolfIcon.offsetHeight;
+    
+    // Drop animation: from -300px to 0 with 360° spin
+    splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+    splashGolfIcon.style.transform = 'translateX(-50%) translateY(0) rotate(360deg)';
+    splashGolfIcon.style.filter = 'drop-shadow(0 0 20px rgba(76,175,80,0.5))';
+    splashGolfIcon.style.opacity = '1';
+    
+    // On impact (after drop completes)
     setTimeout(function() {
-        var thumpRing = document.createElement('div');
-        thumpRing.style.cssText = `
-            position: absolute;
-            top: 50%;
-            left: 50%;
+        console.log("[SPLASH] Impact - THUMP!");
+        
+        // Screen shake
+        splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
+        
+        // Thump ring effect
+        var rect = splashGolfIcon.getBoundingClientRect();
+        var ring = document.createElement('div');
+        ring.style.cssText = `
+            position: fixed;
+            left: ${rect.left + rect.width/2 - 25}px;
+            top: ${rect.top + rect.height/2 - 25}px;
             width: 50px;
             height: 50px;
-            margin-left: -25px;
-            margin-top: -25px;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(76,175,80,0.5) 0%, transparent 70%);
+            background: radial-gradient(circle, rgba(76,175,80,0.6) 0%, transparent 70%);
             transform: scale(0);
             pointer-events: none;
             z-index: 10001;
-            will-change: transform;
         `;
-        splashOverlay.appendChild(thumpRing);
-        thumpRing.style.animation = 'splashThumpRing 0.4s ease-out forwards';
-        setTimeout(function() { if (thumpRing) thumpRing.remove(); }, 500);
-    }, 700);
-    
-    // Shake effect
-    setTimeout(function() {
-        splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
-    }, 700);
-    
-    // Vibration
-    if (navigator.vibrate) {
-        setTimeout(function() {
+        document.body.appendChild(ring);
+        ring.style.transition = 'transform 0.4s ease-out';
+        ring.style.transform = 'scale(5)';
+        setTimeout(function() { if (ring) ring.remove(); }, 500);
+        
+        // Vibration
+        if (navigator.vibrate) {
             navigator.vibrate(50);
-        }, 700);
-    }
-    
-    // Animation duration: 2800ms
-    setTimeout(function() {
-        splashAnimationComplete = true;
-        console.log("[SPLASH] Animation complete");
-        checkAndHideSplash();
-    }, 2800);
+        }
+        
+        // Title transforms to colour gradient
+        splashTitle.style.background = 'linear-gradient(135deg, #ffffff 0%, #4caf50 100%)';
+        splashTitle.style.backgroundClip = 'text';
+        splashTitle.style.webkitBackgroundClip = 'text';
+        splashTitle.style.color = 'transparent';
+        
+        // Subtitle subtle colour
+        splashSubtitle.style.color = '#aaa';
+        
+        // Admire for 2 seconds
+        setTimeout(function() {
+            splashAnimationCompleted = true;
+            console.log("[SPLASH] Animation complete, checking hide condition");
+            checkAndHideSplash();
+        }, 2000);
+        
+    }, 600);
 }
 
 function hideSplashAndShowIndex() {
@@ -590,7 +569,6 @@ function hideSplashAndShowIndex() {
     splashOverlay.style.opacity = '0';
     setTimeout(function() {
         if (splashOverlay) splashOverlay.remove();
-        // Ensure main container is visible
         var appDiv = document.getElementById("app");
         if (appDiv && !appDiv.classList.contains('visible')) {
             appDiv.classList.add('visible');
@@ -599,31 +577,25 @@ function hideSplashAndShowIndex() {
 }
 
 function checkAndHideSplash() {
-    // Only hide when both conditions are met:
-    // 1. Data is ready (preload complete)
-    // 2. Animation is complete
-    if (dataReady && splashAnimationComplete) {
+    if (dataReady && splashAnimationCompleted) {
         hideSplashAndShowIndex();
     } else {
-        console.log("[SPLASH] Waiting... dataReady=" + dataReady + ", animationComplete=" + splashAnimationComplete);
+        console.log("[SPLASH] Waiting... dataReady=" + dataReady + ", animationCompleted=" + splashAnimationCompleted);
     }
 }
 
 // ============================================================
-// v3.28: Simplified Grey Icon Loading Screen (no text)
+// v3.28: Simplified Grey Icon Loading Screen (for cached loads)
 // ============================================================
 
 function showGreyIconScreen() {
-    // Remove existing if any
     if (greyIconScreen) {
         greyIconScreen.remove();
     }
     
     greyIconScreen = document.createElement('div');
     greyIconScreen.id = 'greyIconScreen';
-    greyIconScreen.innerHTML = `
-        <div class="grey-icon">⛳</div>
-    `;
+    greyIconScreen.innerHTML = '<div class="grey-icon">⛳</div>';
     document.body.appendChild(greyIconScreen);
     return greyIconScreen;
 }
@@ -1010,8 +982,7 @@ function renderMainUI() {
             initHiddenAdmin();
         }
         
-        // v3.30: Don't show index yet - wait for splash animation
-        // Just store that data is ready
+        // Mark data as ready for splash
         dataReady = true;
         checkAndHideSplash();
         
@@ -1027,7 +998,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.31: Premium splash with content visible
+// Initialization - v3.32: Premium splash sequence
 // ============================================================
 
 function initApp() {
@@ -1040,14 +1011,10 @@ function initApp() {
     var firstLoadFlag = sessionStorage.getItem('firstLoadCompleted');
     
     if (!firstLoadFlag) {
-        // First load ever - premium sequence:
-        // 1. Black screen with splash content visible
-        // 2. Load data silently
-        // 3. THEN start splash animation
-        // 4. THEN show index after animation
-        console.log("First load - premium splash sequence (content visible)");
+        // First load ever - premium splash sequence
+        console.log("First load - premium splash sequence");
         
-        // Start loading data immediately (splash content already visible)
+        // Start loading data immediately
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
                 window.location.href = "index.html";
@@ -1063,26 +1030,24 @@ function initApp() {
             
             if (todayGame) {
                 preloadGameData(todayGame.id, function() {
-                    // Data ready - now start the splash animation
+                    // Data ready - start the beautiful splash animation
                     startSplashAnimation();
                     renderMainUI();
                     sessionStorage.setItem('firstLoadCompleted', 'true');
                 });
             } else {
-                // No game today - data ready
                 startSplashAnimation();
                 renderMainUI();
                 sessionStorage.setItem('firstLoadCompleted', 'true');
             }
         }).catch(function() {
-            // Even on error, show splash and continue
             startSplashAnimation();
             renderMainUI();
             sessionStorage.setItem('firstLoadCompleted', 'true');
         });
     } else if (!hasCachedData) {
-        // Returning to main menu but no cached data exists - show grey icon screen
-        console.log("No cached preload data found - showing grey icon screen");
+        // Returning but no cached data - grey icon screen
+        console.log("No cached preload data - showing grey icon screen");
         showGreyIconScreen();
         
         FirebaseRetry.getCollection("scheduledGames", {
@@ -1109,8 +1074,8 @@ function initApp() {
             renderMainUI();
         });
     } else {
-        // Subsequent returns with valid cached data - grey icon screen briefly, then index
-        console.log("Valid cached preload data found - showing grey icon screen briefly");
+        // Valid cached data - grey icon screen briefly
+        console.log("Valid cached data - showing grey icon screen briefly");
         showGreyIconScreen();
         preloadComplete = true;
         renderMainUI();
@@ -1123,17 +1088,14 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.31: Splash content visible from the start
+// Start the app - v3.32: Premium splash
 // ============================================================
 
 if (shouldShowSplash()) {
     recordSplashShown();
     
-    // Splash overlay is visible with content (golf icon, title, subtitle)
-    // User sees the golf icon immediately (not just black screen)
-    console.log("[SPLASH] Splash content visible - loading data in background");
+    console.log("[SPLASH] Premium splash mode - B&W screen with hidden icon");
     
-    // Initialize session and start loading
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
         currentSession = session;
@@ -1143,7 +1105,7 @@ if (shouldShowSplash()) {
         }
     });
 } else {
-    // No splash needed - hide it immediately and proceed
+    // Skip splash - hide it immediately
     splashOverlay.style.display = 'none';
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1160,12 +1122,16 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.31
-KEY CHANGES from v3.30:
-   - FIXED: Splash content now visible BEFORE animation starts (no 50ms delay)
-   - Removed opacity:0 from .splash-content (content visible immediately)
-   - Animation starts with content already visible for smooth drop effect
-   - Splash now properly visible on first load in new window
+VERSION: 3.32
+KEY CHANGES from v3.31:
+   - NEW: Premium splash sequence with icon drop from high above
+   - B&W screen initially (title white, icon hidden)
+   - Firestore loads data silently in background
+   - Icon drops from off-screen (-300px), spins 360°, lands
+   - THUMP effect: screen shake + radial ring
+   - Title transforms from white to colour gradient on impact
+   - Admire for 2 seconds, then fades to index
+   - No more "stuck" icon - icon only appears when dropping
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
