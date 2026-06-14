@@ -1,15 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 5.73
-KEY CHANGES from v5.72:
-   - FIXED: Celebration modal now uses dynamic last hole detection instead of hardcoded hole 18
-   - Added getLastHole() helper function (already existed, now used consistently)
-   - Changed showCelebrationAndHandicap() and showGameCompleteScreen() to use currentHole's TR
-   - Removed hardcoded hole 18 reference in celebration TR retrieval
-   - Now correctly handles shotgun starts (e.g., last hole = 9 when starting at hole 10)
-   - All existing functionality preserved (cross-flight bubble sync, pending writes, etc.)
+VERSION: 5.74
+KEY CHANGES from v5.73:
+   - ADDED: Extensive debug logging to trace t1Row/t2Row number stripping issue
+   - DEBUG: Log displayT1 vs t1Row at every update point
+   - DEBUG: Log when displayT1 and t1Row differ in format
+   - DEBUG: Track values through cascade calculation
+   - FIXED: Use displayT1/displayT2 directly in renderAll() as temporary workaround
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.19+), js/game-team.js (v1.11+), js/game-stroke.js, js/game-scorecard.js (v1.09+), js/game-ui.js (v5.07+), js/game-loader.js (v1.08+), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+STATUS: Debug version - for tracing number stripping issue
 -->
 
 <!DOCTYPE html>
@@ -21,21 +21,21 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=5.73"></script>
-    <script src="js/session.js?v=5.73"></script>
-    <script src="js/modal.js?v=5.73"></script>
-    <script src="js/game-data.js?v=5.73"></script>
+    <script src="js/firebase-config.js?v=5.74"></script>
+    <script src="js/session.js?v=5.74"></script>
+    <script src="js/modal.js?v=5.74"></script>
+    <script src="js/game-data.js?v=5.74"></script>
     <script src="js/game-match.js?v=2.19"></script>
-    <script src="js/game-team.js?v=5.73"></script>
-    <script src="js/game-stroke.js?v=5.73"></script>
+    <script src="js/game-team.js?v=5.74"></script>
+    <script src="js/game-stroke.js?v=5.74"></script>
     <script src="js/game-scorecard.js?v=1.09"></script>
     <script src="js/game-ui.js?v=5.07"></script>
     <script src="js/game-loader.js?v=1.08"></script>
-    <script src="js/card-submit.js?v=5.73"></script>
-    <script src="js/sign-card.js?v=5.73"></script>
-    <script src="js/hcp-adjust.js?v=5.73"></script>
-    <script src="js/ticker.js?v=5.73"></script>
-    <script src="js/history-record.js?v=5.73"></script>
+    <script src="js/card-submit.js?v=5.74"></script>
+    <script src="js/sign-card.js?v=5.74"></script>
+    <script src="js/hcp-adjust.js?v=5.74"></script>
+    <script src="js/ticker.js?v=5.74"></script>
+    <script src="js/history-record.js?v=5.74"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -298,13 +298,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.73</div>
+<div class="version-tag">v5.74</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "5.73";
+var APP_VERSION = "5.74";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -316,8 +316,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.73";
-console.log("[REAL-GAME] Initializing v5.73 with dynamic last hole detection for celebration");
+window.REAL_GAME_VERSION = "5.74";
+console.log("[REAL-GAME] Initializing v5.74 with DEBUG logging for t1Row/t2Row issue");
 
 // ============================================================
 // DEBUG CONFIGURATION
@@ -367,6 +367,33 @@ var viewOtherFlight = false;  // true = viewing other flight (read-only)
 
 // Firestore real-time listener
 var firestoreUnsubscribe = null;
+
+// ============================================================
+// DEBUG: Helper to log t1Row/t2Row state
+// ============================================================
+
+function debugLogT1T2State(label, cache) {
+    if (!cache) cache = GameLoader.getLocalCache();
+    if (!cache) return;
+    
+    var displayT1 = cache.results?.game2?.displayT1;
+    var displayT2 = cache.results?.game2?.displayT2;
+    
+    console.log(`[DEBUG-T1T2] === ${label} ===`);
+    console.log(`[DEBUG-T1T2] t1Row (first 5):`, cache.t1Row ? cache.t1Row.slice(0, 5) : 'null');
+    console.log(`[DEBUG-T1T2] t2Row (first 5):`, cache.t2Row ? cache.t2Row.slice(0, 5) : 'null');
+    console.log(`[DEBUG-T1T2] displayT1 (first 5):`, displayT1 ? displayT1.slice(0, 5) : 'null');
+    console.log(`[DEBUG-T1T2] displayT2 (first 5):`, displayT2 ? displayT2.slice(0, 5) : 'null');
+    
+    // Check for mismatches
+    if (displayT1 && cache.t1Row) {
+        for (var i = 0; i < 5; i++) {
+            if (displayT1[i] !== cache.t1Row[i]) {
+                console.log(`[DEBUG-T1T2] MISMATCH at position ${i}: displayT1="${displayT1[i]}" vs t1Row="${cache.t1Row[i]}"`);
+            }
+        }
+    }
+}
 
 // ============================================================
 // Helper: Get highest hole saved by both flights
@@ -973,6 +1000,10 @@ function performSave() {
                 });
                 
                 var cache = GameLoader.getLocalCache();
+                
+                // DEBUG: Log state after cache refresh
+                debugLogT1T2State("AFTER CACHE REFRESH (before cascade)", cache);
+                
                 var existingClinched = cache.results?.clinchedAt || {};
                 var cumulativeFlight1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole || null;
                 var cumulativeFlight2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole || null;
@@ -991,6 +1022,7 @@ function performSave() {
                 var resultsData = calculateHoleResultsWithCumulative(currentHole, existingClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole);
                 if (resultsData) {
                     console.log(`[DEBUG-CALC] resultsData received, clinchedAtUpdates count = ${Object.keys(resultsData.clinchedAtUpdates || {}).length}`);
+                    console.log(`[DEBUG-CALC] resultsData.t1Display = ${resultsData.t1Display}, resultsData.t2Display = ${resultsData.t2Display}`);
                     updateLocalCacheWithResults(resultsData);
                     renderAll();
                     cascadeResultsQueue.push({
@@ -1024,6 +1056,7 @@ function performSave() {
                     
                     var loopResultsData = calculateHoleResultsWithCumulative(holeToUpdate, updatedClinched, updatedFlight1Clinched, updatedFlight2Clinched, cascadeStartHole);
                     if (loopResultsData) {
+                        console.log(`[CASCADE-DEBUG] loopResultsData.t1Display = ${loopResultsData.t1Display}, loopResultsData.t2Display = ${loopResultsData.t2Display}`);
                         updateLocalCacheWithResults(loopResultsData);
                         renderAll();
                         cascadeResultsQueue.push({
@@ -1037,6 +1070,9 @@ function performSave() {
                 
                 console.log(`[CASCADE-DEBUG] Cascade calculation complete. ${cascadeResultsQueue.length} holes to write to Firestore.`);
                 console.log(`[CASCADE-DEBUG] Queue contents: ${cascadeResultsQueue.map(function(item) { return item.hole; }).join(', ')}`);
+                
+                // DEBUG: Log state after cascade
+                debugLogT1T2State("AFTER CASCADE (before write)", GameLoader.getLocalCache());
                 
                 var pendingData = {
                     gameId: gameId,
@@ -1098,6 +1134,9 @@ function performSave() {
                 
                 savePendingWrites(null);
                 
+                // DEBUG: Log final state after all writes
+                debugLogT1T2State("FINAL STATE after writes", GameLoader.getLocalCache());
+                
                 if (typeof Ticker !== 'undefined') {
                     Ticker.refresh();
                 }
@@ -1129,6 +1168,12 @@ function updateLocalCacheWithResults(resultsData) {
     var cache = GameLoader.getLocalCache();
     if (!cache.results) {
         cache.results = initializeEmptyResults();
+    }
+    
+    // DEBUG: Log before update
+    if (isTarget || position < 5) {
+        console.log(`[DEBUG-UPDATE] BEFORE update at position ${position}: t1Row="${cache.t1Row[position]}", t2Row="${cache.t2Row[position]}"`);
+        console.log(`[DEBUG-UPDATE] BEFORE update: resultsData.t1Display="${resultsData.t1Display}", resultsData.t2Display="${resultsData.t2Display}"`);
     }
     
     if(isTarget) {
@@ -1217,14 +1262,28 @@ function updateLocalCacheWithResults(resultsData) {
         console.log(`[DEBUG-CACHE] New clinches:`, Object.keys(cache.results.clinchedAt));
     }
     
+    // CRITICAL: This is where t1Row and t2Row are set
     if (resultsData.t1Display !== undefined && resultsData.t1Display !== null) {
+        var oldT1 = cache.t1Row[position];
         cache.t1Row[position] = resultsData.t1Display;
+        if (oldT1 !== resultsData.t1Display) {
+            console.log(`[DEBUG-T1T2] UPDATED t1Row[${position}] from "${oldT1}" to "${resultsData.t1Display}"`);
+        }
     }
     if (resultsData.t2Display !== undefined && resultsData.t2Display !== null) {
+        var oldT2 = cache.t2Row[position];
         cache.t2Row[position] = resultsData.t2Display;
+        if (oldT2 !== resultsData.t2Display) {
+            console.log(`[DEBUG-T1T2] UPDATED t2Row[${position}] from "${oldT2}" to "${resultsData.t2Display}"`);
+        }
     }
     if (resultsData.strkDisplay !== undefined && resultsData.strkDisplay !== null) {
         cache.strkRow[position] = resultsData.strkDisplay;
+    }
+    
+    // DEBUG: Log after update
+    if (isTarget || position < 5) {
+        console.log(`[DEBUG-UPDATE] AFTER update at position ${position}: t1Row="${cache.t1Row[position]}", t2Row="${cache.t2Row[position]}"`);
     }
     
     var highestBothSaved = getHighestBothSaved(cache);
@@ -1411,7 +1470,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.73";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.74";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -1569,6 +1628,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         console.log(`  - f2IntraMatches: ${result.f2IntraMatches ? Object.keys(result.f2IntraMatches).length + ' entries' : 'null'}`);
         console.log(`  - matchResults: ${result.matchResults ? result.matchResults.length + ' values' : 'null'}`);
         console.log(`  - clinchedAtUpdates: ${Object.keys(result.clinchedAtUpdates).length}`);
+        console.log(`  - t1Display: ${result.t1Display}, t2Display: ${result.t2Display}`);
     }
     
     console.log(`[CASCADE-DEBUG] Hole ${holeNumber}: T-1=${t1Display}, T-2=${t2Display}, TR=${trA === null ? '-' : trA + '-' + trB}`);
@@ -1937,7 +1997,7 @@ function renderCompactHeaderWithFlightToggle() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS - v5.73: Uses lastSyncedPosition for bubble sync
+// RENDER FUNCTIONS - v5.74: Use displayT1/displayT2 directly as workaround
 // ============================================================
 
 function renderAll() {
@@ -2047,10 +2107,19 @@ function renderAll() {
     var t2Display = cache.results?.game2?.displayT2 || null;
     var strkDisplay = cache.results?.game3?.displayStrk || null;
     
+    // v5.74: WORKAROUND - Use displayT1/displayT2 directly instead of t1Row/t2Row
+    // This ensures the numbers (e.g., "B2") are preserved
+    var displayT1Row = t1Display || cache.t1Row;
+    var displayT2Row = t2Display || cache.t2Row;
+    
+    console.log(`[DEBUG-RENDER] Using displayT1Row (first 3):`, displayT1Row ? displayT1Row.slice(0, 3) : 'null');
+    console.log(`[DEBUG-RENDER] Using displayT2Row (first 3):`, displayT2Row ? displayT2Row.slice(0, 3) : 'null');
+    console.log(`[DEBUG-RENDER] Fallback t1Row (first 3):`, cache.t1Row ? cache.t1Row.slice(0, 3) : 'null');
+    
     if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
         GameScorecard.renderScorecard(
             "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
-            cache.t1Row, cache.t2Row, cache.strkRow, coursePar, courseSi,
+            displayT1Row, displayT2Row, cache.strkRow, coursePar, courseSi,
             t1ClinchedHole, t2ClinchedHole,
             t1Display, t2Display, strkDisplay
         );
@@ -2239,14 +2308,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.73
-KEY CHANGES from v5.72:
-   - FIXED: Celebration modal now uses dynamic last hole detection instead of hardcoded hole 18
-   - Added getLastHole() helper function (already existed, now used consistently)
-   - Changed showCelebrationAndHandicap() and showGameCompleteScreen() to use currentHole's TR
-   - Removed hardcoded hole 18 reference in celebration TR retrieval
-   - Now correctly handles shotgun starts (e.g., last hole = 9 when starting at hole 10)
-   - All existing functionality preserved (cross-flight bubble sync, pending writes, etc.)
+VERSION: 5.74
+KEY CHANGES from v5.73:
+   - ADDED: Extensive debug logging to trace t1Row/t2Row number stripping issue
+   - DEBUG: Log displayT1 vs t1Row at every update point
+   - DEBUG: Log when displayT1 and t1Row differ in format
+   - DEBUG: Track values through cascade calculation
+   - FIXED: Use displayT1/displayT2 directly in renderAll() as temporary workaround
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.19+), js/game-team.js (v1.11+), js/game-stroke.js, js/game-scorecard.js (v1.09+), js/game-ui.js (v5.07+), js/game-loader.js (v1.08+), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+STATUS: Debug version - for tracing number stripping issue
 -->
