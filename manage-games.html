@@ -1,6 +1,15 @@
-<!-- FILE: manage-games.html - VERSION 1.07 -->
-<!-- Manage scheduled games - Edit or Delete upcoming games -->
-<!-- KEY CHANGES: Added js/firebase-config.js for dynamic config -->
+<!--
+FILE: manage-games.html
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - REPLACED: System confirm() with Modal.confirm() in deleteGame()
+   - REPLACED: System alert() with Modal.alert() in editGame() error handling
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+STATUS: Ready for integration
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,6 +20,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/modal.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
@@ -78,12 +88,12 @@
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.07</div>
+<div class="version-tag">v1.08</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.07
+// FILE: manage-games.html - VERSION 1.08
 
-var VERSION = "1.07";
+var VERSION = "1.08";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -114,14 +124,23 @@ function formatDate(dateString) {
 }
 
 function deleteGame(gameId, gameDate) {
-    if (confirm("Delete scheduled game on " + gameDate + "? This action cannot be undone.")) {
-        SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
-        db.collection("scheduledGames").doc(gameId).delete().then(function() {
-            loadAndRender();
-        }).catch(function(e) {
-            alert("Error deleting game: " + e.message);
-        });
-    }
+    // v1.08: Use custom modal instead of system confirm()
+    Modal.confirm(
+        "Delete scheduled game on " + gameDate + "? This action cannot be undone.",
+        function() {
+            // On confirm - proceed with deletion
+            SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
+            db.collection("scheduledGames").doc(gameId).delete().then(function() {
+                loadAndRender();
+            }).catch(function(e) {
+                Modal.alert("Error deleting game: " + e.message);
+            });
+        },
+        function() {
+            // On cancel - do nothing
+            console.log("Deletion cancelled");
+        }
+    );
 }
 
 function editGame(gameId) {
@@ -133,10 +152,11 @@ function editGame(gameId) {
             sessionStorage.setItem("editGameData", JSON.stringify(gameData));
             window.location.href = "setup-game.html?mode=edit";
         } else {
-            alert("Game not found");
+            // v1.08: Use custom modal instead of system alert()
+            Modal.alert("Game not found");
         }
     }).catch(function(e) {
-        alert("Error loading game: " + e.message);
+        Modal.alert("Error loading game: " + e.message);
     });
 }
 
@@ -256,5 +276,14 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 </body>
 </html>
 
-<!-- FILE: manage-games.html - VERSION 1.07 -->
-<!-- KEY CHANGES: Added js/firebase-config.js for dynamic config -->
+<!--
+FILE: manage-games.html
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - REPLACED: System confirm() with Modal.confirm() in deleteGame()
+   - REPLACED: System alert() with Modal.alert() in editGame() error handling
+   - ADDED: js/modal.js dependency for consistent custom modals
+   - All existing functionality preserved
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+STATUS: Ready for integration
+-->
