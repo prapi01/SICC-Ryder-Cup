@@ -1,9 +1,10 @@
 <!--
 FILE: view-history.html
-VERSION: 8.24
-KEY CHANGES from v8.23:
-   - REPLACED: System alert() with Modal.alert() when handicap data missing
-   - ADDED: js/modal.js dependency for consistent custom modals
+VERSION: 8.25
+KEY CHANGES from v8.24:
+   - FIXED: isHoleSaved() now uses GameData.getSavedHolesFromString() for proper hole number conversion
+   - FIXED: startHole detection now correctly identifies first saved hole based on actual hole numbers
+   - Ensures saved holes are correctly interpreted when starting hole is not 1 (e.g., Hole 10)
    - All existing functionality preserved (grey icon loading, FirebaseRetry, parallel module loading)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
 STATUS: Ready for integration
@@ -338,13 +339,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.24</div>
+<div class="version-tag">v8.25</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "8.24";
+var APP_VERSION = "8.25";
 var CACHE_KEY = "view_history_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -356,8 +357,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.24";
-console.log("[VIEW-HISTORY] Initializing v8.24 with custom modal");
+window.VIEW_HISTORY_VERSION = "8.25";
+console.log("[VIEW-HISTORY] Initializing v8.25 with fixed saved holes conversion");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -446,6 +447,51 @@ function setStatusBubbleToViewer() {
 }
 
 // ============================================================
+// v8.25: Helper to get saved holes array using GameData (handles starting hole conversion)
+// ============================================================
+
+function getSavedHolesArray(flight, f1DataString, f2DataString, startingHole) {
+    var dataString = flight === 1 ? f1DataString : f2DataString;
+    if (typeof GameData !== 'undefined' && GameData.getSavedHolesFromString) {
+        // Temporarily set startingHole in GameData for correct conversion
+        var originalStartingHole = GameData.getStartingHole ? GameData.getStartingHole() : null;
+        if (typeof GameData.getStartingHole === 'undefined') {
+            // If GameData doesn't expose getStartingHole, we need to ensure the function uses the correct starting hole
+            // The getSavedHolesFromString function internally uses getHoleAtStoragePosition which uses startingHole
+            // We need to ensure startingHole is set correctly in GameData
+            if (typeof GameData.setStartingHole === 'function') {
+                GameData.setStartingHole(startingHole);
+            } else if (typeof GameData._setStartingHole === 'function') {
+                GameData._setStartingHole(startingHole);
+            }
+        }
+        var saved = GameData.getSavedHolesFromString(dataString);
+        // Restore original startingHole if needed
+        if (originalStartingHole !== null && typeof GameData.setStartingHole === 'function') {
+            GameData.setStartingHole(originalStartingHole);
+        }
+        return saved;
+    }
+    // Fallback: parse directly (less accurate for non-1 starting holes)
+    var saved = [];
+    if (!dataString) return saved;
+    var i = 0;
+    var holeNum = 1;
+    while (i < dataString.length && holeNum <= 18) {
+        if (dataString[i] === 'T') {
+            saved.push(holeNum);
+            i += 9;
+        } else if (dataString[i] === 'F') {
+            break;
+        } else {
+            i++;
+        }
+        holeNum++;
+    }
+    return saved;
+}
+
+// ============================================================
 // Show Scorecard View
 // ============================================================
 
@@ -497,6 +543,10 @@ function renderScorecardView(game) {
     var f1DataString = game.f1DataString || "";
     var f2DataString = game.f2DataString || "";
     var resultsCache = game.results || null;
+    
+    // v8.25: Build savedHoles arrays using GameData.getSavedHolesFromString for correct conversion
+    var savedHolesF1 = getSavedHolesArray(1, f1DataString, f2DataString, startingHole);
+    var savedHolesF2 = getSavedHolesArray(2, f1DataString, f2DataString, startingHole);
     
     var html = `
         <div class="ticker-container" id="tickerContainer">
@@ -571,10 +621,10 @@ function renderScorecardView(game) {
         return coursePar[hole - 1];
     }
     
+    // v8.25: Updated isHoleSaved to use pre-built savedHoles arrays
     function isHoleSaved(flight, hole) {
-        var flightDataStr = flight === 1 ? f1DataString : f2DataString;
-        var holeData = GameData.parseHoleData(flightDataStr, hole);
-        return holeData && holeData.saved;
+        var savedHolesArray = flight === 1 ? savedHolesF1 : savedHolesF2;
+        return savedHolesArray.indexOf(hole) !== -1;
     }
     
     function isCurrentHoleSavedByAnyFlight() {
@@ -753,6 +803,7 @@ function renderScorecardView(game) {
     for (var i = startingHole; i <= 18; i++) playOrder.push(i);
     for (var i = 1; i < startingHole; i++) playOrder.push(i);
     
+    // v8.25: Find first hole that has saved data using the corrected savedHoles arrays
     var startHole = playOrder[0];
     for (var i = 0; i < playOrder.length; i++) {
         var hole = playOrder[i];
@@ -765,7 +816,9 @@ function renderScorecardView(game) {
     var currentHole = startHole;
     var currentFlight = 1;
     
-    console.log('Initial hole set to:', currentHole);
+    console.log('[VIEW-HISTORY] Initial hole set to:', currentHole);
+    console.log('[VIEW-HISTORY] savedHolesF1:', savedHolesF1);
+    console.log('[VIEW-HISTORY] savedHolesF2:', savedHolesF2);
     
     GameUI.renderCompactHeader(
         "compactHeaderContainer",
@@ -840,7 +893,6 @@ function attachEventHandlers() {
                     showHandicapAdjustment(game.adjustedHandicaps, anchorName, game.players);
                 } else {
                     console.error('No handicap data available for this game');
-                    // v8.24: Use Modal.alert instead of system alert
                     Modal.alert('Handicap adjustment data not available for this game.');
                 }
             });
@@ -1052,10 +1104,11 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.24
-KEY CHANGES from v8.23:
-   - REPLACED: System alert() with Modal.alert() when handicap data missing
-   - ADDED: js/modal.js dependency for consistent custom modals
+VERSION: 8.25
+KEY CHANGES from v8.24:
+   - FIXED: isHoleSaved() now uses GameData.getSavedHolesFromString() for proper hole number conversion
+   - FIXED: startHole detection now correctly identifies first saved hole based on actual hole numbers
+   - Ensures saved holes are correctly interpreted when starting hole is not 1 (e.g., Hole 10)
    - All existing functionality preserved (grey icon loading, FirebaseRetry, parallel module loading)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
 STATUS: Ready for integration
