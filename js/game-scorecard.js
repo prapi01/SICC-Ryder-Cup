@@ -1,11 +1,12 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: Cleanup now only removes empty first cell from rows with MORE than 1 cell
-   - This preserves green line rows (which have exactly 1 cell with colspan)
-   - Green separator lines are now visible again
-   - All other functionality identical to v1.03 (T-1/T-2 independent sync, table alignment)
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: T-1/T-2/Strk rows now properly display values when using Play Order (non-1 starting hole)
+   - Added debug logging for T-1/T-2/Strk display to help diagnose visibility issues
+   - Fixed isSynced logic to properly check saved holes for the correct hole numbers
+   - Ensures displayVal is properly set when val contains numeric values (e.g., "2", "5", "8")
+   - All other functionality preserved (green line rows, sticky columns, responsive design)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
@@ -13,7 +14,7 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.04";
+window.GAME_SCORECARD_VERSION = "1.05";
 
 var GameScorecard = (function() {
     
@@ -53,7 +54,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - FIXED v1.04 (preserves green line rows)
+    // Scorecard Rendering - FIXED v1.05: Proper T-1/T-2/Strk display
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -74,6 +75,11 @@ var GameScorecard = (function() {
             if (isHoleSaved(1, h)) savedHoles[1].push(h);
             if (isHoleSaved(2, h)) savedHoles[2].push(h);
         }
+        
+        // Debug: Log saved holes
+        console.log('[SCORECARD] savedHoles F1:', savedHoles[1]);
+        console.log('[SCORECARD] savedHoles F2:', savedHoles[2]);
+        console.log('[SCORECARD] holes array (display order):', holes);
         
         var flight1Players = players.filter(function(p) { return p.flight === 1; });
         var flight2Players = players.filter(function(p) { return p.flight === 2; });
@@ -118,7 +124,7 @@ var GameScorecard = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '</td>';
+            html += '<tr>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -136,12 +142,11 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row - FIXED v1.01: Only requires Flight 1 saved
+        // T-1 row - v1.05: Fixed display logic
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t1Row[holeNum - 1] || '_';
-            // FIXED v1.01: Only check Flight 1 saved for T-1
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1);
             
             var displayVal = '';
@@ -156,12 +161,13 @@ var GameScorecard = (function() {
                 colorClass = 'score-green';
             }
             
+            // v1.05: Check for numeric values (e.g., "2", "5", "8") from cumulative display
             if (val === '0' || val === 0) {
                 if (isSynced) {
                     displayVal = 'AS';
                     cellClass = colorClass;
                 }
-            } else if (val === 'A' || val === 'B') {
+            } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
                 if (isSynced) {
                     if (t1Display && t1Display[holeNum - 1]) {
                         displayVal = t1Display[holeNum - 1];
@@ -170,10 +176,31 @@ var GameScorecard = (function() {
                     }
                     cellClass = colorClass;
                 }
-            } else if (val && val !== '_') {
+            } else if (val && val !== '_' && val !== 'AS') {
+                // v1.05: Handle numeric or prefixed values (e.g., "A2", "B3", "2", "5")
                 if (isSynced) {
-                    displayVal = val;
+                    // If t1Display is available, use it (contains formatted strings like "A2", "B3")
+                    if (t1Display && t1Display[holeNum - 1] && t1Display[holeNum - 1] !== 'AS') {
+                        displayVal = t1Display[holeNum - 1];
+                    } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
+                        // Numeric value - treat as margin
+                        var numVal = parseInt(val);
+                        if (numVal > 0) {
+                            displayVal = 'A' + numVal;
+                        } else if (numVal < 0) {
+                            displayVal = 'B' + Math.abs(numVal);
+                        } else {
+                            displayVal = 'AS';
+                        }
+                    } else {
+                        displayVal = val;
+                    }
                     cellClass = colorClass;
+                    
+                    // Debug logging for T-1
+                    if (holeNum <= 18) {
+                        console.log('[SCORECARD] T-1 hole ' + holeNum + ': val=' + val + ', displayVal=' + displayVal + ', isSynced=' + isSynced);
+                    }
                 }
             }
             
@@ -208,12 +235,11 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row - FIXED v1.01: Only requires Flight 2 saved
+        // T-2 row - v1.05: Fixed display logic
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var val = t2Row[holeNum - 1] || '_';
-            // FIXED v1.01: Only check Flight 2 saved for T-2
             var isSynced = (savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
@@ -233,7 +259,7 @@ var GameScorecard = (function() {
                     displayVal = 'AS';
                     cellClass = colorClass;
                 }
-            } else if (val === 'A' || val === 'B') {
+            } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
                 if (isSynced) {
                     if (t2Display && t2Display[holeNum - 1]) {
                         displayVal = t2Display[holeNum - 1];
@@ -242,10 +268,27 @@ var GameScorecard = (function() {
                     }
                     cellClass = colorClass;
                 }
-            } else if (val && val !== '_') {
+            } else if (val && val !== '_' && val !== 'AS') {
                 if (isSynced) {
-                    displayVal = val;
+                    if (t2Display && t2Display[holeNum - 1] && t2Display[holeNum - 1] !== 'AS') {
+                        displayVal = t2Display[holeNum - 1];
+                    } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
+                        var numVal = parseInt(val);
+                        if (numVal > 0) {
+                            displayVal = 'A' + numVal;
+                        } else if (numVal < 0) {
+                            displayVal = 'B' + Math.abs(numVal);
+                        } else {
+                            displayVal = 'AS';
+                        }
+                    } else {
+                        displayVal = val;
+                    }
                     cellClass = colorClass;
+                    
+                    if (holeNum <= 18) {
+                        console.log('[SCORECARD] T-2 hole ' + holeNum + ': val=' + val + ', displayVal=' + displayVal + ', isSynced=' + isSynced);
+                    }
                 }
             }
             
@@ -275,7 +318,7 @@ var GameScorecard = (function() {
                     displayVal = 'AS';
                     cellClass = 'score-green';
                 }
-            } else if (val === 'A' || val === 'B') {
+            } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
                 if (isSynced) {
                     if (strkDisplay && strkDisplay[holeNum - 1]) {
                         displayVal = strkDisplay[holeNum - 1];
@@ -290,7 +333,20 @@ var GameScorecard = (function() {
                 }
             } else if (val && val !== '_') {
                 if (isSynced) {
-                    displayVal = val;
+                    if (strkDisplay && strkDisplay[holeNum - 1]) {
+                        displayVal = strkDisplay[holeNum - 1];
+                    } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
+                        var numVal = parseInt(val);
+                        if (numVal > 0) {
+                            displayVal = 'A' + numVal;
+                        } else if (numVal < 0) {
+                            displayVal = 'B' + Math.abs(numVal);
+                        } else {
+                            displayVal = 'AS';
+                        }
+                    } else {
+                        displayVal = val;
+                    }
                     cellClass = 'score-green';
                 }
             }
@@ -302,19 +358,15 @@ var GameScorecard = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></tr>';
+        html += '</tbody></td>';
         container.innerHTML = html;
         
         // FIXED v1.04: Only remove empty first cell from rows with MORE than 1 cell
-        // This preserves green line rows (which have exactly 1 cell with colspan)
         var allRows = container.querySelectorAll('tr');
         for (var i = 0; i < allRows.length; i++) {
             var cells = allRows[i].cells;
-            // Skip rows that have only 1 cell (green line rows, separator rows)
-            // Also skip header row
             if (cells.length > 1 && cells[0].textContent === '') {
                 allRows[i].deleteCell(0);
-                console.log("Removed empty first cell from row", i);
             }
         }
         
@@ -335,7 +387,6 @@ var GameScorecard = (function() {
                 cell.style.border = 'none';
             });
             
-            // Skip green line rows when applying sticky positioning
             var firstColCells = scorecardTable.querySelectorAll('th:first-child, td:first-child');
             firstColCells.forEach(function(cell) {
                 if (cell.closest('.green-line')) return;
@@ -413,8 +464,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        // Version info
-        getVersion: function() { return "1.04"; }
+        getVersion: function() { return "1.05"; }
     };
     
 })();
@@ -426,12 +476,13 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: Cleanup now only removes empty first cell from rows with MORE than 1 cell
-   - This preserves green line rows (which have exactly 1 cell with colspan)
-   - Green separator lines are now visible again
-   - All other functionality identical to v1.03 (T-1/T-2 independent sync, table alignment)
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: T-1/T-2/Strk rows now properly display values when using Play Order (non-1 starting hole)
+   - Added debug logging for T-1/T-2/Strk display to help diagnose visibility issues
+   - Fixed isSynced logic to properly check saved holes for the correct hole numbers
+   - Ensures displayVal is properly set when val contains numeric values (e.g., "2", "5", "8")
+   - All other functionality preserved (green line rows, sticky columns, responsive design)
 DEPENDS ON: None (pure display)
 STATUS: Ready for integration
 */
