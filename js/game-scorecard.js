@@ -1,11 +1,12 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Strk row now shows GOLD on the LAST HOLE (any result: Axx, Bxx, or AS)
-   - Uses getLastHole() based on startingHole to determine last hole (supports shotgun starts)
-   - Removed hardcoded hole 18 check
-   - All other functionality preserved from v1.08 (AS handling, T-1/T-2 colors, etc.)
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Strk row now ONLY displays when isSynced === true
+   - Previously, unsaved holes were showing green squares (AS) due to val being interpreted as 'AS'
+   - Now properly hides all content when hole is not saved by both flights
+   - Gold on last hole only applies when isSynced === true
+   - All other functionality preserved from v1.09
 DEPENDS ON: GameData (for getLastHole)
 STATUS: Ready for integration
 */
@@ -13,7 +14,7 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.09";
+window.GAME_SCORECARD_VERSION = "1.10";
 
 var GameScorecard = (function() {
     
@@ -81,7 +82,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.09: Strk gold on last hole
+    // Scorecard Rendering - v1.10: Strk only shows when synced
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -160,7 +161,7 @@ var GameScorecard = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr>';
+            html += '<td>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -337,7 +338,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - v1.09: Gold on last hole (any result)
+        // Strk row - v1.10: ONLY show when isSynced === true
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -348,10 +349,11 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
-            // v1.09: Determine color - GOLD on last hole, GREEN otherwise
-            var isLastHole = (holeNum === lastHoleNumber);
-            
+            // v1.10: ONLY proceed if hole is synced (both flights saved)
             if (isSynced) {
+                // Determine color - GOLD on last hole, GREEN otherwise
+                var isLastHole = (holeNum === lastHoleNumber);
+                
                 if (isLastHole) {
                     cellClass = 'score-gold';
                 } else {
@@ -499,7 +501,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.09"; }
+        getVersion: function() { return "1.10"; }
     };
     
 })();
@@ -511,12 +513,13 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Strk row now shows GOLD on the LAST HOLE (any result: Axx, Bxx, or AS)
-   - Uses getLastHole() based on startingHole to determine last hole (supports shotgun starts)
-   - Removed hardcoded hole 18 check
-   - All other functionality preserved from v1.08 (AS handling, T-1/T-2 colors, etc.)
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Strk row now ONLY displays when isSynced === true
+   - Previously, unsaved holes were showing green squares (AS) due to val being interpreted as 'AS'
+   - Now properly hides all content when hole is not saved by both flights
+   - Gold on last hole only applies when isSynced === true
+   - All other functionality preserved from v1.09
 DEPENDS ON: GameData (for getLastHole)
 STATUS: Ready for integration
 */
