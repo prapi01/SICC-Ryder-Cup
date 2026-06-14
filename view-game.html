@@ -1,11 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 7.21
-KEY CHANGES from v7.20:
-   - ADDED: user-scalable=yes to viewport meta tag (explicitly enable pinch zoom)
-   - Ensures consistent zoom behavior with view-history.html
-   - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js (v2.15+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
+VERSION: 7.22
+KEY CHANGES from v7.21:
+   - FIXED: Cross-flight bubble sync now uses lastSyncedPosition (play position 0-17) instead of lastSyncedHole (natural hole)
+   - Updated getBubbleClassWithClinch() to use cache.lastSyncedPosition from GameLoader v1.08
+   - Added fallback: if lastSyncedPosition is undefined, convert lastSyncedHole to play position using getPlayPosition()
+   - This ensures cross-flight bubbles show correct colors (green/red) when starting hole is not 1 (e.g., shotgun start hole 10)
+   - All existing functionality preserved (zoom enabled, preload data, real-time listener, history record loading)
+DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js (v2.19+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js (v1.08+), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
 
@@ -18,19 +20,19 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.21"></script>
-    <script src="js/session.js?v=7.21"></script>
-    <script src="js/game-data.js?v=7.21"></script>
-    <script src="js/game-match.js?v=2.15"></script>
-    <script src="js/game-team.js?v=7.21"></script>
-    <script src="js/game-stroke.js?v=7.21"></script>
-    <script src="js/game-scorecard.js?v=7.21"></script>
-    <script src="js/game-ui.js?v=7.21"></script>
-    <script src="js/game-loader.js?v=7.21"></script>
-    <script src="js/ticker.js?v=7.21"></script>
-    <script src="js/history-record.js?v=7.21"></script>
-    <script src="js/sign-card.js?v=7.21"></script>
-    <script src="js/hcp-adjust.js?v=7.21"></script>
+    <script src="js/firebase-config.js?v=7.22"></script>
+    <script src="js/session.js?v=7.22"></script>
+    <script src="js/game-data.js?v=7.22"></script>
+    <script src="js/game-match.js?v=2.19"></script>
+    <script src="js/game-team.js?v=7.22"></script>
+    <script src="js/game-stroke.js?v=7.22"></script>
+    <script src="js/game-scorecard.js?v=7.22"></script>
+    <script src="js/game-ui.js?v=7.22"></script>
+    <script src="js/game-loader.js?v=1.08"></script>
+    <script src="js/ticker.js?v=7.22"></script>
+    <script src="js/history-record.js?v=7.22"></script>
+    <script src="js/sign-card.js?v=7.22"></script>
+    <script src="js/hcp-adjust.js?v=7.22"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -153,13 +155,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.21</div>
+<div class="version-tag">v7.22</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "7.21";
+var APP_VERSION = "7.22";
 var CACHE_KEY = "view_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -171,8 +173,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.21";
-console.log("[VIEW-GAME] Initializing v7.21 with zoom enabled");
+window.VIEW_GAME_VERSION = "7.22";
+console.log("[VIEW-GAME] Initializing v7.22 with play position sync for cross-flight bubbles");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -245,6 +247,7 @@ function applyPreloadedData(preloadData) {
         t1Row: preloadData.t1Row || new Array(18).fill('_'),
         t2Row: preloadData.t2Row || new Array(18).fill('_'),
         strkRow: preloadData.strkRow || new Array(18).fill('0'),
+        lastSyncedPosition: preloadData.lastSyncedPosition !== undefined ? preloadData.lastSyncedPosition : -1,
         lastSyncedHole: preloadData.lastSyncedHole || 0,
         clinchedAt: preloadData.clinchedAt || {},
         signatures: { f1: false, f2: false },
@@ -301,6 +304,7 @@ function loadFromHistoryRecord(historyId) {
                 t1Row: historyData.results?.game2?.flight1?.leader || new Array(18).fill('_'),
                 t2Row: historyData.results?.game2?.flight2?.leader || new Array(18).fill('_'),
                 strkRow: historyData.results?.game3?.leader || new Array(18).fill('0'),
+                lastSyncedPosition: 17,  // Last play position (0-17)
                 lastSyncedHole: 18,
                 clinchedAt: historyData.results?.clinchedAt || {},
                 signatures: historyData.signatures || { f1: true, f2: true },
@@ -400,6 +404,14 @@ function getPlayOrder() {
     for (var i = startingHole; i <= 18; i++) order.push(i);
     for (var i = 1; i < startingHole; i++) order.push(i);
     return order;
+}
+
+function getPlayPositionForHole(holeNumber) {
+    var playOrder = getPlayOrder();
+    for (var i = 0; i < playOrder.length; i++) {
+        if (playOrder[i] === holeNumber) return i;
+    }
+    return holeNumber - 1;
 }
 
 function getDisplayHoles() {
@@ -532,8 +544,8 @@ function getMatchValueFromStoredResults(player, opponent, holeNumber) {
 }
 
 // ============================================================
-// BUBBLE FUNCTIONS - v7.20: Now uses GameMatch.getMatchBubbleClass
-// This includes the hole 18 special case for tied matches (gold bubbles)
+// BUBBLE FUNCTIONS - v7.22: Uses lastSyncedPosition (play position) for sync
+// This fixes cross-flight bubble colors for shotgun starts (e.g., starting hole 10)
 // ============================================================
 
 function getBubbleValue(player, opponent) {
@@ -543,19 +555,50 @@ function getBubbleValue(player, opponent) {
     return absValue.toString();
 }
 
-// FIXED v7.20: Use GameMatch.getMatchBubbleClass which includes hole 18 special case
+// v7.22: Get the sync value for cross-flight bubble checks
+// Uses lastSyncedPosition (play position 0-17) with fallback to converted lastSyncedHole
+function getSyncValueForBubble(cache) {
+    // Priority 1: Use lastSyncedPosition if available (from GameLoader v1.08+)
+    if (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) {
+        console.log("[VIEW-GAME] Using lastSyncedPosition:", cache.lastSyncedPosition);
+        return cache.lastSyncedPosition;
+    }
+    
+    // Priority 2: Fallback to lastSyncedHole (natural hole number) converted to play position
+    if (cache.lastSyncedHole !== undefined && cache.lastSyncedHole > 0) {
+        var playPos = getPlayPositionForHole(cache.lastSyncedHole);
+        console.log("[VIEW-GAME] Converted lastSyncedHole", cache.lastSyncedHole, "to play position:", playPos);
+        return playPos;
+    }
+    
+    // Priority 3: Default to -1 (no holes synced)
+    console.log("[VIEW-GAME] No sync value available, defaulting to -1");
+    return -1;
+}
+
+// FIXED v7.22: Use lastSyncedPosition (play position) for sync check
 function getBubbleClassWithClinch(player, opponent) {
     var matchValue = getMatchValueFromStoredResults(player, opponent, currentHole);
     var cache = GameLoader.getLocalCache();
     var clinchedAt = cache.clinchedAt || {};
     var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
-    var lastSyncedHole = cache.lastSyncedHole;
     
-    // Delegate to GameMatch.getMatchBubbleClass (includes hole 18 AS -> gold)
-    return GameMatch.getMatchBubbleClass(
+    // v7.22: Get sync value as play position (0-17)
+    var lastSyncedValue = getSyncValueForBubble(cache);
+    
+    // Delegate to GameMatch.getMatchBubbleClass (v2.19 uses play position for sync)
+    var bubbleClass = GameMatch.getMatchBubbleClass(
         matchValue, clinchedAt, player, opponent, currentHole,
-        isHoleSavedForFlight, lastSyncedHole, GameMatch.getClinchHole
+        isHoleSavedForFlight, lastSyncedValue, GameMatch.getClinchHole,
+        startingHole
     );
+    
+    // Debug logging for cross-flight bubbles
+    if (player.flight !== opponent.flight && Math.abs(matchValue) > 0) {
+        console.log(`[VIEW-GAME] ${player.label} vs ${opponent.label}: matchValue=${matchValue}, bubbleClass=${bubbleClass}, lastSyncedValue=${lastSyncedValue}, currentHole=${currentHole}`);
+    }
+    
+    return bubbleClass;
 }
 
 function updateTRDisplay() {
@@ -1074,11 +1117,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.21
-KEY CHANGES from v7.20:
-   - ADDED: user-scalable=yes to viewport meta tag (explicitly enable pinch zoom)
-   - Ensures consistent zoom behavior with view-history.html
-   - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js (v2.15+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
+VERSION: 7.22
+KEY CHANGES from v7.21:
+   - FIXED: Cross-flight bubble sync now uses lastSyncedPosition (play position 0-17) instead of lastSyncedHole (natural hole)
+   - Updated getBubbleClassWithClinch() to use cache.lastSyncedPosition from GameLoader v1.08
+   - Added fallback: if lastSyncedPosition is undefined, convert lastSyncedHole to play position using getPlayPositionForHole()
+   - This ensures cross-flight bubbles show correct colors (green/red) when starting hole is not 1 (e.g., shotgun start hole 10)
+   - All existing functionality preserved (zoom enabled, preload data, real-time listener, history record loading)
+DEPENDS ON: js/firebase-config.js, js/game-data.js, js/game-match.js (v2.19+), js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js (v1.08+), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
