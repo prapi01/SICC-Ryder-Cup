@@ -1,20 +1,19 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: t1Row, t2Row, strkRow are now accessed using PLAY ORDER POSITION, not hole number
-   - Added getPlayOrderPosition() helper to convert hole number to correct array index
-   - This fixes T-1/T-2/Strk display when starting hole is not 1 (e.g., hole 10)
-   - Now correctly displays "B2", "A2", "A5" values on scorecard
-   - All other functionality preserved (green line rows, sticky columns, responsive design)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: Debug logging for T-2 row to diagnose blank display issue
+   - Logs holes array, t2Row, t2Display, savedHoles[2] before rendering T-2
+   - Helps identify why T-2 at hole 13 is blank
+   - All other functionality preserved
 DEPENDS ON: None (pure display)
-STATUS: Ready for integration
+STATUS: Ready for integration (debug version)
 */
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.06";
+window.GAME_SCORECARD_VERSION = "1.07";
 
 var GameScorecard = (function() {
     
@@ -72,7 +71,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - FIXED v1.06: Correct T-1/T-2/Strk indexing
+    // Scorecard Rendering - v1.07: Added debug logging for T-2
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -112,6 +111,11 @@ var GameScorecard = (function() {
         console.log('[SCORECARD] savedHoles F2:', savedHoles[2]);
         console.log('[SCORECARD] holes array (display order):', holes);
         console.log('[SCORECARD] startingHole detected:', startingHole);
+        
+        // v1.07: Debug T-2 data before rendering
+        console.log('[SCORECARD T-2 DEBUG] t2Row array:', t2Row);
+        console.log('[SCORECARD T-2 DEBUG] t2Display array:', t2Display);
+        console.log('[SCORECARD T-2 DEBUG] savedHoles[2]:', savedHoles[2]);
         
         var flight1Players = players.filter(function(p) { return p.flight === 1; });
         var flight2Players = players.filter(function(p) { return p.flight === 2; });
@@ -260,13 +264,16 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row - v1.06: Use play order position for indexing
+        // T-2 row - v1.07: Added per-hole debug logging
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
             var val = t2Row[arrayIndex] || '_';
             var isSynced = (savedHoles[2].indexOf(holeNum) !== -1);
+            
+            // v1.07: Per-hole debug for T-2
+            console.log('[T-2] hole=' + holeNum + ', arrayIndex=' + arrayIndex + ', val=' + val + ', isSynced=' + isSynced + ', t2Display[' + arrayIndex + ']=' + (t2Display ? t2Display[arrayIndex] : 'null'));
             
             var displayVal = '';
             var cellClass = 'score-invisible';
@@ -380,7 +387,7 @@ var GameScorecard = (function() {
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
         
-        html += '</tbody></tr>';
+        html += '</tbody></table>';
         container.innerHTML = html;
         
         // FIXED v1.04: Only remove empty first cell from rows with MORE than 1 cell
@@ -486,7 +493,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.06"; }
+        getVersion: function() { return "1.07"; }
     };
     
 })();
@@ -498,13 +505,13 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: t1Row, t2Row, strkRow are now accessed using PLAY ORDER POSITION, not hole number
-   - Added getPlayOrderPosition() helper to convert hole number to correct array index
-   - This fixes T-1/T-2/Strk display when starting hole is not 1 (e.g., hole 10)
-   - Now correctly displays "B2", "A2", "A5" values on scorecard
-   - All other functionality preserved (green line rows, sticky columns, responsive design)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: Debug logging for T-2 row to diagnose blank display issue
+   - Logs holes array, t2Row, t2Display, savedHoles[2] before rendering T-2
+   - Added per-hole debug logging for T-2
+   - Helps identify why T-2 at hole 13 is blank
+   - All other functionality preserved
 DEPENDS ON: None (pure display)
-STATUS: Ready for integration
+STATUS: Ready for integration (debug version)
 */
