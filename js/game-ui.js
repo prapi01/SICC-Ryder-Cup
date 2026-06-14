@@ -1,19 +1,19 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.06
-KEY CHANGES from v5.05:
-   - FIXED: Increased bubble gap and padding to prevent text truncation
-   - FIXED: Changed overflow from hidden to visible (no ellipsis truncation)
-   - FIXED: Slightly reduced AS square size on mobile for better fit
-   - FIXED: Better responsive spacing for all screen sizes
-   - Prevents "YHM..." truncation issue on iPhone 14 Pro
+VERSION: 5.07
+KEY CHANGES from v5.06:
+   - FIXED: P/N button logic - button now shows what you WILL get when clicked
+   - Previously: displayMode='play' showed 'P' (wrong) - now shows 'N' (click for Natural)
+   - Previously: displayMode='natural' showed 'N' (wrong) - now shows 'P' (click for Play)
+   - This matches user expectation: button always shows the mode you can switch TO
+   - All other functionality preserved from v5.06
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
 
 var GameUI = (function() {
     
-    console.log("[GAME-UI] Initializing v5.06 with improved bubble spacing");
+    console.log("[GAME-UI] Initializing v5.07 with fixed P/N button logic");
     
     // ============================================================
     // Constants
@@ -716,6 +716,7 @@ var GameUI = (function() {
     
     // ============================================================
     // Render Compact Header - Conditional button rendering
+    // v5.07: FIXED P/N button logic - button shows what you WILL get
     // ============================================================
     
     function renderCompactHeader(containerId, flightNumber, currentHole, onSave, onPrevHole, onNextHole, onToggleFlight, onToggleDisplay) {
@@ -735,7 +736,10 @@ var GameUI = (function() {
         currentFlight = flightNumber;
         currentHoleNumber = currentHole;
         
-        var pnText = currentDisplayMode === 'play' ? 'P' : 'N';
+        // v5.07: FIXED - Button shows the mode you will switch TO
+        // If currently in 'play' mode, button should show 'N' (click for Natural)
+        // If currently in 'natural' mode, button should show 'P' (click for Play)
+        var pnText = currentDisplayMode === 'play' ? 'N' : 'P';
         var oppositeFlight = flightNumber === 1 ? 2 : 1;
         
         var hasSave = (onSave !== null);
@@ -845,9 +849,11 @@ var GameUI = (function() {
         }
     }
     
+    // v5.07: Update P/N button text based on current display mode
     function updateCompactPnButton() {
         if (controlBarElements.pnBtn) {
-            controlBarElements.pnBtn.innerText = currentDisplayMode === 'play' ? 'P' : 'N';
+            // Button shows the mode you will switch TO
+            controlBarElements.pnBtn.innerText = currentDisplayMode === 'play' ? 'N' : 'P';
         }
     }
     
@@ -1361,13 +1367,13 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.06
-KEY CHANGES from v5.05:
-   - FIXED: Increased bubble gap and padding to prevent text truncation
-   - FIXED: Changed overflow from hidden to visible (no ellipsis truncation)
-   - FIXED: Slightly reduced AS square size on mobile for better fit
-   - FIXED: Better responsive spacing for all screen sizes
-   - Prevents "YHM..." truncation issue on iPhone 14 Pro
+VERSION: 5.07
+KEY CHANGES from v5.06:
+   - FIXED: P/N button logic - button now shows what you WILL get when clicked
+   - Previously: displayMode='play' showed 'P' (wrong) - now shows 'N' (click for Natural)
+   - Previously: displayMode='natural' showed 'N' (wrong) - now shows 'P' (click for Play)
+   - This matches user expectation: button always shows the mode you can switch TO
+   - All other functionality preserved from v5.06
 DEPENDS ON: None (pure style injection and DOM manipulation)
 STATUS: Ready for integration
 */
