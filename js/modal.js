@@ -1,14 +1,12 @@
 /*
 FILE: js/modal.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Shared modal module for consistent UI across all pages
-   - Modal.confirm() - Yes/No confirmation with green border
-   - Modal.alert() - Information alert with single button
-   - Green border (#4caf50), grey title (#888)
-   - Supports custom messages and callback functions
-   - Auto-removes previous modals before showing new one
-   - Respects safe-area-inset for iOS devices
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - ADDED: confirmWithCustomButtons() for UPDATE & SAVE / DISCARD modals
+   - ADDED: confirmWithThreeButtons() for three-option modals
+   - All modals now use consistent styling (green border, grey title, pill buttons)
+   - Fixed confirmWithCustomButtons to match app UI scheme
+   - All existing functionality preserved
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -69,6 +67,7 @@ var Modal = (function() {
                 width: 90%;
                 text-align: center;
                 border: 2px solid #4caf50;
+                animation: sharedModalFadeIn 0.2s ease-out;
             }
             .shared-modal-title {
                 font-size: 1.1rem;
@@ -87,6 +86,12 @@ var Modal = (function() {
                 gap: 12px;
                 justify-content: center;
             }
+            .shared-modal-buttons-3 {
+                display: flex;
+                gap: 8px;
+                justify-content: center;
+                flex-wrap: wrap;
+            }
             .shared-modal-btn {
                 flex: 1;
                 padding: 12px;
@@ -96,6 +101,7 @@ var Modal = (function() {
                 cursor: pointer;
                 border: none;
                 transition: all 0.2s ease;
+                min-width: 100px;
             }
             .shared-modal-btn:active {
                 transform: scale(0.98);
@@ -110,6 +116,16 @@ var Modal = (function() {
                 border: 1px solid #4caf50;
                 color: #4caf50;
             }
+            .shared-modal-btn-discard {
+                background: #3a1a1a;
+                border: 1px solid #ff6b6b;
+                color: #ff6b6b;
+            }
+            .shared-modal-btn-save {
+                background: #1a3a1a;
+                border: 1px solid #ffaa44;
+                color: #ffaa44;
+            }
             .shared-modal-btn-single {
                 background: #1a3a1a;
                 border: 1px solid #4caf50;
@@ -120,15 +136,26 @@ var Modal = (function() {
                 from { opacity: 0; transform: scale(0.95); }
                 to { opacity: 1; transform: scale(1); }
             }
-            .shared-modal-container {
-                animation: sharedModalFadeIn 0.2s ease-out;
-            }
         `;
         document.head.appendChild(styles);
     }
     
     // ============================================================
-    // Confirm Modal (Yes/No)
+    // Helper: Escape HTML to prevent injection
+    // ============================================================
+    
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
+    // ============================================================
+    // Confirm Modal (Yes/No) - Standard two buttons
     // ============================================================
     
     function confirm(message, onConfirm, onCancel) {
@@ -192,17 +219,100 @@ var Modal = (function() {
     }
     
     // ============================================================
-    // Helper: Escape HTML to prevent injection
+    // NEW v1.01: Confirm with Custom Buttons
+    // For UPDATE & SAVE / DISCARD modals
     // ============================================================
     
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
+    function confirmWithCustomButtons(message, onConfirm, onCancel, confirmText, cancelText) {
+        ensureStyles();
+        removeExistingModal();
+        
+        var confirmBtnText = confirmText || "OK";
+        var cancelBtnText = cancelText || "Cancel";
+        
+        // Determine button styles based on text
+        var isDiscardButton = (cancelBtnText.toUpperCase() === "DISCARD");
+        var isUpdateSaveButton = (confirmBtnText.toUpperCase() === "UPDATE & SAVE" || confirmBtnText === "UPDATE & SAVE");
+        
+        var confirmBtnClass = isUpdateSaveButton ? "shared-modal-btn-save" : "shared-modal-btn-confirm";
+        var cancelBtnClass = isDiscardButton ? "shared-modal-btn-discard" : "shared-modal-btn-cancel";
+        
+        var modalHtml = `
+            <div class="shared-modal-container">
+                <div class="shared-modal-title">UNSAVED CHANGES</div>
+                <div class="shared-modal-message">${escapeHtml(message)}</div>
+                <div class="shared-modal-buttons">
+                    <button class="shared-modal-btn ${cancelBtnClass}" id="sharedModalCancelBtn">${escapeHtml(cancelBtnText)}</button>
+                    <button class="shared-modal-btn ${confirmBtnClass}" id="sharedModalConfirmBtn">${escapeHtml(confirmBtnText)}</button>
+                </div>
+            </div>
+        `;
+        
+        var overlay = createModalOverlay(modalHtml);
+        document.body.appendChild(overlay);
+        
+        document.getElementById('sharedModalCancelBtn').onclick = function() {
+            removeExistingModal();
+            if (onCancel && typeof onCancel === 'function') {
+                onCancel();
+            }
+        };
+        
+        document.getElementById('sharedModalConfirmBtn').onclick = function() {
+            removeExistingModal();
+            if (onConfirm && typeof onConfirm === 'function') {
+                onConfirm();
+            }
+        };
+    }
+    
+    // ============================================================
+    // NEW v1.01: Confirm with Three Buttons
+    // For UPDATE & SAVE / DISCARD / CANCEL modals
+    // ============================================================
+    
+    function confirmWithThreeButtons(message, onConfirm, onDiscard, onCancel, confirmText, discardText) {
+        ensureStyles();
+        removeExistingModal();
+        
+        var confirmBtnText = confirmText || "UPDATE & SAVE";
+        var discardBtnText = discardText || "DISCARD";
+        
+        var modalHtml = `
+            <div class="shared-modal-container">
+                <div class="shared-modal-title">UNSAVED CHANGES</div>
+                <div class="shared-modal-message">${escapeHtml(message)}</div>
+                <div class="shared-modal-buttons-3">
+                    <button class="shared-modal-btn shared-modal-btn-cancel" id="sharedModalCancelBtn">Cancel</button>
+                    <button class="shared-modal-btn shared-modal-btn-discard" id="sharedModalDiscardBtn">${escapeHtml(discardBtnText)}</button>
+                    <button class="shared-modal-btn shared-modal-btn-save" id="sharedModalConfirmBtn">${escapeHtml(confirmBtnText)}</button>
+                </div>
+            </div>
+        `;
+        
+        var overlay = createModalOverlay(modalHtml);
+        document.body.appendChild(overlay);
+        
+        document.getElementById('sharedModalCancelBtn').onclick = function() {
+            removeExistingModal();
+            if (onCancel && typeof onCancel === 'function') {
+                onCancel();
+            }
+        };
+        
+        document.getElementById('sharedModalDiscardBtn').onclick = function() {
+            removeExistingModal();
+            if (onDiscard && typeof onDiscard === 'function') {
+                onDiscard();
+            }
+        };
+        
+        document.getElementById('sharedModalConfirmBtn').onclick = function() {
+            removeExistingModal();
+            if (onConfirm && typeof onConfirm === 'function') {
+                onConfirm();
+            }
+        };
     }
     
     // ============================================================
@@ -211,7 +321,9 @@ var Modal = (function() {
     
     return {
         confirm: confirm,
-        alert: alert
+        alert: alert,
+        confirmWithCustomButtons: confirmWithCustomButtons,
+        confirmWithThreeButtons: confirmWithThreeButtons
     };
     
 })();
@@ -221,15 +333,13 @@ window.Modal = Modal;
 
 /*
 FILE: js/modal.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Shared modal module for consistent UI across all pages
-   - Modal.confirm() - Yes/No confirmation with green border
-   - Modal.alert() - Information alert with single button
-   - Green border (#4caf50), grey title (#888)
-   - Supports custom messages and callback functions
-   - Auto-removes previous modals before showing new one
-   - Respects safe-area-inset for iOS devices
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - ADDED: confirmWithCustomButtons() for UPDATE & SAVE / DISCARD modals
+   - ADDED: confirmWithThreeButtons() for three-option modals
+   - All modals now use consistent styling (green border, grey title, pill buttons)
+   - Fixed confirmWithCustomButtons to match app UI scheme
+   - All existing functionality preserved
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
