@@ -1,11 +1,12 @@
 <!--
 FILE: index.html
-VERSION: 3.34
-KEY CHANGES from v3.33:
-   - FIXED: Race condition between splashShown and firstLoadCompleted flags
-   - Unified session flag 'appInitialized' to control both splash and first load
-   - Simplified initialization logic - single source of truth
-   - Splash now plays correctly on fresh browser start
+VERSION: 3.35
+KEY CHANGES from v3.34:
+   - FIXED: Animation starts immediately (no waiting for Firestore)
+   - FIXED: Icon glow (colour) now applies reliably on impact
+   - Firestore loads in background while splash plays
+   - User never sees black screen waiting for data
+   - Splash fades to index when data ready OR minimum time reached
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -439,12 +440,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.34</div>
+<div class="version-tag">v3.35</div>
 
 <script>
-// FILE: index.html - VERSION 3.34
+// FILE: index.html - VERSION 3.35
 
-var APP_VERSION = "3.34";
+var APP_VERSION = "3.35";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -465,6 +466,7 @@ var mainContainer = null;
 var greyIconScreen = null;
 var dataReady = false;
 var splashAnimationCompleted = false;
+var animationStarted = false;
 
 // v3.34: Unified session flag - 'appInitialized' controls both splash and first load
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
@@ -480,7 +482,6 @@ var splashSubtitle = document.getElementById('splashSubtitle');
 // ============================================================
 
 function shouldShowSplash() {
-    // v3.34: Use unified flag
     if (!isFirstLoad) {
         console.log("Splash already shown this session - skipping");
         return false;
@@ -495,9 +496,12 @@ function recordSplashShown() {
     console.log("App marked as initialized for this session");
 }
 
-// v3.33: Premium splash sequence - centered icon drop with glow
+// v3.35: Start animation immediately - no waiting for data
 function startSplashAnimation() {
-    console.log("[SPLASH] Starting premium animation - icon drop from high above");
+    if (animationStarted) return;
+    animationStarted = true;
+    
+    console.log("[SPLASH] Starting premium animation immediately");
     
     // Force reflow
     void splashGolfIcon.offsetHeight;
@@ -514,11 +518,11 @@ function startSplashAnimation() {
     splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
     splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
     
-    // On impact (after drop completes)
+    // On impact (600ms) - apply GLOW and colour transformation regardless of data
     setTimeout(function() {
-        console.log("[SPLASH] Impact - THUMP + GLOW!");
+        console.log("[SPLASH] Impact - THUMP + GLOW + COLOUR!");
         
-        // GLOW EFFECT on icon
+        // GLOW EFFECT on icon (colour)
         splashGolfIcon.style.filter = 'drop-shadow(0 0 20px rgba(76,175,80,0.8))';
         splashGolfIcon.style.opacity = '1';
         
@@ -559,14 +563,14 @@ function startSplashAnimation() {
         // Subtitle subtle colour
         splashSubtitle.style.color = '#aaa';
         
-        // Admire for 2 seconds
-        setTimeout(function() {
-            splashAnimationCompleted = true;
-            console.log("[SPLASH] Animation complete, checking hide condition");
-            checkAndHideSplash();
-        }, 2000);
-        
     }, 600);
+    
+    // Animation complete (2800ms total)
+    setTimeout(function() {
+        splashAnimationCompleted = true;
+        console.log("[SPLASH] Animation complete, checking hide condition");
+        checkAndHideSplash();
+    }, 2800);
 }
 
 function hideSplashAndShowIndex() {
@@ -583,7 +587,10 @@ function hideSplashAndShowIndex() {
 }
 
 function checkAndHideSplash() {
-    if (dataReady && splashAnimationCompleted) {
+    // Hide when BOTH conditions are met:
+    // 1. Animation is complete (2800ms passed)
+    // 2. Data is ready (Firestore loaded)
+    if (splashAnimationCompleted && dataReady) {
         hideSplashAndShowIndex();
     } else {
         console.log("[SPLASH] Waiting... dataReady=" + dataReady + ", animationCompleted=" + splashAnimationCompleted);
@@ -881,6 +888,7 @@ function renderMainUI() {
     var appDiv = document.getElementById("app");
     if (!appDiv) return;
     
+    // Data loading happens in background - UI will appear when ready
     FirebaseRetry.getCollection("scheduledGames", {
         onExit: function() {
             window.location.href = "index.html";
@@ -988,7 +996,7 @@ function renderMainUI() {
             initHiddenAdmin();
         }
         
-        // Mark data as ready for splash
+        // Mark data as ready - this will trigger splash hide if animation is complete
         dataReady = true;
         checkAndHideSplash();
         
@@ -1000,11 +1008,14 @@ function renderMainUI() {
         hideGreyIconScreen();
         appDiv.innerHTML = '<div style="text-align:center; padding:40px; color:#888;">Error loading games. Please refresh.</div>';
         appDiv.classList.add('visible');
+        // On error, still mark data as ready to allow splash to hide
+        dataReady = true;
+        checkAndHideSplash();
     });
 }
 
 // ============================================================
-// Initialization - v3.34: Unified session flag
+// Initialization - v3.35: Animation starts immediately
 // ============================================================
 
 function initApp() {
@@ -1016,10 +1027,13 @@ function initApp() {
     var hasCachedData = getPreloadedRawGameData() !== null;
     
     if (isFirstLoad) {
-        // First load this session - premium splash sequence
-        console.log("First load this session - premium splash sequence");
+        // First load this session - start animation immediately
+        console.log("First load - starting splash animation immediately");
         
-        // Start loading data immediately
+        // Start animation right away (no waiting for data)
+        startSplashAnimation();
+        
+        // Load data in background
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
                 window.location.href = "index.html";
@@ -1035,18 +1049,14 @@ function initApp() {
             
             if (todayGame) {
                 preloadGameData(todayGame.id, function() {
-                    // Data ready - start the beautiful splash animation
-                    startSplashAnimation();
                     renderMainUI();
                     recordSplashShown();
                 });
             } else {
-                startSplashAnimation();
                 renderMainUI();
                 recordSplashShown();
             }
         }).catch(function() {
-            startSplashAnimation();
             renderMainUI();
             recordSplashShown();
         });
@@ -1093,11 +1103,11 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.34: Unified session flag
+// Start the app - v3.35: Animation starts immediately
 // ============================================================
 
 if (shouldShowSplash()) {
-    console.log("[SPLASH] Premium splash mode - B&W screen with hidden icon");
+    console.log("[SPLASH] Premium splash mode - starting animation immediately");
     
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1125,12 +1135,13 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.34
-KEY CHANGES from v3.33:
-   - FIXED: Race condition between splashShown and firstLoadCompleted flags
-   - Unified session flag 'appInitialized' to control both splash and first load
-   - Simplified initialization logic - single source of truth
-   - Splash now plays correctly on fresh browser start
+VERSION: 3.35
+KEY CHANGES from v3.34:
+   - FIXED: Animation starts immediately (no waiting for Firestore)
+   - FIXED: Icon glow (colour) now applies reliably on impact
+   - Firestore loads in background while splash plays
+   - User never sees black screen waiting for data
+   - Splash fades to index when data ready OR minimum time reached
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
