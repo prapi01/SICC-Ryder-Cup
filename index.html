@@ -1,15 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.32
-KEY CHANGES from v3.31:
-   - NEW: Premium splash sequence with icon drop from high above
-   - B&W screen initially (title white, icon hidden)
-   - Firestore loads data silently in background
-   - Icon drops from off-screen (-300px), spins 360°, lands
-   - THUMP effect: screen shake + radial ring
-   - Title transforms from white to colour gradient on impact
-   - Admire for 2 seconds, then fades to index
-   - No more "stuck" icon - icon only appears when dropping
+VERSION: 3.33
+KEY CHANGES from v3.32:
+   - FIXED: Icon now properly centered using margin: 0 auto (no transform conflict)
+   - ADDED: Glow effect (green drop-shadow) on icon at impact
+   - IMPROVED: Smoother transition for icon filter and opacity
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
@@ -99,15 +94,22 @@ STATUS: Ready for integration
             height: 100px;
             margin-bottom: 20px;
             position: relative;
+            width: 100%;
         }
         
-        /* Golf icon - starts hidden and off-screen */
+        /* Golf icon - centered using margin auto, positioned for drop */
         .splash-golf-icon {
             font-size: 5rem;
             position: absolute;
-            left: 50%;
-            transform: translateX(-50%) translateY(-300px);
+            left: 0;
+            right: 0;
+            margin: 0 auto;
+            width: fit-content;
+            transform: translateY(-300px);
             visibility: hidden;
+            filter: grayscale(100%);
+            opacity: 0.8;
+            transition: filter 0.3s ease, opacity 0.3s ease;
             will-change: transform, filter;
         }
         
@@ -436,12 +438,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.32</div>
+<div class="version-tag">v3.33</div>
 
 <script>
-// FILE: index.html - VERSION 3.32
+// FILE: index.html - VERSION 3.33
 
-var APP_VERSION = "3.32";
+var APP_VERSION = "3.33";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -491,7 +493,7 @@ function recordSplashShown() {
     console.log("Splash recorded as shown for this session");
 }
 
-// v3.32: Premium splash sequence - icon drops from high above, thumps, title turns colour
+// v3.33: Premium splash sequence - centered icon drop with glow
 function startSplashAnimation() {
     console.log("[SPLASH] Starting premium animation - icon drop from high above");
     
@@ -508,13 +510,15 @@ function startSplashAnimation() {
     
     // Drop animation: from -300px to 0 with 360° spin
     splashGolfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
-    splashGolfIcon.style.transform = 'translateX(-50%) translateY(0) rotate(360deg)';
-    splashGolfIcon.style.filter = 'drop-shadow(0 0 20px rgba(76,175,80,0.5))';
-    splashGolfIcon.style.opacity = '1';
+    splashGolfIcon.style.transform = 'translateY(0) rotate(360deg)';
     
     // On impact (after drop completes)
     setTimeout(function() {
-        console.log("[SPLASH] Impact - THUMP!");
+        console.log("[SPLASH] Impact - THUMP + GLOW!");
+        
+        // GLOW EFFECT on icon
+        splashGolfIcon.style.filter = 'drop-shadow(0 0 20px rgba(76,175,80,0.8))';
+        splashGolfIcon.style.opacity = '1';
         
         // Screen shake
         splashOverlay.style.animation = 'splashShake 0.3s ease-in-out';
@@ -524,10 +528,10 @@ function startSplashAnimation() {
         var ring = document.createElement('div');
         ring.style.cssText = `
             position: fixed;
-            left: ${rect.left + rect.width/2 - 25}px;
-            top: ${rect.top + rect.height/2 - 25}px;
-            width: 50px;
-            height: 50px;
+            left: ${rect.left + rect.width/2 - 30}px;
+            top: ${rect.top + rect.height/2 - 30}px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
             background: radial-gradient(circle, rgba(76,175,80,0.6) 0%, transparent 70%);
             transform: scale(0);
@@ -998,7 +1002,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.32: Premium splash sequence
+// Initialization - v3.33: Premium splash with centered icon + glow
 // ============================================================
 
 function initApp() {
@@ -1088,7 +1092,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.32: Premium splash
+// Start the app - v3.33: Premium splash with centered icon
 // ============================================================
 
 if (shouldShowSplash()) {
@@ -1122,16 +1126,11 @@ if (shouldShowSplash()) {
 
 <!--
 FILE: index.html
-VERSION: 3.32
-KEY CHANGES from v3.31:
-   - NEW: Premium splash sequence with icon drop from high above
-   - B&W screen initially (title white, icon hidden)
-   - Firestore loads data silently in background
-   - Icon drops from off-screen (-300px), spins 360°, lands
-   - THUMP effect: screen shake + radial ring
-   - Title transforms from white to colour gradient on impact
-   - Admire for 2 seconds, then fades to index
-   - No more "stuck" icon - icon only appears when dropping
+VERSION: 3.33
+KEY CHANGES from v3.32:
+   - FIXED: Icon now properly centered using margin: 0 auto (no transform conflict)
+   - ADDED: Glow effect (green drop-shadow) on icon at impact
+   - IMPROVED: Smoother transition for icon filter and opacity
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
 STATUS: Ready for integration
