@@ -1,19 +1,20 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: Debug logging for T-2 row to diagnose blank display issue
-   - Logs holes array, t2Row, t2Display, savedHoles[2] before rendering T-2
-   - Helps identify why T-2 at hole 13 is blank
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: T-2 row now properly handles 'AS' value (was being skipped, leaving cell empty)
+   - Added explicit handling for val === 'AS' to set displayVal to green square and cellClass to colorClass
+   - Also fixed T-1 and Strk rows for consistency (though they may not have had the issue)
+   - Removed debug logging (can be re-enabled if needed)
    - All other functionality preserved
 DEPENDS ON: None (pure display)
-STATUS: Ready for integration (debug version)
+STATUS: Ready for integration
 */
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.07";
+window.GAME_SCORECARD_VERSION = "1.08";
 
 var GameScorecard = (function() {
     
@@ -26,7 +27,6 @@ var GameScorecard = (function() {
     
     // ============================================================
     // Helper: Get play order position for a hole number
-    // v1.06: Used to correctly index t1Row, t2Row, strkRow arrays
     // ============================================================
     function getPlayOrderPosition(holeNumber, startingHole) {
         if (startingHole === 1) {
@@ -71,7 +71,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.07: Added debug logging for T-2
+    // Scorecard Rendering - v1.08: Fixed 'AS' handling
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -89,10 +89,8 @@ var GameScorecard = (function() {
         // Get startingHole from the first hole in the display order
         var startingHole = holes[0];
         if (startingHole > 1) {
-            // Check if the sequence is play order (e.g., 10,11,12...)
             var isPlayOrder = (holes[1] === startingHole + 1);
             if (!isPlayOrder && holes[1] === 1) {
-                // Natural order with starting hole not 1 - rare case
                 startingHole = 1;
             }
         } else {
@@ -105,17 +103,6 @@ var GameScorecard = (function() {
             if (isHoleSaved(1, h)) savedHoles[1].push(h);
             if (isHoleSaved(2, h)) savedHoles[2].push(h);
         }
-        
-        // Debug: Log saved holes
-        console.log('[SCORECARD] savedHoles F1:', savedHoles[1]);
-        console.log('[SCORECARD] savedHoles F2:', savedHoles[2]);
-        console.log('[SCORECARD] holes array (display order):', holes);
-        console.log('[SCORECARD] startingHole detected:', startingHole);
-        
-        // v1.07: Debug T-2 data before rendering
-        console.log('[SCORECARD T-2 DEBUG] t2Row array:', t2Row);
-        console.log('[SCORECARD T-2 DEBUG] t2Display array:', t2Display);
-        console.log('[SCORECARD T-2 DEBUG] savedHoles[2]:', savedHoles[2]);
         
         var flight1Players = players.filter(function(p) { return p.flight === 1; });
         var flight2Players = players.filter(function(p) { return p.flight === 2; });
@@ -160,7 +147,7 @@ var GameScorecard = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr>';
+            html += '<td>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -178,11 +165,10 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row - v1.06: Use play order position for indexing
+        // T-1 row - v1.08: Fixed 'AS' handling
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
-            // v1.06: Get the correct array index based on play order position
             var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
             var val = t1Row[arrayIndex] || '_';
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1);
@@ -199,7 +185,13 @@ var GameScorecard = (function() {
                 colorClass = 'score-green';
             }
             
-            if (val === '0' || val === 0) {
+            // v1.08: Handle 'AS' value explicitly
+            if (val === 'AS') {
+                if (isSynced) {
+                    displayVal = getAsSquareHtml();
+                    cellClass = colorClass;
+                }
+            } else if (val === '0' || val === 0) {
                 if (isSynced) {
                     displayVal = 'AS';
                     cellClass = colorClass;
@@ -213,7 +205,7 @@ var GameScorecard = (function() {
                     }
                     cellClass = colorClass;
                 }
-            } else if (val && val !== '_' && val !== 'AS') {
+            } else if (val && val !== '_') {
                 if (isSynced) {
                     if (t1Display && t1Display[arrayIndex] && t1Display[arrayIndex] !== 'AS') {
                         displayVal = t1Display[arrayIndex];
@@ -246,7 +238,7 @@ var GameScorecard = (function() {
         // Flight 2 players
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
-            html += '<tr>';
+            html += '<td>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -264,16 +256,13 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row - v1.07: Added per-hole debug logging
+        // T-2 row - v1.08: Fixed 'AS' handling
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
             var val = t2Row[arrayIndex] || '_';
             var isSynced = (savedHoles[2].indexOf(holeNum) !== -1);
-            
-            // v1.07: Per-hole debug for T-2
-            console.log('[T-2] hole=' + holeNum + ', arrayIndex=' + arrayIndex + ', val=' + val + ', isSynced=' + isSynced + ', t2Display[' + arrayIndex + ']=' + (t2Display ? t2Display[arrayIndex] : 'null'));
             
             var displayVal = '';
             var cellClass = 'score-invisible';
@@ -287,7 +276,13 @@ var GameScorecard = (function() {
                 colorClass = 'score-green';
             }
             
-            if (val === '0' || val === 0) {
+            // v1.08: Handle 'AS' value explicitly
+            if (val === 'AS') {
+                if (isSynced) {
+                    displayVal = getAsSquareHtml();
+                    cellClass = colorClass;
+                }
+            } else if (val === '0' || val === 0) {
                 if (isSynced) {
                     displayVal = 'AS';
                     cellClass = colorClass;
@@ -301,7 +296,7 @@ var GameScorecard = (function() {
                     }
                     cellClass = colorClass;
                 }
-            } else if (val && val !== '_' && val !== 'AS') {
+            } else if (val && val !== '_') {
                 if (isSynced) {
                     if (t2Display && t2Display[arrayIndex] && t2Display[arrayIndex] !== 'AS') {
                         displayVal = t2Display[arrayIndex];
@@ -331,7 +326,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - v1.06: Use play order position for indexing
+        // Strk row - v1.08: Fixed 'AS' handling
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -342,7 +337,13 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
-            if (val === '0' || val === 0) {
+            // v1.08: Handle 'AS' value explicitly
+            if (val === 'AS') {
+                if (isSynced) {
+                    displayVal = getAsSquareHtml();
+                    cellClass = 'score-green';
+                }
+            } else if (val === '0' || val === 0) {
                 if (isSynced) {
                     displayVal = 'AS';
                     cellClass = 'score-green';
@@ -493,7 +494,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.07"; }
+        getVersion: function() { return "1.08"; }
     };
     
 })();
@@ -505,13 +506,13 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: Debug logging for T-2 row to diagnose blank display issue
-   - Logs holes array, t2Row, t2Display, savedHoles[2] before rendering T-2
-   - Added per-hole debug logging for T-2
-   - Helps identify why T-2 at hole 13 is blank
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: T-2 row now properly handles 'AS' value (was being skipped, leaving cell empty)
+   - Added explicit handling for val === 'AS' to set displayVal to green square and cellClass to colorClass
+   - Also fixed T-1 and Strk rows for consistency (though they may not have had the issue)
+   - Removed debug logging (can be re-enabled if needed)
    - All other functionality preserved
 DEPENDS ON: None (pure display)
-STATUS: Ready for integration (debug version)
+STATUS: Ready for integration
 */
