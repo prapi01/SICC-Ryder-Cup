@@ -1,22 +1,20 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - REFACTORED: Removed holes array parameter - now builds display mapping internally
-   - New signature: renderScorecard(containerId, displayMode, startingHole, players, ...)
-   - No longer relies on external holes array - uses GameOrder to determine display order
-   - Strk row gold logic now uses play position comparison (last hole is always position 17)
-   - This eliminates the concept of "natural vs play mode" at the data level
-   - All games are treated the same internally; display preference is purely visual
-   - All existing functionality preserved
-DEPENDS ON: GameOrder
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Strk row now ONLY displays when isSynced === true
+   - Previously, unsaved holes were showing green squares (AS) due to val being interpreted as 'AS'
+   - Now properly hides all content when hole is not saved by both flights
+   - Gold on last hole only applies when isSynced === true
+   - All other functionality preserved from v1.09
+DEPENDS ON: GameData (for getLastHole)
 STATUS: Ready for integration
 */
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.13";
+window.GAME_SCORECARD_VERSION = "1.10";
 
 var GameScorecard = (function() {
     
@@ -28,36 +26,31 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // v1.13: Build display columns based on displayMode
-    // Returns array of objects: { naturalHole: number, playPosition: number }
+    // Helper: Get last hole based on starting hole
     // ============================================================
-    function buildDisplayColumns(displayMode, startingHole) {
-        var columns = [];
-        
-        if (displayMode === "natural") {
-            // Natural order: columns 1-18, each maps to play position
-            for (var naturalHole = 1; naturalHole <= 18; naturalHole++) {
-                var playPosition = GameOrder.getPlayPosition(naturalHole);
-                columns.push({
-                    naturalHole: naturalHole,
-                    playPosition: playPosition,
-                    isLastHole: (naturalHole === GameOrder.getLastHole())
-                });
-            }
-        } else {
-            // Play order: columns in play sequence, each maps to its play position
-            var playOrder = GameOrder.getPlayOrder();
-            for (var pos = 0; pos < playOrder.length; pos++) {
-                var naturalHole = playOrder[pos];
-                columns.push({
-                    naturalHole: naturalHole,
-                    playPosition: pos,
-                    isLastHole: (pos === 17)  // Last play position is always 17
-                });
-            }
+    function getLastHole(startingHole) {
+        if (typeof GameData !== 'undefined' && GameData.getLastHole) {
+            return GameData.getLastHole(startingHole);
         }
+        // Fallback
+        return (startingHole === 1) ? 18 : startingHole - 1;
+    }
+    
+    // ============================================================
+    // Helper: Get play order position for a hole number
+    // ============================================================
+    function getPlayOrderPosition(holeNumber, startingHole) {
+        if (startingHole === 1) {
+            return holeNumber - 1;
+        }
+        var playOrder = [];
+        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+        for (var i = 1; i < startingHole; i++) playOrder.push(i);
         
-        return columns;
+        for (var i = 0; i < playOrder.length; i++) {
+            if (playOrder[i] === holeNumber) return i;
+        }
+        return holeNumber - 1;
     }
     
     // ============================================================
@@ -89,45 +82,34 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.13: Builds display mapping internally
+    // Scorecard Rendering - v1.10: Strk only shows when synced
     // ============================================================
     
-    function renderScorecard(containerId, displayMode, startingHole, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
+    function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Backward compatibility for old calls (if holes array passed as second param)
-        if (typeof displayMode !== 'string' || (displayMode !== "natural" && displayMode !== "play")) {
-            // Old calling convention: holes array was passed as second param
-            // Try to detect and convert
-            if (Array.isArray(displayMode)) {
-                console.warn("[GameScorecard] Using deprecated calling convention. Please pass displayMode and startingHole.");
-                // Extract startingHole from the holes array
-                var holesArray = displayMode;
-                startingHole = holesArray[0] || 1;
-                if (startingHole > 1) {
-                    var isPlayOrder = (holesArray[1] === startingHole + 1);
-                    if (!isPlayOrder && holesArray[1] === 1) {
-                        startingHole = 1;
-                    }
-                } else {
-                    startingHole = 1;
-                }
-                displayMode = "play";  // Assume play mode for backward compatibility
+        // Backward compatibility
+        t1Display = (t1Display !== undefined) ? t1Display : null;
+        t2Display = (t2Display !== undefined) ? t2Display : null;
+        strkDisplay = (strkDisplay !== undefined) ? strkDisplay : null;
+        
+        t1ClinchedHole = (t1ClinchedHole !== undefined) ? t1ClinchedHole : null;
+        t2ClinchedHole = (t2ClinchedHole !== undefined) ? t2ClinchedHole : null;
+        
+        // Get startingHole from the first hole in the display order
+        var startingHole = holes[0];
+        if (startingHole > 1) {
+            var isPlayOrder = (holes[1] === startingHole + 1);
+            if (!isPlayOrder && holes[1] === 1) {
+                startingHole = 1;
             }
+        } else {
+            startingHole = 1;
         }
         
-        // Ensure GameOrder has correct starting hole
-        if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
-            GameOrder.setStartingHole(startingHole);
-        }
-        
-        // Build display columns
-        var columns = buildDisplayColumns(displayMode, startingHole);
-        
-        // Get clinch play positions (t1ClinchedHole and t2ClinchedHole are play order sequences 1-18)
-        var t1ClinchPlayPosition = (t1ClinchedHole !== null && t1ClinchedHole >= 1 && t1ClinchedHole <= 18) ? t1ClinchedHole - 1 : null;
-        var t2ClinchPlayPosition = (t2ClinchedHole !== null && t2ClinchedHole >= 1 && t2ClinchedHole <= 18) ? t2ClinchedHole - 1 : null;
+        // v1.09: Get last hole for Strk gold condition
+        var lastHoleNumber = getLastHole(startingHole);
         
         // Build savedHoles
         var savedHoles = { 1: [], 2: [] };
@@ -150,16 +132,16 @@ var GameScorecard = (function() {
         
         var html = '<table class="scorecard-table">';
         html += '<thead><tr><th>Hole</th>';
-        for (var i = 0; i < columns.length; i++) {
-            html += '<th>' + columns[i].naturalHole + '</th>';
+        for (var i = 0; i < holes.length; i++) {
+            html += '<th>' + holes[i] + '</th>';
         }
         html += '<th>Tot</th> </thead><tbody>';
         
         // Par row
         html += '<tr><td style="font-weight:700;">Par<\/td>';
         var totalPar = 0;
-        for (var i = 0; i < columns.length; i++) {
-            var par = coursePar[columns[i].naturalHole - 1];
+        for (var i = 0; i < holes.length; i++) {
+            var par = coursePar[holes[i] - 1];
             totalPar += par;
             html += '<td>' + par + '<\/td>';
         }
@@ -167,8 +149,8 @@ var GameScorecard = (function() {
         
         // SI row
         html += '<tr><td style="font-weight:700;">SI<\/td>';
-        for (var i = 0; i < columns.length; i++) {
-            var si = courseSi[columns[i].naturalHole - 1];
+        for (var i = 0; i < holes.length; i++) {
+            var si = courseSi[holes[i] - 1];
             html += '<td>' + si + '<\/td>';
         }
         html += '<td style="color:#4caf50;">-<\/td><\/tr>';
@@ -179,15 +161,15 @@ var GameScorecard = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<tr>';
+            html += '<td>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
-            for (var i = 0; i < columns.length; i++) {
-                var naturalHole = columns[i].naturalHole;
-                var score = getStoredScore(player, naturalHole);
+            for (var i = 0; i < holes.length; i++) {
+                var hole = holes[i];
+                var score = getStoredScore(player, hole);
                 playerTotal += score;
-                var saved = isHoleSaved(player.flight, naturalHole);
+                var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
                 html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
@@ -197,28 +179,22 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row - v1.13: Uses play positions for color decision
+        // T-1 row
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
-        for (var i = 0; i < columns.length; i++) {
-            var col = columns[i];
-            var playPos = col.playPosition;
-            var naturalHole = col.naturalHole;
-            var val = t1Row[playPos] || '_';
-            var isSynced = (savedHoles[1].indexOf(naturalHole) !== -1);
+        for (var i = 0; i < holes.length; i++) {
+            var holeNum = holes[i];
+            var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
+            var val = t1Row[arrayIndex] || '_';
+            var isSynced = (savedHoles[1].indexOf(holeNum) !== -1);
             
             var displayVal = '';
             var cellClass = 'score-invisible';
             
-            // Determine color using PLAY POSITIONS
             var colorClass = 'score-green';
-            if (t1ClinchPlayPosition !== null) {
-                if (playPos < t1ClinchPlayPosition) {
-                    colorClass = 'score-green';
-                } else if (playPos === t1ClinchPlayPosition) {
-                    colorClass = 'score-gold';
-                } else {
-                    colorClass = 'score-grey';
-                }
+            if (t1ClinchedHole !== null) {
+                if (holeNum < t1ClinchedHole) colorClass = 'score-green';
+                else if (holeNum === t1ClinchedHole) colorClass = 'score-gold';
+                else if (holeNum > t1ClinchedHole) colorClass = 'score-grey';
             } else {
                 colorClass = 'score-green';
             }
@@ -235,8 +211,8 @@ var GameScorecard = (function() {
                 }
             } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
                 if (isSynced) {
-                    if (t1Display && t1Display[playPos]) {
-                        displayVal = t1Display[playPos];
+                    if (t1Display && t1Display[arrayIndex]) {
+                        displayVal = t1Display[arrayIndex];
                     } else {
                         displayVal = val;
                     }
@@ -244,8 +220,8 @@ var GameScorecard = (function() {
                 }
             } else if (val && val !== '_') {
                 if (isSynced) {
-                    if (t1Display && t1Display[playPos] && t1Display[playPos] !== 'AS') {
-                        displayVal = t1Display[playPos];
+                    if (t1Display && t1Display[arrayIndex] && t1Display[arrayIndex] !== 'AS') {
+                        displayVal = t1Display[arrayIndex];
                     } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
                         var numVal = parseInt(val);
                         if (numVal > 0) {
@@ -279,11 +255,11 @@ var GameScorecard = (function() {
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
-            for (var i = 0; i < columns.length; i++) {
-                var naturalHole = columns[i].naturalHole;
-                var score = getStoredScore(player, naturalHole);
+            for (var i = 0; i < holes.length; i++) {
+                var hole = holes[i];
+                var score = getStoredScore(player, hole);
                 playerTotal += score;
-                var saved = isHoleSaved(player.flight, naturalHole);
+                var saved = isHoleSaved(player.flight, hole);
                 var cellClass = saved ? 'score-green' : 'score-invisible';
                 html += '<td class="' + cellClass + '">' + score + '<\/td>';
             }
@@ -293,28 +269,22 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row - v1.13: Uses play positions for color decision
+        // T-2 row
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
-        for (var i = 0; i < columns.length; i++) {
-            var col = columns[i];
-            var playPos = col.playPosition;
-            var naturalHole = col.naturalHole;
-            var val = t2Row[playPos] || '_';
-            var isSynced = (savedHoles[2].indexOf(naturalHole) !== -1);
+        for (var i = 0; i < holes.length; i++) {
+            var holeNum = holes[i];
+            var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
+            var val = t2Row[arrayIndex] || '_';
+            var isSynced = (savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
             var cellClass = 'score-invisible';
             
-            // Determine color using PLAY POSITIONS
             var colorClass = 'score-green';
-            if (t2ClinchPlayPosition !== null) {
-                if (playPos < t2ClinchPlayPosition) {
-                    colorClass = 'score-green';
-                } else if (playPos === t2ClinchPlayPosition) {
-                    colorClass = 'score-gold';
-                } else {
-                    colorClass = 'score-grey';
-                }
+            if (t2ClinchedHole !== null) {
+                if (holeNum < t2ClinchedHole) colorClass = 'score-green';
+                else if (holeNum === t2ClinchedHole) colorClass = 'score-gold';
+                else if (holeNum > t2ClinchedHole) colorClass = 'score-grey';
             } else {
                 colorClass = 'score-green';
             }
@@ -331,8 +301,8 @@ var GameScorecard = (function() {
                 }
             } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
                 if (isSynced) {
-                    if (t2Display && t2Display[playPos]) {
-                        displayVal = t2Display[playPos];
+                    if (t2Display && t2Display[arrayIndex]) {
+                        displayVal = t2Display[arrayIndex];
                     } else {
                         displayVal = val;
                     }
@@ -340,8 +310,8 @@ var GameScorecard = (function() {
                 }
             } else if (val && val !== '_') {
                 if (isSynced) {
-                    if (t2Display && t2Display[playPos] && t2Display[playPos] !== 'AS') {
-                        displayVal = t2Display[playPos];
+                    if (t2Display && t2Display[arrayIndex] && t2Display[arrayIndex] !== 'AS') {
+                        displayVal = t2Display[arrayIndex];
                     } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
                         var numVal = parseInt(val);
                         if (numVal > 0) {
@@ -368,21 +338,21 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - v1.13: Uses play position for last hole detection
-        html += '<table><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
-        for (var i = 0; i < columns.length; i++) {
-            var col = columns[i];
-            var playPos = col.playPosition;
-            var naturalHole = col.naturalHole;
-            var val = strkRow[playPos] || '_';
-            var isSynced = (savedHoles[1].indexOf(naturalHole) !== -1 && savedHoles[2].indexOf(naturalHole) !== -1);
+        // Strk row - v1.10: ONLY show when isSynced === true
+        html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
+        for (var i = 0; i < holes.length; i++) {
+            var holeNum = holes[i];
+            var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
+            var val = strkRow[arrayIndex] || '_';
+            var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
             var cellClass = 'score-invisible';
             
+            // v1.10: ONLY proceed if hole is synced (both flights saved)
             if (isSynced) {
-                // v1.13: Determine color using PLAY POSITION - last hole is always playPos === 17
-                var isLastHole = (playPos === 17);
+                // Determine color - GOLD on last hole, GREEN otherwise
+                var isLastHole = (holeNum === lastHoleNumber);
                 
                 if (isLastHole) {
                     cellClass = 'score-gold';
@@ -390,17 +360,18 @@ var GameScorecard = (function() {
                     cellClass = 'score-green';
                 }
                 
+                // Build display value
                 if (val === 'AS' || val === 0 || val === '0') {
                     displayVal = getAsSquareHtml();
                 } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
-                    if (strkDisplay && strkDisplay[playPos]) {
-                        displayVal = strkDisplay[playPos];
+                    if (strkDisplay && strkDisplay[arrayIndex]) {
+                        displayVal = strkDisplay[arrayIndex];
                     } else {
                         displayVal = val;
                     }
                 } else if (val && val !== '_') {
-                    if (strkDisplay && strkDisplay[playPos]) {
-                        displayVal = strkDisplay[playPos];
+                    if (strkDisplay && strkDisplay[arrayIndex]) {
+                        displayVal = strkDisplay[arrayIndex];
                     } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
                         var numVal = parseInt(val);
                         if (numVal > 0) {
@@ -530,7 +501,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.13"; }
+        getVersion: function() { return "1.10"; }
     };
     
 })();
@@ -542,15 +513,13 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - REFACTORED: Removed holes array parameter - now builds display mapping internally
-   - New signature: renderScorecard(containerId, displayMode, startingHole, players, ...)
-   - No longer relies on external holes array - uses GameOrder to determine display order
-   - Strk row gold logic now uses play position comparison (last hole is always position 17)
-   - This eliminates the concept of "natural vs play mode" at the data level
-   - All games are treated the same internally; display preference is purely visual
-   - All existing functionality preserved
-DEPENDS ON: GameOrder
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Strk row now ONLY displays when isSynced === true
+   - Previously, unsaved holes were showing green squares (AS) due to val being interpreted as 'AS'
+   - Now properly hides all content when hole is not saved by both flights
+   - Gold on last hole only applies when isSynced === true
+   - All other functionality preserved from v1.09
+DEPENDS ON: GameData (for getLastHole)
 STATUS: Ready for integration
 */
