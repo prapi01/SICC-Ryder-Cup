@@ -1,20 +1,24 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: T-1 clinch detection now converts clinchedHole from play order sequence to natural hole number
-   - FIXED: T-2 clinch detection now converts clinchedHole from play order sequence to natural hole number
-   - FIXED: Strk clinch detection (last hole gold) now uses proper play order to natural hole conversion
-   - This resolves gold color appearing at wrong natural holes for shotgun starts
-   - All other functionality preserved
-DEPENDS ON: GameData (for getLastHole, getHoleAtPosition)
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
+   - FIXED: T-1 and T-2 color logic now uses PLAY POSITIONS for comparison, not natural hole numbers
+   - Previously, holes played BEFORE clinch were incorrectly showing grey
+   - Now correctly: currentPlayPosition < clinchPlayPosition → GREEN
+   -            currentPlayPosition === clinchPlayPosition → GOLD
+   -            currentPlayPosition > clinchPlayPosition → GREY
+   - Removed local getPlayOrderPosition(), getHoleAtPosition(), getLastHole()
+   - Now delegates to GameOrder for all order-related calculations
+   - All existing functionality preserved
+DEPENDS ON: GameOrder
 STATUS: Ready for integration
 */
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.11";
+window.GAME_SCORECARD_VERSION = "1.12";
 
 var GameScorecard = (function() {
     
@@ -26,40 +30,52 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Helper: Get last hole based on starting hole
+    // v1.12: Delegate to GameOrder for order conversions
     // ============================================================
-    function getLastHole(startingHole) {
-        if (typeof GameData !== 'undefined' && GameData.getLastHole) {
-            return GameData.getLastHole(startingHole);
-        }
-        return (startingHole === 1) ? 18 : startingHole - 1;
-    }
     
-    // ============================================================
-    // Helper: Get play order position for a hole number
-    // ============================================================
     function getPlayOrderPosition(holeNumber, startingHole) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayPosition) {
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            return GameOrder.getPlayPosition(holeNumber);
+        }
+        // Fallback
         if (startingHole === 1) {
             return holeNumber - 1;
         }
         var playOrder = [];
         for (var i = startingHole; i <= 18; i++) playOrder.push(i);
         for (var i = 1; i < startingHole; i++) playOrder.push(i);
-        
         for (var i = 0; i < playOrder.length; i++) {
             if (playOrder[i] === holeNumber) return i;
         }
         return holeNumber - 1;
     }
     
-    // ============================================================
-    // Helper: Get natural hole number for a play position
-    // ============================================================
-    function getHoleAtPosition(position, startingHole) {
+    function getNaturalHoleAtPosition(position, startingHole) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getNaturalHole) {
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            return GameOrder.getNaturalHole(position);
+        }
+        // Fallback
         var playOrder = [];
         for (var i = startingHole; i <= 18; i++) playOrder.push(i);
         for (var i = 1; i < startingHole; i++) playOrder.push(i);
         return playOrder[position] || 0;
+    }
+    
+    function getLastHoleNumber(startingHole) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getLastHole) {
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            return GameOrder.getLastHole();
+        }
+        // Fallback
+        return (startingHole === 1) ? 18 : startingHole - 1;
     }
     
     // ============================================================
@@ -91,7 +107,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.11: Fixed clinch display for shotgun starts
+    // Scorecard Rendering - v1.12: Uses play positions for color logic
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -117,19 +133,18 @@ var GameScorecard = (function() {
             startingHole = 1;
         }
         
-        // v1.11: Convert clinchedHole from play order sequence (1-18) to natural hole number
-        var t1ClinchedNaturalHole = null;
-        var t2ClinchedNaturalHole = null;
-        
-        if (t1ClinchedHole !== null && t1ClinchedHole >= 1 && t1ClinchedHole <= 18) {
-            t1ClinchedNaturalHole = getHoleAtPosition(t1ClinchedHole - 1, startingHole);
-        }
-        if (t2ClinchedHole !== null && t2ClinchedHole >= 1 && t2ClinchedHole <= 18) {
-            t2ClinchedNaturalHole = getHoleAtPosition(t2ClinchedHole - 1, startingHole);
+        // Update GameOrder with the correct starting hole
+        if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
+            GameOrder.setStartingHole(startingHole);
         }
         
-        // v1.09: Get last hole for Strk gold condition
-        var lastHoleNumber = getLastHole(startingHole);
+        // v1.12: Get clinch play positions (t1ClinchedHole and t2ClinchedHole are already play order sequences 1-18)
+        // Convert to 0-based play position indices for comparison
+        var t1ClinchPlayPosition = (t1ClinchedHole !== null && t1ClinchedHole >= 1 && t1ClinchedHole <= 18) ? t1ClinchedHole - 1 : null;
+        var t2ClinchPlayPosition = (t2ClinchedHole !== null && t2ClinchedHole >= 1 && t2ClinchedHole <= 18) ? t2ClinchedHole - 1 : null;
+        
+        // Get last hole for Strk gold condition (as natural hole number)
+        var lastHoleNumber = getLastHoleNumber(startingHole);
         
         // Build savedHoles
         var savedHoles = { 1: [], 2: [] };
@@ -199,7 +214,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row - v1.11: Use converted natural hole number for clinch detection
+        // T-1 row - v1.12: Use PLAY POSITIONS for color decision
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -210,12 +225,16 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
-            // v1.11: Use converted natural hole number for color decision
+            // v1.12: Determine color using PLAY POSITIONS
             var colorClass = 'score-green';
-            if (t1ClinchedNaturalHole !== null) {
-                if (holeNum < t1ClinchedNaturalHole) colorClass = 'score-green';
-                else if (holeNum === t1ClinchedNaturalHole) colorClass = 'score-gold';
-                else if (holeNum > t1ClinchedNaturalHole) colorClass = 'score-grey';
+            if (t1ClinchPlayPosition !== null) {
+                if (arrayIndex < t1ClinchPlayPosition) {
+                    colorClass = 'score-green';
+                } else if (arrayIndex === t1ClinchPlayPosition) {
+                    colorClass = 'score-gold';
+                } else {
+                    colorClass = 'score-grey';
+                }
             } else {
                 colorClass = 'score-green';
             }
@@ -290,7 +309,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row - v1.11: Use converted natural hole number for clinch detection
+        // T-2 row - v1.12: Use PLAY POSITIONS for color decision
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -301,12 +320,16 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
-            // v1.11: Use converted natural hole number for color decision
+            // v1.12: Determine color using PLAY POSITIONS
             var colorClass = 'score-green';
-            if (t2ClinchedNaturalHole !== null) {
-                if (holeNum < t2ClinchedNaturalHole) colorClass = 'score-green';
-                else if (holeNum === t2ClinchedNaturalHole) colorClass = 'score-gold';
-                else if (holeNum > t2ClinchedNaturalHole) colorClass = 'score-grey';
+            if (t2ClinchPlayPosition !== null) {
+                if (arrayIndex < t2ClinchPlayPosition) {
+                    colorClass = 'score-green';
+                } else if (arrayIndex === t2ClinchPlayPosition) {
+                    colorClass = 'score-gold';
+                } else {
+                    colorClass = 'score-grey';
+                }
             } else {
                 colorClass = 'score-green';
             }
@@ -360,7 +383,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - v1.11: Use proper last hole detection with play order
+        // Strk row - v1.12: Uses natural hole comparison (last hole is display-based)
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -521,7 +544,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.11"; }
+        getVersion: function() { return "1.12"; }
     };
     
 })();
@@ -533,14 +556,17 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: T-1 clinch detection now converts clinchedHole from play order sequence to natural hole number
-   - FIXED: T-2 clinch detection now converts clinchedHole from play order sequence to natural hole number
-   - FIXED: Strk clinch detection (last hole gold) now uses proper play order to natural hole conversion
-   - This resolves gold color appearing at wrong natural holes for shotgun starts
-   - Added helper function getHoleAtPosition() for play position to natural hole conversion
-   - All other functionality preserved
-DEPENDS ON: GameData (for getLastHole)
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
+   - FIXED: T-1 and T-2 color logic now uses PLAY POSITIONS for comparison, not natural hole numbers
+   - Previously, holes played BEFORE clinch were incorrectly showing grey
+   - Now correctly: currentPlayPosition < clinchPlayPosition → GREEN
+   -            currentPlayPosition === clinchPlayPosition → GOLD
+   -            currentPlayPosition > clinchPlayPosition → GREY
+   - Removed local getPlayOrderPosition(), getHoleAtPosition(), getLastHole()
+   - Now delegates to GameOrder for all order-related calculations
+   - All existing functionality preserved
+DEPENDS ON: GameOrder
 STATUS: Ready for integration
 */
