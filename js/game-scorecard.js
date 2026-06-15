@@ -1,12 +1,12 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.14
-KEY CHANGES from v1.10:
-   - UPDATED: Now accepts new calling convention (displayMode, startingHole) from real-game.html v5.92
-   - Maintains backward compatibility with old calling convention (holes array)
-   - FIXED: Strk row now correctly displays values from strkRow parameter
-   - FIXED: Strk row color logic uses play positions for comparison
-   - All existing functionality preserved
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: T-1 and T-2 clinch detection now converts clinchedHole from play order sequence to natural hole number
+   - Previously, clinchedHole=15 (15th hole played) was compared directly with natural hole numbers
+   - This caused gold to appear at natural Hole 15 instead of natural Hole 6
+   - Now correctly maps play order sequence to natural hole number using getHoleAtPosition()
+   - All other functionality preserved from v1.14
 DEPENDS ON: GameData (for getLastHole), GameOrder (optional)
 STATUS: Ready for integration
 */
@@ -14,7 +14,7 @@ STATUS: Ready for integration
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.14";
+window.GAME_SCORECARD_VERSION = "1.15";
 
 var GameScorecard = (function() {
     
@@ -50,6 +50,16 @@ var GameScorecard = (function() {
             if (playOrder[i] === holeNumber) return i;
         }
         return holeNumber - 1;
+    }
+    
+    // ============================================================
+    // Helper: Get natural hole number for a play position
+    // ============================================================
+    function getHoleAtPosition(position, startingHole) {
+        var playOrder = [];
+        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        return playOrder[position] || 0;
     }
     
     // ============================================================
@@ -97,7 +107,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.14: Handles both calling conventions
+    // Scorecard Rendering - v1.15: Fixed clinch detection for shotgun starts
     // ============================================================
     
     function renderScorecard(containerId, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15) {
@@ -108,9 +118,6 @@ var GameScorecard = (function() {
         var startingHole;
         
         // Detect calling convention
-        // New convention: (containerId, displayMode, startingHole, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay)
-        // Old convention: (containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay)
-        
         if (typeof param2 === 'string' && (param2 === 'play' || param2 === 'natural')) {
             // New convention
             var displayMode = param2;
@@ -167,7 +174,18 @@ var GameScorecard = (function() {
         t1ClinchedHole = (t1ClinchedHole !== undefined) ? t1ClinchedHole : null;
         t2ClinchedHole = (t2ClinchedHole !== undefined) ? t2ClinchedHole : null;
         
-        // v1.09: Get last hole for Strk gold condition
+        // v1.15: Convert clinchedHole from play order sequence (1-18) to natural hole number
+        var t1ClinchedNaturalHole = null;
+        var t2ClinchedNaturalHole = null;
+        
+        if (t1ClinchedHole !== null && t1ClinchedHole >= 1 && t1ClinchedHole <= 18) {
+            t1ClinchedNaturalHole = getHoleAtPosition(t1ClinchedHole - 1, startingHole);
+        }
+        if (t2ClinchedHole !== null && t2ClinchedHole >= 1 && t2ClinchedHole <= 18) {
+            t2ClinchedNaturalHole = getHoleAtPosition(t2ClinchedHole - 1, startingHole);
+        }
+        
+        // Get last hole for Strk gold condition
         var lastHoleNumber = getLastHole(startingHole);
         
         // Build savedHoles
@@ -220,7 +238,7 @@ var GameScorecard = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td>';
+            html += '</tr>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -238,7 +256,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row
+        // T-1 row - v1.15: Use converted natural hole number for color decision
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -249,11 +267,12 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
+            // v1.15: Use converted natural hole number for color decision
             var colorClass = 'score-green';
-            if (t1ClinchedHole !== null) {
-                if (holeNum < t1ClinchedHole) colorClass = 'score-green';
-                else if (holeNum === t1ClinchedHole) colorClass = 'score-gold';
-                else if (holeNum > t1ClinchedHole) colorClass = 'score-grey';
+            if (t1ClinchedNaturalHole !== null) {
+                if (holeNum < t1ClinchedNaturalHole) colorClass = 'score-green';
+                else if (holeNum === t1ClinchedNaturalHole) colorClass = 'score-gold';
+                else if (holeNum > t1ClinchedNaturalHole) colorClass = 'score-grey';
             } else {
                 colorClass = 'score-green';
             }
@@ -328,7 +347,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row
+        // T-2 row - v1.15: Use converted natural hole number for color decision
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -339,11 +358,12 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
+            // v1.15: Use converted natural hole number for color decision
             var colorClass = 'score-green';
-            if (t2ClinchedHole !== null) {
-                if (holeNum < t2ClinchedHole) colorClass = 'score-green';
-                else if (holeNum === t2ClinchedHole) colorClass = 'score-gold';
-                else if (holeNum > t2ClinchedHole) colorClass = 'score-grey';
+            if (t2ClinchedNaturalHole !== null) {
+                if (holeNum < t2ClinchedNaturalHole) colorClass = 'score-green';
+                else if (holeNum === t2ClinchedNaturalHole) colorClass = 'score-gold';
+                else if (holeNum > t2ClinchedNaturalHole) colorClass = 'score-grey';
             } else {
                 colorClass = 'score-green';
             }
@@ -397,12 +417,11 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - v1.14: Uses strkRow parameter (which already has display values)
+        // Strk row - v1.15: Uses strkRow parameter directly
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
-            // Use the passed strkRow (which already contains formatted display values like "A3", "A6", etc.)
             var val = strkRow[arrayIndex] || '_';
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
             
@@ -419,13 +438,10 @@ var GameScorecard = (function() {
                     cellClass = 'score-green';
                 }
                 
-                // v1.14: Use the value directly from strkRow (already formatted)
                 if (val && val !== '_' && val !== 'AS') {
                     displayVal = val;
-                } else if (val === 'AS' || val === 'AS') {
+                } else if (val === 'AS') {
                     displayVal = getAsSquareHtml();
-                } else {
-                    displayVal = '';
                 }
                 
                 if (displayVal === 'AS') {
@@ -543,7 +559,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.14"; }
+        getVersion: function() { return "1.15"; }
     };
     
 })();
@@ -555,13 +571,13 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.14
-KEY CHANGES from v1.10:
-   - UPDATED: Now accepts new calling convention (displayMode, startingHole) from real-game.html v5.92
-   - Maintains backward compatibility with old calling convention (holes array)
-   - FIXED: Strk row now correctly displays values from strkRow parameter
-   - FIXED: Strk row color logic uses play positions for comparison
-   - All existing functionality preserved
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: T-1 and T-2 clinch detection now converts clinchedHole from play order sequence to natural hole number
+   - Previously, clinchedHole=15 (15th hole played) was compared directly with natural hole numbers
+   - This caused gold to appear at natural Hole 15 instead of natural Hole 6
+   - Now correctly maps play order sequence to natural hole number using getHoleAtPosition()
+   - All other functionality preserved from v1.14
 DEPENDS ON: GameData (for getLastHole), GameOrder (optional)
 STATUS: Ready for integration
 */
