@@ -1,14 +1,15 @@
 <!--
 FILE: real-game.html
-VERSION: 5.91
-KEY CHANGES from v5.90:
-   - FIXED: Cascade now only recalculates holes from current position to lastSyncedPos
-   - FIXED: Prevents overwriting of earlier play positions when saving later holes
-   - FIXED: Position 0 (Hole 10) now correctly stores single-hole result, not cumulative
-   - FIXED: Position 9 (Hole 1) now correctly stores cumulative result after 10 holes
-   - This resolves the swapped display issue for shotgun starts (starting hole != 1)
-   - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.22), js/game-team.js (v1.11), js/game-stroke.js (v1.06), js/game-scorecard.js (v1.10), js/game-ui.js (v5.07), js/game-loader.js (v1.08), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.92
+KEY CHANGES from v5.91:
+   - REFACTORED: Now uses GameOrder as the single source of truth for all order operations
+   - Removed local getPlayOrder(), getHolePosition(), getHoleAtPosition(), getDisplayHoles()
+   - Removed local getRemainingHolesFromPlayOrder() - now uses GameOrder.getRemainingHoles()
+   - Updated renderAll() to call GameScorecard.renderScorecard with new signature (displayMode, startingHole)
+   - Updated getRemainingHolesFromPlayOrder to delegate to GameOrder
+   - All order-related functions now delegate to GameOrder
+   - Maintains backward compatibility for all existing functionality
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js (v1.12), js/game-stroke.js (v1.06), js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/game-order.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -21,21 +22,22 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=5.91"></script>
-    <script src="js/session.js?v=5.91"></script>
-    <script src="js/modal.js?v=5.91"></script>
-    <script src="js/game-data.js?v=2.06"></script>
-    <script src="js/game-match.js?v=2.22"></script>
-    <script src="js/game-team.js?v=1.11"></script>
+    <script src="js/firebase-config.js?v=5.92"></script>
+    <script src="js/session.js?v=5.92"></script>
+    <script src="js/modal.js?v=5.92"></script>
+    <script src="js/game-order.js?v=1.00"></script>
+    <script src="js/game-data.js?v=2.07"></script>
+    <script src="js/game-match.js?v=2.24"></script>
+    <script src="js/game-team.js?v=1.12"></script>
     <script src="js/game-stroke.js?v=1.06"></script>
- <script src="js/game-scorecard.js?v=1.10"></script>
-    <script src="js/game-ui.js?v=5.07"></script>
-    <script src="js/game-loader.js?v=1.08"></script>
-    <script src="js/card-submit.js?v=5.91"></script>
-    <script src="js/sign-card.js?v=5.91"></script>
-    <script src="js/hcp-adjust.js?v=5.91"></script>
-    <script src="js/ticker.js?v=5.91"></script>
-    <script src="js/history-record.js?v=5.91"></script>
+    <script src="js/game-scorecard.js?v=1.13"></script>
+    <script src="js/game-ui.js?v=5.08"></script>
+    <script src="js/game-loader.js?v=1.09"></script>
+    <script src="js/card-submit.js?v=5.92"></script>
+    <script src="js/sign-card.js?v=5.92"></script>
+    <script src="js/hcp-adjust.js?v=5.92"></script>
+    <script src="js/ticker.js?v=5.92"></script>
+    <script src="js/history-record.js?v=5.92"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -298,13 +300,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.91</div>
+<div class="version-tag">v5.92</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "5.91";
+var APP_VERSION = "5.92";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -316,8 +318,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.91";
-console.log("[REAL-GAME] Initializing v5.91 - cascade from current position only");
+window.REAL_GAME_VERSION = "5.92";
+console.log("[REAL-GAME] Initializing v5.92 - using GameOrder for all order operations");
 
 // ============================================================
 // DEBUG CONFIGURATION
@@ -369,6 +371,15 @@ var viewOtherFlight = false;  // true = viewing other flight (read-only)
 var firestoreUnsubscribe = null;
 
 // ============================================================
+// v5.92: Initialize GameOrder when starting hole is known
+// ============================================================
+function updateGameOrder() {
+    if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
+        GameOrder.setStartingHole(startingHole);
+    }
+}
+
+// ============================================================
 // Helper: Get highest hole saved by both flights
 // ============================================================
 
@@ -386,10 +397,13 @@ function getHighestBothSaved(cache) {
 }
 
 // ============================================================
-// Helper to get last hole using shared GameData utility
+// Helper to get last hole - v5.92: Delegates to GameOrder
 // ============================================================
 
 function getLastHole() {
+    if (typeof GameOrder !== 'undefined' && GameOrder.getLastHole) {
+        return GameOrder.getLastHole();
+    }
     if (typeof GameData !== 'undefined' && GameData.getLastHole) {
         return GameData.getLastHole(startingHole);
     }
@@ -607,6 +621,9 @@ function applyPreloadedData(preloadData) {
     startingHole = preloadData.startingHole || 1;
     teamGameFormat = preloadData.teamGameFormat || "tournament";
     
+    // Update GameOrder with starting hole
+    updateGameOrder();
+    
     var mockCache = {
         course: preloadData.course,
         players: preloadData.players,
@@ -665,10 +682,13 @@ function initTicker() {
 }
 
 // ============================================================
-// Helper Functions
+// Helper Functions - v5.92: Delegate to GameOrder
 // ============================================================
 
 function getPlayOrder() {
+    if (typeof GameOrder !== 'undefined' && GameOrder.getPlayOrder) {
+        return GameOrder.getPlayOrder();
+    }
     var order = [];
     for (var i = startingHole; i <= 18; i++) order.push(i);
     for (var i = 1; i < startingHole; i++) order.push(i);
@@ -676,24 +696,20 @@ function getPlayOrder() {
 }
 
 function getRemainingHolesFromPlayOrder(currentHoleNumber) {
+    if (typeof GameOrder !== 'undefined' && GameOrder.getPlayPosition) {
+        var playPos = GameOrder.getPlayPosition(currentHoleNumber);
+        return GameOrder.getRemainingHoles(playPos);
+    }
     var playOrder = getPlayOrder();
     var currentIndex = playOrder.indexOf(currentHoleNumber);
     if (currentIndex === -1) return 18 - currentHoleNumber;
     return 18 - (currentIndex + 1);
 }
 
-function getDisplayHoles() {
-    var mode = GameUI.getDisplayMode();
-    if (mode === "natural") {
-        var natural = [];
-        for (var i = 1; i <= 18; i++) natural.push(i);
-        return natural;
-    } else {
-        return getPlayOrder();
-    }
-}
-
 function getHolePosition(holeNumber) {
+    if (typeof GameOrder !== 'undefined' && GameOrder.getPlayPosition) {
+        return GameOrder.getPlayPosition(holeNumber);
+    }
     var playOrder = getPlayOrder();
     for (var i = 0; i < playOrder.length; i++) {
         if (playOrder[i] === holeNumber) return i;
@@ -702,6 +718,9 @@ function getHolePosition(holeNumber) {
 }
 
 function getHoleAtPosition(position) {
+    if (typeof GameOrder !== 'undefined' && GameOrder.getNaturalHole) {
+        return GameOrder.getNaturalHole(position);
+    }
     var playOrder = getPlayOrder();
     return playOrder[position];
 }
@@ -983,21 +1002,19 @@ function performSave() {
                 var cumulativeFlight2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole || null;
                 
                 // ============================================================
-                // v5.91: FIXED CASCADE - Only recalculate holes from current position to lastSyncedPos
-                // This prevents overwriting earlier play positions with cumulative data
+                // v5.91/5.92: Cascade only recalculates holes from current position to lastSyncedPos
                 // ============================================================
                 
                 var playOrder = getPlayOrder();
                 var currentPosition = getHolePosition(currentHole);
                 var lastSyncedPos = cache.lastSyncedPosition;
                 
-                console.log(`[CASCADE-DEBUG] v5.91: Recalculating holes from position ${currentPosition} to ${lastSyncedPos}`);
+                console.log(`[CASCADE-DEBUG] v5.92: Recalculating holes from position ${currentPosition} to ${lastSyncedPos}`);
                 
                 var currentCache = GameLoader.getLocalCache();
                 var cascadeResultsQueue = [];
                 
                 // ONLY recalculate from current position to last synced position
-                // Do NOT recalculate holes with position < currentPosition
                 for (var pos = currentPosition; pos <= lastSyncedPos; pos++) {
                     var holeToUpdate = playOrder[pos];
                     
@@ -1010,12 +1027,10 @@ function performSave() {
                     
                     console.log(`[CASCADE-DEBUG] --- Processing hole ${holeToUpdate} (position ${pos}) ---`);
                     
-                    // Get current clinched state from cache
                     var updatedClinched = currentCache.results?.clinchedAt || {};
                     var updatedFlight1Clinched = currentCache.results?.game2?.flight1?.clinchedHole || null;
                     var updatedFlight2Clinched = currentCache.results?.game2?.flight2?.clinchedHole || null;
                     
-                    // Calculate for this hole - it will accumulate holes from 0 to pos
                     var loopResultsData = calculateHoleResultsWithCumulative(
                         holeToUpdate, updatedClinched, updatedFlight1Clinched, updatedFlight2Clinched, holeToUpdate
                     );
@@ -1029,7 +1044,6 @@ function performSave() {
                         });
                     }
                     
-                    // Refresh cache after each hole update
                     currentCache = GameLoader.getLocalCache();
                 }
                 
@@ -1358,7 +1372,7 @@ function calculatePlayerTotals(upToHole) {
 }
 
 // ============================================================
-// MAIN RESULTS CALCULATION - v5.91: Play order accumulation
+// MAIN RESULTS CALCULATION - v5.92: Uses GameOrder for positions
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1403,7 +1417,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.91";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.92";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -1452,7 +1466,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         var holesToAccumulate = position + 1;
         
         if(isTarget) {
-            console.log(`[DEBUG-CALC] v5.91: Using holesToAccumulate = ${holesToAccumulate} (position=${position})`);
+            console.log(`[DEBUG-CALC] v5.92: Using holesToAccumulate = ${holesToAccumulate} (position=${position})`);
         }
         
         var crossResult = GameMatch.calculateCrossFlightWithClinch(
@@ -1620,6 +1634,7 @@ function setupRealtimeListener() {
                         }
                         allPlayers = result.cache.players;
                         startingHole = result.cache.startingHole;
+                        updateGameOrder();
                         
                         var clinchedAtFromFS = result.cache.results?.clinchedAt || {};
                         console.log(`[CASCADE-DEBUG] Firestore cache refresh: clinchedAt count = ${Object.keys(clinchedAtFromFS).length}`);
@@ -1919,7 +1934,7 @@ function renderCompactHeaderWithFlightToggle() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS - v5.91: Pass lastSyncedPosition to getMatchBubbleClass
+// RENDER FUNCTIONS - v5.92: Uses GameScorecard with new signature
 // ============================================================
 
 function renderAll() {
@@ -2020,8 +2035,8 @@ function renderAll() {
         }
     }
     
-    var holes = getDisplayHoles();
-    window.savedHoles = cache.savedHoles;
+    // v5.92: Use GameScorecard.renderScorecard with new signature (displayMode, startingHole)
+    var displayMode = GameUI.getDisplayMode();
     
     var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
     var t2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole;
@@ -2036,10 +2051,22 @@ function renderAll() {
     
     if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
         GameScorecard.renderScorecard(
-            "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
-            displayT1Row, displayT2Row, displayStrkRow, coursePar, courseSi,
-            t1ClinchedHole, t2ClinchedHole,
-            t1Display, t2Display, strkDisplay
+            "scorecardWrapper",
+            displayMode,        // New: display mode ("play" or "natural")
+            startingHole,       // New: starting hole for the game
+            allPlayers,
+            getStoredScore,
+            isHoleSaved,
+            displayT1Row,
+            displayT2Row,
+            displayStrkRow,
+            coursePar,
+            courseSi,
+            t1ClinchedHole,
+            t2ClinchedHole,
+            t1Display,
+            t2Display,
+            strkDisplay
         );
     }
     
@@ -2102,6 +2129,7 @@ function onCacheUpdate(cache) {
     }
     allPlayers = cache.players;
     startingHole = cache.startingHole;
+    updateGameOrder();
     if (typeof Ticker !== 'undefined' && allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
     if (cache.signatures.f1 && cache.signatures.f2 && !isGameCompleteFlag && !celebrationTriggered) {
         createHistoryRecord().then(function() { isGameCompleteFlag = true; showGameCompleteScreen(); renderAll(); }).catch(console.error);
@@ -2150,6 +2178,7 @@ async function init() {
                     }
                     allPlayers = result.cache.players;
                     startingHole = result.cache.startingHole;
+                    updateGameOrder();
                 }
                 resolveLoad();
             });
@@ -2182,6 +2211,7 @@ async function init() {
                 if (cache.course) { courseName = cache.course.name; coursePar = cache.course.par; courseSi = cache.course.si; }
                 allPlayers = cache.players;
                 startingHole = cache.startingHole;
+                updateGameOrder();
                 renderAll();
             }
         });
@@ -2197,6 +2227,7 @@ async function init() {
             startingHole = cache.startingHole;
             teamGameFormat = cache.teamGameFormat || "tournament";
             document.getElementById("courseName").innerHTML = courseName;
+            updateGameOrder();
             var initSuccess = await initializeGameData(collection, cache);
             if (!initSuccess) { document.getElementById("debug").innerHTML = "Error: Failed to initialize"; return; }
             GameUI.applyTightLayout();
@@ -2226,14 +2257,15 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.91
-KEY CHANGES from v5.90:
-   - FIXED: Cascade now only recalculates holes from current position to lastSyncedPos
-   - FIXED: Prevents overwriting of earlier play positions when saving later holes
-   - FIXED: Position 0 (Hole 10) now correctly stores single-hole result, not cumulative
-   - FIXED: Position 9 (Hole 1) now correctly stores cumulative result after 10 holes
-   - This resolves the swapped display issue for shotgun starts (starting hole != 1)
-   - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.22), js/game-team.js (v1.11), js/game-stroke.js (v1.06), js/game-scorecard.js (v1.10), js/game-ui.js (v5.07), js/game-loader.js (v1.08), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
+VERSION: 5.92
+KEY CHANGES from v5.91:
+   - REFACTORED: Now uses GameOrder as the single source of truth for all order operations
+   - Removed local getPlayOrder(), getHolePosition(), getHoleAtPosition(), getDisplayHoles()
+   - Removed local getRemainingHolesFromPlayOrder() - now uses GameOrder.getRemainingHoles()
+   - Updated renderAll() to call GameScorecard.renderScorecard with new signature (displayMode, startingHole)
+   - Updated getRemainingHolesFromPlayOrder to delegate to GameOrder
+   - All order-related functions now delegate to GameOrder
+   - Maintains backward compatibility for all existing functionality
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js (v1.12), js/game-stroke.js (v1.06), js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/game-order.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
