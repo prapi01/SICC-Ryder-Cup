@@ -1,12 +1,11 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
-   - Removed local getPlayOrder(), getPlayPosition(), getConsecutiveSyncedLastPosition()
-   - Now delegates to GameOrder for all order-related calculations
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Converts sparse Firestore objects to proper arrays when building cache
+   - displayT1, displayT2, flight1.leader, flight2.leader, cumulativePoints are now always arrays
+   - Prevents "slice is not a function" errors and missing data issues
    - Maintains backward compatibility with existing caches
-   - All existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
@@ -23,6 +22,34 @@ var GameLoader = (function() {
     var currentCache = null;
     var unsubscribe = null;
     var dataCallbacks = [];
+    
+    // ============================================================
+    // Helper: Convert sparse Firestore object to array
+    // v1.10: Critical fix for T-1 data corruption
+    // ============================================================
+    function sparseToArray(sparseObj, defaultValue, length) {
+        var arr = new Array(length).fill(defaultValue);
+        if (!sparseObj) return arr;
+        
+        // If it's already an array, return a copy
+        if (Array.isArray(sparseObj)) {
+            for (var i = 0; i < Math.min(sparseObj.length, length); i++) {
+                if (sparseObj[i] !== undefined && sparseObj[i] !== null) {
+                    arr[i] = sparseObj[i];
+                }
+            }
+            return arr;
+        }
+        
+        // It's a sparse object with numeric keys (Firestore format)
+        for (var key in sparseObj) {
+            var idx = parseInt(key);
+            if (!isNaN(idx) && idx >= 0 && idx < length && sparseObj[key] !== undefined && sparseObj[key] !== null) {
+                arr[idx] = sparseObj[key];
+            }
+        }
+        return arr;
+    }
     
     // ============================================================
     // Helper: Parse saved holes from data string
@@ -143,6 +170,7 @@ var GameLoader = (function() {
     
     // ============================================================
     // Helper: Build cache from Firestore document
+    // v1.10: Converts sparse Firestore objects to arrays
     // ============================================================
     function buildCacheFromDoc(docData) {
         var course = docData.course || {};
@@ -183,47 +211,103 @@ var GameLoader = (function() {
         // For backward compatibility, provide natural hole of last synced position
         var lastSyncedHole = (lastSyncedPosition >= 0) ? getNaturalHole(lastSyncedPosition, startingHole) : 0;
         
-        // Build t1Row, t2Row, strkRow from results
-        var t1Row = new Array(18).fill('_');
-        if (results?.game2?.flight1?.leader) {
-            for (var i = 0; i < 18; i++) {
-                if (results.game2.flight1.leader[i]) {
-                    t1Row[i] = results.game2.flight1.leader[i];
-                }
-            }
-        }
+        // ============================================================
+        // v1.10: Convert sparse Firestore objects to arrays
+        // This fixes the T-1 data corruption issue
+        // ============================================================
         
-        var t2Row = new Array(18).fill('_');
-        if (results?.game2?.flight2?.leader) {
-            for (var i = 0; i < 18; i++) {
-                if (results.game2.flight2.leader[i]) {
-                    t2Row[i] = results.game2.flight2.leader[i];
-                }
-            }
-        }
-        
-        var strkRow = new Array(18).fill('_');
-        if (results?.game3?.leader) {
-            for (var i = 0; i < 18; i++) {
-                if (results.game3.leader[i]) {
-                    strkRow[i] = results.game3.leader[i];
-                }
-            }
-        }
-        
-        // Build display arrays from results
-        var t1Display = null;
-        var t2Display = null;
-        var strkDisplay = null;
-        
+        // Build displayT1 array
+        var displayT1 = null;
         if (results?.game2?.displayT1) {
-            t1Display = results.game2.displayT1;
+            displayT1 = sparseToArray(results.game2.displayT1, "AS", 18);
         }
+        
+        // Build displayT2 array
+        var displayT2 = null;
         if (results?.game2?.displayT2) {
-            t2Display = results.game2.displayT2;
+            displayT2 = sparseToArray(results.game2.displayT2, "AS", 18);
         }
+        
+        // Build flight1.leader array
+        var flight1Leader = null;
+        if (results?.game2?.flight1?.leader) {
+            flight1Leader = sparseToArray(results.game2.flight1.leader, "AS", 18);
+        }
+        
+        // Build flight1.cumulativePoints array
+        var flight1Cumulative = null;
+        if (results?.game2?.flight1?.cumulativePoints) {
+            flight1Cumulative = sparseToArray(results.game2.flight1.cumulativePoints, 0, 18);
+        }
+        
+        // Build flight2.leader array
+        var flight2Leader = null;
+        if (results?.game2?.flight2?.leader) {
+            flight2Leader = sparseToArray(results.game2.flight2.leader, "AS", 18);
+        }
+        
+        // Build flight2.cumulativePoints array
+        var flight2Cumulative = null;
+        if (results?.game2?.flight2?.cumulativePoints) {
+            flight2Cumulative = sparseToArray(results.game2.flight2.cumulativePoints, 0, 18);
+        }
+        
+        // Build displayStrk array
+        var displayStrk = null;
         if (results?.game3?.displayStrk) {
-            strkDisplay = results.game3.displayStrk;
+            displayStrk = sparseToArray(results.game3.displayStrk, "AS", 18);
+        }
+        
+        // Build t1Row from flight1.leader (or use existing)
+        var t1Row = new Array(18).fill('_');
+        if (flight1Leader) {
+            for (var i = 0; i < 18; i++) {
+                if (flight1Leader[i] && flight1Leader[i] !== 'AS') {
+                    t1Row[i] = flight1Leader[i];
+                } else if (flight1Leader[i] === 'AS') {
+                    t1Row[i] = 'AS';
+                }
+            }
+        }
+        
+        // Build t2Row from flight2.leader
+        var t2Row = new Array(18).fill('_');
+        if (flight2Leader) {
+            for (var i = 0; i < 18; i++) {
+                if (flight2Leader[i] && flight2Leader[i] !== 'AS') {
+                    t2Row[i] = flight2Leader[i];
+                } else if (flight2Leader[i] === 'AS') {
+                    t2Row[i] = 'AS';
+                }
+            }
+        }
+        
+        // Build strkRow from displayStrk
+        var strkRow = new Array(18).fill('_');
+        if (displayStrk) {
+            for (var i = 0; i < 18; i++) {
+                if (displayStrk[i] && displayStrk[i] !== 'AS') {
+                    strkRow[i] = displayStrk[i];
+                } else if (displayStrk[i] === 'AS') {
+                    strkRow[i] = 'AS';
+                }
+            }
+        }
+        
+        // Update results with converted arrays
+        if (results) {
+            if (!results.game2) results.game2 = {};
+            if (!results.game2.flight1) results.game2.flight1 = {};
+            if (!results.game2.flight2) results.game2.flight2 = {};
+            if (!results.game3) results.game3 = {};
+            
+            results.game2.displayT1 = displayT1;
+            results.game2.displayT2 = displayT2;
+            results.game2.flight1.leader = flight1Leader;
+            results.game2.flight1.cumulativePoints = flight1Cumulative;
+            results.game2.flight2.leader = flight2Leader;
+            results.game2.flight2.cumulativePoints = flight2Cumulative;
+            results.game3.displayStrk = displayStrk;
         }
         
         // Build clinchedAt
@@ -244,9 +328,9 @@ var GameLoader = (function() {
             t1Row: t1Row,
             t2Row: t2Row,
             strkRow: strkRow,
-            t1Display: t1Display,
-            t2Display: t2Display,
-            strkDisplay: strkDisplay,
+            t1Display: displayT1,
+            t2Display: displayT2,
+            strkDisplay: displayStrk,
             lastSyncedPosition: lastSyncedPosition,
             lastSyncedHole: lastSyncedHole,
             results: results,
@@ -462,13 +546,12 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
-   - Removed local getPlayOrder(), getPlayPosition(), getConsecutiveSyncedLastPosition()
-   - Now delegates to GameOrder for all order-related calculations
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Converts sparse Firestore objects to proper arrays when building cache
+   - displayT1, displayT2, flight1.leader, flight2.leader, cumulativePoints are now always arrays
+   - Prevents "slice is not a function" errors and missing data issues
    - Maintains backward compatibility with existing caches
-   - All existing functionality preserved
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
