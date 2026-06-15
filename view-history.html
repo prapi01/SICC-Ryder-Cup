@@ -1,12 +1,14 @@
 <!--
 FILE: view-history.html
-VERSION: 8.25
-KEY CHANGES from v8.24:
-   - FIXED: isHoleSaved() now uses GameData.getSavedHolesFromString() for proper hole number conversion
-   - FIXED: startHole detection now correctly identifies first saved hole based on actual hole numbers
-   - Ensures saved holes are correctly interpreted when starting hole is not 1 (e.g., Hole 10)
-   - All existing functionality preserved (grey icon loading, FirebaseRetry, parallel module loading)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
+VERSION: 8.26
+KEY CHANGES from v8.25:
+   - REFACTORED: Now uses GameOrder as the single source of truth for order operations
+   - Added game-order.js to dynamically loaded modules
+   - Updated renderScorecardView() to use GameOrder for play order and conversions
+   - Replaced local getPlayOrder(), getHolePosition(), getDisplayHoles() with GameOrder delegates
+   - Updated GameScorecard.renderScorecard() call to new signature (displayMode, startingHole)
+   - Maintains backward compatibility for all existing functionality
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
 
@@ -339,13 +341,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.25</div>
+<div class="version-tag">v8.26</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "8.25";
+var APP_VERSION = "8.26";
 var CACHE_KEY = "view_history_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -357,8 +359,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.25";
-console.log("[VIEW-HISTORY] Initializing v8.25 with fixed saved holes conversion");
+window.VIEW_HISTORY_VERSION = "8.26";
+console.log("[VIEW-HISTORY] Initializing v8.26 - using GameOrder for order operations");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -492,7 +494,7 @@ function getSavedHolesArray(flight, f1DataString, f2DataString, startingHole) {
 }
 
 // ============================================================
-// Show Scorecard View
+// Show Scorecard View - v8.26: Uses GameOrder for order operations
 // ============================================================
 
 function showScorecardView(game) {
@@ -504,7 +506,9 @@ function showScorecardView(game) {
     detailView.style.display = 'block';
     detailContent.innerHTML = '<div class="grey-icon-container"><div class="grey-icon-loading">⛳</div></div>';
     
+    // v8.26: Added game-order.js to modules list
     var modulesToLoad = [
+        'js/game-order.js',
         'js/game-data.js',
         'js/game-match.js',
         'js/game-team.js',
@@ -548,6 +552,11 @@ function renderScorecardView(game) {
     var savedHolesF1 = getSavedHolesArray(1, f1DataString, f2DataString, startingHole);
     var savedHolesF2 = getSavedHolesArray(2, f1DataString, f2DataString, startingHole);
     
+    // v8.26: Update GameOrder with starting hole
+    if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
+        GameOrder.setStartingHole(startingHole);
+    }
+    
     var html = `
         <div class="ticker-container" id="tickerContainer">
             <div class="ticker-content" id="tickerContent">&nbsp;</div>
@@ -570,7 +579,11 @@ function renderScorecardView(game) {
     GameUI.applyTightLayout();
     GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
     
+    // v8.26: Delegate to GameOrder for order functions
     function getPlayOrder() {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayOrder) {
+            return GameOrder.getPlayOrder();
+        }
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
         for (var i = 1; i < startingHole; i++) order.push(i);
@@ -578,6 +591,9 @@ function renderScorecardView(game) {
     }
     
     function getHolePosition(holeNumber) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayPosition) {
+            return GameOrder.getPlayPosition(holeNumber);
+        }
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
             if (playOrder[i] === holeNumber) return i;
@@ -587,6 +603,9 @@ function renderScorecardView(game) {
     
     function getDisplayHoles() {
         var mode = GameUI.getDisplayMode();
+        if (typeof GameOrder !== 'undefined' && GameOrder.getDisplayHoles) {
+            return GameOrder.getDisplayHoles(mode);
+        }
         if (mode === "natural") {
             var natural = [];
             for (var i = 1; i <= 18; i++) natural.push(i);
@@ -656,7 +675,8 @@ function renderScorecardView(game) {
         
         return GameMatch.getMatchBubbleClass(
             matchValue, clinchedAt, player, opponent, currentHole,
-            isHoleSavedForFlight, lastSyncedHole, GameMatch.getClinchHole
+            isHoleSavedForFlight, lastSyncedHole, GameMatch.getClinchHole,
+            startingHole
         );
     }
     
@@ -744,6 +764,7 @@ function renderScorecardView(game) {
         if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
+    // v8.26: Updated renderDetailView to use GameScorecard with new signature
     function renderDetailView() {
         if (!f1DataString || !f2DataString) return;
         
@@ -767,7 +788,6 @@ function renderScorecardView(game) {
         
         GameUI.updateFlightBadge(currentFlight);
         
-        var holes = getDisplayHoles();
         var t1Row = resultsCache?.game2?.flight1?.leader || new Array(18).fill('_');
         var t2Row = resultsCache?.game2?.flight2?.leader || new Array(18).fill('_');
         var strkRow = resultsCache?.game3?.leader || new Array(18).fill('_');
@@ -777,12 +797,38 @@ function renderScorecardView(game) {
         var t2Display = resultsCache?.game2?.displayT2 || null;
         var strkDisplay = resultsCache?.game3?.displayStrk || null;
         
-        GameScorecard.renderScorecard(
-            "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
-            t1Row, t2Row, strkRow, coursePar, courseSi,
-            t1ClinchedHole, t2ClinchedHole,
-            t1Display, t2Display, strkDisplay
-        );
+        var displayMode = GameUI.getDisplayMode();
+        
+        // v8.26: Use new GameScorecard signature (displayMode, startingHole)
+        if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
+            GameScorecard.renderScorecard(
+                "scorecardWrapper",
+                displayMode,
+                startingHole,
+                allPlayers,
+                getStoredScore,
+                isHoleSaved,
+                t1Row,
+                t2Row,
+                strkRow,
+                coursePar,
+                courseSi,
+                t1ClinchedHole,
+                t2ClinchedHole,
+                t1Display,
+                t2Display,
+                strkDisplay
+            );
+        } else {
+            // Fallback to old signature if needed
+            var holes = getDisplayHoles();
+            GameScorecard.renderScorecard(
+                "scorecardWrapper", holes, allPlayers, getStoredScore, isHoleSaved,
+                t1Row, t2Row, strkRow, coursePar, courseSi,
+                t1ClinchedHole, t2ClinchedHole,
+                t1Display, t2Display, strkDisplay
+            );
+        }
         
         var playOrder = getPlayOrder();
         var currentIndex = playOrder.indexOf(currentHole);
@@ -799,9 +845,7 @@ function renderScorecardView(game) {
         if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
-    var playOrder = [];
-    for (var i = startingHole; i <= 18; i++) playOrder.push(i);
-    for (var i = 1; i < startingHole; i++) playOrder.push(i);
+    var playOrder = getPlayOrder();
     
     // v8.25: Find first hole that has saved data using the corrected savedHoles arrays
     var startHole = playOrder[0];
@@ -1026,7 +1070,9 @@ function loadGameListAndModules() {
             checkBothReady();
         });
     
+    // v8.26: Added game-order.js to modules list
     var modulesToLoad = [
+        'js/game-order.js',
         'js/game-data.js',
         'js/game-match.js',
         'js/game-team.js',
@@ -1104,12 +1150,14 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.25
-KEY CHANGES from v8.24:
-   - FIXED: isHoleSaved() now uses GameData.getSavedHolesFromString() for proper hole number conversion
-   - FIXED: startHole detection now correctly identifies first saved hole based on actual hole numbers
-   - Ensures saved holes are correctly interpreted when starting hole is not 1 (e.g., Hole 10)
-   - All existing functionality preserved (grey icon loading, FirebaseRetry, parallel module loading)
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-ui.js (loaded dynamically), js/hcp-adjust.js
+VERSION: 8.26
+KEY CHANGES from v8.25:
+   - REFACTORED: Now uses GameOrder as the single source of truth for order operations
+   - Added game-order.js to dynamically loaded modules
+   - Updated renderScorecardView() to use GameOrder for play order and conversions
+   - Replaced local getPlayOrder(), getHolePosition(), getDisplayHoles() with GameOrder delegates
+   - Updated GameScorecard.renderScorecard() call to new signature (displayMode, startingHole)
+   - Maintains backward compatibility for all existing functionality
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
