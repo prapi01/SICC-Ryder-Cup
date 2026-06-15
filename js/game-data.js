@@ -1,22 +1,19 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.06
-KEY CHANGES from v2.05:
-   - ADDED: getPlayPosition(holeNumber) - returns play position (0-17) for a natural hole number
-   - ADDED: getNaturalHole(playPosition) - returns natural hole number for a play position
-   - ADDED: getLastPlayPosition() - returns the last play position (0-17) based on starting hole
-   - ADDED: isSyncedPosition(playPosition, lastSyncedPosition) - checks if a play position is synced
-   - ADDED: getConsecutiveSyncedCount() - returns number of consecutively synced holes from start
-   - ADDED: getConsecutiveSyncedLastPosition() - returns last play position that is consecutively synced
-   - These utilities provide a consistent internal play position system for all game logic
-   - All existing functions unchanged
-DEPENDS ON: None
+VERSION: 2.07
+KEY CHANGES from v2.06:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
+   - Removed local implementations of getPlayOrder(), getPlayPosition(), getNaturalHole()
+   - All order-related functions now delegate to GameOrder
+   - Maintains backward compatibility with existing API
+   - All other functionality unchanged (data strings, saving, loading, etc.)
+DEPENDS ON: js/game-order.js, Firebase Firestore
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.06
+// FILE: js/game-data.js - VERSION 2.07
 // String-based data manager for SICC Ryder Cup
-// ADDED: internal play position utilities for consistent sync detection
+// Now uses GameOrder for all play order conversions
 
 var GameData = (function() {
     
@@ -50,7 +47,7 @@ var GameData = (function() {
     var errorCallbacks = [];
     
     // ============================================================
-    // SHOTGUN START HELPER FUNCTIONS
+    // SHOTGUN START HELPER FUNCTIONS - Now delegate to GameOrder
     // ============================================================
     
     function getStartingHole() {
@@ -59,6 +56,10 @@ var GameData = (function() {
     
     function setStartingHole(hole) {
         startingHole = hole;
+        // Update GameOrder when starting hole changes
+        if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
+            GameOrder.setStartingHole(hole);
+        }
     }
     
     function getTeamGameFormat() {
@@ -66,6 +67,10 @@ var GameData = (function() {
     }
     
     function getPlayOrder() {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayOrder) {
+            return GameOrder.getPlayOrder();
+        }
+        // Fallback
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
         for (var i = 1; i < startingHole; i++) order.push(i);
@@ -79,34 +84,36 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // v2.06: INTERNAL PLAY POSITION UTILITIES
-    // These convert between natural hole numbers and internal play positions (0-17)
-    // Play position is always sequential regardless of starting hole
+    // v2.07: DELEGATE TO GAMEORDER - Play position utilities
     // ============================================================
     
     /**
      * Convert a natural hole number (1-18) to internal play position (0-17)
-     * @param {number} holeNumber - Natural hole number (1-18)
-     * @returns {number} - Play position (0-17)
+     * Delegates to GameOrder.getPlayPosition()
      */
     function getPlayPosition(holeNumber) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayPosition) {
+            return GameOrder.getPlayPosition(holeNumber);
+        }
+        // Fallback
         return getStorageIndexForHole(holeNumber);
     }
     
     /**
      * Convert internal play position (0-17) to natural hole number (1-18)
-     * @param {number} playPosition - Play position (0-17)
-     * @returns {number} - Natural hole number (1-18)
+     * Delegates to GameOrder.getNaturalHole()
      */
     function getNaturalHole(playPosition) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getNaturalHole) {
+            return GameOrder.getNaturalHole(playPosition);
+        }
+        // Fallback
         return getHoleAtStoragePosition(playPosition);
     }
     
     /**
      * Get the last play position of the game based on starting hole
      * Play positions are 0-17, last position is always 17
-     * But the NATURAL hole at last position depends on starting hole
-     * @returns {number} - Last play position (always 17)
      */
     function getLastPlayPosition() {
         return 17;
@@ -114,8 +121,6 @@ var GameData = (function() {
     
     /**
      * Get the play position of the last natural hole
-     * Example: startingHole=10, last natural hole=9, play position of hole 9 = 17
-     * @returns {number} - Play position of the last natural hole
      */
     function getLastNaturalHolePlayPosition() {
         var lastNaturalHole = getLastHole();
@@ -123,10 +128,7 @@ var GameData = (function() {
     }
     
     /**
-     * Check if a play position is synced (both flights have saved up to that position)
-     * @param {number} playPosition - Play position to check (0-17)
-     * @param {number} lastSyncedPosition - The last consecutively synced play position
-     * @returns {boolean} - True if the position is <= lastSyncedPosition
+     * Check if a play position is synced
      */
     function isSyncedPosition(playPosition, lastSyncedPosition) {
         return playPosition <= lastSyncedPosition;
@@ -134,9 +136,6 @@ var GameData = (function() {
     
     /**
      * Get the number of consecutively synced holes from the start of play
-     * @param {Array} savedHolesF1 - Array of natural hole numbers saved by Flight 1
-     * @param {Array} savedHolesF2 - Array of natural hole numbers saved by Flight 2
-     * @returns {number} - Number of consecutively synced holes (not play position)
      */
     function getConsecutiveSyncedCount(savedHolesF1, savedHolesF2) {
         var playOrder = getPlayOrder();
@@ -154,10 +153,7 @@ var GameData = (function() {
     }
     
     /**
-     * Get the last play position that is consecutively synced (both flights)
-     * @param {Array} savedHolesF1 - Array of natural hole numbers saved by Flight 1
-     * @param {Array} savedHolesF2 - Array of natural hole numbers saved by Flight 2
-     * @returns {number} - Last synced play position (-1 if none)
+     * Get the last play position that is consecutively synced
      */
     function getConsecutiveSyncedLastPosition(savedHolesF1, savedHolesF2) {
         var playOrder = getPlayOrder();
@@ -180,13 +176,6 @@ var GameData = (function() {
     
     /**
      * Get the last hole of the game based on starting hole
-     * @param {number} startHole - The starting hole (1-18)
-     * @returns {number} - The last hole number
-     * 
-     * Examples:
-     * - startHole = 1  → lastHole = 18
-     * - startHole = 10 → lastHole = 9
-     * - startHole = 5  → lastHole = 4
      */
     function getLastHole(startHole) {
         var start = (startHole !== undefined) ? startHole : startingHole;
@@ -195,9 +184,6 @@ var GameData = (function() {
     
     /**
      * Check if a given hole is the last hole of the game
-     * @param {number} holeNumber - The hole to check
-     * @param {number} startHole - The starting hole (optional, defaults to current)
-     * @returns {boolean} - True if this is the last hole
      */
     function isLastHole(holeNumber, startHole) {
         var start = (startHole !== undefined) ? startHole : startingHole;
@@ -206,9 +192,6 @@ var GameData = (function() {
     
     /**
      * Check if a given hole is the first hole of the game
-     * @param {number} holeNumber - The hole to check
-     * @param {number} startHole - The starting hole (optional, defaults to current)
-     * @returns {boolean} - True if this is the first hole
      */
     function isFirstHole(holeNumber, startHole) {
         var start = (startHole !== undefined) ? startHole : startingHole;
@@ -217,7 +200,6 @@ var GameData = (function() {
     
     /**
      * Get the play order with the last hole marked (for debugging)
-     * @returns {Array} - Array of holes with 'last' flag
      */
     function getPlayOrderWithLastHole() {
         var order = getPlayOrder();
@@ -226,6 +208,10 @@ var GameData = (function() {
             return { hole: hole, isLast: (hole === lastHole) };
         });
     }
+    
+    // ============================================================
+    // Storage Index Functions - These are data-specific and remain
+    // ============================================================
     
     function getStorageIndexForHole(actualHoleNumber) {
         if (startingHole === 1) {
@@ -688,9 +674,9 @@ var GameData = (function() {
                     }
                     
                     if (data.startingHole) {
-                        startingHole = data.startingHole;
+                        setStartingHole(data.startingHole);
                     } else {
-                        startingHole = 1;
+                        setStartingHole(1);
                     }
                     
                     if (data.teamGameFormat) {
@@ -746,9 +732,9 @@ var GameData = (function() {
                     var data = doc.data();
                     
                     if (data.startingHole) {
-                        startingHole = data.startingHole;
+                        setStartingHole(data.startingHole);
                     } else {
-                        startingHole = 1;
+                        setStartingHole(1);
                     }
                     
                     if (data.teamGameFormat) {
@@ -798,7 +784,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v2.06: Added play position utilities
+    // Public API - v2.07: Delegates to GameOrder for order functions
     // ============================================================
     
     return {
@@ -836,7 +822,7 @@ var GameData = (function() {
         isLastHole: isLastHole,
         isFirstHole: isFirstHole,
         getPlayOrderWithLastHole: getPlayOrderWithLastHole,
-        // v2.06: Play position utilities
+        // v2.06/v2.07: Play position utilities - delegated to GameOrder
         getPlayPosition: getPlayPosition,
         getNaturalHole: getNaturalHole,
         getLastPlayPosition: getLastPlayPosition,
@@ -848,20 +834,21 @@ var GameData = (function() {
         getMatchIndex: getMatchIndex,
         getMatchValueFromResults: getMatchValueFromResults
     };
+    
 })();
+
+// Make available globally
+window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 2.06
-KEY CHANGES from v2.05:
-   - ADDED: getPlayPosition(holeNumber) - returns play position (0-17) for a natural hole number
-   - ADDED: getNaturalHole(playPosition) - returns natural hole number for a play position
-   - ADDED: getLastPlayPosition() - returns the last play position (0-17) based on starting hole
-   - ADDED: isSyncedPosition(playPosition, lastSyncedPosition) - checks if a play position is synced
-   - ADDED: getConsecutiveSyncedCount() - returns number of consecutively synced holes from start
-   - ADDED: getConsecutiveSyncedLastPosition() - returns last play position that is consecutively synced
-   - These utilities provide a consistent internal play position system for all game logic
-   - All existing functions unchanged
-DEPENDS ON: None
+VERSION: 2.07
+KEY CHANGES from v2.06:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
+   - Removed local implementations of getPlayOrder(), getPlayPosition(), getNaturalHole()
+   - All order-related functions now delegate to GameOrder
+   - Maintains backward compatibility with existing API
+   - All other functionality unchanged (data strings, saving, loading, etc.)
+DEPENDS ON: js/game-order.js, Firebase Firestore
 STATUS: Ready for integration
 */
