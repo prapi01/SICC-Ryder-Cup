@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.94
-KEY CHANGES from v5.93:
-   - FIXED: T-1 row now updates immediately after Flight 1 saves a hole
-   - ADDED: Immediate recalculation block after save success, before cascade loop
-   - Uses GameTeam.calculate() to update cache.results.game2.flight1.cumulativePoints and t1Row
-   - This ensures T-1 displays correctly without waiting for Flight 2 to save the same hole
-   - All existing functionality preserved from v5.93
+VERSION: 5.95
+KEY CHANGES from v5.94:
+   - FIXED: T-1 row now persists after realtime listener refresh
+   - ADDED: Firestore write for T-1 values immediately after calculation
+   - Previously only local cache was updated, causing realtime listener to overwrite with stale data
+   - Now writes results.game2.displayT1, flight1.cumulativePoints, and flight1.leader to Firestore
+   - This ensures T-1 displays correctly even after Firestore sync
+   - All existing functionality preserved from v5.94
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js (v1.12), js/game-stroke.js (v1.07), js/game-scorecard.js (v1.16), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/game-order.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -20,9 +21,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=5.94"></script>
-    <script src="js/session.js?v=5.94"></script>
-    <script src="js/modal.js?v=5.94"></script>
+    <script src="js/firebase-config.js?v=5.95"></script>
+    <script src="js/session.js?v=5.95"></script>
+    <script src="js/modal.js?v=5.95"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -31,11 +32,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/card-submit.js?v=5.94"></script>
-    <script src="js/sign-card.js?v=5.94"></script>
-    <script src="js/hcp-adjust.js?v=5.94"></script>
-    <script src="js/ticker.js?v=5.94"></script>
-    <script src="js/history-record.js?v=5.94"></script>
+    <script src="js/card-submit.js?v=5.95"></script>
+    <script src="js/sign-card.js?v=5.95"></script>
+    <script src="js/hcp-adjust.js?v=5.95"></script>
+    <script src="js/ticker.js?v=5.95"></script>
+    <script src="js/history-record.js?v=5.95"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -298,13 +299,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.94</div>
+<div class="version-tag">v5.95</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "5.94";
+var APP_VERSION = "5.95";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -316,8 +317,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.94";
-console.log("[REAL-GAME] Initializing v5.94 - immediate T-1 update after F1 save");
+window.REAL_GAME_VERSION = "5.95";
+console.log("[REAL-GAME] Initializing v5.95 - T-1 persists after Firestore sync");
 
 // ============================================================
 // DEBUG CONFIGURATION
@@ -1000,9 +1001,10 @@ function performSave() {
                 var cumulativeFlight2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole || null;
                 
                 // ============================================================
-                // v5.94: IMMEDIATE RECALCULATION - FIXES T-1 UPDATE ON F1 SAVE
+                // v5.95: IMMEDIATE RECALCULATION WITH FIRESTORE WRITE
                 // This runs for the saved hole regardless of F2 status
                 // T-1 depends ONLY on F1 data and must update immediately
+                // NOW writes to Firestore to survive realtime listener refresh
                 // ============================================================
                 var currentPosition = getHolePosition(currentHole);
                 
@@ -1032,6 +1034,26 @@ function performSave() {
                 
                 console.log(`[IMMEDIATE] Hole ${currentHole} (position ${currentPosition}): T-1 = ${teamGameResults.displayT1[currentPosition]}`);
                 
+                // ============================================================
+                // v5.95: WRITE T-1 TO FIRESTORE IMMEDIATELY
+                // This prevents realtime listener from overwriting with stale data
+                // ============================================================
+                var t1UpdatePayload = {};
+                t1UpdatePayload[`results.game2.displayT1.${currentPosition}`] = teamGameResults.displayT1[currentPosition];
+                t1UpdatePayload[`results.game2.flight1.cumulativePoints.${currentPosition}`] = teamGameResults.flight1Cumulative[currentPosition];
+                t1UpdatePayload[`results.game2.flight1.leader.${currentPosition}`] = teamGameResults.flight1Leaders[currentPosition];
+                t1UpdatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                
+                try {
+                    await db.collection("scheduledGames").doc(gameId).update(t1UpdatePayload);
+                    console.log(`[IMMEDIATE] Firestore T-1 write successful for hole ${currentHole}`);
+                } catch (e) {
+                    console.warn(`[IMMEDIATE] Firestore T-1 write failed:`, e);
+                }
+                // ============================================================
+                // END FIRESTORE WRITE
+                // ============================================================
+                
                 // Force immediate UI update
                 renderAll();
                 // === END IMMEDIATE RECALCULATION ===
@@ -1043,7 +1065,7 @@ function performSave() {
                 var playOrder = getPlayOrder();
                 var lastSyncedPos = cache.lastSyncedPosition;
                 
-                console.log(`[CASCADE-DEBUG] v5.94: Recalculating holes from position ${currentPosition} to ${lastSyncedPos}`);
+                console.log(`[CASCADE-DEBUG] v5.95: Recalculating holes from position ${currentPosition} to ${lastSyncedPos}`);
                 
                 var currentCache = GameLoader.getLocalCache();
                 var cascadeResultsQueue = [];
@@ -1451,7 +1473,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.94";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.95";
     
     // v5.93: FIX - Use holesPlayed = position + 1 (number of holes accumulated so far)
     var holesPlayed = position + 1;
@@ -1971,7 +1993,7 @@ function renderCompactHeaderWithFlightToggle() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS - v5.94: Uses GameScorecard v1.16
+// RENDER FUNCTIONS - v5.95: Uses GameScorecard v1.16
 // ============================================================
 
 function renderAll() {
@@ -2072,7 +2094,7 @@ function renderAll() {
         }
     }
     
-    // v5.94: Use GameScorecard v1.16 which handles both calling conventions
+    // v5.95: Use GameScorecard v1.16 which handles both calling conventions
     var displayMode = GameUI.getDisplayMode();
     
     var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
@@ -2294,13 +2316,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.94
-KEY CHANGES from v5.93:
-   - FIXED: T-1 row now updates immediately after Flight 1 saves a hole
-   - ADDED: Immediate recalculation block after save success, before cascade loop
-   - Uses GameTeam.calculate() to update cache.results.game2.flight1.cumulativePoints and t1Row
-   - This ensures T-1 displays correctly without waiting for Flight 2 to save the same hole
-   - All existing functionality preserved from v5.93
+VERSION: 5.95
+KEY CHANGES from v5.94:
+   - FIXED: T-1 row now persists after realtime listener refresh
+   - ADDED: Firestore write for T-1 values immediately after calculation
+   - Previously only local cache was updated, causing realtime listener to overwrite with stale data
+   - Now writes results.game2.displayT1, flight1.cumulativePoints, and flight1.leader to Firestore
+   - This ensures T-1 displays correctly even after Firestore sync
+   - All existing functionality preserved from v5.94
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js (v1.12), js/game-stroke.js (v1.07), js/game-scorecard.js (v1.16), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/game-order.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
