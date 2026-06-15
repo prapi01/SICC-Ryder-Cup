@@ -1,20 +1,20 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: Strk row now ONLY displays when isSynced === true
-   - Previously, unsaved holes were showing green squares (AS) due to val being interpreted as 'AS'
-   - Now properly hides all content when hole is not saved by both flights
-   - Gold on last hole only applies when isSynced === true
-   - All other functionality preserved from v1.09
-DEPENDS ON: GameData (for getLastHole)
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - FIXED: T-1 clinch detection now converts clinchedHole from play order sequence to natural hole number
+   - FIXED: T-2 clinch detection now converts clinchedHole from play order sequence to natural hole number
+   - FIXED: Strk clinch detection (last hole gold) now uses proper play order to natural hole conversion
+   - This resolves gold color appearing at wrong natural holes for shotgun starts
+   - All other functionality preserved
+DEPENDS ON: GameData (for getLastHole, getHoleAtPosition)
 STATUS: Ready for integration
 */
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.10";
+window.GAME_SCORECARD_VERSION = "1.11";
 
 var GameScorecard = (function() {
     
@@ -32,7 +32,6 @@ var GameScorecard = (function() {
         if (typeof GameData !== 'undefined' && GameData.getLastHole) {
             return GameData.getLastHole(startingHole);
         }
-        // Fallback
         return (startingHole === 1) ? 18 : startingHole - 1;
     }
     
@@ -51,6 +50,16 @@ var GameScorecard = (function() {
             if (playOrder[i] === holeNumber) return i;
         }
         return holeNumber - 1;
+    }
+    
+    // ============================================================
+    // Helper: Get natural hole number for a play position
+    // ============================================================
+    function getHoleAtPosition(position, startingHole) {
+        var playOrder = [];
+        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        return playOrder[position] || 0;
     }
     
     // ============================================================
@@ -82,7 +91,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.10: Strk only shows when synced
+    // Scorecard Rendering - v1.11: Fixed clinch display for shotgun starts
     // ============================================================
     
     function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
@@ -106,6 +115,17 @@ var GameScorecard = (function() {
             }
         } else {
             startingHole = 1;
+        }
+        
+        // v1.11: Convert clinchedHole from play order sequence (1-18) to natural hole number
+        var t1ClinchedNaturalHole = null;
+        var t2ClinchedNaturalHole = null;
+        
+        if (t1ClinchedHole !== null && t1ClinchedHole >= 1 && t1ClinchedHole <= 18) {
+            t1ClinchedNaturalHole = getHoleAtPosition(t1ClinchedHole - 1, startingHole);
+        }
+        if (t2ClinchedHole !== null && t2ClinchedHole >= 1 && t2ClinchedHole <= 18) {
+            t2ClinchedNaturalHole = getHoleAtPosition(t2ClinchedHole - 1, startingHole);
         }
         
         // v1.09: Get last hole for Strk gold condition
@@ -161,7 +181,7 @@ var GameScorecard = (function() {
         // Flight 1 players
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
-            html += '<td>';
+            html += '<tr>';
             html += '<td style="font-weight:600;">' + escapeHtml(player.label) + '<\/td>';
             
             var playerTotal = 0;
@@ -179,7 +199,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-1 row
+        // T-1 row - v1.11: Use converted natural hole number for clinch detection
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-1<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -190,11 +210,12 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
+            // v1.11: Use converted natural hole number for color decision
             var colorClass = 'score-green';
-            if (t1ClinchedHole !== null) {
-                if (holeNum < t1ClinchedHole) colorClass = 'score-green';
-                else if (holeNum === t1ClinchedHole) colorClass = 'score-gold';
-                else if (holeNum > t1ClinchedHole) colorClass = 'score-grey';
+            if (t1ClinchedNaturalHole !== null) {
+                if (holeNum < t1ClinchedNaturalHole) colorClass = 'score-green';
+                else if (holeNum === t1ClinchedNaturalHole) colorClass = 'score-gold';
+                else if (holeNum > t1ClinchedNaturalHole) colorClass = 'score-grey';
             } else {
                 colorClass = 'score-green';
             }
@@ -269,7 +290,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // T-2 row
+        // T-2 row - v1.11: Use converted natural hole number for clinch detection
         html += '<tr><td style="color:#4caf50; font-weight:600;">T-2<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -280,11 +301,12 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
+            // v1.11: Use converted natural hole number for color decision
             var colorClass = 'score-green';
-            if (t2ClinchedHole !== null) {
-                if (holeNum < t2ClinchedHole) colorClass = 'score-green';
-                else if (holeNum === t2ClinchedHole) colorClass = 'score-gold';
-                else if (holeNum > t2ClinchedHole) colorClass = 'score-grey';
+            if (t2ClinchedNaturalHole !== null) {
+                if (holeNum < t2ClinchedNaturalHole) colorClass = 'score-green';
+                else if (holeNum === t2ClinchedNaturalHole) colorClass = 'score-gold';
+                else if (holeNum > t2ClinchedNaturalHole) colorClass = 'score-grey';
             } else {
                 colorClass = 'score-green';
             }
@@ -338,7 +360,7 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - v1.10: ONLY show when isSynced === true
+        // Strk row - v1.11: Use proper last hole detection with play order
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
@@ -349,7 +371,6 @@ var GameScorecard = (function() {
             var displayVal = '';
             var cellClass = 'score-invisible';
             
-            // v1.10: ONLY proceed if hole is synced (both flights saved)
             if (isSynced) {
                 // Determine color - GOLD on last hole, GREEN otherwise
                 var isLastHole = (holeNum === lastHoleNumber);
@@ -360,7 +381,6 @@ var GameScorecard = (function() {
                     cellClass = 'score-green';
                 }
                 
-                // Build display value
                 if (val === 'AS' || val === 0 || val === '0') {
                     displayVal = getAsSquareHtml();
                 } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
@@ -501,7 +521,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.10"; }
+        getVersion: function() { return "1.11"; }
     };
     
 })();
@@ -513,13 +533,14 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: Strk row now ONLY displays when isSynced === true
-   - Previously, unsaved holes were showing green squares (AS) due to val being interpreted as 'AS'
-   - Now properly hides all content when hole is not saved by both flights
-   - Gold on last hole only applies when isSynced === true
-   - All other functionality preserved from v1.09
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - FIXED: T-1 clinch detection now converts clinchedHole from play order sequence to natural hole number
+   - FIXED: T-2 clinch detection now converts clinchedHole from play order sequence to natural hole number
+   - FIXED: Strk clinch detection (last hole gold) now uses proper play order to natural hole conversion
+   - This resolves gold color appearing at wrong natural holes for shotgun starts
+   - Added helper function getHoleAtPosition() for play position to natural hole conversion
+   - All other functionality preserved
 DEPENDS ON: GameData (for getLastHole)
 STATUS: Ready for integration
 */
