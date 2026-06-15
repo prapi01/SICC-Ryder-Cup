@@ -1,27 +1,36 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.23
-KEY CHANGES from v2.22:
-   - FIXED: Match bubble grey-out logic now uses play positions instead of natural hole numbers
-   - Previously, holes played BEFORE the clinch hole were incorrectly showing grey
-   - Now correctly compares currentPlayPosition vs clinchPlayPosition
-   - This resolves bubble colors for shotgun starts (starting hole != 1)
+VERSION: 2.24
+KEY CHANGES from v2.23:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
+   - Removed local getPlayOrder(), getPlayPosition(), getNaturalHole()
+   - Now delegates to GameOrder for all order-related calculations
+   - getLastHole() now delegates to GameOrder.getLastHole()
    - All existing functionality preserved
-DEPENDS ON: GameData (optional, for getLastHole)
+DEPENDS ON: GameData, GameOrder
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.23";
+window.GAME_MATCH_VERSION = "2.24";
 
 var GameMatch = (function() {
     
-    console.log("[GAME-MATCH] Initializing v2.23 - play position based bubble grey-out");
+    console.log("[GAME-MATCH] Initializing v2.24 - using GameOrder for order conversions");
     
     // ============================================================
     // Helper: Get last hole based on starting hole
+    // v2.24: Delegates to GameOrder
     // ============================================================
     function getLastHole(startingHole) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getLastHole) {
+            // Ensure GameOrder has correct starting hole
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            return GameOrder.getLastHole();
+        }
+        // Fallback
         if (typeof GameData !== 'undefined' && GameData.getLastHole) {
             return GameData.getLastHole(startingHole);
         }
@@ -29,28 +38,44 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // Helper: Get play order for a given starting hole
+    // v2.24: Delegate to GameOrder for play order conversions
     // ============================================================
+    
     function getPlayOrder(startingHole) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayOrder) {
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            return GameOrder.getPlayOrder();
+        }
+        // Fallback
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
         for (var i = 1; i < startingHole; i++) order.push(i);
         return order;
     }
     
-    // ============================================================
-    // Helper: Get play position for a natural hole number
-    // ============================================================
     function getPlayPosition(holeNumber, startingHole) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayPosition) {
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            return GameOrder.getPlayPosition(holeNumber);
+        }
+        // Fallback
         var playOrder = getPlayOrder(startingHole);
         var pos = playOrder.indexOf(holeNumber);
         return pos !== -1 ? pos : holeNumber - 1;
     }
     
-    // ============================================================
-    // Helper: Get natural hole number for a play position
-    // ============================================================
     function getNaturalHole(playPosition, startingHole) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getNaturalHole) {
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            return GameOrder.getNaturalHole(playPosition);
+        }
+        // Fallback
         var playOrder = getPlayOrder(startingHole);
         return playOrder[playPosition] || 0;
     }
@@ -396,7 +421,7 @@ var GameMatch = (function() {
                         remainingHolesAtClinch: remainingHoles,
                         recordedAt: new Date().toISOString(),
                         recordedByDevice: deviceId || "unknown",
-                        cascadeVersion: cascadeVersion || "2.23"
+                        cascadeVersion: cascadeVersion || "2.24"
                     };
                     clinchedAtUpdates[actualWinner + "_vs_" + actualLoser] = clinchData;
                     console.log(`[DEBUG-MATCH] CLINCH CREATED: ${actualWinner}_vs_${actualLoser} at hole ${currentHole}`);
@@ -437,7 +462,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.23"
+                    cascadeVersion: cascadeVersion || "2.24"
                 }
             };
         }
@@ -625,18 +650,17 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // getMatchBubbleClass - v2.23: Play position based grey-out
+    // getMatchBubbleClass - v2.24: Uses GameOrder for conversions
     // ============================================================
     
     function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedValue, getClinchHoleFunc, startingHole) {
         var clinchHole = getClinchHoleFunc(clinchedAt, player.name, opponent.name);
         
-        // v2.23: Convert currentHole and clinchHole to play positions for comparison
+        // v2.24: Use GameOrder for play position conversions
         var currentPlayPosition = getPlayPosition(currentHole, startingHole);
         var clinchPlayPosition = (clinchHole !== null) ? getPlayPosition(clinchHole, startingHole) : null;
         
-        // First, check if match was already clinched (should be grey)
-        // Compare using play positions, not natural hole numbers
+        // Check if match was already clinched (should be grey)
         if (clinchPlayPosition !== null && currentPlayPosition > clinchPlayPosition) {
             console.log(`[DEBUG-MATCH] GREY: currentPlayPos=${currentPlayPosition}, clinchPlayPos=${clinchPlayPosition}`);
             return 'bubble-grey';
@@ -649,7 +673,7 @@ var GameMatch = (function() {
             return 'bubble-green';
         }
         
-        // SPECIAL CASE - Last hole of the game (based on starting hole)
+        // SPECIAL CASE - Last hole of the game
         var lastHole = getLastHole(startingHole);
         var lastHolePlayPosition = getPlayPosition(lastHole, startingHole);
         if (currentPlayPosition === lastHolePlayPosition && isHoleSavedForFlight && matchValue === 0) {
@@ -662,12 +686,12 @@ var GameMatch = (function() {
             console.log(`[DEBUG-MATCH] getMatchBubbleClass: ${player.name} vs ${opponent.name} hole=${currentHole}, matchValue=${matchValue}, clinchHole=${clinchHole}`);
         }
         
-        // v2.22: Cross-flight sync check using PLAY POSITIONS
+        // Cross-flight sync check using PLAY POSITIONS
         if (player.flight === opponent.flight) {
             // Intra-flight: only need current hole saved by this flight
             if (!isHoleSavedForFlight) return 'bubble-grey';
         } else {
-            // Cross-flight: convert currentHole to play position for comparison
+            // Cross-flight: sync check
             var isSynced = (lastSyncedValue >= currentPlayPosition);
             if (!isSynced) {
                 console.log(`[DEBUG-MATCH] Cross-flight NOT SYNCED: lastSyncedValue=${lastSyncedValue}, currentPlayPosition=${currentPlayPosition}, currentHole=${currentHole} -> bubble-grey`);
@@ -755,18 +779,17 @@ var GameMatch = (function() {
 })();
 
 // Re-expose version for console debugging
-window.GAME_MATCH_VERSION = "2.23";
+window.GAME_MATCH_VERSION = "2.24";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.23
-KEY CHANGES from v2.22:
-   - FIXED: Match bubble grey-out logic now uses play positions instead of natural hole numbers
-   - Previously, holes played BEFORE the clinch hole were incorrectly showing grey
-   - Now correctly compares currentPlayPosition vs clinchPlayPosition
-   - This resolves bubble colors for shotgun starts (starting hole != 1)
-   - Added helper functions getPlayPosition() and getNaturalHole()
+VERSION: 2.24
+KEY CHANGES from v2.23:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
+   - Removed local getPlayOrder(), getPlayPosition(), getNaturalHole()
+   - Now delegates to GameOrder for all order-related calculations
+   - getLastHole() now delegates to GameOrder.getLastHole()
    - All existing functionality preserved
-DEPENDS ON: GameData (optional, for getLastHole)
+DEPENDS ON: GameData, GameOrder
 STATUS: Ready for integration
 */
