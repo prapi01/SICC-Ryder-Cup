@@ -1,14 +1,13 @@
 /*
 FILE: js/game-stroke.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Stroke game now correctly calculates net scores and stores them in nettA/nettB arrays
-   - FIXED: Now uses raw handicaps (always, regardless of teamGameFormat) - stroke game is independent
-   - FIXED: Properly handles play order for display
-   - FIXED: Populates displayStrk with correct margin values
-   - FIXED: Now stores pointsA/pointsB correctly based on winner
-   - All other functionality preserved
-DEPENDS ON: None (pure calculation)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order
+   - Removed local playOrder array generation
+   - Now delegates to GameOrder.getPlayOrder() when available
+   - Maintains fallback for backward compatibility
+   - All other functionality preserved (net score calculation, displayStrk, etc.)
+DEPENDS ON: GameOrder (optional, with fallback)
 STATUS: Ready for integration
 */
 
@@ -66,7 +65,23 @@ var GameStroke = (function() {
         return totalGross;
     }
     
-    // Main calculate function - v1.06: Fixed net score calculation and storage
+    // v1.07: Get play order using GameOrder with fallback
+    function getPlayOrder(startingHole) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayOrder) {
+            // Ensure GameOrder has correct starting hole
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            return GameOrder.getPlayOrder();
+        }
+        // Fallback
+        var order = [];
+        for (var i = startingHole; i <= 18; i++) order.push(i);
+        for (var i = 1; i < startingHole; i++) order.push(i);
+        return order;
+    }
+    
+    // Main calculate function - v1.07: Uses GameOrder for play order
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, coursePar) {
         // Stroke game ALWAYS uses raw handicaps (independent of teamGameFormat)
         var totalHcpA = getTotalTeamHandicap(allPlayers, "A");
@@ -80,10 +95,8 @@ var GameStroke = (function() {
         var displayStrk = new Array(18).fill("AS");
         var strokeTR = new Array(18).fill(null);
         
-        // Get play order
-        var playOrder = [];
-        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
-        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        // v1.07: Get play order from GameOrder (or fallback)
+        var playOrder = getPlayOrder(startingHole);
         
         // Calculate cumulative gross for each position in play order
         var cumulativeGrossA = 0;
@@ -180,14 +193,13 @@ window.GameStroke = GameStroke;
 
 /*
 FILE: js/game-stroke.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Stroke game now correctly calculates net scores and stores them in nettA/nettB arrays
-   - FIXED: Now uses raw handicaps (always, regardless of teamGameFormat) - stroke game is independent
-   - FIXED: Properly handles play order for display
-   - FIXED: Populates displayStrk with correct margin values
-   - FIXED: Now stores pointsA/pointsB correctly based on winner
-   - All other functionality preserved
-DEPENDS ON: None (pure calculation)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order
+   - Removed local playOrder array generation
+   - Now delegates to GameOrder.getPlayOrder() when available
+   - Maintains fallback for backward compatibility
+   - All other functionality preserved (net score calculation, displayStrk, etc.)
+DEPENDS ON: GameOrder (optional, with fallback)
 STATUS: Ready for integration
 */
