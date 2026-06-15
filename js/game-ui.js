@@ -1,19 +1,18 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.07
-KEY CHANGES from v5.06:
-   - FIXED: P/N button logic - button now shows what you WILL get when clicked
-   - Previously: displayMode='play' showed 'P' (wrong) - now shows 'N' (click for Natural)
-   - Previously: displayMode='natural' showed 'N' (wrong) - now shows 'P' (click for Play)
-   - This matches user expectation: button always shows the mode you can switch TO
-   - All other functionality preserved from v5.06
-DEPENDS ON: None (pure style injection and DOM manipulation)
+VERSION: 5.08
+KEY CHANGES from v5.07:
+   - REFACTORED: getDisplayHoles() now uses GameOrder as the single source of truth
+   - Removed local play order generation logic
+   - Now delegates to GameOrder.getDisplayHoles() for hole order
+   - All other functionality preserved (P/N button logic, styles, etc.)
+DEPENDS ON: GameOrder
 STATUS: Ready for integration
 */
 
 var GameUI = (function() {
     
-    console.log("[GAME-UI] Initializing v5.07 with fixed P/N button logic");
+    console.log("[GAME-UI] Initializing v5.08 - using GameOrder for display holes");
     
     // ============================================================
     // Constants
@@ -1086,7 +1085,19 @@ var GameUI = (function() {
         setDisplayMode(newMode, null);
     }
     
+    // v5.08: getDisplayHoles now uses GameOrder as single source of truth
     function getDisplayHoles(startingHole, preference) {
+        // Use GameOrder if available
+        if (typeof GameOrder !== 'undefined' && GameOrder.getDisplayHoles) {
+            // Ensure GameOrder has correct starting hole
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            var displayMode = preference || currentDisplayMode;
+            return GameOrder.getDisplayHoles(displayMode);
+        }
+        
+        // Fallback (should not be needed if GameOrder is loaded)
         var useNatural = (preference === "natural");
         if (useNatural) {
             var natural = [];
@@ -1367,13 +1378,12 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.07
-KEY CHANGES from v5.06:
-   - FIXED: P/N button logic - button now shows what you WILL get when clicked
-   - Previously: displayMode='play' showed 'P' (wrong) - now shows 'N' (click for Natural)
-   - Previously: displayMode='natural' showed 'N' (wrong) - now shows 'P' (click for Play)
-   - This matches user expectation: button always shows the mode you can switch TO
-   - All other functionality preserved from v5.06
-DEPENDS ON: None (pure style injection and DOM manipulation)
+VERSION: 5.08
+KEY CHANGES from v5.07:
+   - REFACTORED: getDisplayHoles() now uses GameOrder as the single source of truth
+   - Removed local play order generation logic
+   - Now delegates to GameOrder.getDisplayHoles() for hole order
+   - All other functionality preserved (P/N button logic, styles, etc.)
+DEPENDS ON: GameOrder
 STATUS: Ready for integration
 */
