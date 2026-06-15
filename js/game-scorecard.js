@@ -1,20 +1,20 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: Strk row now ONLY displays when isSynced === true
-   - Previously, unsaved holes were showing green squares (AS) due to val being interpreted as 'AS'
-   - Now properly hides all content when hole is not saved by both flights
-   - Gold on last hole only applies when isSynced === true
-   - All other functionality preserved from v1.09
-DEPENDS ON: GameData (for getLastHole)
+VERSION: 1.14
+KEY CHANGES from v1.10:
+   - UPDATED: Now accepts new calling convention (displayMode, startingHole) from real-game.html v5.92
+   - Maintains backward compatibility with old calling convention (holes array)
+   - FIXED: Strk row now correctly displays values from strkRow parameter
+   - FIXED: Strk row color logic uses play positions for comparison
+   - All existing functionality preserved
+DEPENDS ON: GameData (for getLastHole), GameOrder (optional)
 STATUS: Ready for integration
 */
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.10";
+window.GAME_SCORECARD_VERSION = "1.14";
 
 var GameScorecard = (function() {
     
@@ -32,7 +32,6 @@ var GameScorecard = (function() {
         if (typeof GameData !== 'undefined' && GameData.getLastHole) {
             return GameData.getLastHole(startingHole);
         }
-        // Fallback
         return (startingHole === 1) ? 18 : startingHole - 1;
     }
     
@@ -51,6 +50,22 @@ var GameScorecard = (function() {
             if (playOrder[i] === holeNumber) return i;
         }
         return holeNumber - 1;
+    }
+    
+    // ============================================================
+    // Helper: Get display holes array based on mode
+    // ============================================================
+    function getDisplayHolesArray(displayMode, startingHole) {
+        if (displayMode === "natural") {
+            var natural = [];
+            for (var i = 1; i <= 18; i++) natural.push(i);
+            return natural;
+        } else {
+            var playOrder = [];
+            for (var i = startingHole; i <= 18; i++) playOrder.push(i);
+            for (var i = 1; i < startingHole; i++) playOrder.push(i);
+            return playOrder;
+        }
     }
     
     // ============================================================
@@ -82,31 +97,75 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.10: Strk only shows when synced
+    // Scorecard Rendering - v1.14: Handles both calling conventions
     // ============================================================
     
-    function renderScorecard(containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay) {
+    function renderScorecard(containerId, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        // Backward compatibility
+        var holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay;
+        var startingHole;
+        
+        // Detect calling convention
+        // New convention: (containerId, displayMode, startingHole, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay)
+        // Old convention: (containerId, holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay)
+        
+        if (typeof param2 === 'string' && (param2 === 'play' || param2 === 'natural')) {
+            // New convention
+            var displayMode = param2;
+            startingHole = param3;
+            players = param4;
+            getStoredScore = param5;
+            isHoleSaved = param6;
+            t1Row = param7;
+            t2Row = param8;
+            strkRow = param9;
+            coursePar = param10;
+            courseSi = param11;
+            t1ClinchedHole = param12;
+            t2ClinchedHole = param13;
+            t1Display = param14;
+            t2Display = param15;
+            strkDisplay = arguments[16];
+            
+            holes = getDisplayHolesArray(displayMode, startingHole);
+        } else {
+            // Old convention
+            holes = param2;
+            players = param3;
+            getStoredScore = param4;
+            isHoleSaved = param5;
+            t1Row = param6;
+            t2Row = param7;
+            strkRow = param8;
+            coursePar = param9;
+            courseSi = param10;
+            t1ClinchedHole = param11;
+            t2ClinchedHole = param12;
+            t1Display = param13;
+            t2Display = param14;
+            strkDisplay = param15;
+            
+            // Get startingHole from the first hole in the display order
+            startingHole = holes[0];
+            if (startingHole > 1) {
+                var isPlayOrder = (holes[1] === startingHole + 1);
+                if (!isPlayOrder && holes[1] === 1) {
+                    startingHole = 1;
+                }
+            } else {
+                startingHole = 1;
+            }
+        }
+        
+        // Backward compatibility for undefined params
         t1Display = (t1Display !== undefined) ? t1Display : null;
         t2Display = (t2Display !== undefined) ? t2Display : null;
         strkDisplay = (strkDisplay !== undefined) ? strkDisplay : null;
         
         t1ClinchedHole = (t1ClinchedHole !== undefined) ? t1ClinchedHole : null;
         t2ClinchedHole = (t2ClinchedHole !== undefined) ? t2ClinchedHole : null;
-        
-        // Get startingHole from the first hole in the display order
-        var startingHole = holes[0];
-        if (startingHole > 1) {
-            var isPlayOrder = (holes[1] === startingHole + 1);
-            if (!isPlayOrder && holes[1] === 1) {
-                startingHole = 1;
-            }
-        } else {
-            startingHole = 1;
-        }
         
         // v1.09: Get last hole for Strk gold condition
         var lastHoleNumber = getLastHole(startingHole);
@@ -338,18 +397,18 @@ var GameScorecard = (function() {
         // Green line row
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
-        // Strk row - v1.10: ONLY show when isSynced === true
+        // Strk row - v1.14: Uses strkRow parameter (which already has display values)
         html += '<tr><td style="color:#4caf50; font-weight:600;">Strk<\/td>';
         for (var i = 0; i < holes.length; i++) {
             var holeNum = holes[i];
             var arrayIndex = getPlayOrderPosition(holeNum, startingHole);
+            // Use the passed strkRow (which already contains formatted display values like "A3", "A6", etc.)
             var val = strkRow[arrayIndex] || '_';
             var isSynced = (savedHoles[1].indexOf(holeNum) !== -1 && savedHoles[2].indexOf(holeNum) !== -1);
             
             var displayVal = '';
             var cellClass = 'score-invisible';
             
-            // v1.10: ONLY proceed if hole is synced (both flights saved)
             if (isSynced) {
                 // Determine color - GOLD on last hole, GREEN otherwise
                 var isLastHole = (holeNum === lastHoleNumber);
@@ -360,30 +419,13 @@ var GameScorecard = (function() {
                     cellClass = 'score-green';
                 }
                 
-                // Build display value
-                if (val === 'AS' || val === 0 || val === '0') {
+                // v1.14: Use the value directly from strkRow (already formatted)
+                if (val && val !== '_' && val !== 'AS') {
+                    displayVal = val;
+                } else if (val === 'AS' || val === 'AS') {
                     displayVal = getAsSquareHtml();
-                } else if (typeof val === 'string' && (val === 'A' || val === 'B')) {
-                    if (strkDisplay && strkDisplay[arrayIndex]) {
-                        displayVal = strkDisplay[arrayIndex];
-                    } else {
-                        displayVal = val;
-                    }
-                } else if (val && val !== '_') {
-                    if (strkDisplay && strkDisplay[arrayIndex]) {
-                        displayVal = strkDisplay[arrayIndex];
-                    } else if (typeof val === 'number' || !isNaN(parseInt(val))) {
-                        var numVal = parseInt(val);
-                        if (numVal > 0) {
-                            displayVal = 'A' + numVal;
-                        } else if (numVal < 0) {
-                            displayVal = 'B' + Math.abs(numVal);
-                        } else {
-                            displayVal = 'AS';
-                        }
-                    } else {
-                        displayVal = val;
-                    }
+                } else {
+                    displayVal = '';
                 }
                 
                 if (displayVal === 'AS') {
@@ -501,7 +543,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.10"; }
+        getVersion: function() { return "1.14"; }
     };
     
 })();
@@ -513,13 +555,13 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: Strk row now ONLY displays when isSynced === true
-   - Previously, unsaved holes were showing green squares (AS) due to val being interpreted as 'AS'
-   - Now properly hides all content when hole is not saved by both flights
-   - Gold on last hole only applies when isSynced === true
-   - All other functionality preserved from v1.09
-DEPENDS ON: GameData (for getLastHole)
+VERSION: 1.14
+KEY CHANGES from v1.10:
+   - UPDATED: Now accepts new calling convention (displayMode, startingHole) from real-game.html v5.92
+   - Maintains backward compatibility with old calling convention (holes array)
+   - FIXED: Strk row now correctly displays values from strkRow parameter
+   - FIXED: Strk row color logic uses play positions for comparison
+   - All existing functionality preserved
+DEPENDS ON: GameData (for getLastHole), GameOrder (optional)
 STATUS: Ready for integration
 */
