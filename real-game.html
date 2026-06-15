@@ -1,12 +1,13 @@
 <!--
 FILE: real-game.html
-VERSION: 5.87
-KEY CHANGES from v5.86:
-   - FIXED: Pass cache.lastSyncedPosition + 1 (play position count) to calculateCrossFlightWithClinch
-   - Previously passed lastSyncedNaturalHole (e.g., 2) which only accumulated 2 holes
-   - Now passes 11 which accumulates all 11 synced holes (positions 0-10)
-   - This fixes stale match results for holes 12-18
-   - All other functionality preserved from v5.86
+VERSION: 5.88
+KEY CHANGES from v5.87:
+   - FIXED: holesToAccumulate now uses position + 1 (current hole's play position)
+   - Previously used cache.lastSyncedPosition + 1 which accumulated ALL synced holes for EVERY hole
+   - This caused hole 10 to show cumulative results after 12 holes instead of just hole 10
+   - Now each hole is calculated using only holes up to its own position
+   - Match bubbles will now show correct progressive results
+   - All other functionality preserved from v5.87
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.22), js/game-team.js (v1.11), js/game-stroke.js (v1.06), js/game-scorecard.js (v1.10), js/game-ui.js (v5.07), js/game-loader.js (v1.08), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
@@ -20,9 +21,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=5.87"></script>
-    <script src="js/session.js?v=5.87"></script>
-    <script src="js/modal.js?v=5.87"></script>
+    <script src="js/firebase-config.js?v=5.88"></script>
+    <script src="js/session.js?v=5.88"></script>
+    <script src="js/modal.js?v=5.88"></script>
     <script src="js/game-data.js?v=2.06"></script>
     <script src="js/game-match.js?v=2.22"></script>
     <script src="js/game-team.js?v=1.11"></script>
@@ -30,11 +31,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.10"></script>
     <script src="js/game-ui.js?v=5.07"></script>
     <script src="js/game-loader.js?v=1.08"></script>
-    <script src="js/card-submit.js?v=5.87"></script>
-    <script src="js/sign-card.js?v=5.87"></script>
-    <script src="js/hcp-adjust.js?v=5.87"></script>
-    <script src="js/ticker.js?v=5.87"></script>
-    <script src="js/history-record.js?v=5.87"></script>
+    <script src="js/card-submit.js?v=5.88"></script>
+    <script src="js/sign-card.js?v=5.88"></script>
+    <script src="js/hcp-adjust.js?v=5.88"></script>
+    <script src="js/ticker.js?v=5.88"></script>
+    <script src="js/history-record.js?v=5.88"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -297,13 +298,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.87</div>
+<div class="version-tag">v5.88</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "5.87";
+var APP_VERSION = "5.88";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -315,8 +316,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.87";
-console.log("[REAL-GAME] Initializing v5.87 - pass play position count to cross-flight calculation");
+window.REAL_GAME_VERSION = "5.88";
+console.log("[REAL-GAME] Initializing v5.88 - cross-flight uses current hole position for accumulation");
 
 // ============================================================
 // DEBUG CONFIGURATION
@@ -1377,7 +1378,7 @@ function calculatePlayerTotals(upToHole) {
 }
 
 // ============================================================
-// MAIN RESULTS CALCULATION - v5.87: Pass play position count to cross-flight
+// MAIN RESULTS CALCULATION - v5.88: Use current hole position for accumulation
 // ============================================================
 
 function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumulativeFlight1ClinchedHole, cumulativeFlight2ClinchedHole, cascadeStartHole) {
@@ -1421,7 +1422,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.87";
+    var cascadeVersion = window.REAL_GAME_VERSION || "5.88";
     
     if (f1Available) {
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
@@ -1466,18 +1467,19 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     if (crossAvailable) {
         if(isTarget) console.log(`[DEBUG-CALC] Calling cross-flight matches for hole ${holeNumber}`);
         
-        // v5.87: FIX - Pass the NUMBER of holes to accumulate (lastSyncedPosition + 1)
-        // This ensures that cross-flight calculations use ALL synced holes,
-        // not just up to the current natural hole number.
-        var holesToAccumulate = cache.lastSyncedPosition + 1;
+        // v5.88: FIX - Use current hole's play position to accumulate only up to this hole
+        // This ensures each hole shows cumulative results only up to its own position
+        // Example: Hole 10 (position 0) accumulates only hole 10
+        //          Hole 2 (position 10) accumulates holes 0-10 (11 holes)
+        var holesToAccumulate = position + 1;
         
         if(isTarget) {
-            console.log(`[DEBUG-CALC] v5.87: Using holesToAccumulate = ${holesToAccumulate} (lastSyncedPosition=${cache.lastSyncedPosition})`);
+            console.log(`[DEBUG-CALC] v5.88: Using holesToAccumulate = ${holesToAccumulate} (position=${position})`);
         }
         
         var crossResult = GameMatch.calculateCrossFlightWithClinch(
             cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, 
-            holesToAccumulate, coursePar,  // Pass count of holes to accumulate
+            holesToAccumulate, coursePar,  // Pass count of holes to accumulate (up to current hole)
             remainingHoles, holeNumber, deviceId, cascadeVersion, cumulativeClinched
         );
         matchResultsArray = crossResult.matchResultsArray;
@@ -1939,7 +1941,7 @@ function renderCompactHeaderWithFlightToggle() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS - v5.87: Pass lastSyncedPosition to getMatchBubbleClass
+// RENDER FUNCTIONS - v5.88: Pass lastSyncedPosition to getMatchBubbleClass
 // ============================================================
 
 function renderAll() {
@@ -1991,7 +1993,7 @@ function renderAll() {
         var clinchedAt = cache.clinchedAt || {};
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         
-        // v5.87: ALWAYS use lastSyncedPosition (play position) for cross-flight sync
+        // v5.88: ALWAYS use lastSyncedPosition (play position) for cross-flight sync
         // This is what game-match.js v2.22 expects for proper shotgun start detection
         var lastSyncedValue = (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) 
             ? cache.lastSyncedPosition 
@@ -2248,13 +2250,14 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.87
-KEY CHANGES from v5.86:
-   - FIXED: Pass cache.lastSyncedPosition + 1 (play position count) to calculateCrossFlightWithClinch
-   - Previously passed lastSyncedNaturalHole (e.g., 2) which only accumulated 2 holes
-   - Now passes 11 which accumulates all 11 synced holes (positions 0-10)
-   - This fixes stale match results for holes 12-18
-   - All other functionality preserved from v5.86
+VERSION: 5.88
+KEY CHANGES from v5.87:
+   - FIXED: holesToAccumulate now uses position + 1 (current hole's play position)
+   - Previously used cache.lastSyncedPosition + 1 which accumulated ALL synced holes for EVERY hole
+   - This caused hole 10 to show cumulative results after 12 holes instead of just hole 10
+   - Now each hole is calculated using only holes up to its own position
+   - Match bubbles will now show correct progressive results
+   - All other functionality preserved from v5.87
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.22), js/game-team.js (v1.11), js/game-stroke.js (v1.06), js/game-scorecard.js (v1.10), js/game-ui.js (v5.07), js/game-loader.js (v1.08), js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Ready for integration
 -->
