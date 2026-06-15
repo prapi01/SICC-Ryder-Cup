@@ -1,21 +1,38 @@
 /*
 FILE: js/game-team.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: Relative mode (zero-rise) now applies PER FLIGHT, not overall
-   - Added calculateMinHandicapPerFlight() to get min handicap for each flight separately
-   - Modified calculate() to pass flight-specific min handicap to getNetScoreWithFormat()
-   - Flight 1 players use Flight 1's minimum handicap for zero-rise
-   - Flight 2 players use Flight 2's minimum handicap for zero-rise
-   - All other functionality preserved (T-1/T-2 independent, clinch detection)
-DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order
+   - Removed local playOrder array generation
+   - getPlayOrder() now delegates to GameOrder.getPlayOrder()
+   - All other functionality preserved (per-flight zero-rise, clinch detection)
+DEPENDS ON: GameData, GameOrder, courseSi, teamGameFormat
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_TEAM_VERSION = "1.11";
+window.GAME_TEAM_VERSION = "1.12";
 
 var GameTeam = (function() {
+    
+    console.log("[GAME-TEAM] Initializing v1.12 - using GameOrder for play order");
+    
+    // ============================================================
+    // v1.12: Delegate to GameOrder for play order
+    // ============================================================
+    function getPlayOrder(startingHole) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayOrder) {
+            if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
+                GameOrder.setStartingHole(startingHole);
+            }
+            return GameOrder.getPlayOrder();
+        }
+        // Fallback
+        var order = [];
+        for (var i = startingHole; i <= 18; i++) order.push(i);
+        for (var i = 1; i < startingHole; i++) order.push(i);
+        return order;
+    }
     
     // v1.11: Calculate minimum handicap for a specific flight
     function calculateMinHandicapForFlight(players, flight) {
@@ -128,7 +145,7 @@ var GameTeam = (function() {
         return results;
     }
 
-    // Main calculate function - v1.11: Per-flight zero-rise for Relative mode
+    // Main calculate function - v1.12: Uses GameOrder for play order
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, teamGameFormat) {
         // v1.11: Calculate minimum handicap PER FLIGHT for Relative format
         var minHandicapFlight1 = calculateMinHandicapForFlight(allPlayers, 1);
@@ -158,9 +175,8 @@ var GameTeam = (function() {
         var flight2A = flight2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var flight2B = flight2Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
 
-        var playOrder = [];
-        for (var i = startingHole; i <= 18; i++) playOrder.push(i);
-        for (var i = 1; i < startingHole; i++) playOrder.push(i);
+        // v1.12: Use GameOrder for play order
+        var playOrder = getPlayOrder(startingHole);
 
         var runningFlight1 = 0;
         var runningFlight2 = 0;
@@ -186,10 +202,8 @@ var GameTeam = (function() {
                 var teamAGross1 = [f1Hole.scores.a1, f1Hole.scores.a2];
                 var teamBGross1 = [f1Hole.scores.b1, f1Hole.scores.b2];
                 
-                // v1.11: Pass flight-specific min handicap for Flight 1
                 flight1IntraMatches[idx] = buildIntraMatchResults(flight1A, flight1B, teamAGross1, teamBGross1, si, teamGameFormat, minHandicapFlight1, courseSi);
                 
-                // v1.11: Pass flight-specific min handicap for Flight 1
                 var sortedTeamA1 = sortPlayersByNetScore(flight1A, teamAGross1, si, teamGameFormat, minHandicapFlight1, courseSi);
                 var sortedTeamB1 = sortPlayersByNetScore(flight1B, teamBGross1, si, teamGameFormat, minHandicapFlight1, courseSi);
                 
@@ -230,10 +244,8 @@ var GameTeam = (function() {
                 var teamAGross2 = [f2Hole.scores.a1, f2Hole.scores.a2];
                 var teamBGross2 = [f2Hole.scores.b1, f2Hole.scores.b2];
                 
-                // v1.11: Pass flight-specific min handicap for Flight 2
                 flight2IntraMatches[idx] = buildIntraMatchResults(flight2A, flight2B, teamAGross2, teamBGross2, si, teamGameFormat, minHandicapFlight2, courseSi);
                 
-                // v1.11: Pass flight-specific min handicap for Flight 2
                 var sortedTeamA2 = sortPlayersByNetScore(flight2A, teamAGross2, si, teamGameFormat, minHandicapFlight2, courseSi);
                 var sortedTeamB2 = sortPlayersByNetScore(flight2B, teamBGross2, si, teamGameFormat, minHandicapFlight2, courseSi);
                 
@@ -397,18 +409,16 @@ var GameTeam = (function() {
 window.GameTeam = GameTeam;
 
 // Re-expose version for console debugging
-window.GAME_TEAM_VERSION = "1.11";
+window.GAME_TEAM_VERSION = "1.12";
 
 /*
 FILE: js/game-team.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: Relative mode (zero-rise) now applies PER FLIGHT, not overall
-   - Added calculateMinHandicapForFlight() to get min handicap for each flight separately
-   - Modified calculate() to pass flight-specific min handicap to getNetScoreWithFormat()
-   - Flight 1 players use Flight 1's minimum handicap for zero-rise
-   - Flight 2 players use Flight 2's minimum handicap for zero-rise
-   - All other functionality preserved (T-1/T-2 independent, clinch detection)
-DEPENDS ON: GameData, courseSi, startingHole, teamGameFormat
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - REFACTORED: Now uses GameOrder as the single source of truth for play order
+   - Removed local playOrder array generation
+   - getPlayOrder() now delegates to GameOrder.getPlayOrder()
+   - All other functionality preserved (per-flight zero-rise, clinch detection)
+DEPENDS ON: GameData, GameOrder, courseSi, teamGameFormat
 STATUS: Ready for integration
 */
