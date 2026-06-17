@@ -1,11 +1,12 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - ADDED: Debug logging throughout delete flow to trace where it fails
-   - ADDED: 10-second timeout for delete operation to prevent hanging
-   - ADDED: requestAnimationFrame forced render before Firestore write
-   - FIXED: Waiting screen now properly hides on timeout, success, and error
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - REFACTORED: DELETE now uses performFirestoreDelete() - same pattern as EDIT
+   - Waiting screen ONLY inside performFirestoreDelete() - immediately before Firestore write
+   - Removed WaitingScreen.show() from deleteGameProtected() and deleteGameConfirmed()
+   - Added requestAnimationFrame forced render before Firestore delete
+   - Waiting screen stays visible until redirect (no flash)
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
@@ -28,7 +29,6 @@ STATUS: Ready for integration
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        /* v1.15: Prevent text selection on long press */
         html, body {
             background: #000000;
             min-height: 100vh;
@@ -85,7 +85,6 @@ STATUS: Ready for integration
         
         .card { background: #111; border-radius: 20px; padding: 20px; margin-bottom: 16px; border: 1px solid #333; }
         
-        /* v1.13: Clickable card title with hint */
         .card-title { 
             font-size: 1rem; 
             font-weight: 600; 
@@ -133,7 +132,6 @@ STATUS: Ready for integration
         .game-list { margin-top: 16px; }
         .game-item { background: #0a0a0a; border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid #333; }
         
-        /* v1.13: Past game styling */
         .game-item-past {
             opacity: 0.5;
             border-color: #222;
@@ -165,7 +163,6 @@ STATUS: Ready for integration
         .btn-delete { background: #3a1a1a; border: 1px solid #ff6b6b; border-radius: 30px; padding: 8px 20px; color: #ff6b6b; font-weight: 600; cursor: pointer; }
         .btn-edit:active, .btn-delete:active { transform: scale(0.97); }
         
-        /* v1.14: Faint green document ID display - BELOW the buttons with long-click support */
         .doc-id-display {
             font-size: 0.55rem;
             color: #4caf50;
@@ -204,7 +201,6 @@ STATUS: Ready for integration
         
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Copy Modal - v1.12 */
         .copy-modal-overlay {
             position: fixed;
             top: 0;
@@ -300,7 +296,6 @@ STATUS: Ready for integration
             to { transform: rotate(360deg); }
         }
         
-        /* v1.15: Admin Bubble - LARGER SQUARE BUTTON with stacked text */
         .admin-bubble {
             position: fixed;
             background: #1a3a1a;
@@ -361,12 +356,12 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.20</div>
+<div class="version-tag">v1.21</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.20
+// FILE: manage-games.html - VERSION 1.21
 
-var VERSION = "1.20";
+var VERSION = "1.21";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -380,7 +375,6 @@ var db = firebase.firestore();
 var firestoreReady = true;
 var deviceSession = null;
 
-// v1.13: View state - default shows only upcoming games
 var showAllGames = false;
 
 function displayDeviceId() {
@@ -400,7 +394,7 @@ function formatDate(dateString) {
 }
 
 // ============================================================
-// v1.15: Long-click + Bubble Helper - LARGER SQUARE BUTTON
+// v1.15: Long-click + Bubble Helper
 // ============================================================
 
 var adminBubbleTimeout = null;
@@ -634,65 +628,51 @@ function editGameConfirmed(gameId) {
 }
 
 // ============================================================
-// v1.20: DELETE - PIN REQUIRED with debug logs + timeout
+// v1.21: DELETE - PIN REQUIRED - Same pattern as EDIT
 // ============================================================
-function deleteGameProtected(gameId, gameDate) {
-    console.log('[DELETE] deleteGameProtected called for game:', gameId, 'date:', gameDate);
+
+function performFirestoreDelete(collectionName, docId, redirectUrl) {
+    // Show waiting screen IMMEDIATELY before the write
+    WaitingScreen.show("Deleting game...");
     
+    // FORCE browser to render the waiting screen before starting the write
+    return new Promise(function(resolve) {
+        requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+                resolve();
+            });
+        });
+    }).then(function() {
+        return db.collection(collectionName).doc(docId).delete();
+    }).then(function() {
+        // DO NOT hide waiting screen - keep it visible until redirect
+        setTimeout(function() {
+            window.location.href = redirectUrl;
+        }, 1500);
+    }).catch(function(e) {
+        WaitingScreen.hide();
+        Modal.alert("Error deleting game: " + e.message);
+        return Promise.reject(e);
+    });
+}
+
+function deleteGameProtected(gameId, gameDate) {
     AuthPin.requireAuth('delete', gameId, gameDate, function() {
-        console.log('[DELETE] PIN authentication successful for game:', gameId);
-        console.log('[DELETE] Showing waiting screen...');
-        WaitingScreen.show("Deleting game...");
-        console.log('[DELETE] Calling deleteGameConfirmed...');
+        // NO waiting screen here - it's inside performFirestoreDelete()
         deleteGameConfirmed(gameId, gameDate);
     });
 }
 
 function deleteGameConfirmed(gameId, gameDate) {
-    console.log('[DELETE] deleteGameConfirmed called for game:', gameId, 'date:', gameDate);
-    
     Modal.confirm(
         "Delete scheduled game on " + gameDate + "? This action cannot be undone.",
         function() {
-            console.log('[DELETE] User confirmed deletion for game:', gameId);
-            console.log('[DELETE] Showing waiting screen...');
-            WaitingScreen.show("Deleting game...");
-            
-            console.log('[DELETE] Forcing render with requestAnimationFrame...');
-            requestAnimationFrame(function() {
-                requestAnimationFrame(function() {
-                    console.log('[DELETE] Render complete. Starting Firestore delete...');
-                    
-                    var timeoutId = setTimeout(function() {
-                        console.error('[DELETE] TIMEOUT: Delete operation took more than 10 seconds for game:', gameId);
-                        WaitingScreen.hide();
-                        Modal.alert("Delete operation timed out. Please try again or refresh.");
-                    }, 10000);
-                    
-                    SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
-                    
-                    console.log('[DELETE] Calling Firestore delete for game:', gameId);
-                    db.collection("scheduledGames").doc(gameId).delete()
-                        .then(function() {
-                            console.log('[DELETE] SUCCESS: Firestore delete completed for game:', gameId);
-                            clearTimeout(timeoutId);
-                            WaitingScreen.hide();
-                            console.log('[DELETE] Calling loadAndRender()...');
-                            loadAndRender();
-                        })
-                        .catch(function(e) {
-                            console.error('[DELETE] ERROR: Firestore delete failed for game:', gameId, e);
-                            clearTimeout(timeoutId);
-                            WaitingScreen.hide();
-                            Modal.alert("Error deleting game: " + e.message);
-                        });
-                });
-            });
+            // NO waiting screen here - it's inside performFirestoreDelete()
+            SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
+            performFirestoreDelete("scheduledGames", gameId, "manage-games.html");
         },
         function() {
-            console.log('[DELETE] User cancelled deletion for game:', gameId);
-            WaitingScreen.hide();
-            console.log('[DELETE] Deletion cancelled');
+            console.log("Deletion cancelled");
         }
     );
 }
@@ -721,17 +701,14 @@ function getTodayString() {
 }
 
 function loadAndRender() {
-    console.log('[LOAD] loadAndRender called');
     if (!firestoreReady) {
         document.getElementById("app").innerHTML = '<div class="loading">Connecting to server...</div>';
         return;
     }
     
     var todayStr = getTodayString();
-    console.log('[LOAD] Today string:', todayStr);
     
     db.collection("scheduledGames").get().then(function(snapshot) {
-        console.log('[LOAD] Firestore query complete. Documents count:', snapshot.size);
         var games = [];
         snapshot.forEach(function(doc) {
             var data = doc.data();
@@ -749,7 +726,6 @@ function loadAndRender() {
             if (a.date > b.date) return 1;
             return 0;
         });
-        console.log('[LOAD] Games loaded:', games.length);
         
         var titleText = showAllGames ? '📋 ALL SCHEDULED GAMES' : '📋 UPCOMING GAMES';
         var badgeText = showAllGames ? 'ALL' : 'UPCOMING';
@@ -849,13 +825,13 @@ function loadAndRender() {
         }
         
     }).catch(function(e) {
-        console.warn('[LOAD] Error loading games:', e);
+        console.warn(e);
         document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
     });
 }
 
 // ============================================================
-// v1.15: Attach Cmd+Click and long-click handler to card title with LARGE bubble
+// v1.15: Attach Cmd+Click and long-click handler to card title
 // ============================================================
 function attachTitleClickHandler() {
     var titleEl = document.getElementById('cardTitle');
@@ -896,7 +872,7 @@ function escapeHtml(str) {
 }
 
 SessionManager.initSession("manage-games.html", "admin.html", function(session) {
-    console.log("[MANAGE-GAMES] Session initialized:", session);
+    console.log("Session initialized:", session);
     deviceSession = session;
     displayDeviceId();
     loadAndRender();
@@ -907,12 +883,13 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - ADDED: Debug logging throughout delete flow to trace where it fails
-   - ADDED: 10-second timeout for delete operation to prevent hanging
-   - ADDED: requestAnimationFrame forced render before Firestore write
-   - FIXED: Waiting screen now properly hides on timeout, success, and error
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - REFACTORED: DELETE now uses performFirestoreDelete() - same pattern as EDIT
+   - Waiting screen ONLY inside performFirestoreDelete() - immediately before Firestore write
+   - Removed WaitingScreen.show() from deleteGameProtected() and deleteGameConfirmed()
+   - Added requestAnimationFrame forced render before Firestore delete
+   - Waiting screen stays visible until redirect (no flash)
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
