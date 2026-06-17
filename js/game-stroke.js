@@ -1,25 +1,42 @@
 /*
 FILE: js/game-stroke.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - ADDED: Detailed debug logging for stroke game calculation flow
-   - Logs: calculate() entry with startingHole, team handicaps
-   - Logs: Each position with hole number, cumulative gross for each team
-   - Logs: Net scores calculation (cumulative gross - total handicap)
-   - Logs: Diff calculation and displayStrk value
-   - Logs: Points awarded at each position
-   - All existing functionality preserved from v1.07
-DEPENDS ON: GameOrder (optional, with fallback)
-STATUS: Debug version - ready for testing
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: getPlayerGrossForHole() now uses RealGameState.getAllPlayers() as fallback
+   - Prevents "window.allPlayers is undefined" error in modular architecture
+   - All existing functionality preserved from v1.08
+DEPENDS ON: GameOrder (optional, with fallback), RealGameState (optional, for fallback)
+STATUS: Ready for integration
 */
 
 var GameStroke = (function() {
     
-    console.log("[GAME-STROKE] Initializing v1.08 - DETAILED DEBUG LOGGING ENABLED");
-    console.log("[GAME-STROKE] ===================================================");
-    console.log("[GAME-STROKE] Debug logs will trace stroke game calculations");
-    console.log("[GAME-STROKE] Including: cumulative gross, net scores, display values");
-    console.log("[GAME-STROKE] ===================================================");
+    console.log("[GAME-STROKE] Initializing v1.09 - fixed window.allPlayers fallback");
+    
+    // ============================================================
+    // Helper: Get all players from cache or state
+    // ============================================================
+    function getAllPlayers() {
+        // Try window.allPlayers first (for backward compatibility)
+        if (typeof window !== 'undefined' && window.allPlayers && window.allPlayers.length > 0) {
+            return window.allPlayers;
+        }
+        // Try RealGameState
+        if (typeof RealGameState !== 'undefined' && RealGameState.getAllPlayers) {
+            var statePlayers = RealGameState.getAllPlayers();
+            if (statePlayers && statePlayers.length > 0) {
+                return statePlayers;
+            }
+        }
+        // Try GameLoader cache
+        if (typeof GameLoader !== 'undefined') {
+            var cache = GameLoader.getLocalCache();
+            if (cache && cache.players && cache.players.length > 0) {
+                return cache.players;
+            }
+        }
+        return [];
+    }
     
     // Calculate total team handicap (raw handicaps - stroke game always uses raw)
     function getTotalTeamHandicap(players, team) {
@@ -37,9 +54,9 @@ var GameStroke = (function() {
         var holeData = GameData.parseHoleData(flightDataStr, holeNumber);
         if (!holeData || !holeData.saved) return null;
         
-        var flightPlayers = player.flight === 1 ? 
-            window.allPlayers.filter(function(p) { return p.flight === 1; }) : 
-            window.allPlayers.filter(function(p) { return p.flight === 2; });
+        // v1.09: Use getAllPlayers() helper with fallback chain
+        var allPlayers = getAllPlayers();
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
         var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
@@ -87,7 +104,7 @@ var GameStroke = (function() {
     }
     
     // ============================================================
-    // v1.08: Main calculate function with DEBUG LOGGING
+    // v1.09: Main calculate function with debug logging
     // ============================================================
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, coursePar) {
         console.log(`[DEBUG-STROKE] =========================================`);
@@ -95,6 +112,11 @@ var GameStroke = (function() {
         console.log(`[DEBUG-STROKE] startingHole=${startingHole}`);
         console.log(`[DEBUG-STROKE] allPlayers count: ${allPlayers.length}`);
         console.log(`[DEBUG-STROKE] =========================================`);
+        
+        // v1.09: Use allPlayers passed in, but also ensure window.allPlayers is set for legacy code
+        if (typeof window !== 'undefined' && allPlayers && allPlayers.length > 0) {
+            window.allPlayers = allPlayers;
+        }
         
         var totalHcpA = getTotalTeamHandicap(allPlayers, "A");
         var totalHcpB = getTotalTeamHandicap(allPlayers, "B");
@@ -224,19 +246,15 @@ var GameStroke = (function() {
 window.GameStroke = GameStroke;
 
 // Re-expose version for console debugging
-window.GAME_STROKE_VERSION = "1.08";
+window.GAME_STROKE_VERSION = "1.09";
 
 /*
 FILE: js/game-stroke.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - ADDED: Detailed debug logging for stroke game calculation flow
-   - Logs: calculate() entry with startingHole, team handicaps
-   - Logs: Each position with hole number, cumulative gross for each team
-   - Logs: Net scores calculation (cumulative gross - total handicap)
-   - Logs: Diff calculation and displayStrk value
-   - Logs: Points awarded at each position
-   - All existing functionality preserved from v1.07
-DEPENDS ON: GameOrder (optional, with fallback)
-STATUS: Debug version - ready for testing
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: getPlayerGrossForHole() now uses RealGameState.getAllPlayers() as fallback
+   - Prevents "window.allPlayers is undefined" error in modular architecture
+   - All existing functionality preserved from v1.08
+DEPENDS ON: GameOrder (optional, with fallback), RealGameState (optional, for fallback)
+STATUS: Ready for integration
 */
