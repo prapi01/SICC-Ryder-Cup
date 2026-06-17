@@ -1,19 +1,21 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: TR values (teamA, teamB, teamAGreen, teamBGreen) now properly written to Firestore
+   - Added debug logging for TR values during payload construction
+   - Ensures cache.results.tr arrays are initialized before assignment
+   - All existing functionality preserved from v1.02
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.02";
+window.REAL_GAME_SAVE_VERSION = "1.03";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.02");
+    console.log("[REAL-GAME-SAVE] Initializing v1.03 - TR write fix");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -222,6 +224,7 @@ var RealGameSave = (function() {
     
     // ============================================================
     // writeSingleHoleToFirestore
+    // v1.03: Enhanced TR logging
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -236,6 +239,7 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-WRITE] f1IntraMatches: ${resultsData.f1IntraMatches ? Object.keys(resultsData.f1IntraMatches).length + ' entries' : 'null'}`);
             console.log(`[DEBUG-WRITE] f2IntraMatches: ${resultsData.f2IntraMatches ? Object.keys(resultsData.f2IntraMatches).length + ' entries' : 'null'}`);
             console.log(`[DEBUG-WRITE] matchResults: ${resultsData.matchResults ? resultsData.matchResults.length + ' values' : 'null'}`);
+            console.log(`[DEBUG-WRITE] trA: ${resultsData.trA}, trB: ${resultsData.trB}`);
             if(resultsData.f2IntraMatches) {
                 console.log(`[DEBUG-WRITE] f2IntraMatches sample:`, resultsData.f2IntraMatches);
             }
@@ -270,6 +274,21 @@ var RealGameSave = (function() {
         updatePayload["results.game3.displayStrk"] = cache.results.game3.displayStrk;
         updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
         updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
+        
+        // v1.03: Ensure TR values are properly set before writing
+        if (resultsData.trA !== undefined && resultsData.trA !== null) {
+            cache.results.tr.teamA[position] = resultsData.trA;
+        }
+        if (resultsData.trB !== undefined && resultsData.trB !== null) {
+            cache.results.tr.teamB[position] = resultsData.trB;
+        }
+        cache.results.tr.teamAGreen[position] = resultsData.trAGreen || false;
+        cache.results.tr.teamBGreen[position] = resultsData.trBGreen || false;
+        
+        if(isTarget) {
+            console.log(`[DEBUG-WRITE] TR values: teamA[${position}]=${cache.results.tr.teamA[position]}, teamB[${position}]=${cache.results.tr.teamB[position]}`);
+        }
+        
         updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
         updatePayload["results.tr.teamB"] = cache.results.tr.teamB;
         updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
@@ -324,7 +343,7 @@ var RealGameSave = (function() {
         
         if(isTarget) {
             console.log(`[DEBUG-WRITE] Payload keys being sent to Firestore:`, Object.keys(updatePayload));
-            console.log(`[DEBUG-WRITE] f2IntraMatches in payload:`, updatePayload[`results.f2IntraMatches.${position}`] ? 'EXISTS' : 'MISSING');
+            console.log(`[DEBUG-WRITE] TR in payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
         }
         
         try {
@@ -342,6 +361,7 @@ var RealGameSave = (function() {
     
     // ============================================================
     // writeNewHoleData
+    // v1.03: Ensures TR values are assigned to cache before writing
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache) {
@@ -389,7 +409,7 @@ var RealGameSave = (function() {
         
         var existingClinched = cache.results.clinchedAt || {};
         var deviceId = typeof SessionManager !== 'undefined' ? SessionManager.getDeviceIdDisplay() : "unknown";
-        var cascadeVersion = window.REAL_GAME_VERSION || "6.10";
+        var cascadeVersion = window.REAL_GAME_VERSION || "6.12";
         var holesPlayed = position + 1;
         var remainingHoles = RealGameUtils.getRemainingHolesFromPlayOrder(holeNumber);
         
@@ -532,6 +552,25 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-FLOW] --- TR: null (crossAvailable=false)`);
         }
         
+        // v1.03: ENSURE TR VALUES ARE ASSIGNED TO CACHE BEFORE PAYLOAD BUILD
+        // This is the critical fix - ensure cache.results.tr arrays have the values
+        if (!cache.results.tr) {
+            cache.results.tr = { 
+                teamA: new Array(18).fill(null), 
+                teamB: new Array(18).fill(null), 
+                teamAGreen: new Array(18).fill(false), 
+                teamBGreen: new Array(18).fill(false) 
+            };
+        }
+        cache.results.tr.teamA[position] = trA;
+        cache.results.tr.teamB[position] = trB;
+        cache.results.tr.teamAGreen[position] = trAGreen;
+        cache.results.tr.teamBGreen[position] = trBGreen;
+        
+        if (isTarget) {
+            console.log(`[DEBUG-FLOW] --- TR assigned to cache: teamA[${position}]=${trA}, teamB[${position}]=${trB}`);
+        }
+        
         // ClinchedAt
         var isCascadeStartHole = false;
         var updatedClinched = typeof GameMatch !== 'undefined' ? GameMatch.updateClinchedAt(existingClinched, clinchedAtUpdates, holeNumber, isCascadeStartHole) : existingClinched;
@@ -577,10 +616,16 @@ var RealGameSave = (function() {
         updatePayload["results.game3.displayStrk"] = cache.results.game3.displayStrk;
         updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
         updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
+        
+        // v1.03: TR arrays now have the values assigned above
         updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
         updatePayload["results.tr.teamB"] = cache.results.tr.teamB;
         updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
         updatePayload["results.tr.teamBGreen"] = cache.results.tr.teamBGreen;
+        
+        if (isTarget) {
+            console.log(`[DEBUG-FLOW] --- TR payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
+        }
         
         if (Object.keys(clinchedAtUpdates).length > 0) {
             updatePayload["results.clinchedAt"] = updatedClinched;
@@ -602,6 +647,8 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- Has f2IntraMatches: ${!!updatePayload[`results.f2IntraMatches.${position}`]}`);
         console.log(`[DEBUG-FLOW] --- Has matchResults: ${!!updatePayload[`results.matchResults.${position}`]}`);
         console.log(`[DEBUG-FLOW] --- Has playerTotals: ${!!updatePayload["results.playerTotals"]}`);
+        console.log(`[DEBUG-FLOW] --- Has TR teamA: ${!!updatePayload["results.tr.teamA"][position]}`);
+        console.log(`[DEBUG-FLOW] --- Has TR teamB: ${!!updatePayload["results.tr.teamB"][position]}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
         console.log(`[DEBUG-FLOW] =========================================`);
@@ -634,6 +681,7 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-CACHE] Received f1IntraMatches: ${resultsData.f1IntraMatches ? Object.keys(resultsData.f1IntraMatches).length + ' entries' : 'null'}`);
             console.log(`[DEBUG-CACHE] Received f2IntraMatches: ${resultsData.f2IntraMatches ? Object.keys(resultsData.f2IntraMatches).length + ' entries' : 'null'}`);
             console.log(`[DEBUG-CACHE] Received matchResults: ${resultsData.matchResults ? resultsData.matchResults.length + ' values' : 'null'}`);
+            console.log(`[DEBUG-CACHE] Received trA: ${resultsData.trA}, trB: ${resultsData.trB}`);
             if(resultsData.f2IntraMatches) {
                 console.log(`[DEBUG-CACHE] f2IntraMatches content:`, resultsData.f2IntraMatches);
             }
@@ -706,15 +754,19 @@ var RealGameSave = (function() {
         if (!cache.results.game3.pointsB) cache.results.game3.pointsB = new Array(18).fill(0.5);
         cache.results.game3.pointsB[position] = resultsData.game3PointsB;
         
-        if (!cache.results.tr.teamA) cache.results.tr.teamA = new Array(18).fill(null);
-        if (!cache.results.tr.teamB) cache.results.tr.teamB = new Array(18).fill(null);
-        if (!cache.results.tr.teamAGreen) cache.results.tr.teamAGreen = new Array(18).fill(false);
-        if (!cache.results.tr.teamBGreen) cache.results.tr.teamBGreen = new Array(18).fill(false);
-        
+        // v1.03: Ensure TR values are assigned to cache
+        if (!cache.results.tr) {
+            cache.results.tr = { 
+                teamA: new Array(18).fill(null), 
+                teamB: new Array(18).fill(null), 
+                teamAGreen: new Array(18).fill(false), 
+                teamBGreen: new Array(18).fill(false) 
+            };
+        }
         cache.results.tr.teamA[position] = resultsData.trA;
         cache.results.tr.teamB[position] = resultsData.trB;
-        cache.results.tr.teamAGreen[position] = resultsData.trAGreen;
-        cache.results.tr.teamBGreen[position] = resultsData.trBGreen;
+        cache.results.tr.teamAGreen[position] = resultsData.trAGreen || false;
+        cache.results.tr.teamBGreen[position] = resultsData.trBGreen || false;
         
         cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
         cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
@@ -740,6 +792,7 @@ var RealGameSave = (function() {
     
     // ============================================================
     // performSave
+    // v1.03: Uses updated writeNewHoleData with TR fix
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -871,6 +924,7 @@ var RealGameSave = (function() {
                         
                         // ============================================================
                         // writeNewHoleData - ALWAYS call for ALL saves
+                        // v1.03: Now properly writes TR values
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
@@ -1207,10 +1261,12 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: TR values (teamA, teamB, teamAGreen, teamBGreen) now properly written to Firestore
+   - Added debug logging for TR values during payload construction
+   - Ensures cache.results.tr arrays are initialized before assignment
+   - All existing functionality preserved from v1.02
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
