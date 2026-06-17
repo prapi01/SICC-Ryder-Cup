@@ -1,14 +1,14 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.30
-KEY CHANGES from v1.29:
-   - ADDED: PIN authentication for UPDATE (edit) only - NOT for CREATE
-   - EDIT mode: commitGame() requires PIN before saving
-   - CREATE mode: commitGame() saves without PIN
-   - Extracted save logic into proceedWithCommit() function
-   - After UPDATE, redirects to manage-games.html (Game Settings)
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - ADDED: js/waiting-screen.js dependency for grey icon overlay
+   - UPDATE: Shows grey icon after PIN success, before Firestore update
+   - UPDATE: Hides grey icon after operation completes or on error
+   - CREATE: Shows grey icon before Firestore create
+   - CREATE: Hides grey icon after operation completes or on error
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
 
@@ -24,6 +24,7 @@ STATUS: Ready for integration
     <script src="js/session.js"></script>
     <script src="js/modal.js"></script>
     <script src="js/auth-pin.js"></script>
+    <script src="js/waiting-screen.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -261,12 +262,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.30</div>
+<div class="version-tag">v1.31</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.30
+// FILE: setup-game.html - VERSION 1.31
 
-var VERSION = "1.30";
+var VERSION = "1.31";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -904,7 +905,7 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
 }
 
 // ============================================================
-// v1.30: commitGame() - PIN for UPDATE only, NO PIN for CREATE
+// v1.31: commitGame() - PIN for UPDATE only, NO PIN for CREATE
 // ============================================================
 
 function commitGame() {
@@ -933,16 +934,18 @@ function commitGame() {
     if (state.isEditMode) {
         AuthPin.requireAuth('update', state.editingGameId, null, function() {
             // This callback runs after successful PIN authentication
+            WaitingScreen.show("Updating game...");
             proceedWithCommit();
         });
     } else {
-        // ✅ For CREATE (new game) - NO PIN needed
+        // ✅ For CREATE (new game) - NO PIN needed, show grey icon
+        WaitingScreen.show("Creating game...");
         proceedWithCommit();
     }
 }
 
 // ============================================================
-// v1.30: proceedWithCommit() - extracted save logic
+// v1.31: proceedWithCommit() - extracted save logic with grey icon
 // ============================================================
 
 function proceedWithCommit() {
@@ -1014,117 +1017,137 @@ function createNewGame(anchorPlayer) {
     gameData.createdAt = new Date().toISOString();
     var newGameId = generateGameId();
     
-    db.collection("scheduledGames").doc(newGameId).set(gameData).then(function() {
-        saveAsDefaultPlayers(state.players, function(saveSuccess) {
-            if (saveSuccess) {
-                console.log("Default players updated successfully");
-            } else {
-                console.warn("Failed to save default players, but game was created");
-            }
-            SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
-            document.getElementById("successMsg").style.display = "block";
-            setTimeout(function() {
-                window.location.href = "admin.html";
-            }, 1500);
+    db.collection("scheduledGames").doc(newGameId).set(gameData)
+        .then(function() {
+            saveAsDefaultPlayers(state.players, function(saveSuccess) {
+                if (saveSuccess) {
+                    console.log("Default players updated successfully");
+                } else {
+                    console.warn("Failed to save default players, but game was created");
+                }
+                WaitingScreen.hide();
+                SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
+                document.getElementById("successMsg").style.display = "block";
+                setTimeout(function() {
+                    window.location.href = "admin.html";
+                }, 1500);
+            });
+        })
+        .catch(function(e) {
+            WaitingScreen.hide();
+            Modal.alert("Error saving game: " + e.message);
         });
-    }).catch(function(e) {
-        Modal.alert("Error saving game: " + e.message);
-    });
 }
 
 function updateExistingGame(anchorPlayer) {
-    db.collection("scheduledGames").doc(state.editingGameId).get().then(function(doc) {
-        if (!doc.exists) {
-            Modal.alert("Game not found. Cannot update.");
-            return;
-        }
-        
-        var existingData = doc.data();
-        
-        var updatePayload = {
-            date: document.getElementById("datePicker").value,
-            course: state.selectedCourseData,
-            players: state.players.map(function(p) {
-                return {
-                    name: p.name,
-                    handicap: p.handicap,
-                    team: p.team,
-                    flight: p.flight,
-                    label: p.label
-                };
-            }),
-            startingHole: state.startingHole,
-            teamGameFormat: state.teamGameFormat,
-            anchor: anchorPlayer.name,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    db.collection("scheduledGames").doc(state.editingGameId).get()
+        .then(function(doc) {
+            if (!doc.exists) {
+                WaitingScreen.hide();
+                Modal.alert("Game not found. Cannot update.");
+                return;
+            }
             
-            f1: existingData.f1 || { d: "", se: false, x: false },
-            f2: existingData.f2 || { d: "", se: false, x: false },
-            results: existingData.results || null,
-            currentHoleF1: existingData.currentHoleF1 || 1,
-            currentHoleF2: existingData.currentHoleF2 || 1,
-            locks: existingData.locks || { f1: null, f2: null },
-            signatures: existingData.signatures || { f1: false, f2: false },
-            submitted: existingData.submitted || { f1: false, f2: false },
-            gameStarted: existingData.gameStarted || false
-        };
-        
-        var courseChanged = (existingData.course && existingData.course.id !== state.selectedCourseData.id);
-        if (courseChanged) {
-            var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
-            var rotatedData = rotateDataString(naturalData, state.startingHole);
-            updatePayload.f1 = { d: rotatedData, se: false, x: false };
-            updatePayload.f2 = { d: rotatedData, se: false, x: false };
-            updatePayload.results = initializeEmptyResults();
-            updatePayload.currentHoleF1 = 1;
-            updatePayload.currentHoleF2 = 1;
-        }
-        
-        var startingHoleChanged = (existingData.startingHole !== state.startingHole);
-        if (startingHoleChanged && !courseChanged && existingData.f1 && existingData.f1.d) {
-            Modal.confirm(
-                "Changing starting hole will reset all scores to par. Continue?",
-                function() {
-                    var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
-                    var rotatedData = rotateDataString(naturalData, state.startingHole);
-                    updatePayload.f1 = { d: rotatedData, se: false, x: false };
-                    updatePayload.f2 = { d: rotatedData, se: false, x: false };
-                    updatePayload.results = initializeEmptyResults();
-                    updatePayload.currentHoleF1 = 1;
-                    updatePayload.currentHoleF2 = 1;
-                    
-                    db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload).then(function() {
-                        SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
-                        document.getElementById("successMsg").style.display = "block";
-                        isDirty = false;
-                        setTimeout(function() {
-                            window.location.href = "manage-games.html";
-                        }, 1500);
-                    }).catch(function(e) {
-                        Modal.alert("Error updating game: " + e.message);
-                    });
-                },
-                function() {
-                    console.log("Starting hole change cancelled");
-                    render();
-                }
-            );
-            return;
-        }
-        
-        db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload).then(function() {
-            SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
-            document.getElementById("successMsg").style.display = "block";
-            isDirty = false;
-            setTimeout(function() {
-                window.location.href = "manage-games.html";
-            }, 1500);
-        }).catch(function(e) {
-            Modal.alert("Error updating game: " + e.message);
+            var existingData = doc.data();
+            
+            var updatePayload = {
+                date: document.getElementById("datePicker").value,
+                course: state.selectedCourseData,
+                players: state.players.map(function(p) {
+                    return {
+                        name: p.name,
+                        handicap: p.handicap,
+                        team: p.team,
+                        flight: p.flight,
+                        label: p.label
+                    };
+                }),
+                startingHole: state.startingHole,
+                teamGameFormat: state.teamGameFormat,
+                anchor: anchorPlayer.name,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                
+                f1: existingData.f1 || { d: "", se: false, x: false },
+                f2: existingData.f2 || { d: "", se: false, x: false },
+                results: existingData.results || null,
+                currentHoleF1: existingData.currentHoleF1 || 1,
+                currentHoleF2: existingData.currentHoleF2 || 1,
+                locks: existingData.locks || { f1: null, f2: null },
+                signatures: existingData.signatures || { f1: false, f2: false },
+                submitted: existingData.submitted || { f1: false, f2: false },
+                gameStarted: existingData.gameStarted || false
+            };
+            
+            var courseChanged = (existingData.course && existingData.course.id !== state.selectedCourseData.id);
+            if (courseChanged) {
+                var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
+                var rotatedData = rotateDataString(naturalData, state.startingHole);
+                updatePayload.f1 = { d: rotatedData, se: false, x: false };
+                updatePayload.f2 = { d: rotatedData, se: false, x: false };
+                updatePayload.results = initializeEmptyResults();
+                updatePayload.currentHoleF1 = 1;
+                updatePayload.currentHoleF2 = 1;
+            }
+            
+            var startingHoleChanged = (existingData.startingHole !== state.startingHole);
+            if (startingHoleChanged && !courseChanged && existingData.f1 && existingData.f1.d) {
+                // Hide grey icon before showing confirmation modal
+                WaitingScreen.hide();
+                Modal.confirm(
+                    "Changing starting hole will reset all scores to par. Continue?",
+                    function() {
+                        // Show grey icon again before proceeding
+                        WaitingScreen.show("Updating game...");
+                        var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
+                        var rotatedData = rotateDataString(naturalData, state.startingHole);
+                        updatePayload.f1 = { d: rotatedData, se: false, x: false };
+                        updatePayload.f2 = { d: rotatedData, se: false, x: false };
+                        updatePayload.results = initializeEmptyResults();
+                        updatePayload.currentHoleF1 = 1;
+                        updatePayload.currentHoleF2 = 1;
+                        
+                        db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload)
+                            .then(function() {
+                                WaitingScreen.hide();
+                                SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
+                                document.getElementById("successMsg").style.display = "block";
+                                isDirty = false;
+                                setTimeout(function() {
+                                    window.location.href = "manage-games.html";
+                                }, 1500);
+                            })
+                            .catch(function(e) {
+                                WaitingScreen.hide();
+                                Modal.alert("Error updating game: " + e.message);
+                            });
+                    },
+                    function() {
+                        console.log("Starting hole change cancelled");
+                        render();
+                    }
+                );
+                return;
+            }
+            
+            db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload)
+                .then(function() {
+                    WaitingScreen.hide();
+                    SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
+                    document.getElementById("successMsg").style.display = "block";
+                    isDirty = false;
+                    setTimeout(function() {
+                        window.location.href = "manage-games.html";
+                    }, 1500);
+                })
+                .catch(function(e) {
+                    WaitingScreen.hide();
+                    Modal.alert("Error updating game: " + e.message);
+                });
+        })
+        .catch(function(e) {
+            WaitingScreen.hide();
+            Modal.alert("Error loading existing game: " + e.message);
         });
-    }).catch(function(e) {
-        Modal.alert("Error loading existing game: " + e.message);
-    });
 }
 
 function onDateChange() {
@@ -1450,7 +1473,7 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v1.30: Initialize - archive old games + include auth-pin.js
+// v1.31: Initialize - archive old games + include auth-pin.js + waiting-screen.js
 // ============================================================
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
@@ -1473,14 +1496,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.30
-KEY CHANGES from v1.29:
-   - ADDED: PIN authentication for UPDATE (edit) only - NOT for CREATE
-   - EDIT mode: commitGame() requires PIN before saving
-   - CREATE mode: commitGame() saves without PIN
-   - Extracted save logic into proceedWithCommit() function
-   - After UPDATE, redirects to manage-games.html (Game Settings)
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - ADDED: js/waiting-screen.js dependency for grey icon overlay
+   - UPDATE: Shows grey icon after PIN success, before Firestore update
+   - UPDATE: Hides grey icon after operation completes or on error
+   - CREATE: Shows grey icon before Firestore create
+   - CREATE: Hides grey icon after operation completes or on error
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
