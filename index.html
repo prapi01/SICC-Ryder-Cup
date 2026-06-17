@@ -1,13 +1,14 @@
 <!--
 FILE: index.html
-VERSION: 3.50
-KEY CHANGES from v3.48:
-   - FIXED: Removed duplicate showAdminModal() function from index.html (caused recursion)
-   - FIXED: Cache-busting parameter for index-hidden.js now uses v1.07 (correct version)
-   - Admin bubble button is now larger (square, stacked text "ADMIN" / "FUNCTION")
-   - Bubble click directly calls window.showAdminModal() from index-hidden.js
+VERSION: 3.51
+KEY CHANGES from v3.50:
+   - ADDED: Custom pull-to-refresh for web app mode (Add to Home Screen)
+   - Detects standalone mode via window.navigator.standalone
+   - Only activates when installed as web app (no native refresh)
+   - Shows spinner and "Release to refresh" text
+   - Works on iPhone/iPad when installed to home screen
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
 -->
 
@@ -38,7 +39,7 @@ STATUS: Ready for integration
     <script src="js/session.js"></script>
     <script src="js/firebase-retry.js"></script>
     <script src="js/modal.js"></script>
-    <script src="js/index-hidden.js?v=1.07"></script>
+    <script src="js/index-hidden.js?v=1.08"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -61,6 +62,69 @@ STATUS: Ready for integration
             align-items: center;
             justify-content: center;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            position: relative;
+        }
+        
+        /* v3.51: Pull-to-refresh container */
+        .pull-to-refresh {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 0;
+            overflow: hidden;
+            transition: height 0.2s ease-out;
+            background: transparent;
+            pointer-events: none;
+        }
+        
+        .pull-to-refresh.active {
+            height: 60px;
+            transition: height 0.3s ease-in;
+        }
+        
+        .pull-to-refresh-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background: rgba(0,0,0,0.6);
+            border-radius: 30px;
+            border: 1px solid rgba(76,175,80,0.3);
+        }
+        
+        .pull-to-refresh-spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #333;
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            animation: pullSpin 0.8s linear infinite;
+        }
+        
+        .pull-to-refresh-spinner.hidden {
+            display: none;
+        }
+        
+        .pull-to-refresh-text {
+            font-size: 0.75rem;
+            color: #4caf50;
+            font-weight: 500;
+        }
+        
+        .pull-to-refresh-arrow {
+            font-size: 1.2rem;
+            color: #4caf50;
+            transition: transform 0.2s;
+        }
+        
+        @keyframes pullSpin {
+            to { transform: rotate(360deg); }
         }
         
         /* Main Container - initially hidden, fades in after preload */
@@ -516,6 +580,15 @@ STATUS: Ready for integration
 </head>
 <body>
 
+<!-- Pull-to-Refresh Element (hidden by default) -->
+<div class="pull-to-refresh" id="pullToRefresh">
+    <div class="pull-to-refresh-content">
+        <span class="pull-to-refresh-arrow" id="pullArrow">↓</span>
+        <div class="pull-to-refresh-spinner hidden" id="pullSpinner"></div>
+        <span class="pull-to-refresh-text" id="pullText">Pull to refresh</span>
+    </div>
+</div>
+
 <!-- Splash Overlay - B&W screen with hidden icon (for first load) -->
 <div id="splashOverlay">
     <div class="splash-icon-container">
@@ -529,15 +602,15 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.50</div>
+<div class="version-tag">v3.51</div>
 
 <script>
-// FILE: index.html - VERSION 3.50
+// FILE: index.html - VERSION 3.51
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.50";
+window.INDEX_VERSION = "3.51";
 
-var APP_VERSION = "3.50";
+var APP_VERSION = "3.51";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -546,7 +619,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.50: Determine if this is first load of the session
+// v3.51: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -823,6 +896,95 @@ function showGameCompletedModal(gameId) {
 }
 
 // ============================================================
+// v3.51: Custom Pull-to-Refresh (only for web app mode)
+// ============================================================
+
+function initPullToRefresh() {
+    // Only enable for standalone web app (Add to Home Screen)
+    var isWebApp = window.navigator.standalone === true;
+    if (!isWebApp) {
+        console.log("[PULL-TO-REFRESH] Browser mode - using native refresh");
+        return;
+    }
+    
+    console.log("[PULL-TO-REFRESH] Web app mode - enabling custom pull-to-refresh");
+    
+    var pullEl = document.getElementById('pullToRefresh');
+    var arrowEl = document.getElementById('pullArrow');
+    var spinnerEl = document.getElementById('pullSpinner');
+    var textEl = document.getElementById('pullText');
+    
+    var startY = 0;
+    var pullY = 0;
+    var isPulling = false;
+    var isRefreshing = false;
+    var threshold = 80; // pixels to trigger refresh
+    
+    document.addEventListener('touchstart', function(e) {
+        // Only trigger if at the top of the page
+        if (window.scrollY > 10) return;
+        startY = e.touches[0].clientY;
+        isPulling = true;
+    }, { passive: true });
+    
+    document.addEventListener('touchmove', function(e) {
+        if (!isPulling || isRefreshing) return;
+        // Only if scrolling down
+        var currentY = e.touches[0].clientY;
+        pullY = currentY - startY;
+        if (pullY < 0) {
+            pullY = 0;
+            return;
+        }
+        // Show pull indicator
+        if (pullY > 10) {
+            pullEl.classList.add('active');
+            var progress = Math.min(pullY / threshold, 1);
+            pullEl.style.height = Math.min(60, 20 + pullY * 0.5) + 'px';
+            arrowEl.style.transform = 'rotate(' + (progress * 180) + 'deg)';
+            if (progress >= 1) {
+                textEl.textContent = 'Release to refresh';
+                arrowEl.style.color = '#ffaa44';
+            } else {
+                textEl.textContent = 'Pull to refresh';
+                arrowEl.style.color = '#4caf50';
+            }
+        }
+    }, { passive: true });
+    
+    document.addEventListener('touchend', function(e) {
+        if (!isPulling || isRefreshing) {
+            isPulling = false;
+            return;
+        }
+        isPulling = false;
+        
+        // Check if threshold reached
+        if (pullY >= threshold) {
+            // Trigger refresh
+            isRefreshing = true;
+            arrowEl.classList.add('hidden');
+            spinnerEl.classList.remove('hidden');
+            textEl.textContent = 'Refreshing...';
+            pullEl.style.height = '60px';
+            
+            // Perform refresh
+            setTimeout(function() {
+                window.location.reload();
+            }, 800);
+        } else {
+            // Reset
+            pullEl.classList.remove('active');
+            pullEl.style.height = '0';
+            arrowEl.style.transform = 'rotate(0deg)';
+            textEl.textContent = 'Pull to refresh';
+            arrowEl.style.color = '#4caf50';
+        }
+        pullY = 0;
+    }, { passive: true });
+}
+
+// ============================================================
 // v3.50: Long-click + Bubble for Admin - LARGER SQUARE BUTTON
 // ============================================================
 
@@ -928,10 +1090,6 @@ function setupLongClickAdmin(element) {
         }
     });
 }
-
-// ============================================================
-// v3.50: showAdminModal REMOVED - use window.showAdminModal from index-hidden.js
-// ============================================================
 
 // ============================================================
 // Main UI Render
@@ -1194,7 +1352,7 @@ function renderMainUI() {
         setTimeout(setButtonWidths, 10);
         
         // ============================================================
-        // v3.50: Admin handler - Cmd+Click OR Long-click on golf icon
+        // v3.51: Admin handler - Cmd+Click OR Long-click on golf icon
         // ============================================================
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
@@ -1234,7 +1392,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.50
+// Initialization - v3.51
 // ============================================================
 
 function initApp() {
@@ -1244,6 +1402,9 @@ function initApp() {
     mainContainer.style.display = "block";
     
     var hasCachedData = getPreloadedRawGameData() !== null;
+    
+    // v3.51: Initialize pull-to-refresh for web app mode
+    initPullToRefresh();
     
     if (isFirstLoad) {
         // FIRST LOAD: B&W screen immediately, wait for load, then animate
@@ -1315,7 +1476,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.50
+// Start the app - v3.51
 // ============================================================
 
 if (isFirstLoad) {
@@ -1353,13 +1514,14 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.50
-KEY CHANGES from v3.48:
-   - FIXED: Removed duplicate showAdminModal() function from index.html (caused recursion)
-   - FIXED: Cache-busting parameter for index-hidden.js now uses v1.07 (correct version)
-   - Admin bubble button is now larger (square, stacked text "ADMIN" / "FUNCTION")
-   - Bubble click directly calls window.showAdminModal() from index-hidden.js
+VERSION: 3.51
+KEY CHANGES from v3.50:
+   - ADDED: Custom pull-to-refresh for web app mode (Add to Home Screen)
+   - Detects standalone mode via window.navigator.standalone
+   - Only activates when installed as web app (no native refresh)
+   - Shows spinner and "Release to refresh" text
+   - Works on iPhone/iPad when installed to home screen
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
 -->
