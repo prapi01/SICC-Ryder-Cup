@@ -1,12 +1,11 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - ADDED: js/waiting-screen.js dependency for grey icon overlay
-   - UPDATE: Shows grey icon after PIN success, before Firestore update
-   - UPDATE: Hides grey icon after operation completes or on error
-   - CREATE: Shows grey icon before Firestore create
-   - CREATE: Hides grey icon after operation completes or on error
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - FIXED: Grey waiting screen now only shows AFTER anchor selection (if needed)
+   - FIXED: Anchor Selection Modal no longer hidden behind grey screen
+   - Moved WaitingScreen.show() to anchorCallback() after anchor is confirmed
+   - User can now see and interact with anchor modal when multiple zero-handicap players exist
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
@@ -262,12 +261,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.31</div>
+<div class="version-tag">v1.32</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.31
+// FILE: setup-game.html - VERSION 1.32
 
-var VERSION = "1.31";
+var VERSION = "1.32";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -905,7 +904,7 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
 }
 
 // ============================================================
-// v1.31: commitGame() - PIN for UPDATE only, NO PIN for CREATE
+// v1.32: commitGame() - PIN for UPDATE only, NO PIN for CREATE
 // ============================================================
 
 function commitGame() {
@@ -934,24 +933,26 @@ function commitGame() {
     if (state.isEditMode) {
         AuthPin.requireAuth('update', state.editingGameId, null, function() {
             // This callback runs after successful PIN authentication
-            WaitingScreen.show("Updating game...");
+            // NO waiting screen here - anchor selection may be needed first
             proceedWithCommit();
         });
     } else {
-        // ✅ For CREATE (new game) - NO PIN needed, show grey icon
-        WaitingScreen.show("Creating game...");
+        // ✅ For CREATE (new game) - NO PIN needed
         proceedWithCommit();
     }
 }
 
 // ============================================================
-// v1.31: proceedWithCommit() - extracted save logic with grey icon
+// v1.32: proceedWithCommit() - anchor selection FIRST, waiting screen AFTER
 // ============================================================
 
 function proceedWithCommit() {
     var zeroHandicapPlayers = state.players.filter(function(p) { return p.handicap === 0; });
     
     var anchorCallback = function(selectedAnchor) {
+        // ALL user input complete (PIN done, anchor selected if needed)
+        // NOW show waiting screen for Firestore write
+        WaitingScreen.show("Updating game...");
         if (state.editingGameId) {
             updateExistingGame(selectedAnchor);
         } else {
@@ -960,8 +961,11 @@ function proceedWithCommit() {
     };
     
     if (zeroHandicapPlayers.length > 1) {
+        // Multiple zero handicap players - need anchor selection FIRST
+        // NO waiting screen yet - user must interact with modal
         showAnchorSelectionModal(zeroHandicapPlayers, anchorCallback);
     } else {
+        // 0 or 1 zero handicap player - no anchor selection needed
         var sortedByHcp = [...state.players].sort(function(a, b) { return a.handicap - b.handicap; });
         var defaultAnchor = sortedByHcp[0];
         anchorCallback(defaultAnchor);
@@ -1473,7 +1477,7 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v1.31: Initialize - archive old games + include auth-pin.js + waiting-screen.js
+// v1.32: Initialize - archive old games + include auth-pin.js + waiting-screen.js
 // ============================================================
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
@@ -1496,13 +1500,12 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - ADDED: js/waiting-screen.js dependency for grey icon overlay
-   - UPDATE: Shows grey icon after PIN success, before Firestore update
-   - UPDATE: Hides grey icon after operation completes or on error
-   - CREATE: Shows grey icon before Firestore create
-   - CREATE: Hides grey icon after operation completes or on error
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - FIXED: Grey waiting screen now only shows AFTER anchor selection (if needed)
+   - FIXED: Anchor Selection Modal no longer hidden behind grey screen
+   - Moved WaitingScreen.show() to anchorCallback() after anchor is confirmed
+   - User can now see and interact with anchor modal when multiple zero-handicap players exist
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
