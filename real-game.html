@@ -1,17 +1,18 @@
 <!--
 FILE: real-game.html
-VERSION: 5.99
-KEY CHANGES from v5.98:
-   - FIXED: Intra-flight match data (f1IntraMatches, f2IntraMatches) now written for "new hole" saves
-   - ADDED: writeNewHoleData() function to calculate and write match data for a single position
-   - REFACTORED: getPlayOrder(), getRemainingHolesFromPlayOrder(), getHolePosition(), getHoleAtPosition()
-     are now pure delegates to GameOrder (removed fallback logic)
-   - FIXED: Cross-flight matchResults[position] now written for new holes when both flights saved
-   - FIXED: All team game arrays (T-1, T-2, Strk, TR, clinchedAt) now written for new holes
-   - This addresses the root cause of f1IntraMatches[17] never being written to Firestore
-   - All existing functionality preserved from v5.98
+VERSION: 6.00
+KEY CHANGES from v5.99:
+   - ADDED: Comprehensive debug logging for entire save flow
+   - Logs: performSave() entry, position, flight, lastSyncedPos
+   - Logs: writeNewHoleData() entry, f1/f2 availability
+   - Logs: F1 intra calculation before/after with match count
+   - Logs: F2 intra calculation before/after with match count
+   - Logs: Cross calculation before/after with match count
+   - Logs: Firestore write payload summary
+   - Logs: updateLocalCacheWithResults() when results applied
+   - All existing functionality preserved from v5.99
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js (v1.12), js/game-stroke.js (v1.07), js/game-scorecard.js (v1.16), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/game-order.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+STATUS: Debug version - ready for testing
 -->
 
 <!DOCTYPE html>
@@ -23,9 +24,9 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=5.99"></script>
-    <script src="js/session.js?v=5.99"></script>
-    <script src="js/modal.js?v=5.99"></script>
+    <script src="js/firebase-config.js?v=6.00"></script>
+    <script src="js/session.js?v=6.00"></script>
+    <script src="js/modal.js?v=6.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -34,11 +35,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/card-submit.js?v=5.99"></script>
-    <script src="js/sign-card.js?v=5.99"></script>
-    <script src="js/hcp-adjust.js?v=5.99"></script>
-    <script src="js/ticker.js?v=5.99"></script>
-    <script src="js/history-record.js?v=5.99"></script>
+    <script src="js/card-submit.js?v=6.00"></script>
+    <script src="js/sign-card.js?v=6.00"></script>
+    <script src="js/hcp-adjust.js?v=6.00"></script>
+    <script src="js/ticker.js?v=6.00"></script>
+    <script src="js/history-record.js?v=6.00"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -301,13 +302,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v5.99</div>
+<div class="version-tag">v6.00</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "5.99";
+var APP_VERSION = "6.00";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -319,17 +320,22 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "5.99";
-console.log("[REAL-GAME] Initializing v5.99 - FIXED intra-flight data writing for new holes");
+window.REAL_GAME_VERSION = "6.00";
+console.log("[REAL-GAME] Initializing v6.00 - DEBUG LOGGING ENABLED");
+console.log("[REAL-GAME] =========================================");
+console.log("[REAL-GAME] Debug logs will trace the entire save flow");
+console.log("[REAL-GAME] Including: performSave -> writeNewHoleData -> intra/cross calculations");
+console.log("[REAL-GAME] =========================================");
 
 // ============================================================
 // DEBUG CONFIGURATION
 // ============================================================
-var DEBUG_TARGET_HOLE = 14;
+var DEBUG_TARGET_HOLE = 9;
 var DEBUG_CALL_COUNTERS = {
     calc: 0,
     update: 0,
-    write: 0
+    write: 0,
+    save: 0
 };
 
 // ============================================================
@@ -365,10 +371,8 @@ var activeCompleteModal = null;
 var usedPreloadedData = false;
 var takeoverDetected = false;
 
-// v5.67: Flight toggle for viewing other flight
-var viewOtherFlight = false;  // true = viewing other flight (read-only)
+var viewOtherFlight = false;
 
-// Firestore real-time listener
 var firestoreUnsubscribe = null;
 
 // ============================================================
@@ -405,7 +409,6 @@ function getLastHole() {
     if (typeof GameOrder !== 'undefined' && GameOrder.getLastHole) {
         return GameOrder.getLastHole();
     }
-    // Fallback (should never be needed if GameOrder is loaded)
     return (startingHole === 1) ? 18 : startingHole - 1;
 }
 
@@ -531,11 +534,9 @@ async function processPendingWrites() {
 function updateGameMetadata(flight, holeNumber) {
     console.log(`[METADATA] Updating metadata for flight ${flight}, hole ${holeNumber}`);
     
-    // Force metadata write to happen asynchronously (don't block UI)
     return new Promise(function(resolve) {
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
-                // Determine current play position for this flight
                 var playOrder = getPlayOrder();
                 var currentPlayPosition = playOrder.indexOf(holeNumber);
                 if (currentPlayPosition === -1) {
@@ -547,13 +548,11 @@ function updateGameMetadata(flight, holeNumber) {
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 
-                // Update currentHole for this flight
                 if (flight === 1) {
                     metaPayload.currentHoleF1 = holeNumber;
                 } else if (flight === 2) {
                     metaPayload.currentHoleF2 = holeNumber;
                 } else {
-                    // If flight unknown, update both
                     metaPayload.currentHoleF1 = holeNumber;
                     metaPayload.currentHoleF2 = holeNumber;
                 }
@@ -567,7 +566,6 @@ function updateGameMetadata(flight, holeNumber) {
                     })
                     .catch(function(e) {
                         console.warn(`[METADATA] Failed to update metadata:`, e);
-                        // Don't reject - metadata is non-critical
                         resolve(false);
                     });
             });
@@ -576,15 +574,19 @@ function updateGameMetadata(flight, holeNumber) {
 }
 
 // ============================================================
-// v5.99: writeNewHoleData - Calculates and writes intra-flight
-// and cross-flight match data for a single "new" hole position
+// v6.00: writeNewHoleData with DEBUG LOGGING
 // ============================================================
 
 async function writeNewHoleData(position, holeNumber, cache) {
-    console.log(`[NEW-HOLE] Writing match data for hole ${holeNumber} (position ${position})`);
-    
     var isTarget = (holeNumber === DEBUG_TARGET_HOLE);
-    if (isTarget) console.log(`[NEW-HOLE] TARGET HOLE ${holeNumber} - writing intra-flight data`);
+    
+    console.log(`[DEBUG-FLOW] =========================================`);
+    console.log(`[DEBUG-FLOW] writeNewHoleData START: hole=${holeNumber}, position=${position}`);
+    console.log(`[DEBUG-FLOW] =========================================`);
+    
+    if (isTarget) {
+        console.log(`[DEBUG-FLOW] *** TARGET HOLE ${holeNumber} (position ${position}) ***`);
+    }
     
     // Get flight data
     var f1Hole = cache.flight1Data[holeNumber];
@@ -592,6 +594,8 @@ async function writeNewHoleData(position, holeNumber, cache) {
     var f1Available = (f1Hole && f1Hole.saved);
     var f2Available = (f2Hole && f2Hole.saved);
     var crossAvailable = f1Available && f2Available;
+    
+    console.log(`[DEBUG-FLOW] f1Available=${f1Available}, f2Available=${f2Available}, crossAvailable=${crossAvailable}`);
     
     // Build remainingHolesByPosition array
     var remainingHolesByPosition = new Array(18);
@@ -608,7 +612,7 @@ async function writeNewHoleData(position, holeNumber, cache) {
     
     var existingClinched = cache.results?.clinchedAt || {};
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.99";
+    var cascadeVersion = window.REAL_GAME_VERSION || "6.00";
     var holesPlayed = position + 1;
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     
@@ -619,6 +623,7 @@ async function writeNewHoleData(position, holeNumber, cache) {
     // ============================================================
     var f1IntraMatchesForHole = null;
     if (f1Available) {
+        console.log(`[DEBUG-FLOW] --- F1 INTRA: Calculating for flight 1, hole ${holeNumber}, holesPlayed=${holesPlayed}`);
         var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
         var intra1Result = GameMatch.calculateIntraFlightWithClinch(
             1, flight1Players, cache.f1DataString, courseSi, startingHole, holesPlayed, coursePar,
@@ -628,8 +633,13 @@ async function writeNewHoleData(position, holeNumber, cache) {
         for (var matchKey in intra1Result.clinchedAtUpdates) {
             clinchedAtUpdates[matchKey] = intra1Result.clinchedAtUpdates[matchKey];
         }
-        console.log(`[NEW-HOLE] Flight 1 intra: ${Object.keys(f1IntraMatchesForHole || {}).length} matches`);
-        if (isTarget) console.log(`[NEW-HOLE] f1IntraMatches:`, f1IntraMatchesForHole);
+        var matchCount = Object.keys(f1IntraMatchesForHole || {}).length;
+        console.log(`[DEBUG-FLOW] --- F1 INTRA RESULT: ${matchCount} matches, ${Object.keys(intra1Result.clinchedAtUpdates).length} clinch updates`);
+        if (isTarget && f1IntraMatchesForHole) {
+            console.log(`[DEBUG-FLOW] --- F1 INTRA DATA:`, f1IntraMatchesForHole);
+        }
+    } else {
+        console.log(`[DEBUG-FLOW] --- F1 INTRA: SKIPPED (f1Available=false)`);
     }
     
     // ============================================================
@@ -637,6 +647,7 @@ async function writeNewHoleData(position, holeNumber, cache) {
     // ============================================================
     var f2IntraMatchesForHole = null;
     if (f2Available) {
+        console.log(`[DEBUG-FLOW] --- F2 INTRA: Calculating for flight 2, hole ${holeNumber}, holesPlayed=${holesPlayed}`);
         var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
         var intra2Result = GameMatch.calculateIntraFlightWithClinch(
             2, flight2Players, cache.f2DataString, courseSi, startingHole, holesPlayed, coursePar,
@@ -646,8 +657,13 @@ async function writeNewHoleData(position, holeNumber, cache) {
         for (var matchKey in intra2Result.clinchedAtUpdates) {
             clinchedAtUpdates[matchKey] = intra2Result.clinchedAtUpdates[matchKey];
         }
-        console.log(`[NEW-HOLE] Flight 2 intra: ${Object.keys(f2IntraMatchesForHole || {}).length} matches`);
-        if (isTarget) console.log(`[NEW-HOLE] f2IntraMatches:`, f2IntraMatchesForHole);
+        var matchCount = Object.keys(f2IntraMatchesForHole || {}).length;
+        console.log(`[DEBUG-FLOW] --- F2 INTRA RESULT: ${matchCount} matches, ${Object.keys(intra2Result.clinchedAtUpdates).length} clinch updates`);
+        if (isTarget && f2IntraMatchesForHole) {
+            console.log(`[DEBUG-FLOW] --- F2 INTRA DATA:`, f2IntraMatchesForHole);
+        }
+    } else {
+        console.log(`[DEBUG-FLOW] --- F2 INTRA: SKIPPED (f2Available=false)`);
     }
     
     // ============================================================
@@ -657,6 +673,7 @@ async function writeNewHoleData(position, holeNumber, cache) {
     var game1PointsA = 0, game1PointsB = 0;
     
     if (crossAvailable) {
+        console.log(`[DEBUG-FLOW] --- CROSS: Calculating cross-flight matches, holesToAccumulate=${holesPlayed}`);
         var crossResult = GameMatch.calculateCrossFlightWithClinch(
             cache.f1DataString, cache.f2DataString, allPlayers, courseSi, startingHole, 
             holesPlayed, coursePar,
@@ -666,6 +683,7 @@ async function writeNewHoleData(position, holeNumber, cache) {
         for (var matchKey in crossResult.clinchedAtUpdates) {
             clinchedAtUpdates[matchKey] = crossResult.clinchedAtUpdates[matchKey];
         }
+        console.log(`[DEBUG-FLOW] --- CROSS RESULT: ${matchResultsArray ? matchResultsArray.length : 0} values, ${Object.keys(crossResult.clinchedAtUpdates).length} clinch updates`);
         
         var matchResultsObj = crossResult.matchResultsObj;
         var matchCount = 0;
@@ -682,7 +700,9 @@ async function writeNewHoleData(position, holeNumber, cache) {
                 }
             }
         }
-        console.log(`[NEW-HOLE] Cross: ${Object.keys(crossResult.clinchedAtUpdates).length} clinch updates, game1Points=${game1PointsA}-${game1PointsB}`);
+        console.log(`[DEBUG-FLOW] --- CROSS POINTS: game1PointsA=${game1PointsA}, game1PointsB=${game1PointsB}`);
+    } else {
+        console.log(`[DEBUG-FLOW] --- CROSS: SKIPPED (crossAvailable=false)`);
     }
     
     // ============================================================
@@ -694,6 +714,7 @@ async function writeNewHoleData(position, holeNumber, cache) {
         var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, coursePar);
         strkLeader = strokeResults.leader[position] === "A" ? "A" : strokeResults.leader[position] === "B" ? "B" : "AS";
         strkDisplay = strokeResults.displayStrk?.[position] || "AS";
+        console.log(`[DEBUG-FLOW] --- STROKE: strkLeader=${strkLeader}, strkDisplay=${strkDisplay}`);
     }
     
     // ============================================================
@@ -705,6 +726,8 @@ async function writeNewHoleData(position, holeNumber, cache) {
     var t2Leader = teamGameResults.flight2Leaders[position];
     var t1Display = teamGameResults.displayT1[position];
     var t2Display = teamGameResults.displayT2[position];
+    
+    console.log(`[DEBUG-FLOW] --- TEAM GAME: T-1=${t1Display}, T-2=${t2Display}`);
     
     // Points
     var flight1PointsA = (cumulativeF1 > 0) ? 1 : (cumulativeF1 < 0) ? 0 : 0.5;
@@ -723,34 +746,36 @@ async function writeNewHoleData(position, holeNumber, cache) {
         trB = game1PointsB + game2PointsB + game3PointsB;
         trAGreen = (trA > trB);
         trBGreen = (trB > trA);
+        console.log(`[DEBUG-FLOW] --- TR: ${trA} - ${trB}, trAGreen=${trAGreen}, trBGreen=${trBGreen}`);
     } else {
         trA = null;
         trB = null;
         trAGreen = false;
         trBGreen = false;
+        console.log(`[DEBUG-FLOW] --- TR: null (crossAvailable=false)`);
     }
     
     // ClinchedAt
-    var isCascadeStartHole = false;  // New hole - no filtering
+    var isCascadeStartHole = false;
     var updatedClinched = GameMatch.updateClinchedAt(existingClinched, clinchedAtUpdates, holeNumber, isCascadeStartHole);
+    console.log(`[DEBUG-FLOW] --- CLINCHED: ${Object.keys(clinchedAtUpdates).length} new updates, total ${Object.keys(updatedClinched).length}`);
     
     // ============================================================
     // BUILD PAYLOAD AND WRITE TO FIRESTORE
     // ============================================================
     var updatePayload = {};
     
-    // Intra-flight matches
     if (f1IntraMatchesForHole !== null) {
         updatePayload[`results.f1IntraMatches.${position}`] = f1IntraMatchesForHole;
-        console.log(`[NEW-HOLE] Adding f1IntraMatches at position ${position}`);
+        console.log(`[DEBUG-FLOW] --- Adding f1IntraMatches at position ${position}`);
     }
     if (f2IntraMatchesForHole !== null) {
         updatePayload[`results.f2IntraMatches.${position}`] = f2IntraMatchesForHole;
-        console.log(`[NEW-HOLE] Adding f2IntraMatches at position ${position}`);
+        console.log(`[DEBUG-FLOW] --- Adding f2IntraMatches at position ${position}`);
     }
     if (matchResultsArray !== null) {
         updatePayload[`results.matchResults.${position}`] = matchResultsArray;
-        console.log(`[NEW-HOLE] Adding matchResults at position ${position}`);
+        console.log(`[DEBUG-FLOW] --- Adding matchResults at position ${position}`);
     }
     
     // Team game arrays
@@ -773,12 +798,10 @@ async function writeNewHoleData(position, holeNumber, cache) {
     updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
     updatePayload["results.tr.teamBGreen"] = cache.results.tr.teamBGreen;
     
-    // ClinchedAt
     if (Object.keys(clinchedAtUpdates).length > 0) {
         updatePayload["results.clinchedAt"] = updatedClinched;
     }
     
-    // Clinch holes
     if (teamGameResults.flight1ClinchedHole !== null) {
         updatePayload["results.game2.flight1.clinchedHole"] = teamGameResults.flight1ClinchedHole;
     }
@@ -790,18 +813,20 @@ async function writeNewHoleData(position, holeNumber, cache) {
     updatePayload["results.playerTotals"] = cache.results.playerTotals;
     updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     
-    if (isTarget) {
-        console.log(`[NEW-HOLE] Payload keys:`, Object.keys(updatePayload));
-        console.log(`[NEW-HOLE] f1IntraMatches in payload:`, updatePayload[`results.f1IntraMatches.${position}`] ? 'EXISTS' : 'MISSING');
-        console.log(`[NEW-HOLE] f2IntraMatches in payload:`, updatePayload[`results.f2IntraMatches.${position}`] ? 'EXISTS' : 'MISSING');
-    }
+    console.log(`[DEBUG-FLOW] --- PAYLOAD SUMMARY: ${Object.keys(updatePayload).length} fields`);
+    console.log(`[DEBUG-FLOW] --- Has f1IntraMatches: ${!!updatePayload[`results.f1IntraMatches.${position}`]}`);
+    console.log(`[DEBUG-FLOW] --- Has f2IntraMatches: ${!!updatePayload[`results.f2IntraMatches.${position}`]}`);
+    console.log(`[DEBUG-FLOW] --- Has matchResults: ${!!updatePayload[`results.matchResults.${position}`]}`);
+    console.log(`[DEBUG-FLOW] =========================================`);
+    console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
+    console.log(`[DEBUG-FLOW] =========================================`);
     
     try {
         await db.collection("scheduledGames").doc(gameId).update(updatePayload);
-        console.log(`[NEW-HOLE] Successfully wrote match data for hole ${holeNumber}`);
+        console.log(`[DEBUG-FLOW] Firestore write SUCCESS for hole ${holeNumber}`);
         return true;
     } catch (error) {
-        console.error(`[NEW-HOLE] Failed to write match data for hole ${holeNumber}:`, error);
+        console.error(`[DEBUG-FLOW] Firestore write FAILED for hole ${holeNumber}:`, error);
         throw error;
     }
 }
@@ -856,10 +881,6 @@ async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
     updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
     updatePayload["results.tr.teamBGreen"] = cache.results.tr.teamBGreen;
     
-    // ============================================================
-    // v5.97: FIX - Write FULL arrays for displayT1, flight1.leader, flight1.cumulativePoints
-    // This prevents sparse objects from corrupting Firestore
-    // ============================================================
     var fullDisplayT1 = new Array(18).fill("AS");
     if (cache.results.game2.displayT1) {
         for (var i = 0; i < 18; i++) {
@@ -889,9 +910,6 @@ async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
         }
     }
     updatePayload["results.game2.flight1.cumulativePoints"] = fullFlight1Cumulative;
-    // ============================================================
-    // END v5.97 FIX
-    // ============================================================
     
     if (resultsData.flight1ClinchedHole !== undefined && resultsData.flight1ClinchedHole !== null) {
         updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
@@ -958,7 +976,6 @@ function applyPreloadedData(preloadData) {
     startingHole = preloadData.startingHole || 1;
     teamGameFormat = preloadData.teamGameFormat || "tournament";
     
-    // Update GameOrder with starting hole
     updateGameOrder();
     
     var mockCache = {
@@ -1239,300 +1256,27 @@ function flashSaveButtonSuccess() {
     }
 }
 
-function performSave() {
-    return new Promise(function(resolve, reject) {
-        console.log(`[DEBUG-SAVE] performSave called for hole ${currentHole}, editableFlight=${editableFlight}`);
-        
-        if (!canEdit || takeoverDetected) {
-            reject(new Error("Role was taken over. Cannot save."));
-            return;
-        }
-        
-        if (viewOtherFlight) {
-            reject(new Error("Cannot save while viewing other flight."));
-            return;
-        }
-        
-        var flight = editableFlight;
-        var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
-        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        
-        var a1Score = getStoredScore(teamA[0], currentHole);
-        var a2Score = getStoredScore(teamA[1], currentHole);
-        var b1Score = getStoredScore(teamB[0], currentHole);
-        var b2Score = getStoredScore(teamB[1], currentHole);
-        
-        for (var key in localChanges) {
-            if (key.startsWith(flight + "_" + currentHole + "_")) {
-                var playerName = key.split('_')[2];
-                if (teamA[0] && teamA[0].name === playerName) a1Score = localChanges[key];
-                if (teamA[1] && teamA[1].name === playerName) a2Score = localChanges[key];
-                if (teamB[0] && teamB[0].name === playerName) b1Score = localChanges[key];
-                if (teamB[1] && teamB[1].name === playerName) b2Score = localChanges[key];
-            }
-        }
-        
-        var scores = { a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score };
-        
-        GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
-            if (success) {
-                for (var key in localChanges) {
-                    if (key.startsWith(flight + "_" + currentHole + "_")) {
-                        delete localChanges[key];
-                    }
-                }
-                
-                console.log(`[CASCADE-DEBUG] === CASCADE START ===`);
-                console.log(`[CASCADE-DEBUG] currentHole (saved) = ${currentHole}`);
-                
-                await new Promise(function(resolveLoad) {
-                    GameLoader.loadGame(gameId, "scheduledGames", function(result) {
-                        if (result.success) console.log("[CASCADE-DEBUG] Cache refreshed after save");
-                        resolveLoad();
-                    });
-                });
-                
-                var cache = GameLoader.getLocalCache();
-                var existingClinched = cache.results?.clinchedAt || {};
-                var cumulativeFlight1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole || null;
-                var cumulativeFlight2ClinchedHole = cache.results?.game2?.flight2?.clinchedHole || null;
-                
-                // ============================================================
-                // v5.96: IMMEDIATE RECALCULATION - UPDATES T-1 AND WRITES FULL ARRAYS
-                // This runs for the saved hole regardless of F2 status
-                // T-1 depends ONLY on F1 data and must update immediately
-                // Now writes FULL arrays to Firestore to prevent sparse object corruption
-                // ============================================================
-                var currentPosition = getHolePosition(currentHole);
-                
-                // Recalculate team game results using current cache (now with new F1 data)
-                var teamGameResults = GameTeam.calculate(
-                    allPlayers,
-                    cache.f1DataString,
-                    cache.f2DataString,
-                    courseSi,
-                    startingHole,
-                    teamGameFormat
-                );
-                
-                // Ensure results.game2 exists
-                if (!cache.results) cache.results = initializeEmptyResults();
-                if (!cache.results.game2) cache.results.game2 = { flight1: {}, flight2: {} };
-                if (!cache.results.game2.flight1) cache.results.game2.flight1 = {};
-                if (!cache.results.game2.flight2) cache.results.game2.flight2 = {};
-                if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill("AS");
-                if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill("AS");
-                if (!cache.results.game2.flight1.cumulativePoints) cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
-                if (!cache.results.game2.flight1.leader) cache.results.game2.flight1.leader = new Array(18).fill("AS");
-                if (!cache.t1Row) cache.t1Row = new Array(18).fill('_');
-                
-                // Update local cache for current position
-                cache.results.game2.flight1.cumulativePoints[currentPosition] = teamGameResults.flight1Cumulative[currentPosition];
-                cache.results.game2.displayT1[currentPosition] = teamGameResults.displayT1[currentPosition];
-                cache.results.game2.flight1.leader[currentPosition] = teamGameResults.flight1Leaders[currentPosition];
-                cache.t1Row[currentPosition] = teamGameResults.displayT1[currentPosition];
-                
-                console.log(`[IMMEDIATE] Hole ${currentHole} (position ${currentPosition}): T-1 = ${teamGameResults.displayT1[currentPosition]}`);
-                
-                // ============================================================
-                // v5.96: WRITE FULL ARRAYS TO FIRESTORE
-                // This prevents sparse object corruption and ensures viewers see correct data
-                // ============================================================
-                var fullDisplayT1 = cache.results.game2.displayT1.slice();
-                var fullCumulativeF1 = cache.results.game2.flight1.cumulativePoints.slice();
-                var fullLeaderF1 = cache.results.game2.flight1.leader.slice();
-                
-                var t1UpdatePayload = {};
-                t1UpdatePayload["results.game2.displayT1"] = fullDisplayT1;
-                t1UpdatePayload["results.game2.flight1.cumulativePoints"] = fullCumulativeF1;
-                t1UpdatePayload["results.game2.flight1.leader"] = fullLeaderF1;
-                t1UpdatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-                
-                try {
-                    await db.collection("scheduledGames").doc(gameId).update(t1UpdatePayload);
-                    console.log(`[IMMEDIATE] Firestore full arrays write successful for hole ${currentHole}`);
-                } catch (e) {
-                    console.warn(`[IMMEDIATE] Firestore write failed:`, e);
-                }
-                // ============================================================
-                // END FIRESTORE WRITE
-                // ============================================================
-                
-                // Force immediate UI update
-                renderAll();
-                // === END IMMEDIATE RECALCULATION ===
-                
-                // ============================================================
-                // v5.99: NEW HOLE DATA WRITE - Intra-flight and cross-flight match data
-                // This runs for ALL saves (both new holes and previous hole edits)
-                // For new holes (position >= lastSyncedPos), this writes f1IntraMatches[position]
-                // For previous holes, the cascade will also write, but this is idempotent
-                // ============================================================
-                var lastSyncedPos = cache.lastSyncedPosition;
-                
-                // Always write match data for the saved position
-                // This ensures f1IntraMatches[position] is always written, even for new holes
-                console.log(`[NEW-HOLE] Writing match data for position ${currentPosition} (hole ${currentHole})`);
-                try {
-                    await writeNewHoleData(currentPosition, currentHole, cache);
-                    console.log(`[NEW-HOLE] Successfully wrote match data for hole ${currentHole}`);
-                } catch (error) {
-                    console.error(`[NEW-HOLE] Failed to write match data for hole ${currentHole}:`, error);
-                    reject(new Error(`Failed to write match data for hole ${currentHole}`));
-                    return;
-                }
-                
-                // ============================================================
-                // v5.91/5.92: Cascade only recalculates holes when editing a PREVIOUS hole
-                // For new holes (currentPosition >= lastSyncedPos), cascade does nothing
-                // ============================================================
-                
-                var playOrder = getPlayOrder();
-                
-                // Only run cascade if we are editing a hole BEFORE the last synced hole
-                if (currentPosition < lastSyncedPos) {
-                    console.log(`[CASCADE-DEBUG] Editing previous hole - recalculating from position ${currentPosition} to ${lastSyncedPos}`);
-                    
-                    var currentCache = GameLoader.getLocalCache();
-                    var cascadeResultsQueue = [];
-                    
-                    for (var pos = currentPosition; pos <= lastSyncedPos; pos++) {
-                        var holeToUpdate = playOrder[pos];
-                        
-                        if (currentCache.savedHoles[1].indexOf(holeToUpdate) === -1 || 
-                            currentCache.savedHoles[2].indexOf(holeToUpdate) === -1) {
-                            console.log(`[CASCADE-DEBUG] Skipping hole ${holeToUpdate} (not saved by both flights)`);
-                            continue;
-                        }
-                        
-                        console.log(`[CASCADE-DEBUG] --- Processing hole ${holeToUpdate} (position ${pos}) ---`);
-                        
-                        var updatedClinched = currentCache.results?.clinchedAt || {};
-                        var updatedFlight1Clinched = currentCache.results?.game2?.flight1?.clinchedHole || null;
-                        var updatedFlight2Clinched = currentCache.results?.game2?.flight2?.clinchedHole || null;
-                        
-                        var loopResultsData = calculateHoleResultsWithCumulative(
-                            holeToUpdate, updatedClinched, updatedFlight1Clinched, updatedFlight2Clinched, holeToUpdate
-                        );
-                        
-                        if (loopResultsData) {
-                            updateLocalCacheWithResults(loopResultsData);
-                            renderAll();
-                            cascadeResultsQueue.push({
-                                hole: holeToUpdate,
-                                resultsData: loopResultsData
-                            });
-                        }
-                        
-                        currentCache = GameLoader.getLocalCache();
-                    }
-                    
-                    console.log(`[CASCADE-DEBUG] Cascade calculation complete. ${cascadeResultsQueue.length} holes to write to Firestore.`);
-                    
-                    var pendingData = {
-                        gameId: gameId,
-                        pendingWrites: cascadeResultsQueue.map(function(item) {
-                            return {
-                                hole: item.hole,
-                                resultsData: item.resultsData
-                            };
-                        })
-                    };
-                    savePendingWrites(pendingData);
-                    
-                    var finalCache = GameLoader.getLocalCache();
-                    
-                    // Recalculate stroke game for all positions
-                    if (typeof GameStroke !== 'undefined') {
-                        var freshStrokeResults = GameStroke.calculate(
-                            allPlayers,
-                            finalCache.f1DataString,
-                            finalCache.f2DataString,
-                            courseSi,
-                            startingHole,
-                            coursePar
-                        );
-                        
-                        console.log('[STROKE-FIX] Recalculating all stroke game positions');
-                        for (var pos = 0; pos < 18; pos++) {
-                            finalCache.results.game3.leader[pos] = freshStrokeResults.leader[pos];
-                            finalCache.results.game3.displayStrk[pos] = freshStrokeResults.displayStrk[pos];
-                            finalCache.results.game3.nettA[pos] = freshStrokeResults.nettA[pos];
-                            finalCache.results.game3.nettB[pos] = freshStrokeResults.nettB[pos];
-                            finalCache.results.game3.pointsA[pos] = freshStrokeResults.pointsA[pos];
-                            finalCache.results.game3.pointsB[pos] = freshStrokeResults.pointsB[pos];
-                        }
-                    }
-                    
-                    // Write all holes to Firestore
-                    for (var q = 0; q < cascadeResultsQueue.length; q++) {
-                        var item = cascadeResultsQueue[q];
-                        console.log(`[CASCADE-DEBUG] Writing hole ${item.hole} to Firestore...`);
-                        
-                        try {
-                            await writeSingleHoleToFirestore(item.hole, item.resultsData, finalCache);
-                            console.log(`[CASCADE-DEBUG] Successfully wrote hole ${item.hole}`);
-                            
-                            pendingData.pendingWrites = pendingData.pendingWrites.filter(function(w) {
-                                return w.hole !== item.hole;
-                            });
-                            savePendingWrites(pendingData);
-                            
-                        } catch (error) {
-                            console.error(`[CASCADE-DEBUG] Failed to write hole ${item.hole}:`, error);
-                            reject(new Error(`Failed to write hole ${item.hole}`));
-                            return;
-                        }
-                    }
-                    
-                    savePendingWrites(null);
-                } else {
-                    console.log(`[CASCADE-DEBUG] Saving new hole - no cascade needed (match data already written)`);
-                }
-                
-                // ============================================================
-                // v5.98: UPDATE GAME METADATA (gameStarted, currentHoleF1, currentHoleF2)
-                // This runs AFTER the save is complete
-                // ============================================================
-                await updateGameMetadata(editableFlight, currentHole);
-                
-                if (typeof Ticker !== 'undefined') {
-                    Ticker.refresh();
-                }
-                
-                resolve(true);
-            } else {
-                reject(new Error("Save failed"));
-            }
-        });
-    });
-}
-
 function updateLocalCacheWithResults(resultsData) {
     var position = resultsData.position;
     var holeNumber = getHoleAtPosition(position);
     var isTarget = (holeNumber === DEBUG_TARGET_HOLE);
     
+    console.log(`[DEBUG-CACHE] updateLocalCacheWithResults: hole=${holeNumber}, position=${position}`);
+    
     if(isTarget) {
         DEBUG_CALL_COUNTERS.update++;
-        console.log(`[DEBUG-UPDATE] === UPDATE #${DEBUG_CALL_COUNTERS.update} for HOLE ${holeNumber} (position ${position}) (TARGET) ===`);
-        console.log(`[DEBUG-UPDATE] Received f1IntraMatches: ${resultsData.f1IntraMatches ? Object.keys(resultsData.f1IntraMatches).length + ' entries' : 'null'}`);
-        console.log(`[DEBUG-UPDATE] Received f2IntraMatches: ${resultsData.f2IntraMatches ? Object.keys(resultsData.f2IntraMatches).length + ' entries' : 'null'}`);
-        console.log(`[DEBUG-UPDATE] Received matchResults: ${resultsData.matchResults ? resultsData.matchResults.length + ' values' : 'null'}`);
+        console.log(`[DEBUG-CACHE] === UPDATE #${DEBUG_CALL_COUNTERS.update} for HOLE ${holeNumber} (position ${position}) (TARGET) ===`);
+        console.log(`[DEBUG-CACHE] Received f1IntraMatches: ${resultsData.f1IntraMatches ? Object.keys(resultsData.f1IntraMatches).length + ' entries' : 'null'}`);
+        console.log(`[DEBUG-CACHE] Received f2IntraMatches: ${resultsData.f2IntraMatches ? Object.keys(resultsData.f2IntraMatches).length + ' entries' : 'null'}`);
+        console.log(`[DEBUG-CACHE] Received matchResults: ${resultsData.matchResults ? resultsData.matchResults.length + ' values' : 'null'}`);
         if(resultsData.f2IntraMatches) {
-            console.log(`[DEBUG-UPDATE] f2IntraMatches content:`, resultsData.f2IntraMatches);
+            console.log(`[DEBUG-CACHE] f2IntraMatches content:`, resultsData.f2IntraMatches);
         }
     }
     
     var cache = GameLoader.getLocalCache();
     if (!cache.results) {
         cache.results = initializeEmptyResults();
-    }
-    
-    if(isTarget) {
-        var beforeF2 = cache.results.f2IntraMatches?.[position];
-        console.log(`[DEBUG-UPDATE] BEFORE: cache.f2IntraMatches[${position}] =`, beforeF2);
     }
     
     if (resultsData.matchResults !== null) {
@@ -1548,9 +1292,6 @@ function updateLocalCacheWithResults(resultsData) {
     if (resultsData.f2IntraMatches !== null) {
         if (!cache.results.f2IntraMatches) cache.results.f2IntraMatches = new Array(18);
         cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
-        if(isTarget) console.log(`[DEBUG-UPDATE] Setting cache.f2IntraMatches[${position}]`);
-    } else {
-        if(isTarget) console.warn(`[DEBUG-UPDATE] resultsData.f2IntraMatches is NULL - not updating cache!`);
     }
     
     if (!cache.results.game1.pointsA) cache.results.game1.pointsA = new Array(18).fill(8);
@@ -1608,15 +1349,8 @@ function updateLocalCacheWithResults(resultsData) {
     cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
     cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
     
-    var oldClinchedCount = Object.keys(cache.results.clinchedAt || {}).length;
     cache.results.clinchedAt = resultsData.updatedClinched;
-    var newClinchedCount = Object.keys(cache.results.clinchedAt || {}).length;
-    console.log(`[DEBUG-CACHE] clinchedAt: ${oldClinchedCount} -> ${newClinchedCount}`);
-    if (newClinchedCount > oldClinchedCount) {
-        console.log(`[DEBUG-CACHE] New clinches:`, Object.keys(cache.results.clinchedAt));
-    }
     
-    // Update t1Row/t2Row/strkRow with FULL display strings
     if (resultsData.t1Display !== undefined && resultsData.t1Display !== null) {
         cache.t1Row[position] = resultsData.t1Display;
     }
@@ -1630,19 +1364,260 @@ function updateLocalCacheWithResults(resultsData) {
     var highestBothSaved = getHighestBothSaved(cache);
     var playerTotals = calculatePlayerTotals(highestBothSaved);
     cache.results.playerTotals = playerTotals;
-    
-    if(isTarget) {
-        var afterF2 = cache.results.f2IntraMatches?.[position];
-        console.log(`[DEBUG-UPDATE] AFTER: cache.f2IntraMatches[${position}] =`, afterF2);
-        if(afterF2) {
-            console.log(`[DEBUG-UPDATE] AFTER content:`, afterF2);
+}
+
+function performSave() {
+    return new Promise(function(resolve, reject) {
+        DEBUG_CALL_COUNTERS.save++;
+        console.log(`[DEBUG-SAVE] =========================================`);
+        console.log(`[DEBUG-SAVE] performSave #${DEBUG_CALL_COUNTERS.save}: hole=${currentHole}, flight=${editableFlight}`);
+        console.log(`[DEBUG-SAVE] =========================================`);
+        
+        if (!canEdit || takeoverDetected) {
+            reject(new Error("Role was taken over. Cannot save."));
+            return;
         }
-        if(beforeF2 === undefined && afterF2) {
-            console.log(`[DEBUG-UPDATE] SUCCESS: f2IntraMatches was SAVED to cache`);
-        } else if(beforeF2 === undefined && afterF2 === undefined) {
-            console.error(`[DEBUG-UPDATE] FAILURE: f2IntraMatches was NOT saved to cache!`);
+        
+        if (viewOtherFlight) {
+            reject(new Error("Cannot save while viewing other flight."));
+            return;
         }
-    }
+        
+        var flight = editableFlight;
+        var flightPlayers = allPlayers.filter(function(p) { return p.flight === flight; });
+        var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        var a1Score = getStoredScore(teamA[0], currentHole);
+        var a2Score = getStoredScore(teamA[1], currentHole);
+        var b1Score = getStoredScore(teamB[0], currentHole);
+        var b2Score = getStoredScore(teamB[1], currentHole);
+        
+        for (var key in localChanges) {
+            if (key.startsWith(flight + "_" + currentHole + "_")) {
+                var playerName = key.split('_')[2];
+                if (teamA[0] && teamA[0].name === playerName) a1Score = localChanges[key];
+                if (teamA[1] && teamA[1].name === playerName) a2Score = localChanges[key];
+                if (teamB[0] && teamB[0].name === playerName) b1Score = localChanges[key];
+                if (teamB[1] && teamB[1].name === playerName) b2Score = localChanges[key];
+            }
+        }
+        
+        var scores = { a1: a1Score, a2: a2Score, b1: b1Score, b2: b2Score };
+        
+        console.log(`[DEBUG-SAVE] Scores: a1=${a1Score}, a2=${a2Score}, b1=${b1Score}, b2=${b2Score}`);
+        
+        GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
+            if (success) {
+                for (var key in localChanges) {
+                    if (key.startsWith(flight + "_" + currentHole + "_")) {
+                        delete localChanges[key];
+                    }
+                }
+                
+                console.log(`[DEBUG-SAVE] GameData.saveCurrentHole SUCCESS`);
+                console.log(`[DEBUG-SAVE] Refreshing cache...`);
+                
+                await new Promise(function(resolveLoad) {
+                    GameLoader.loadGame(gameId, "scheduledGames", function(result) {
+                        if (result.success) console.log("[DEBUG-SAVE] Cache refreshed");
+                        resolveLoad();
+                    });
+                });
+                
+                var cache = GameLoader.getLocalCache();
+                var currentPosition = getHolePosition(currentHole);
+                var lastSyncedPos = cache.lastSyncedPosition;
+                
+                console.log(`[DEBUG-SAVE] currentPosition=${currentPosition}, lastSyncedPos=${lastSyncedPos}`);
+                console.log(`[DEBUG-SAVE] isNewHole = ${currentPosition >= lastSyncedPos}`);
+                
+                // ============================================================
+                // T-1 IMMEDIATE RECALCULATION
+                // ============================================================
+                console.log(`[DEBUG-SAVE] --- T-1 IMMEDIATE RECALCULATION ---`);
+                
+                var teamGameResults = GameTeam.calculate(
+                    allPlayers,
+                    cache.f1DataString,
+                    cache.f2DataString,
+                    courseSi,
+                    startingHole,
+                    teamGameFormat
+                );
+                
+                if (!cache.results) cache.results = initializeEmptyResults();
+                if (!cache.results.game2) cache.results.game2 = { flight1: {}, flight2: {} };
+                if (!cache.results.game2.flight1) cache.results.game2.flight1 = {};
+                if (!cache.results.game2.flight2) cache.results.game2.flight2 = {};
+                if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill("AS");
+                if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill("AS");
+                if (!cache.results.game2.flight1.cumulativePoints) cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
+                if (!cache.results.game2.flight1.leader) cache.results.game2.flight1.leader = new Array(18).fill("AS");
+                if (!cache.t1Row) cache.t1Row = new Array(18).fill('_');
+                
+                cache.results.game2.flight1.cumulativePoints[currentPosition] = teamGameResults.flight1Cumulative[currentPosition];
+                cache.results.game2.displayT1[currentPosition] = teamGameResults.displayT1[currentPosition];
+                cache.results.game2.flight1.leader[currentPosition] = teamGameResults.flight1Leaders[currentPosition];
+                cache.t1Row[currentPosition] = teamGameResults.displayT1[currentPosition];
+                
+                console.log(`[DEBUG-SAVE] T-1 at position ${currentPosition}: ${teamGameResults.displayT1[currentPosition]}`);
+                
+                var fullDisplayT1 = cache.results.game2.displayT1.slice();
+                var fullCumulativeF1 = cache.results.game2.flight1.cumulativePoints.slice();
+                var fullLeaderF1 = cache.results.game2.flight1.leader.slice();
+                
+                var t1UpdatePayload = {};
+                t1UpdatePayload["results.game2.displayT1"] = fullDisplayT1;
+                t1UpdatePayload["results.game2.flight1.cumulativePoints"] = fullCumulativeF1;
+                t1UpdatePayload["results.game2.flight1.leader"] = fullLeaderF1;
+                t1UpdatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                
+                try {
+                    await db.collection("scheduledGames").doc(gameId).update(t1UpdatePayload);
+                    console.log(`[DEBUG-SAVE] T-1 Firestore write SUCCESS`);
+                } catch (e) {
+                    console.warn(`[DEBUG-SAVE] T-1 Firestore write FAILED:`, e);
+                }
+                
+                renderAll();
+                
+                // ============================================================
+                // v6.00: writeNewHoleData - ALWAYS call for ALL saves
+                // ============================================================
+                console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
+                
+                try {
+                    await writeNewHoleData(currentPosition, currentHole, cache);
+                    console.log(`[DEBUG-SAVE] writeNewHoleData SUCCESS for hole ${currentHole}`);
+                } catch (error) {
+                    console.error(`[DEBUG-SAVE] writeNewHoleData FAILED:`, error);
+                    reject(new Error(`Failed to write match data for hole ${currentHole}`));
+                    return;
+                }
+                
+                // ============================================================
+                // CASCADE (only for previous holes)
+                // ============================================================
+                if (currentPosition < lastSyncedPos) {
+                    console.log(`[DEBUG-SAVE] --- CASCADE: Recalculating positions ${currentPosition} to ${lastSyncedPos} ---`);
+                    
+                    var currentCache = GameLoader.getLocalCache();
+                    var cascadeResultsQueue = [];
+                    var playOrder = getPlayOrder();
+                    
+                    for (var pos = currentPosition; pos <= lastSyncedPos; pos++) {
+                        var holeToUpdate = playOrder[pos];
+                        
+                        if (currentCache.savedHoles[1].indexOf(holeToUpdate) === -1 || 
+                            currentCache.savedHoles[2].indexOf(holeToUpdate) === -1) {
+                            console.log(`[DEBUG-SAVE] Skipping hole ${holeToUpdate} (not saved by both flights)`);
+                            continue;
+                        }
+                        
+                        console.log(`[DEBUG-SAVE] Processing hole ${holeToUpdate} (position ${pos})`);
+                        
+                        var updatedClinched = currentCache.results?.clinchedAt || {};
+                        var updatedFlight1Clinched = currentCache.results?.game2?.flight1?.clinchedHole || null;
+                        var updatedFlight2Clinched = currentCache.results?.game2?.flight2?.clinchedHole || null;
+                        
+                        var loopResultsData = calculateHoleResultsWithCumulative(
+                            holeToUpdate, updatedClinched, updatedFlight1Clinched, updatedFlight2Clinched, holeToUpdate
+                        );
+                        
+                        if (loopResultsData) {
+                            updateLocalCacheWithResults(loopResultsData);
+                            renderAll();
+                            cascadeResultsQueue.push({
+                                hole: holeToUpdate,
+                                resultsData: loopResultsData
+                            });
+                        }
+                        
+                        currentCache = GameLoader.getLocalCache();
+                    }
+                    
+                    console.log(`[DEBUG-SAVE] Cascade complete: ${cascadeResultsQueue.length} holes to write`);
+                    
+                    var pendingData = {
+                        gameId: gameId,
+                        pendingWrites: cascadeResultsQueue.map(function(item) {
+                            return {
+                                hole: item.hole,
+                                resultsData: item.resultsData
+                            };
+                        })
+                    };
+                    savePendingWrites(pendingData);
+                    
+                    var finalCache = GameLoader.getLocalCache();
+                    
+                    if (typeof GameStroke !== 'undefined') {
+                        var freshStrokeResults = GameStroke.calculate(
+                            allPlayers,
+                            finalCache.f1DataString,
+                            finalCache.f2DataString,
+                            courseSi,
+                            startingHole,
+                            coursePar
+                        );
+                        
+                        console.log('[DEBUG-SAVE] Recalculating all stroke game positions');
+                        for (var pos = 0; pos < 18; pos++) {
+                            finalCache.results.game3.leader[pos] = freshStrokeResults.leader[pos];
+                            finalCache.results.game3.displayStrk[pos] = freshStrokeResults.displayStrk[pos];
+                            finalCache.results.game3.nettA[pos] = freshStrokeResults.nettA[pos];
+                            finalCache.results.game3.nettB[pos] = freshStrokeResults.nettB[pos];
+                            finalCache.results.game3.pointsA[pos] = freshStrokeResults.pointsA[pos];
+                            finalCache.results.game3.pointsB[pos] = freshStrokeResults.pointsB[pos];
+                        }
+                    }
+                    
+                    for (var q = 0; q < cascadeResultsQueue.length; q++) {
+                        var item = cascadeResultsQueue[q];
+                        console.log(`[DEBUG-SAVE] Writing cascade hole ${item.hole} to Firestore...`);
+                        
+                        try {
+                            await writeSingleHoleToFirestore(item.hole, item.resultsData, finalCache);
+                            console.log(`[DEBUG-SAVE] Successfully wrote hole ${item.hole}`);
+                            
+                            pendingData.pendingWrites = pendingData.pendingWrites.filter(function(w) {
+                                return w.hole !== item.hole;
+                            });
+                            savePendingWrites(pendingData);
+                            
+                        } catch (error) {
+                            console.error(`[DEBUG-SAVE] Failed to write hole ${item.hole}:`, error);
+                            reject(new Error(`Failed to write hole ${item.hole}`));
+                            return;
+                        }
+                    }
+                    
+                    savePendingWrites(null);
+                } else {
+                    console.log(`[DEBUG-SAVE] --- No cascade needed (new hole or position >= lastSyncedPos)`);
+                }
+                
+                // ============================================================
+                // UPDATE METADATA
+                // ============================================================
+                await updateGameMetadata(editableFlight, currentHole);
+                
+                if (typeof Ticker !== 'undefined') {
+                    Ticker.refresh();
+                }
+                
+                console.log(`[DEBUG-SAVE] =========================================`);
+                console.log(`[DEBUG-SAVE] performSave COMPLETE for hole ${currentHole}`);
+                console.log(`[DEBUG-SAVE] =========================================`);
+                
+                resolve(true);
+            } else {
+                console.error(`[DEBUG-SAVE] GameData.saveCurrentHole FAILED`);
+                reject(new Error("Save failed"));
+            }
+        });
+    });
 }
 
 async function saveHole() {
@@ -1788,7 +1763,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
         console.log(`[DEBUG-CALC] f1Hole.saved=${f1Hole?.saved}, f2Hole.saved=${f2Hole?.saved}`);
     }
     
-    // Build remainingHolesByPosition array based on current play order
     var remainingHolesByPosition = new Array(18);
     for (var pos = 0; pos < 18; pos++) {
         var holeForPos = getHoleAtPosition(pos);
@@ -1807,9 +1781,8 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "5.99";
+    var cascadeVersion = window.REAL_GAME_VERSION || "6.00";
     
-    // v5.93: FIX - Use holesPlayed = position + 1 (number of holes accumulated so far)
     var holesPlayed = position + 1;
     
     if (f1Available) {
@@ -1855,7 +1828,6 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     if (crossAvailable) {
         if(isTarget) console.log(`[DEBUG-CALC] Calling cross-flight matches for hole ${holeNumber}`);
         
-        // Accumulate holes from position 0 to current position (inclusive)
         var holesToAccumulate = position + 1;
         
         if(isTarget) {
@@ -2428,7 +2400,6 @@ function renderAll() {
         }
     }
     
-    // v5.97: Use GameScorecard v1.16 which handles both calling conventions
     var displayMode = GameUI.getDisplayMode();
     
     var t1ClinchedHole = cache.results?.game2?.flight1?.clinchedHole;
@@ -2649,16 +2620,17 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 5.99
-KEY CHANGES from v5.98:
-   - FIXED: Intra-flight match data (f1IntraMatches, f2IntraMatches) now written for "new hole" saves
-   - ADDED: writeNewHoleData() function to calculate and write match data for a single position
-   - REFACTORED: getPlayOrder(), getRemainingHolesFromPlayOrder(), getHolePosition(), getHoleAtPosition()
-     are now pure delegates to GameOrder (removed fallback logic)
-   - FIXED: Cross-flight matchResults[position] now written for new holes when both flights saved
-   - FIXED: All team game arrays (T-1, T-2, Strk, TR, clinchedAt) now written for new holes
-   - This addresses the root cause of f1IntraMatches[17] never being written to Firestore
-   - All existing functionality preserved from v5.98
+VERSION: 6.00
+KEY CHANGES from v5.99:
+   - ADDED: Comprehensive debug logging for entire save flow
+   - Logs: performSave() entry, position, flight, lastSyncedPos
+   - Logs: writeNewHoleData() entry, f1/f2 availability
+   - Logs: F1 intra calculation before/after with match count
+   - Logs: F2 intra calculation before/after with match count
+   - Logs: Cross calculation before/after with match count
+   - Logs: Firestore write payload summary
+   - Logs: updateLocalCacheWithResults() when results applied
+   - All existing functionality preserved from v5.99
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js (v1.12), js/game-stroke.js (v1.07), js/game-scorecard.js (v1.16), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/game-order.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
-STATUS: Ready for integration
+STATUS: Debug version - ready for testing
 -->
