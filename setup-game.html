@@ -1,14 +1,14 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - REPLACED: deletePastGames() with archiveOldGames()
-   - 90+ days old: Move to trashGames collection, delete from scheduledGames
-   - 180+ days old: Permanently delete from trashGames
-   - Prevents accidental deletion of recently past games being edited
-   - Adds safety net for recovery
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - ADDED: PIN authentication for UPDATE (edit) only - NOT for CREATE
+   - EDIT mode: commitGame() requires PIN before saving
+   - CREATE mode: commitGame() saves without PIN
+   - Extracted save logic into proceedWithCommit() function
+   - After UPDATE, redirects to manage-games.html (Game Settings)
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
 STATUS: Ready for integration
 -->
 
@@ -23,6 +23,7 @@ STATUS: Ready for integration
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <script src="js/modal.js"></script>
+    <script src="js/auth-pin.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -260,12 +261,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.29</div>
+<div class="version-tag">v1.30</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.29
+// FILE: setup-game.html - VERSION 1.30
 
-var VERSION = "1.29";
+var VERSION = "1.30";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -903,10 +904,11 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
 }
 
 // ============================================================
-// commitGame - v1.28: Uses standard Modal functions
+// v1.30: commitGame() - PIN for UPDATE only, NO PIN for CREATE
 // ============================================================
 
 function commitGame() {
+    // Validate form first
     var dateInput = document.getElementById("datePicker");
     var selectedDate = dateInput ? dateInput.value : "";
     
@@ -927,6 +929,23 @@ function commitGame() {
         return;
     }
     
+    // ✅ For EDIT (UPDATE) - require PIN before saving
+    if (state.isEditMode) {
+        AuthPin.requireAuth('update', state.editingGameId, null, function() {
+            // This callback runs after successful PIN authentication
+            proceedWithCommit();
+        });
+    } else {
+        // ✅ For CREATE (new game) - NO PIN needed
+        proceedWithCommit();
+    }
+}
+
+// ============================================================
+// v1.30: proceedWithCommit() - extracted save logic
+// ============================================================
+
+function proceedWithCommit() {
     var zeroHandicapPlayers = state.players.filter(function(p) { return p.handicap === 0; });
     
     var anchorCallback = function(selectedAnchor) {
@@ -1431,7 +1450,7 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v1.29: Initialize - archive old games (90+ days to trash, 180+ days permanently deleted)
+// v1.30: Initialize - archive old games + include auth-pin.js
 // ============================================================
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
@@ -1454,14 +1473,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - REPLACED: deletePastGames() with archiveOldGames()
-   - 90+ days old: Move to trashGames collection, delete from scheduledGames
-   - 180+ days old: Permanently delete from trashGames
-   - Prevents accidental deletion of recently past games being edited
-   - Adds safety net for recovery
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - ADDED: PIN authentication for UPDATE (edit) only - NOT for CREATE
+   - EDIT mode: commitGame() requires PIN before saving
+   - CREATE mode: commitGame() saves without PIN
+   - Extracted save logic into proceedWithCommit() function
+   - After UPDATE, redirects to manage-games.html (Game Settings)
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
 STATUS: Ready for integration
 -->
