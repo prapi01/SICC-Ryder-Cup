@@ -1,11 +1,12 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - FIXED: Grey waiting screen now only shows AFTER anchor selection (if needed)
-   - FIXED: Anchor Selection Modal no longer hidden behind grey screen
-   - Moved WaitingScreen.show() to anchorCallback() after anchor is confirmed
-   - User can now see and interact with anchor modal when multiple zero-handicap players exist
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - REFACTORED: Single performFirestoreWrite() function for ALL Firestore writes
+   - Waiting screen now ONLY shows immediately before the actual write
+   - Removed WaitingScreen.show() from anchorCallback() and other locations
+   - Single source of truth for waiting screen - no duplicate calls
+   - Waiting screen never shows before user input is complete
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
@@ -261,18 +262,22 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.32</div>
+<div class="version-tag">v1.34</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.32
+// FILE: setup-game.html - VERSION 1.34
 
-var VERSION = "1.32";
+var VERSION = "1.34";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
+
+// v1.33: Preserve existing URL parameters when cache-busting
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
-    window.location.href = window.location.pathname + "?v=" + VERSION;
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', VERSION);
+    window.location.href = window.location.pathname + "?" + currentParams.toString();
 }
 
 // Firebase already initialized in firebase-config.js
@@ -904,7 +909,55 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
 }
 
 // ============================================================
-// v1.32: commitGame() - PIN for UPDATE only, NO PIN for CREATE
+// v1.34: SINGLE Firestore write function with waiting screen
+// ============================================================
+
+function performFirestoreWrite(collectionName, docId, data, successMessage, redirectUrl) {
+    // Show waiting screen IMMEDIATELY before the write
+    WaitingScreen.show("Updating game...");
+    
+    return db.collection(collectionName).doc(docId).set(data)
+        .then(function() {
+            WaitingScreen.hide();
+            if (successMessage) {
+                document.getElementById("successMsg").style.display = "block";
+                document.getElementById("successMsg").innerHTML = successMessage;
+            }
+            setTimeout(function() {
+                window.location.href = redirectUrl;
+            }, 1500);
+        })
+        .catch(function(e) {
+            WaitingScreen.hide();
+            Modal.alert("Error saving game: " + e.message);
+            return Promise.reject(e);
+        });
+}
+
+function performFirestoreUpdate(collectionName, docId, data, successMessage, redirectUrl) {
+    // Show waiting screen IMMEDIATELY before the update
+    WaitingScreen.show("Updating game...");
+    
+    return db.collection(collectionName).doc(docId).update(data)
+        .then(function() {
+            WaitingScreen.hide();
+            if (successMessage) {
+                document.getElementById("successMsg").style.display = "block";
+                document.getElementById("successMsg").innerHTML = successMessage;
+            }
+            setTimeout(function() {
+                window.location.href = redirectUrl;
+            }, 1500);
+        })
+        .catch(function(e) {
+            WaitingScreen.hide();
+            Modal.alert("Error updating game: " + e.message);
+            return Promise.reject(e);
+        });
+}
+
+// ============================================================
+// v1.34: commitGame() - PIN for UPDATE only, NO PIN for CREATE
 // ============================================================
 
 function commitGame() {
@@ -933,7 +986,7 @@ function commitGame() {
     if (state.isEditMode) {
         AuthPin.requireAuth('update', state.editingGameId, null, function() {
             // This callback runs after successful PIN authentication
-            // NO waiting screen here - anchor selection may be needed first
+            // NO waiting screen here - proceed to anchor/validation first
             proceedWithCommit();
         });
     } else {
@@ -943,16 +996,15 @@ function commitGame() {
 }
 
 // ============================================================
-// v1.32: proceedWithCommit() - anchor selection FIRST, waiting screen AFTER
+// v1.34: proceedWithCommit() - anchor selection ONLY, NO waiting screen
 // ============================================================
 
 function proceedWithCommit() {
     var zeroHandicapPlayers = state.players.filter(function(p) { return p.handicap === 0; });
     
     var anchorCallback = function(selectedAnchor) {
-        // ALL user input complete (PIN done, anchor selected if needed)
-        // NOW show waiting screen for Firestore write
-        WaitingScreen.show("Updating game...");
+        // All user input complete (PIN done, anchor selected if needed)
+        // Now proceed to save - waiting screen will be shown INSIDE the save function
         if (state.editingGameId) {
             updateExistingGame(selectedAnchor);
         } else {
@@ -962,7 +1014,6 @@ function proceedWithCommit() {
     
     if (zeroHandicapPlayers.length > 1) {
         // Multiple zero handicap players - need anchor selection FIRST
-        // NO waiting screen yet - user must interact with modal
         showAnchorSelectionModal(zeroHandicapPlayers, anchorCallback);
     } else {
         // 0 or 1 zero handicap player - no anchor selection needed
@@ -995,7 +1046,6 @@ function createNewGame(anchorPlayer) {
         teamGameFormat: state.teamGameFormat,
         anchor: anchorPlayer.name,
         updatedAt: new Date().toISOString(),
-        
         f1: {
             d: rotatedData,
             se: false,
@@ -1006,40 +1056,33 @@ function createNewGame(anchorPlayer) {
             se: false,
             x: false
         },
-        
         locks: {
             f1: null,
             f2: null
         },
-        
         currentHoleF1: 1,
         currentHoleF2: 1,
-        
-        results: emptyResults
+        results: emptyResults,
+        createdAt: new Date().toISOString()
     };
     
-    gameData.createdAt = new Date().toISOString();
     var newGameId = generateGameId();
     
-    db.collection("scheduledGames").doc(newGameId).set(gameData)
+    // v1.34: Single Firestore write with waiting screen
+    performFirestoreWrite("scheduledGames", newGameId, gameData, "✓ Game scheduled successfully! Redirecting...", "admin.html")
         .then(function() {
+            // Save default players in background (don't block redirect)
             saveAsDefaultPlayers(state.players, function(saveSuccess) {
                 if (saveSuccess) {
                     console.log("Default players updated successfully");
                 } else {
                     console.warn("Failed to save default players, but game was created");
                 }
-                WaitingScreen.hide();
-                SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
-                document.getElementById("successMsg").style.display = "block";
-                setTimeout(function() {
-                    window.location.href = "admin.html";
-                }, 1500);
             });
+            SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
         })
         .catch(function(e) {
-            WaitingScreen.hide();
-            Modal.alert("Error saving game: " + e.message);
+            // Error already handled in performFirestoreWrite
         });
 }
 
@@ -1047,7 +1090,6 @@ function updateExistingGame(anchorPlayer) {
     db.collection("scheduledGames").doc(state.editingGameId).get()
         .then(function(doc) {
             if (!doc.exists) {
-                WaitingScreen.hide();
                 Modal.alert("Game not found. Cannot update.");
                 return;
             }
@@ -1095,13 +1137,11 @@ function updateExistingGame(anchorPlayer) {
             
             var startingHoleChanged = (existingData.startingHole !== state.startingHole);
             if (startingHoleChanged && !courseChanged && existingData.f1 && existingData.f1.d) {
-                // Hide grey icon before showing confirmation modal
-                WaitingScreen.hide();
+                // Show confirmation modal FIRST (no waiting screen)
                 Modal.confirm(
                     "Changing starting hole will reset all scores to par. Continue?",
                     function() {
-                        // Show grey icon again before proceeding
-                        WaitingScreen.show("Updating game...");
+                        // User confirmed - prepare the update with reset data
                         var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
                         var rotatedData = rotateDataString(naturalData, state.startingHole);
                         updatePayload.f1 = { d: rotatedData, se: false, x: false };
@@ -1110,20 +1150,19 @@ function updateExistingGame(anchorPlayer) {
                         updatePayload.currentHoleF1 = 1;
                         updatePayload.currentHoleF2 = 1;
                         
-                        db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload)
-                            .then(function() {
-                                WaitingScreen.hide();
-                                SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
-                                document.getElementById("successMsg").style.display = "block";
-                                isDirty = false;
-                                setTimeout(function() {
-                                    window.location.href = "manage-games.html";
-                                }, 1500);
-                            })
-                            .catch(function(e) {
-                                WaitingScreen.hide();
-                                Modal.alert("Error updating game: " + e.message);
-                            });
+                        // v1.34: Single Firestore update with waiting screen
+                        performFirestoreUpdate(
+                            "scheduledGames",
+                            state.editingGameId,
+                            updatePayload,
+                            "✓ Game updated successfully! Redirecting...",
+                            "manage-games.html"
+                        ).then(function() {
+                            SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
+                            isDirty = false;
+                        }).catch(function(e) {
+                            // Error already handled in performFirestoreUpdate
+                        });
                     },
                     function() {
                         console.log("Starting hole change cancelled");
@@ -1133,20 +1172,19 @@ function updateExistingGame(anchorPlayer) {
                 return;
             }
             
-            db.collection("scheduledGames").doc(state.editingGameId).update(updatePayload)
-                .then(function() {
-                    WaitingScreen.hide();
-                    SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
-                    document.getElementById("successMsg").style.display = "block";
-                    isDirty = false;
-                    setTimeout(function() {
-                        window.location.href = "manage-games.html";
-                    }, 1500);
-                })
-                .catch(function(e) {
-                    WaitingScreen.hide();
-                    Modal.alert("Error updating game: " + e.message);
-                });
+            // v1.34: Single Firestore update with waiting screen
+            performFirestoreUpdate(
+                "scheduledGames",
+                state.editingGameId,
+                updatePayload,
+                "✓ Game updated successfully! Redirecting...",
+                "manage-games.html"
+            ).then(function() {
+                SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
+                isDirty = false;
+            }).catch(function(e) {
+                // Error already handled in performFirestoreUpdate
+            });
         })
         .catch(function(e) {
             WaitingScreen.hide();
@@ -1339,7 +1377,7 @@ function render() {
             <button class="btn btn-primary" id="commitBtn">✓ ${state.isEditMode ? 'UPDATE GAME' : 'COMMIT GAME'}</button>
         </div>
         
-        <div id="successMsg" style="display:none;" class="success-msg">✓ Game ${state.isEditMode ? 'updated' : 'scheduled'} successfully! Redirecting...</div>
+        <div id="successMsg" style="display:none;" class="success-msg"></div>
         
         <div class="back-link" id="backLink">← Back to Game Settings</div>
     `;
@@ -1477,7 +1515,7 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v1.32: Initialize - archive old games + include auth-pin.js + waiting-screen.js
+// v1.34: Initialize - with single Firestore write functions
 // ============================================================
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
@@ -1500,12 +1538,13 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - FIXED: Grey waiting screen now only shows AFTER anchor selection (if needed)
-   - FIXED: Anchor Selection Modal no longer hidden behind grey screen
-   - Moved WaitingScreen.show() to anchorCallback() after anchor is confirmed
-   - User can now see and interact with anchor modal when multiple zero-handicap players exist
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - REFACTORED: Single performFirestoreWrite() and performFirestoreUpdate() functions for ALL Firestore writes
+   - Waiting screen now ONLY shows immediately before the actual write
+   - Removed WaitingScreen.show() from anchorCallback() and other locations
+   - Single source of truth for waiting screen - no duplicate calls
+   - Waiting screen never shows before user input is complete
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
