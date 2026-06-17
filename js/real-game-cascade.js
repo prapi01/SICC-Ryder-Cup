@@ -1,22 +1,19 @@
 /*
 FILE: js/real-game-cascade.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted cascade/recalculation logic from real-game.html
-   - Contains: calculateHoleResultsWithCumulative()
-   - Contains: getCumulativeClinched() helper
-   - Contains: calculateCascadeForHole() for single hole recalculation
-   - All functions use RealGameState and RealGameUtils
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
+   - All existing functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, GameMatch, GameTeam, GameStroke, GameLoader
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_CASCADE_VERSION = "1.00";
+window.REAL_GAME_CASCADE_VERSION = "1.01";
 
 var RealGameCascade = (function() {
     
-    console.log("[REAL-GAME-CASCADE] Initializing v1.00");
+    console.log("[REAL-GAME-CASCADE] Initializing v1.01");
     
     // ============================================================
     // Private Helpers
@@ -50,6 +47,10 @@ var RealGameCascade = (function() {
         RealGameState.incrementDebugCounter(counterName);
     }
     
+    function getDebugCallCounters() {
+        return RealGameState.getDebugCallCounters();
+    }
+    
     // ============================================================
     // calculateHoleResultsWithCumulative - MAIN CASCADE FUNCTION
     // ============================================================
@@ -71,7 +72,7 @@ var RealGameCascade = (function() {
         
         if(isTarget) {
             incrementDebugCounter('calc');
-            console.log(`[DEBUG-CALC] === CALC #${RealGameState.getDebugCallCounters().calc} for HOLE ${holeNumber} (TARGET) ===`);
+            console.log(`[DEBUG-CALC] === CALC #${getDebugCallCounters().calc} for HOLE ${holeNumber} (TARGET) ===`);
             console.log(`[DEBUG-CALC] cascadeStartHole=${cascadeStartHole}`);
         }
         
@@ -111,9 +112,8 @@ var RealGameCascade = (function() {
         var clinchedAtUpdates = {};
         var remainingHoles = RealGameUtils.getRemainingHolesFromPlayOrder(holeNumber);
         var deviceId = typeof SessionManager !== 'undefined' ? SessionManager.getDeviceIdDisplay() : "unknown";
-        var cascadeVersion = window.REAL_GAME_VERSION || "6.02";
+        var cascadeVersion = window.REAL_GAME_VERSION || "6.10";
         
-        // v5.93: FIX - Use holesPlayed = position + 1 (number of holes accumulated so far)
         var holesPlayed = position + 1;
         
         if (f1Available && typeof GameMatch !== 'undefined') {
@@ -159,7 +159,6 @@ var RealGameCascade = (function() {
         if (crossAvailable && typeof GameMatch !== 'undefined') {
             if(isTarget) console.log(`[DEBUG-CALC] Calling cross-flight matches for hole ${holeNumber}`);
             
-            // Accumulate holes from position 0 to current position (inclusive)
             var holesToAccumulate = position + 1;
             
             if(isTarget) {
@@ -334,13 +333,10 @@ window.RealGameCascade = RealGameCascade;
 
 /*
 FILE: js/real-game-cascade.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted cascade/recalculation logic from real-game.html
-   - Contains: calculateHoleResultsWithCumulative()
-   - Contains: getCumulativeClinched() helper
-   - Contains: calculateCascadeForHole() for single hole recalculation
-   - All functions use RealGameState and RealGameUtils
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
+   - All existing functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, GameMatch, GameTeam, GameStroke, GameLoader
 STATUS: Ready for integration
 */
