@@ -1,21 +1,22 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: TR values (teamA, teamB, teamAGreen, teamBGreen) now properly written to Firestore
-   - Added debug logging for TR values during payload construction
-   - Ensures cache.results.tr arrays are initialized before assignment
-   - All existing functionality preserved from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: Added lastSyncedPosition to Firestore payload (was MISSING)
+   - FIXED: Added savedHoles to Firestore payload (was MISSING)
+   - Both fields are now calculated from cache and written to Firestore
+   - Ensures proper sync state after page reload
+   - All existing functionality preserved from v1.03
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.03";
+window.REAL_GAME_SAVE_VERSION = "1.04";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.03 - TR write fix");
+    console.log("[REAL-GAME-SAVE] Initializing v1.04 - lastSyncedPosition + savedHoles write fix");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -94,6 +95,30 @@ var RealGameSave = (function() {
     
     function getDebugCallCounters() {
         return RealGameState.getDebugCallCounters();
+    }
+    
+    // ============================================================
+    // v1.04: Calculate lastSyncedPosition from saved holes
+    // ============================================================
+    function calculateLastSyncedPosition(cache) {
+        if (!cache || !cache.savedHoles) return -1;
+        
+        var holes1 = cache.savedHoles[1] || [];
+        var holes2 = cache.savedHoles[2] || [];
+        var playOrder = RealGameUtils.getPlayOrder();
+        var lastSyncedPosition = -1;
+        
+        for (var i = 0; i < playOrder.length; i++) {
+            var hole = playOrder[i];
+            if (holes1.indexOf(hole) !== -1 && holes2.indexOf(hole) !== -1) {
+                lastSyncedPosition = i;
+            } else {
+                break;
+            }
+        }
+        
+        console.log("[SAVE-v1.04] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        return lastSyncedPosition;
     }
     
     // ============================================================
@@ -223,8 +248,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore
-    // v1.03: Enhanced TR logging
+    // writeSingleHoleToFirestore - v1.04: Adds savedHoles and lastSyncedPosition
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -341,6 +365,17 @@ var RealGameSave = (function() {
         updatePayload["results.lastComputedAt"] = now;
         updatePayload["results.playerTotals"] = cache.results.playerTotals;
         
+        // v1.04: ADD savedHoles to payload
+        if (cache.savedHoles) {
+            updatePayload["savedHoles"] = cache.savedHoles;
+            if(isTarget) console.log(`[DEBUG-WRITE] Added savedHoles to payload: f1=${cache.savedHoles[1]?.length || 0}, f2=${cache.savedHoles[2]?.length || 0}`);
+        }
+        
+        // v1.04: ADD lastSyncedPosition to payload
+        var lastSyncedPos = calculateLastSyncedPosition(cache);
+        updatePayload["lastSyncedPosition"] = lastSyncedPos;
+        if(isTarget) console.log(`[DEBUG-WRITE] Added lastSyncedPosition=${lastSyncedPos} to payload`);
+        
         if(isTarget) {
             console.log(`[DEBUG-WRITE] Payload keys being sent to Firestore:`, Object.keys(updatePayload));
             console.log(`[DEBUG-WRITE] TR in payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
@@ -360,8 +395,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeNewHoleData
-    // v1.03: Ensures TR values are assigned to cache before writing
+    // writeNewHoleData - v1.04: Adds savedHoles and lastSyncedPosition
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache) {
@@ -553,7 +587,6 @@ var RealGameSave = (function() {
         }
         
         // v1.03: ENSURE TR VALUES ARE ASSIGNED TO CACHE BEFORE PAYLOAD BUILD
-        // This is the critical fix - ensure cache.results.tr arrays have the values
         if (!cache.results.tr) {
             cache.results.tr = { 
                 teamA: new Array(18).fill(null), 
@@ -617,7 +650,7 @@ var RealGameSave = (function() {
         updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
         updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
         
-        // v1.03: TR arrays now have the values assigned above
+        // TR arrays
         updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
         updatePayload["results.tr.teamB"] = cache.results.tr.teamB;
         updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
@@ -640,6 +673,18 @@ var RealGameSave = (function() {
         
         updatePayload["results.lastComputedAt"] = new Date().toISOString();
         updatePayload["results.playerTotals"] = cache.results.playerTotals;
+        
+        // v1.04: ADD savedHoles to payload
+        if (cache.savedHoles) {
+            updatePayload["savedHoles"] = cache.savedHoles;
+            console.log(`[DEBUG-FLOW] --- Adding savedHoles to payload: f1=${cache.savedHoles[1]?.length || 0}, f2=${cache.savedHoles[2]?.length || 0}`);
+        }
+        
+        // v1.04: ADD lastSyncedPosition to payload
+        var lastSyncedPos = calculateLastSyncedPosition(cache);
+        updatePayload["lastSyncedPosition"] = lastSyncedPos;
+        console.log(`[DEBUG-FLOW] --- Adding lastSyncedPosition=${lastSyncedPos} to payload`);
+        
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
         console.log(`[DEBUG-FLOW] --- PAYLOAD SUMMARY: ${Object.keys(updatePayload).length} fields`);
@@ -649,6 +694,8 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- Has playerTotals: ${!!updatePayload["results.playerTotals"]}`);
         console.log(`[DEBUG-FLOW] --- Has TR teamA: ${!!updatePayload["results.tr.teamA"][position]}`);
         console.log(`[DEBUG-FLOW] --- Has TR teamB: ${!!updatePayload["results.tr.teamB"][position]}`);
+        console.log(`[DEBUG-FLOW] --- Has savedHoles: ${!!updatePayload["savedHoles"]}`);
+        console.log(`[DEBUG-FLOW] --- Has lastSyncedPosition: ${updatePayload["lastSyncedPosition"] !== undefined}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
         console.log(`[DEBUG-FLOW] =========================================`);
@@ -665,7 +712,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // updateLocalCacheWithResults
+    // updateLocalCacheWithResults - v1.04: Updates savedHoles and lastSyncedPosition
     // ============================================================
     
     function updateLocalCacheWithResults(resultsData) {
@@ -754,7 +801,6 @@ var RealGameSave = (function() {
         if (!cache.results.game3.pointsB) cache.results.game3.pointsB = new Array(18).fill(0.5);
         cache.results.game3.pointsB[position] = resultsData.game3PointsB;
         
-        // v1.03: Ensure TR values are assigned to cache
         if (!cache.results.tr) {
             cache.results.tr = { 
                 teamA: new Array(18).fill(null), 
@@ -788,11 +834,19 @@ var RealGameSave = (function() {
         var highestBothSaved = RealGameUtils.getHighestBothSaved(cache);
         var playerTotals = RealGameUtils.calculatePlayerTotals(allPlayers, coursePar, highestBothSaved);
         cache.results.playerTotals = playerTotals;
+        
+        // v1.04: Update savedHoles and lastSyncedPosition in cache
+        if (cache.savedHoles) {
+            // savedHoles are already updated by GameData.saveCurrentHole
+            // Just recalculate lastSyncedPosition for cache consistency
+            var newLastSyncedPos = calculateLastSyncedPosition(cache);
+            cache.lastSyncedPosition = newLastSyncedPos;
+            console.log(`[DEBUG-CACHE] Updated lastSyncedPosition=${newLastSyncedPos} in cache`);
+        }
     }
     
     // ============================================================
-    // performSave
-    // v1.03: Uses updated writeNewHoleData with TR fix
+    // performSave - v1.04: Uses updated writeNewHoleData with savedHoles and lastSyncedPosition
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -924,7 +978,7 @@ var RealGameSave = (function() {
                         
                         // ============================================================
                         // writeNewHoleData - ALWAYS call for ALL saves
-                        // v1.03: Now properly writes TR values
+                        // v1.04: Now writes savedHoles and lastSyncedPosition
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
@@ -1251,7 +1305,8 @@ var RealGameSave = (function() {
         getPendingWritesKey: getPendingWritesKey,
         savePendingWrites: savePendingWrites,
         loadPendingWrites: loadPendingWrites,
-        processPendingWrites: processPendingWrites
+        processPendingWrites: processPendingWrites,
+        calculateLastSyncedPosition: calculateLastSyncedPosition
     };
     
 })();
@@ -1261,12 +1316,13 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: TR values (teamA, teamB, teamAGreen, teamBGreen) now properly written to Firestore
-   - Added debug logging for TR values during payload construction
-   - Ensures cache.results.tr arrays are initialized before assignment
-   - All existing functionality preserved from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: Added lastSyncedPosition to Firestore payload (was MISSING)
+   - FIXED: Added savedHoles to Firestore payload (was MISSING)
+   - Both fields are now calculated from cache and written to Firestore
+   - Ensures proper sync state after page reload
+   - All existing functionality preserved from v1.03
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
