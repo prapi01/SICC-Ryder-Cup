@@ -1,12 +1,13 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - REFACTORED: DELETE now uses performFirestoreDelete() - same pattern as EDIT
-   - Waiting screen ONLY inside performFirestoreDelete() - immediately before Firestore write
-   - Removed WaitingScreen.show() from deleteGameProtected() and deleteGameConfirmed()
-   - Added requestAnimationFrame forced render before Firestore delete
-   - Waiting screen stays visible until redirect (no flash)
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - FIXED: COPY function now preserves ALL source data except date, id, updatedAt, lastActive
+   - Removed hardcoded values (gameStarted, currentHoleF1, currentHoleF2, signatures, submitted, locks)
+   - createdAt is now preserved from source (not overwritten)
+   - updatedAt is set to new timestamp
+   - lastActive is removed
+   - All other fields are exact copies from source
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
@@ -356,12 +357,12 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.21</div>
+<div class="version-tag">v1.22</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.21
+// FILE: manage-games.html - VERSION 1.22
 
-var VERSION = "1.21";
+var VERSION = "1.22";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -497,7 +498,9 @@ function generateGameId() {
 }
 
 // ============================================================
-// v1.12: Copy Game with new date
+// v1.22: Copy Game with new date - PRESERVES ALL source data
+// Only changes: date, id, updatedAt, lastActive
+// createdAt is KEPT from source
 // ============================================================
 function copyGameWithNewDate(sourceGameId, newDate) {
     var sourceRef = db.collection("scheduledGames").doc(sourceGameId);
@@ -511,19 +514,24 @@ function copyGameWithNewDate(sourceGameId, newDate) {
         
         var sourceData = doc.data();
         var newData = JSON.parse(JSON.stringify(sourceData));
+        
+        // ✅ ONLY change these:
         newData.date = newDate;
-        newData.gameStarted = false;
-        newData.signatures = { f1: false, f2: false };
-        newData.submitted = { f1: false, f2: false };
-        newData.locks = { f1: null, f2: null };
-        newData.currentHoleF1 = 1;
-        newData.currentHoleF2 = 1;
-        delete newData.createdAt;
-        delete newData.updatedAt;
-        delete newData.lastActive;
-        var now = new Date().toISOString();
-        newData.createdAt = now;
-        newData.updatedAt = now;
+        delete newData.id;  // Will use new generated ID
+        delete newData.updatedAt;  // Will set new timestamp
+        delete newData.lastActive;  // Remove stale activity
+        
+        // ✅ KEEP original createdAt - DO NOT change
+        // createdAt remains as-is from source
+        
+        // ✅ Set new updatedAt
+        newData.updatedAt = new Date().toISOString();
+        
+        // ✅ EVERYTHING ELSE stays exactly as copied from source:
+        // gameStarted, currentHoleF1, currentHoleF2, signatures,
+        // submitted, locks, f1.d, f2.d, results, players, course,
+        // startingHole, teamGameFormat, anchor, status, gameType, etc.
+        
         return db.collection("scheduledGames").doc(newGameId).set(newData);
     }).then(function() {
         Modal.alert("✅ Game copied successfully!\n\nNew Game ID: " + newGameId + "\nDate: " + newDate);
@@ -632,10 +640,8 @@ function editGameConfirmed(gameId) {
 // ============================================================
 
 function performFirestoreDelete(collectionName, docId, redirectUrl) {
-    // Show waiting screen IMMEDIATELY before the write
     WaitingScreen.show("Deleting game...");
     
-    // FORCE browser to render the waiting screen before starting the write
     return new Promise(function(resolve) {
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
@@ -645,7 +651,6 @@ function performFirestoreDelete(collectionName, docId, redirectUrl) {
     }).then(function() {
         return db.collection(collectionName).doc(docId).delete();
     }).then(function() {
-        // DO NOT hide waiting screen - keep it visible until redirect
         setTimeout(function() {
             window.location.href = redirectUrl;
         }, 1500);
@@ -658,7 +663,6 @@ function performFirestoreDelete(collectionName, docId, redirectUrl) {
 
 function deleteGameProtected(gameId, gameDate) {
     AuthPin.requireAuth('delete', gameId, gameDate, function() {
-        // NO waiting screen here - it's inside performFirestoreDelete()
         deleteGameConfirmed(gameId, gameDate);
     });
 }
@@ -667,7 +671,6 @@ function deleteGameConfirmed(gameId, gameDate) {
     Modal.confirm(
         "Delete scheduled game on " + gameDate + "? This action cannot be undone.",
         function() {
-            // NO waiting screen here - it's inside performFirestoreDelete()
             SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
             performFirestoreDelete("scheduledGames", gameId, "manage-games.html");
         },
@@ -883,13 +886,14 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - REFACTORED: DELETE now uses performFirestoreDelete() - same pattern as EDIT
-   - Waiting screen ONLY inside performFirestoreDelete() - immediately before Firestore write
-   - Removed WaitingScreen.show() from deleteGameProtected() and deleteGameConfirmed()
-   - Added requestAnimationFrame forced render before Firestore delete
-   - Waiting screen stays visible until redirect (no flash)
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - FIXED: COPY function now preserves ALL source data except date, id, updatedAt, lastActive
+   - Removed hardcoded values (gameStarted, currentHoleF1, currentHoleF2, signatures, submitted, locks)
+   - createdAt is now preserved from source (not overwritten)
+   - updatedAt is set to new timestamp
+   - lastActive is removed
+   - All other fields are exact copies from source
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
