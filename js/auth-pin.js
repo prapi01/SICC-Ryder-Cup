@@ -1,16 +1,12 @@
 /*
 FILE: js/auth-pin.js
-VERSION: 2.00
-KEY CHANGES from v1.01:
-   - ADDED: On-screen number pad for mobile/touch support
-   - IMPROVED: Visual design with gradients, shadows, and animations
-   - ADDED: Better error handling with shake animation
-   - IMPROVED: PIN dot visualization with glow effects
-   - ADDED: Theme-aware styling for better contrast
-   - IMPROVED: Biometric authentication flow and error handling
-   - ADDED: Accessibility improvements (ARIA labels, focus management)
-   - IMPROVED: Responsive design for all screen sizes
-   - FIXED: Various edge cases and UX issues
+VERSION: 2.01
+KEY CHANGES from v2.00:
+   - UPDATED: Face ID icon now uses official Wikipedia SVG instead of Unicode character ◉
+   - ADDED: CSS filter to color the SVG icon green (#4caf50)
+   - UPDATED: Face ID button styling to match handover spec (square box, green border)
+   - REMOVED: Unicode Face ID icon from numpad
+   - ALL OTHER FUNCTIONS unchanged from v2.00
 DEPENDS ON: None (pure DOM manipulation, uses Modal.js for alerts)
 STATUS: Ready for integration
 */
@@ -253,7 +249,10 @@ var AuthPin = (function() {
                         <button class="auth-numpad-btn" data-digit="8" aria-label="8">8</button>
                         <button class="auth-numpad-btn" data-digit="9" aria-label="9">9</button>
                         <button class="auth-numpad-btn auth-numpad-btn-biometric" id="authFaceIdBtn" aria-label="Use Face ID">
-                            <span class="auth-numpad-icon">◉</span>
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c0/Face_ID_logo.svg"
+                                 alt="Face ID"
+                                 class="auth-faceid-icon"
+                                 style="width:28px; height:28px; display:block; filter: brightness(0) saturate(100%) invert(68%) sepia(43%) saturate(750%) hue-rotate(80deg) brightness(95%) contrast(95%);">
                         </button>
                         <button class="auth-numpad-btn" data-digit="0" aria-label="0">0</button>
                         <button class="auth-numpad-btn auth-numpad-btn-backspace" id="authBackspaceBtn" aria-label="Delete">
@@ -479,14 +478,19 @@ var AuthPin = (function() {
         hideError();
         var faceIdBtnEl = document.getElementById('authFaceIdBtn');
         if (faceIdBtnEl) {
-            faceIdBtnEl.textContent = '⏳';
+            // Show loading state - replace icon with spinner
+            faceIdBtnEl.innerHTML = '<span style="font-size:1.4rem;">⏳</span>';
             faceIdBtnEl.disabled = true;
         }
         
         var success = await authenticateWithBiometric();
         
         if (faceIdBtnEl) {
-            faceIdBtnEl.textContent = '◉';
+            // Restore the Face ID SVG icon
+            faceIdBtnEl.innerHTML = `<img src="https://upload.wikimedia.org/wikipedia/commons/c/c0/Face_ID_logo.svg"
+                                         alt="Face ID"
+                                         class="auth-faceid-icon"
+                                         style="width:28px; height:28px; display:block; filter: brightness(0) saturate(100%) invert(68%) sepia(43%) saturate(750%) hue-rotate(80deg) brightness(95%) contrast(95%);">`;
             faceIdBtnEl.disabled = false;
         }
         
@@ -858,14 +862,35 @@ var AuthPin = (function() {
                 cursor: not-allowed;
             }
             
+            /* Face ID Button - Square box matching handover spec */
             .auth-numpad-btn-biometric {
-                background: rgba(76, 175, 80, 0.1);
-                border-color: #4caf50;
+                background: #0a0a0a;
+                border: 2px solid #4caf50;
+                border-radius: 8px;
                 font-size: 1.6rem;
+                min-height: 56px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
             }
             
             .auth-numpad-btn-biometric:active:not(:disabled) {
-                background: rgba(76, 175, 80, 0.3);
+                transform: scale(0.95);
+                background: #1a3a1a;
+                border-color: #4caf50;
+            }
+            
+            .auth-numpad-btn-biometric:hover:not(:disabled) {
+                background: #1a3a1a;
+                border-color: #4caf50;
+            }
+            
+            .auth-faceid-icon {
+                width: 28px;
+                height: 28px;
+                display: block;
+                filter: brightness(0) saturate(100%) invert(68%) sepia(43%) saturate(750%) hue-rotate(80deg) brightness(95%) contrast(95%);
             }
             
             .auth-numpad-btn-backspace {
@@ -1054,17 +1079,13 @@ window.AuthPin = AuthPin;
 
 /*
 FILE: js/auth-pin.js
-VERSION: 2.00
-KEY CHANGES from v1.01:
-   - ADDED: On-screen number pad for mobile/touch support
-   - IMPROVED: Visual design with gradients, shadows, and animations
-   - ADDED: Better error handling with shake animation
-   - IMPROVED: PIN dot visualization with glow effects
-   - ADDED: Theme-aware styling for better contrast
-   - IMPROVED: Biometric authentication flow and error handling
-   - ADDED: Accessibility improvements (ARIA labels, focus management)
-   - IMPROVED: Responsive design for all screen sizes
-   - FIXED: Various edge cases and UX issues
+VERSION: 2.01
+KEY CHANGES from v2.00:
+   - UPDATED: Face ID icon now uses official Wikipedia SVG instead of Unicode character ◉
+   - ADDED: CSS filter to color the SVG icon green (#4caf50)
+   - UPDATED: Face ID button styling to match handover spec (square box, green border)
+   - REMOVED: Unicode Face ID icon from numpad
+   - ALL OTHER FUNCTIONS unchanged from v2.00
 DEPENDS ON: None (pure DOM manipulation, uses Modal.js for alerts)
 STATUS: Ready for integration
 */
