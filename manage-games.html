@@ -1,12 +1,12 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - ADDED: Cmd+Click on "Upcoming Games" title toggles showing ALL scheduledGames (including past games)
-   - Default view: only upcoming games (date >= today)
-   - Toggle view: ALL games (including past games)
-   - Visual indicator shows which view is active
-   - Back button or page refresh resets to default view
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - ADDED: Long-click (press and hold) on "Upcoming Games" title toggles ALL games view
+   - ADDED: Long-click (press and hold) on Document ID opens Copy Game modal
+   - Bubble appears after 800ms hold showing action description
+   - Cmd+Click still works as before for both targets
+   - Universal trigger for mobile and desktop
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
@@ -74,6 +74,7 @@ STATUS: Ready for integration
             cursor: default;
             transition: opacity 0.2s;
             user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
         .card-title:hover {
             opacity: 0.8;
@@ -141,7 +142,7 @@ STATUS: Ready for integration
         .btn-delete { background: #3a1a1a; border: 1px solid #ff6b6b; border-radius: 30px; padding: 8px 20px; color: #ff6b6b; font-weight: 600; cursor: pointer; }
         .btn-edit:active, .btn-delete:active { transform: scale(0.97); }
         
-        /* v1.11: Faint green document ID display - BELOW the buttons */
+        /* v1.14: Faint green document ID display - BELOW the buttons with long-click support */
         .doc-id-display {
             font-size: 0.55rem;
             color: #4caf50;
@@ -155,12 +156,11 @@ STATUS: Ready for integration
             cursor: default;
             transition: opacity 0.2s;
             user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
-        
         .doc-id-display:hover {
             opacity: 0.7;
         }
-        
         .doc-id-display .copy-hint {
             color: #666;
             font-size: 0.5rem;
@@ -168,7 +168,6 @@ STATUS: Ready for integration
             opacity: 0;
             transition: opacity 0.3s;
         }
-        
         .doc-id-display:hover .copy-hint {
             opacity: 1;
         }
@@ -276,6 +275,38 @@ STATUS: Ready for integration
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        
+        /* v1.14: Admin Bubble */
+        .admin-bubble {
+            position: fixed;
+            background: #1a3a1a;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: system-ui, -apple-system, sans-serif;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 20px rgba(76,175,80,0.2);
+            z-index: 15000;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            pointer-events: auto;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            animation: bubblePop 0.2s ease-out;
+        }
+        .admin-bubble:active {
+            transform: scale(0.95);
+        }
+        .admin-bubble .bubble-icon {
+            margin-right: 6px;
+        }
+        
+        @keyframes bubblePop {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -283,12 +314,12 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.13</div>
+<div class="version-tag">v1.14</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.13
+// FILE: manage-games.html - VERSION 1.14
 
-var VERSION = "1.13";
+var VERSION = "1.14";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -319,6 +350,95 @@ function formatDate(dateString) {
         return day + '/' + month + '/' + year;
     }
     return dateString;
+}
+
+// ============================================================
+// v1.14: Long-click + Bubble Helper
+// ============================================================
+
+var adminBubbleTimeout = null;
+var adminBubbleElement = null;
+var isAdminBubbleActive = false;
+
+function showAdminBubble(x, y, text, onAction) {
+    // Remove any existing bubble
+    hideAdminBubble();
+    
+    // Create bubble
+    var bubble = document.createElement('div');
+    bubble.className = 'admin-bubble';
+    bubble.innerHTML = '<span class="bubble-icon">⚙️</span> ' + text;
+    bubble.style.left = Math.max(10, Math.min(window.innerWidth - 160, x - 80)) + 'px';
+    bubble.style.top = Math.max(10, Math.min(window.innerHeight - 60, y - 30)) + 'px';
+    
+    // Click on bubble triggers action
+    bubble.addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideAdminBubble();
+        if (onAction) onAction();
+    });
+    
+    document.body.appendChild(bubble);
+    adminBubbleElement = bubble;
+    isAdminBubbleActive = true;
+    
+    // Auto-hide after 4 seconds if not clicked
+    setTimeout(function() {
+        if (isAdminBubbleActive) {
+            hideAdminBubble();
+        }
+    }, 4000);
+}
+
+function hideAdminBubble() {
+    if (adminBubbleElement && adminBubbleElement.parentNode) {
+        adminBubbleElement.remove();
+    }
+    adminBubbleElement = null;
+    isAdminBubbleActive = false;
+}
+
+function setupLongClick(element, bubbleText, onAction) {
+    if (!element) return;
+    
+    var holdTimer = null;
+    
+    element.addEventListener('pointerdown', function(e) {
+        if (isAdminBubbleActive) {
+            hideAdminBubble();
+            return;
+        }
+        
+        // Don't trigger on Cmd+Click
+        if (e.metaKey || e.ctrlKey) return;
+        
+        holdTimer = setTimeout(function() {
+            showAdminBubble(
+                e.clientX || e.pageX || window.innerWidth / 2,
+                e.clientY || e.pageY || window.innerHeight / 2,
+                bubbleText,
+                onAction
+            );
+        }, 800);
+    });
+    
+    element.addEventListener('pointerup', function(e) {
+        clearTimeout(holdTimer);
+    });
+    
+    element.addEventListener('pointerleave', function(e) {
+        clearTimeout(holdTimer);
+    });
+    
+    // Also support Cmd+Click
+    element.addEventListener('click', function(e) {
+        if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            hideAdminBubble();
+            if (onAction) onAction();
+        }
+    });
 }
 
 // ============================================================
@@ -555,7 +675,7 @@ function loadAndRender() {
         var titleText = showAllGames ? '📋 ALL SCHEDULED GAMES' : '📋 UPCOMING GAMES';
         var badgeText = showAllGames ? 'ALL' : 'UPCOMING';
         var badgeClass = showAllGames ? 'view-badge view-badge-all' : 'view-badge';
-        var viewHint = showAllGames ? '⌘+click to show only upcoming' : '⌘+click to show all (including past)';
+        var viewHint = showAllGames ? '⌘+click or long press to show upcoming' : '⌘+click or long press to show all (including past)';
         
         if (games.length === 0) {
             var emptyMsg = showAllGames ? 'No scheduled games found in Firestore.' : 'No upcoming games found.';
@@ -592,8 +712,8 @@ function loadAndRender() {
             var isPastGame = (game.date < todayStr);
             var pastClass = isPastGame ? 'game-item-past' : '';
             
-            // v1.12: Document ID with Cmd+Click handler for copy
-            var docIdHtml = '<div class="doc-id-display" data-gameid="' + escapeHtml(game.id) + '" data-gamedate="' + escapeHtml(game.date) + '">📄 ' + escapeHtml(game.id) + '<span class="copy-hint"> ⌘+click to copy</span></div>';
+            // v1.14: Document ID with Cmd+Click and long-click handler for copy
+            var docIdHtml = '<div class="doc-id-display doc-copy-target" data-gameid="' + escapeHtml(game.id) + '" data-gamedate="' + escapeHtml(game.date) + '">📄 ' + escapeHtml(game.id) + '<span class="copy-hint"> ⌘+click or long press to copy</span></div>';
             
             gamesHtml += `
                 <div class="game-item ${pastClass}">
@@ -634,25 +754,26 @@ function loadAndRender() {
         document.getElementById("app").innerHTML = html;
         
         // ============================================================
-        // v1.13: Attach Cmd+Click handler to card title
+        // v1.14: Setup long-click + Cmd+Click for title
         // ============================================================
         attachTitleClickHandler();
         
         // ============================================================
-        // v1.12: Attach Cmd+Click / Ctrl+Click handlers to document IDs
+        // v1.14: Setup long-click + Cmd+Click for document IDs
         // ============================================================
-        var docElements = document.querySelectorAll('.doc-id-display');
+        var docElements = document.querySelectorAll('.doc-copy-target');
         for (var j = 0; j < docElements.length; j++) {
             (function(el) {
-                el.addEventListener('click', function(e) {
-                    // Check for Cmd (Mac) or Ctrl (Windows/Linux)
-                    if (e.metaKey || e.ctrlKey) {
-                        e.preventDefault();
-                        var gameId = this.getAttribute('data-gameid');
-                        var gameDate = this.getAttribute('data-gamedate');
+                var gameId = el.getAttribute('data-gameid');
+                var gameDate = el.getAttribute('data-gamedate');
+                
+                setupLongClick(
+                    el,
+                    '📋 Copy Game',
+                    function() {
                         showCopyModal(gameId, gameDate);
                     }
-                });
+                );
             })(docElements[j]);
         }
         
@@ -663,7 +784,7 @@ function loadAndRender() {
 }
 
 // ============================================================
-// v1.13: Attach Cmd+Click handler to card title
+// v1.14: Attach Cmd+Click and long-click handler to card title
 // ============================================================
 function attachTitleClickHandler() {
     var titleEl = document.getElementById('cardTitle');
@@ -672,12 +793,15 @@ function attachTitleClickHandler() {
         var newTitle = titleEl.cloneNode(true);
         titleEl.parentNode.replaceChild(newTitle, titleEl);
         
-        newTitle.addEventListener('click', function(e) {
-            if (e.metaKey || e.ctrlKey) {
-                e.preventDefault();
-                toggleView();
-            }
-        });
+        var titleAction = function() {
+            toggleView();
+        };
+        
+        setupLongClick(
+            newTitle,
+            showAllGames ? '📋 Show Upcoming Games' : '📋 Show All Games',
+            titleAction
+        );
     }
 }
 
@@ -711,13 +835,13 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - ADDED: Cmd+Click on "Upcoming Games" title toggles showing ALL scheduledGames (including past games)
-   - Default view: only upcoming games (date >= today)
-   - Toggle view: ALL games (including past games)
-   - Visual indicator shows which view is active
-   - Back button or page refresh resets to default view
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - ADDED: Long-click (press and hold) on "Upcoming Games" title toggles ALL games view
+   - ADDED: Long-click (press and hold) on Document ID opens Copy Game modal
+   - Bubble appears after 800ms hold showing action description
+   - Cmd+Click still works as before for both targets
+   - Universal trigger for mobile and desktop
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
