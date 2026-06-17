@@ -1,10 +1,11 @@
 /*
 FILE: js/splash.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: Cache-busting now uses VERSION variable instead of hardcoded string
-   - ADDED: SPLASH_VERSION constant defined at top for single source of truth
-   - All other functionality unchanged from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Replaced margin-bottom with gap on flex container for consistent spacing
+   - Removed iconContainer margin-bottom (now using gap)
+   - Gap set to 100px between icon and title
+   - All other functionality unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -12,7 +13,7 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION DEFINITION - SINGLE SOURCE OF TRUTH
 // ============================================================
-var SPLASH_VERSION = "1.02";
+var SPLASH_VERSION = "1.03";
 
 // ============================================================
 // VERSION EXPOSURE FOR CONSOLE DEBUGGING
@@ -26,7 +27,6 @@ var SPLASH_CACHE_KEY = "splash_version";
 var storedSplashVersion = localStorage.getItem(SPLASH_CACHE_KEY);
 if (storedSplashVersion !== SPLASH_VERSION) {
     localStorage.setItem(SPLASH_CACHE_KEY, SPLASH_VERSION);
-    // If splash is already loaded, force reload
     if (document.getElementById('splashOverlay')) {
         window.location.reload();
     }
@@ -35,18 +35,15 @@ if (storedSplashVersion !== SPLASH_VERSION) {
 var SplashScreen = (function() {
     
     function show() {
-        // Get the existing golf icon
         var golfIcon = document.getElementById('golfIcon');
         if (!golfIcon) {
             console.log('Golf icon not found, skipping splash');
             return;
         }
         
-        // Store original parent and styles
         var originalParent = golfIcon.parentNode;
         var originalNextSibling = golfIcon.nextSibling;
         
-        // Create splash overlay
         var splash = document.createElement('div');
         splash.id = 'splashOverlay';
         splash.style.cssText = `
@@ -60,23 +57,20 @@ var SplashScreen = (function() {
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            gap: 100px;
             z-index: 10000;
             opacity: 1;
             transition: opacity 0.8s ease;
         `;
         
-        // Container for the icon
         var iconContainer = document.createElement('div');
         iconContainer.style.cssText = `
             text-align: center;
-            margin-bottom: 80px;
         `;
         
-        // Move golf icon into splash
         golfIcon.remove();
         iconContainer.appendChild(golfIcon);
         
-        // Reset golf icon styles for animation
         golfIcon.style.cssText = `
             font-size: 6rem;
             display: inline-block;
@@ -86,7 +80,6 @@ var SplashScreen = (function() {
             filter: drop-shadow(0 0 20px rgba(76,175,80,0.5));
         `;
         
-        // Title
         var title = document.createElement('div');
         title.innerHTML = 'SICC RYDER CUP';
         title.style.cssText = `
@@ -102,7 +95,6 @@ var SplashScreen = (function() {
             animation: splashFadeInUp 0.6s ease-out 0.5s forwards;
         `;
         
-        // Subtitle
         var subtitle = document.createElement('div');
         subtitle.innerHTML = 'Match Play · Team Game · Net Stroke';
         subtitle.style.cssText = `
@@ -119,7 +111,6 @@ var SplashScreen = (function() {
         splash.appendChild(subtitle);
         document.body.appendChild(splash);
         
-        // Add animation styles if not already present
         if (!document.getElementById('splash-animations')) {
             var style = document.createElement('style');
             style.id = 'splash-animations';
@@ -155,13 +146,11 @@ var SplashScreen = (function() {
             document.head.appendChild(style);
         }
         
-        // Animate the golf icon dropping
         setTimeout(function() {
             golfIcon.style.transition = 'transform 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
             golfIcon.style.transform = 'translateY(0) rotate(360deg)';
         }, 100);
         
-        // Create thump ring effect
         var thumpRing = document.createElement('div');
         thumpRing.style.cssText = `
             position: absolute;
@@ -183,24 +172,20 @@ var SplashScreen = (function() {
             thumpRing.style.animation = 'splashThumpRing 0.4s ease-out forwards';
         }, 700);
         
-        // Shake the splash screen on impact
         setTimeout(function() {
             splash.style.animation = 'splashShake 0.3s ease-in-out';
         }, 700);
         
-        // Vibrate if supported
         if (navigator.vibrate) {
             setTimeout(function() {
                 navigator.vibrate(50);
             }, 700);
         }
         
-        // Fade out splash and restore golf icon
         setTimeout(function() {
             splash.style.opacity = '0';
             setTimeout(function() {
                 splash.remove();
-                // Restore golf icon to original position
                 golfIcon.style.cssText = '';
                 golfIcon.style.cursor = 'pointer';
                 if (originalParent) {
@@ -221,11 +206,12 @@ var SplashScreen = (function() {
 
 /*
 FILE: js/splash.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: Cache-busting now uses VERSION variable instead of hardcoded string
-   - ADDED: SPLASH_VERSION constant defined at top for single source of truth
-   - All other functionality unchanged from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Replaced margin-bottom with gap on flex container for consistent spacing
+   - Removed iconContainer margin-bottom (now using gap)
+   - Gap set to 100px between icon and title
+   - All other functionality unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
