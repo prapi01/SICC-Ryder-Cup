@@ -1,10 +1,11 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - ADDED: js/waiting-screen.js dependency for grey icon overlay
-   - DELETE: Shows grey icon after PIN success, before Firestore delete
-   - DELETE: Hides grey icon after operation completes
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - ADDED: Debug logging throughout delete flow to trace where it fails
+   - ADDED: 10-second timeout for delete operation to prevent hanging
+   - ADDED: requestAnimationFrame forced render before Firestore write
+   - FIXED: Waiting screen now properly hides on timeout, success, and error
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
@@ -360,12 +361,12 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.18</div>
+<div class="version-tag">v1.20</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.18
+// FILE: manage-games.html - VERSION 1.20
 
-var VERSION = "1.18";
+var VERSION = "1.20";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -407,10 +408,8 @@ var adminBubbleElement = null;
 var isAdminBubbleActive = false;
 
 function showAdminBubble(x, y, icon, line1, line2, onAction) {
-    // Remove any existing bubble
     hideAdminBubble();
     
-    // Create LARGER SQUARE bubble with stacked text (matches index.html)
     var bubble = document.createElement('div');
     bubble.className = 'admin-bubble';
     bubble.innerHTML = `
@@ -419,7 +418,6 @@ function showAdminBubble(x, y, icon, line1, line2, onAction) {
         <span class="bubble-line2">${line2}</span>
     `;
     
-    // Position the bubble
     var bubbleSize = 80;
     bubble.style.left = Math.max(10, Math.min(window.innerWidth - bubbleSize - 10, x - bubbleSize / 2)) + 'px';
     bubble.style.top = Math.max(10, Math.min(window.innerHeight - bubbleSize - 10, y - bubbleSize / 2)) + 'px';
@@ -434,7 +432,6 @@ function showAdminBubble(x, y, icon, line1, line2, onAction) {
     adminBubbleElement = bubble;
     isAdminBubbleActive = true;
     
-    // Auto-hide after 4 seconds if not clicked
     setTimeout(function() {
         if (isAdminBubbleActive) {
             hideAdminBubble();
@@ -519,36 +516,24 @@ function copyGameWithNewDate(sourceGameId, newDate) {
         }
         
         var sourceData = doc.data();
-        
-        // Create copy - deep clone to avoid reference issues
         var newData = JSON.parse(JSON.stringify(sourceData));
-        
-        // Override date
         newData.date = newDate;
-        
-        // Reset game state for fresh start
         newData.gameStarted = false;
         newData.signatures = { f1: false, f2: false };
         newData.submitted = { f1: false, f2: false };
         newData.locks = { f1: null, f2: null };
         newData.currentHoleF1 = 1;
         newData.currentHoleF2 = 1;
-        
-        // Remove Firestore-generated fields
         delete newData.createdAt;
         delete newData.updatedAt;
         delete newData.lastActive;
-        
-        // Add new timestamps
         var now = new Date().toISOString();
         newData.createdAt = now;
         newData.updatedAt = now;
-        
-        // Write to Firestore
         return db.collection("scheduledGames").doc(newGameId).set(newData);
     }).then(function() {
         Modal.alert("✅ Game copied successfully!\n\nNew Game ID: " + newGameId + "\nDate: " + newDate);
-        loadAndRender(); // Refresh the list
+        loadAndRender();
     }).catch(function(err) {
         Modal.alert("❌ Error copying game: " + err.message);
         console.error(err);
@@ -559,14 +544,11 @@ function copyGameWithNewDate(sourceGameId, newDate) {
 // v1.12: Show Copy Modal with date picker
 // ============================================================
 function showCopyModal(gameId, currentDate) {
-    // Remove any existing modal
     var existing = document.querySelector('.copy-modal-overlay');
     if (existing) existing.remove();
     
     var today = new Date().toISOString().split('T')[0];
     var defaultDate = today;
-    
-    // If current date exists and is valid, use it as default
     if (currentDate && currentDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
         defaultDate = currentDate;
     }
@@ -593,14 +575,12 @@ function showCopyModal(gameId, currentDate) {
     var cancelBtn = document.getElementById('copyCancelBtn');
     var confirmBtn = document.getElementById('copyConfirmBtn');
     
-    // Focus the date input
     setTimeout(function() { dateInput.focus(); }, 100);
     
     cancelBtn.onclick = function() {
         modal.remove();
     };
     
-    // Close on overlay click
     modal.onclick = function(e) {
         if (e.target === modal) {
             modal.remove();
@@ -613,20 +593,16 @@ function showCopyModal(gameId, currentDate) {
             Modal.alert("Please select a date.");
             return;
         }
-        
-        // Validate date is not in the past? (optional)
         var today = new Date().toISOString().split('T')[0];
         if (newDate < today) {
             if (!confirm("⚠️ This date is in the past. Continue anyway?")) {
                 return;
             }
         }
-        
         modal.remove();
         copyGameWithNewDate(gameId, newDate);
     };
     
-    // Enter key triggers confirm
     dateInput.onkeydown = function(e) {
         if (e.key === 'Enter') {
             confirmBtn.click();
@@ -658,45 +634,70 @@ function editGameConfirmed(gameId) {
 }
 
 // ============================================================
-// v1.18: DELETE - PIN REQUIRED with grey icon overlay
+// v1.20: DELETE - PIN REQUIRED with debug logs + timeout
 // ============================================================
 function deleteGameProtected(gameId, gameDate) {
+    console.log('[DELETE] deleteGameProtected called for game:', gameId, 'date:', gameDate);
+    
     AuthPin.requireAuth('delete', gameId, gameDate, function() {
-        // Show grey icon overlay immediately after PIN success
+        console.log('[DELETE] PIN authentication successful for game:', gameId);
+        console.log('[DELETE] Showing waiting screen...');
         WaitingScreen.show("Deleting game...");
-        // Proceed with delete
+        console.log('[DELETE] Calling deleteGameConfirmed...');
         deleteGameConfirmed(gameId, gameDate);
     });
 }
 
 function deleteGameConfirmed(gameId, gameDate) {
+    console.log('[DELETE] deleteGameConfirmed called for game:', gameId, 'date:', gameDate);
+    
     Modal.confirm(
         "Delete scheduled game on " + gameDate + "? This action cannot be undone.",
         function() {
-            // Show grey icon before Firestore operation
+            console.log('[DELETE] User confirmed deletion for game:', gameId);
+            console.log('[DELETE] Showing waiting screen...');
             WaitingScreen.show("Deleting game...");
             
-            SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
-            db.collection("scheduledGames").doc(gameId).delete()
-                .then(function() {
-                    WaitingScreen.hide();
-                    loadAndRender();
-                })
-                .catch(function(e) {
-                    WaitingScreen.hide();
-                    Modal.alert("Error deleting game: " + e.message);
+            console.log('[DELETE] Forcing render with requestAnimationFrame...');
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    console.log('[DELETE] Render complete. Starting Firestore delete...');
+                    
+                    var timeoutId = setTimeout(function() {
+                        console.error('[DELETE] TIMEOUT: Delete operation took more than 10 seconds for game:', gameId);
+                        WaitingScreen.hide();
+                        Modal.alert("Delete operation timed out. Please try again or refresh.");
+                    }, 10000);
+                    
+                    SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
+                    
+                    console.log('[DELETE] Calling Firestore delete for game:', gameId);
+                    db.collection("scheduledGames").doc(gameId).delete()
+                        .then(function() {
+                            console.log('[DELETE] SUCCESS: Firestore delete completed for game:', gameId);
+                            clearTimeout(timeoutId);
+                            WaitingScreen.hide();
+                            console.log('[DELETE] Calling loadAndRender()...');
+                            loadAndRender();
+                        })
+                        .catch(function(e) {
+                            console.error('[DELETE] ERROR: Firestore delete failed for game:', gameId, e);
+                            clearTimeout(timeoutId);
+                            WaitingScreen.hide();
+                            Modal.alert("Error deleting game: " + e.message);
+                        });
                 });
+            });
         },
         function() {
-            // User cancelled - hide grey icon if visible
+            console.log('[DELETE] User cancelled deletion for game:', gameId);
             WaitingScreen.hide();
-            console.log("Deletion cancelled");
+            console.log('[DELETE] Deletion cancelled');
         }
     );
 }
 
 function goBackToSettings() {
-    // v1.13: Reset view state when going back
     showAllGames = false;
     var returnDest = SessionManager.getReturnDestination();
     window.location.href = returnDest;
@@ -720,18 +721,20 @@ function getTodayString() {
 }
 
 function loadAndRender() {
+    console.log('[LOAD] loadAndRender called');
     if (!firestoreReady) {
         document.getElementById("app").innerHTML = '<div class="loading">Connecting to server...</div>';
         return;
     }
     
     var todayStr = getTodayString();
+    console.log('[LOAD] Today string:', todayStr);
     
     db.collection("scheduledGames").get().then(function(snapshot) {
+        console.log('[LOAD] Firestore query complete. Documents count:', snapshot.size);
         var games = [];
         snapshot.forEach(function(doc) {
             var data = doc.data();
-            // v1.13: Show all games if toggled, otherwise only upcoming
             if (showAllGames) {
                 games.push({ id: doc.id, date: data.date, course: data.course, players: data.players });
             } else {
@@ -746,8 +749,8 @@ function loadAndRender() {
             if (a.date > b.date) return 1;
             return 0;
         });
+        console.log('[LOAD] Games loaded:', games.length);
         
-        // v1.13: Title with view toggle hint
         var titleText = showAllGames ? '📋 ALL SCHEDULED GAMES' : '📋 UPCOMING GAMES';
         var badgeText = showAllGames ? 'ALL' : 'UPCOMING';
         var badgeClass = showAllGames ? 'view-badge view-badge-all' : 'view-badge';
@@ -777,21 +780,17 @@ function loadAndRender() {
         }
         
         var gamesHtml = '';
-        var isPast = false;
         for (var i = 0; i < games.length; i++) {
             var game = games[i];
             var formattedDate = formatDate(game.date);
             var courseName = game.course ? game.course.name : 'Unknown Course';
             var playerCount = game.players ? game.players.length : 0;
             
-            // v1.13: Check if game is past
             var isPastGame = (game.date < todayStr);
             var pastClass = isPastGame ? 'game-item-past' : '';
             
-            // v1.14: Document ID with Cmd+Click and long-click handler for copy
             var docIdHtml = '<div class="doc-id-display doc-copy-target" data-gameid="' + escapeHtml(game.id) + '" data-gamedate="' + escapeHtml(game.date) + '">📄 ' + escapeHtml(game.id) + '<span class="copy-hint"> ⌘+click or long press to copy</span></div>';
             
-            // v1.18: EDIT - NO PIN, DELETE - PIN REQUIRED with grey icon
             gamesHtml += `
                 <div class="game-item ${pastClass}">
                     <div class="game-info">
@@ -830,20 +829,13 @@ function loadAndRender() {
         
         document.getElementById("app").innerHTML = html;
         
-        // ============================================================
-        // v1.15: Setup long-click + Cmd+Click for title
-        // ============================================================
         attachTitleClickHandler();
         
-        // ============================================================
-        // v1.15: Setup long-click + Cmd+Click for document IDs with LARGE bubble
-        // ============================================================
         var docElements = document.querySelectorAll('.doc-copy-target');
         for (var j = 0; j < docElements.length; j++) {
             (function(el) {
                 var gameId = el.getAttribute('data-gameid');
                 var gameDate = el.getAttribute('data-gamedate');
-                
                 setupLongClick(
                     el,
                     '📋',
@@ -857,7 +849,7 @@ function loadAndRender() {
         }
         
     }).catch(function(e) {
-        console.warn(e);
+        console.warn('[LOAD] Error loading games:', e);
         document.getElementById("app").innerHTML = '<div class="loading">Error loading games. Please refresh.</div>';
     });
 }
@@ -868,7 +860,6 @@ function loadAndRender() {
 function attachTitleClickHandler() {
     var titleEl = document.getElementById('cardTitle');
     if (titleEl) {
-        // Remove existing listener to avoid duplicates
         var newTitle = titleEl.cloneNode(true);
         titleEl.parentNode.replaceChild(newTitle, titleEl);
         
@@ -905,7 +896,7 @@ function escapeHtml(str) {
 }
 
 SessionManager.initSession("manage-games.html", "admin.html", function(session) {
-    console.log("Session initialized:", session);
+    console.log("[MANAGE-GAMES] Session initialized:", session);
     deviceSession = session;
     displayDeviceId();
     loadAndRender();
@@ -916,11 +907,12 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - ADDED: js/waiting-screen.js dependency for grey icon overlay
-   - DELETE: Shows grey icon after PIN success, before Firestore delete
-   - DELETE: Hides grey icon after operation completes
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - ADDED: Debug logging throughout delete flow to trace where it fails
+   - ADDED: 10-second timeout for delete operation to prevent hanging
+   - ADDED: requestAnimationFrame forced render before Firestore write
+   - FIXED: Waiting screen now properly hides on timeout, success, and error
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
