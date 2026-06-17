@@ -1,23 +1,22 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: Stroke game display (displayStrk) now properly written to cache before payload
-   - FIXED: Team game displayT2 now properly written to cache before payload
-   - FIXED: game3.leader now properly written to cache before payload
-   - Added debug logging for stroke and team game assignments
-   - Ensures all display values are in cache before Firestore write
-   - All existing functionality preserved from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: Stroke game points now correctly handle 0 values
+   - Previously, 0 || 0.5 would incorrectly assign 0.5 to the loser
+   - Now uses !== undefined check to preserve 0 values
+   - Ensures stroke game always sums to 1 point total (winner takes all)
+   - All existing functionality preserved from v1.05
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.05";
+window.REAL_GAME_SAVE_VERSION = "1.06";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.05 - stroke display and displayT2 cache fix");
+    console.log("[REAL-GAME-SAVE] Initializing v1.06 - stroke points 0 value fix");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -118,7 +117,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.05] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.06] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -249,7 +248,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore - v1.05: No changes needed here
+    // writeSingleHoleToFirestore
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -396,7 +395,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeNewHoleData - v1.05: Fixes stroke display and displayT2 cache assignment
+    // writeNewHoleData - v1.06: Fixes stroke points 0 value issue
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache) {
@@ -538,7 +537,7 @@ var RealGameSave = (function() {
         }
         
         // ============================================================
-        // STROKE GAME - v1.05: ASSIGN TO CACHE BEFORE PAYLOAD
+        // STROKE GAME - v1.06: FIXED 0 value handling
         // ============================================================
         var strkLeader = "AS";
         var strkDisplay = "AS";
@@ -547,15 +546,18 @@ var RealGameSave = (function() {
             strkLeader = strokeResults.leader[position] === "A" ? "A" : strokeResults.leader[position] === "B" ? "B" : "AS";
             strkDisplay = strokeResults.displayStrk?.[position] || "AS";
             
-            // v1.05: CRITICAL - Assign stroke values to cache BEFORE payload
+            // v1.05: Assign stroke values to cache BEFORE payload
             cache.results.game3.leader[position] = strkLeader;
             cache.results.game3.displayStrk[position] = strkDisplay;
             cache.results.game3.nettA[position] = strokeResults.nettA?.[position] || 0;
             cache.results.game3.nettB[position] = strokeResults.nettB?.[position] || 0;
-            cache.results.game3.pointsA[position] = strokeResults.pointsA?.[position] || 0.5;
-            cache.results.game3.pointsB[position] = strokeResults.pointsB?.[position] || 0.5;
             
-            console.log(`[DEBUG-FLOW] --- STROKE: strkLeader=${strkLeader}, strkDisplay=${strkDisplay} (ASSIGNED TO CACHE)`);
+            // v1.06: FIXED - Use !== undefined check to preserve 0 values
+            // Previously: strokeResults.pointsA?.[position] || 0.5 would convert 0 to 0.5
+            cache.results.game3.pointsA[position] = strokeResults.pointsA?.[position] !== undefined ? strokeResults.pointsA[position] : 0.5;
+            cache.results.game3.pointsB[position] = strokeResults.pointsB?.[position] !== undefined ? strokeResults.pointsB[position] : 0.5;
+            
+            console.log(`[DEBUG-FLOW] --- STROKE: strkLeader=${strkLeader}, strkDisplay=${strkDisplay}, pointsA=${cache.results.game3.pointsA[position]}, pointsB=${cache.results.game3.pointsB[position]} (ASSIGNED TO CACHE)`);
         } else {
             console.log(`[DEBUG-FLOW] --- STROKE: SKIPPED (crossAvailable=false)`);
         }
@@ -688,6 +690,8 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-FLOW] --- TR payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
             console.log(`[DEBUG-FLOW] --- displayStrk payload: ${updatePayload["results.game3.displayStrk"][position]}`);
             console.log(`[DEBUG-FLOW] --- displayT2 payload: ${updatePayload["results.game2.displayT2"][position]}`);
+            console.log(`[DEBUG-FLOW] --- game3.pointsA[${position}]: ${updatePayload["results.game3.pointsA"][position]}`);
+            console.log(`[DEBUG-FLOW] --- game3.pointsB[${position}]: ${updatePayload["results.game3.pointsB"][position]}`);
         }
         
         if (Object.keys(clinchedAtUpdates).length > 0) {
@@ -728,6 +732,8 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- Has lastSyncedPosition: ${updatePayload["lastSyncedPosition"] !== undefined}`);
         console.log(`[DEBUG-FLOW] --- Has game3.displayStrk: ${!!updatePayload["results.game3.displayStrk"][position]}`);
         console.log(`[DEBUG-FLOW] --- Has game2.displayT2: ${!!updatePayload["results.game2.displayT2"][position]}`);
+        console.log(`[DEBUG-FLOW] --- Has game3.pointsA: ${updatePayload["results.game3.pointsA"][position] !== undefined}`);
+        console.log(`[DEBUG-FLOW] --- Has game3.pointsB: ${updatePayload["results.game3.pointsB"][position] !== undefined}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
         console.log(`[DEBUG-FLOW] =========================================`);
@@ -744,7 +750,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // updateLocalCacheWithResults - v1.05: Ensures stroke and T-2 values are preserved
+    // updateLocalCacheWithResults
     // ============================================================
     
     function updateLocalCacheWithResults(resultsData) {
@@ -878,7 +884,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.05: Uses updated writeNewHoleData with stroke display fix
+    // performSave - v1.06: Uses updated stroke points fix
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1010,7 +1016,7 @@ var RealGameSave = (function() {
                         
                         // ============================================================
                         // writeNewHoleData - ALWAYS call for ALL saves
-                        // v1.05: Now properly assigns stroke display and T-2 to cache
+                        // v1.06: Now properly handles stroke points 0 values
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
@@ -1348,14 +1354,13 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: Stroke game display (displayStrk) now properly written to cache before payload
-   - FIXED: Team game displayT2 now properly written to cache before payload
-   - FIXED: game3.leader now properly written to cache before payload
-   - Added debug logging for stroke and team game assignments
-   - Ensures all display values are in cache before Firestore write
-   - All existing functionality preserved from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: Stroke game points now correctly handle 0 values
+   - Previously, 0 || 0.5 would incorrectly assign 0.5 to the loser
+   - Now uses !== undefined check to preserve 0 values
+   - Ensures stroke game always sums to 1 point total (winner takes all)
+   - All existing functionality preserved from v1.05
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
