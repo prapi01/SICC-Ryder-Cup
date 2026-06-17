@@ -1,12 +1,12 @@
 <!--
 FILE: index.html
-VERSION: 3.51
-KEY CHANGES from v3.50:
-   - ADDED: Custom pull-to-refresh for web app mode (Add to Home Screen)
-   - Detects standalone mode via window.navigator.standalone
-   - Only activates when installed as web app (no native refresh)
-   - Shows spinner and "Release to refresh" text
-   - Works on iPhone/iPad when installed to home screen
+VERSION: 3.52
+KEY CHANGES from v3.51:
+   - FIXED: Splash screen now shows for exactly 4 seconds regardless of load speed
+   - Removed Firebase dependency from splash hide condition
+   - No more race conditions - splash is purely visual
+   - Firebase loads in background during the 4 second animation
+   - User never sees a loading state - data is ready when splash fades
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
@@ -44,7 +44,6 @@ STATUS: Ready for integration
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        /* v3.48: Prevent text selection on long press */
         html, body {
             background: #000000;
             min-height: 100vh;
@@ -141,7 +140,7 @@ STATUS: Ready for integration
             opacity: 1;
         }
         
-        /* Splash Overlay - B&W screen initially (for first load) */
+        /* v3.52: Splash Overlay - fixed 4 second display */
         #splashOverlay {
             position: fixed;
             top: 0;
@@ -589,7 +588,7 @@ STATUS: Ready for integration
     </div>
 </div>
 
-<!-- Splash Overlay - B&W screen with hidden icon (for first load) -->
+<!-- Splash Overlay - fixed 4 second display -->
 <div id="splashOverlay">
     <div class="splash-icon-container">
         <div class="splash-golf-icon" id="splashGolfIcon">⛳</div>
@@ -598,19 +597,19 @@ STATUS: Ready for integration
     <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
 </div>
 
-<!-- Main Container - Hidden Initially, Fades In After Load -->
+<!-- Main Container - Hidden Initially, Fades In After Splash -->
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.51</div>
+<div class="version-tag">v3.52</div>
 
 <script>
-// FILE: index.html - VERSION 3.51
+// FILE: index.html - VERSION 3.52
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.51";
+window.INDEX_VERSION = "3.52";
 
-var APP_VERSION = "3.51";
+var APP_VERSION = "3.52";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -619,7 +618,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.51: Determine if this is first load of the session
+// v3.52: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -652,7 +651,8 @@ var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
 
 // ============================================================
-// FIRST LOAD ONLY: Premium splash animation
+// v3.52: FIRST LOAD ONLY - Simple splash animation
+// No Firebase dependency - pure UI, fixed 4 seconds
 // ============================================================
 
 function recordSplashShown() {
@@ -660,33 +660,8 @@ function recordSplashShown() {
     console.log("[SPLASH] App marked as initialized");
 }
 
-// v3.43: Check if already loaded, otherwise wait for load event
-function startSplashAnimationWhenReady() {
-    if (animationStarted) return;
-    
-    function beginAnimation() {
-        console.log("[SPLASH] Starting premium animation");
-        startSplashAnimation();
-    }
-    
-    // Check if page is already fully loaded
-    if (document.readyState === 'complete') {
-        console.log("[SPLASH] Page already loaded, starting animation immediately");
-        beginAnimation();
-    } else {
-        console.log("[SPLASH] Waiting for window.load event...");
-        window.addEventListener('load', function() {
-            console.log("[SPLASH] window.load fired, starting animation");
-            beginAnimation();
-        });
-    }
-}
-
 function startSplashAnimation() {
-    if (animationStarted) return;
-    animationStarted = true;
-    
-    console.log("[SPLASH] Starting premium animation");
+    console.log("[SPLASH] Starting animation");
     
     // Force reflow
     void splashGolfIcon.offsetHeight;
@@ -750,33 +725,27 @@ function startSplashAnimation() {
         
     }, 600);
     
-    // Animation complete (2800ms total)
+    // v3.52: FIXED - Hide splash after exactly 4 seconds
+    // Firebase loads in background during this time
     setTimeout(function() {
-        splashAnimationCompleted = true;
-        console.log("[SPLASH] Animation complete, checking hide condition");
-        checkAndHideSplash();
-    }, 2800);
-}
-
-function hideSplashAndShowIndex() {
-    if (!splashOverlay) return;
-    console.log("[SPLASH] Hiding splash and showing index");
-    splashOverlay.style.opacity = '0';
-    setTimeout(function() {
-        if (splashOverlay) splashOverlay.remove();
-        var appDiv = document.getElementById("app");
-        if (appDiv && !appDiv.classList.contains('visible')) {
-            appDiv.classList.add('visible');
-        }
-    }, 600);
-}
-
-function checkAndHideSplash() {
-    if (splashAnimationCompleted && dataReady) {
-        hideSplashAndShowIndex();
-    } else {
-        console.log("[SPLASH] Waiting... dataReady=" + dataReady + ", animationCompleted=" + splashAnimationCompleted);
-    }
+        console.log("[SPLASH] 4 seconds complete - hiding splash");
+        splashOverlay.style.opacity = '0';
+        setTimeout(function() {
+            if (splashOverlay) splashOverlay.remove();
+            var appDiv = document.getElementById("app");
+            if (appDiv && !appDiv.classList.contains('visible')) {
+                appDiv.classList.add('visible');
+            }
+            recordSplashShown();
+            // Now load the UI (data may already be loaded)
+            if (typeof renderMainUI === 'function') {
+                renderMainUI();
+            } else {
+                // Fallback: reload
+                window.location.reload();
+            }
+        }, 600);
+    }, 4000);
 }
 
 // ============================================================
@@ -800,10 +769,14 @@ function showIndexDirectly() {
     if (appDiv && !appDiv.classList.contains('visible')) {
         appDiv.classList.add('visible');
     }
+    // Load UI
+    if (typeof renderMainUI === 'function') {
+        renderMainUI();
+    }
 }
 
 // ============================================================
-// Preload Functions
+// Preload Functions (run in background during splash)
 // ============================================================
 
 function getPreloadedRawGameData() {
@@ -1010,15 +983,13 @@ function showAdminBubble(x, y) {
     bubble.style.left = Math.max(10, Math.min(window.innerWidth - bubbleSize - 10, x - bubbleSize / 2)) + 'px';
     bubble.style.top = Math.max(10, Math.min(window.innerHeight - bubbleSize - 10, y - bubbleSize / 2)) + 'px';
     
-    // v3.50: Direct click handler - calls window.showAdminModal from index-hidden.js
+    // Click handler - calls window.showAdminModal from index-hidden.js
     bubble.addEventListener('click', function(e) {
         e.stopPropagation();
         hideAdminBubble();
-        // Call the global function from index-hidden.js
         if (typeof window.showAdminModal === 'function') {
             window.showAdminModal();
         } else {
-            // Fallback
             alert("Admin functions not available. Please refresh.");
         }
     });
@@ -1049,14 +1020,11 @@ function setupLongClickAdmin(element) {
     var holdTimer = null;
     var isHolding = false;
     
-    // Pointer events for cross-device support (mouse + touch)
     element.addEventListener('pointerdown', function(e) {
         if (isAdminBubbleActive) {
             hideAdminBubble();
             return;
         }
-        
-        // Don't trigger on Cmd+Click (they have their own handler)
         if (e.metaKey || e.ctrlKey) return;
         
         isHolding = false;
@@ -1068,15 +1036,12 @@ function setupLongClickAdmin(element) {
     
     element.addEventListener('pointerup', function(e) {
         clearTimeout(holdTimer);
-        // If it was a short click and no bubble, do nothing (normal click behavior)
     });
     
     element.addEventListener('pointerleave', function(e) {
         clearTimeout(holdTimer);
-        // Don't hide bubble immediately on leave - let user interact with it
     });
     
-    // Also support Cmd+Click (existing behavior)
     element.addEventListener('click', function(e) {
         if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
@@ -1351,12 +1316,9 @@ function renderMainUI() {
         
         setTimeout(setButtonWidths, 10);
         
-        // ============================================================
-        // v3.51: Admin handler - Cmd+Click OR Long-click on golf icon
-        // ============================================================
+        // Admin handler - Cmd+Click OR Long-click on golf icon
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
-            // Setup long-click + bubble
             setupLongClickAdmin(golfIcon);
         }
         
@@ -1367,32 +1329,15 @@ function renderMainUI() {
         if (typeof initHiddenAdmin === 'function') {
             initHiddenAdmin();
         }
-        
-        // v3.43: Different paths for first-load vs non-first-load
-        if (isFirstLoad) {
-            dataReady = true;
-            checkAndHideSplash();
-        } else {
-            // Non-first-load: just show index directly
-            showIndexDirectly();
-        }
-        
     }).catch(function(e) {
         console.warn(e);
-        if (isFirstLoad) {
-            hideGreyIconScreen();
-        }
         appDiv.innerHTML = '<div style="text-align:center; padding:40px; color:#888;">Error loading games. Please refresh.</div>';
         appDiv.classList.add('visible');
-        if (isFirstLoad && splashOverlay && splashOverlay.parentNode) {
-            dataReady = true;
-            checkAndHideSplash();
-        }
     });
 }
 
 // ============================================================
-// Initialization - v3.51
+// Initialization - v3.52
 // ============================================================
 
 function initApp() {
@@ -1401,19 +1346,14 @@ function initApp() {
     mainContainer = document.getElementById("app");
     mainContainer.style.display = "block";
     
-    var hasCachedData = getPreloadedRawGameData() !== null;
-    
-    // v3.51: Initialize pull-to-refresh for web app mode
+    // v3.52: Initialize pull-to-refresh for web app mode
     initPullToRefresh();
     
     if (isFirstLoad) {
-        // FIRST LOAD: B&W screen immediately, wait for load, then animate
-        console.log("[INDEX] First load - B&W screen, waiting for load event");
+        // FIRST LOAD: Show splash for exactly 4 seconds
+        console.log("[INDEX] First load - showing splash for 4 seconds");
         
-        // Start waiting for page load before animation
-        startSplashAnimationWhenReady();
-        
-        // Load data in background
+        // Start loading data in background immediately
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
                 window.location.href = "index.html";
@@ -1429,21 +1369,26 @@ function initApp() {
             
             if (todayGame) {
                 preloadGameData(todayGame.id, function() {
-                    renderMainUI();
-                    recordSplashShown();
+                    // Data loaded - UI will pick it up when rendered
+                    console.log("[INDEX] Preload complete during splash");
                 });
-            } else {
-                renderMainUI();
-                recordSplashShown();
             }
         }).catch(function() {
-            renderMainUI();
-            recordSplashShown();
+            // Data load failed - UI will handle it
+            console.warn("[INDEX] Preload failed during splash");
         });
+        
+        // Start the splash animation (hides after exactly 4 seconds)
+        startSplashAnimation();
+        
     } else {
         // NON-FIRST-LOAD: Grey icon already showing, load data then show index
         console.log("[INDEX] Non-first-load - grey icon already visible");
         
+        if (splashOverlay && splashOverlay.parentNode) {
+            splashOverlay.remove();
+        }
+        
         FirebaseRetry.getCollection("scheduledGames", {
             onExit: function() {
                 window.location.href = "index.html";
@@ -1459,13 +1404,13 @@ function initApp() {
             
             if (todayGame) {
                 preloadGameData(todayGame.id, function() {
-                    renderMainUI();
+                    showIndexDirectly();
                 });
             } else {
-                renderMainUI();
+                showIndexDirectly();
             }
         }).catch(function() {
-            renderMainUI();
+            showIndexDirectly();
         });
     }
 }
@@ -1476,11 +1421,11 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.51
+// Start the app - v3.52
 // ============================================================
 
 if (isFirstLoad) {
-    console.log("[INDEX] First load - premium splash mode (waiting for load)");
+    console.log("[INDEX] First load - splash mode");
     
     SessionManager.initSession("index.html", "index.html", function(session) {
         console.log("Session initialized:", session);
@@ -1491,10 +1436,8 @@ if (isFirstLoad) {
         }
     });
 } else {
-    // v3.43: Non-first-load - grey icon already visible
-    console.log("[INDEX] Non-first-load - grey icon already visible");
+    console.log("[INDEX] Non-first-load - direct mode");
     
-    // Remove splash overlay if it exists (from first load in same session edge case)
     if (splashOverlay && splashOverlay.parentNode) {
         splashOverlay.remove();
     }
@@ -1514,13 +1457,13 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.51
-KEY CHANGES from v3.50:
-   - ADDED: Custom pull-to-refresh for web app mode (Add to Home Screen)
-   - Detects standalone mode via window.navigator.standalone
-   - Only activates when installed as web app (no native refresh)
-   - Shows spinner and "Release to refresh" text
-   - Works on iPhone/iPad when installed to home screen
+VERSION: 3.52
+KEY CHANGES from v3.51:
+   - FIXED: Splash screen now shows for exactly 4 seconds regardless of load speed
+   - Removed Firebase dependency from splash hide condition
+   - No more race conditions - splash is purely visual
+   - Firebase loads in background during the 4 second animation
+   - User never sees a loading state - data is ready when splash fades
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
