@@ -1,11 +1,11 @@
 /*
 FILE: js/game-loader.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: Converts sparse Firestore objects to proper arrays when building cache
-   - displayT1, displayT2, flight1.leader, flight2.leader, cumulativePoints are now always arrays
-   - Prevents "slice is not a function" errors and missing data issues
-   - Maintains backward compatibility with existing caches
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.10
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
@@ -24,6 +24,13 @@ var GameLoader = (function() {
     var dataCallbacks = [];
     
     // ============================================================
+    // Helper: Get Firestore instance
+    // ============================================================
+    function getDb() {
+        return firebase.firestore();
+    }
+    
+    // ============================================================
     // Helper: Convert sparse Firestore object to array
     // v1.10: Critical fix for T-1 data corruption
     // ============================================================
@@ -31,7 +38,6 @@ var GameLoader = (function() {
         var arr = new Array(length).fill(defaultValue);
         if (!sparseObj) return arr;
         
-        // If it's already an array, return a copy
         if (Array.isArray(sparseObj)) {
             for (var i = 0; i < Math.min(sparseObj.length, length); i++) {
                 if (sparseObj[i] !== undefined && sparseObj[i] !== null) {
@@ -41,7 +47,6 @@ var GameLoader = (function() {
             return arr;
         }
         
-        // It's a sparse object with numeric keys (Firestore format)
         for (var key in sparseObj) {
             var idx = parseInt(key);
             if (!isNaN(idx) && idx >= 0 && idx < length && sparseObj[key] !== undefined && sparseObj[key] !== null) {
@@ -85,13 +90,11 @@ var GameLoader = (function() {
     
     function getPlayOrder(startingHole) {
         if (typeof GameOrder !== 'undefined' && GameOrder.getPlayOrder) {
-            // Ensure GameOrder has the correct starting hole
             if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
                 GameOrder.setStartingHole(startingHole);
             }
             return GameOrder.getPlayOrder();
         }
-        // Fallback
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
         for (var i = 1; i < startingHole; i++) order.push(i);
@@ -100,13 +103,11 @@ var GameLoader = (function() {
     
     function getPlayPosition(holeNumber, startingHole) {
         if (typeof GameOrder !== 'undefined' && GameOrder.getPlayPosition) {
-            // Ensure GameOrder has the correct starting hole
             if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
                 GameOrder.setStartingHole(startingHole);
             }
             return GameOrder.getPlayPosition(holeNumber);
         }
-        // Fallback
         var playOrder = getPlayOrder(startingHole);
         for (var i = 0; i < playOrder.length; i++) {
             if (playOrder[i] === holeNumber) return i;
@@ -121,7 +122,6 @@ var GameLoader = (function() {
             }
             return GameOrder.getNaturalHole(playPosition);
         }
-        // Fallback
         var playOrder = getPlayOrder(startingHole);
         return playOrder[playPosition] || 0;
     }
@@ -186,12 +186,10 @@ var GameLoader = (function() {
         var gameStarted = docData.gameStarted || false;
         var gameComplete = (signatures.f1 && signatures.f2) || false;
         
-        // Update GameOrder with starting hole
         if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
             GameOrder.setStartingHole(startingHole);
         }
         
-        // Parse flight data for each hole
         var flight1Data = {};
         var flight2Data = {};
         for (var h = 1; h <= 18; h++) {
@@ -199,66 +197,49 @@ var GameLoader = (function() {
             flight2Data[h] = GameData.parseHoleData(f2DataString, h);
         }
         
-        // Get saved holes - uses GameData which now uses GameOrder
         var savedHoles = {
             1: getSavedHolesFromString(f1DataString),
             2: getSavedHolesFromString(f2DataString)
         };
         
-        // Calculate last synced PLAY POSITION (0-17)
         var lastSyncedPosition = calculateLastSyncedPosition(savedHoles[1], savedHoles[2], startingHole);
-        
-        // For backward compatibility, provide natural hole of last synced position
         var lastSyncedHole = (lastSyncedPosition >= 0) ? getNaturalHole(lastSyncedPosition, startingHole) : 0;
         
-        // ============================================================
-        // v1.10: Convert sparse Firestore objects to arrays
-        // This fixes the T-1 data corruption issue
-        // ============================================================
-        
-        // Build displayT1 array
         var displayT1 = null;
         if (results?.game2?.displayT1) {
             displayT1 = sparseToArray(results.game2.displayT1, "AS", 18);
         }
         
-        // Build displayT2 array
         var displayT2 = null;
         if (results?.game2?.displayT2) {
             displayT2 = sparseToArray(results.game2.displayT2, "AS", 18);
         }
         
-        // Build flight1.leader array
         var flight1Leader = null;
         if (results?.game2?.flight1?.leader) {
             flight1Leader = sparseToArray(results.game2.flight1.leader, "AS", 18);
         }
         
-        // Build flight1.cumulativePoints array
         var flight1Cumulative = null;
         if (results?.game2?.flight1?.cumulativePoints) {
             flight1Cumulative = sparseToArray(results.game2.flight1.cumulativePoints, 0, 18);
         }
         
-        // Build flight2.leader array
         var flight2Leader = null;
         if (results?.game2?.flight2?.leader) {
             flight2Leader = sparseToArray(results.game2.flight2.leader, "AS", 18);
         }
         
-        // Build flight2.cumulativePoints array
         var flight2Cumulative = null;
         if (results?.game2?.flight2?.cumulativePoints) {
             flight2Cumulative = sparseToArray(results.game2.flight2.cumulativePoints, 0, 18);
         }
         
-        // Build displayStrk array
         var displayStrk = null;
         if (results?.game3?.displayStrk) {
             displayStrk = sparseToArray(results.game3.displayStrk, "AS", 18);
         }
         
-        // Build t1Row from flight1.leader (or use existing)
         var t1Row = new Array(18).fill('_');
         if (flight1Leader) {
             for (var i = 0; i < 18; i++) {
@@ -270,7 +251,6 @@ var GameLoader = (function() {
             }
         }
         
-        // Build t2Row from flight2.leader
         var t2Row = new Array(18).fill('_');
         if (flight2Leader) {
             for (var i = 0; i < 18; i++) {
@@ -282,7 +262,6 @@ var GameLoader = (function() {
             }
         }
         
-        // Build strkRow from displayStrk
         var strkRow = new Array(18).fill('_');
         if (displayStrk) {
             for (var i = 0; i < 18; i++) {
@@ -294,7 +273,6 @@ var GameLoader = (function() {
             }
         }
         
-        // Update results with converted arrays
         if (results) {
             if (!results.game2) results.game2 = {};
             if (!results.game2.flight1) results.game2.flight1 = {};
@@ -310,7 +288,6 @@ var GameLoader = (function() {
             results.game3.displayStrk = displayStrk;
         }
         
-        // Build clinchedAt
         var clinchedAt = results?.clinchedAt || {};
         
         return {
@@ -345,6 +322,7 @@ var GameLoader = (function() {
     
     // ============================================================
     // Load game data from Firestore
+    // v1.11: Uses firebase.firestore() instead of global db
     // ============================================================
     function loadGame(gameId, collection, callback) {
         if (!gameId) {
@@ -355,6 +333,7 @@ var GameLoader = (function() {
         currentGameId = gameId;
         currentCollection = collection || "scheduledGames";
         
+        var db = getDb();
         var gameRef = db.collection(currentCollection).doc(gameId);
         
         gameRef.get().then(function(doc) {
@@ -383,6 +362,7 @@ var GameLoader = (function() {
     
     // ============================================================
     // Subscribe to real-time updates
+    // v1.11: Uses firebase.firestore() instead of global db
     // ============================================================
     function subscribe(gameId, collection, callback) {
         if (unsubscribe) {
@@ -398,6 +378,7 @@ var GameLoader = (function() {
         currentGameId = gameId;
         currentCollection = collection || "scheduledGames";
         
+        var db = getDb();
         var gameRef = db.collection(currentCollection).doc(gameId);
         
         unsubscribe = gameRef.onSnapshot(function(doc) {
@@ -438,7 +419,6 @@ var GameLoader = (function() {
     // ============================================================
     function setLocalCache(cache) {
         currentCache = cache;
-        // Update GameOrder with starting hole from cache
         if (cache && cache.startingHole && typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
             GameOrder.setStartingHole(cache.startingHole);
         }
@@ -500,7 +480,6 @@ var GameLoader = (function() {
             }
             return GameOrder.getPlayPosition(holeNumber);
         }
-        // Fallback
         var playOrder = [];
         for (var i = startingHole; i <= 18; i++) playOrder.push(i);
         for (var i = 1; i < startingHole; i++) playOrder.push(i);
@@ -546,12 +525,12 @@ window.GameLoader = GameLoader;
 
 /*
 FILE: js/game-loader.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: Converts sparse Firestore objects to proper arrays when building cache
-   - displayT1, displayT2, flight1.leader, flight2.leader, cumulativePoints are now always arrays
-   - Prevents "slice is not a function" errors and missing data issues
-   - Maintains backward compatibility with existing caches
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.10
 DEPENDS ON: Firebase Firestore, js/game-data.js, js/game-order.js
 STATUS: Ready for integration
 */
