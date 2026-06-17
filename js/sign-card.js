@@ -1,17 +1,23 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.09
-KEY CHANGES:
-   - FIXED: ensureArchiveRecord() now passes all required parameters to createPendingRecord()
-   - Added extraction of flight1DataString, flight2DataString, and matchResults from gameData
-   - Now passes 8 parameters (gameId, gameData, results, finalScores, signatures, f1DataStr, f2DataStr, matchResults)
-   - This ensures archive records store both holeData and raw data strings for history viewer
-   - All other functionality unchanged from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.09
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
 
 var SignCard = (function() {
+    
+    // ============================================================
+    // Helper: Get Firestore instance
+    // ============================================================
+    function getDb() {
+        return firebase.firestore();
+    }
     
     // ============================================================
     // Celebration image - detects C.jpg or C.jpeg (bypass cache)
@@ -125,6 +131,7 @@ var SignCard = (function() {
     // ============================================================
     // Helper: Get or create archive record for handicap adjustment
     // FIXED in v1.09: Pass all required parameters to createPendingRecord
+    // v1.10: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function ensureArchiveRecord(gameId, callback) {
@@ -134,7 +141,8 @@ var SignCard = (function() {
                     callback(null, result.id);
                 } else {
                     if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
-                        firebase.firestore().collection('scheduledGames').doc(gameId).get()
+                        var db = getDb();
+                        db.collection('scheduledGames').doc(gameId).get()
                             .then(function(doc) {
                                 if (doc.exists) {
                                     var gameData = doc.data();
@@ -145,17 +153,14 @@ var SignCard = (function() {
                                     };
                                     var signatures = gameData.signatures || {};
                                     
-                                    // NEW IN v1.09: Extract the missing parameters
                                     var flight1DataString = gameData.f1?.d || "";
                                     var flight2DataString = gameData.f2?.d || "";
                                     
-                                    // Build matchResults object from results.game1.matches
                                     var matchResults = {};
                                     if (results.game1 && results.game1.matches) {
                                         matchResults = results.game1.matches;
                                     }
                                     
-                                    // Now pass all 8 parameters as expected by createPendingRecord
                                     HistoryRecord.createPendingRecord(
                                         gameId, 
                                         gameData, 
@@ -211,7 +216,6 @@ var SignCard = (function() {
         
         var winningTeamPlayers = (winner === "A") ? winningPlayers.teamA : (winner === "B") ? winningPlayers.teamB : [];
         
-        // Build player list as 2-column grid
         var playersHtml = '';
         for (var i = 0; i < winningTeamPlayers.length; i++) {
             playersHtml += '<span class="winning-player">' + escapeHtml(winningTeamPlayers[i].name) + '</span>';
@@ -334,7 +338,6 @@ var SignCard = (function() {
         
         var styles = `
             <style id="sign-card-styles">
-                /* Modal Overlay */
                 .modal-overlay {
                     position: fixed;
                     top: 0;
@@ -348,7 +351,6 @@ var SignCard = (function() {
                     z-index: 3000;
                 }
                 
-                /* Waiting Modal */
                 .waiting-modal-container {
                     background: #1a1a1a;
                     border-radius: 28px;
@@ -383,7 +385,6 @@ var SignCard = (function() {
                     animation: spin 1s linear infinite;
                 }
                 
-                /* Celebration Modal - RESPONSIVE */
                 .celebration-modal {
                     background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
                     border-radius: 24px;
@@ -452,7 +453,6 @@ var SignCard = (function() {
                     color: #ffaa44;
                     margin-bottom: 8px;
                 }
-                /* 2-COLUMN GRID FOR PLAYERS - prevents overflow */
                 .celebration-players-list {
                     display: grid;
                     grid-template-columns: 1fr 1fr;
@@ -490,7 +490,6 @@ var SignCard = (function() {
                     transform: scale(1.02);
                 }
                 
-                /* Responsive breakpoint for very small screens */
                 @media (max-width: 380px) {
                     .celebration-modal {
                         padding: 3vh 4vw;
@@ -517,7 +516,6 @@ var SignCard = (function() {
                     }
                 }
                 
-                /* Confetti */
                 .confetti {
                     position: fixed;
                     width: 10px;
@@ -528,7 +526,6 @@ var SignCard = (function() {
                     z-index: 3001;
                 }
                 
-                /* Animations */
                 @keyframes spin {
                     to { transform: rotate(360deg); }
                 }
@@ -566,9 +563,11 @@ var SignCard = (function() {
     
     // ============================================================
     // Signature Submission
+    // v1.10: Uses firebase.firestore() instead of global db
     // ============================================================
     
     async function submitSignature(gameId, flight, captainName, collection) {
+        var db = getDb();
         var updatePayload = {};
         updatePayload[`signatures.f${flight}.signed`] = true;
         updatePayload[`signatures.f${flight}.signedAt`] = firebase.firestore.FieldValue.serverTimestamp();
@@ -578,7 +577,7 @@ var SignCard = (function() {
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
         try {
-            await firebase.firestore().collection(collection).doc(gameId).update(updatePayload);
+            await db.collection(collection).doc(gameId).update(updatePayload);
             console.log(`Flight ${flight} signature submitted`);
             return true;
         } catch (error) {
@@ -615,15 +614,17 @@ var SignCard = (function() {
     };
 })();
 
+// Make available globally
+window.SignCard = SignCard;
+
 /*
 FILE: js/sign-card.js
-VERSION: 1.09
-KEY CHANGES:
-   - FIXED: ensureArchiveRecord() now passes all required parameters to createPendingRecord()
-   - Added extraction of flight1DataString, flight2DataString, and matchResults from gameData
-   - Now passes 8 parameters (gameId, gameData, results, finalScores, signatures, f1DataStr, f2DataStr, matchResults)
-   - This ensures archive records store both holeData and raw data strings for history viewer
-   - All other functionality unchanged from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.09
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
