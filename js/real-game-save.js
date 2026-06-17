@@ -1,21 +1,19 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
+   - All existing functionality preserved from v1.01
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.01";
+window.REAL_GAME_SAVE_VERSION = "1.02";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.01");
+    console.log("[REAL-GAME-SAVE] Initializing v1.02");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -90,6 +88,10 @@ var RealGameSave = (function() {
     
     function incrementDebugCounter(counterName) {
         RealGameState.incrementDebugCounter(counterName);
+    }
+    
+    function getDebugCallCounters() {
+        return RealGameState.getDebugCallCounters();
     }
     
     // ============================================================
@@ -220,17 +222,16 @@ var RealGameSave = (function() {
     
     // ============================================================
     // writeSingleHoleToFirestore
-    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
         var gameId = RealGameState.getGameId();
         var position = resultsData.position;
-        var isTarget = (holeNumber === RealGameUtils.getDebugTargetHole());
+        var isTarget = (holeNumber === getDebugTargetHole());
         
         if(isTarget) {
             incrementDebugCounter('write');
-            console.log(`[DEBUG-WRITE] === WRITE #${RealGameState.getDebugCallCounters().write} for HOLE ${holeNumber} (TARGET) ===`);
+            console.log(`[DEBUG-WRITE] === WRITE #${getDebugCallCounters().write} for HOLE ${holeNumber} (TARGET) ===`);
             console.log(`[DEBUG-WRITE] Position: ${position}`);
             console.log(`[DEBUG-WRITE] f1IntraMatches: ${resultsData.f1IntraMatches ? Object.keys(resultsData.f1IntraMatches).length + ' entries' : 'null'}`);
             console.log(`[DEBUG-WRITE] f2IntraMatches: ${resultsData.f2IntraMatches ? Object.keys(resultsData.f2IntraMatches).length + ' entries' : 'null'}`);
@@ -341,7 +342,6 @@ var RealGameSave = (function() {
     
     // ============================================================
     // writeNewHoleData
-    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache) {
@@ -351,7 +351,7 @@ var RealGameSave = (function() {
         var startingHole = RealGameState.getStartingHole();
         var teamGameFormat = RealGameState.getTeamGameFormat();
         var coursePar = RealGameState.getCoursePar();
-        var isTarget = (holeNumber === RealGameUtils.getDebugTargetHole());
+        var isTarget = (holeNumber === getDebugTargetHole());
         
         console.log(`[DEBUG-FLOW] =========================================`);
         console.log(`[DEBUG-FLOW] writeNewHoleData START: hole=${holeNumber}, position=${position}`);
@@ -624,13 +624,13 @@ var RealGameSave = (function() {
     function updateLocalCacheWithResults(resultsData) {
         var position = resultsData.position;
         var holeNumber = RealGameUtils.getHoleAtPosition(position);
-        var isTarget = (holeNumber === RealGameUtils.getDebugTargetHole());
+        var isTarget = (holeNumber === getDebugTargetHole());
         
         console.log(`[DEBUG-CACHE] updateLocalCacheWithResults: hole=${holeNumber}, position=${position}`);
         
         if(isTarget) {
             RealGameState.incrementDebugCounter('update');
-            console.log(`[DEBUG-CACHE] === UPDATE #${RealGameState.getDebugCallCounters().update} for HOLE ${holeNumber} (position ${position}) (TARGET) ===`);
+            console.log(`[DEBUG-CACHE] === UPDATE #${getDebugCallCounters().update} for HOLE ${holeNumber} (position ${position}) (TARGET) ===`);
             console.log(`[DEBUG-CACHE] Received f1IntraMatches: ${resultsData.f1IntraMatches ? Object.keys(resultsData.f1IntraMatches).length + ' entries' : 'null'}`);
             console.log(`[DEBUG-CACHE] Received f2IntraMatches: ${resultsData.f2IntraMatches ? Object.keys(resultsData.f2IntraMatches).length + ' entries' : 'null'}`);
             console.log(`[DEBUG-CACHE] Received matchResults: ${resultsData.matchResults ? resultsData.matchResults.length + ' values' : 'null'}`);
@@ -740,7 +740,6 @@ var RealGameSave = (function() {
     
     // ============================================================
     // performSave
-    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -759,7 +758,7 @@ var RealGameSave = (function() {
             
             RealGameState.incrementDebugCounter('save');
             console.log(`[DEBUG-SAVE] =========================================`);
-            console.log(`[DEBUG-SAVE] performSave #${RealGameState.getDebugCallCounters().save}: hole=${currentHole}, flight=${editableFlight}`);
+            console.log(`[DEBUG-SAVE] performSave #${getDebugCallCounters().save}: hole=${currentHole}, flight=${editableFlight}`);
             console.log(`[DEBUG-SAVE] =========================================`);
             
             if (!canEdit || takeoverDetected) {
@@ -1208,12 +1207,10 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
+   - All existing functionality preserved from v1.01
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
