@@ -1,13 +1,12 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - REMOVED: PIN authentication from EDIT button (opens directly)
-   - KEPT: PIN authentication for DELETE button
-   - EDIT now navigates to setup-game.html without PIN prompt
-   - DELETE still requires PIN (8888 or biometric)
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - ADDED: js/waiting-screen.js dependency for grey icon overlay
+   - DELETE: Shows grey icon after PIN success, before Firestore delete
+   - DELETE: Hides grey icon after operation completes
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
 
@@ -23,6 +22,7 @@ STATUS: Ready for integration
     <script src="js/session.js"></script>
     <script src="js/modal.js"></script>
     <script src="js/auth-pin.js"></script>
+    <script src="js/waiting-screen.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -360,12 +360,12 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.17</div>
+<div class="version-tag">v1.18</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.17
+// FILE: manage-games.html - VERSION 1.18
 
-var VERSION = "1.17";
+var VERSION = "1.18";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -658,11 +658,13 @@ function editGameConfirmed(gameId) {
 }
 
 // ============================================================
-// v1.17: DELETE - PIN REQUIRED
+// v1.18: DELETE - PIN REQUIRED with grey icon overlay
 // ============================================================
 function deleteGameProtected(gameId, gameDate) {
     AuthPin.requireAuth('delete', gameId, gameDate, function() {
-        // This callback runs after successful authentication
+        // Show grey icon overlay immediately after PIN success
+        WaitingScreen.show("Deleting game...");
+        // Proceed with delete
         deleteGameConfirmed(gameId, gameDate);
     });
 }
@@ -671,14 +673,23 @@ function deleteGameConfirmed(gameId, gameDate) {
     Modal.confirm(
         "Delete scheduled game on " + gameDate + "? This action cannot be undone.",
         function() {
+            // Show grey icon before Firestore operation
+            WaitingScreen.show("Deleting game...");
+            
             SessionManager.addNavigationHistory("manage-games.html", "game_deleted", { gameId: gameId });
-            db.collection("scheduledGames").doc(gameId).delete().then(function() {
-                loadAndRender();
-            }).catch(function(e) {
-                Modal.alert("Error deleting game: " + e.message);
-            });
+            db.collection("scheduledGames").doc(gameId).delete()
+                .then(function() {
+                    WaitingScreen.hide();
+                    loadAndRender();
+                })
+                .catch(function(e) {
+                    WaitingScreen.hide();
+                    Modal.alert("Error deleting game: " + e.message);
+                });
         },
         function() {
+            // User cancelled - hide grey icon if visible
+            WaitingScreen.hide();
             console.log("Deletion cancelled");
         }
     );
@@ -780,7 +791,7 @@ function loadAndRender() {
             // v1.14: Document ID with Cmd+Click and long-click handler for copy
             var docIdHtml = '<div class="doc-id-display doc-copy-target" data-gameid="' + escapeHtml(game.id) + '" data-gamedate="' + escapeHtml(game.date) + '">📄 ' + escapeHtml(game.id) + '<span class="copy-hint"> ⌘+click or long press to copy</span></div>';
             
-            // v1.17: EDIT - NO PIN, DELETE - PIN REQUIRED
+            // v1.18: EDIT - NO PIN, DELETE - PIN REQUIRED with grey icon
             gamesHtml += `
                 <div class="game-item ${pastClass}">
                     <div class="game-info">
@@ -905,13 +916,12 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - REMOVED: PIN authentication from EDIT button (opens directly)
-   - KEPT: PIN authentication for DELETE button
-   - EDIT now navigates to setup-game.html without PIN prompt
-   - DELETE still requires PIN (8888 or biometric)
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - ADDED: js/waiting-screen.js dependency for grey icon overlay
+   - DELETE: Shows grey icon after PIN success, before Firestore delete
+   - DELETE: Hides grey icon after operation completes
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
