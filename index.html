@@ -1,12 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.43
-KEY CHANGES from v3.42:
-   - FIXED: Check if window.load already fired before adding listener
-   - If document.readyState === 'complete', start animation immediately
-   - Prevents infinite wait on already-loaded pages
+VERSION: 3.44
+KEY CHANGES from v3.43:
+   - CHANGED: Golf icon now opens Admin Modal on Cmd+Click (⌘+Click or Ctrl+Click)
+   - ADDED: Admin Modal with 3 options: Duplicate Master Record, Manage All Games, Refresh
+   - Double-click still works as fallback
+   - Removed inline confirm() and replaced with admin modal
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js
 STATUS: Ready for integration
 -->
 
@@ -36,6 +37,7 @@ STATUS: Ready for integration
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <script src="js/firebase-retry.js"></script>
+    <script src="js/modal.js"></script>
     <script src="js/index-hidden.js"></script>
     
     <style>
@@ -211,8 +213,28 @@ STATUS: Ready for integration
             filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
             cursor: pointer;
             transition: transform 0.1s ease;
+            position: relative;
         }
         .golf-icon:active { transform: scale(0.98); }
+        .golf-icon .golf-hint {
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.45rem;
+            color: #4caf50;
+            opacity: 0;
+            transition: opacity 0.3s;
+            white-space: nowrap;
+            background: rgba(0,0,0,0.7);
+            padding: 2px 8px;
+            border-radius: 10px;
+            pointer-events: none;
+        }
+        .golf-icon:hover .golf-hint {
+            opacity: 0.4;
+        }
+        
         .title { 
             font-size: 1.8rem; 
             font-weight: 800; 
@@ -391,6 +413,97 @@ STATUS: Ready for integration
             border: 1px solid #333;
             color: #888;
         }
+        
+        /* v3.44: Admin Modal styles */
+        .admin-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20000;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        .admin-modal {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 28px;
+            max-width: 380px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        .admin-modal-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 4px;
+        }
+        .admin-modal-subtitle {
+            font-size: 0.65rem;
+            color: #888;
+            margin-bottom: 20px;
+        }
+        .admin-modal-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .admin-modal-option {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 16px;
+            padding: 14px 16px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .admin-modal-option:hover {
+            border-color: #4caf50;
+            background: #111;
+        }
+        .admin-modal-option:active {
+            transform: scale(0.98);
+        }
+        .admin-option-icon {
+            font-size: 1.5rem;
+            width: 36px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .admin-option-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #4caf50;
+            display: block;
+        }
+        .admin-option-desc {
+            font-size: 0.6rem;
+            color: #666;
+            display: block;
+        }
+        .admin-modal-close {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+            padding: 12px;
+            border-radius: 40px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+        .admin-modal-close:hover {
+            border-color: #4caf50;
+        }
     </style>
     
     <script>
@@ -438,12 +551,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.43</div>
+<div class="version-tag">v3.44</div>
 
 <script>
-// FILE: index.html - VERSION 3.43
+// FILE: index.html - VERSION 3.44
 
-var APP_VERSION = "3.43";
+var APP_VERSION = "3.44";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -452,7 +565,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.43: Determine if this is first load of the session
+// v3.44: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -955,7 +1068,10 @@ function renderMainUI() {
         
         var html = `
             <div class="header">
-                <div class="golf-icon" id="golfIcon">⛳</div>
+                <div class="golf-icon" id="golfIcon">
+                    ⛳
+                    <span class="golf-hint">⌘+click for admin</span>
+                </div>
                 <div class="title">SICC RYDER CUP</div>
                 <div class="subtitle">Match Play · Team Game · Net Stroke</div>
             </div>
@@ -985,16 +1101,28 @@ function renderMainUI() {
         
         setTimeout(setButtonWidths, 10);
         
+        // ============================================================
+        // v3.44: Admin handler - Cmd+Click OR double-click on golf icon
+        // ============================================================
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
-            golfIcon.addEventListener('dblclick', function(e) {
-                e.stopPropagation();
-                if (confirm("⚠️ ADMIN FUNCTION\n\nDuplicate Master Record to today's date?")) {
-                    if (typeof duplicateMasterRecord === 'function') {
-                        duplicateMasterRecord();
-                    } else {
-                        alert("Error: Admin function not available. Please refresh.");
+            // Cmd+Click / Ctrl+Click handler
+            golfIcon.addEventListener('click', function(e) {
+                if (e.metaKey || e.ctrlKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (typeof showAdminModal === 'function') {
+                        showAdminModal();
                     }
+                }
+            });
+            
+            // Double-click fallback
+            golfIcon.addEventListener('dblclick', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof showAdminModal === 'function') {
+                    showAdminModal();
                 }
             });
         }
@@ -1031,7 +1159,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.43: Check if already loaded
+// Initialization - v3.44
 // ============================================================
 
 function initApp() {
@@ -1112,7 +1240,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.43
+// Start the app - v3.44
 // ============================================================
 
 if (isFirstLoad) {
@@ -1150,12 +1278,13 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.43
-KEY CHANGES from v3.42:
-   - FIXED: Check if window.load already fired before adding listener
-   - If document.readyState === 'complete', start animation immediately
-   - Prevents infinite wait on already-loaded pages
+VERSION: 3.44
+KEY CHANGES from v3.43:
+   - CHANGED: Golf icon now opens Admin Modal on Cmd+Click (⌘+Click or Ctrl+Click)
+   - ADDED: Admin Modal with 3 options: Duplicate Master Record, Manage All Games, Refresh
+   - Double-click still works as fallback
+   - Removed inline confirm() and replaced with admin modal
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js, js/firebase-retry.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js
 STATUS: Ready for integration
 -->
