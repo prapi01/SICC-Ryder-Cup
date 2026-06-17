@@ -1,13 +1,9 @@
 <!--
 FILE: real-game.html
-VERSION: 6.11
-KEY CHANGES from v6.10:
-   - UPDATED: script versions for real-game modules to latest
-     - real-game-save.js v1.02
-     - real-game-cascade.js v1.01
-     - real-game-ui.js v1.01
-   - Ensures browser loads the fixed versions with getDebugTargetHole() correction
-   - All other functionality preserved from v6.10
+VERSION: 6.12
+KEY CHANGES from v6.11:
+   - UPDATED: game-stroke.js from v1.08 to v1.09 (window.allPlayers fallback fix)
+   - All other functionality preserved from v6.11
 DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.02), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js, js/real-game-init.js
 STATUS: Ready for integration
 -->
@@ -24,27 +20,27 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=6.11"></script>
-    <script src="js/session.js?v=6.11"></script>
-    <script src="js/modal.js?v=6.11"></script>
+    <script src="js/firebase-config.js?v=6.12"></script>
+    <script src="js/session.js?v=6.12"></script>
+    <script src="js/modal.js?v=6.12"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.25"></script>
     <script src="js/game-team.js?v=1.13"></script>
-    <script src="js/game-stroke.js?v=1.08"></script>
+    <!-- v6.12: Updated to v1.09 with window.allPlayers fallback fix -->
+    <script src="js/game-stroke.js?v=1.09"></script>
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/card-submit.js?v=6.11"></script>
-    <script src="js/sign-card.js?v=6.11"></script>
-    <script src="js/hcp-adjust.js?v=6.11"></script>
-    <script src="js/ticker.js?v=6.11"></script>
-    <script src="js/history-record.js?v=6.11"></script>
+    <script src="js/card-submit.js?v=6.12"></script>
+    <script src="js/sign-card.js?v=6.12"></script>
+    <script src="js/hcp-adjust.js?v=6.12"></script>
+    <script src="js/ticker.js?v=6.12"></script>
+    <script src="js/history-record.js?v=6.12"></script>
     
     <!-- Real Game Modules - Load in order of dependency -->
     <script src="js/real-game-state.js?v=1.00"></script>
     <script src="js/real-game-utils.js?v=1.00"></script>
-    <!-- v6.11: Updated to latest versions with getDebugTargetHole() fix -->
     <script src="js/real-game-cascade.js?v=1.01"></script>
     <script src="js/real-game-save.js?v=1.02"></script>
     <script src="js/real-game-ui.js?v=1.01"></script>
@@ -313,13 +309,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v6.11</div>
+<div class="version-tag">v6.12</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "6.11";
+var APP_VERSION = "6.12";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -331,12 +327,10 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "6.11";
-console.log("[REAL-GAME] Initializing v6.11 - UPDATED MODULE VERSIONS");
+window.REAL_GAME_VERSION = "6.12";
+console.log("[REAL-GAME] Initializing v6.12 - UPDATED game-stroke.js v1.09");
 console.log("[REAL-GAME] =========================================");
-console.log("[REAL-GAME] real-game-save.js v1.02 (getDebugTargetHole fix)");
-console.log("[REAL-GAME] real-game-cascade.js v1.01 (getDebugTargetHole fix)");
-console.log("[REAL-GAME] real-game-ui.js v1.01 (getDebugTargetHole fix)");
+console.log("[REAL-GAME] game-stroke.js v1.09: window.allPlayers fallback fix");
 console.log("[REAL-GAME] =========================================");
 
 // ============================================================
@@ -360,14 +354,10 @@ setTimeout(function() {
 
 <!--
 FILE: real-game.html
-VERSION: 6.11
-KEY CHANGES from v6.10:
-   - UPDATED: script versions for real-game modules to latest
-     - real-game-save.js v1.02
-     - real-game-cascade.js v1.01
-     - real-game-ui.js v1.01
-   - Ensures browser loads the fixed versions with getDebugTargetHole() correction
-   - All other functionality preserved from v6.10
+VERSION: 6.12
+KEY CHANGES from v6.11:
+   - UPDATED: game-stroke.js from v1.08 to v1.09 (window.allPlayers fallback fix)
+   - All other functionality preserved from v6.11
 DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.02), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js, js/real-game-init.js
 STATUS: Ready for integration
 -->
