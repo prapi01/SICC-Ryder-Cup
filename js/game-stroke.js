@@ -1,17 +1,25 @@
 /*
 FILE: js/game-stroke.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order
-   - Removed local playOrder array generation
-   - Now delegates to GameOrder.getPlayOrder() when available
-   - Maintains fallback for backward compatibility
-   - All other functionality preserved (net score calculation, displayStrk, etc.)
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - ADDED: Detailed debug logging for stroke game calculation flow
+   - Logs: calculate() entry with startingHole, team handicaps
+   - Logs: Each position with hole number, cumulative gross for each team
+   - Logs: Net scores calculation (cumulative gross - total handicap)
+   - Logs: Diff calculation and displayStrk value
+   - Logs: Points awarded at each position
+   - All existing functionality preserved from v1.07
 DEPENDS ON: GameOrder (optional, with fallback)
-STATUS: Ready for integration
+STATUS: Debug version - ready for testing
 */
 
 var GameStroke = (function() {
+    
+    console.log("[GAME-STROKE] Initializing v1.08 - DETAILED DEBUG LOGGING ENABLED");
+    console.log("[GAME-STROKE] ===================================================");
+    console.log("[GAME-STROKE] Debug logs will trace stroke game calculations");
+    console.log("[GAME-STROKE] Including: cumulative gross, net scores, display values");
+    console.log("[GAME-STROKE] ===================================================");
     
     // Calculate total team handicap (raw handicaps - stroke game always uses raw)
     function getTotalTeamHandicap(players, team) {
@@ -57,7 +65,6 @@ var GameStroke = (function() {
                 if (score !== null) {
                     totalGross += score;
                 } else {
-                    // If hole not saved, use par
                     totalGross += coursePar[h - 1] || 4;
                 }
             }
@@ -68,24 +75,30 @@ var GameStroke = (function() {
     // v1.07: Get play order using GameOrder with fallback
     function getPlayOrder(startingHole) {
         if (typeof GameOrder !== 'undefined' && GameOrder.getPlayOrder) {
-            // Ensure GameOrder has correct starting hole
             if (GameOrder.getStartingHole && GameOrder.getStartingHole() !== startingHole) {
                 GameOrder.setStartingHole(startingHole);
             }
             return GameOrder.getPlayOrder();
         }
-        // Fallback
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
         for (var i = 1; i < startingHole; i++) order.push(i);
         return order;
     }
     
-    // Main calculate function - v1.07: Uses GameOrder for play order
+    // ============================================================
+    // v1.08: Main calculate function with DEBUG LOGGING
+    // ============================================================
     function calculate(allPlayers, f1DataString, f2DataString, courseSi, startingHole, coursePar) {
-        // Stroke game ALWAYS uses raw handicaps (independent of teamGameFormat)
+        console.log(`[DEBUG-STROKE] =========================================`);
+        console.log(`[DEBUG-STROKE] STROKE GAME CALCULATION START`);
+        console.log(`[DEBUG-STROKE] startingHole=${startingHole}`);
+        console.log(`[DEBUG-STROKE] allPlayers count: ${allPlayers.length}`);
+        console.log(`[DEBUG-STROKE] =========================================`);
+        
         var totalHcpA = getTotalTeamHandicap(allPlayers, "A");
         var totalHcpB = getTotalTeamHandicap(allPlayers, "B");
+        console.log(`[DEBUG-STROKE] totalHcpA=${totalHcpA}, totalHcpB=${totalHcpB}`);
         
         var nettA = new Array(18).fill(0);
         var nettB = new Array(18).fill(0);
@@ -95,15 +108,19 @@ var GameStroke = (function() {
         var displayStrk = new Array(18).fill("AS");
         var strokeTR = new Array(18).fill(null);
         
-        // v1.07: Get play order from GameOrder (or fallback)
         var playOrder = getPlayOrder(startingHole);
+        console.log(`[DEBUG-STROKE] Play order (first 5): ${playOrder.slice(0, 5).join(', ')}...`);
         
-        // Calculate cumulative gross for each position in play order
         var cumulativeGrossA = 0;
         var cumulativeGrossB = 0;
+        var cumulativePar = 0;
         
         for (var pos = 0; pos < 18; pos++) {
             var holeNum = playOrder[pos];
+            var par = coursePar[holeNum - 1] || 4;
+            cumulativePar += par;
+            
+            console.log(`[DEBUG-STROKE] --- Position ${pos}: Hole ${holeNum}, Par=${par} ---`);
             
             // Get gross scores for this hole for both teams
             var holeGrossA = 0;
@@ -112,50 +129,62 @@ var GameStroke = (function() {
             for (var i = 0; i < allPlayers.length; i++) {
                 var player = allPlayers[i];
                 var score = getPlayerGrossForHole(player, holeNum, f1DataString, f2DataString, coursePar);
-                if (score === null) {
-                    // Use par if hole not saved by this player's flight
+                var isSaved = (score !== null);
+                if (!isSaved) {
                     score = coursePar[holeNum - 1] || 4;
                 }
                 if (player.team === 'A') {
                     holeGrossA += score;
+                    if (!isSaved) {
+                        console.log(`[DEBUG-STROKE]   ${player.label} (Team A): score=PAR (${score}) - hole not saved`);
+                    } else {
+                        console.log(`[DEBUG-STROKE]   ${player.label} (Team A): score=${score}`);
+                    }
                 } else {
                     holeGrossB += score;
+                    if (!isSaved) {
+                        console.log(`[DEBUG-STROKE]   ${player.label} (Team B): score=PAR (${score}) - hole not saved`);
+                    } else {
+                        console.log(`[DEBUG-STROKE]   ${player.label} (Team B): score=${score}`);
+                    }
                 }
             }
+            
+            console.log(`[DEBUG-STROKE] Hole gross: Team A=${holeGrossA}, Team B=${holeGrossB}`);
             
             // Update cumulative gross
             cumulativeGrossA += holeGrossA;
             cumulativeGrossB += holeGrossB;
+            console.log(`[DEBUG-STROKE] Cumulative gross: Team A=${cumulativeGrossA}, Team B=${cumulativeGrossB}`);
             
             // Calculate net scores
             var netA = cumulativeGrossA - totalHcpA;
             var netB = cumulativeGrossB - totalHcpB;
             nettA[pos] = netA;
             nettB[pos] = netB;
+            console.log(`[DEBUG-STROKE] Net scores: Team A=${netA}, Team B=${netB}`);
             
             // Calculate difference (A - B)
-            // Lower net score wins, so if netA < netB, Team A is winning
-            var diff = netB - netA;  // Positive = Team A winning, Negative = Team B winning
+            var diff = netB - netA;
+            console.log(`[DEBUG-STROKE] Diff (B - A): ${diff}`);
             
             if (Math.abs(diff) < 0.01) {
-                // Tie
                 leader[pos] = "AS";
                 displayStrk[pos] = "AS";
                 pointsA[pos] = 0.5;
                 pointsB[pos] = 0.5;
                 strokeTR[pos] = { pointsA: 0.5, pointsB: 0.5 };
+                console.log(`[DEBUG-STROKE] Result: TIE (AS)`);
             } else if (diff > 0) {
-                // Team A is winning (lower net score)
                 var margin = Math.abs(diff);
                 leader[pos] = "A";
-                // Round margin to nearest integer for display
                 var displayMargin = Math.round(margin);
                 displayStrk[pos] = "A" + displayMargin;
                 pointsA[pos] = 1;
                 pointsB[pos] = 0;
                 strokeTR[pos] = { pointsA: 1, pointsB: 0 };
+                console.log(`[DEBUG-STROKE] Result: Team A wins by ${displayMargin} (A${displayMargin})`);
             } else {
-                // Team B is winning (lower net score)
                 var marginB = Math.abs(diff);
                 leader[pos] = "B";
                 var displayMarginB = Math.round(marginB);
@@ -163,14 +192,17 @@ var GameStroke = (function() {
                 pointsA[pos] = 0;
                 pointsB[pos] = 1;
                 strokeTR[pos] = { pointsA: 0, pointsB: 1 };
+                console.log(`[DEBUG-STROKE] Result: Team B wins by ${displayMarginB} (B${displayMarginB})`);
             }
+            console.log(`[DEBUG-STROKE] Points: A=${pointsA[pos]}, B=${pointsB[pos]}`);
         }
         
-        console.log('[STROKE] Calculation complete:');
-        console.log('  totalHcpA:', totalHcpA, 'totalHcpB:', totalHcpB);
-        console.log('  displayStrk (first 5):', displayStrk.slice(0, 5));
-        console.log('  nettA (first 5):', nettA.slice(0, 5));
-        console.log('  nettB (first 5):', nettB.slice(0, 5));
+        console.log(`[DEBUG-STROKE] =========================================`);
+        console.log(`[DEBUG-STROKE] STROKE GAME CALCULATION COMPLETE`);
+        console.log(`[DEBUG-STROKE] Final net: A=${nettA[17]}, B=${nettB[17]}`);
+        console.log(`[DEBUG-STROKE] Final diff: ${nettB[17] - nettA[17]}`);
+        console.log(`[DEBUG-STROKE] Final displayStrk: ${displayStrk[17]}`);
+        console.log(`[DEBUG-STROKE] =========================================`);
         
         return {
             nettA: nettA,
@@ -191,15 +223,20 @@ var GameStroke = (function() {
 // Export for browser
 window.GameStroke = GameStroke;
 
+// Re-expose version for console debugging
+window.GAME_STROKE_VERSION = "1.08";
+
 /*
 FILE: js/game-stroke.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order
-   - Removed local playOrder array generation
-   - Now delegates to GameOrder.getPlayOrder() when available
-   - Maintains fallback for backward compatibility
-   - All other functionality preserved (net score calculation, displayStrk, etc.)
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - ADDED: Detailed debug logging for stroke game calculation flow
+   - Logs: calculate() entry with startingHole, team handicaps
+   - Logs: Each position with hole number, cumulative gross for each team
+   - Logs: Net scores calculation (cumulative gross - total handicap)
+   - Logs: Diff calculation and displayStrk value
+   - Logs: Points awarded at each position
+   - All existing functionality preserved from v1.07
 DEPENDS ON: GameOrder (optional, with fallback)
-STATUS: Ready for integration
+STATUS: Debug version - ready for testing
 */
