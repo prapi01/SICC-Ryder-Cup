@@ -1,11 +1,12 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.22
-KEY CHANGES from v3.21:
-   - ADDED: Cmd+Click (⌘+Click or Ctrl+Click) on the title "READY TO PLAY" opens Admin Modal
-   - ADDED: Admin Modal with options: Reset Locks, Reset Game, View Game Data, Refresh
-   - Cmd+Click on status bubble also triggers admin modal (fallback)
-   - All existing functionality preserved (role selection, lock management, reset modal)
+VERSION: 3.23
+KEY CHANGES from v3.22:
+   - ADDED: Long-click (press and hold) on "READY TO PLAY" title shows "Admin Functions" bubble
+   - Bubble appears after 800ms hold, click to open admin modal
+   - Cmd+Click still works as before
+   - Universal trigger for mobile and desktop
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -94,13 +95,16 @@ STATUS: Ready for integration
             margin-bottom: 12px;
             cursor: pointer;
             transition: opacity 0.2s;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
         }
         .status-bubble:hover {
             opacity: 0.7;
         }
         
         .header { text-align: center; margin-bottom: 20px; }
-        /* v3.22: Title with hidden hint */
+        
+        /* v3.23: Title with hidden hint and long-click support */
         .title { 
             font-size: 1.6rem; 
             font-weight: 800; 
@@ -108,10 +112,8 @@ STATUS: Ready for integration
             cursor: default;
             position: relative;
             display: inline-block;
-            transition: opacity 0.2s;
-        }
-        .title:hover {
-            opacity: 0.8;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
         }
         .title .title-hint {
             position: absolute;
@@ -559,6 +561,38 @@ STATUS: Ready for integration
         .admin-modal-close:hover {
             border-color: #4caf50;
         }
+        
+        /* v3.23: Admin Bubble */
+        .admin-bubble {
+            position: fixed;
+            background: #1a3a1a;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: system-ui, -apple-system, sans-serif;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 20px rgba(76,175,80,0.2);
+            z-index: 15000;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            pointer-events: auto;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            animation: bubblePop 0.2s ease-out;
+        }
+        .admin-bubble:active {
+            transform: scale(0.95);
+        }
+        .admin-bubble .bubble-icon {
+            margin-right: 6px;
+        }
+        
+        @keyframes bubblePop {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -571,12 +605,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.22</div>
+<div class="version-tag">v3.23</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.22
+// FILE: pre-game.html - VERSION 3.23
 
-var VERSION = "3.22";
+var VERSION = "3.23";
 var CACHE_KEY = "pre_game_version";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -612,6 +646,96 @@ var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
 
 // ============================================================
+// v3.23: Long-click + Bubble for Admin
+// ============================================================
+
+var adminBubbleTimeout = null;
+var adminBubbleElement = null;
+var isAdminBubbleActive = false;
+
+function showAdminBubble(x, y) {
+    // Remove any existing bubble
+    hideAdminBubble();
+    
+    // Create bubble
+    var bubble = document.createElement('div');
+    bubble.className = 'admin-bubble';
+    bubble.innerHTML = '<span class="bubble-icon">⚙️</span> Admin Functions';
+    bubble.style.left = Math.max(10, Math.min(window.innerWidth - 140, x - 70)) + 'px';
+    bubble.style.top = Math.max(10, Math.min(window.innerHeight - 60, y - 30)) + 'px';
+    
+    // Click on bubble opens admin modal
+    bubble.addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideAdminBubble();
+        showPreGameAdminModal();
+    });
+    
+    document.body.appendChild(bubble);
+    adminBubbleElement = bubble;
+    isAdminBubbleActive = true;
+    
+    // Auto-hide after 4 seconds if not clicked
+    setTimeout(function() {
+        if (isAdminBubbleActive) {
+            hideAdminBubble();
+        }
+    }, 4000);
+}
+
+function hideAdminBubble() {
+    if (adminBubbleElement && adminBubbleElement.parentNode) {
+        adminBubbleElement.remove();
+    }
+    adminBubbleElement = null;
+    isAdminBubbleActive = false;
+}
+
+function setupLongClickAdmin(element) {
+    if (!element) return;
+    
+    var holdTimer = null;
+    var isHolding = false;
+    
+    // Pointer events for cross-device support (mouse + touch)
+    element.addEventListener('pointerdown', function(e) {
+        if (isAdminBubbleActive) {
+            hideAdminBubble();
+            return;
+        }
+        
+        // Don't trigger on Cmd+Click (they have their own handler)
+        if (e.metaKey || e.ctrlKey) return;
+        
+        isHolding = false;
+        holdTimer = setTimeout(function() {
+            isHolding = true;
+            showAdminBubble(e.clientX || e.pageX || window.innerWidth / 2, e.clientY || e.pageY || window.innerHeight / 2);
+        }, 800);
+    });
+    
+    element.addEventListener('pointerup', function(e) {
+        clearTimeout(holdTimer);
+        // If it was a short click and no bubble, do nothing
+    });
+    
+    element.addEventListener('pointerleave', function(e) {
+        clearTimeout(holdTimer);
+        // Don't hide bubble immediately on leave
+    });
+    
+    // Also support Cmd+Click
+    element.addEventListener('click', function(e) {
+        if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            hideAdminBubble();
+            showPreGameAdminModal();
+        }
+    });
+}
+
+// ============================================================
 // v3.22: Admin Modal Functions
 // ============================================================
 
@@ -620,7 +744,7 @@ function showPreGameAdminModal() {
         <div class="admin-modal-overlay" id="adminModal">
             <div class="admin-modal">
                 <div class="admin-modal-title">⚙️ ADMIN FUNCTIONS</div>
-                <div class="admin-modal-subtitle">Cmd+Click on "READY TO PLAY" to access</div>
+                <div class="admin-modal-subtitle">Cmd+Click or long press on title to access</div>
                 <div class="admin-modal-options">
                     <button class="admin-modal-option" id="adminResetLocksBtn">
                         <span class="admin-option-icon">🔓</span>
@@ -703,14 +827,6 @@ function displayDeviceId() {
     currentShortName = shortName;
     var deviceTag = document.getElementById("deviceTag");
     deviceTag.innerHTML = "🖥️ " + shortName;
-    
-    // v3.22: Cmd+Click on device tag also triggers admin modal
-    deviceTag.addEventListener('click', function(e) {
-        if (e.metaKey || e.ctrlKey) {
-            e.preventDefault();
-            showPreGameAdminModal();
-        }
-    });
 }
 
 function showAdminResetModal() {
@@ -1422,7 +1538,7 @@ function render() {
         <div class="header">
             <div class="title" id="preGameTitle">
                 🏌️ READY TO PLAY
-                <span class="title-hint">⌘+click for admin</span>
+                <span class="title-hint">⌘+click or long press for admin</span>
             </div>
             <div class="subtitle">Verify teams and handicaps before teeing off</div>
         </div>
@@ -1484,31 +1600,19 @@ function render() {
     
     document.getElementById("app").innerHTML = html;
     
+    // ============================================================
+    // v3.23: Setup long-click + Cmd+Click on title
+    // ============================================================
+    var titleEl = document.getElementById('preGameTitle');
+    if (titleEl) {
+        setupLongClickAdmin(titleEl);
+    }
+    
     var statusBubble = document.getElementById("statusBubble");
     if (statusBubble) {
         statusBubble.onclick = function() {
             location.reload();
         };
-        // v3.22: Cmd+Click on status bubble also triggers admin
-        statusBubble.addEventListener('click', function(e) {
-            if (e.metaKey || e.ctrlKey) {
-                e.preventDefault();
-                showPreGameAdminModal();
-            }
-        });
-    }
-    
-    // ============================================================
-    // v3.22: Attach Cmd+Click handler to title
-    // ============================================================
-    var titleEl = document.getElementById('preGameTitle');
-    if (titleEl) {
-        titleEl.addEventListener('click', function(e) {
-            if (e.metaKey || e.ctrlKey) {
-                e.preventDefault();
-                showPreGameAdminModal();
-            }
-        });
     }
 }
 
@@ -1522,7 +1626,7 @@ function escapeHtml(str) {
     });
 }
 
-// v3.22: Expose admin modal function globally
+// v3.23: Expose functions globally
 window.showPreGameAdminModal = showPreGameAdminModal;
 window.toggleRole = toggleRole;
 window.startGame = startGame;
@@ -1542,12 +1646,13 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.22
-KEY CHANGES from v3.21:
-   - ADDED: Cmd+Click (⌘+Click or Ctrl+Click) on the title "READY TO PLAY" opens Admin Modal
-   - ADDED: Admin Modal with options: Reset Locks, Reset Game, View Game Data, Refresh
-   - Cmd+Click on status bubble also triggers admin modal (fallback)
-   - All existing functionality preserved (role selection, lock management, reset modal)
+VERSION: 3.23
+KEY CHANGES from v3.22:
+   - ADDED: Long-click (press and hold) on "READY TO PLAY" title shows "Admin Functions" bubble
+   - Bubble appears after 800ms hold, click to open admin modal
+   - Cmd+Click still works as before
+   - Universal trigger for mobile and desktop
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
