@@ -1,10 +1,12 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - FIXED: Waiting screen now forces DOM render before Firestore write using requestAnimationFrame
-   - Prevents EDIT screen from showing through between modal close and waiting screen
-   - Waiting screen now properly appears before Firestore write completes
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - FIXED: Waiting screen now stays visible until redirect (no longer hidden before navigation)
+   - Removed WaitingScreen.hide() from success path in performFirestoreWrite() and performFirestoreUpdate()
+   - Waiting screen only hides on error or when user cancels
+   - Prevents edit screen from flashing between write completion and redirect
+   - Applied to both UPDATE and CREATE operations
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
@@ -260,12 +262,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.35</div>
+<div class="version-tag">v1.36</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.35
+// FILE: setup-game.html - VERSION 1.36
 
-var VERSION = "1.35";
+var VERSION = "1.36";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -907,7 +909,7 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
 }
 
 // ============================================================
-// v1.35: SINGLE Firestore write function with waiting screen + FORCED RENDER
+// v1.36: SINGLE Firestore write function - waiting screen stays until redirect
 // ============================================================
 
 function performFirestoreWrite(collectionName, docId, data, successMessage, redirectUrl) {
@@ -924,7 +926,8 @@ function performFirestoreWrite(collectionName, docId, data, successMessage, redi
     }).then(function() {
         return db.collection(collectionName).doc(docId).set(data);
     }).then(function() {
-        WaitingScreen.hide();
+        // v1.36: DO NOT hide waiting screen - keep it visible until redirect
+        // This prevents the edit screen from flashing between write and navigation
         if (successMessage) {
             document.getElementById("successMsg").style.display = "block";
             document.getElementById("successMsg").innerHTML = successMessage;
@@ -933,7 +936,7 @@ function performFirestoreWrite(collectionName, docId, data, successMessage, redi
             window.location.href = redirectUrl;
         }, 1500);
     }).catch(function(e) {
-        WaitingScreen.hide();
+        WaitingScreen.hide();  // Only hide on error
         Modal.alert("Error saving game: " + e.message);
         return Promise.reject(e);
     });
@@ -953,7 +956,8 @@ function performFirestoreUpdate(collectionName, docId, data, successMessage, red
     }).then(function() {
         return db.collection(collectionName).doc(docId).update(data);
     }).then(function() {
-        WaitingScreen.hide();
+        // v1.36: DO NOT hide waiting screen - keep it visible until redirect
+        // This prevents the edit screen from flashing between write and navigation
         if (successMessage) {
             document.getElementById("successMsg").style.display = "block";
             document.getElementById("successMsg").innerHTML = successMessage;
@@ -962,7 +966,7 @@ function performFirestoreUpdate(collectionName, docId, data, successMessage, red
             window.location.href = redirectUrl;
         }, 1500);
     }).catch(function(e) {
-        WaitingScreen.hide();
+        WaitingScreen.hide();  // Only hide on error
         Modal.alert("Error updating game: " + e.message);
         return Promise.reject(e);
     });
@@ -1080,7 +1084,7 @@ function createNewGame(anchorPlayer) {
     
     var newGameId = generateGameId();
     
-    // v1.35: Single Firestore write with waiting screen + forced render
+    // v1.36: Single Firestore write - waiting screen stays until redirect
     performFirestoreWrite("scheduledGames", newGameId, gameData, "✓ Game scheduled successfully! Redirecting...", "admin.html")
         .then(function() {
             // Save default players in background (don't block redirect)
@@ -1162,7 +1166,7 @@ function updateExistingGame(anchorPlayer) {
                         updatePayload.currentHoleF1 = 1;
                         updatePayload.currentHoleF2 = 1;
                         
-                        // v1.35: Single Firestore update with waiting screen + forced render
+                        // v1.36: Single Firestore update - waiting screen stays until redirect
                         performFirestoreUpdate(
                             "scheduledGames",
                             state.editingGameId,
@@ -1184,7 +1188,7 @@ function updateExistingGame(anchorPlayer) {
                 return;
             }
             
-            // v1.35: Single Firestore update with waiting screen + forced render
+            // v1.36: Single Firestore update - waiting screen stays until redirect
             performFirestoreUpdate(
                 "scheduledGames",
                 state.editingGameId,
@@ -1527,7 +1531,7 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v1.35: Initialize - with forced render for waiting screen
+// v1.36: Initialize - waiting screen stays visible until redirect
 // ============================================================
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
@@ -1550,11 +1554,13 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - FIXED: Waiting screen now forces DOM render before Firestore write using requestAnimationFrame
-   - Prevents EDIT screen from showing through between modal close and waiting screen
-   - Waiting screen now properly appears before Firestore write completes
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - FIXED: Waiting screen now stays visible until redirect (no longer hidden before navigation)
+   - Removed WaitingScreen.hide() from success path in performFirestoreWrite() and performFirestoreUpdate()
+   - Waiting screen only hides on error or when user cancels
+   - Prevents edit screen from flashing between write completion and redirect
+   - Applied to both UPDATE and CREATE operations
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
