@@ -2,12 +2,32 @@
 FILE: js/splash.js
 VERSION: 1.01
 KEY CHANGES from v1.00:
-   - CHANGED: Increased margin-bottom from 20px to 40px for icon container
+   - CHANGED: Increased margin-bottom from 20px to 80px for icon container
    - More space between golf icon and title text
+   - ADDED: Version exposure via window.SPLASH_VERSION for console debugging
+   - ADDED: Cache-busting code to ensure proper loading
    - All other functionality unchanged (drop animation, thump effect, fade out)
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
+
+// ============================================================
+// VERSION EXPOSURE FOR CONSOLE DEBUGGING
+// ============================================================
+window.SPLASH_VERSION = "1.01";
+
+// ============================================================
+// CACHE-BUSTING - Forces reload on new deployment
+// ============================================================
+var SPLASH_CACHE_KEY = "splash_version";
+var storedSplashVersion = localStorage.getItem(SPLASH_CACHE_KEY);
+if (storedSplashVersion !== "1.01") {
+    localStorage.setItem(SPLASH_CACHE_KEY, "1.01");
+    // If splash is already loaded, force reload
+    if (document.getElementById('splashOverlay')) {
+        window.location.reload();
+    }
+}
 
 var SplashScreen = (function() {
     
@@ -46,7 +66,7 @@ var SplashScreen = (function() {
         var iconContainer = document.createElement('div');
         iconContainer.style.cssText = `
             text-align: center;
-            margin-bottom: 40px;
+            margin-bottom: 80px;
         `;
         
         // Move golf icon into splash
@@ -200,8 +220,10 @@ var SplashScreen = (function() {
 FILE: js/splash.js
 VERSION: 1.01
 KEY CHANGES from v1.00:
-   - CHANGED: Increased margin-bottom from 20px to 40px for icon container
+   - CHANGED: Increased margin-bottom from 20px to 80px for icon container
    - More space between golf icon and title text
+   - ADDED: Version exposure via window.SPLASH_VERSION for console debugging
+   - ADDED: Cache-busting code to ensure proper loading
    - All other functionality unchanged (drop animation, thump effect, fade out)
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
