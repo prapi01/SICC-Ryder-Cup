@@ -1,22 +1,21 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Stroke game points now correctly handle 0 values
-   - Previously, 0 || 0.5 would incorrectly assign 0.5 to the loser
-   - Now uses !== undefined check to preserve 0 values
-   - Ensures stroke game always sums to 1 point total (winner takes all)
-   - All existing functionality preserved from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: updateLocalCacheWithResults() now updates game1.pointsA and game1.pointsB
+   - Previously game1 points were not updated during cascade, causing TR values to remain static
+   - This fixes the cascade bug where editing a previous hole didn't recalculate TR values correctly
+   - All existing functionality preserved from v1.06
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.06";
+window.REAL_GAME_SAVE_VERSION = "1.07";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.06 - stroke points 0 value fix");
+    console.log("[REAL-GAME-SAVE] Initializing v1.07 - fixed game1 points in cascade");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -117,7 +116,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.06] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.07] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -750,7 +749,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // updateLocalCacheWithResults
+    // v1.07: updateLocalCacheWithResults - FIXED game1 points
     // ============================================================
     
     function updateLocalCacheWithResults(resultsData) {
@@ -799,18 +798,36 @@ var RealGameSave = (function() {
             cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
         }
         
-        if (!cache.results.game1.pointsA) cache.results.game1.pointsA = new Array(18).fill(8);
-        cache.results.game1.pointsA[position] = resultsData.game1PointsA;
+        // ============================================================
+        // v1.07: FIX - Update game1 points (Match Game) for cascade
+        // This was the missing piece - game1 points were never updated
+        // during cascade, causing TR values to remain static
+        // ============================================================
+        if (!cache.results.game1) {
+            cache.results.game1 = { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) };
+        }
+        if (!cache.results.game1.pointsA) {
+            cache.results.game1.pointsA = new Array(18).fill(8);
+        }
+        if (!cache.results.game1.pointsB) {
+            cache.results.game1.pointsB = new Array(18).fill(8);
+        }
+        if (resultsData.game1PointsA !== undefined && resultsData.game1PointsA !== null) {
+            cache.results.game1.pointsA[position] = resultsData.game1PointsA;
+        }
+        if (resultsData.game1PointsB !== undefined && resultsData.game1PointsB !== null) {
+            cache.results.game1.pointsB[position] = resultsData.game1PointsB;
+        }
+        console.log(`[DEBUG-CACHE] game1.pointsA[${position}]=${cache.results.game1.pointsA[position]}, game1.pointsB[${position}]=${cache.results.game1.pointsB[position]}`);
         
-        if (!cache.results.game1.pointsB) cache.results.game1.pointsB = new Array(18).fill(8);
-        cache.results.game1.pointsB[position] = resultsData.game1PointsB;
-        
+        // Update game2 points
         if (!cache.results.game2.pointsA) cache.results.game2.pointsA = new Array(18).fill(1);
         cache.results.game2.pointsA[position] = resultsData.game2PointsA;
         
         if (!cache.results.game2.pointsB) cache.results.game2.pointsB = new Array(18).fill(1);
         cache.results.game2.pointsB[position] = resultsData.game2PointsB;
         
+        // Update game2 flight data
         if (!cache.results.game2.flight1.leader) cache.results.game2.flight1.leader = new Array(18).fill("AS");
         cache.results.game2.flight1.leader[position] = resultsData.t1Leader;
         
@@ -829,6 +846,7 @@ var RealGameSave = (function() {
         if (!cache.results.game2.flight2.cumulativePoints) cache.results.game2.flight2.cumulativePoints = new Array(18).fill(0);
         cache.results.game2.flight2.cumulativePoints[position] = resultsData.cumulativeF2 !== undefined ? resultsData.cumulativeF2 : 0;
         
+        // Update game3 (Stroke) data
         if (!cache.results.game3.leader) cache.results.game3.leader = new Array(18).fill("AS");
         cache.results.game3.leader[position] = resultsData.strkLeader;
         
@@ -841,6 +859,7 @@ var RealGameSave = (function() {
         if (!cache.results.game3.pointsB) cache.results.game3.pointsB = new Array(18).fill(0.5);
         cache.results.game3.pointsB[position] = resultsData.game3PointsB;
         
+        // Update TR values
         if (!cache.results.tr) {
             cache.results.tr = { 
                 teamA: new Array(18).fill(null), 
@@ -854,11 +873,12 @@ var RealGameSave = (function() {
         cache.results.tr.teamAGreen[position] = resultsData.trAGreen || false;
         cache.results.tr.teamBGreen[position] = resultsData.trBGreen || false;
         
+        // Update clinch data
         cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
         cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
-        
         cache.results.clinchedAt = resultsData.updatedClinched;
         
+        // Update display rows
         if (resultsData.t1Display !== undefined && resultsData.t1Display !== null) {
             cache.t1Row[position] = resultsData.t1Display;
         }
@@ -869,13 +889,14 @@ var RealGameSave = (function() {
             cache.strkRow[position] = resultsData.strkDisplay;
         }
         
+        // Recalculate player totals
         var allPlayers = RealGameState.getAllPlayers();
         var coursePar = RealGameState.getCoursePar();
         var highestBothSaved = RealGameUtils.getHighestBothSaved(cache);
         var playerTotals = RealGameUtils.calculatePlayerTotals(allPlayers, coursePar, highestBothSaved);
         cache.results.playerTotals = playerTotals;
         
-        // v1.04: Update savedHoles and lastSyncedPosition in cache
+        // Update lastSyncedPosition
         if (cache.savedHoles) {
             var newLastSyncedPos = calculateLastSyncedPosition(cache);
             cache.lastSyncedPosition = newLastSyncedPos;
@@ -884,7 +905,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.06: Uses updated stroke points fix
+    // performSave - v1.07: Uses updated updateLocalCacheWithResults
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1060,6 +1081,7 @@ var RealGameSave = (function() {
                                     );
                                     
                                     if (loopResultsData) {
+                                        // v1.07: updateLocalCacheWithResults now updates game1 points too
                                         updateLocalCacheWithResults(loopResultsData);
                                         if (renderAllCallback) renderAllCallback();
                                         cascadeResultsQueue.push({
@@ -1354,13 +1376,12 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Stroke game points now correctly handle 0 values
-   - Previously, 0 || 0.5 would incorrectly assign 0.5 to the loser
-   - Now uses !== undefined check to preserve 0 values
-   - Ensures stroke game always sums to 1 point total (winner takes all)
-   - All existing functionality preserved from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: updateLocalCacheWithResults() now updates game1.pointsA and game1.pointsB
+   - Previously game1 points were not updated during cascade, causing TR values to remain static
+   - This fixes the cascade bug where editing a previous hole didn't recalculate TR values correctly
+   - All existing functionality preserved from v1.06
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
