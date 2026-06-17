@@ -1,9 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.47
-KEY CHANGES from v3.46:
-   - FIXED: Cache-busting parameter for index-hidden.js now uses v1.07 (correct version)
-   - Previously had no cache-busting, causing browser to load cached v1.06
+VERSION: 3.48
+KEY CHANGES from v3.47:
+   - FIXED: Long press no longer selects text on the entire page
+   - Added user-select: none to body to prevent selection
+   - FIXED: Bubble tap now correctly opens admin modal
+   - Bubble click handler now calls window.showAdminModal() directly
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
@@ -41,9 +43,14 @@ STATUS: Ready for integration
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
+        /* v3.48: Prevent text selection on long press */
         html, body {
             background: #000000;
             min-height: 100vh;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
         }
         
         body {
@@ -216,6 +223,7 @@ STATUS: Ready for integration
             margin-right: auto;
             width: fit-content;
             -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
             user-select: none;
             position: relative;
         }
@@ -420,7 +428,7 @@ STATUS: Ready for integration
             color: #888;
         }
         
-        /* v3.46: Admin Bubble */
+        /* v3.48: Admin Bubble */
         .admin-bubble {
             position: fixed;
             background: #1a3a1a;
@@ -436,6 +444,7 @@ STATUS: Ready for integration
             cursor: pointer;
             transition: opacity 0.2s;
             pointer-events: auto;
+            -webkit-user-select: none;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
             animation: bubblePop 0.2s ease-out;
@@ -498,15 +507,15 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.47</div>
+<div class="version-tag">v3.48</div>
 
 <script>
-// FILE: index.html - VERSION 3.47
+// FILE: index.html - VERSION 3.48
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.47";
+window.INDEX_VERSION = "3.48";
 
-var APP_VERSION = "3.47";
+var APP_VERSION = "3.48";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -515,7 +524,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.47: Determine if this is first load of the session
+// v3.48: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -792,7 +801,7 @@ function showGameCompletedModal(gameId) {
 }
 
 // ============================================================
-// v3.47: Long-click + Bubble for Admin
+// v3.48: Long-click + Bubble for Admin
 // ============================================================
 
 var adminBubbleTimeout = null;
@@ -810,12 +819,16 @@ function showAdminBubble(x, y) {
     bubble.style.left = Math.max(10, Math.min(window.innerWidth - 140, x - 70)) + 'px';
     bubble.style.top = Math.max(10, Math.min(window.innerHeight - 60, y - 30)) + 'px';
     
-    // Click on bubble opens admin modal
+    // v3.48: Direct click handler - calls window.showAdminModal
     bubble.addEventListener('click', function(e) {
         e.stopPropagation();
         hideAdminBubble();
-        if (typeof showAdminModal === 'function') {
-            showAdminModal();
+        // Call the global function from index-hidden.js
+        if (typeof window.showAdminModal === 'function') {
+            window.showAdminModal();
+        } else {
+            // Fallback
+            alert("Admin functions not available. Please refresh.");
         }
     });
     
@@ -878,8 +891,10 @@ function setupLongClickAdmin(element) {
             e.preventDefault();
             e.stopPropagation();
             hideAdminBubble();
-            if (typeof showAdminModal === 'function') {
-                showAdminModal();
+            if (typeof window.showAdminModal === 'function') {
+                window.showAdminModal();
+            } else {
+                alert("Admin functions not available. Please refresh.");
             }
         }
     });
@@ -1173,7 +1188,7 @@ function renderMainUI() {
         setTimeout(setButtonWidths, 10);
         
         // ============================================================
-        // v3.47: Admin handler - Cmd+Click OR Long-click on golf icon
+        // v3.48: Admin handler - Cmd+Click OR Long-click on golf icon
         // ============================================================
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
@@ -1213,7 +1228,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.47
+// Initialization - v3.48
 // ============================================================
 
 function initApp() {
@@ -1294,7 +1309,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.47
+// Start the app - v3.48
 // ============================================================
 
 if (isFirstLoad) {
@@ -1332,10 +1347,12 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.47
-KEY CHANGES from v3.46:
-   - FIXED: Cache-busting parameter for index-hidden.js now uses v1.07 (correct version)
-   - Previously had no cache-busting, causing browser to load cached v1.06
+VERSION: 3.48
+KEY CHANGES from v3.47:
+   - FIXED: Long press no longer selects text on the entire page
+   - Added user-select: none to body to prevent selection
+   - FIXED: Bubble tap now correctly opens admin modal
+   - Bubble click handler now calls window.showAdminModal() directly
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
