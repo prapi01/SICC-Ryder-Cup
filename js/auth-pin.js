@@ -1,16 +1,27 @@
 /*
 FILE: js/auth-pin.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: PIN/Biometric authentication module for protected actions
-   - Hardcoded PIN: 8888 (management modal later)
-   - Face ID support via WebAuthn
-   - 4-digit PIN entry with auto-submit
-   - Session timeout: 5 minutes
-   - Used for EDIT and DELETE actions in manage-games.html
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - MOVED: PIN definition to very top of file for easy editing
+   - Added clear comment for admin to change PIN
+   - All other functionality unchanged
 DEPENDS ON: None (pure DOM manipulation, uses Modal.js for alerts)
 STATUS: Ready for integration
 */
+
+// ============================================================
+// 🔐 AUTHENTICATION CONFIGURATION - EDIT PIN BELOW
+// ============================================================
+// To change the PIN, edit the value below.
+// PIN must be exactly 4 digits.
+// Default: 8888
+// ============================================================
+
+var AUTH_PIN = "8888";
+
+// ============================================================
+// End of Configuration
+// ============================================================
 
 var AuthPin = (function() {
     
@@ -19,7 +30,7 @@ var AuthPin = (function() {
     // ============================================================
     
     var CONFIG = {
-        PIN: "8888",                    // Hardcoded PIN (management modal later)
+        PIN: AUTH_PIN,                  // Read from global variable above
         SESSION_TIMEOUT_MS: 5 * 60 * 1000,  // 5 minutes
         MAX_PIN_LENGTH: 4
     };
@@ -314,9 +325,6 @@ var AuthPin = (function() {
             showError("❌ Invalid PIN. Please try again.");
             currentPin = "";
             updatePinDots();
-            
-            // Auto-clear error after 2 seconds? No, user must retry.
-            // Focus remains on modal for next input.
         }
     }
     
@@ -407,9 +415,6 @@ var AuthPin = (function() {
                 }
             }
         });
-        
-        // Virtual number pad support (click on dots to input?)
-        // The dots are visual only - user uses keyboard or on-screen numeric keypad
     }
     
     // ============================================================
@@ -465,6 +470,8 @@ var AuthPin = (function() {
     function setPin(newPin) {
         if (newPin && newPin.length === CONFIG.MAX_PIN_LENGTH && /^\d{4}$/.test(newPin)) {
             CONFIG.PIN = newPin;
+            // Also update the global variable for visibility
+            AUTH_PIN = newPin;
             return true;
         }
         return false;
@@ -692,14 +699,11 @@ window.AuthPin = AuthPin;
 
 /*
 FILE: js/auth-pin.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: PIN/Biometric authentication module for protected actions
-   - Hardcoded PIN: 8888 (management modal later)
-   - Face ID support via WebAuthn
-   - 4-digit PIN entry with auto-submit
-   - Session timeout: 5 minutes
-   - Used for EDIT and DELETE actions in manage-games.html
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - MOVED: PIN definition to very top of file for easy editing
+   - Added clear comment for admin to change PIN
+   - All other functionality unchanged
 DEPENDS ON: None (pure DOM manipulation, uses Modal.js for alerts)
 STATUS: Ready for integration
 */
