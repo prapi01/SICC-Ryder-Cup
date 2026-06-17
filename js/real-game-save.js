@@ -1,22 +1,23 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: Added lastSyncedPosition to Firestore payload (was MISSING)
-   - FIXED: Added savedHoles to Firestore payload (was MISSING)
-   - Both fields are now calculated from cache and written to Firestore
-   - Ensures proper sync state after page reload
-   - All existing functionality preserved from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: Stroke game display (displayStrk) now properly written to cache before payload
+   - FIXED: Team game displayT2 now properly written to cache before payload
+   - FIXED: game3.leader now properly written to cache before payload
+   - Added debug logging for stroke and team game assignments
+   - Ensures all display values are in cache before Firestore write
+   - All existing functionality preserved from v1.04
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.04";
+window.REAL_GAME_SAVE_VERSION = "1.05";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.04 - lastSyncedPosition + savedHoles write fix");
+    console.log("[REAL-GAME-SAVE] Initializing v1.05 - stroke display and displayT2 cache fix");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -117,7 +118,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.04] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.05] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -248,7 +249,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore - v1.04: Adds savedHoles and lastSyncedPosition
+    // writeSingleHoleToFirestore - v1.05: No changes needed here
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -395,7 +396,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeNewHoleData - v1.04: Adds savedHoles and lastSyncedPosition
+    // writeNewHoleData - v1.05: Fixes stroke display and displayT2 cache assignment
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache) {
@@ -537,7 +538,7 @@ var RealGameSave = (function() {
         }
         
         // ============================================================
-        // STROKE GAME
+        // STROKE GAME - v1.05: ASSIGN TO CACHE BEFORE PAYLOAD
         // ============================================================
         var strkLeader = "AS";
         var strkDisplay = "AS";
@@ -545,11 +546,22 @@ var RealGameSave = (function() {
             var strokeResults = GameStroke.calculate(allPlayers, cache.f1DataString, cache.f2DataString, courseSi, startingHole, coursePar);
             strkLeader = strokeResults.leader[position] === "A" ? "A" : strokeResults.leader[position] === "B" ? "B" : "AS";
             strkDisplay = strokeResults.displayStrk?.[position] || "AS";
-            console.log(`[DEBUG-FLOW] --- STROKE: strkLeader=${strkLeader}, strkDisplay=${strkDisplay}`);
+            
+            // v1.05: CRITICAL - Assign stroke values to cache BEFORE payload
+            cache.results.game3.leader[position] = strkLeader;
+            cache.results.game3.displayStrk[position] = strkDisplay;
+            cache.results.game3.nettA[position] = strokeResults.nettA?.[position] || 0;
+            cache.results.game3.nettB[position] = strokeResults.nettB?.[position] || 0;
+            cache.results.game3.pointsA[position] = strokeResults.pointsA?.[position] || 0.5;
+            cache.results.game3.pointsB[position] = strokeResults.pointsB?.[position] || 0.5;
+            
+            console.log(`[DEBUG-FLOW] --- STROKE: strkLeader=${strkLeader}, strkDisplay=${strkDisplay} (ASSIGNED TO CACHE)`);
+        } else {
+            console.log(`[DEBUG-FLOW] --- STROKE: SKIPPED (crossAvailable=false)`);
         }
         
         // ============================================================
-        // TEAM GAME T-1, T-2
+        // TEAM GAME T-1, T-2 - v1.05: ASSIGN TO CACHE BEFORE PAYLOAD
         // ============================================================
         var cumulativeF1 = teamGameResults ? teamGameResults.flight1Cumulative[position] : 0;
         var cumulativeF2 = teamGameResults ? teamGameResults.flight2Cumulative[position] : 0;
@@ -558,7 +570,19 @@ var RealGameSave = (function() {
         var t1Display = teamGameResults ? teamGameResults.displayT1[position] : "AS";
         var t2Display = teamGameResults ? teamGameResults.displayT2[position] : "AS";
         
-        console.log(`[DEBUG-FLOW] --- TEAM GAME: T-1=${t1Display}, T-2=${t2Display}`);
+        // v1.05: ASSIGN T-2 display to cache BEFORE payload
+        if (teamGameResults) {
+            cache.results.game2.displayT1[position] = t1Display;
+            cache.results.game2.displayT2[position] = t2Display;
+            cache.results.game2.flight1.leader[position] = t1Leader;
+            cache.results.game2.flight2.leader[position] = t2Leader;
+            cache.results.game2.flight1.cumulativePoints[position] = cumulativeF1;
+            cache.results.game2.flight2.cumulativePoints[position] = cumulativeF2;
+            cache.t1Row[position] = t1Display;
+            cache.t2Row[position] = t2Display;
+        }
+        
+        console.log(`[DEBUG-FLOW] --- TEAM GAME: T-1=${t1Display}, T-2=${t2Display} (ASSIGNED TO CACHE)`);
         
         // Points
         var flight1PointsA = (cumulativeF1 > 0) ? 1 : (cumulativeF1 < 0) ? 0 : 0.5;
@@ -634,7 +658,7 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-FLOW] --- Adding matchResults at position ${position}`);
         }
         
-        // Team game arrays
+        // Team game arrays - now using cache values (already assigned above)
         updatePayload["results.game1.pointsA"] = cache.results.game1.pointsA;
         updatePayload["results.game1.pointsB"] = cache.results.game1.pointsB;
         updatePayload["results.game2.pointsA"] = cache.results.game2.pointsA;
@@ -645,10 +669,14 @@ var RealGameSave = (function() {
         updatePayload["results.game2.displayT2"] = cache.results.game2.displayT2;
         updatePayload["results.game2.flight1.cumulativePoints"] = cache.results.game2.flight1.cumulativePoints;
         updatePayload["results.game2.flight2.cumulativePoints"] = cache.results.game2.flight2.cumulativePoints;
+        
+        // Stroke game arrays - now using cache values (already assigned above)
         updatePayload["results.game3.leader"] = cache.results.game3.leader;
         updatePayload["results.game3.displayStrk"] = cache.results.game3.displayStrk;
         updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
         updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
+        updatePayload["results.game3.nettA"] = cache.results.game3.nettA;
+        updatePayload["results.game3.nettB"] = cache.results.game3.nettB;
         
         // TR arrays
         updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
@@ -658,6 +686,8 @@ var RealGameSave = (function() {
         
         if (isTarget) {
             console.log(`[DEBUG-FLOW] --- TR payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
+            console.log(`[DEBUG-FLOW] --- displayStrk payload: ${updatePayload["results.game3.displayStrk"][position]}`);
+            console.log(`[DEBUG-FLOW] --- displayT2 payload: ${updatePayload["results.game2.displayT2"][position]}`);
         }
         
         if (Object.keys(clinchedAtUpdates).length > 0) {
@@ -696,6 +726,8 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- Has TR teamB: ${!!updatePayload["results.tr.teamB"][position]}`);
         console.log(`[DEBUG-FLOW] --- Has savedHoles: ${!!updatePayload["savedHoles"]}`);
         console.log(`[DEBUG-FLOW] --- Has lastSyncedPosition: ${updatePayload["lastSyncedPosition"] !== undefined}`);
+        console.log(`[DEBUG-FLOW] --- Has game3.displayStrk: ${!!updatePayload["results.game3.displayStrk"][position]}`);
+        console.log(`[DEBUG-FLOW] --- Has game2.displayT2: ${!!updatePayload["results.game2.displayT2"][position]}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
         console.log(`[DEBUG-FLOW] =========================================`);
@@ -712,7 +744,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // updateLocalCacheWithResults - v1.04: Updates savedHoles and lastSyncedPosition
+    // updateLocalCacheWithResults - v1.05: Ensures stroke and T-2 values are preserved
     // ============================================================
     
     function updateLocalCacheWithResults(resultsData) {
@@ -729,6 +761,8 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-CACHE] Received f2IntraMatches: ${resultsData.f2IntraMatches ? Object.keys(resultsData.f2IntraMatches).length + ' entries' : 'null'}`);
             console.log(`[DEBUG-CACHE] Received matchResults: ${resultsData.matchResults ? resultsData.matchResults.length + ' values' : 'null'}`);
             console.log(`[DEBUG-CACHE] Received trA: ${resultsData.trA}, trB: ${resultsData.trB}`);
+            console.log(`[DEBUG-CACHE] Received strkDisplay: ${resultsData.strkDisplay}`);
+            console.log(`[DEBUG-CACHE] Received t2Display: ${resultsData.t2Display}`);
             if(resultsData.f2IntraMatches) {
                 console.log(`[DEBUG-CACHE] f2IntraMatches content:`, resultsData.f2IntraMatches);
             }
@@ -837,8 +871,6 @@ var RealGameSave = (function() {
         
         // v1.04: Update savedHoles and lastSyncedPosition in cache
         if (cache.savedHoles) {
-            // savedHoles are already updated by GameData.saveCurrentHole
-            // Just recalculate lastSyncedPosition for cache consistency
             var newLastSyncedPos = calculateLastSyncedPosition(cache);
             cache.lastSyncedPosition = newLastSyncedPos;
             console.log(`[DEBUG-CACHE] Updated lastSyncedPosition=${newLastSyncedPos} in cache`);
@@ -846,7 +878,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.04: Uses updated writeNewHoleData with savedHoles and lastSyncedPosition
+    // performSave - v1.05: Uses updated writeNewHoleData with stroke display fix
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -978,7 +1010,7 @@ var RealGameSave = (function() {
                         
                         // ============================================================
                         // writeNewHoleData - ALWAYS call for ALL saves
-                        // v1.04: Now writes savedHoles and lastSyncedPosition
+                        // v1.05: Now properly assigns stroke display and T-2 to cache
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
@@ -1316,13 +1348,14 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: Added lastSyncedPosition to Firestore payload (was MISSING)
-   - FIXED: Added savedHoles to Firestore payload (was MISSING)
-   - Both fields are now calculated from cache and written to Firestore
-   - Ensures proper sync state after page reload
-   - All existing functionality preserved from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: Stroke game display (displayStrk) now properly written to cache before payload
+   - FIXED: Team game displayT2 now properly written to cache before payload
+   - FIXED: game3.leader now properly written to cache before payload
+   - Added debug logging for stroke and team game assignments
+   - Ensures all display values are in cache before Firestore write
+   - All existing functionality preserved from v1.04
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
