@@ -1,19 +1,19 @@
 /*
 FILE: js/scorecard-viewer.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: getBubbleClass() now uses play position for sync detection (supports shotgun starts)
-   - Added getPlayPositionForHole() helper function
-   - Added getSyncValueForBubble() to handle lastSyncedPosition vs lastSyncedHole fallback
-   - Now passes startingHole to GameMatch.getMatchBubbleClass for last hole detection
-   - This ensures cross-flight bubble colors work correctly when starting hole is not 1
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - REFACTORED: Now uses GameOrder as the single source of truth for all order operations
+   - REMOVED: Local getPlayOrder(), getPlayPositionForHole(), getHolePosition(), getDisplayHoles()
+   - SIMPLIFIED: getSyncValueForBubble() now uses _config.lastSyncedPosition directly
+   - SIMPLIFIED: getBubbleClass() now delegates to GameMatch.getMatchBubbleClass
+   - UPDATED: renderScorecard() now uses GameScorecard.renderScorecard with new signature (displayMode, startingHole)
    - All existing functionality preserved
-DEPENDS ON: js/game-ui.js, js/game-scorecard.js, js/ticker.js
+DEPENDS ON: js/game-order.js, js/game-match.js, js/game-ui.js, js/game-scorecard.js, js/ticker.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.SCORECARD_VIEWER_VERSION = "1.03";
+window.SCORECARD_VIEWER_VERSION = "1.04";
 
 var ScorecardViewer = (function() {
     
@@ -42,10 +42,14 @@ var ScorecardViewer = (function() {
     };
     
     // ============================================================
-    // Helper Functions (data retrieval, no UI)
+    // v1.04: Pure delegates to GameOrder (no local implementations)
     // ============================================================
     
     function getPlayOrder() {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayOrder) {
+            return GameOrder.getPlayOrder();
+        }
+        // Fallback (should never be needed if GameOrder is loaded)
         var startingHole = _config.startingHole || 1;
         var order = [];
         for (var i = startingHole; i <= 18; i++) order.push(i);
@@ -54,6 +58,10 @@ var ScorecardViewer = (function() {
     }
     
     function getPlayPositionForHole(holeNumber) {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getPlayPosition) {
+            return GameOrder.getPlayPosition(holeNumber);
+        }
+        // Fallback
         var playOrder = getPlayOrder();
         for (var i = 0; i < playOrder.length; i++) {
             if (playOrder[i] === holeNumber) return i;
@@ -62,22 +70,75 @@ var ScorecardViewer = (function() {
     }
     
     function getHolePosition(holeNumber) {
-        var playOrder = getPlayOrder();
-        for (var i = 0; i < playOrder.length; i++) {
-            if (playOrder[i] === holeNumber) return i;
-        }
-        return holeNumber - 1;
+        return getPlayPositionForHole(holeNumber);
     }
     
     function getDisplayHoles() {
+        if (typeof GameOrder !== 'undefined' && GameOrder.getDisplayHoles) {
+            var mode = _displayMode || "play";
+            return GameOrder.getDisplayHoles(mode);
+        }
+        // Fallback
         if (_displayMode === "natural") {
             var natural = [];
             for (var i = 1; i <= 18; i++) natural.push(i);
             return natural;
-        } else {
-            return getPlayOrder();
         }
+        return getPlayOrder();
     }
+    
+    // ============================================================
+    // v1.04: Simplified sync value - uses config directly
+    // ============================================================
+    
+    function getSyncValueForBubble() {
+        // Priority 1: Use lastSyncedPosition (play position) if available
+        if (_config.lastSyncedPosition !== undefined && _config.lastSyncedPosition >= 0) {
+            return _config.lastSyncedPosition;
+        }
+        
+        // Priority 2: Fallback to lastSyncedHole (natural hole) converted to play position
+        if (_config.lastSyncedHole !== undefined && _config.lastSyncedHole > 0) {
+            var playPos = getPlayPositionForHole(_config.lastSyncedHole);
+            return playPos;
+        }
+        
+        // Priority 3: Default to -1 (no holes synced)
+        return -1;
+    }
+    
+    // ============================================================
+    // v1.04: Delegates to GameMatch for bubble class
+    // ============================================================
+    
+    function getBubbleClass(player, opponent) {
+        var matchValue = getMatchValue(player, opponent, _currentHole);
+        var results = _config.results;
+        var clinchedAt = results ? (results.clinchedAt || {}) : {};
+        
+        // v1.04: Get sync value as play position (0-17)
+        var lastSyncedValue = getSyncValueForBubble();
+        var isHoleSavedForFlight = isHoleSaved(player.flight, _currentHole);
+        var startingHole = _config.startingHole || 1;
+        
+        // Use GameMatch.getMatchBubbleClass if available (preferred)
+        if (typeof GameMatch !== 'undefined' && GameMatch.getMatchBubbleClass) {
+            return GameMatch.getMatchBubbleClass(
+                matchValue, clinchedAt, player, opponent, _currentHole,
+                isHoleSavedForFlight, lastSyncedValue, GameMatch.getClinchHole,
+                startingHole
+            );
+        }
+        
+        // Fallback (simplified - should never be reached if GameMatch is loaded)
+        if (matchValue > 0) return 'bubble-green';
+        if (matchValue < 0) return 'bubble-red';
+        return 'bubble-green';
+    }
+    
+    // ============================================================
+    // Helper Functions (data retrieval, no UI)
+    // ============================================================
     
     function getFlightOrderedPlayers() {
         var flightPlayers = _config.players.filter(function(p) { return p.flight === _currentFlight; });
@@ -153,73 +214,6 @@ var ScorecardViewer = (function() {
         return absValue.toString();
     }
     
-    // v1.03: Get sync value for cross-flight bubble checks
-    // Uses lastSyncedPosition (play position) with fallback to converted lastSyncedHole
-    function getSyncValueForBubble() {
-        // Priority 1: Use lastSyncedPosition (play position) if available
-        if (_config.lastSyncedPosition !== undefined && _config.lastSyncedPosition >= 0) {
-            console.log("[SCORECARD-VIEWER] Using lastSyncedPosition:", _config.lastSyncedPosition);
-            return _config.lastSyncedPosition;
-        }
-        
-        // Priority 2: Fallback to lastSyncedHole (natural hole) converted to play position
-        if (_config.lastSyncedHole !== undefined && _config.lastSyncedHole > 0) {
-            var playPos = getPlayPositionForHole(_config.lastSyncedHole);
-            console.log("[SCORECARD-VIEWER] Converted lastSyncedHole", _config.lastSyncedHole, "to play position:", playPos);
-            return playPos;
-        }
-        
-        // Priority 3: Default to -1 (no holes synced)
-        console.log("[SCORECARD-VIEWER] No sync value available, defaulting to -1");
-        return -1;
-    }
-    
-    // v1.03: Updated getBubbleClass to use play position for sync
-    function getBubbleClass(player, opponent) {
-        var matchValue = getMatchValue(player, opponent, _currentHole);
-        var results = _config.results;
-        var clinchedAt = results ? (results.clinchedAt || {}) : {};
-        
-        // v1.03: Get sync value as play position (0-17)
-        var lastSyncedValue = getSyncValueForBubble();
-        
-        var isHoleSavedForFlight = isHoleSaved(player.flight, _currentHole);
-        
-        // Use GameMatch.getMatchBubbleClass if available (preferred)
-        if (typeof GameMatch !== 'undefined' && GameMatch.getMatchBubbleClass) {
-            return GameMatch.getMatchBubbleClass(
-                matchValue, clinchedAt, player, opponent, _currentHole,
-                isHoleSavedForFlight, lastSyncedValue, GameMatch.getClinchHole,
-                _config.startingHole || 1
-            );
-        }
-        
-        // Fallback implementation (simplified)
-        var matchKey1 = player.name + "_vs_" + opponent.name;
-        var matchKey2 = opponent.name + "_vs_" + player.name;
-        var clinchHole = clinchedAt[matchKey1] || clinchedAt[matchKey2];
-        
-        if (player.flight === opponent.flight) {
-            if (!isHoleSavedForFlight) return 'bubble-grey';
-        } else {
-            // Cross-flight: check if this hole is synced using play position
-            var currentPlayPosition = getPlayPositionForHole(_currentHole);
-            var isSynced = (lastSyncedValue >= currentPlayPosition);
-            if (!isSynced) return 'bubble-grey';
-        }
-        
-        if (clinchHole && _currentHole > clinchHole) return 'bubble-grey';
-        if (clinchHole && _currentHole === clinchHole) {
-            if (matchValue > 0) return 'bubble-gold';
-            if (matchValue < 0) return 'bubble-loss-clinch';
-            return 'bubble-green';
-        }
-        
-        if (matchValue > 0) return 'bubble-green';
-        if (matchValue < 0) return 'bubble-red';
-        return 'bubble-green';
-    }
-    
     function getTRForHole(holeNumber) {
         var results = _config.results;
         if (!results || !results.tr) {
@@ -271,13 +265,11 @@ var ScorecardViewer = (function() {
     // ============================================================
     
     function renderStatusBubble() {
-        // Status bubble is already in the DOM from container HTML
         var bubble = document.getElementById('viewer-statusBubble');
         if (bubble) {
             bubble.innerText = "VIEWER";
             bubble.style.display = "inline-block";
             
-            // Make it clickable to refresh
             bubble.onclick = function() {
                 location.reload();
             };
@@ -311,8 +303,6 @@ var ScorecardViewer = (function() {
         var players = getFlightOrderedPlayers();
         
         if (typeof GameUI !== 'undefined' && GameUI.renderPlayerCards) {
-            // canEdit = false (no +/- buttons)
-            // onScoreChange = null
             GameUI.renderPlayerCards(
                 "viewer-playerCards",
                 players,
@@ -325,7 +315,6 @@ var ScorecardViewer = (function() {
             );
         }
         
-        // Add flight badge to first player card
         setTimeout(function() {
             if (typeof GameUI !== 'undefined' && GameUI.updateFlightBadge) {
                 GameUI.updateFlightBadge(_currentFlight);
@@ -335,8 +324,6 @@ var ScorecardViewer = (function() {
     
     function renderControlBar() {
         if (typeof GameUI !== 'undefined' && GameUI.renderCompactHeader) {
-            // onSave = null (no save button in viewer)
-            // onPrevHole, onNextHole, onToggleFlight, onToggleDisplay are provided
             GameUI.renderCompactHeader(
                 "viewer-compactHeaderContainer",
                 _currentFlight,
@@ -349,13 +336,9 @@ var ScorecardViewer = (function() {
             );
         }
         
-        // Update the flight button text to show "FLIGHT 1" or "FLIGHT 2"
-        // (GameUI.renderCompactHeader creates a SAVE button by default,
-        //  but we need to replace it with a FLIGHT toggle button)
         setTimeout(function() {
             var saveBtn = document.getElementById('compactSaveBtn');
             if (saveBtn && saveBtn.parentNode) {
-                // Replace SAVE button with FLIGHT toggle button
                 var flightBtn = document.createElement('button');
                 flightBtn.id = 'compactFlightBtn';
                 flightBtn.className = 'compact-btn compact-flight-btn';
@@ -370,8 +353,8 @@ var ScorecardViewer = (function() {
     }
     
     function renderScorecard() {
-        var holes = getDisplayHoles();
         var results = _config.results || {};
+        var startingHole = _config.startingHole || 1;
         
         var t1Row = results.game2?.flight1?.leader || new Array(18).fill('_');
         var t2Row = results.game2?.flight2?.leader || new Array(18).fill('_');
@@ -383,10 +366,12 @@ var ScorecardViewer = (function() {
         var t2Display = results.game2?.displayT2 || null;
         var strkDisplay = results.game3?.displayStrk || null;
         
+        // v1.04: Use new GameScorecard signature (displayMode, startingHole)
         if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
             GameScorecard.renderScorecard(
                 "viewer-scorecardWrapper",
-                holes,
+                _displayMode,
+                startingHole,
                 _config.players,
                 _config.getStoredScore || function(p, h) { return _config.coursePar[h-1] || 4; },
                 isHoleSaved,
@@ -395,6 +380,20 @@ var ScorecardViewer = (function() {
                 t1ClinchedHole, t2ClinchedHole,
                 t1Display, t2Display, strkDisplay
             );
+        } else {
+            // Fallback to old signature if needed
+            var holes = getDisplayHoles();
+            if (typeof GameScorecard !== 'undefined' && GameScorecard.renderScorecard) {
+                GameScorecard.renderScorecard(
+                    "viewer-scorecardWrapper", holes, _config.players,
+                    _config.getStoredScore || function(p, h) { return _config.coursePar[h-1] || 4; },
+                    isHoleSaved,
+                    t1Row, t2Row, strkRow,
+                    _config.coursePar, _config.courseSi,
+                    t1ClinchedHole, t2ClinchedHole,
+                    t1Display, t2Display, strkDisplay
+                );
+            }
         }
     }
     
@@ -409,7 +408,7 @@ var ScorecardViewer = (function() {
     function updateNavigationButtons() {
         var playOrder = getPlayOrder();
         var isCurrentSaved = isHoleSaved(_currentFlight, _currentHole);
-        var isGameComplete = false;  // Viewer never shows game complete state
+        var isGameComplete = false;
         var celebrationTriggered = false;
         
         if (typeof GameUI !== 'undefined' && GameUI.updateNavigationButtons) {
@@ -419,7 +418,7 @@ var ScorecardViewer = (function() {
                 isCurrentSaved,
                 isGameComplete,
                 celebrationTriggered,
-                null  // onSignCardCallback = null (viewer doesn't sign)
+                null
             );
         }
     }
@@ -510,6 +509,12 @@ var ScorecardViewer = (function() {
         _config = config;
         _currentFlight = config.defaultFlight || 1;
         _displayMode = config.defaultDisplayMode || "play";
+        _displayMode = GameUI.getDisplayMode ? GameUI.getDisplayMode() : _displayMode;
+        
+        // v1.04: Ensure GameOrder is initialized with starting hole
+        if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
+            GameOrder.setStartingHole(_config.startingHole || 1);
+        }
         
         // Determine starting hole (first unsaved hole for the default flight)
         var playOrder = getPlayOrder();
@@ -626,14 +631,14 @@ window.ScorecardViewer = ScorecardViewer;
 
 /*
 FILE: js/scorecard-viewer.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: getBubbleClass() now uses play position for sync detection (supports shotgun starts)
-   - Added getPlayPositionForHole() helper function
-   - Added getSyncValueForBubble() to handle lastSyncedPosition vs lastSyncedHole fallback
-   - Now passes startingHole to GameMatch.getMatchBubbleClass for last hole detection
-   - This ensures cross-flight bubble colors work correctly when starting hole is not 1
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - REFACTORED: Now uses GameOrder as the single source of truth for all order operations
+   - REMOVED: Local getPlayOrder(), getPlayPositionForHole(), getHolePosition(), getDisplayHoles()
+   - SIMPLIFIED: getSyncValueForBubble() now uses _config.lastSyncedPosition directly
+   - SIMPLIFIED: getBubbleClass() now delegates to GameMatch.getMatchBubbleClass
+   - UPDATED: renderScorecard() now uses GameScorecard.renderScorecard with new signature (displayMode, startingHole)
    - All existing functionality preserved
-DEPENDS ON: js/game-ui.js, js/game-scorecard.js, js/ticker.js
+DEPENDS ON: js/game-order.js, js/game-match.js, js/game-ui.js, js/game-scorecard.js, js/ticker.js
 STATUS: Ready for integration
 */
