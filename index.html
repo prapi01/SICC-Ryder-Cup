@@ -1,11 +1,12 @@
 <!--
 FILE: index.html
-VERSION: 3.48
-KEY CHANGES from v3.47:
-   - FIXED: Long press no longer selects text on the entire page
-   - Added user-select: none to body to prevent selection
-   - FIXED: Bubble tap now correctly opens admin modal
-   - Bubble click handler now calls window.showAdminModal() directly
+VERSION: 3.49
+KEY CHANGES from v3.48:
+   - FIXED: showAdminModal() no longer calls itself recursively
+   - Now simply calls window.showAdminModal() from index-hidden.js
+   - FIXED: Admin bubble button is now larger (square, stacked text)
+   - Button text: "ADMIN" on top, "FUNCTION" below
+   - Larger tap target for iPhone
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
@@ -428,32 +429,54 @@ STATUS: Ready for integration
             color: #888;
         }
         
-        /* v3.48: Admin Bubble */
+        /* v3.49: Admin Bubble - LARGER SQUARE BUTTON with stacked text */
         .admin-bubble {
             position: fixed;
             background: #1a3a1a;
             border: 2px solid #4caf50;
             color: #4caf50;
-            padding: 8px 16px;
-            border-radius: 30px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            font-family: system-ui, -apple-system, sans-serif;
+            border-radius: 16px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 20px rgba(76,175,80,0.2);
             z-index: 15000;
             cursor: pointer;
-            transition: opacity 0.2s;
+            transition: opacity 0.2s, transform 0.1s;
             pointer-events: auto;
             -webkit-user-select: none;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
             animation: bubblePop 0.2s ease-out;
+            min-width: 80px;
+            min-height: 80px;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            text-align: center;
+            line-height: 1.2;
+            font-weight: 700;
+            font-size: 0.7rem;
+            font-family: system-ui, -apple-system, sans-serif;
         }
         .admin-bubble:active {
             transform: scale(0.95);
         }
         .admin-bubble .bubble-icon {
-            margin-right: 6px;
+            font-size: 1.2rem;
+            margin-bottom: 2px;
+        }
+        .admin-bubble .bubble-line1 {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .admin-bubble .bubble-line2 {
+            font-size: 0.6rem;
+            font-weight: 600;
+            opacity: 0.8;
+            letter-spacing: 0.3px;
         }
         
         @keyframes bubblePop {
@@ -507,15 +530,15 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.48</div>
+<div class="version-tag">v3.49</div>
 
 <script>
-// FILE: index.html - VERSION 3.48
+// FILE: index.html - VERSION 3.49
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.48";
+window.INDEX_VERSION = "3.49";
 
-var APP_VERSION = "3.48";
+var APP_VERSION = "3.49";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -524,7 +547,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.48: Determine if this is first load of the session
+// v3.49: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -801,7 +824,7 @@ function showGameCompletedModal(gameId) {
 }
 
 // ============================================================
-// v3.48: Long-click + Bubble for Admin
+// v3.49: Long-click + Bubble for Admin - LARGER SQUARE BUTTON
 // ============================================================
 
 var adminBubbleTimeout = null;
@@ -812,14 +835,21 @@ function showAdminBubble(x, y) {
     // Remove any existing bubble
     hideAdminBubble();
     
-    // Create bubble
+    // Create LARGER SQUARE bubble with stacked text
     var bubble = document.createElement('div');
     bubble.className = 'admin-bubble';
-    bubble.innerHTML = '<span class="bubble-icon">⚙️</span> Admin Functions';
-    bubble.style.left = Math.max(10, Math.min(window.innerWidth - 140, x - 70)) + 'px';
-    bubble.style.top = Math.max(10, Math.min(window.innerHeight - 60, y - 30)) + 'px';
+    bubble.innerHTML = `
+        <span class="bubble-icon">⚙️</span>
+        <span class="bubble-line1">ADMIN</span>
+        <span class="bubble-line2">FUNCTION</span>
+    `;
     
-    // v3.48: Direct click handler - calls window.showAdminModal
+    // Position the bubble
+    var bubbleSize = 80;
+    bubble.style.left = Math.max(10, Math.min(window.innerWidth - bubbleSize - 10, x - bubbleSize / 2)) + 'px';
+    bubble.style.top = Math.max(10, Math.min(window.innerHeight - bubbleSize - 10, y - bubbleSize / 2)) + 'px';
+    
+    // v3.49: Direct click handler - calls window.showAdminModal from index-hidden.js
     bubble.addEventListener('click', function(e) {
         e.stopPropagation();
         hideAdminBubble();
@@ -901,17 +931,11 @@ function setupLongClickAdmin(element) {
 }
 
 // ============================================================
-// showAdminModal - from index-hidden.js or fallback
+// v3.49: showAdminModal - FIXED: No recursion, simply call window.showAdminModal
 // ============================================================
 
 function showAdminModal() {
-    // Check if index-hidden.js already provides this
-    if (typeof window.showAdminModal === 'function' && window.showAdminModal !== showAdminModal) {
-        window.showAdminModal();
-        return;
-    }
-    
-    // Fallback: call the one from index-hidden.js
+    // Simply call the global function from index-hidden.js
     if (typeof window.showAdminModal === 'function') {
         window.showAdminModal();
         return;
@@ -1188,7 +1212,7 @@ function renderMainUI() {
         setTimeout(setButtonWidths, 10);
         
         // ============================================================
-        // v3.48: Admin handler - Cmd+Click OR Long-click on golf icon
+        // v3.49: Admin handler - Cmd+Click OR Long-click on golf icon
         // ============================================================
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
@@ -1228,7 +1252,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.48
+// Initialization - v3.49
 // ============================================================
 
 function initApp() {
@@ -1309,7 +1333,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.48
+// Start the app - v3.49
 // ============================================================
 
 if (isFirstLoad) {
@@ -1347,12 +1371,13 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.48
-KEY CHANGES from v3.47:
-   - FIXED: Long press no longer selects text on the entire page
-   - Added user-select: none to body to prevent selection
-   - FIXED: Bubble tap now correctly opens admin modal
-   - Bubble click handler now calls window.showAdminModal() directly
+VERSION: 3.49
+KEY CHANGES from v3.48:
+   - FIXED: showAdminModal() no longer calls itself recursively
+   - Now simply calls window.showAdminModal() from index-hidden.js
+   - FIXED: Admin bubble button is now larger (square, stacked text)
+   - Button text: "ADMIN" on top, "FUNCTION" below
+   - Larger tap target for iPhone
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
