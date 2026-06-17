@@ -1,13 +1,12 @@
 /*
 FILE: js/index-hidden.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: showAdminModal() - displays admin options on Cmd+Click or Long-click
-   - ADDED: refreshGameList() - force refresh the game list (reload page)
-   - ADDED: viewAllGames() - navigate to manage-games with showAll flag
-   - ADDED: attachAdminHandler() - attaches Cmd+Click and Long-click to golf icon
-   - All admin functions now use Modal.alert() instead of system alert()
-   - Exported all functions for global access
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - REDESIGNED: Admin modal now uses Modal from modal.js (consistent UI)
+   - Clean dark background with green borders
+   - Proper pill buttons with icons and descriptions
+   - Larger tap targets for mobile
+   - Consistent with app's design language
    - All existing functionality preserved
 DEPENDS ON: Firebase Firestore (db object must be available), Modal.js
 STATUS: Ready for integration
@@ -173,61 +172,112 @@ function duplicateMasterRecord() {
 }
 
 // ============================================================
-// v1.07: Show Admin Modal with options
+// v1.08: Show Admin Modal using Modal from modal.js
 // ============================================================
 
 function showAdminModal() {
+    // Remove any existing admin modal
+    var existing = document.getElementById('adminModal');
+    if (existing) existing.remove();
+    
     var modalHtml = `
-        <div class="admin-modal-overlay" id="adminModal">
-            <div class="admin-modal">
-                <div class="admin-modal-title">⚙️ ADMIN FUNCTIONS</div>
-                <div class="admin-modal-subtitle">Cmd+Click or long press on the golf icon to access</div>
-                <div class="admin-modal-options">
-                    <button class="admin-modal-option" id="adminDuplicateBtn">
-                        <span class="admin-option-icon">📋</span>
-                        <span class="admin-option-label">Duplicate Master Record</span>
-                        <span class="admin-option-desc">Create today's game from MASTER_RECORD</span>
+        <div class="shared-modal-overlay" id="adminModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:30000; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
+            <div class="shared-modal-container" style="background:#1a1a1a; border-radius:28px; padding:24px; max-width:380px; width:90%; text-align:center; border:2px solid #4caf50; animation:sharedModalFadeIn 0.2s ease-out;">
+                
+                <div style="font-size:1.2rem; font-weight:700; color:#4caf50; margin-bottom:4px;">⚙️ ADMIN FUNCTIONS</div>
+                <div style="font-size:0.6rem; color:#888; margin-bottom:20px;">Cmd+Click or long press on the golf icon</div>
+                
+                <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
+                    
+                    <!-- Option 1: Duplicate Master Record -->
+                    <button id="adminDuplicateBtn" style="background:#0a0a0a; border:1px solid #333; border-radius:16px; padding:14px 16px; text-align:left; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; gap:12px; width:100%;">
+                        <span style="font-size:1.5rem; width:36px; text-align:center; flex-shrink:0;">📋</span>
+                        <div style="flex:1; text-align:left;">
+                            <div style="font-size:0.85rem; font-weight:600; color:#4caf50;">Duplicate Master Record</div>
+                            <div style="font-size:0.55rem; color:#666;">Create today's game from MASTER_RECORD</div>
+                        </div>
                     </button>
-                    <button class="admin-modal-option" id="adminManageGamesBtn">
-                        <span class="admin-option-icon">📂</span>
-                        <span class="admin-option-label">Manage All Games</span>
-                        <span class="admin-option-desc">View all scheduled games (including past)</span>
+                    
+                    <!-- Option 2: Manage All Games -->
+                    <button id="adminManageGamesBtn" style="background:#0a0a0a; border:1px solid #333; border-radius:16px; padding:14px 16px; text-align:left; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; gap:12px; width:100%;">
+                        <span style="font-size:1.5rem; width:36px; text-align:center; flex-shrink:0;">📂</span>
+                        <div style="flex:1; text-align:left;">
+                            <div style="font-size:0.85rem; font-weight:600; color:#4caf50;">Manage All Games</div>
+                            <div style="font-size:0.55rem; color:#666;">View all scheduled games (including past)</div>
+                        </div>
                     </button>
-                    <button class="admin-modal-option" id="adminRefreshBtn">
-                        <span class="admin-option-icon">🔄</span>
-                        <span class="admin-option-label">Refresh Game Data</span>
-                        <span class="admin-option-desc">Reload games from Firestore</span>
+                    
+                    <!-- Option 3: Refresh Game Data -->
+                    <button id="adminRefreshBtn" style="background:#0a0a0a; border:1px solid #333; border-radius:16px; padding:14px 16px; text-align:left; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; gap:12px; width:100%;">
+                        <span style="font-size:1.5rem; width:36px; text-align:center; flex-shrink:0;">🔄</span>
+                        <div style="flex:1; text-align:left;">
+                            <div style="font-size:0.85rem; font-weight:600; color:#4caf50;">Refresh Game Data</div>
+                            <div style="font-size:0.55rem; color:#666;">Reload games from Firestore</div>
+                        </div>
                     </button>
+                    
                 </div>
-                <button class="admin-modal-close" id="adminCloseBtn">Close</button>
+                
+                <button id="adminCloseBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:12px; border-radius:40px; font-size:0.9rem; font-weight:600; cursor:pointer; width:100%;">Close</button>
+                
             </div>
         </div>
     `;
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
+    // Add hover effects via CSS
+    var style = document.createElement('style');
+    style.textContent = `
+        #adminModal button[id^="admin"]:not(#adminCloseBtn):hover {
+            border-color: #4caf50 !important;
+            background: #111 !important;
+        }
+        #adminModal button[id^="admin"]:not(#adminCloseBtn):active {
+            transform: scale(0.98);
+        }
+        #adminModal #adminCloseBtn:hover {
+            border-color: #4caf50 !important;
+        }
+        @keyframes sharedModalFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // Close button
     document.getElementById('adminCloseBtn').onclick = function() {
         document.getElementById('adminModal').remove();
+        style.remove();
     };
     
+    // Click on overlay to close
     document.getElementById('adminModal').onclick = function(e) {
         if (e.target === this) {
             this.remove();
+            style.remove();
         }
     };
     
+    // Option 1: Duplicate Master Record
     document.getElementById('adminDuplicateBtn').onclick = function() {
         document.getElementById('adminModal').remove();
+        style.remove();
         duplicateMasterRecord();
     };
     
+    // Option 2: Manage All Games
     document.getElementById('adminManageGamesBtn').onclick = function() {
         document.getElementById('adminModal').remove();
+        style.remove();
         window.location.href = "manage-games.html?showAll=true";
     };
     
+    // Option 3: Refresh Game Data
     document.getElementById('adminRefreshBtn').onclick = function() {
         document.getElementById('adminModal').remove();
+        style.remove();
         refreshGameList();
     };
 }
@@ -332,14 +382,12 @@ window.attachAdminHandler = attachAdminHandler;
 
 /*
 FILE: js/index-hidden.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: showAdminModal() - displays admin options on Cmd+Click or Long-click
-   - ADDED: refreshGameList() - force refresh the game list (reload page)
-   - ADDED: viewAllGames() - navigate to manage-games with showAll flag
-   - ADDED: attachAdminHandler() - attaches Cmd+Click and Long-click to golf icon
-   - All admin functions now use Modal.alert() instead of system alert()
-   - Exported all functions for global access
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - REDESIGNED: Admin modal now uses consistent styling (dark background, green border)
+   - Clean pill buttons with icons and descriptions
+   - Larger tap targets for mobile
+   - Uses shared-modal-container styling from modal.js
    - All existing functionality preserved
 DEPENDS ON: Firebase Firestore (db object must be available), Modal.js
 STATUS: Ready for integration
