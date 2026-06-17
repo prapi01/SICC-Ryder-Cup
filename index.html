@@ -3,6 +3,7 @@ FILE: index.html
 VERSION: 3.45
 KEY CHANGES from v3.44:
    - ADDED: Long-click (press and hold) on golf icon shows "Admin Functions" bubble
+   - FIXED: Golf icon now properly positioned above the title (original layout restored)
    - Bubble appears after 800ms hold, click to open admin modal
    - Cmd+Click still works as before
    - Universal trigger for mobile and desktop
@@ -206,17 +207,21 @@ STATUS: Ready for integration
             opacity: 0.8;
         }
         
-        .header { text-align: center; margin-bottom: 20px; }
+        .header { 
+            text-align: center; 
+            margin-bottom: 20px; 
+        }
+        
         .golf-icon { 
             font-size: 4rem; 
             margin-bottom: 4px; 
             filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
             cursor: pointer;
             transition: transform 0.1s ease;
-            position: relative;
             display: inline-block;
             -webkit-tap-highlight-color: transparent;
             user-select: none;
+            position: relative;
         }
         .golf-icon:active { transform: scale(0.98); }
         .golf-icon .golf-hint {
@@ -233,6 +238,7 @@ STATUS: Ready for integration
             padding: 2px 8px;
             border-radius: 10px;
             pointer-events: none;
+            width: max-content;
         }
         .golf-icon:hover .golf-hint {
             opacity: 0.4;
@@ -1393,6 +1399,7 @@ FILE: index.html
 VERSION: 3.45
 KEY CHANGES from v3.44:
    - ADDED: Long-click (press and hold) on golf icon shows "Admin Functions" bubble
+   - FIXED: Golf icon now properly positioned above the title (original layout restored)
    - Bubble appears after 800ms hold, click to open admin modal
    - Cmd+Click still works as before
    - Universal trigger for mobile and desktop
