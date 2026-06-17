@@ -1,22 +1,19 @@
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted UI rendering logic from real-game.html
-   - Contains: renderAll(), renderCompactHeaderWithFlightToggle()
-   - Contains: updatePlayerNamesToShortform()
-   - Contains: getFlightOrderedPlayers(), getCurrentDisplayFlight(), isCurrentDisplayEditable()
-   - All functions use RealGameState and RealGameUtils
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
+   - All existing functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_UI_VERSION = "1.00";
+window.REAL_GAME_UI_VERSION = "1.01";
 
 var RealGameUI = (function() {
     
-    console.log("[REAL-GAME-UI] Initializing v1.00");
+    console.log("[REAL-GAME-UI] Initializing v1.01");
     
     // ============================================================
     // Private Helpers
@@ -308,7 +305,6 @@ var RealGameUI = (function() {
         var saveBtn = document.getElementById('compactSaveBtn');
         if (saveBtn && !saveButtonDisabled) {
             saveBtn.onclick = function() {
-                // This will be set by the main game to call saveHole
                 if (window._saveHoleCallback) {
                     window._saveHoleCallback();
                 }
@@ -566,13 +562,10 @@ window._showSignCardCallback = function() {
 
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted UI rendering logic from real-game.html
-   - Contains: renderAll(), renderCompactHeaderWithFlightToggle()
-   - Contains: updatePlayerNamesToShortform()
-   - Contains: getFlightOrderedPlayers(), getCurrentDisplayFlight(), isCurrentDisplayEditable()
-   - All functions use RealGameState and RealGameUtils
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Corrected getDebugTargetHole() reference from RealGameUtils to RealGameState
+   - All existing functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
 STATUS: Ready for integration
 */
