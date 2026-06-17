@@ -1,12 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.28
-KEY CHANGES from v1.27:
-   - REPLACED: Inline unsaved changes modal with Modal.confirmWithThreeButtons()
-   - Uses standard modal UI from js/modal.js v1.01 (green border, grey title, proper styling)
-   - Modal buttons: [Cancel] [DISCARD] [UPDATE & SAVE]
-   - DISCARD button has red styling, UPDATE & SAVE button has gold styling
-   - All existing functionality preserved (dirty state tracking, beforeunload handler)
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - REPLACED: deletePastGames() with archiveOldGames()
+   - 90+ days old: Move to trashGames collection, delete from scheduledGames
+   - 180+ days old: Permanently delete from trashGames
+   - Prevents accidental deletion of recently past games being edited
+   - Adds safety net for recovery
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -259,12 +260,12 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.28</div>
+<div class="version-tag">v1.29</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.28
+// FILE: setup-game.html - VERSION 1.29
 
-var VERSION = "1.28";
+var VERSION = "1.29";
 var CACHE_KEY = "setup_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -304,29 +305,79 @@ function generateGameId() {
 }
 
 // ============================================================
-// AUTO-DELETE PAST GAMES
+// v1.29: AUTO-ARCHIVE OLD GAMES
+// - 90+ days old: Move to trashGames collection, delete from scheduledGames
+// - 180+ days old: Permanently delete from trashGames
 // ============================================================
 
-function deletePastGames() {
+function archiveOldGames() {
     if (!firestoreReady) return;
+    
     var today = new Date();
     today.setHours(0, 0, 0, 0);
-    var todayStr = today.toISOString().split('T')[0];
-    console.log("Checking for past games to delete (date < " + todayStr + ")");
-    db.collection("scheduledGames").where("date", "<", todayStr).get()
+    
+    // 90 days ago
+    var ninetyDaysAgo = new Date(today);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    var ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
+    
+    // 180 days ago
+    var oneEightyDaysAgo = new Date(today);
+    oneEightyDaysAgo.setDate(oneEightyDaysAgo.getDate() - 180);
+    var oneEightyDaysAgoStr = oneEightyDaysAgo.toISOString().split('T')[0];
+    
+    // Step 1: Permanently delete games older than 180 days from trashGames
+    console.log("Checking trashGames for games older than 180 days (date < " + oneEightyDaysAgoStr + ")");
+    db.collection("trashGames")
+        .where("date", "<", oneEightyDaysAgoStr)
+        .get()
         .then(function(snapshot) {
             var deletePromises = [];
             snapshot.forEach(function(doc) {
-                console.log("Deleting past game:", doc.id, "date:", doc.data().date);
-                deletePromises.push(db.collection("scheduledGames").doc(doc.id).delete());
+                console.log("Permanently deleting from trash:", doc.id, "date:", doc.data().date);
+                deletePromises.push(db.collection("trashGames").doc(doc.id).delete());
             });
             return Promise.all(deletePromises);
         })
         .then(function() {
-            console.log("Past games cleanup complete");
+            console.log("Permanent deletion from trash complete");
         })
         .catch(function(e) {
-            console.warn("Error deleting past games:", e);
+            console.warn("Error deleting from trash:", e);
+        });
+    
+    // Step 2: Move games older than 90 days from scheduledGames to trashGames
+    console.log("Checking scheduledGames for games older than 90 days (date < " + ninetyDaysAgoStr + ")");
+    db.collection("scheduledGames")
+        .where("date", "<", ninetyDaysAgoStr)
+        .get()
+        .then(function(snapshot) {
+            var movePromises = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                var gameId = doc.id;
+                console.log("Moving to trash:", gameId, "date:", data.date);
+                
+                // Add trash metadata
+                data._trashedAt = firebase.firestore.FieldValue.serverTimestamp();
+                data._originalCollection = "scheduledGames";
+                data._originalId = gameId;
+                
+                // Write to trashGames
+                var movePromise = db.collection("trashGames").doc(gameId).set(data)
+                    .then(function() {
+                        // Delete from scheduledGames
+                        return db.collection("scheduledGames").doc(gameId).delete();
+                    });
+                movePromises.push(movePromise);
+            });
+            return Promise.all(movePromises);
+        })
+        .then(function() {
+            console.log("Old games moved to trash complete");
+        })
+        .catch(function(e) {
+            console.warn("Error moving games to trash:", e);
         });
 }
 
@@ -1379,12 +1430,17 @@ function escapeHtml(str) {
     });
 }
 
+// ============================================================
+// v1.29: Initialize - archive old games (90+ days to trash, 180+ days permanently deleted)
+// ============================================================
+
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
     deviceSession = session;
     displayDeviceId();
     
-    deletePastGames();
+    // Archive old games (90+ days to trash, 180+ days permanently deleted)
+    archiveOldGames();
     
     loadEditMode(function() {
         loadCourses(function() {
@@ -1398,13 +1454,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.28
-KEY CHANGES from v1.27:
-   - REPLACED: Inline unsaved changes modal with Modal.confirmWithThreeButtons()
-   - Uses standard modal UI from js/modal.js v1.01 (green border, grey title, proper styling)
-   - Modal buttons: [Cancel] [DISCARD] [UPDATE & SAVE]
-   - DISCARD button has red styling, UPDATE & SAVE button has gold styling
-   - All existing functionality preserved (dirty state tracking, beforeunload handler)
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - REPLACED: deletePastGames() with archiveOldGames()
+   - 90+ days old: Move to trashGames collection, delete from scheduledGames
+   - 180+ days old: Permanently delete from trashGames
+   - Prevents accidental deletion of recently past games being edited
+   - Adds safety net for recovery
+   - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
