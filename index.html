@@ -1,12 +1,9 @@
 <!--
 FILE: index.html
-VERSION: 3.52
-KEY CHANGES from v3.51:
-   - FIXED: Splash screen now shows for exactly 4 seconds regardless of load speed
-   - Removed Firebase dependency from splash hide condition
-   - No more race conditions - splash is purely visual
-   - Firebase loads in background during the 4 second animation
-   - User never sees a loading state - data is ready when splash fades
+VERSION: 3.53
+KEY CHANGES from v3.52:
+   - CHANGED: Splash icon container margin-bottom from 20px to 100px
+   - More space between golf icon and title text
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
@@ -140,7 +137,7 @@ STATUS: Ready for integration
             opacity: 1;
         }
         
-        /* v3.52: Splash Overlay - fixed 4 second display */
+        /* v3.53: Splash Overlay - fixed 4 second display */
         #splashOverlay {
             position: fixed;
             top: 0;
@@ -162,7 +159,7 @@ STATUS: Ready for integration
         /* Icon container - preserves layout height */
         .splash-icon-container {
             height: 100px;
-            margin-bottom: 20px;
+            margin-bottom: 100px;
             position: relative;
             width: 100%;
         }
@@ -601,15 +598,15 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.52</div>
+<div class="version-tag">v3.53</div>
 
 <script>
-// FILE: index.html - VERSION 3.52
+// FILE: index.html - VERSION 3.53
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.52";
+window.INDEX_VERSION = "3.53";
 
-var APP_VERSION = "3.52";
+var APP_VERSION = "3.53";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -618,7 +615,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.52: Determine if this is first load of the session
+// v3.53: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -651,7 +648,7 @@ var splashTitle = document.getElementById('splashTitle');
 var splashSubtitle = document.getElementById('splashSubtitle');
 
 // ============================================================
-// v3.52: FIRST LOAD ONLY - Simple splash animation
+// v3.53: FIRST LOAD ONLY - Simple splash animation
 // No Firebase dependency - pure UI, fixed 4 seconds
 // ============================================================
 
@@ -725,7 +722,7 @@ function startSplashAnimation() {
         
     }, 600);
     
-    // v3.52: FIXED - Hide splash after exactly 4 seconds
+    // v3.53: FIXED - Hide splash after exactly 4 seconds
     // Firebase loads in background during this time
     setTimeout(function() {
         console.log("[SPLASH] 4 seconds complete - hiding splash");
@@ -1337,7 +1334,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.52
+// Initialization - v3.53
 // ============================================================
 
 function initApp() {
@@ -1346,7 +1343,7 @@ function initApp() {
     mainContainer = document.getElementById("app");
     mainContainer.style.display = "block";
     
-    // v3.52: Initialize pull-to-refresh for web app mode
+    // v3.53: Initialize pull-to-refresh for web app mode
     initPullToRefresh();
     
     if (isFirstLoad) {
@@ -1421,7 +1418,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.52
+// Start the app - v3.53
 // ============================================================
 
 if (isFirstLoad) {
@@ -1457,13 +1454,10 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.52
-KEY CHANGES from v3.51:
-   - FIXED: Splash screen now shows for exactly 4 seconds regardless of load speed
-   - Removed Firebase dependency from splash hide condition
-   - No more race conditions - splash is purely visual
-   - Firebase loads in background during the 4 second animation
-   - User never sees a loading state - data is ready when splash fades
+VERSION: 3.53
+KEY CHANGES from v3.52:
+   - CHANGED: Splash icon container margin-bottom from 20px to 100px
+   - More space between golf icon and title text
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
