@@ -1,10 +1,10 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.21
-KEY CHANGES from v3.20:
-   - REPLACED: System alert() with Modal.alert() in error cases
-   - REPLACED: System confirm() with Modal.confirm() where applicable
-   - ADDED: js/modal.js dependency for consistent custom modals
+VERSION: 3.22
+KEY CHANGES from v3.21:
+   - ADDED: Cmd+Click (⌘+Click or Ctrl+Click) on the title "READY TO PLAY" opens Admin Modal
+   - ADDED: Admin Modal with options: Reset Locks, Reset Game, View Game Data, Refresh
+   - Cmd+Click on status bubble also triggers admin modal (fallback)
    - All existing functionality preserved (role selection, lock management, reset modal)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
@@ -93,10 +93,44 @@ STATUS: Ready for integration
             color: #4caf50;
             margin-bottom: 12px;
             cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .status-bubble:hover {
+            opacity: 0.7;
         }
         
         .header { text-align: center; margin-bottom: 20px; }
-        .title { font-size: 1.6rem; font-weight: 800; color: #4caf50; }
+        /* v3.22: Title with hidden hint */
+        .title { 
+            font-size: 1.6rem; 
+            font-weight: 800; 
+            color: #4caf50;
+            cursor: default;
+            position: relative;
+            display: inline-block;
+            transition: opacity 0.2s;
+        }
+        .title:hover {
+            opacity: 0.8;
+        }
+        .title .title-hint {
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.45rem;
+            color: #4caf50;
+            opacity: 0;
+            transition: opacity 0.3s;
+            white-space: nowrap;
+            background: rgba(0,0,0,0.7);
+            padding: 1px 8px;
+            border-radius: 10px;
+            pointer-events: none;
+        }
+        .title:hover .title-hint {
+            opacity: 0.3;
+        }
         .subtitle { font-size: 0.7rem; color: #888; margin-top: 4px; }
         
         .course-card {
@@ -434,6 +468,97 @@ STATUS: Ready for integration
             color: #ccc;
             border: 1px solid #333;
         }
+        
+        /* v3.22: Admin Modal styles */
+        .admin-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        .admin-modal {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 28px;
+            max-width: 380px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        .admin-modal-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 4px;
+        }
+        .admin-modal-subtitle {
+            font-size: 0.65rem;
+            color: #888;
+            margin-bottom: 20px;
+        }
+        .admin-modal-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .admin-modal-option {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 16px;
+            padding: 14px 16px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .admin-modal-option:hover {
+            border-color: #4caf50;
+            background: #111;
+        }
+        .admin-modal-option:active {
+            transform: scale(0.98);
+        }
+        .admin-option-icon {
+            font-size: 1.5rem;
+            width: 36px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .admin-option-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #4caf50;
+            display: block;
+        }
+        .admin-option-desc {
+            font-size: 0.6rem;
+            color: #666;
+            display: block;
+        }
+        .admin-modal-close {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+            padding: 12px;
+            border-radius: 40px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+        .admin-modal-close:hover {
+            border-color: #4caf50;
+        }
     </style>
 </head>
 <body>
@@ -446,12 +571,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.21</div>
+<div class="version-tag">v3.22</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.21
+// FILE: pre-game.html - VERSION 3.22
 
-var VERSION = "3.21";
+var VERSION = "3.22";
 var CACHE_KEY = "pre_game_version";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -487,6 +612,89 @@ var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
 
 // ============================================================
+// v3.22: Admin Modal Functions
+// ============================================================
+
+function showPreGameAdminModal() {
+    var modalHtml = `
+        <div class="admin-modal-overlay" id="adminModal">
+            <div class="admin-modal">
+                <div class="admin-modal-title">⚙️ ADMIN FUNCTIONS</div>
+                <div class="admin-modal-subtitle">Cmd+Click on "READY TO PLAY" to access</div>
+                <div class="admin-modal-options">
+                    <button class="admin-modal-option" id="adminResetLocksBtn">
+                        <span class="admin-option-icon">🔓</span>
+                        <span class="admin-option-label">Reset Locks</span>
+                        <span class="admin-option-desc">Clear all flight locks (scores preserved)</span>
+                    </button>
+                    <button class="admin-modal-option" id="adminResetGameBtn">
+                        <span class="admin-option-icon">🔄</span>
+                        <span class="admin-option-label">Reset Game (Full)</span>
+                        <span class="admin-option-desc">Reset ALL scores and locks (destructive)</span>
+                    </button>
+                    <button class="admin-modal-option" id="adminViewDataBtn">
+                        <span class="admin-option-icon">📊</span>
+                        <span class="admin-option-label">View Game Data</span>
+                        <span class="admin-option-desc">Show current game state in console</span>
+                    </button>
+                    <button class="admin-modal-option" id="adminRefreshBtn">
+                        <span class="admin-option-icon">🔄</span>
+                        <span class="admin-option-label">Refresh Page</span>
+                        <span class="admin-option-desc">Reload the current page</span>
+                    </button>
+                </div>
+                <button class="admin-modal-close" id="adminCloseBtn">Close</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    document.getElementById('adminCloseBtn').onclick = function() {
+        document.getElementById('adminModal').remove();
+    };
+    
+    document.getElementById('adminModal').onclick = function(e) {
+        if (e.target === this) {
+            this.remove();
+        }
+    };
+    
+    document.getElementById('adminResetLocksBtn').onclick = function() {
+        document.getElementById('adminModal').remove();
+        resetLocksOnly(function(success) {
+            if (success) {
+                Modal.alert("✅ Locks have been reset.\n\nScores are preserved.\nPage will reload.");
+                setTimeout(function() { window.location.reload(); }, 1000);
+            } else {
+                Modal.alert("❌ Failed to reset locks. Please try again.");
+            }
+        });
+    };
+    
+    document.getElementById('adminResetGameBtn').onclick = function() {
+        document.getElementById('adminModal').remove();
+        showAdminResetModal();
+    };
+    
+    document.getElementById('adminViewDataBtn').onclick = function() {
+        document.getElementById('adminModal').remove();
+        console.log("=== GAME DATA ===");
+        console.log("gameId:", gameId);
+        console.log("gameData:", gameData);
+        console.log("locks:", locks);
+        console.log("tempSelectedRole:", tempSelectedRole);
+        console.log("deviceSession:", deviceSession);
+        Modal.alert("📊 Game data logged to console.\n\nOpen Developer Tools (F12) to view.");
+    };
+    
+    document.getElementById('adminRefreshBtn').onclick = function() {
+        document.getElementById('adminModal').remove();
+        window.location.reload();
+    };
+}
+
+// ============================================================
 // Display Functions
 // ============================================================
 
@@ -496,17 +704,12 @@ function displayDeviceId() {
     var deviceTag = document.getElementById("deviceTag");
     deviceTag.innerHTML = "🖥️ " + shortName;
     
-    var tapCount = 0;
-    var tapTimer = null;
-    deviceTag.addEventListener("click", function() {
-        tapCount++;
-        if (tapTimer) clearTimeout(tapTimer);
-        tapTimer = setTimeout(function() {
-            if (tapCount >= 2) {
-                showAdminResetModal();
-            }
-            tapCount = 0;
-        }, 300);
+    // v3.22: Cmd+Click on device tag also triggers admin modal
+    deviceTag.addEventListener('click', function(e) {
+        if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            showPreGameAdminModal();
+        }
     });
 }
 
@@ -1217,7 +1420,10 @@ function render() {
         <div class="status-bubble" id="statusBubble">LIVE</div>
         
         <div class="header">
-            <div class="title">🏌️ READY TO PLAY</div>
+            <div class="title" id="preGameTitle">
+                🏌️ READY TO PLAY
+                <span class="title-hint">⌘+click for admin</span>
+            </div>
             <div class="subtitle">Verify teams and handicaps before teeing off</div>
         </div>
         
@@ -1283,6 +1489,26 @@ function render() {
         statusBubble.onclick = function() {
             location.reload();
         };
+        // v3.22: Cmd+Click on status bubble also triggers admin
+        statusBubble.addEventListener('click', function(e) {
+            if (e.metaKey || e.ctrlKey) {
+                e.preventDefault();
+                showPreGameAdminModal();
+            }
+        });
+    }
+    
+    // ============================================================
+    // v3.22: Attach Cmd+Click handler to title
+    // ============================================================
+    var titleEl = document.getElementById('preGameTitle');
+    if (titleEl) {
+        titleEl.addEventListener('click', function(e) {
+            if (e.metaKey || e.ctrlKey) {
+                e.preventDefault();
+                showPreGameAdminModal();
+            }
+        });
     }
 }
 
@@ -1296,6 +1522,8 @@ function escapeHtml(str) {
     });
 }
 
+// v3.22: Expose admin modal function globally
+window.showPreGameAdminModal = showPreGameAdminModal;
 window.toggleRole = toggleRole;
 window.startGame = startGame;
 window.goBack = goBack;
@@ -1314,11 +1542,11 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.21
-KEY CHANGES from v3.20:
-   - REPLACED: System alert() with Modal.alert() in error cases
-   - REPLACED: System confirm() with Modal.confirm() where applicable
-   - ADDED: js/modal.js dependency for consistent custom modals
+VERSION: 3.22
+KEY CHANGES from v3.21:
+   - ADDED: Cmd+Click (⌘+Click or Ctrl+Click) on the title "READY TO PLAY" opens Admin Modal
+   - ADDED: Admin Modal with options: Reset Locks, Reset Game, View Game Data, Refresh
+   - Cmd+Click on status bubble also triggers admin modal (fallback)
    - All existing functionality preserved (role selection, lock management, reset modal)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
