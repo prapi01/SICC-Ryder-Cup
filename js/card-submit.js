@@ -1,24 +1,29 @@
 /*
 FILE: js/card-submit.js
-VERSION: 1.00
-PURPOSE: Card submission module for REAL mode games
-          - Handles final hole submission
-          - Tracks submission status for both flights
-          - Shows final results screen when both flights submit
-          - Triggers post-game recalculation (Tournament Handicap hook)
-DEPENDS ON: Firebase
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.00
+DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
 var CardSubmit = (function() {
     
     // ============================================================
+    // Helper: Get Firestore instance
+    // ============================================================
+    function getDb() {
+        return firebase.firestore();
+    }
+    
+    // ============================================================
     // Check if current hole is the last hole in play order
     // ============================================================
     
     function isLastHole(currentHole, startingHole) {
-        // Play order: startingHole, startingHole+1, ..., 18, 1, 2, ..., startingHole-1
-        // Last hole is startingHole - 1 (or 18 if startingHole = 1)
         var lastHole;
         if (startingHole === 1) {
             lastHole = 18;
@@ -72,17 +77,19 @@ var CardSubmit = (function() {
     
     // ============================================================
     // Submit card for a flight
+    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     async function submitCard(gameId, flight, collection) {
         if (!gameId) return false;
         
+        var db = getDb();
         var updatePayload = {};
         updatePayload[`submitted.f${flight}`] = true;
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
         try {
-            await firebase.firestore().collection(collection).doc(gameId).update(updatePayload);
+            await db.collection(collection).doc(gameId).update(updatePayload);
             console.log(`Flight ${flight} card submitted`);
             return true;
         } catch (error) {
@@ -146,7 +153,6 @@ var CardSubmit = (function() {
     // ============================================================
     
     function showFinalResults(trTeamA, trTeamB, teamAGreen, teamBGreen, courseName, players, onClose) {
-        // Format scores
         var teamADisplay = trTeamA % 1 === 0 ? trTeamA : trTeamA.toFixed(1);
         var teamBDisplay = trTeamB % 1 === 0 ? trTeamB : trTeamB.toFixed(1);
         
@@ -163,7 +169,6 @@ var CardSubmit = (function() {
             winnerClass = "winner-tie";
         }
         
-        // Build player list display
         var teamAPlayers = players.filter(function(p) { return p.team === "A"; });
         var teamBPlayers = players.filter(function(p) { return p.team === "B"; });
         
@@ -197,7 +202,6 @@ var CardSubmit = (function() {
         
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         
-        // Add styles for final results
         addFinalResultsStyles();
         
         document.getElementById("finalCloseBtn").addEventListener("click", function() {
@@ -354,14 +358,17 @@ var CardSubmit = (function() {
     
 })();
 
+// Make available globally
+window.CardSubmit = CardSubmit;
+
 /*
 FILE: js/card-submit.js
-VERSION: 1.00
-PURPOSE: Card submission module for REAL mode games
-          - Handles final hole submission
-          - Tracks submission status for both flights
-          - Shows final results screen when both flights submit
-          - Triggers post-game recalculation (Tournament Handicap hook)
-DEPENDS ON: Firebase
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.00
+DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
