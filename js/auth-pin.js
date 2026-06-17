@@ -1,12 +1,13 @@
 /*
 FILE: js/auth-pin.js
-VERSION: 2.01
-KEY CHANGES from v2.00:
-   - UPDATED: Face ID icon now uses official Wikipedia SVG instead of Unicode character ◉
-   - ADDED: CSS filter to color the SVG icon green (#4caf50)
-   - UPDATED: Face ID button styling to match handover spec (square box, green border)
-   - REMOVED: Unicode Face ID icon from numpad
-   - ALL OTHER FUNCTIONS unchanged from v2.00
+VERSION: 2.02
+KEY CHANGES from v2.01:
+   - ADDED: Platform detection (macOS vs iOS vs other)
+   - UPDATED: Dynamic labels - "Face ID" on iPhone, "Touch ID" on Mac
+   - UPDATED: Subtitle text changes based on platform
+   - UPDATED: Button aria-label changes based on platform
+   - FIXED: Error messages now reference correct biometric name
+   - ALL OTHER FUNCTIONS unchanged from v2.01
 DEPENDS ON: None (pure DOM manipulation, uses Modal.js for alerts)
 STATUS: Ready for integration
 */
@@ -38,6 +39,42 @@ var AuthPin = (function() {
         MAX_ATTEMPTS: 5,                     // Lock after 5 failed attempts
         LOCKOUT_DURATION_MS: 30 * 1000       // 30 second lockout
     };
+    
+    // ============================================================
+    // Platform Detection
+    // ============================================================
+    
+    function getPlatformInfo() {
+        var ua = navigator.userAgent || navigator.vendor || window.opera || '';
+        var isMac = /Mac/i.test(ua) && !/iPhone|iPad|iPod/i.test(ua);
+        var isIOS = /iPhone|iPad|iPod/i.test(ua);
+        var isTouchSupported = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        
+        // Determine biometric name
+        var biometricName = 'Biometric';
+        var biometricIcon = '🔐';
+        
+        if (isMac) {
+            biometricName = 'Touch ID';
+            biometricIcon = '🖐️';
+        } else if (isIOS) {
+            biometricName = 'Face ID';
+            biometricIcon = '📱';
+        } else if (isTouchSupported) {
+            // Android or other touch devices - may have fingerprint
+            biometricName = 'Fingerprint';
+            biometricIcon = '👆';
+        }
+        
+        return {
+            isMac: isMac,
+            isIOS: isIOS,
+            isTouchSupported: isTouchSupported,
+            biometricName: biometricName,
+            biometricIcon: biometricIcon,
+            isBiometricSupported: isMac || isIOS // WebAuthn works on both
+        };
+    }
     
     // ============================================================
     // State
@@ -130,16 +167,19 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Face ID / Biometric Authentication via WebAuthn
+    // Face ID / Touch ID / Biometric Authentication via WebAuthn
     // ============================================================
     
     async function authenticateWithBiometric() {
+        var platform = getPlatformInfo();
+        var biometricLabel = platform.biometricName;
+        
         // Check if WebAuthn is supported
         if (!window.PublicKeyCredential) {
             if (typeof Modal !== 'undefined' && Modal.alert) {
-                Modal.alert("Biometric authentication is not supported on this device.\n\nPlease use PIN instead.");
+                Modal.alert(biometricLabel + " is not supported on this device.\n\nPlease use PIN instead.");
             } else {
-                alert("Biometric authentication is not supported on this device.\n\nPlease use PIN instead.");
+                alert(biometricLabel + " is not supported on this device.\n\nPlease use PIN instead.");
             }
             return false;
         }
@@ -180,13 +220,13 @@ var AuthPin = (function() {
             // User cancelled or authentication failed
             if (error.name === "NotAllowedError" || error.name === "AbortError") {
                 if (typeof Modal !== 'undefined' && Modal.alert) {
-                    Modal.alert("Biometric authentication was cancelled or timed out.\n\nPlease use PIN instead.");
+                    Modal.alert(biometricLabel + " was cancelled or timed out.\n\nPlease use PIN instead.");
                 }
                 return false;
             }
             
             if (typeof Modal !== 'undefined' && Modal.alert) {
-                Modal.alert("Biometric authentication failed: " + error.message + "\n\nPlease use PIN instead.");
+                Modal.alert(biometricLabel + " failed: " + error.message + "\n\nPlease use PIN instead.");
             }
             return false;
         }
@@ -218,6 +258,12 @@ var AuthPin = (function() {
         isLocked = false;
         lockoutUntil = null;
         
+        // Get platform info for dynamic labels
+        var platform = getPlatformInfo();
+        var biometricLabel = platform.biometricName;
+        var subtitleText = "Enter PIN or use " + biometricLabel;
+        var ariaLabel = "Use " + biometricLabel;
+        
         // Build modal HTML
         var modalHtml = `
             <div class="auth-modal-overlay" id="authModal" role="dialog" aria-label="Authentication">
@@ -225,7 +271,7 @@ var AuthPin = (function() {
                     <div class="auth-modal-header">
                         <div class="auth-modal-icon">🔐</div>
                         <div class="auth-modal-title">AUTHENTICATE</div>
-                        <div class="auth-modal-subtitle">Enter PIN or use Face ID</div>
+                        <div class="auth-modal-subtitle">${subtitleText}</div>
                     </div>
                     
                     <div class="auth-pin-container">
@@ -248,9 +294,9 @@ var AuthPin = (function() {
                         <button class="auth-numpad-btn" data-digit="7" aria-label="7">7</button>
                         <button class="auth-numpad-btn" data-digit="8" aria-label="8">8</button>
                         <button class="auth-numpad-btn" data-digit="9" aria-label="9">9</button>
-                        <button class="auth-numpad-btn auth-numpad-btn-biometric" id="authFaceIdBtn" aria-label="Use Face ID">
+                        <button class="auth-numpad-btn auth-numpad-btn-biometric" id="authFaceIdBtn" aria-label="${ariaLabel}">
                             <img src="https://upload.wikimedia.org/wikipedia/commons/c/c0/Face_ID_logo.svg"
-                                 alt="Face ID"
+                                 alt="${biometricLabel}"
                                  class="auth-faceid-icon"
                                  style="width:28px; height:28px; display:block; filter: brightness(0) saturate(100%) invert(68%) sepia(43%) saturate(750%) hue-rotate(80deg) brightness(95%) contrast(95%);">
                         </button>
@@ -471,27 +517,30 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Handle Face ID Button
+    // Handle Biometric Button (Face ID / Touch ID)
     // ============================================================
     
-    async function handleFaceId() {
+    async function handleBiometric() {
+        var platform = getPlatformInfo();
+        var biometricLabel = platform.biometricName;
+        
         hideError();
-        var faceIdBtnEl = document.getElementById('authFaceIdBtn');
-        if (faceIdBtnEl) {
+        var bioBtn = document.getElementById('authFaceIdBtn');
+        if (bioBtn) {
             // Show loading state - replace icon with spinner
-            faceIdBtnEl.innerHTML = '<span style="font-size:1.4rem;">⏳</span>';
-            faceIdBtnEl.disabled = true;
+            bioBtn.innerHTML = '<span style="font-size:1.4rem;">⏳</span>';
+            bioBtn.disabled = true;
         }
         
         var success = await authenticateWithBiometric();
         
-        if (faceIdBtnEl) {
-            // Restore the Face ID SVG icon
-            faceIdBtnEl.innerHTML = `<img src="https://upload.wikimedia.org/wikipedia/commons/c/c0/Face_ID_logo.svg"
-                                         alt="Face ID"
-                                         class="auth-faceid-icon"
-                                         style="width:28px; height:28px; display:block; filter: brightness(0) saturate(100%) invert(68%) sepia(43%) saturate(750%) hue-rotate(80deg) brightness(95%) contrast(95%);">`;
-            faceIdBtnEl.disabled = false;
+        if (bioBtn) {
+            // Restore the biometric SVG icon
+            bioBtn.innerHTML = `<img src="https://upload.wikimedia.org/wikipedia/commons/c/c0/Face_ID_logo.svg"
+                                     alt="${biometricLabel}"
+                                     class="auth-faceid-icon"
+                                     style="width:28px; height:28px; display:block; filter: brightness(0) saturate(100%) invert(68%) sepia(43%) saturate(750%) hue-rotate(80deg) brightness(95%) contrast(95%);">`;
+            bioBtn.disabled = false;
         }
         
         if (success) {
@@ -517,7 +566,7 @@ var AuthPin = (function() {
             }
         } else {
             // Biometric failed - show error, stay on modal
-            showError("❌ Face ID failed. Please use PIN.");
+            showError("❌ " + biometricLabel + " failed. Please use PIN.");
         }
     }
     
@@ -558,12 +607,12 @@ var AuthPin = (function() {
             });
         }
         
-        // Face ID button
+        // Biometric button (Face ID / Touch ID)
         if (faceIdBtn) {
             faceIdBtn.addEventListener('click', function(e) {
                 e.preventDefault();
                 if (this.disabled) return;
-                handleFaceId();
+                handleBiometric();
             });
         }
         
@@ -862,7 +911,7 @@ var AuthPin = (function() {
                 cursor: not-allowed;
             }
             
-            /* Face ID Button - Square box matching handover spec */
+            /* Biometric Button - Square box matching handover spec */
             .auth-numpad-btn-biometric {
                 background: #0a0a0a;
                 border: 2px solid #4caf50;
@@ -1069,7 +1118,8 @@ var AuthPin = (function() {
         getAuthStatus: getAuthStatus,
         setPin: setPin,
         getPin: getPin,
-        CONFIG: CONFIG
+        CONFIG: CONFIG,
+        getPlatformInfo: getPlatformInfo  // Exposed for debugging
     };
     
 })();
@@ -1079,13 +1129,14 @@ window.AuthPin = AuthPin;
 
 /*
 FILE: js/auth-pin.js
-VERSION: 2.01
-KEY CHANGES from v2.00:
-   - UPDATED: Face ID icon now uses official Wikipedia SVG instead of Unicode character ◉
-   - ADDED: CSS filter to color the SVG icon green (#4caf50)
-   - UPDATED: Face ID button styling to match handover spec (square box, green border)
-   - REMOVED: Unicode Face ID icon from numpad
-   - ALL OTHER FUNCTIONS unchanged from v2.00
+VERSION: 2.02
+KEY CHANGES from v2.01:
+   - ADDED: Platform detection (macOS vs iOS vs other)
+   - UPDATED: Dynamic labels - "Face ID" on iPhone, "Touch ID" on Mac
+   - UPDATED: Subtitle text changes based on platform
+   - UPDATED: Button aria-label changes based on platform
+   - FIXED: Error messages now reference correct biometric name
+   - ALL OTHER FUNCTIONS unchanged from v2.01
 DEPENDS ON: None (pure DOM manipulation, uses Modal.js for alerts)
 STATUS: Ready for integration
 */
