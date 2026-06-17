@@ -1,13 +1,9 @@
 <!--
 FILE: index.html
-VERSION: 3.46
-KEY CHANGES from v3.43:
-   - ADDED: Long-click (press and hold) on golf icon shows "Admin Functions" bubble
-   - ADDED: Cmd+Click on golf icon opens admin modal
-   - FIXED: Golf icon layout restored to original (display: block, centered)
-   - FIXED: Version exposure via window.INDEX_VERSION for console debugging
-   - Bubble appears after 800ms hold, click to open admin modal
-   - Universal trigger for mobile and desktop
+VERSION: 3.47
+KEY CHANGES from v3.46:
+   - FIXED: Cache-busting parameter for index-hidden.js now uses v1.07 (correct version)
+   - Previously had no cache-busting, causing browser to load cached v1.06
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
@@ -40,7 +36,7 @@ STATUS: Ready for integration
     <script src="js/session.js"></script>
     <script src="js/firebase-retry.js"></script>
     <script src="js/modal.js"></script>
-    <script src="js/index-hidden.js"></script>
+    <script src="js/index-hidden.js?v=1.07"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -502,15 +498,15 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.46</div>
+<div class="version-tag">v3.47</div>
 
 <script>
-// FILE: index.html - VERSION 3.46
+// FILE: index.html - VERSION 3.47
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.46";
+window.INDEX_VERSION = "3.47";
 
-var APP_VERSION = "3.46";
+var APP_VERSION = "3.47";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -519,7 +515,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.46: Determine if this is first load of the session
+// v3.47: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -796,7 +792,7 @@ function showGameCompletedModal(gameId) {
 }
 
 // ============================================================
-// v3.46: Long-click + Bubble for Admin
+// v3.47: Long-click + Bubble for Admin
 // ============================================================
 
 var adminBubbleTimeout = null;
@@ -1177,7 +1173,7 @@ function renderMainUI() {
         setTimeout(setButtonWidths, 10);
         
         // ============================================================
-        // v3.46: Admin handler - Cmd+Click OR Long-click on golf icon
+        // v3.47: Admin handler - Cmd+Click OR Long-click on golf icon
         // ============================================================
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
@@ -1217,7 +1213,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.46
+// Initialization - v3.47
 // ============================================================
 
 function initApp() {
@@ -1298,7 +1294,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.46
+// Start the app - v3.47
 // ============================================================
 
 if (isFirstLoad) {
@@ -1336,14 +1332,10 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.46
-KEY CHANGES from v3.43:
-   - ADDED: Long-click (press and hold) on golf icon shows "Admin Functions" bubble
-   - ADDED: Cmd+Click on golf icon opens admin modal
-   - FIXED: Golf icon layout restored to original (display: block, centered)
-   - FIXED: Version exposure via window.INDEX_VERSION for console debugging
-   - Bubble appears after 800ms hold, click to open admin modal
-   - Universal trigger for mobile and desktop
+VERSION: 3.47
+KEY CHANGES from v3.46:
+   - FIXED: Cache-busting parameter for index-hidden.js now uses v1.07 (correct version)
+   - Previously had no cache-busting, causing browser to load cached v1.06
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
