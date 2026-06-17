@@ -1,11 +1,19 @@
 <!--
 FILE: real-game.html
-VERSION: 6.01
-KEY CHANGES from v6.00:
-   - FIXED: playerTotals now calculated before Firestore write in writeNewHoleData()
-   - Added call to calculatePlayerTotals() before building the Firestore payload
-   - Prevents "Unsupported field value: undefined" error when writing to Firestore
-   - All existing debug logging preserved from v6.00
+VERSION: 6.02
+KEY CHANGES from v6.01:
+   - FIXED: Ensures all required nested objects exist in cache.results before building payload
+   - Added initialization block at start of writeNewHoleData() to guarantee:
+     - results.game1 exists with pointsA, pointsB arrays
+     - results.game2 exists with flight1, flight2, pointsA, pointsB, displayT1, displayT2
+     - results.game3 exists with leader, nettA, nettB, pointsA, pointsB, displayStrk
+     - results.tr exists with teamA, teamB, teamAGreen, teamBGreen
+     - results.clinchedAt exists as empty object
+     - results.f1IntraMatches and results.f2IntraMatches exist as arrays
+     - results.matchResults exists as array
+     - results.playerTotals exists as empty object
+   - Prevents "Unsupported field value: undefined" errors when writing to Firestore
+   - All existing debug logging preserved from v6.01
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.25), js/game-team.js (v1.13), js/game-stroke.js (v1.08), js/game-scorecard.js (v1.16), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/game-order.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Debug version - ready for testing
 -->
@@ -19,9 +27,9 @@ STATUS: Debug version - ready for testing
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=6.01"></script>
-    <script src="js/session.js?v=6.01"></script>
-    <script src="js/modal.js?v=6.01"></script>
+    <script src="js/firebase-config.js?v=6.02"></script>
+    <script src="js/session.js?v=6.02"></script>
+    <script src="js/modal.js?v=6.02"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.25"></script>
@@ -30,11 +38,11 @@ STATUS: Debug version - ready for testing
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/card-submit.js?v=6.01"></script>
-    <script src="js/sign-card.js?v=6.01"></script>
-    <script src="js/hcp-adjust.js?v=6.01"></script>
-    <script src="js/ticker.js?v=6.01"></script>
-    <script src="js/history-record.js?v=6.01"></script>
+    <script src="js/card-submit.js?v=6.02"></script>
+    <script src="js/sign-card.js?v=6.02"></script>
+    <script src="js/hcp-adjust.js?v=6.02"></script>
+    <script src="js/ticker.js?v=6.02"></script>
+    <script src="js/history-record.js?v=6.02"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -297,13 +305,13 @@ STATUS: Debug version - ready for testing
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v6.01</div>
+<div class="version-tag">v6.02</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "6.01";
+var APP_VERSION = "6.02";
 var CACHE_KEY = "real_game_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -315,8 +323,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "6.01";
-console.log("[REAL-GAME] Initializing v6.01 - FIXED playerTotals undefined error");
+window.REAL_GAME_VERSION = "6.02";
+console.log("[REAL-GAME] Initializing v6.02 - FIXED results structure initialization");
 console.log("[REAL-GAME] =========================================");
 console.log("[REAL-GAME] Debug logs will trace the entire save flow");
 console.log("[REAL-GAME] Including: performSave -> writeNewHoleData -> intra/cross calculations");
@@ -569,7 +577,7 @@ function updateGameMetadata(flight, holeNumber) {
 }
 
 // ============================================================
-// v6.01: writeNewHoleData with playerTotals FIX
+// v6.02: writeNewHoleData with results structure FIX
 // ============================================================
 
 async function writeNewHoleData(position, holeNumber, cache) {
@@ -582,6 +590,152 @@ async function writeNewHoleData(position, holeNumber, cache) {
     if (isTarget) {
         console.log(`[DEBUG-FLOW] *** TARGET HOLE ${holeNumber} (position ${position}) ***`);
     }
+    
+    // ============================================================
+    // v6.02: ENSURE ALL REQUIRED NESTED OBJECTS EXIST IN cache.results
+    // This prevents "Unsupported field value: undefined" errors
+    // ============================================================
+    console.log(`[DEBUG-FLOW] --- Ensuring results structure is complete ---`);
+    
+    if (!cache.results) {
+        cache.results = initializeEmptyResults();
+        console.log(`[DEBUG-FLOW] --- cache.results was null - initialized empty results`);
+    }
+    
+    // Ensure game1
+    if (!cache.results.game1) {
+        cache.results.game1 = { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) };
+        console.log(`[DEBUG-FLOW] --- game1 was missing - initialized`);
+    }
+    if (!cache.results.game1.pointsA) {
+        cache.results.game1.pointsA = new Array(18).fill(8);
+    }
+    if (!cache.results.game1.pointsB) {
+        cache.results.game1.pointsB = new Array(18).fill(8);
+    }
+    
+    // Ensure game2
+    if (!cache.results.game2) {
+        cache.results.game2 = { 
+            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
+            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
+            pointsA: new Array(18).fill(1),
+            pointsB: new Array(18).fill(1),
+            displayT1: new Array(18).fill("AS"),
+            displayT2: new Array(18).fill("AS")
+        };
+        console.log(`[DEBUG-FLOW] --- game2 was missing - initialized`);
+    }
+    if (!cache.results.game2.flight1) {
+        cache.results.game2.flight1 = { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null };
+    }
+    if (!cache.results.game2.flight1.leader) {
+        cache.results.game2.flight1.leader = new Array(18).fill("AS");
+    }
+    if (!cache.results.game2.flight1.cumulativePoints) {
+        cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
+    }
+    if (!cache.results.game2.flight2) {
+        cache.results.game2.flight2 = { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null };
+    }
+    if (!cache.results.game2.flight2.leader) {
+        cache.results.game2.flight2.leader = new Array(18).fill("AS");
+    }
+    if (!cache.results.game2.flight2.cumulativePoints) {
+        cache.results.game2.flight2.cumulativePoints = new Array(18).fill(0);
+    }
+    if (!cache.results.game2.pointsA) {
+        cache.results.game2.pointsA = new Array(18).fill(1);
+    }
+    if (!cache.results.game2.pointsB) {
+        cache.results.game2.pointsB = new Array(18).fill(1);
+    }
+    if (!cache.results.game2.displayT1) {
+        cache.results.game2.displayT1 = new Array(18).fill("AS");
+    }
+    if (!cache.results.game2.displayT2) {
+        cache.results.game2.displayT2 = new Array(18).fill("AS");
+    }
+    
+    // Ensure game3
+    if (!cache.results.game3) {
+        cache.results.game3 = { 
+            leader: new Array(18).fill("AS"), 
+            nettA: new Array(18).fill(0), 
+            nettB: new Array(18).fill(0), 
+            pointsA: new Array(18).fill(0.5), 
+            pointsB: new Array(18).fill(0.5),
+            displayStrk: new Array(18).fill("AS")
+        };
+        console.log(`[DEBUG-FLOW] --- game3 was missing - initialized`);
+    }
+    if (!cache.results.game3.leader) {
+        cache.results.game3.leader = new Array(18).fill("AS");
+    }
+    if (!cache.results.game3.nettA) {
+        cache.results.game3.nettA = new Array(18).fill(0);
+    }
+    if (!cache.results.game3.nettB) {
+        cache.results.game3.nettB = new Array(18).fill(0);
+    }
+    if (!cache.results.game3.pointsA) {
+        cache.results.game3.pointsA = new Array(18).fill(0.5);
+    }
+    if (!cache.results.game3.pointsB) {
+        cache.results.game3.pointsB = new Array(18).fill(0.5);
+    }
+    if (!cache.results.game3.displayStrk) {
+        cache.results.game3.displayStrk = new Array(18).fill("AS");
+    }
+    
+    // Ensure tr
+    if (!cache.results.tr) {
+        cache.results.tr = { 
+            teamA: new Array(18).fill(null), 
+            teamB: new Array(18).fill(null), 
+            teamAGreen: new Array(18).fill(false), 
+            teamBGreen: new Array(18).fill(false) 
+        };
+        console.log(`[DEBUG-FLOW] --- tr was missing - initialized`);
+    }
+    if (!cache.results.tr.teamA) {
+        cache.results.tr.teamA = new Array(18).fill(null);
+    }
+    if (!cache.results.tr.teamB) {
+        cache.results.tr.teamB = new Array(18).fill(null);
+    }
+    if (!cache.results.tr.teamAGreen) {
+        cache.results.tr.teamAGreen = new Array(18).fill(false);
+    }
+    if (!cache.results.tr.teamBGreen) {
+        cache.results.tr.teamBGreen = new Array(18).fill(false);
+    }
+    
+    // Ensure clinchedAt
+    if (!cache.results.clinchedAt) {
+        cache.results.clinchedAt = {};
+        console.log(`[DEBUG-FLOW] --- clinchedAt was missing - initialized`);
+    }
+    
+    // Ensure f1IntraMatches and f2IntraMatches arrays exist
+    if (!cache.results.f1IntraMatches) {
+        cache.results.f1IntraMatches = new Array(18);
+        console.log(`[DEBUG-FLOW] --- f1IntraMatches was missing - initialized`);
+    }
+    if (!cache.results.f2IntraMatches) {
+        cache.results.f2IntraMatches = new Array(18);
+        console.log(`[DEBUG-FLOW] --- f2IntraMatches was missing - initialized`);
+    }
+    if (!cache.results.matchResults) {
+        cache.results.matchResults = new Array(18);
+        console.log(`[DEBUG-FLOW] --- matchResults was missing - initialized`);
+    }
+    if (!cache.results.playerTotals) {
+        cache.results.playerTotals = {};
+        console.log(`[DEBUG-FLOW] --- playerTotals was missing - initialized`);
+    }
+    
+    console.log(`[DEBUG-FLOW] --- Results structure complete ---`);
     
     // Get flight data
     var f1Hole = cache.flight1Data[holeNumber];
@@ -605,9 +759,9 @@ async function writeNewHoleData(position, holeNumber, cache) {
         courseSi, startingHole, teamGameFormat, remainingHolesByPosition
     );
     
-    var existingClinched = cache.results?.clinchedAt || {};
+    var existingClinched = cache.results.clinchedAt || {};
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "6.01";
+    var cascadeVersion = window.REAL_GAME_VERSION || "6.02";
     var holesPlayed = position + 1;
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     
@@ -1488,7 +1642,8 @@ function performSave() {
                 renderAll();
                 
                 // ============================================================
-                // v6.01: writeNewHoleData - ALWAYS call for ALL saves
+                // v6.02: writeNewHoleData - ALWAYS call for ALL saves
+                // Now with results structure initialization
                 // ============================================================
                 console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                 
@@ -1679,9 +1834,18 @@ function initializeEmptyResults() {
             flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
             flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
             pointsA: new Array(18).fill(1),
-            pointsB: new Array(18).fill(1)
+            pointsB: new Array(18).fill(1),
+            displayT1: new Array(18).fill("AS"),
+            displayT2: new Array(18).fill("AS")
         },
-        game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
+        game3: { 
+            leader: new Array(18).fill("AS"), 
+            nettA: new Array(18).fill(0), 
+            nettB: new Array(18).fill(0), 
+            pointsA: new Array(18).fill(0.5), 
+            pointsB: new Array(18).fill(0.5),
+            displayStrk: new Array(18).fill("AS") 
+        },
         tr: { 
             teamA: new Array(18).fill(null), 
             teamB: new Array(18).fill(null), 
@@ -1786,7 +1950,7 @@ function calculateHoleResultsWithCumulative(holeNumber, cumulativeClinched, cumu
     var clinchedAtUpdates = {};
     var remainingHoles = getRemainingHolesFromPlayOrder(holeNumber);
     var deviceId = SessionManager.getDeviceIdDisplay();
-    var cascadeVersion = window.REAL_GAME_VERSION || "6.01";
+    var cascadeVersion = window.REAL_GAME_VERSION || "6.02";
     
     var holesPlayed = position + 1;
     
@@ -2625,12 +2789,20 @@ init();
 
 <!--
 FILE: real-game.html
-VERSION: 6.01
-KEY CHANGES from v6.00:
-   - FIXED: playerTotals now calculated before Firestore write in writeNewHoleData()
-   - Added call to calculatePlayerTotals() before building the Firestore payload
-   - Prevents "Unsupported field value: undefined" error when writing to Firestore
-   - All existing debug logging preserved from v6.00
+VERSION: 6.02
+KEY CHANGES from v6.01:
+   - FIXED: Ensures all required nested objects exist in cache.results before building payload
+   - Added initialization block at start of writeNewHoleData() to guarantee:
+     - results.game1 exists with pointsA, pointsB arrays
+     - results.game2 exists with flight1, flight2, pointsA, pointsB, displayT1, displayT2
+     - results.game3 exists with leader, nettA, nettB, pointsA, pointsB, displayStrk
+     - results.tr exists with teamA, teamB, teamAGreen, teamBGreen
+     - results.clinchedAt exists as empty object
+     - results.f1IntraMatches and results.f2IntraMatches exist as arrays
+     - results.matchResults exists as array
+     - results.playerTotals exists as empty object
+   - Prevents "Unsupported field value: undefined" errors when writing to Firestore
+   - All existing debug logging preserved from v6.01
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/game-data.js, js/game-match.js (v2.25), js/game-team.js (v1.13), js/game-stroke.js (v1.08), js/game-scorecard.js (v1.16), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/game-order.js, js/card-submit.js, js/sign-card.js, js/hcp-adjust.js, js/ticker.js, js/history-record.js
 STATUS: Debug version - ready for testing
 -->
