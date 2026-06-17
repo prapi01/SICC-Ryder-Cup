@@ -1,11 +1,11 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.23
-KEY CHANGES from v3.22:
-   - ADDED: Long-click (press and hold) on "READY TO PLAY" title shows "Admin Functions" bubble
-   - Bubble appears after 800ms hold, click to open admin modal
-   - Cmd+Click still works as before
-   - Universal trigger for mobile and desktop
+VERSION: 3.24
+KEY CHANGES from v3.23:
+   - FIXED: Admin bubble now matches index.html style (larger square, stacked text)
+   - FIXED: Prevent text selection on long press (user-select: none on body)
+   - Admin bubble: 80x80px square with "ADMIN" / "FUNCTION" stacked text
+   - Same green border, dark background as index.html
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
@@ -36,6 +36,11 @@ STATUS: Ready for integration
         html, body {
             min-height: 100vh;
             background: #000000;
+            /* v3.24: Prevent text selection on long press */
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
         }
         
         body { 
@@ -96,6 +101,7 @@ STATUS: Ready for integration
             cursor: pointer;
             transition: opacity 0.2s;
             -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
             user-select: none;
         }
         .status-bubble:hover {
@@ -104,7 +110,7 @@ STATUS: Ready for integration
         
         .header { text-align: center; margin-bottom: 20px; }
         
-        /* v3.23: Title with hidden hint and long-click support */
+        /* v3.24: Title with hidden hint and long-click support */
         .title { 
             font-size: 1.6rem; 
             font-weight: 800; 
@@ -113,6 +119,7 @@ STATUS: Ready for integration
             position: relative;
             display: inline-block;
             -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
             user-select: none;
         }
         .title .title-hint {
@@ -562,31 +569,54 @@ STATUS: Ready for integration
             border-color: #4caf50;
         }
         
-        /* v3.23: Admin Bubble */
+        /* v3.24: Admin Bubble - LARGER SQUARE BUTTON with stacked text (matches index.html) */
         .admin-bubble {
             position: fixed;
             background: #1a3a1a;
             border: 2px solid #4caf50;
             color: #4caf50;
-            padding: 8px 16px;
-            border-radius: 30px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            font-family: system-ui, -apple-system, sans-serif;
+            border-radius: 16px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 20px rgba(76,175,80,0.2);
             z-index: 15000;
             cursor: pointer;
-            transition: opacity 0.2s;
+            transition: opacity 0.2s, transform 0.1s;
             pointer-events: auto;
+            -webkit-user-select: none;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
             animation: bubblePop 0.2s ease-out;
+            min-width: 80px;
+            min-height: 80px;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            text-align: center;
+            line-height: 1.2;
+            font-weight: 700;
+            font-size: 0.7rem;
+            font-family: system-ui, -apple-system, sans-serif;
         }
         .admin-bubble:active {
             transform: scale(0.95);
         }
         .admin-bubble .bubble-icon {
-            margin-right: 6px;
+            font-size: 1.2rem;
+            margin-bottom: 2px;
+        }
+        .admin-bubble .bubble-line1 {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .admin-bubble .bubble-line2 {
+            font-size: 0.6rem;
+            font-weight: 600;
+            opacity: 0.8;
+            letter-spacing: 0.3px;
         }
         
         @keyframes bubblePop {
@@ -605,12 +635,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.23</div>
+<div class="version-tag">v3.24</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.23
+// FILE: pre-game.html - VERSION 3.24
 
-var VERSION = "3.23";
+var VERSION = "3.24";
 var CACHE_KEY = "pre_game_version";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -646,7 +676,7 @@ var locks = { f1: null, f2: null };
 var currentShortName = "DEV-??";
 
 // ============================================================
-// v3.23: Long-click + Bubble for Admin
+// v3.24: Long-click + Bubble for Admin - LARGER SQUARE BUTTON
 // ============================================================
 
 var adminBubbleTimeout = null;
@@ -657,14 +687,20 @@ function showAdminBubble(x, y) {
     // Remove any existing bubble
     hideAdminBubble();
     
-    // Create bubble
+    // Create LARGER SQUARE bubble with stacked text (matches index.html)
     var bubble = document.createElement('div');
     bubble.className = 'admin-bubble';
-    bubble.innerHTML = '<span class="bubble-icon">⚙️</span> Admin Functions';
-    bubble.style.left = Math.max(10, Math.min(window.innerWidth - 140, x - 70)) + 'px';
-    bubble.style.top = Math.max(10, Math.min(window.innerHeight - 60, y - 30)) + 'px';
+    bubble.innerHTML = `
+        <span class="bubble-icon">⚙️</span>
+        <span class="bubble-line1">ADMIN</span>
+        <span class="bubble-line2">FUNCTION</span>
+    `;
     
-    // Click on bubble opens admin modal
+    // Position the bubble
+    var bubbleSize = 80;
+    bubble.style.left = Math.max(10, Math.min(window.innerWidth - bubbleSize - 10, x - bubbleSize / 2)) + 'px';
+    bubble.style.top = Math.max(10, Math.min(window.innerHeight - bubbleSize - 10, y - bubbleSize / 2)) + 'px';
+    
     bubble.addEventListener('click', function(e) {
         e.stopPropagation();
         hideAdminBubble();
@@ -697,14 +733,11 @@ function setupLongClickAdmin(element) {
     var holdTimer = null;
     var isHolding = false;
     
-    // Pointer events for cross-device support (mouse + touch)
     element.addEventListener('pointerdown', function(e) {
         if (isAdminBubbleActive) {
             hideAdminBubble();
             return;
         }
-        
-        // Don't trigger on Cmd+Click (they have their own handler)
         if (e.metaKey || e.ctrlKey) return;
         
         isHolding = false;
@@ -716,15 +749,12 @@ function setupLongClickAdmin(element) {
     
     element.addEventListener('pointerup', function(e) {
         clearTimeout(holdTimer);
-        // If it was a short click and no bubble, do nothing
     });
     
     element.addEventListener('pointerleave', function(e) {
         clearTimeout(holdTimer);
-        // Don't hide bubble immediately on leave
     });
     
-    // Also support Cmd+Click
     element.addEventListener('click', function(e) {
         if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
@@ -1601,7 +1631,7 @@ function render() {
     document.getElementById("app").innerHTML = html;
     
     // ============================================================
-    // v3.23: Setup long-click + Cmd+Click on title
+    // v3.24: Setup long-click + Cmd+Click on title
     // ============================================================
     var titleEl = document.getElementById('preGameTitle');
     if (titleEl) {
@@ -1626,7 +1656,7 @@ function escapeHtml(str) {
     });
 }
 
-// v3.23: Expose functions globally
+// v3.24: Expose functions globally
 window.showPreGameAdminModal = showPreGameAdminModal;
 window.toggleRole = toggleRole;
 window.startGame = startGame;
@@ -1646,12 +1676,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.23
-KEY CHANGES from v3.22:
-   - ADDED: Long-click (press and hold) on "READY TO PLAY" title shows "Admin Functions" bubble
-   - Bubble appears after 800ms hold, click to open admin modal
-   - Cmd+Click still works as before
-   - Universal trigger for mobile and desktop
+VERSION: 3.24
+KEY CHANGES from v3.23:
+   - FIXED: Admin bubble now matches index.html style (larger square, stacked text)
+   - FIXED: Prevent text selection on long press (user-select: none on body)
+   - Admin bubble: 80x80px square with "ADMIN" / "FUNCTION" stacked text
+   - Same green border, dark background as index.html
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
