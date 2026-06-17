@@ -1,12 +1,12 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - ADDED: Long-click (press and hold) on "Upcoming Games" title toggles ALL games view
-   - ADDED: Long-click (press and hold) on Document ID opens Copy Game modal
-   - Bubble appears after 800ms hold showing action description
-   - Cmd+Click still works as before for both targets
-   - Universal trigger for mobile and desktop
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: Admin bubbles now match index.html style (larger square, stacked text)
+   - FIXED: Prevent text selection on long press (user-select: none on body)
+   - Title bubble: 80x80px square with "VIEW" / "TOGGLE" stacked text
+   - Document ID bubble: 80x80px square with "COPY" / "GAME" stacked text
+   - Same green border, dark background as index.html
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
@@ -25,7 +25,27 @@ STATUS: Ready for integration
     <script src="js/modal.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000000; font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; color: #ffffff; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+        
+        /* v1.15: Prevent text selection on long press */
+        html, body {
+            background: #000000;
+            min-height: 100vh;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            background: #000000;
+            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
         .container { max-width: 500px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
         .version-tag { 
@@ -73,6 +93,7 @@ STATUS: Ready for integration
             padding-left: 10px;
             cursor: default;
             transition: opacity 0.2s;
+            -webkit-user-select: none;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
@@ -155,6 +176,7 @@ STATUS: Ready for integration
             display: inline-block;
             cursor: default;
             transition: opacity 0.2s;
+            -webkit-user-select: none;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
@@ -276,31 +298,54 @@ STATUS: Ready for integration
             to { transform: rotate(360deg); }
         }
         
-        /* v1.14: Admin Bubble */
+        /* v1.15: Admin Bubble - LARGER SQUARE BUTTON with stacked text (matches index.html) */
         .admin-bubble {
             position: fixed;
             background: #1a3a1a;
             border: 2px solid #4caf50;
             color: #4caf50;
-            padding: 8px 16px;
-            border-radius: 30px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            font-family: system-ui, -apple-system, sans-serif;
+            border-radius: 16px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 20px rgba(76,175,80,0.2);
             z-index: 15000;
             cursor: pointer;
-            transition: opacity 0.2s;
+            transition: opacity 0.2s, transform 0.1s;
             pointer-events: auto;
+            -webkit-user-select: none;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
             animation: bubblePop 0.2s ease-out;
+            min-width: 80px;
+            min-height: 80px;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            text-align: center;
+            line-height: 1.2;
+            font-weight: 700;
+            font-size: 0.7rem;
+            font-family: system-ui, -apple-system, sans-serif;
         }
         .admin-bubble:active {
             transform: scale(0.95);
         }
         .admin-bubble .bubble-icon {
-            margin-right: 6px;
+            font-size: 1.2rem;
+            margin-bottom: 2px;
+        }
+        .admin-bubble .bubble-line1 {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .admin-bubble .bubble-line2 {
+            font-size: 0.6rem;
+            font-weight: 600;
+            opacity: 0.8;
+            letter-spacing: 0.3px;
         }
         
         @keyframes bubblePop {
@@ -314,12 +359,12 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.14</div>
+<div class="version-tag">v1.15</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.14
+// FILE: manage-games.html - VERSION 1.15
 
-var VERSION = "1.14";
+var VERSION = "1.15";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -353,25 +398,31 @@ function formatDate(dateString) {
 }
 
 // ============================================================
-// v1.14: Long-click + Bubble Helper
+// v1.15: Long-click + Bubble Helper - LARGER SQUARE BUTTON
 // ============================================================
 
 var adminBubbleTimeout = null;
 var adminBubbleElement = null;
 var isAdminBubbleActive = false;
 
-function showAdminBubble(x, y, text, onAction) {
+function showAdminBubble(x, y, icon, line1, line2, onAction) {
     // Remove any existing bubble
     hideAdminBubble();
     
-    // Create bubble
+    // Create LARGER SQUARE bubble with stacked text (matches index.html)
     var bubble = document.createElement('div');
     bubble.className = 'admin-bubble';
-    bubble.innerHTML = '<span class="bubble-icon">⚙️</span> ' + text;
-    bubble.style.left = Math.max(10, Math.min(window.innerWidth - 160, x - 80)) + 'px';
-    bubble.style.top = Math.max(10, Math.min(window.innerHeight - 60, y - 30)) + 'px';
+    bubble.innerHTML = `
+        <span class="bubble-icon">${icon}</span>
+        <span class="bubble-line1">${line1}</span>
+        <span class="bubble-line2">${line2}</span>
+    `;
     
-    // Click on bubble triggers action
+    // Position the bubble
+    var bubbleSize = 80;
+    bubble.style.left = Math.max(10, Math.min(window.innerWidth - bubbleSize - 10, x - bubbleSize / 2)) + 'px';
+    bubble.style.top = Math.max(10, Math.min(window.innerHeight - bubbleSize - 10, y - bubbleSize / 2)) + 'px';
+    
     bubble.addEventListener('click', function(e) {
         e.stopPropagation();
         hideAdminBubble();
@@ -398,7 +449,7 @@ function hideAdminBubble() {
     isAdminBubbleActive = false;
 }
 
-function setupLongClick(element, bubbleText, onAction) {
+function setupLongClick(element, icon, line1, line2, onAction) {
     if (!element) return;
     
     var holdTimer = null;
@@ -408,16 +459,13 @@ function setupLongClick(element, bubbleText, onAction) {
             hideAdminBubble();
             return;
         }
-        
-        // Don't trigger on Cmd+Click
         if (e.metaKey || e.ctrlKey) return;
         
         holdTimer = setTimeout(function() {
             showAdminBubble(
                 e.clientX || e.pageX || window.innerWidth / 2,
                 e.clientY || e.pageY || window.innerHeight / 2,
-                bubbleText,
-                onAction
+                icon, line1, line2, onAction
             );
         }, 800);
     });
@@ -430,7 +478,6 @@ function setupLongClick(element, bubbleText, onAction) {
         clearTimeout(holdTimer);
     });
     
-    // Also support Cmd+Click
     element.addEventListener('click', function(e) {
         if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
@@ -754,12 +801,12 @@ function loadAndRender() {
         document.getElementById("app").innerHTML = html;
         
         // ============================================================
-        // v1.14: Setup long-click + Cmd+Click for title
+        // v1.15: Setup long-click + Cmd+Click for title
         // ============================================================
         attachTitleClickHandler();
         
         // ============================================================
-        // v1.14: Setup long-click + Cmd+Click for document IDs
+        // v1.15: Setup long-click + Cmd+Click for document IDs with LARGE bubble
         // ============================================================
         var docElements = document.querySelectorAll('.doc-copy-target');
         for (var j = 0; j < docElements.length; j++) {
@@ -769,7 +816,9 @@ function loadAndRender() {
                 
                 setupLongClick(
                     el,
-                    '📋 Copy Game',
+                    '📋',
+                    'COPY',
+                    'GAME',
                     function() {
                         showCopyModal(gameId, gameDate);
                     }
@@ -784,7 +833,7 @@ function loadAndRender() {
 }
 
 // ============================================================
-// v1.14: Attach Cmd+Click and long-click handler to card title
+// v1.15: Attach Cmd+Click and long-click handler to card title with LARGE bubble
 // ============================================================
 function attachTitleClickHandler() {
     var titleEl = document.getElementById('cardTitle');
@@ -799,7 +848,9 @@ function attachTitleClickHandler() {
         
         setupLongClick(
             newTitle,
-            showAllGames ? '📋 Show Upcoming Games' : '📋 Show All Games',
+            showAllGames ? '📋' : '📋',
+            showAllGames ? 'UPCOMING' : 'ALL',
+            'GAMES',
             titleAction
         );
     }
@@ -835,13 +886,13 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - ADDED: Long-click (press and hold) on "Upcoming Games" title toggles ALL games view
-   - ADDED: Long-click (press and hold) on Document ID opens Copy Game modal
-   - Bubble appears after 800ms hold showing action description
-   - Cmd+Click still works as before for both targets
-   - Universal trigger for mobile and desktop
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - FIXED: Admin bubbles now match index.html style (larger square, stacked text)
+   - FIXED: Prevent text selection on long press (user-select: none on body)
+   - Title bubble: 80x80px square with "VIEW" / "TOGGLE" stacked text
+   - Document ID bubble: 80x80px square with "COPY" / "GAME" stacked text
+   - Same green border, dark background as index.html
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
