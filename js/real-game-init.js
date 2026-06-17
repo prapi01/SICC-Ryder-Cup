@@ -1,23 +1,28 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted initialization and lifecycle logic from real-game.html
-   - Contains: init(), onCacheUpdate(), initializeGameData()
-   - Contains: exitToMainMenu(), checkLockOwnership(), showTakeoverNotificationModal()
-   - Contains: updateGameMetadata(), getPreloadedRawGameData(), applyPreloadedData()
-   - Contains: initTicker(), setupRealtimeListener()
-   - All functions use RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.00";
+window.REAL_GAME_INIT_VERSION = "1.01";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.00");
+    console.log("[REAL-GAME-INIT] Initializing v1.01");
+    
+    // ============================================================
+    // Helper: Get Firestore instance
+    // ============================================================
+    function getDb() {
+        return firebase.firestore();
+    }
     
     // ============================================================
     // Private Helpers
@@ -173,6 +178,7 @@ var RealGameInit = (function() {
     
     // ============================================================
     // updateGameMetadata
+    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function updateGameMetadata(flight, holeNumber) {
@@ -204,7 +210,7 @@ var RealGameInit = (function() {
                     
                     console.log(`[METADATA] Writing to Firestore:`, metaPayload);
                     
-                    var db = firebase.firestore();
+                    var db = getDb();
                     db.collection("scheduledGames").doc(gameId).update(metaPayload)
                         .then(function() {
                             console.log(`[METADATA] Successfully updated metadata for flight ${flight}`);
@@ -327,7 +333,6 @@ var RealGameInit = (function() {
         setStartingHole(startingHole);
         setTeamGameFormat(teamGameFormat);
         
-        // Update GameOrder with starting hole
         RealGameUtils.updateGameOrder(startingHole);
         
         var mockCache = {
@@ -390,11 +395,12 @@ var RealGameInit = (function() {
     
     // ============================================================
     // setupRealtimeListener
+    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
         var gameId = getGameId();
-        var db = firebase.firestore();
+        var db = getDb();
         
         if (!db || !gameId) {
             console.warn("Cannot setup realtime listener - db or gameId missing");
@@ -521,7 +527,6 @@ var RealGameInit = (function() {
             Ticker.setPlayers(getAllPlayers());
         }
         
-        // Check if game is complete
         if (cache.signatures && cache.signatures.f1 && cache.signatures.f2 && 
             !isGameComplete() && !isCelebrationTriggered()) {
             
@@ -541,6 +546,7 @@ var RealGameInit = (function() {
     
     // ============================================================
     // exitToMainMenu
+    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function exitToMainMenu() {
@@ -562,7 +568,7 @@ var RealGameInit = (function() {
                 ["locks.f" + editableFlight]: null,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
-            var db = firebase.firestore();
+            var db = getDb();
             db.collection("scheduledGames").doc(gameId).update(releasePayload)
                 .then(function() {
                     console.log("[EXIT] Lock released for flight", editableFlight);
@@ -590,7 +596,6 @@ var RealGameInit = (function() {
                 }
             );
         } else {
-            // Fallback if Modal not available
             if (confirm("Leave the game? Unsaved changes will be lost.")) {
                 if (typeof GameLoader !== 'undefined') {
                     GameLoader.unload();
@@ -642,7 +647,6 @@ var RealGameInit = (function() {
             });
         }
         
-        // Check for pending writes
         if (typeof RealGameSave !== 'undefined' && RealGameSave.loadPendingWrites) {
             var pendingWrites = RealGameSave.loadPendingWrites();
             if (pendingWrites) {
@@ -863,14 +867,12 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted initialization and lifecycle logic from real-game.html
-   - Contains: init(), onCacheUpdate(), initializeGameData()
-   - Contains: exitToMainMenu(), checkLockOwnership(), showTakeoverNotificationModal()
-   - Contains: updateGameMetadata(), getPreloadedRawGameData(), applyPreloadedData()
-   - Contains: initTicker(), setupRealtimeListener()
-   - All functions use RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase
 STATUS: Ready for integration
 */
