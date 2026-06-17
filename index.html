@@ -1,12 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.49
+VERSION: 3.50
 KEY CHANGES from v3.48:
-   - FIXED: showAdminModal() no longer calls itself recursively
-   - Now simply calls window.showAdminModal() from index-hidden.js
-   - FIXED: Admin bubble button is now larger (square, stacked text)
-   - Button text: "ADMIN" on top, "FUNCTION" below
-   - Larger tap target for iPhone
+   - FIXED: Removed duplicate showAdminModal() function from index.html (caused recursion)
+   - FIXED: Cache-busting parameter for index-hidden.js now uses v1.07 (correct version)
+   - Admin bubble button is now larger (square, stacked text "ADMIN" / "FUNCTION")
+   - Bubble click directly calls window.showAdminModal() from index-hidden.js
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
@@ -429,7 +428,7 @@ STATUS: Ready for integration
             color: #888;
         }
         
-        /* v3.49: Admin Bubble - LARGER SQUARE BUTTON with stacked text */
+        /* v3.50: Admin Bubble - LARGER SQUARE BUTTON with stacked text */
         .admin-bubble {
             position: fixed;
             background: #1a3a1a;
@@ -530,15 +529,15 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.49</div>
+<div class="version-tag">v3.50</div>
 
 <script>
-// FILE: index.html - VERSION 3.49
+// FILE: index.html - VERSION 3.50
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.49";
+window.INDEX_VERSION = "3.50";
 
-var APP_VERSION = "3.49";
+var APP_VERSION = "3.50";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -547,7 +546,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.49: Determine if this is first load of the session
+// v3.50: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -824,7 +823,7 @@ function showGameCompletedModal(gameId) {
 }
 
 // ============================================================
-// v3.49: Long-click + Bubble for Admin - LARGER SQUARE BUTTON
+// v3.50: Long-click + Bubble for Admin - LARGER SQUARE BUTTON
 // ============================================================
 
 var adminBubbleTimeout = null;
@@ -849,7 +848,7 @@ function showAdminBubble(x, y) {
     bubble.style.left = Math.max(10, Math.min(window.innerWidth - bubbleSize - 10, x - bubbleSize / 2)) + 'px';
     bubble.style.top = Math.max(10, Math.min(window.innerHeight - bubbleSize - 10, y - bubbleSize / 2)) + 'px';
     
-    // v3.49: Direct click handler - calls window.showAdminModal from index-hidden.js
+    // v3.50: Direct click handler - calls window.showAdminModal from index-hidden.js
     bubble.addEventListener('click', function(e) {
         e.stopPropagation();
         hideAdminBubble();
@@ -931,25 +930,8 @@ function setupLongClickAdmin(element) {
 }
 
 // ============================================================
-// v3.49: showAdminModal - FIXED: No recursion, simply call window.showAdminModal
+// v3.50: showAdminModal REMOVED - use window.showAdminModal from index-hidden.js
 // ============================================================
-
-function showAdminModal() {
-    // Simply call the global function from index-hidden.js
-    if (typeof window.showAdminModal === 'function') {
-        window.showAdminModal();
-        return;
-    }
-    
-    // Emergency fallback
-    if (typeof duplicateMasterRecord === 'function') {
-        if (confirm("⚠️ ADMIN FUNCTION\n\nDuplicate Master Record to today's date?")) {
-            duplicateMasterRecord();
-        }
-    } else {
-        alert("Admin functions not available. Please refresh.");
-    }
-}
 
 // ============================================================
 // Main UI Render
@@ -1212,7 +1194,7 @@ function renderMainUI() {
         setTimeout(setButtonWidths, 10);
         
         // ============================================================
-        // v3.49: Admin handler - Cmd+Click OR Long-click on golf icon
+        // v3.50: Admin handler - Cmd+Click OR Long-click on golf icon
         // ============================================================
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
@@ -1252,7 +1234,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.49
+// Initialization - v3.50
 // ============================================================
 
 function initApp() {
@@ -1333,7 +1315,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.49
+// Start the app - v3.50
 // ============================================================
 
 if (isFirstLoad) {
@@ -1371,13 +1353,12 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.49
+VERSION: 3.50
 KEY CHANGES from v3.48:
-   - FIXED: showAdminModal() no longer calls itself recursively
-   - Now simply calls window.showAdminModal() from index-hidden.js
-   - FIXED: Admin bubble button is now larger (square, stacked text)
-   - Button text: "ADMIN" on top, "FUNCTION" below
-   - Larger tap target for iPhone
+   - FIXED: Removed duplicate showAdminModal() function from index.html (caused recursion)
+   - FIXED: Cache-busting parameter for index-hidden.js now uses v1.07 (correct version)
+   - Admin bubble button is now larger (square, stacked text "ADMIN" / "FUNCTION")
+   - Bubble click directly calls window.showAdminModal() from index-hidden.js
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
