@@ -1,13 +1,10 @@
 /*
 FILE: js/splash.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Splash screen with golf icon drop animation
-   - Uses existing golf icon from index.html
-   - Drops from top, rotates, lands with thump effect
-   - Includes screen shake and ring effect
-   - Fades out after 2.8 seconds
-   - Can be modified without touching index.html
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - CHANGED: Increased margin-bottom from 20px to 40px for icon container
+   - More space between golf icon and title text
+   - All other functionality unchanged (drop animation, thump effect, fade out)
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -49,7 +46,7 @@ var SplashScreen = (function() {
         var iconContainer = document.createElement('div');
         iconContainer.style.cssText = `
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 40px;
         `;
         
         // Move golf icon into splash
@@ -201,14 +198,11 @@ var SplashScreen = (function() {
 
 /*
 FILE: js/splash.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Splash screen with golf icon drop animation
-   - Uses existing golf icon from index.html
-   - Drops from top, rotates, lands with thump effect
-   - Includes screen shake and ring effect
-   - Fades out after 2.8 seconds
-   - Can be modified without touching index.html
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - CHANGED: Increased margin-bottom from 20px to 40px for icon container
+   - More space between golf icon and title text
+   - All other functionality unchanged (drop animation, thump effect, fade out)
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
