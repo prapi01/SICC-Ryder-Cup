@@ -1,23 +1,22 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted navigation and modal logic from real-game.html
-   - Contains: nextHole(), prevHole(), updateHoleNumberDisplay()
-   - Contains: showSignCardModal(), showWaitingScreen(), showGameCompleteScreen()
-   - Contains: showCelebrationAndHandicap(), createHistoryRecord()
-   - Contains: onToggleFlightView()
-   - All functions use RealGameState, RealGameUtils, RealGameUI, RealGameSave
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: createHistoryRecord() now passes full cache.signatures object
+   - Previously passed malformed { f1: { signed: cache.signatures?.f1 || false } }
+   - This caused history records to have signatures.f1.signed = false
+   - Now preserves all signature fields (signed, signedAt, captainName)
+   - All existing functionality preserved
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.00";
+window.REAL_GAME_NAV_VERSION = "1.01";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.00");
+    console.log("[REAL-GAME-NAV] Initializing v1.01 - fixed signatures in history record");
     
     // ============================================================
     // Private Helpers
@@ -373,7 +372,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // createHistoryRecord
+    // createHistoryRecord - FIXED v1.01: Pass full signatures object
     // ============================================================
     
     async function createHistoryRecord() {
@@ -412,12 +411,14 @@ var RealGameNav = (function() {
         
         return new Promise(function(resolve, reject) {
             if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
+                // v1.01: FIXED - Pass full signatures object instead of malformed partial
+                // This preserves signed, signedAt, and captainName fields
                 HistoryRecord.createPendingRecord(
                     gameId,
                     gameDataForHistory,
                     cache.results,
                     { teamA: tr.teamA, teamB: tr.teamB },
-                    { f1: { signed: cache.signatures?.f1 || false }, f2: { signed: cache.signatures?.f2 || false } },
+                    cache.signatures || { f1: { signed: false }, f2: { signed: false } },
                     cache.f1DataString,
                     cache.f2DataString,
                     allMatchResults,
@@ -501,14 +502,13 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted navigation and modal logic from real-game.html
-   - Contains: nextHole(), prevHole(), updateHoleNumberDisplay()
-   - Contains: showSignCardModal(), showWaitingScreen(), showGameCompleteScreen()
-   - Contains: showCelebrationAndHandicap(), createHistoryRecord()
-   - Contains: onToggleFlightView()
-   - All functions use RealGameState, RealGameUtils, RealGameUI, RealGameSave
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: createHistoryRecord() now passes full cache.signatures object
+   - Previously passed malformed { f1: { signed: cache.signatures?.f1 || false } }
+   - This caused history records to have signatures.f1.signed = false
+   - Now preserves all signature fields (signed, signedAt, captainName)
+   - All existing functionality preserved
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment
 STATUS: Ready for integration
 */
