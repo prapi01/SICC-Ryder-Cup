@@ -1,14 +1,14 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - FIXED: Admin bubbles now match index.html style (larger square, stacked text)
-   - FIXED: Prevent text selection on long press (user-select: none on body)
-   - Title bubble: 80x80px square with "VIEW" / "TOGGLE" stacked text
-   - Document ID bubble: 80x80px square with "COPY" / "GAME" stacked text
-   - Same green border, dark background as index.html
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - ADDED: PIN/Biometric authentication for EDIT and DELETE actions
+   - Integrated js/auth-pin.js v1.00
+   - EDIT and DELETE now require PIN (8888) or Face ID before proceeding
+   - Authentication session lasts 5 minutes
+   - Wrong PIN shows error and clears dots (stays on modal)
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
 STATUS: Ready for integration
 -->
 
@@ -23,6 +23,8 @@ STATUS: Ready for integration
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <script src="js/modal.js"></script>
+    <script src="js/auth-pin.js"></script>
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -298,7 +300,7 @@ STATUS: Ready for integration
             to { transform: rotate(360deg); }
         }
         
-        /* v1.15: Admin Bubble - LARGER SQUARE BUTTON with stacked text (matches index.html) */
+        /* v1.15: Admin Bubble - LARGER SQUARE BUTTON with stacked text */
         .admin-bubble {
             position: fixed;
             background: #1a3a1a;
@@ -359,12 +361,12 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.15</div>
+<div class="version-tag">v1.16</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.15
+// FILE: manage-games.html - VERSION 1.16
 
-var VERSION = "1.15";
+var VERSION = "1.16";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -633,7 +635,17 @@ function showCopyModal(gameId, currentDate) {
     };
 }
 
-function deleteGame(gameId, gameDate) {
+// ============================================================
+// v1.16: Auth-protected Delete Game
+// ============================================================
+function deleteGameProtected(gameId, gameDate) {
+    AuthPin.requireAuth('delete', gameId, gameDate, function() {
+        // This callback runs after successful authentication
+        deleteGameConfirmed(gameId, gameDate);
+    });
+}
+
+function deleteGameConfirmed(gameId, gameDate) {
     Modal.confirm(
         "Delete scheduled game on " + gameDate + "? This action cannot be undone.",
         function() {
@@ -650,7 +662,17 @@ function deleteGame(gameId, gameDate) {
     );
 }
 
-function editGame(gameId) {
+// ============================================================
+// v1.16: Auth-protected Edit Game
+// ============================================================
+function editGameProtected(gameId) {
+    AuthPin.requireAuth('edit', gameId, null, function() {
+        // This callback runs after successful authentication
+        editGameConfirmed(gameId);
+    });
+}
+
+function editGameConfirmed(gameId) {
     SessionManager.addNavigationHistory("setup-game.html", "game_edit", { gameId: gameId });
     db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
         if (doc.exists) {
@@ -762,6 +784,7 @@ function loadAndRender() {
             // v1.14: Document ID with Cmd+Click and long-click handler for copy
             var docIdHtml = '<div class="doc-id-display doc-copy-target" data-gameid="' + escapeHtml(game.id) + '" data-gamedate="' + escapeHtml(game.date) + '">📄 ' + escapeHtml(game.id) + '<span class="copy-hint"> ⌘+click or long press to copy</span></div>';
             
+            // v1.16: Auth-protected EDIT and DELETE
             gamesHtml += `
                 <div class="game-item ${pastClass}">
                     <div class="game-info">
@@ -770,8 +793,8 @@ function loadAndRender() {
                         <div class="game-players">👥 ${playerCount} players</div>
                     </div>
                     <div class="game-actions">
-                        <button class="btn-edit" onclick="editGame('${game.id}')">✏️ EDIT</button>
-                        <button class="btn-delete" onclick="deleteGame('${game.id}', '${formattedDate}')">🗑️ DELETE</button>
+                        <button class="btn-edit" onclick="editGameProtected('${game.id}')">✏️ EDIT</button>
+                        <button class="btn-delete" onclick="deleteGameProtected('${game.id}', '${formattedDate}')">🗑️ DELETE</button>
                     </div>
                     ${docIdHtml}
                 </div>
@@ -856,8 +879,8 @@ function attachTitleClickHandler() {
     }
 }
 
-window.deleteGame = deleteGame;
-window.editGame = editGame;
+window.deleteGame = deleteGameProtected;
+window.editGame = editGameProtected;
 window.goBackToSettings = goBackToSettings;
 window.showCopyModal = showCopyModal;
 window.copyGameWithNewDate = copyGameWithNewDate;
@@ -886,14 +909,14 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - FIXED: Admin bubbles now match index.html style (larger square, stacked text)
-   - FIXED: Prevent text selection on long press (user-select: none on body)
-   - Title bubble: 80x80px square with "VIEW" / "TOGGLE" stacked text
-   - Document ID bubble: 80x80px square with "COPY" / "GAME" stacked text
-   - Same green border, dark background as index.html
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - ADDED: PIN/Biometric authentication for EDIT and DELETE actions
+   - Integrated js/auth-pin.js v1.00
+   - EDIT and DELETE now require PIN (8888) or Face ID before proceeding
+   - Authentication session lasts 5 minutes
+   - Wrong PIN shows error and clears dots (stays on modal)
    - All existing functionality preserved
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
 STATUS: Ready for integration
 -->
