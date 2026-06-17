@@ -1,28 +1,31 @@
 /*
 FILE: js/splash.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - CHANGED: Increased margin-bottom from 20px to 80px for icon container
-   - More space between golf icon and title text
-   - ADDED: Version exposure via window.SPLASH_VERSION for console debugging
-   - ADDED: Cache-busting code to ensure proper loading
-   - All other functionality unchanged (drop animation, thump effect, fade out)
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Cache-busting now uses VERSION variable instead of hardcoded string
+   - ADDED: SPLASH_VERSION constant defined at top for single source of truth
+   - All other functionality unchanged from v1.01
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
 
 // ============================================================
+// VERSION DEFINITION - SINGLE SOURCE OF TRUTH
+// ============================================================
+var SPLASH_VERSION = "1.02";
+
+// ============================================================
 // VERSION EXPOSURE FOR CONSOLE DEBUGGING
 // ============================================================
-window.SPLASH_VERSION = "1.01";
+window.SPLASH_VERSION = SPLASH_VERSION;
 
 // ============================================================
 // CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
 var SPLASH_CACHE_KEY = "splash_version";
 var storedSplashVersion = localStorage.getItem(SPLASH_CACHE_KEY);
-if (storedSplashVersion !== "1.01") {
-    localStorage.setItem(SPLASH_CACHE_KEY, "1.01");
+if (storedSplashVersion !== SPLASH_VERSION) {
+    localStorage.setItem(SPLASH_CACHE_KEY, SPLASH_VERSION);
     // If splash is already loaded, force reload
     if (document.getElementById('splashOverlay')) {
         window.location.reload();
@@ -218,13 +221,11 @@ var SplashScreen = (function() {
 
 /*
 FILE: js/splash.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - CHANGED: Increased margin-bottom from 20px to 80px for icon container
-   - More space between golf icon and title text
-   - ADDED: Version exposure via window.SPLASH_VERSION for console debugging
-   - ADDED: Cache-busting code to ensure proper loading
-   - All other functionality unchanged (drop animation, thump effect, fade out)
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Cache-busting now uses VERSION variable instead of hardcoded string
+   - ADDED: SPLASH_VERSION constant defined at top for single source of truth
+   - All other functionality unchanged from v1.01
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
