@@ -1,12 +1,11 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - ADDED: PIN/Biometric authentication for EDIT and DELETE actions
-   - Integrated js/auth-pin.js v1.00
-   - EDIT and DELETE now require PIN (8888) or Face ID before proceeding
-   - Authentication session lasts 5 minutes
-   - Wrong PIN shows error and clears dots (stays on modal)
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - REMOVED: PIN authentication from EDIT button (opens directly)
+   - KEPT: PIN authentication for DELETE button
+   - EDIT now navigates to setup-game.html without PIN prompt
+   - DELETE still requires PIN (8888 or biometric)
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
 STATUS: Ready for integration
@@ -361,12 +360,12 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.16</div>
+<div class="version-tag">v1.17</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.16
+// FILE: manage-games.html - VERSION 1.17
 
-var VERSION = "1.16";
+var VERSION = "1.17";
 var CACHE_KEY = "manage_games_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -636,7 +635,30 @@ function showCopyModal(gameId, currentDate) {
 }
 
 // ============================================================
-// v1.16: Auth-protected Delete Game
+// v1.17: EDIT - NO PIN REQUIRED - navigate directly
+// ============================================================
+function editGameDirect(gameId) {
+    editGameConfirmed(gameId);
+}
+
+function editGameConfirmed(gameId) {
+    SessionManager.addNavigationHistory("setup-game.html", "game_edit", { gameId: gameId });
+    db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
+        if (doc.exists) {
+            var gameData = doc.data();
+            gameData.id = doc.id;
+            sessionStorage.setItem("editGameData", JSON.stringify(gameData));
+            window.location.href = "setup-game.html?mode=edit";
+        } else {
+            Modal.alert("Game not found");
+        }
+    }).catch(function(e) {
+        Modal.alert("Error loading game: " + e.message);
+    });
+}
+
+// ============================================================
+// v1.17: DELETE - PIN REQUIRED
 // ============================================================
 function deleteGameProtected(gameId, gameDate) {
     AuthPin.requireAuth('delete', gameId, gameDate, function() {
@@ -660,32 +682,6 @@ function deleteGameConfirmed(gameId, gameDate) {
             console.log("Deletion cancelled");
         }
     );
-}
-
-// ============================================================
-// v1.16: Auth-protected Edit Game
-// ============================================================
-function editGameProtected(gameId) {
-    AuthPin.requireAuth('edit', gameId, null, function() {
-        // This callback runs after successful authentication
-        editGameConfirmed(gameId);
-    });
-}
-
-function editGameConfirmed(gameId) {
-    SessionManager.addNavigationHistory("setup-game.html", "game_edit", { gameId: gameId });
-    db.collection("scheduledGames").doc(gameId).get().then(function(doc) {
-        if (doc.exists) {
-            var gameData = doc.data();
-            gameData.id = doc.id;
-            sessionStorage.setItem("editGameData", JSON.stringify(gameData));
-            window.location.href = "setup-game.html?mode=edit";
-        } else {
-            Modal.alert("Game not found");
-        }
-    }).catch(function(e) {
-        Modal.alert("Error loading game: " + e.message);
-    });
 }
 
 function goBackToSettings() {
@@ -784,7 +780,7 @@ function loadAndRender() {
             // v1.14: Document ID with Cmd+Click and long-click handler for copy
             var docIdHtml = '<div class="doc-id-display doc-copy-target" data-gameid="' + escapeHtml(game.id) + '" data-gamedate="' + escapeHtml(game.date) + '">📄 ' + escapeHtml(game.id) + '<span class="copy-hint"> ⌘+click or long press to copy</span></div>';
             
-            // v1.16: Auth-protected EDIT and DELETE
+            // v1.17: EDIT - NO PIN, DELETE - PIN REQUIRED
             gamesHtml += `
                 <div class="game-item ${pastClass}">
                     <div class="game-info">
@@ -793,7 +789,7 @@ function loadAndRender() {
                         <div class="game-players">👥 ${playerCount} players</div>
                     </div>
                     <div class="game-actions">
-                        <button class="btn-edit" onclick="editGameProtected('${game.id}')">✏️ EDIT</button>
+                        <button class="btn-edit" onclick="editGameDirect('${game.id}')">✏️ EDIT</button>
                         <button class="btn-delete" onclick="deleteGameProtected('${game.id}', '${formattedDate}')">🗑️ DELETE</button>
                     </div>
                     ${docIdHtml}
@@ -880,7 +876,7 @@ function attachTitleClickHandler() {
 }
 
 window.deleteGame = deleteGameProtected;
-window.editGame = editGameProtected;
+window.editGameDirect = editGameDirect;
 window.goBackToSettings = goBackToSettings;
 window.showCopyModal = showCopyModal;
 window.copyGameWithNewDate = copyGameWithNewDate;
@@ -909,13 +905,12 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - ADDED: PIN/Biometric authentication for EDIT and DELETE actions
-   - Integrated js/auth-pin.js v1.00
-   - EDIT and DELETE now require PIN (8888) or Face ID before proceeding
-   - Authentication session lasts 5 minutes
-   - Wrong PIN shows error and clears dots (stays on modal)
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - REMOVED: PIN authentication from EDIT button (opens directly)
+   - KEPT: PIN authentication for DELETE button
+   - EDIT now navigates to setup-game.html without PIN prompt
+   - DELETE still requires PIN (8888 or biometric)
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js
 STATUS: Ready for integration
