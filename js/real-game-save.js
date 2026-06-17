@@ -1,24 +1,28 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted save logic from real-game.html
-   - Contains: performSave(), saveHole()
-   - Contains: writeNewHoleData(), writeSingleHoleToFirestore()
-   - Contains: updateLocalCacheWithResults()
-   - Contains: setSaveButtonIdle(), setSaveButtonPending(), setSaveButtonRetry()
-   - Contains: flashSaveButtonSuccess(), updateSaveButtonState()
-   - All functions use RealGameState and RealGameUtils
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.00";
+window.REAL_GAME_SAVE_VERSION = "1.01";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.00");
+    console.log("[REAL-GAME-SAVE] Initializing v1.01");
+    
+    // ============================================================
+    // Helper: Get Firestore instance
+    // ============================================================
+    function getDb() {
+        return firebase.firestore();
+    }
     
     // ============================================================
     // Private Helpers
@@ -117,7 +121,6 @@ var RealGameSave = (function() {
         var editableFlight = RealGameState.getEditableFlight();
         var currentHole = RealGameState.getCurrentHole();
         
-        // isHoleSaved needs to be passed from render context or use GameLoader
         var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
         var isCurrentSaved = cache && cache.savedHoles && cache.savedHoles[editableFlight] ? 
             cache.savedHoles[editableFlight].indexOf(currentHole) !== -1 : false;
@@ -217,6 +220,7 @@ var RealGameSave = (function() {
     
     // ============================================================
     // writeSingleHoleToFirestore
+    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -323,7 +327,7 @@ var RealGameSave = (function() {
         }
         
         try {
-            var db = firebase.firestore();
+            var db = getDb();
             await db.collection("scheduledGames").doc(gameId).update(updatePayload);
             if(isTarget) console.log(`[DEBUG-WRITE] SUCCESS - Firestore update completed for hole ${holeNumber}`);
             console.log(`[CASCADE-DEBUG] Results saved successfully for hole ${holeNumber}`);
@@ -337,6 +341,7 @@ var RealGameSave = (function() {
     
     // ============================================================
     // writeNewHoleData
+    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache) {
@@ -384,7 +389,7 @@ var RealGameSave = (function() {
         
         var existingClinched = cache.results.clinchedAt || {};
         var deviceId = typeof SessionManager !== 'undefined' ? SessionManager.getDeviceIdDisplay() : "unknown";
-        var cascadeVersion = window.REAL_GAME_VERSION || "6.02";
+        var cascadeVersion = window.REAL_GAME_VERSION || "6.10";
         var holesPlayed = position + 1;
         var remainingHoles = RealGameUtils.getRemainingHolesFromPlayOrder(holeNumber);
         
@@ -602,7 +607,7 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] =========================================`);
         
         try {
-            var db = firebase.firestore();
+            var db = getDb();
             await db.collection("scheduledGames").doc(gameId).update(updatePayload);
             console.log(`[DEBUG-FLOW] Firestore write SUCCESS for hole ${holeNumber}`);
             return true;
@@ -735,6 +740,7 @@ var RealGameSave = (function() {
     
     // ============================================================
     // performSave
+    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -771,14 +777,11 @@ var RealGameSave = (function() {
             var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
             var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
             
-            // This needs the getStoredScore function which is in the render context
-            // We'll use a callback to get scores from the render context
             if (!saveHoleCallback) {
                 reject(new Error("saveHoleCallback is required"));
                 return;
             }
             
-            // The callback should return { a1, a2, b1, b2 } scores
             var scores = saveHoleCallback(flight, currentHole);
             
             console.log(`[DEBUG-SAVE] Scores: a1=${scores.a1}, a2=${scores.a2}, b1=${scores.b1}, b2=${scores.b2}`);
@@ -786,7 +789,6 @@ var RealGameSave = (function() {
             if (typeof GameData !== 'undefined') {
                 GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
                     if (success) {
-                        // Clear local changes for this hole
                         RealGameState.removeLocalChangesForHole(flight, currentHole);
                         
                         console.log(`[DEBUG-SAVE] GameData.saveCurrentHole SUCCESS`);
@@ -858,7 +860,7 @@ var RealGameSave = (function() {
                             t1UpdatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
                             
                             try {
-                                var db = firebase.firestore();
+                                var db = getDb();
                                 await db.collection("scheduledGames").doc(gameId).update(t1UpdatePayload);
                                 console.log(`[DEBUG-SAVE] T-1 Firestore write SUCCESS`);
                             } catch (e) {
@@ -907,8 +909,6 @@ var RealGameSave = (function() {
                                 var updatedFlight1Clinched = currentCache.results?.game2?.flight1?.clinchedHole || null;
                                 var updatedFlight2Clinched = currentCache.results?.game2?.flight2?.clinchedHole || null;
                                 
-                                // calculateHoleResultsWithCumulative needs to be provided by the cascade module
-                                // We'll use a callback
                                 if (typeof RealGameCascade !== 'undefined' && RealGameCascade.calculateHoleResultsWithCumulative) {
                                     var loopResultsData = RealGameCascade.calculateHoleResultsWithCumulative(
                                         holeToUpdate, updatedClinched, updatedFlight1Clinched, updatedFlight2Clinched, holeToUpdate
@@ -1185,21 +1185,16 @@ var RealGameSave = (function() {
     // ============================================================
     
     return {
-        // Save button UI
         updateSaveButtonState: updateSaveButtonState,
         setSaveButtonIdle: setSaveButtonIdle,
         setSaveButtonPending: setSaveButtonPending,
         setSaveButtonRetry: setSaveButtonRetry,
         flashSaveButtonSuccess: flashSaveButtonSuccess,
-        
-        // Core save functions
         performSave: performSave,
         saveHole: saveHole,
         writeNewHoleData: writeNewHoleData,
         writeSingleHoleToFirestore: writeSingleHoleToFirestore,
         updateLocalCacheWithResults: updateLocalCacheWithResults,
-        
-        // Pending writes
         getPendingWritesKey: getPendingWritesKey,
         savePendingWrites: savePendingWrites,
         loadPendingWrites: loadPendingWrites,
@@ -1213,15 +1208,12 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted save logic from real-game.html
-   - Contains: performSave(), saveHole()
-   - Contains: writeNewHoleData(), writeSingleHoleToFirestore()
-   - Contains: updateLocalCacheWithResults()
-   - Contains: setSaveButtonIdle(), setSaveButtonPending(), setSaveButtonRetry()
-   - Contains: flashSaveButtonSuccess(), updateSaveButtonState()
-   - All functions use RealGameState and RealGameUtils
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
 STATUS: Ready for integration
 */
