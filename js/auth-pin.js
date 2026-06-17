@@ -1,14 +1,15 @@
 /*
 FILE: js/auth-pin.js
-VERSION: 2.02
-KEY CHANGES from v2.01:
-   - ADDED: Platform detection (macOS vs iOS vs other)
-   - UPDATED: Dynamic labels - "Face ID" on iPhone, "Touch ID" on Mac
-   - UPDATED: Subtitle text changes based on platform
-   - UPDATED: Button aria-label changes based on platform
-   - FIXED: Error messages now reference correct biometric name
-   - ALL OTHER FUNCTIONS unchanged from v2.01
-DEPENDS ON: None (pure DOM manipulation, uses Modal.js for alerts)
+VERSION: 2.03
+KEY CHANGES from v2.02:
+   - CHANGED: PIN dots from circles to SQUARES (border-radius: 8px)
+   - CHANGED: PIN dot size to match handover spec (44px × 50px)
+   - CHANGED: PIN dot styling to match handover spec (square corners)
+   - REMOVED: All biometric references (Face ID / Touch ID)
+   - SIMPLIFIED: PIN-only authentication modal
+   - CLEANED: Removed WebAuthn code entirely
+   - KEPT: Platform detection removed (no longer needed)
+DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
 
@@ -41,42 +42,6 @@ var AuthPin = (function() {
     };
     
     // ============================================================
-    // Platform Detection
-    // ============================================================
-    
-    function getPlatformInfo() {
-        var ua = navigator.userAgent || navigator.vendor || window.opera || '';
-        var isMac = /Mac/i.test(ua) && !/iPhone|iPad|iPod/i.test(ua);
-        var isIOS = /iPhone|iPad|iPod/i.test(ua);
-        var isTouchSupported = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-        
-        // Determine biometric name
-        var biometricName = 'Biometric';
-        var biometricIcon = '🔐';
-        
-        if (isMac) {
-            biometricName = 'Touch ID';
-            biometricIcon = '🖐️';
-        } else if (isIOS) {
-            biometricName = 'Face ID';
-            biometricIcon = '📱';
-        } else if (isTouchSupported) {
-            // Android or other touch devices - may have fingerprint
-            biometricName = 'Fingerprint';
-            biometricIcon = '👆';
-        }
-        
-        return {
-            isMac: isMac,
-            isIOS: isIOS,
-            isTouchSupported: isTouchSupported,
-            biometricName: biometricName,
-            biometricIcon: biometricIcon,
-            isBiometricSupported: isMac || isIOS // WebAuthn works on both
-        };
-    }
-    
-    // ============================================================
     // State
     // ============================================================
     
@@ -90,8 +55,6 @@ var AuthPin = (function() {
     var lockoutUntil = null;
     var modal = null;
     var pinDots = [];
-    var pinInput = null;
-    var faceIdBtn = null;
     var cancelBtn = null;
     var errorMsg = null;
     var currentPin = "";
@@ -167,73 +130,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Face ID / Touch ID / Biometric Authentication via WebAuthn
-    // ============================================================
-    
-    async function authenticateWithBiometric() {
-        var platform = getPlatformInfo();
-        var biometricLabel = platform.biometricName;
-        
-        // Check if WebAuthn is supported
-        if (!window.PublicKeyCredential) {
-            if (typeof Modal !== 'undefined' && Modal.alert) {
-                Modal.alert(biometricLabel + " is not supported on this device.\n\nPlease use PIN instead.");
-            } else {
-                alert(biometricLabel + " is not supported on this device.\n\nPlease use PIN instead.");
-            }
-            return false;
-        }
-        
-        try {
-            // Create a challenge (random bytes)
-            var challenge = new Uint8Array(32);
-            window.crypto.getRandomValues(challenge);
-            
-            // Define the credential request options
-            var options = {
-                publicKey: {
-                    challenge: challenge,
-                    rpId: window.location.hostname,
-                    timeout: 60000,
-                    userVerification: "required",
-                    extensions: {
-                        appid: window.location.origin
-                    }
-                }
-            };
-            
-            // Request credential
-            var credential = await navigator.credentials.get(options);
-            
-            if (credential) {
-                // Biometric authentication successful
-                authenticated = true;
-                authTimestamp = Date.now();
-                failedAttempts = 0;
-                return true;
-            }
-            
-            return false;
-        } catch (error) {
-            console.error("Biometric authentication error:", error);
-            
-            // User cancelled or authentication failed
-            if (error.name === "NotAllowedError" || error.name === "AbortError") {
-                if (typeof Modal !== 'undefined' && Modal.alert) {
-                    Modal.alert(biometricLabel + " was cancelled or timed out.\n\nPlease use PIN instead.");
-                }
-                return false;
-            }
-            
-            if (typeof Modal !== 'undefined' && Modal.alert) {
-                Modal.alert(biometricLabel + " failed: " + error.message + "\n\nPlease use PIN instead.");
-            }
-            return false;
-        }
-    }
-    
-    // ============================================================
-    // Show PIN/Biometric Modal
+    // Show PIN Modal
     // ============================================================
     
     function showAuthModal(action, gameId, gameDate, onSuccess) {
@@ -258,12 +155,6 @@ var AuthPin = (function() {
         isLocked = false;
         lockoutUntil = null;
         
-        // Get platform info for dynamic labels
-        var platform = getPlatformInfo();
-        var biometricLabel = platform.biometricName;
-        var subtitleText = "Enter PIN or use " + biometricLabel;
-        var ariaLabel = "Use " + biometricLabel;
-        
         // Build modal HTML
         var modalHtml = `
             <div class="auth-modal-overlay" id="authModal" role="dialog" aria-label="Authentication">
@@ -271,15 +162,15 @@ var AuthPin = (function() {
                     <div class="auth-modal-header">
                         <div class="auth-modal-icon">🔐</div>
                         <div class="auth-modal-title">AUTHENTICATE</div>
-                        <div class="auth-modal-subtitle">${subtitleText}</div>
+                        <div class="auth-modal-subtitle">Enter 4-digit PIN</div>
                     </div>
                     
                     <div class="auth-pin-container">
                         <div class="auth-pin-dots" id="authPinDots" role="group" aria-label="PIN entry">
-                            <span class="auth-pin-dot" data-index="0" aria-hidden="true">●</span>
-                            <span class="auth-pin-dot" data-index="1" aria-hidden="true">●</span>
-                            <span class="auth-pin-dot" data-index="2" aria-hidden="true">●</span>
-                            <span class="auth-pin-dot" data-index="3" aria-hidden="true">●</span>
+                            <span class="auth-pin-dot" data-index="0" aria-hidden="true"></span>
+                            <span class="auth-pin-dot" data-index="1" aria-hidden="true"></span>
+                            <span class="auth-pin-dot" data-index="2" aria-hidden="true"></span>
+                            <span class="auth-pin-dot" data-index="3" aria-hidden="true"></span>
                         </div>
                         <div class="auth-pin-error" id="authPinError" role="alert"></div>
                     </div>
@@ -294,12 +185,6 @@ var AuthPin = (function() {
                         <button class="auth-numpad-btn" data-digit="7" aria-label="7">7</button>
                         <button class="auth-numpad-btn" data-digit="8" aria-label="8">8</button>
                         <button class="auth-numpad-btn" data-digit="9" aria-label="9">9</button>
-                        <button class="auth-numpad-btn auth-numpad-btn-biometric" id="authFaceIdBtn" aria-label="${ariaLabel}">
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c0/Face_ID_logo.svg"
-                                 alt="${biometricLabel}"
-                                 class="auth-faceid-icon"
-                                 style="width:28px; height:28px; display:block; filter: brightness(0) saturate(100%) invert(68%) sepia(43%) saturate(750%) hue-rotate(80deg) brightness(95%) contrast(95%);">
-                        </button>
                         <button class="auth-numpad-btn" data-digit="0" aria-label="0">0</button>
                         <button class="auth-numpad-btn auth-numpad-btn-backspace" id="authBackspaceBtn" aria-label="Delete">
                             <span class="auth-numpad-icon">⌫</span>
@@ -321,7 +206,6 @@ var AuthPin = (function() {
         
         modal = document.getElementById('authModal');
         pinDots = document.querySelectorAll('.auth-pin-dot');
-        faceIdBtn = document.getElementById('authFaceIdBtn');
         cancelBtn = document.getElementById('authCancelBtn');
         errorMsg = document.getElementById('authPinError');
         
@@ -345,14 +229,13 @@ var AuthPin = (function() {
             modal = null;
         }
         pinDots = [];
-        faceIdBtn = null;
         cancelBtn = null;
         errorMsg = null;
         currentPin = "";
     }
     
     // ============================================================
-    // Update PIN Dots Display
+    // Update PIN Dots Display (SQUARE boxes)
     // ============================================================
     
     function updatePinDots() {
@@ -362,7 +245,7 @@ var AuthPin = (function() {
                 pinDots[i].classList.add('filled');
                 pinDots[i].classList.add('animated');
             } else {
-                pinDots[i].textContent = '○';
+                pinDots[i].textContent = '';
                 pinDots[i].classList.remove('filled');
                 pinDots[i].classList.remove('animated');
             }
@@ -437,7 +320,7 @@ var AuthPin = (function() {
         if (currentPin.length === CONFIG.MAX_PIN_LENGTH) {
             setTimeout(function() {
                 validatePinAndExecute();
-            }, 300); // Small delay for visual feedback
+            }, 300);
         }
     }
     
@@ -517,60 +400,6 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Handle Biometric Button (Face ID / Touch ID)
-    // ============================================================
-    
-    async function handleBiometric() {
-        var platform = getPlatformInfo();
-        var biometricLabel = platform.biometricName;
-        
-        hideError();
-        var bioBtn = document.getElementById('authFaceIdBtn');
-        if (bioBtn) {
-            // Show loading state - replace icon with spinner
-            bioBtn.innerHTML = '<span style="font-size:1.4rem;">⏳</span>';
-            bioBtn.disabled = true;
-        }
-        
-        var success = await authenticateWithBiometric();
-        
-        if (bioBtn) {
-            // Restore the biometric SVG icon
-            bioBtn.innerHTML = `<img src="https://upload.wikimedia.org/wikipedia/commons/c/c0/Face_ID_logo.svg"
-                                     alt="${biometricLabel}"
-                                     class="auth-faceid-icon"
-                                     style="width:28px; height:28px; display:block; filter: brightness(0) saturate(100%) invert(68%) sepia(43%) saturate(750%) hue-rotate(80deg) brightness(95%) contrast(95%);">`;
-            bioBtn.disabled = false;
-        }
-        
-        if (success) {
-            // Biometric success - execute the pending action
-            var modalElement = document.querySelector('.auth-modal');
-            if (modalElement) {
-                modalElement.style.transition = 'transform 0.3s, opacity 0.3s';
-                modalElement.style.transform = 'scale(1.05)';
-                modalElement.style.opacity = '0';
-                setTimeout(function() {
-                    removeModal();
-                    if (onSuccessCallback) {
-                        onSuccessCallback();
-                    }
-                    resetAuth();
-                }, 300);
-            } else {
-                removeModal();
-                if (onSuccessCallback) {
-                    onSuccessCallback();
-                }
-                resetAuth();
-            }
-        } else {
-            // Biometric failed - show error, stay on modal
-            showError("❌ " + biometricLabel + " failed. Please use PIN.");
-        }
-    }
-    
-    // ============================================================
     // Handle Cancel
     // ============================================================
     
@@ -604,15 +433,6 @@ var AuthPin = (function() {
                 e.preventDefault();
                 if (this.disabled) return;
                 handlePinBackspace();
-            });
-        }
-        
-        // Biometric button (Face ID / Touch ID)
-        if (faceIdBtn) {
-            faceIdBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                if (this.disabled) return;
-                handleBiometric();
             });
         }
         
@@ -718,7 +538,6 @@ var AuthPin = (function() {
     function setPin(newPin) {
         if (newPin && newPin.length === CONFIG.MAX_PIN_LENGTH && /^\d{4}$/.test(newPin)) {
             CONFIG.PIN = newPin;
-            // Also update the global variable for visibility
             AUTH_PIN = newPin;
             return true;
         }
@@ -743,7 +562,7 @@ var AuthPin = (function() {
         var styles = document.createElement('style');
         styles.id = 'auth-pin-styles';
         styles.textContent = `
-            /* Auth Modal - Enhanced */
+            /* Auth Modal */
             .auth-modal-overlay {
                 position: fixed;
                 top: 0;
@@ -813,7 +632,7 @@ var AuthPin = (function() {
                 letter-spacing: 1px;
             }
             
-            /* PIN Dots */
+            /* PIN Dots - SQUARE BOXES */
             .auth-pin-container {
                 margin: 24px 0 20px 0;
             }
@@ -822,35 +641,33 @@ var AuthPin = (function() {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 14px;
-                font-size: 2rem;
-                font-weight: 700;
-                font-family: monospace;
-                letter-spacing: 4px;
+                gap: 12px;
                 user-select: none;
                 padding: 8px 0;
             }
             
             .auth-pin-dot {
                 display: inline-block;
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                background: rgba(10, 10, 10, 0.6);
+                width: 44px;
+                height: 50px;
+                border-radius: 8px;
+                background: #0a0a0a;
                 border: 2px solid #333;
                 color: #4caf50;
                 text-align: center;
-                line-height: 36px;
-                font-size: 1.4rem;
+                line-height: 46px;
+                font-size: 1.8rem;
+                font-weight: 700;
+                font-family: monospace;
                 transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
                 box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
             }
             
             .auth-pin-dot.filled {
                 border-color: #4caf50;
-                background: rgba(76, 175, 80, 0.15);
+                background: #1a3a1a;
                 box-shadow: 0 0 20px rgba(76, 175, 80, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.4);
-                transform: scale(1.05);
+                transform: scale(1.02);
             }
             
             .auth-pin-dot.animated {
@@ -909,37 +726,6 @@ var AuthPin = (function() {
             .auth-numpad-btn:disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
-            }
-            
-            /* Biometric Button - Square box matching handover spec */
-            .auth-numpad-btn-biometric {
-                background: #0a0a0a;
-                border: 2px solid #4caf50;
-                border-radius: 8px;
-                font-size: 1.6rem;
-                min-height: 56px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 0;
-            }
-            
-            .auth-numpad-btn-biometric:active:not(:disabled) {
-                transform: scale(0.95);
-                background: #1a3a1a;
-                border-color: #4caf50;
-            }
-            
-            .auth-numpad-btn-biometric:hover:not(:disabled) {
-                background: #1a3a1a;
-                border-color: #4caf50;
-            }
-            
-            .auth-faceid-icon {
-                width: 28px;
-                height: 28px;
-                display: block;
-                filter: brightness(0) saturate(100%) invert(68%) sepia(43%) saturate(750%) hue-rotate(80deg) brightness(95%) contrast(95%);
             }
             
             .auth-numpad-btn-backspace {
@@ -1034,7 +820,7 @@ var AuthPin = (function() {
             @keyframes authDotPop {
                 0% { transform: scale(0.6); opacity: 0.5; }
                 50% { transform: scale(1.15); }
-                100% { transform: scale(1.05); opacity: 1; }
+                100% { transform: scale(1.02); opacity: 1; }
             }
             
             @keyframes shake {
@@ -1055,10 +841,10 @@ var AuthPin = (function() {
                 }
                 
                 .auth-pin-dot {
-                    width: 36px;
-                    height: 36px;
-                    line-height: 32px;
-                    font-size: 1.2rem;
+                    width: 40px;
+                    height: 46px;
+                    line-height: 42px;
+                    font-size: 1.5rem;
                 }
                 
                 .auth-numpad-btn {
@@ -1079,11 +865,10 @@ var AuthPin = (function() {
                 }
                 
                 .auth-pin-dot {
-                    width: 32px;
-                    height: 32px;
-                    line-height: 28px;
-                    font-size: 1rem;
-                    gap: 10px;
+                    width: 36px;
+                    height: 42px;
+                    line-height: 38px;
+                    font-size: 1.3rem;
                 }
                 
                 .auth-numpad-btn {
@@ -1118,8 +903,7 @@ var AuthPin = (function() {
         getAuthStatus: getAuthStatus,
         setPin: setPin,
         getPin: getPin,
-        CONFIG: CONFIG,
-        getPlatformInfo: getPlatformInfo  // Exposed for debugging
+        CONFIG: CONFIG
     };
     
 })();
@@ -1129,14 +913,15 @@ window.AuthPin = AuthPin;
 
 /*
 FILE: js/auth-pin.js
-VERSION: 2.02
-KEY CHANGES from v2.01:
-   - ADDED: Platform detection (macOS vs iOS vs other)
-   - UPDATED: Dynamic labels - "Face ID" on iPhone, "Touch ID" on Mac
-   - UPDATED: Subtitle text changes based on platform
-   - UPDATED: Button aria-label changes based on platform
-   - FIXED: Error messages now reference correct biometric name
-   - ALL OTHER FUNCTIONS unchanged from v2.01
-DEPENDS ON: None (pure DOM manipulation, uses Modal.js for alerts)
+VERSION: 2.03
+KEY CHANGES from v2.02:
+   - CHANGED: PIN dots from circles to SQUARES (border-radius: 8px)
+   - CHANGED: PIN dot size to match handover spec (44px × 50px)
+   - CHANGED: PIN dot styling to match handover spec (square corners)
+   - REMOVED: All biometric references (Face ID / Touch ID)
+   - SIMPLIFIED: PIN-only authentication modal
+   - CLEANED: Removed WebAuthn code entirely
+   - KEPT: Platform detection removed (no longer needed)
+DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
