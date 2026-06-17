@@ -1,11 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.44
-KEY CHANGES from v3.43:
-   - CHANGED: Golf icon now opens Admin Modal on Cmd+Click (⌘+Click or Ctrl+Click)
-   - ADDED: Admin Modal with 3 options: Duplicate Master Record, Manage All Games, Refresh
-   - Double-click still works as fallback
-   - Removed inline confirm() and replaced with admin modal
+VERSION: 3.45
+KEY CHANGES from v3.44:
+   - ADDED: Long-click (press and hold) on golf icon shows "Admin Functions" bubble
+   - Bubble appears after 800ms hold, click to open admin modal
+   - Cmd+Click still works as before
+   - Universal trigger for mobile and desktop
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js
 STATUS: Ready for integration
@@ -214,6 +214,9 @@ STATUS: Ready for integration
             cursor: pointer;
             transition: transform 0.1s ease;
             position: relative;
+            display: inline-block;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
         }
         .golf-icon:active { transform: scale(0.98); }
         .golf-icon .golf-hint {
@@ -504,6 +507,38 @@ STATUS: Ready for integration
         .admin-modal-close:hover {
             border-color: #4caf50;
         }
+        
+        /* v3.45: Admin Bubble */
+        .admin-bubble {
+            position: fixed;
+            background: #1a3a1a;
+            border: 2px solid #4caf50;
+            color: #4caf50;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: system-ui, -apple-system, sans-serif;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 20px rgba(76,175,80,0.2);
+            z-index: 15000;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            pointer-events: auto;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            animation: bubblePop 0.2s ease-out;
+        }
+        .admin-bubble:active {
+            transform: scale(0.95);
+        }
+        .admin-bubble .bubble-icon {
+            margin-right: 6px;
+        }
+        
+        @keyframes bubblePop {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
     </style>
     
     <script>
@@ -551,12 +586,12 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.44</div>
+<div class="version-tag">v3.45</div>
 
 <script>
-// FILE: index.html - VERSION 3.44
+// FILE: index.html - VERSION 3.45
 
-var APP_VERSION = "3.44";
+var APP_VERSION = "3.45";
 var CACHE_KEY = "index_version";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
@@ -565,7 +600,7 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = window.location.pathname + "?v=" + APP_VERSION;
 }
 
-// v3.44: Determine if this is first load of the session
+// v3.45: Determine if this is first load of the session
 var isFirstLoad = (sessionStorage.getItem('appInitialized') !== 'true');
 
 // If not first load, show grey icon screen IMMEDIATELY (no blank screen)
@@ -842,6 +877,100 @@ function showGameCompletedModal(gameId) {
 }
 
 // ============================================================
+// v3.45: Long-click + Bubble for Admin
+// ============================================================
+
+var adminBubbleTimeout = null;
+var adminBubbleElement = null;
+var isAdminBubbleActive = false;
+
+function showAdminBubble(x, y) {
+    // Remove any existing bubble
+    hideAdminBubble();
+    
+    // Create bubble
+    var bubble = document.createElement('div');
+    bubble.className = 'admin-bubble';
+    bubble.innerHTML = '<span class="bubble-icon">⚙️</span> Admin Functions';
+    bubble.style.left = Math.max(10, Math.min(window.innerWidth - 140, x - 70)) + 'px';
+    bubble.style.top = Math.max(10, Math.min(window.innerHeight - 60, y - 30)) + 'px';
+    
+    // Click on bubble opens admin modal
+    bubble.addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideAdminBubble();
+        if (typeof showAdminModal === 'function') {
+            showAdminModal();
+        }
+    });
+    
+    document.body.appendChild(bubble);
+    adminBubbleElement = bubble;
+    isAdminBubbleActive = true;
+    
+    // Auto-hide after 4 seconds if not clicked
+    setTimeout(function() {
+        if (isAdminBubbleActive) {
+            hideAdminBubble();
+        }
+    }, 4000);
+}
+
+function hideAdminBubble() {
+    if (adminBubbleElement && adminBubbleElement.parentNode) {
+        adminBubbleElement.remove();
+    }
+    adminBubbleElement = null;
+    isAdminBubbleActive = false;
+}
+
+function setupLongClickAdmin(element) {
+    if (!element) return;
+    
+    var holdTimer = null;
+    var isHolding = false;
+    
+    // Pointer events for cross-device support (mouse + touch)
+    element.addEventListener('pointerdown', function(e) {
+        if (isAdminBubbleActive) {
+            hideAdminBubble();
+            return;
+        }
+        
+        // Don't trigger on Cmd+Click (they have their own handler)
+        if (e.metaKey || e.ctrlKey) return;
+        
+        isHolding = false;
+        holdTimer = setTimeout(function() {
+            isHolding = true;
+            showAdminBubble(e.clientX || e.pageX || window.innerWidth / 2, e.clientY || e.pageY || window.innerHeight / 2);
+        }, 800);
+    });
+    
+    element.addEventListener('pointerup', function(e) {
+        clearTimeout(holdTimer);
+        // If it was a short click and no bubble, do nothing (normal click behavior)
+    });
+    
+    element.addEventListener('pointerleave', function(e) {
+        clearTimeout(holdTimer);
+        // Don't hide bubble immediately on leave - let user interact with it
+    });
+    
+    // Also support Cmd+Click (existing behavior)
+    element.addEventListener('click', function(e) {
+        if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            hideAdminBubble();
+            if (typeof showAdminModal === 'function') {
+                showAdminModal();
+            }
+        }
+    });
+}
+
+// ============================================================
 // Main UI Render
 // ============================================================
 
@@ -1070,7 +1199,7 @@ function renderMainUI() {
             <div class="header">
                 <div class="golf-icon" id="golfIcon">
                     ⛳
-                    <span class="golf-hint">⌘+click for admin</span>
+                    <span class="golf-hint">⌘+click or long press for admin</span>
                 </div>
                 <div class="title">SICC RYDER CUP</div>
                 <div class="subtitle">Match Play · Team Game · Net Stroke</div>
@@ -1102,29 +1231,12 @@ function renderMainUI() {
         setTimeout(setButtonWidths, 10);
         
         // ============================================================
-        // v3.44: Admin handler - Cmd+Click OR double-click on golf icon
+        // v3.45: Admin handler - Cmd+Click OR Long-click on golf icon
         // ============================================================
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
-            // Cmd+Click / Ctrl+Click handler
-            golfIcon.addEventListener('click', function(e) {
-                if (e.metaKey || e.ctrlKey) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (typeof showAdminModal === 'function') {
-                        showAdminModal();
-                    }
-                }
-            });
-            
-            // Double-click fallback
-            golfIcon.addEventListener('dblclick', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (typeof showAdminModal === 'function') {
-                    showAdminModal();
-                }
-            });
+            // Setup long-click + bubble
+            setupLongClickAdmin(golfIcon);
         }
         
         document.getElementById("previousGamesBtn").addEventListener("click", goToPreviousGames);
@@ -1159,7 +1271,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.44
+// Initialization - v3.45
 // ============================================================
 
 function initApp() {
@@ -1240,7 +1352,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.44
+// Start the app - v3.45
 // ============================================================
 
 if (isFirstLoad) {
@@ -1278,12 +1390,12 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.44
-KEY CHANGES from v3.43:
-   - CHANGED: Golf icon now opens Admin Modal on Cmd+Click (⌘+Click or Ctrl+Click)
-   - ADDED: Admin Modal with 3 options: Duplicate Master Record, Manage All Games, Refresh
-   - Double-click still works as fallback
-   - Removed inline confirm() and replaced with admin modal
+VERSION: 3.45
+KEY CHANGES from v3.44:
+   - ADDED: Long-click (press and hold) on golf icon shows "Admin Functions" bubble
+   - Bubble appears after 800ms hold, click to open admin modal
+   - Cmd+Click still works as before
+   - Universal trigger for mobile and desktop
    - All existing functionality preserved
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.07), js/firebase-retry.js
 STATUS: Ready for integration
