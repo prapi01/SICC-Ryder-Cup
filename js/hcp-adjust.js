@@ -1,12 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.41
-KEY CHANGES from v2.40:
-   - REMOVED: History mode raw value hiding (always show actual raw values)
-   - REMOVED: dataSource parameter (no longer needed)
-   - Raw values now always display from the record data
-   - All color logic preserved (Red = CUT, Green = ADD)
-   - All other functionality unchanged
+VERSION: 2.42
+KEY CHANGES from v2.41:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v2.41
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -29,9 +28,15 @@ var HandicapAdjustment = (function() {
     var returnToPreviousPage = false;
     var hasMultipleZeroHandicap = false;
     
-    // Store raw values for display in Anc and Perf columns
-    var anchorRawResults = {};     // player.name -> netWon (positive = player lost to anchor)
-    var perfRawPoints = {};        // player.name -> total points (0-4)
+    var anchorRawResults = {};
+    var perfRawPoints = {};
+    
+    // ============================================================
+    // Helper: Get Firestore instance
+    // ============================================================
+    function getDb() {
+        return firebase.firestore();
+    }
     
     // ============================================================
     // Helper: Get player's score for a specific hole
@@ -125,7 +130,7 @@ var HandicapAdjustment = (function() {
         }
         
         var netWon = playerWon - anchorWon;
-        anchorRawResults[player.name] = netWon;  // Positive = player lost to anchor, Negative = player won vs anchor
+        anchorRawResults[player.name] = netWon;
         
         var adjustment = Math.floor(Math.abs(netWon) / 2);
         return netWon >= 0 ? -adjustment : adjustment;
@@ -143,14 +148,13 @@ var HandicapAdjustment = (function() {
             matchPoints[allPlayersList[i].name] = 0;
         }
         
-        // Get the final match results at hole 18 (position 17 in 0-indexed array)
         var results = cache.results;
         if (!results || !results.matchResults || !results.matchResults[17]) {
             console.warn("No matchResults data found at hole 18 in cache");
             return {};
         }
         
-        var finalMatchResults = results.matchResults[17];  // Array of 16 values
+        var finalMatchResults = results.matchResults[17];
         var teamAPlayers = allPlayersList.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
             if (a.flight !== b.flight) return a.flight - b.flight;
             return a.handicap - b.handicap;
@@ -160,7 +164,6 @@ var HandicapAdjustment = (function() {
             return a.handicap - b.handicap;
         });
         
-        // Process each of the 16 cross-flight matches
         for (var a = 0; a < teamAPlayers.length; a++) {
             for (var b = 0; b < teamBPlayers.length; b++) {
                 var playerA = teamAPlayers[a];
@@ -169,37 +172,30 @@ var HandicapAdjustment = (function() {
                 var matchValue = finalMatchResults[matchIndex] || 0;
                 
                 if (matchValue > 0) {
-                    // Team A player wins
                     matchPoints[playerA.name] += 1;
-                    // Team B player gets 0 points (no addition)
                 } else if (matchValue < 0) {
-                    // Team B player wins
                     matchPoints[playerB.name] += 1;
-                    // Team A player gets 0 points (no addition)
                 } else {
-                    // Match is tied (AS) - both get 0.5 points
                     matchPoints[playerA.name] += 0.5;
                     matchPoints[playerB.name] += 0.5;
                 }
             }
         }
         
-        // Store raw points for display
         for (var playerName in matchPoints) {
             perfRawPoints[playerName] = matchPoints[playerName];
         }
         
-        // Apply adjustment based on total points (max 4 points per player)
         var perfAdjustments = {};
         for (var playerName in matchPoints) {
             var points = matchPoints[playerName];
             
             if (points >= 3.5) {
-                perfAdjustments[playerName] = -1;   // Handicap down (performed well)
+                perfAdjustments[playerName] = -1;
             } else if (points <= 0.5) {
-                perfAdjustments[playerName] = 1;    // Handicap up (performed poorly)
+                perfAdjustments[playerName] = 1;
             } else {
-                perfAdjustments[playerName] = 0;    // No change
+                perfAdjustments[playerName] = 0;
             }
         }
         
@@ -216,7 +212,6 @@ var HandicapAdjustment = (function() {
             cache = GameLoader.getLocalCache();
         }
         
-        // Clear previous raw values
         anchorRawResults = {};
         perfRawPoints = {};
         
@@ -275,13 +270,13 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Display Table - v2.41: Always show raw values (no history mode hiding)
+    // v2.42: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
         
-        // Sort players by Team (A first), then by startingHcp
         players.sort(function(a, b) {
             var teamA = a.team || 'B';
             var teamB = b.team || 'B';
@@ -293,11 +288,9 @@ var HandicapAdjustment = (function() {
             return hcpA - hcpB;
         });
         
-        // v2.37: Table min-width 340px (fits iPhone SE 375px screen)
         var tableHtml = '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
         tableHtml += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 340px;">';
         
-        // Table Header - v2.36: "Old" column header
         tableHtml += '<thead><tr style="background:#1a3a1a;">';
         tableHtml += '<th style="padding:8px 4px; text-align:left; width:45px; font-size:0.75rem;"></th>';
         tableHtml += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Old</th>';
@@ -311,7 +304,6 @@ var HandicapAdjustment = (function() {
         for (var i = 0; i < players.length; i++) {
             var p = players[i];
             
-            // Determine final handicap - handle both live calculation and stored history data
             var displayHcp = null;
             if (p.finalHcp !== undefined && p.finalHcp !== null) {
                 displayHcp = p.finalHcp;
@@ -327,12 +319,10 @@ var HandicapAdjustment = (function() {
                 }
             }
             
-            // Final fallback
             if (displayHcp === null || displayHcp === undefined) {
                 displayHcp = p.currentHcp;
             }
             
-            // Get starting handicap - handle 0 correctly
             var startingHcp = p.currentHcp;
             if (startingHcp === undefined || startingHcp === null) {
                 startingHcp = p.startingHcp;
@@ -343,10 +333,8 @@ var HandicapAdjustment = (function() {
             var isAnchor = (p.name === anchorName);
             var isFinalZero = (displayHcp === 0);
             
-            // Add team separator row if team changes
             if (playerTeam !== currentTeam) {
                 if (currentTeam !== null) {
-                    // No separator needed between teams - just continue
                 }
                 currentTeam = playerTeam;
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
@@ -355,38 +343,25 @@ var HandicapAdjustment = (function() {
                 tableHtml += '<tr>';
             }
             
-            // ============================================================
-            // Anc Column: adjustment [raw_result]
-            // v2.40: No + sign, color indicates direction
-            // Red = CUT (negative adjustment, player won vs anchor)
-            // Green = ADD (positive adjustment, player lost to anchor)
-            // Raw color: Green if won (raw > 0), Red if lost (raw < 0), Grey if 0
-            // v2.41: Always show actual raw values (no history mode hiding)
-            // ============================================================
             var ancAdj = p.anchorAdj;
             var ancRaw = p.anchorRaw;
             var ancRawAbs = Math.abs(ancRaw);
             
-            // Always show actual raw value
             var ancRawDisplay = ancRawAbs;
             
-            // Raw color: Green if player won (raw > 0), Red if lost (raw < 0), Grey if 0
             var ancRawColor = '#888';
             if (ancRaw > 0) {
-                ancRawColor = '#4caf50';  // Won vs anchor - green
+                ancRawColor = '#4caf50';
             } else if (ancRaw < 0) {
-                ancRawColor = '#ff6b6b';   // Lost to anchor - red
+                ancRawColor = '#ff6b6b';
             }
             
-            // Adjustment display (no + sign)
             var ancDisplayValue = '';
             var ancAdjColor = '#888';
             if (ancAdj < 0) {
-                // Negative adjustment = CUT (good performance) - RED
                 ancDisplayValue = Math.abs(ancAdj).toString();
                 ancAdjColor = '#ff6b6b';
             } else if (ancAdj > 0) {
-                // Positive adjustment = ADD (poor performance) - GREEN
                 ancDisplayValue = ancAdj.toString();
                 ancAdjColor = '#4caf50';
             } else {
@@ -396,29 +371,17 @@ var HandicapAdjustment = (function() {
             
             var ancDisplay = ancDisplayValue + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawDisplay + ']</span>';
             
-            // ============================================================
-            // Perf Column: adjustment [raw_points]
-            // v2.40: No + sign, color indicates direction
-            // Red = CUT (negative adjustment, good performance)
-            // Green = ADD (positive adjustment, poor performance)
-            // Raw points always Green
-            // v2.41: Always show actual raw values (no history mode hiding)
-            // ============================================================
             var perfAdj = p.perfAdj;
             var perfRaw = p.perfRaw;
             
-            // Always show actual raw value
             var perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
             
-            // Adjustment display (no + sign)
             var perfDisplayValue = '';
             var perfAdjColor = '#888';
             if (perfAdj < 0) {
-                // Negative adjustment = CUT (good performance) - RED
                 perfDisplayValue = Math.abs(perfAdj).toString();
                 perfAdjColor = '#ff6b6b';
             } else if (perfAdj > 0) {
-                // Positive adjustment = ADD (poor performance) - GREEN
                 perfDisplayValue = perfAdj.toString();
                 perfAdjColor = '#4caf50';
             } else {
@@ -428,12 +391,8 @@ var HandicapAdjustment = (function() {
             
             var perfDisplay = perfDisplayValue + '<span style="font-size:0.6rem; color:#4caf50;"> [' + perfRawDisplay + ']</span>';
             
-            // ============================================================
-            // Final column color: Gold if final handicap is 0, otherwise green
-            // ============================================================
             var finalColor = isFinalZero ? '#ffaa44' : '#4caf50';
             
-            // Gold highlighting for anchor's Starting Handicap
             var stColor = isAnchor ? '#ffaa44' : '#ffffff';
             
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
@@ -447,7 +406,6 @@ var HandicapAdjustment = (function() {
         
         tableHtml += '</tbody></table></div>';
         
-        // Buttons HTML
         var buttonsHtml = '';
         if (isReadOnly) {
             if (returnToPreviousPage) {
@@ -558,6 +516,7 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // NEW v2.22: Show Change Anchor modal and recalculate
+    // v2.42: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function showChangeAnchorModal() {
@@ -609,6 +568,7 @@ var HandicapAdjustment = (function() {
     }
     
     // NEW v2.22: Update anchor and recalculate
+    // v2.42: Uses firebase.firestore() instead of global db
     function updateAnchorAndRecalculate(newAnchor) {
         var loadingModal = document.createElement('div');
         loadingModal.className = 'modal-overlay';
@@ -621,6 +581,7 @@ var HandicapAdjustment = (function() {
         `;
         document.body.appendChild(loadingModal);
         
+        var db = getDb();
         var updatePromise = db.collection('scheduledGames').doc(currentGameId).update({
             anchor: newAnchor.name,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -704,7 +665,6 @@ var HandicapAdjustment = (function() {
             newAnchorName: adjustedHandicaps.newAnchor
         };
         
-        // v2.41: Always show raw values (no dataSource parameter)
         showAdjustmentTable(calculationResult, anchorName, true);
         return true;
     }
@@ -748,10 +708,12 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // LEGACY: Load from historyGames and recalculate
+    // v2.42: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function loadFromHistoryLegacy(gameId, returnUrl) {
-        firebase.firestore().collection("historyGames").where("originalGameId", "==", gameId).limit(1).get()
+        var db = getDb();
+        db.collection("historyGames").where("originalGameId", "==", gameId).limit(1).get()
             .then(function(snapshot) {
                 if (snapshot.empty) {
                     console.error("No history record found for game:", gameId);
@@ -861,6 +823,7 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Legacy init function (for real-game)
+    // v2.42: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
@@ -937,10 +900,12 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Load game data from Firestore (for live games)
+    // v2.42: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function loadGameData(gameId, callback) {
-        firebase.firestore().collection("scheduledGames").doc(gameId).get()
+        var db = getDb();
+        db.collection("scheduledGames").doc(gameId).get()
             .then(function(doc) {
                 if (!doc.exists) {
                     callback(null);
@@ -962,6 +927,7 @@ var HandicapAdjustment = (function() {
     
     // ============================================================
     // Save to Firestore and update player profiles
+    // v2.42: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
@@ -997,8 +963,14 @@ var HandicapAdjustment = (function() {
         }
     }
     
+    // ============================================================
+    // Update player profiles
+    // v2.42: Uses firebase.firestore() instead of global db
+    // ============================================================
+    
     function updatePlayerProfiles(players, callback) {
-        firebase.firestore().collection('playerInformation').doc('defaultPlayers').get()
+        var db = getDb();
+        db.collection('playerInformation').doc('defaultPlayers').get()
             .then(function(doc) {
                 if (doc.exists && doc.data().players) {
                     var currentPlayers = doc.data().players;
@@ -1010,7 +982,7 @@ var HandicapAdjustment = (function() {
                             }
                         }
                     }
-                    return firebase.firestore().collection('playerInformation').doc('defaultPlayers').set({
+                    return db.collection('playerInformation').doc('defaultPlayers').set({
                         players: currentPlayers,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
@@ -1094,7 +1066,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.41";
+    window.HANDICAP_ADJUST_VERSION = "2.42";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1111,15 +1083,17 @@ var HandicapAdjustment = (function() {
     
 })();
 
+// Make available globally
+window.HandicapAdjustment = HandicapAdjustment;
+
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.41
-KEY CHANGES from v2.40:
-   - REMOVED: History mode raw value hiding (always show actual raw values)
-   - REMOVED: dataSource parameter (no longer needed)
-   - Raw values now always display from the record data
-   - All color logic preserved (Red = CUT, Green = ADD)
-   - All other functionality unchanged
+VERSION: 2.42
+KEY CHANGES from v2.41:
+   - FIXED: Removed dependency on global 'db' variable
+   - Replaced all 'db' references with 'firebase.firestore()' calls
+   - This makes the module self-contained and works in modular architecture
+   - All existing functionality preserved from v2.41
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
