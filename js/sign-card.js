@@ -1,12 +1,11 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: Use WaitingScreen module for loading overlay between celebration and handicap adjustment
-   - FIXED: Proper confetti cleanup when transitioning
-   - FIXED: Button click handler properly attached with event listener
-   - ADDED: waitForHandicapAdjustment with WaitingScreen to prevent real-game flash
-   - All existing functionality preserved from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: onClose callback is now called when celebration modal is fully rendered
+   - Previously callback only fired on button click, causing waiting screen to stay stuck
+   - Added callback call after modal is rendered and visible
+   - All existing functionality preserved from v1.12
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -197,7 +196,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.12: Uses WaitingScreen
+    // Celebration Screen - v1.13: Fixed onClose callback timing
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -269,34 +268,37 @@ var SignCard = (function() {
             addCelebrationStyles();
             launchConfetti();
             
-            // v1.12: Properly attach click handler with WaitingScreen
+            // v1.13: Call onClose callback AFTER modal is fully rendered and visible
+            // This ensures waiting screen is hidden only after celebration is visible
+            setTimeout(function() {
+                console.log("[SignCard] Celebration modal fully rendered - calling onClose callback");
+                if (typeof onClose === 'function') {
+                    onClose();
+                }
+            }, 500);
+            
+            // Attach button handler
             var btn = document.getElementById("handicapAdjustBtn");
             if (btn) {
-                // Remove any existing listeners by cloning
                 var newBtn = btn.cloneNode(true);
                 btn.parentNode.replaceChild(newBtn, btn);
                 
                 newBtn.addEventListener("click", function() {
-                    // STEP 1: Show waiting screen immediately using WaitingScreen module
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                         WaitingScreen.show("Loading Handicap Adjustment...");
                     } else {
-                        // Fallback: create a simple overlay
                         var overlay = document.createElement('div');
-                        overlay.id = 'fallbackWaitingOverlay';
+                        overlay.id = 'waitingScreenOverlay';
                         overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
                         overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Handicap Adjustment...</div>';
                         document.body.appendChild(overlay);
                     }
                     
-                    // STEP 2: Remove celebration modal
                     var modal = document.getElementById('celebrationModal');
                     if (modal) modal.remove();
                     
-                    // STEP 3: Clear confetti
                     clearConfetti();
                     
-                    // STEP 4: Wait for HandicapAdjustment to be available
                     function waitForHandicapAdjustment(callback, attempts) {
                         attempts = attempts || 0;
                         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
@@ -306,13 +308,12 @@ var SignCard = (function() {
                                 waitForHandicapAdjustment(callback, attempts + 1);
                             }, 200);
                         } else {
-                            console.error("HandicapAdjustment module failed to load after 6 seconds");
-                            // Hide waiting screen
+                            console.error("HandicapAdjustment module failed to load");
                             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                                 WaitingScreen.hide();
                             } else {
-                                var fallback = document.getElementById('fallbackWaitingOverlay');
-                                if (fallback) fallback.remove();
+                                var el = document.getElementById('waitingScreenOverlay');
+                                if (el) el.remove();
                             }
                             Modal.alert("Handicap adjustment is taking longer than expected. Please try again.");
                         }
@@ -320,12 +321,11 @@ var SignCard = (function() {
                     
                     waitForHandicapAdjustment(function() {
                         ensureArchiveRecord(gameId, function(err, archiveId) {
-                            // STEP 5: Hide waiting screen
                             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                                 WaitingScreen.hide();
                             } else {
-                                var fallback = document.getElementById('fallbackWaitingOverlay');
-                                if (fallback) fallback.remove();
+                                var el = document.getElementById('waitingScreenOverlay');
+                                if (el) el.remove();
                             }
                             
                             if (err) {
@@ -366,7 +366,6 @@ var SignCard = (function() {
                                     }
                                 }
                                 
-                                // STEP 6: Call HandicapAdjustment with isViewOnlyMode = true
                                 if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
                                     HandicapAdjustment.init(gameId, archiveId, celebrationData.winningPlayers, matchPoints, {}, true);
                                 } else {
@@ -661,19 +660,19 @@ var SignCard = (function() {
     async function submitSignature(gameId, flight, captainName, collection) {
         var db = getDb();
         var updatePayload = {};
-        updatePayload[`signatures.f${flight}.signed`] = true;
-        updatePayload[`signatures.f${flight}.signedAt`] = firebase.firestore.FieldValue.serverTimestamp();
+        updatePayload['signatures.f' + flight + '.signed'] = true;
+        updatePayload['signatures.f' + flight + '.signedAt'] = firebase.firestore.FieldValue.serverTimestamp();
         if (captainName) {
-            updatePayload[`signatures.f${flight}.captainName`] = captainName;
+            updatePayload['signatures.f' + flight + '.captainName'] = captainName;
         }
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
         try {
             await db.collection(collection).doc(gameId).update(updatePayload);
-            console.log(`Flight ${flight} signature submitted`);
+            console.log('Flight ' + flight + ' signature submitted');
             return true;
         } catch (error) {
-            console.error("Signature error:", error);
+            console.error('Signature error:', error);
             return false;
         }
     }
@@ -684,9 +683,9 @@ var SignCard = (function() {
     }
     
     function getWinner(trTeamA, trTeamB) {
-        if (trTeamA > trTeamB) return "A";
-        if (trTeamB > trTeamA) return "B";
-        return "Tie";
+        if (trTeamA > trTeamB) return 'A';
+        if (trTeamB > trTeamA) return 'B';
+        return 'Tie';
     }
     
     // ============================================================
@@ -713,13 +712,12 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - FIXED: Use WaitingScreen module for loading overlay between celebration and handicap adjustment
-   - FIXED: Proper confetti cleanup when transitioning
-   - FIXED: Button click handler properly attached with event listener
-   - ADDED: waitForHandicapAdjustment with WaitingScreen to prevent real-game flash
-   - All existing functionality preserved from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: onClose callback is now called when celebration modal is fully rendered
+   - Previously callback only fired on button click, causing waiting screen to stay stuck
+   - Added callback call after modal is rendered and visible
+   - All existing functionality preserved from v1.12
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
