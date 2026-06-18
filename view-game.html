@@ -1,14 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 7.24
-KEY CHANGES from v7.23:
-   - ADDED: Post-game context detection for navigation
-   - ADDED: "Back to Main Menu" button now shows modal with [← Main Menu] and [Handicap Screen →] options
-   - Post-game context detected when: game complete OR sessionStorage.isPostGame === 'true'
-   - LIVE mode: direct exit with confirmation modal
-   - POST-GAME mode: modal with two options (Exit to Main Menu or Back to HCP Adjust)
-   - All existing functionality preserved from v7.23
-DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js
+VERSION: 7.25
+KEY CHANGES from v7.24:
+   - ADDED: Waiting screen to "Handicap Screen →" button (Scorecard → HCP Adjust transition)
+   - ADDED: Detection of 'mode=handicap' URL parameter to hide waiting screen on HCP Adjust load
+   - Both transitions now show waiting screen to prevent real-game screen flash
+   - All existing functionality preserved from v7.24
+DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
 
@@ -21,8 +19,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.24"></script>
-    <script src="js/session.js?v=7.24"></script>
+    <script src="js/firebase-config.js?v=7.25"></script>
+    <script src="js/session.js?v=7.25"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -31,11 +29,12 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.24"></script>
-    <script src="js/history-record.js?v=7.24"></script>
-    <script src="js/sign-card.js?v=7.24"></script>
-    <script src="js/hcp-adjust.js?v=7.24"></script>
-    <script src="js/modal.js?v=7.24"></script>
+    <script src="js/ticker.js?v=7.25"></script>
+    <script src="js/history-record.js?v=7.25"></script>
+    <script src="js/sign-card.js?v=7.25"></script>
+    <script src="js/hcp-adjust.js?v=7.25"></script>
+    <script src="js/modal.js?v=7.25"></script>
+    <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -158,14 +157,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.24</div>
+<div class="version-tag">v7.25</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "7.24";
-var CACHE_KEY = "view_game_version_v724";
+var APP_VERSION = "7.25";
+var CACHE_KEY = "view_game_version_v725";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -176,8 +175,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.24";
-console.log("[VIEW-GAME] Initializing v7.24 - Post-game navigation fix");
+window.VIEW_GAME_VERSION = "7.25";
+console.log("[VIEW-GAME] Initializing v7.25 - Waiting screen for HCP Adjust transition");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -208,23 +207,37 @@ var isPostGameContext = false;
 // Firestore real-time listener
 var firestoreUnsubscribe = null;
 
+// v7.25: Track if we came from HCP Adjust to hide waiting screen
+var isReturningFromHcpAdjust = false;
+
 // ============================================================
-// v7.24: Post-game context detection
+// v7.25: Check if mode=handicap in URL
+// ============================================================
+
+function checkHcpAdjustMode() {
+    var urlParams = new URLSearchParams(window.location.search);
+    var mode = urlParams.get('mode');
+    if (mode === 'handicap') {
+        console.log("[VIEW-GAME] mode=handicap detected - will hide waiting screen");
+        isReturningFromHcpAdjust = true;
+        return true;
+    }
+    return false;
+}
+
+// ============================================================
+// v7.25: Post-game context detection
 // ============================================================
 
 function checkPostGameContext(cache) {
     if (!cache) return false;
     
-    // Check if game is complete (both cards signed)
     var signatures = cache.signatures || {};
     var f1Signed = signatures.f1 === true || (signatures.f1 && signatures.f1.signed === true);
     var f2Signed = signatures.f2 === true || (signatures.f2 && signatures.f2.signed === true);
     var isComplete = f1Signed && f2Signed;
     
-    // Check if post-game flag is set in session
     var sessionFlag = sessionStorage.getItem('isPostGame') === 'true';
-    
-    // Check if celebration was triggered
     var celebrationFlag = celebrationTriggered;
     
     var result = isComplete || sessionFlag || celebrationFlag;
@@ -233,11 +246,10 @@ function checkPostGameContext(cache) {
 }
 
 // ============================================================
-// v7.24: Show post-game exit modal
+// v7.25: Show post-game exit modal with waiting screen on back
 // ============================================================
 
 function showPostGameExitModal() {
-    // Remove any existing modal
     var existing = document.getElementById('postGameExitModal');
     if (existing) existing.remove();
     
@@ -258,20 +270,33 @@ function showPostGameExitModal() {
     document.getElementById('postGameExitBtn').onclick = function() {
         document.getElementById('postGameExitModal').remove();
         console.log("[VIEW-GAME] Exiting to main menu");
-        // Clear post-game flag
         sessionStorage.removeItem('isPostGame');
         window.location.href = 'index.html';
     };
     
+    // v7.25: Handicap Screen button with waiting screen
     document.getElementById('postGameBackBtn').onclick = function() {
         document.getElementById('postGameExitModal').remove();
-        console.log("[VIEW-GAME] Going back to HCP Adjust");
+        console.log("[VIEW-GAME] Going back to HCP Adjust - showing waiting screen");
+        
+        // Show waiting screen
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+            WaitingScreen.show("Loading Handicap Adjustment...");
+        } else {
+            var overlay = document.createElement('div');
+            overlay.id = 'waitingScreenOverlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
+            overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Handicap Adjustment...</div>';
+            document.body.appendChild(overlay);
+        }
+        
+        // Navigate to HCP Adjust with mode=handicap flag
         window.location.href = 'view-game.html?gameId=' + gameId + '&mode=handicap';
     };
 }
 
 // ============================================================
-// v7.24: Show live exit confirmation modal
+// v7.25: Show live exit confirmation modal
 // ============================================================
 
 function showLiveExitModal() {
@@ -294,11 +319,10 @@ function showLiveExitModal() {
 }
 
 // ============================================================
-// v7.24: Exit handler with context detection
+// v7.25: Exit handler with context detection
 // ============================================================
 
 function exitToMainMenu() {
-    // Check if in post-game context
     var cache = GameLoader.getLocalCache();
     var inPostGame = checkPostGameContext(cache);
     
@@ -424,7 +448,7 @@ function loadFromHistoryRecord(historyId) {
                 t1Row: historyData.results?.game2?.flight1?.leader || new Array(18).fill('_'),
                 t2Row: historyData.results?.game2?.flight2?.leader || new Array(18).fill('_'),
                 strkRow: historyData.results?.game3?.leader || new Array(18).fill('0'),
-                lastSyncedPosition: 17,  // Last play position (0-17)
+                lastSyncedPosition: 17,
                 lastSyncedHole: 18,
                 clinchedAt: historyData.results?.clinchedAt || {},
                 signatures: historyData.signatures || { f1: true, f2: true },
@@ -677,7 +701,6 @@ function getBubbleValue(player, opponent) {
     return absValue.toString();
 }
 
-// v7.23: Get the sync value for cross-flight bubble checks
 function getSyncValueForBubble(cache) {
     if (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) {
         console.log("[VIEW-GAME] Using lastSyncedPosition:", cache.lastSyncedPosition);
@@ -709,7 +732,7 @@ function getBubbleClassWithClinch(player, opponent) {
     );
     
     if (player.flight !== opponent.flight && Math.abs(matchValue) > 0) {
-        console.log(`[VIEW-GAME] ${player.label} vs ${opponent.label}: matchValue=${matchValue}, bubbleClass=${bubbleClass}, lastSyncedValue=${lastSyncedValue}, currentHole=${currentHole}`);
+        console.log("[VIEW-GAME] " + player.label + " vs " + opponent.label + ": matchValue=" + matchValue + ", bubbleClass=" + bubbleClass + ", lastSyncedValue=" + lastSyncedValue + ", currentHole=" + currentHole);
     }
     
     return bubbleClass;
@@ -812,7 +835,6 @@ function showCelebrationModal() {
     if (celebrationTriggered) return;
     celebrationTriggered = true;
     
-    // v7.24: Set post-game context flag
     sessionStorage.setItem('isPostGame', 'true');
     console.log("[VIEW-GAME] Post-game context set (celebration triggered)");
     
@@ -872,7 +894,6 @@ function renderCompactHeader() {
     if (!cache) return;
     
     var displayMode = GameUI.getDisplayMode();
-    // v5.07 style: button shows what you WILL get
     var pnText = displayMode === 'play' ? 'N' : 'P';
     var oppositeFlight = currentFlight === 1 ? 2 : 1;
     
@@ -887,9 +908,7 @@ function renderCompactHeader() {
     
     var nextButtonHtml = '';
     if (showResultButton) {
-        nextButtonHtml = `<button class="compact-result-btn" id="compactResultBtn" style="width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                    🏆 RESULT
-                </button>`;
+        nextButtonHtml = '<button class="compact-result-btn" id="compactResultBtn" style="width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(0.8rem, 3vw, 1rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">🏆 RESULT</button>';
     } else {
         var playOrder = getPlayOrder();
         var hasSavedData = (cache.savedHoles[1]?.includes(currentHole) || false) || 
@@ -897,28 +916,24 @@ function renderCompactHeader() {
         var isLastHole = (playOrder.indexOf(currentHole) === playOrder.length - 1);
         var isDisabled = (!hasSavedData) || isLastHole;
         
-        nextButtonHtml = `<button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;" ${isDisabled ? 'disabled' : ''}>
-                    ▶
-                </button>`;
+        nextButtonHtml = '<button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;" ' + (isDisabled ? 'disabled' : '') + '>▶</button>';
     }
     
-    var html = `
+    var html = '
         <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
             <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
-                ${pnText}
+                ' + pnText + '
             </button>
             <button class="compact-flight-btn" id="compactFlightBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
-                FLIGHT ${oppositeFlight}
+                FLIGHT ' + oppositeFlight + '
             </button>
             <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
-                <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                    ◀
-                </button>
-                <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">${currentHole}</span>
-                ${nextButtonHtml}
+                <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">◀</button>
+                <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">' + currentHole + '</span>
+                ' + nextButtonHtml + '
             </div>
         </div>
-    `;
+    ';
     
     container.innerHTML = html;
     
@@ -1021,7 +1036,6 @@ function setupRealtimeListener() {
                             loadFromHistoryRecord(historyId);
                         }
                         
-                        // v7.24: Check post-game context for button behavior
                         isPostGameContext = checkPostGameContext(result.cache);
                         
                         renderCompactHeader();
@@ -1046,7 +1060,7 @@ function updatePlayerNamesToShortform() {
         var nameSpan = playerCards[i].querySelector('.player-name');
         if (nameSpan) {
             var originalName = nameSpan.innerText;
-            var player = allPlayers.find(p => p.name === originalName);
+            var player = allPlayers.find(function(p) { return p.name === originalName; });
             if (player && player.label) {
                 nameSpan.innerText = player.label;
             }
@@ -1060,7 +1074,6 @@ function renderAll() {
     var cache = GameLoader.getLocalCache();
     if (!cache) return;
     
-    // v7.24: Update post-game context
     isPostGameContext = checkPostGameContext(cache);
     
     var currentPar = coursePar[currentHole - 1];
@@ -1125,25 +1138,22 @@ function renderAll() {
     
     if (typeof Ticker !== 'undefined') Ticker.refresh();
     
-    // v7.24: Update bottom menu with post-game context
     renderBottomMenuWithContext();
 }
 
 // ============================================================
-// v7.24: Render bottom menu with context-aware button
+// v7.25: Render bottom menu with context-aware button
 // ============================================================
 
 function renderBottomMenuWithContext() {
     var container = document.getElementById('bottomMenuContainer');
     if (!container) return;
     
-    // Clear container
     container.innerHTML = '';
     
     var btn = document.createElement('button');
     btn.id = 'menuBtn';
     
-    // v7.24: Context-aware button text and behavior
     if (isPostGameContext) {
         btn.textContent = '← Back to Main Menu';
         btn.style.borderColor = '#ffaa44';
@@ -1165,24 +1175,6 @@ function renderBottomMenuWithContext() {
     container.appendChild(btn);
 }
 
-// ============================================================
-// v7.24: Override exitToMainMenu with context detection
-// ============================================================
-
-async function exitToMainMenu() {
-    // Check if in post-game context
-    var cache = GameLoader.getLocalCache();
-    var inPostGame = checkPostGameContext(cache);
-    
-    console.log("[VIEW-GAME] exitToMainMenu called, inPostGame=", inPostGame);
-    
-    if (inPostGame) {
-        showPostGameExitModal();
-    } else {
-        showLiveExitModal();
-    }
-}
-
 function onCacheUpdate(cache) {
     if (cache.course) {
         courseName = cache.course.name;
@@ -1201,7 +1193,6 @@ function onCacheUpdate(cache) {
     var wasComplete = gameCompleteFlag;
     gameCompleteFlag = isGameComplete();
     
-    // v7.24: Update post-game context
     isPostGameContext = checkPostGameContext(cache);
     
     if (wasComplete !== gameCompleteFlag) {
@@ -1211,7 +1202,24 @@ function onCacheUpdate(cache) {
     renderAll();
 }
 
+// ============================================================
+// v7.25: Initialization with waiting screen detection
+// ============================================================
+
 async function init() {
+    // v7.25: Check if we're coming back from HCP Adjust
+    checkHcpAdjustMode();
+    
+    if (isReturningFromHcpAdjust) {
+        console.log("[VIEW-GAME] Returning from HCP Adjust - hiding waiting screen");
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+            WaitingScreen.hide();
+        } else {
+            var el = document.getElementById('waitingScreenOverlay');
+            if (el) el.remove();
+        }
+    }
+    
     var myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "👁️ " + myDeviceShortName;
     
@@ -1310,14 +1318,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.24
-KEY CHANGES from v7.23:
-   - ADDED: Post-game context detection for navigation
-   - ADDED: "Back to Main Menu" button now shows modal with [← Main Menu] and [Handicap Screen →] options
-   - Post-game context detected when: game complete OR sessionStorage.isPostGame === 'true'
-   - LIVE mode: direct exit with confirmation modal
-   - POST-GAME mode: modal with two options (Exit to Main Menu or Back to HCP Adjust)
-   - All existing functionality preserved from v7.23
-DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js
+VERSION: 7.25
+KEY CHANGES from v7.24:
+   - ADDED: Waiting screen to "Handicap Screen →" button (Scorecard → HCP Adjust transition)
+   - ADDED: Detection of 'mode=handicap' URL parameter to hide waiting screen on HCP Adjust load
+   - Both transitions now show waiting screen to prevent real-game screen flash
+   - All existing functionality preserved from v7.24
+DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
