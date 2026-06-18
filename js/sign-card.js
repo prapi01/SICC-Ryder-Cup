@@ -1,11 +1,10 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - UPDATED: Celebration score format - numbers larger than text
-   - Format: "Team A | 6 : 13 | Team B" with 2.4rem numbers and 1.2rem text
-   - Added spacing and symmetry between elements
-   - All existing functionality preserved from v1.16
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - CHANGED: Celebration title "MATCH COMPLETE!" → "GAME COMPLETED!"
+   - Updated celebration screen title text
+   - All existing functionality preserved from v1.17
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -196,7 +195,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.17: Updated score format
+    // Celebration Screen - v1.18: Updated to "GAME COMPLETED!"
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -243,12 +242,12 @@ var SignCard = (function() {
                 imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
             }
             
-            // v1.17: Updated score format with larger numbers
+            // v1.18: Changed "MATCH COMPLETE!" to "GAME COMPLETED!"
             var modalHtml = `
                 <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                     <div class="celebration-modal">
                         ${imageHtml}
-                        <div class="celebration-title">🏌️ MATCH COMPLETE!</div>
+                        <div class="celebration-title">🏌️ GAME COMPLETED!</div>
                         <div class="celebration-beer">🍺 BEER TIME! 🍺</div>
                         <div class="celebration-winner ${winnerClass}">
                             ${winnerText}
@@ -694,12 +693,11 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - UPDATED: Celebration score format - numbers larger than text
-   - Format: "Team A | 6 : 13 | Team B" with 2.4rem numbers and 1.2rem text
-   - Added spacing and symmetry between elements
-   - All existing functionality preserved from v1.16
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - CHANGED: Celebration title "MATCH COMPLETE!" → "GAME COMPLETED!"
+   - Updated celebration screen title text
+   - All existing functionality preserved from v1.17
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
