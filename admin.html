@@ -1,11 +1,11 @@
 <!--
 FILE: admin.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - REPLACED: System alert() with Modal.alert() in duplicateMasterRecord error handling
-   - REPLACED: System confirm() with Modal.confirm() for admin confirmation (where applicable)
-   - ADDED: js/modal.js dependency for consistent custom modals
-   - All existing functionality preserved (button styling, navigation)
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.08
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -141,18 +141,25 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.08</div>
+<div class="version-tag">v1.09</div>
 
 <script>
-// FILE: admin.html - VERSION 1.08
+// FILE: admin.html - VERSION 1.09
 
-var VERSION = "1.08";
-var CACHE_KEY = "admin_version";
+var VERSION = "1.09";
+var CACHE_KEY = "admin_version_v109";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
-    window.location.href = window.location.pathname + "?v=" + VERSION;
+    
+    // v1.09: Preserve ALL existing URL parameters
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[ADMIN] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // Firebase already initialized in firebase-config.js
@@ -339,12 +346,12 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - REPLACED: System alert() with Modal.alert() in duplicateMasterRecord error handling
-   - REPLACED: System confirm() with Modal.confirm() for admin confirmation (where applicable)
-   - ADDED: js/modal.js dependency for consistent custom modals
-   - All existing functionality preserved (button styling, navigation)
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.08
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
