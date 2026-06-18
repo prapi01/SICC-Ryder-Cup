@@ -1,11 +1,10 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.47
-KEY CHANGES from v2.46:
-   - ADDED: renderToContainer() - renders table directly to a container (standalone page mode)
-   - ADDED: auto-detect standalone mode (hcp-adjust.html)
-   - MODIFIED: showAdjustmentTable() now checks for standalone mode before rendering modal
-   - All existing functionality preserved from v2.46
+VERSION: 2.48
+KEY CHANGES from v2.47:
+   - FIXED: Replaced legacy waiting modal with WaitingScreen module
+   - Now uses consistent grey icon waiting screen across all pages
+   - All existing functionality preserved from v2.47
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -31,7 +30,7 @@ var HandicapAdjustment = (function() {
     var anchorRawResults = {};
     var perfRawPoints = {};
     
-    // v2.47: Track if we're in standalone page mode
+    // v2.48: Track if we're in standalone page mode
     var isStandaloneMode = false;
     var standaloneContainerId = null;
     
@@ -413,7 +412,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.47: showAdjustmentTable - now detects standalone mode
+    // v2.48: showAdjustmentTable - now uses WaitingScreen module
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
@@ -598,6 +597,7 @@ var HandicapAdjustment = (function() {
             var backToScorecardBtn = document.getElementById('backToScorecardBtn');
             if (backToScorecardBtn) {
                 backToScorecardBtn.addEventListener('click', function() {
+                    // v2.48: Use WaitingScreen module
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                         WaitingScreen.show("Loading Scorecard...");
                     } else {
@@ -616,6 +616,7 @@ var HandicapAdjustment = (function() {
             var celebrationBtn = document.getElementById('celebrationBtn');
             if (celebrationBtn) {
                 celebrationBtn.addEventListener('click', function() {
+                    // v2.48: Use WaitingScreen module
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                         WaitingScreen.show("Loading Celebration...");
                     } else {
@@ -703,11 +704,16 @@ var HandicapAdjustment = (function() {
     // ============================================================
     
     function updateAnchorAndRecalculate(newAnchor) {
-        var loadingModal = document.createElement('div');
-        loadingModal.className = 'modal-overlay';
-        loadingModal.id = 'loadingModal';
-        loadingModal.innerHTML = '<div style="background:#1a1a1a; border-radius:24px; padding:28px; text-align:center;"><div class="spin"></div><div style="margin-top:16px; color:#4caf50;">Recalculating handicaps...</div></div>';
-        document.body.appendChild(loadingModal);
+        // v2.48: Use WaitingScreen module
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+            WaitingScreen.show("Recalculating handicaps...");
+        } else {
+            var loadingModal = document.createElement('div');
+            loadingModal.className = 'modal-overlay';
+            loadingModal.id = 'loadingModal';
+            loadingModal.innerHTML = '<div style="background:#1a1a1a; border-radius:24px; padding:28px; text-align:center;"><div class="spin"></div><div style="margin-top:16px; color:#4caf50;">Recalculating handicaps...</div></div>';
+            document.body.appendChild(loadingModal);
+        }
         
         var db = getDb();
         var updatePromise = db.collection('scheduledGames').doc(currentGameId).update({
@@ -723,7 +729,15 @@ var HandicapAdjustment = (function() {
             currentTableData = calculationResult;
             
             saveAdjustmentToFirestore(newAnchor, calculationResult, function(err) {
-                loadingModal.remove();
+                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                    WaitingScreen.hide();
+                } else {
+                    var el = document.getElementById('waitingScreenOverlay');
+                    if (el) el.remove();
+                    var loadingModal = document.getElementById('loadingModal');
+                    if (loadingModal) loadingModal.remove();
+                }
+                
                 if (err) {
                     console.error('Error saving recalculated handicaps:', err);
                     alert('Error saving new handicap data. Please try again.');
@@ -735,7 +749,15 @@ var HandicapAdjustment = (function() {
                 }
             });
         }).catch(function(err) {
-            loadingModal.remove();
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                WaitingScreen.hide();
+            } else {
+                var el = document.getElementById('waitingScreenOverlay');
+                if (el) el.remove();
+                var loadingModal = document.getElementById('loadingModal');
+                if (loadingModal) loadingModal.remove();
+            }
+            
             console.error('Error updating anchor:', err);
             alert('Failed to update anchor. Please try again.');
             if (currentTableData) {
@@ -1231,7 +1253,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.47";
+    window.HANDICAP_ADJUST_VERSION = "2.48";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1253,12 +1275,11 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.47
-KEY CHANGES from v2.46:
-   - ADDED: renderToContainer() - renders table directly to a container (standalone page mode)
-   - ADDED: auto-detect standalone mode (hcp-adjust.html)
-   - MODIFIED: showAdjustmentTable() now checks for standalone mode before rendering modal
-   - All existing functionality preserved from v2.46
+VERSION: 2.48
+KEY CHANGES from v2.47:
+   - FIXED: Replaced legacy waiting modal with WaitingScreen module
+   - Now uses consistent grey icon waiting screen across all pages
+   - All existing functionality preserved from v2.47
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
