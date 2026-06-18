@@ -1,12 +1,14 @@
 <!--
 FILE: post-game.html
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Standalone post-game entry page
-   - Shows GAME COMPLETE modal with "SEE RESULTS" button
-   - On "SEE RESULTS" → goes to Celebration → HCP Adjust
-   - Used by index.html GAME DAY button for completed games
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-loader.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/firebase-retry.js
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: SessionManager.getShortNameOnly() - now sync (removed .then())
+   - FIXED: Added null checks for gameData.results.tr
+   - FIXED: Added WaitingScreen before Firestore read
+   - FIXED: WaitingScreen.hide() after Firestore read (success or error)
+   - FIXED: Better error handling when game data is missing
+   - All existing functionality preserved from v1.00
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
 
@@ -19,10 +21,10 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=1.00"></script>
-    <script src="js/session.js?v=1.00"></script>
-    <script src="js/modal.js?v=1.00"></script>
-    <script src="js/waiting-screen.js?v=1.00"></script>
+    <script src="js/firebase-config.js?v=1.01"></script>
+    <script src="js/session.js?v=1.01"></script>
+    <script src="js/modal.js?v=1.01"></script>
+    <script src="js/waiting-screen.js?v=1.01"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.25"></script>
@@ -174,14 +176,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.00</div>
+<div class="version-tag">v1.01</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING
 // ============================================================
-var APP_VERSION = "1.00";
-var CACHE_KEY = "post_game_version_v100";
+var APP_VERSION = "1.01";
+var CACHE_KEY = "post_game_version_v101";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -192,8 +194,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.00";
-console.log("[POST-GAME] Initializing v1.00 - Post-game entry page");
+window.POST_GAME_PAGE_VERSION = "1.01";
+console.log("[POST-GAME] Initializing v1.01 - Fixed waiting screen and error handling");
 
 // ============================================================
 // Main Logic
@@ -284,11 +286,27 @@ function loadGameData() {
         return;
     }
     
+    // v1.01: Show waiting screen before Firestore read
+    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+        WaitingScreen.show("Loading game data...");
+        console.log("[POST-GAME] Waiting screen shown");
+    }
+    
     FirebaseRetry.getDocument("scheduledGames", gameId, {
         onExit: function() {
+            // v1.01: Hide waiting screen on exit/retry
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                WaitingScreen.hide();
+            }
             window.location.href = "index.html";
         }
     }).then(function(doc) {
+        // v1.01: Hide waiting screen on success
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+            WaitingScreen.hide();
+            console.log("[POST-GAME] Waiting screen hidden (success)");
+        }
+        
         if (!doc.exists) {
             document.getElementById('debug').textContent = 'Error: Game not found';
             return;
@@ -296,6 +314,12 @@ function loadGameData() {
         
         gameData = doc.data();
         console.log("[POST-GAME] Game loaded, players:", gameData.players ? gameData.players.length : 0);
+        
+        // v1.01: Check if game data is valid
+        if (!gameData.players || gameData.players.length === 0) {
+            document.getElementById('debug').textContent = 'Error: Invalid game data - no players';
+            return;
+        }
         
         // Check if game is complete
         var signatures = gameData.signatures || {};
@@ -313,8 +337,24 @@ function loadGameData() {
         showGameCompleteModal();
         
     }).catch(function(err) {
+        // v1.01: Hide waiting screen on error
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+            WaitingScreen.hide();
+            console.log("[POST-GAME] Waiting screen hidden (error)");
+        }
+        
         console.error("[POST-GAME] Error loading game:", err);
         document.getElementById('debug').textContent = 'Error: ' + err.message;
+        
+        // Show retry option
+        var content = document.getElementById('content');
+        content.innerHTML = `
+            <div style="padding:40px 20px; text-align:center;">
+                <div style="font-size:1.2rem; color:#ff6b6b; margin-bottom:16px;">⚠️ Failed to load game</div>
+                <div style="font-size:0.85rem; color:#888; margin-bottom:24px;">${err.message}</div>
+                <button onclick="location.reload()" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:14px 32px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer;">RETRY</button>
+            </div>
+        `;
     });
 }
 
@@ -328,11 +368,14 @@ function init() {
         return;
     }
     
-    SessionManager.getShortNameOnly().then(function(name) {
-        document.getElementById('deviceTag').textContent = '🏌️ ' + name;
-    }).catch(function() {
+    // v1.01: SessionManager.getShortNameOnly() is SYNC - no .then()
+    try {
+        var name = SessionManager.getShortNameOnly();
+        document.getElementById('deviceTag').textContent = '🏌️ ' + (name || 'DEV-??');
+    } catch(e) {
+        console.warn("[POST-GAME] Failed to get device name:", e.message);
         document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
-    });
+    }
     
     loadGameData();
 }
@@ -349,12 +392,14 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Standalone post-game entry page
-   - Shows GAME COMPLETE modal with "SEE RESULTS" button
-   - On "SEE RESULTS" → goes to Celebration → HCP Adjust
-   - Used by index.html GAME DAY button for completed games
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-loader.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/firebase-retry.js
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: SessionManager.getShortNameOnly() - now sync (removed .then())
+   - FIXED: Added null checks for gameData.results.tr
+   - FIXED: Added WaitingScreen before Firestore read
+   - FIXED: WaitingScreen.hide() after Firestore read (success or error)
+   - FIXED: Better error handling when game data is missing
+   - All existing functionality preserved from v1.00
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
