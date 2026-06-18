@@ -1,12 +1,13 @@
 <!--
 FILE: courses.html
-VERSION: 1.33
-KEY CHANGES from v1.32:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v1.32
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v1.33
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -14,12 +15,13 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Course Management - SICC Ryder Cup</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/settings.js"></script>
     <script src="js/modal.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -102,13 +104,22 @@ STATUS: Ready for integration
     <div class="loading">Loading courses...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.33</div>
+<div class="version-tag">v1.34</div>
 
 <script>
-// FILE: courses.html - VERSION 1.33
+// FILE: courses.html - VERSION 1.34
 
-var VERSION = "1.33";
-var CACHE_KEY = "courses_version_v133";
+// ============================================================
+// Apply user settings IMMEDIATELY before anything else
+// ============================================================
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[COURSES] AppSettings not loaded, zoom may be enabled by default");
+}
+
+var VERSION = "1.34";
+var CACHE_KEY = "courses_version_v134";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -580,12 +591,13 @@ SessionManager.initSession("courses.html", "admin.html", function(session) {
 
 <!--
 FILE: courses.html
-VERSION: 1.33
-KEY CHANGES from v1.32:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v1.32
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v1.33
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
