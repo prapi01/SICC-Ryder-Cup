@@ -1,11 +1,11 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - CHANGED: "HANDICAP ADJUSTMENT" button now navigates to hcp-adjust.html standalone page
-   - Removed direct HandicapAdjustment.init call from button handler
-   - Navigation flow: Celebration → hcp-adjust.html?gameId=xxx
-   - All existing functionality preserved from v1.14
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - FIXED: gameId now properly captured in setTimeout closure
+   - Added fallback to get gameId from celebrationData if undefined
+   - Added debug logging for gameId before navigation
+   - All existing functionality preserved from v1.15
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -196,7 +196,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.15: Navigate to hcp-adjust.html
+    // Celebration Screen - v1.16: FIXED gameId closure
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -222,6 +222,7 @@ var SignCard = (function() {
         var teamADisplay = teamAScore % 1 === 0 ? teamAScore : teamAScore.toFixed(1);
         var teamBDisplay = teamBScore % 1 === 0 ? teamBScore : teamBScore.toFixed(1);
         
+        // v1.16: Store data in a closure variable that will be accessible in setTimeout
         var celebrationData = {
             winner: winner,
             teamAScore: teamAScore,
@@ -274,14 +275,29 @@ var SignCard = (function() {
                 }
             }, 500);
             
-            // v1.15: Button navigates to hcp-adjust.html standalone page
+            // v1.16: Button handler with proper gameId closure
             var btn = document.getElementById("handicapAdjustBtn");
             if (btn) {
                 var newBtn = btn.cloneNode(true);
                 btn.parentNode.replaceChild(newBtn, btn);
                 
+                // v1.16: Capture gameId in closure for the click handler
+                var capturedGameId = gameId;
+                
                 newBtn.addEventListener("click", function() {
-                    console.log("[SignCard] HANDICAP ADJUSTMENT button clicked - navigating to standalone page");
+                    console.log("[SignCard] HANDICAP ADJUSTMENT button clicked");
+                    
+                    // v1.16: Use capturedGameId, fallback to celebrationData.gameId
+                    var targetGameId = capturedGameId || celebrationData.gameId;
+                    console.log("[SignCard] targetGameId:", targetGameId);
+                    
+                    if (!targetGameId) {
+                        console.error("[SignCard] No gameId available for navigation");
+                        if (typeof Modal !== 'undefined') {
+                            Modal.alert("Unable to load handicap adjustment. Please try again.");
+                        }
+                        return;
+                    }
                     
                     // Show waiting screen
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
@@ -306,10 +322,11 @@ var SignCard = (function() {
                     clearConfetti();
                     console.log("[SignCard] Confetti cleared");
                     
-                    // v1.15: Navigate to standalone hcp-adjust page
+                    // v1.16: Navigate to standalone hcp-adjust page with captured gameId
                     setTimeout(function() {
-                        console.log("[SignCard] Navigating to hcp-adjust.html?gameId=" + gameId);
-                        window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+                        var navigateUrl = 'hcp-adjust.html?gameId=' + targetGameId;
+                        console.log("[SignCard] Navigating to:", navigateUrl);
+                        window.location.href = navigateUrl;
                     }, 300);
                 });
             }
@@ -648,12 +665,12 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.15
-KEY CHANGES from v1.14:
-   - CHANGED: "HANDICAP ADJUSTMENT" button now navigates to hcp-adjust.html standalone page
-   - Removed direct HandicapAdjustment.init call from button handler
-   - Navigation flow: Celebration → hcp-adjust.html?gameId=xxx
-   - All existing functionality preserved from v1.14
+VERSION: 1.16
+KEY CHANGES from v1.15:
+   - FIXED: gameId now properly captured in setTimeout closure
+   - Added fallback to get gameId from celebrationData if undefined
+   - Added debug logging for gameId before navigation
+   - All existing functionality preserved from v1.15
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
