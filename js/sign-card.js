@@ -1,14 +1,12 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: Celebration screen now matches HCP adjust table dimensions
-   - FIXED: Image loading with proper async handling (C.jpg displays correctly)
-   - FIXED: Player names removed from celebration screen for cleaner look
-   - FIXED: All corners properly rounded with overflow: hidden
-   - FIXED: Font sizes increased for better readability
-   - Improved modal padding and spacing
-   - All existing functionality preserved from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: Added loading overlay between celebration and handicap adjustment screens
+   - FIXED: Proper confetti cleanup when transitioning
+   - FIXED: Button click handler properly attached with event listener
+   - ADDED: waitForHandicapAdjustment with loading screen to prevent real-game flash
+   - All existing functionality preserved from v1.11
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
@@ -74,8 +72,31 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Waiting Screen (legacy - kept for compatibility)
+    // Waiting Screen
     // ============================================================
+    
+    function showLoadingScreen(message) {
+        // Remove any existing loading screen
+        var existing = document.getElementById('loadingOverlay');
+        if (existing) existing.remove();
+        
+        var modalHtml = `
+            <div class="modal-overlay" id="loadingOverlay" style="z-index: 9999;">
+                <div class="waiting-modal-container" style="border: 2px solid #ffaa44;">
+                    <div class="waiting-spinner" style="border-top-color: #ffaa44;"></div>
+                    <div style="margin-top: 16px; font-size: 1rem; color: #ffaa44; font-weight: 600;">${escapeHtml(message || 'Loading...')}</div>
+                    <div style="margin-top: 8px; font-size: 0.75rem; color: #888;">Please wait</div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        return document.getElementById('loadingOverlay');
+    }
+    
+    function hideLoadingScreen() {
+        var loading = document.getElementById('loadingOverlay');
+        if (loading) loading.remove();
+    }
     
     function showWaitingScreen(flightNumber, onComplete) {
         var existingModal = document.getElementById('waitingModal');
@@ -129,6 +150,11 @@ var SignCard = (function() {
         }
         
         burst();
+    }
+    
+    function clearConfetti() {
+        var confetti = document.querySelectorAll('.confetti');
+        confetti.forEach(function(el) { el.remove(); });
     }
     
     // ============================================================
@@ -194,12 +220,15 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.11: MATCHES HCP ADJUST TABLE DIMENSIONS
+    // Celebration Screen - v1.12: With loading overlay
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
         var existingModal = document.getElementById('celebrationModal');
         if (existingModal) existingModal.remove();
+        
+        // Clear any old confetti
+        clearConfetti();
         
         var winnerText = "";
         var winnerClass = "";
@@ -263,46 +292,96 @@ var SignCard = (function() {
             addCelebrationStyles();
             launchConfetti();
             
-            document.getElementById("handicapAdjustBtn").addEventListener("click", function() {
-                document.getElementById("celebrationModal").remove();
+            // v1.12: Properly attach click handler with loading overlay
+            var btn = document.getElementById("handicapAdjustBtn");
+            if (btn) {
+                // Remove any existing listeners by cloning
+                var newBtn = btn.cloneNode(true);
+                btn.parentNode.replaceChild(newBtn, btn);
                 
-                ensureArchiveRecord(gameId, function(err, archiveId) {
-                    if (err) {
-                        console.error("Failed to get archive record:", err);
+                newBtn.addEventListener("click", function() {
+                    // STEP 1: Show loading overlay immediately
+                    var loading = showLoadingScreen("Loading Handicap Adjustment...");
+                    
+                    // STEP 2: Remove celebration modal
+                    var modal = document.getElementById('celebrationModal');
+                    if (modal) modal.remove();
+                    
+                    // STEP 3: Clear confetti
+                    clearConfetti();
+                    
+                    // STEP 4: Wait for HandicapAdjustment to be available
+                    function waitForHandicapAdjustment(callback, attempts) {
+                        attempts = attempts || 0;
                         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
-                            HandicapAdjustment.init(gameId, null, celebrationData.winningPlayers, {}, {}, true);
-                        }
-                    } else {
-                        var matchPoints = {};
-                        if (typeof window !== 'undefined' && window.GameLoader) {
-                            var cache = window.GameLoader.getLocalCache();
-                            if (cache && cache.matchResults && cache.matchResults.cross) {
-                                for (var key in cache.matchResults.cross) {
-                                    if (key.indexOf('_vs_') !== -1) {
-                                        var parts = key.split('_vs_');
-                                        var playerA = parts[0];
-                                        var playerB = parts[1];
-                                        var value = cache.matchResults.cross[key];
-                                        if (!matchPoints[playerA]) matchPoints[playerA] = { total: 0 };
-                                        if (value > 0) matchPoints[playerA].total += 1;
-                                        else if (value === 0) matchPoints[playerA].total += 0.5;
-                                        if (!matchPoints[playerB]) matchPoints[playerB] = { total: 0 };
-                                        if (value < 0) matchPoints[playerB].total += 1;
-                                        else if (value === 0) matchPoints[playerB].total += 0.5;
-                                    }
-                                }
-                            }
-                        }
-                        
-                        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
-                            HandicapAdjustment.init(gameId, archiveId, celebrationData.winningPlayers, matchPoints, {}, false);
+                            callback();
+                        } else if (attempts < 30) {
+                            setTimeout(function() {
+                                waitForHandicapAdjustment(callback, attempts + 1);
+                            }, 200);
                         } else {
-                            console.log("HandicapAdjustment module not loaded yet");
-                            if (celebrationData.onClose) celebrationData.onClose();
+                            console.error("HandicapAdjustment module failed to load after 6 seconds");
+                            hideLoadingScreen();
+                            Modal.alert("Handicap adjustment is taking longer than expected. Please try again.");
                         }
                     }
+                    
+                    waitForHandicapAdjustment(function() {
+                        ensureArchiveRecord(gameId, function(err, archiveId) {
+                            if (err) {
+                                console.error("Failed to get archive record:", err);
+                                hideLoadingScreen();
+                                Modal.alert("Unable to load handicap data. Please try again.");
+                            } else {
+                                var matchPoints = {};
+                                if (typeof window !== 'undefined' && window.GameLoader) {
+                                    var cache = window.GameLoader.getLocalCache();
+                                    if (cache && cache.results && cache.results.matchResults) {
+                                        var allPlayers = cache.players || [];
+                                        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
+                                        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
+                                        
+                                        var finalMatchResults = cache.results.matchResults[17];
+                                        if (finalMatchResults) {
+                                            for (var a = 0; a < teamAPlayers.length; a++) {
+                                                for (var b = 0; b < teamBPlayers.length; b++) {
+                                                    var playerA = teamAPlayers[a];
+                                                    var playerB = teamBPlayers[b];
+                                                    var matchIndex = a * teamBPlayers.length + b;
+                                                    var matchValue = finalMatchResults[matchIndex] || 0;
+                                                    
+                                                    if (!matchPoints[playerA.name]) matchPoints[playerA.name] = { total: 0 };
+                                                    if (!matchPoints[playerB.name]) matchPoints[playerB.name] = { total: 0 };
+                                                    
+                                                    if (matchValue > 0) {
+                                                        matchPoints[playerA.name].total += 1;
+                                                    } else if (matchValue < 0) {
+                                                        matchPoints[playerB.name].total += 1;
+                                                    } else {
+                                                        matchPoints[playerA.name].total += 0.5;
+                                                        matchPoints[playerB.name].total += 0.5;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // STEP 5: Remove loading overlay
+                                hideLoadingScreen();
+                                
+                                // STEP 6: Call HandicapAdjustment with isViewOnlyMode = true
+                                if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
+                                    HandicapAdjustment.init(gameId, archiveId, celebrationData.winningPlayers, matchPoints, {}, true);
+                                } else {
+                                    Modal.alert("Handicap adjustment module is not available. Please try again.");
+                                    if (celebrationData.onClose) celebrationData.onClose();
+                                }
+                            }
+                        });
+                    });
                 });
-            });
+            }
             
             window._currentCelebrationData = celebrationData;
         });
@@ -319,7 +398,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Styles - v1.11: MATCHES HCP ADJUST TABLE
+    // Celebration Styles - v1.12
     // ============================================================
     
     function addCelebrationStyles() {
@@ -327,7 +406,6 @@ var SignCard = (function() {
         
         var styles = `
             <style id="sign-card-styles">
-                /* Modal overlay */
                 .modal-overlay {
                     position: fixed;
                     top: 0;
@@ -381,9 +459,6 @@ var SignCard = (function() {
                     animation: spin 1s linear infinite;
                 }
                 
-                /* ============================================================
-                   CELEBRATION MODAL - Matches HCP Adjust Table dimensions
-                   ============================================================ */
                 .celebration-modal {
                     background: #1a1a1a;
                     border-radius: 24px !important;
@@ -408,7 +483,6 @@ var SignCard = (function() {
                     border-radius: inherit !important;
                 }
                 
-                /* Image container */
                 .celebration-image-container {
                     margin-bottom: 12px;
                     display: flex;
@@ -426,7 +500,6 @@ var SignCard = (function() {
                     border: 1px solid #2a2a2a;
                 }
                 
-                /* Title */
                 .celebration-title {
                     font-size: 28px;
                     font-weight: 800;
@@ -435,7 +508,6 @@ var SignCard = (function() {
                     letter-spacing: 0.5px;
                 }
                 
-                /* Beer emoji */
                 .celebration-beer {
                     font-size: 36px;
                     font-weight: 800;
@@ -445,7 +517,6 @@ var SignCard = (function() {
                     animation: bounce 0.5s ease 2;
                 }
                 
-                /* Winner text */
                 .celebration-winner {
                     font-size: 24px;
                     font-weight: 800;
@@ -470,7 +541,6 @@ var SignCard = (function() {
                     border: 1px solid #ffaa44;
                 }
                 
-                /* Score display */
                 .celebration-score {
                     font-size: 28px;
                     font-weight: 700;
@@ -488,7 +558,6 @@ var SignCard = (function() {
                 .score-team-b { color: #4caf50; }
                 .score-vs { color: #555555; font-weight: 300; }
                 
-                /* Button */
                 .celebration-btn {
                     background: #1a3a1a;
                     border: 1px solid #4caf50;
@@ -511,92 +580,39 @@ var SignCard = (function() {
                     transform: scale(0.98);
                 }
                 
-                /* ============================================================
-                   RESPONSIVE BREAKPOINTS
-                   ============================================================ */
                 @media (max-width: 380px) {
                     .celebration-modal {
                         padding: 16px 16px 16px 16px;
                         min-width: auto;
                         width: 94%;
                     }
-                    .celebration-title {
-                        font-size: 22px;
-                    }
-                    .celebration-beer {
-                        font-size: 28px;
-                    }
-                    .celebration-winner {
-                        font-size: 18px;
-                        padding: 8px 16px;
-                    }
-                    .celebration-score {
-                        font-size: 20px;
-                        gap: 12px;
-                        padding: 10px 0;
-                    }
-                    .celebration-btn {
-                        font-size: 16px;
-                        padding: 14px 16px;
-                    }
-                    .celebration-image {
-                        max-height: 30vh;
-                        min-height: 80px;
-                    }
+                    .celebration-title { font-size: 22px; }
+                    .celebration-beer { font-size: 28px; }
+                    .celebration-winner { font-size: 18px; padding: 8px 16px; }
+                    .celebration-score { font-size: 20px; gap: 12px; padding: 10px 0; }
+                    .celebration-btn { font-size: 16px; padding: 14px 16px; }
+                    .celebration-image { max-height: 30vh; min-height: 80px; }
                 }
                 
                 @media (min-width: 401px) and (max-width: 500px) {
-                    .celebration-modal {
-                        padding: 24px 28px 20px 28px;
-                    }
-                    .celebration-title {
-                        font-size: 28px;
-                    }
-                    .celebration-beer {
-                        font-size: 36px;
-                    }
-                    .celebration-winner {
-                        font-size: 24px;
-                    }
-                    .celebration-score {
-                        font-size: 28px;
-                    }
-                    .celebration-image {
-                        max-height: 35vh;
-                    }
+                    .celebration-modal { padding: 24px 28px 20px 28px; }
+                    .celebration-title { font-size: 28px; }
+                    .celebration-beer { font-size: 36px; }
+                    .celebration-winner { font-size: 24px; }
+                    .celebration-score { font-size: 28px; }
+                    .celebration-image { max-height: 35vh; }
                 }
                 
                 @media (min-width: 501px) {
-                    .celebration-modal {
-                        padding: 32px 36px 24px 36px;
-                        max-width: 480px;
-                    }
-                    .celebration-title {
-                        font-size: 32px;
-                    }
-                    .celebration-beer {
-                        font-size: 40px;
-                    }
-                    .celebration-winner {
-                        font-size: 28px;
-                        padding: 14px 28px;
-                    }
-                    .celebration-score {
-                        font-size: 32px;
-                        gap: 28px;
-                    }
-                    .celebration-btn {
-                        font-size: 22px;
-                        padding: 18px 28px;
-                    }
-                    .celebration-image {
-                        max-height: 45vh;
-                    }
+                    .celebration-modal { padding: 32px 36px 24px 36px; max-width: 480px; }
+                    .celebration-title { font-size: 32px; }
+                    .celebration-beer { font-size: 40px; }
+                    .celebration-winner { font-size: 28px; padding: 14px 28px; }
+                    .celebration-score { font-size: 32px; gap: 28px; }
+                    .celebration-btn { font-size: 22px; padding: 18px 28px; }
+                    .celebration-image { max-height: 45vh; }
                 }
                 
-                /* ============================================================
-                   CONFETTI ANIMATIONS
-                   ============================================================ */
                 .confetti {
                     position: fixed;
                     width: 10px;
@@ -690,8 +706,12 @@ var SignCard = (function() {
         isGameCompleted: isGameCompleted,
         getWinner: getWinner,
         launchConfetti: launchConfetti,
-        ensureArchiveRecord: ensureArchiveRecord
+        clearConfetti: clearConfetti,
+        ensureArchiveRecord: ensureArchiveRecord,
+        showLoadingScreen: showLoadingScreen,
+        hideLoadingScreen: hideLoadingScreen
     };
+    
 })();
 
 // Make available globally
@@ -699,15 +719,13 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: Celebration screen now matches HCP adjust table dimensions
-   - FIXED: Image loading with proper async handling (C.jpg displays correctly)
-   - FIXED: Player names removed from celebration screen for cleaner look
-   - FIXED: All corners properly rounded with overflow: hidden
-   - FIXED: Font sizes increased for better readability
-   - Improved modal padding and spacing
-   - All existing functionality preserved from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - FIXED: Added loading overlay between celebration and handicap adjustment screens
+   - FIXED: Proper confetti cleanup when transitioning
+   - FIXED: Button click handler properly attached with event listener
+   - ADDED: waitForHandicapAdjustment with loading screen to prevent real-game flash
+   - All existing functionality preserved from v1.11
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
