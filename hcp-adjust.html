@@ -1,11 +1,10 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - FIXED: Celebration button now properly loads SignCard and hides waiting screen
-   - Added dynamic loading of sign-card.js if not available
-   - Waiting screen auto-hides after celebration loads
-   - All existing functionality preserved from v1.16
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: Main Menu button now shows confirmation modal before navigating to index.html
+   - Uses Modal.confirm for consistent UX with the rest of the app
+   - All existing functionality preserved from v1.18
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -22,9 +21,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.17"></script>
-    <script src="js/session.js?v=1.17"></script>
-    <script src="js/modal.js?v=1.17"></script>
+    <script src="js/firebase-config.js?v=1.19"></script>
+    <script src="js/session.js?v=1.19"></script>
+    <script src="js/modal.js?v=1.19"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -274,14 +273,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.17</div>
+<div class="version-tag">v1.19</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Preserve all query parameters
 // ============================================================
-var APP_VERSION = "1.17";
-var CACHE_KEY = "hcp_adjust_version_v117";
+var APP_VERSION = "1.19";
+var CACHE_KEY = "hcp_adjust_version_v119";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -303,8 +302,28 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.17";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.17 - Celebration button fixed");
+window.HCP_ADJUST_PAGE_VERSION = "1.19";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.19 - Main Menu confirmation modal");
+
+// ============================================================
+// v1.18: Restore celebration data from sessionStorage
+// ============================================================
+function restoreCelebrationData() {
+    var stored = sessionStorage.getItem('celebrationData');
+    if (stored) {
+        try {
+            var data = JSON.parse(stored);
+            console.log("[HCP-ADJUST-PAGE] Celebration data restored from sessionStorage");
+            console.log("  gameId:", data.gameId);
+            console.log("  winner:", data.winner);
+            window._currentCelebrationData = data;
+            return true;
+        } catch(e) {
+            console.warn("[HCP-ADJUST-PAGE] Failed to parse celebration data:", e.message);
+        }
+    }
+    return false;
+}
 
 // ============================================================
 // Main Logic
@@ -357,68 +376,84 @@ function renderButtons(anchorName) {
             });
         }
         
-        // v1.17: Celebration button with proper SignCard handling
         var celebrationBtn = document.getElementById('celebrationBtn');
         if (celebrationBtn) {
             celebrationBtn.addEventListener('click', function() {
                 console.log("[HCP-ADJUST] Celebration button clicked");
                 
-                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                    WaitingScreen.show("Loading Celebration...");
+                if (!window._currentCelebrationData) {
+                    console.log("[HCP-ADJUST] No celebration data, trying to restore from sessionStorage");
+                    restoreCelebrationData();
                 }
                 
-                // Check if SignCard is available
-                if (typeof SignCard === 'undefined') {
-                    console.log("[HCP-ADJUST] SignCard not loaded, loading dynamically...");
-                    var script = document.createElement('script');
-                    script.src = 'js/sign-card.js?v=1.16';
-                    script.onload = function() {
-                        console.log("[HCP-ADJUST] SignCard loaded");
+                if (window._currentCelebrationData) {
+                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                        WaitingScreen.show("Loading Celebration...");
+                    }
+                    
+                    if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+                        var data = window._currentCelebrationData;
+                        SignCard.showCelebrationScreen(
+                            data.winner,
+                            data.teamAScore,
+                            data.teamBScore,
+                            data.winningPlayers,
+                            data.gameId,
+                            function() {
+                                console.log("[HCP-ADJUST] Celebration onClose callback");
+                                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                                    WaitingScreen.hide();
+                                }
+                            }
+                        );
                         setTimeout(function() {
                             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                                 WaitingScreen.hide();
                             }
-                        }, 500);
-                        if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
-                            SignCard.replayCelebration();
-                        } else {
-                            alert('Celebration screen not available');
-                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                WaitingScreen.hide();
-                            }
-                        }
-                    };
-                    script.onerror = function() {
-                        console.error("[HCP-ADJUST] Failed to load SignCard");
-                        alert('Celebration screen not available');
-                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                            WaitingScreen.hide();
-                        }
-                    };
-                    document.head.appendChild(script);
-                } else {
-                    // SignCard is available
-                    if (typeof SignCard.replayCelebration === 'function') {
-                        setTimeout(function() {
-                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                WaitingScreen.hide();
-                            }
-                        }, 500);
-                        SignCard.replayCelebration();
+                        }, 1000);
                     } else {
+                        console.error("[HCP-ADJUST] SignCard.showCelebrationScreen not available");
                         alert('Celebration screen not available');
                         if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                             WaitingScreen.hide();
                         }
                     }
+                } else {
+                    console.error("[HCP-ADJUST] No celebration data available");
+                    alert('Celebration data not available');
+                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                        WaitingScreen.hide();
+                    }
                 }
             });
         }
         
+        // v1.19: Main Menu button with confirmation modal
         var mainMenuBtn = document.getElementById('mainMenuBtn');
         if (mainMenuBtn) {
             mainMenuBtn.addEventListener('click', function() {
-                window.location.href = 'index.html';
+                console.log("[HCP-ADJUST] Main Menu button clicked");
+                
+                if (typeof Modal !== 'undefined' && Modal.confirm) {
+                    Modal.confirm(
+                        "⚠️ Leave Game?\n\nYou will not be able to return to this game.",
+                        function() {
+                            console.log("[HCP-ADJUST] User confirmed - navigating to main menu");
+                            window.location.href = 'index.html';
+                        },
+                        function() {
+                            console.log("[HCP-ADJUST] User cancelled - staying on page");
+                        }
+                    );
+                } else {
+                    // Fallback to native confirm
+                    if (confirm("⚠️ Leave Game?\n\nYou will not be able to return to this game.")) {
+                        console.log("[HCP-ADJUST] User confirmed - navigating to main menu");
+                        window.location.href = 'index.html';
+                    } else {
+                        console.log("[HCP-ADJUST] User cancelled - staying on page");
+                    }
+                }
             });
         }
     } else {
@@ -520,6 +555,9 @@ function loadHcpData() {
 
 function init() {
     console.log("[HCP-ADJUST-PAGE] Initializing...");
+    
+    restoreCelebrationData();
+    
     getUrlParams();
     
     if (!gameId) {
@@ -553,12 +591,11 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - FIXED: Celebration button now properly loads SignCard and hides waiting screen
-   - Added dynamic loading of sign-card.js if not available
-   - Waiting screen auto-hides after celebration loads
-   - All existing functionality preserved from v1.16
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: Main Menu button now shows confirmation modal before navigating to index.html
+   - Uses Modal.confirm for consistent UX with the rest of the app
+   - All existing functionality preserved from v1.18
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
