@@ -1,12 +1,11 @@
 /*
 FILE: js/modal.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - ADDED: confirmWithCustomButtons() for UPDATE & SAVE / DISCARD modals
-   - ADDED: confirmWithThreeButtons() for three-option modals
-   - All modals now use consistent styling (green border, grey title, pill buttons)
-   - Fixed confirmWithCustomButtons to match app UI scheme
-   - All existing functionality preserved
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: confirmGameComplete() method for GAME COMPLETE modal
+   - Consistent styling with green border, gold title, emojis
+   - Single "SEE RESULTS" button with green theme
+   - All existing functionality preserved from v1.01
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -63,7 +62,7 @@ var Modal = (function() {
                 background: #1a1a1a;
                 border-radius: 28px;
                 padding: 28px;
-                max-width: 340px;
+                max-width: 360px;
                 width: 90%;
                 text-align: center;
                 border: 2px solid #4caf50;
@@ -219,8 +218,7 @@ var Modal = (function() {
     }
     
     // ============================================================
-    // NEW v1.01: Confirm with Custom Buttons
-    // For UPDATE & SAVE / DISCARD modals
+    // v1.01: Confirm with Custom Buttons
     // ============================================================
     
     function confirmWithCustomButtons(message, onConfirm, onCancel, confirmText, cancelText) {
@@ -230,7 +228,6 @@ var Modal = (function() {
         var confirmBtnText = confirmText || "OK";
         var cancelBtnText = cancelText || "Cancel";
         
-        // Determine button styles based on text
         var isDiscardButton = (cancelBtnText.toUpperCase() === "DISCARD");
         var isUpdateSaveButton = (confirmBtnText.toUpperCase() === "UPDATE & SAVE" || confirmBtnText === "UPDATE & SAVE");
         
@@ -267,8 +264,7 @@ var Modal = (function() {
     }
     
     // ============================================================
-    // NEW v1.01: Confirm with Three Buttons
-    // For UPDATE & SAVE / DISCARD / CANCEL modals
+    // v1.01: Confirm with Three Buttons
     // ============================================================
     
     function confirmWithThreeButtons(message, onConfirm, onDiscard, onCancel, confirmText, discardText) {
@@ -316,6 +312,34 @@ var Modal = (function() {
     }
     
     // ============================================================
+    // v1.02: GAME COMPLETE Modal (Single button, gold title, green border)
+    // ============================================================
+    
+    function confirmGameComplete(onConfirm) {
+        ensureStyles();
+        removeExistingModal();
+        
+        var modalHtml = `
+            <div class="shared-modal-container" style="padding: 32px 28px;">
+                <div style="font-size: 1.5rem; font-weight: 700; color: #ffaa44; margin-bottom: 12px; text-align: center;">🏆 GAME COMPLETE</div>
+                <div style="font-size: 0.9rem; color: #ccc; text-align: center; margin-bottom: 16px;">Both cards have been signed!</div>
+                <div style="font-size: 1.5rem; text-align: center; margin-bottom: 24px;">🍺 🏆 🍺</div>
+                <button class="shared-modal-btn shared-modal-btn-confirm" id="sharedModalConfirmBtn" style="width: 100%; padding: 14px; font-size: 1rem; font-weight: 700;">🏆 SEE RESULTS</button>
+            </div>
+        `;
+        
+        var overlay = createModalOverlay(modalHtml);
+        document.body.appendChild(overlay);
+        
+        document.getElementById('sharedModalConfirmBtn').onclick = function() {
+            removeExistingModal();
+            if (onConfirm && typeof onConfirm === 'function') {
+                onConfirm();
+            }
+        };
+    }
+    
+    // ============================================================
     // Public API
     // ============================================================
     
@@ -323,7 +347,8 @@ var Modal = (function() {
         confirm: confirm,
         alert: alert,
         confirmWithCustomButtons: confirmWithCustomButtons,
-        confirmWithThreeButtons: confirmWithThreeButtons
+        confirmWithThreeButtons: confirmWithThreeButtons,
+        confirmGameComplete: confirmGameComplete
     };
     
 })();
@@ -333,13 +358,12 @@ window.Modal = Modal;
 
 /*
 FILE: js/modal.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - ADDED: confirmWithCustomButtons() for UPDATE & SAVE / DISCARD modals
-   - ADDED: confirmWithThreeButtons() for three-option modals
-   - All modals now use consistent styling (green border, grey title, pill buttons)
-   - Fixed confirmWithCustomButtons to match app UI scheme
-   - All existing functionality preserved
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: confirmGameComplete() method for GAME COMPLETE modal
+   - Consistent styling with green border, gold title, emojis
+   - Single "SEE RESULTS" button with green theme
+   - All existing functionality preserved from v1.01
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
