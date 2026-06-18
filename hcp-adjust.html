@@ -1,10 +1,11 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: Cache-busting now preserves gameId and other query parameters
-   - Previously the ?v=1.01 redirect stripped all parameters
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Added retry mechanism for GameLoader availability
+   - FIXED: loadHcpData now handles cases where GameLoader is not yet ready
+   - Added delay to ensure all modules are loaded before loading data
+   - All existing functionality preserved from v1.02
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -21,9 +22,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.02"></script>
-    <script src="js/session.js?v=1.02"></script>
-    <script src="js/modal.js?v=1.02"></script>
+    <script src="js/firebase-config.js?v=1.03"></script>
+    <script src="js/session.js?v=1.03"></script>
+    <script src="js/modal.js?v=1.03"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -273,26 +274,22 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.02</div>
+<div class="version-tag">v1.03</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Preserve all query parameters
 // ============================================================
-var APP_VERSION = "1.02";
-var CACHE_KEY = "hcp_adjust_version_v102";
+var APP_VERSION = "1.03";
+var CACHE_KEY = "hcp_adjust_version_v103";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
     
-    // Preserve ALL existing query parameters
     var currentParams = new URLSearchParams(window.location.search);
-    
-    // Build new URL with version and all existing params
     var newUrl = window.location.pathname + "?v=" + APP_VERSION;
     
-    // Add back all existing params EXCEPT 'v' (which we're replacing)
     currentParams.forEach(function(value, key) {
         if (key !== 'v') {
             newUrl += "&" + key + "=" + encodeURIComponent(value);
@@ -306,8 +303,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.02";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.02 - Preserves query params");
+window.HCP_ADJUST_PAGE_VERSION = "1.03";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.03 - Fixed load timing");
 
 // ============================================================
 // Main Logic
@@ -407,7 +404,22 @@ function loadHcpData() {
     document.getElementById('gameInfo').textContent = 'Loading game data...';
     
     if (typeof GameLoader === 'undefined') {
-        document.getElementById('debug').textContent = 'Error: GameLoader not loaded';
+        console.warn("[HCP-ADJUST-PAGE] GameLoader not ready, retrying...");
+        document.getElementById('gameInfo').textContent = 'Loading modules...';
+        // Retry after delay
+        setTimeout(function() {
+            loadHcpData();
+        }, 500);
+        return;
+    }
+    
+    // v1.03: Check if GameLoader has the loadGame function
+    if (typeof GameLoader.loadGame !== 'function') {
+        console.warn("[HCP-ADJUST-PAGE] GameLoader.loadGame not ready, retrying...");
+        document.getElementById('gameInfo').textContent = 'Loading modules...';
+        setTimeout(function() {
+            loadHcpData();
+        }, 500);
         return;
     }
     
@@ -441,14 +453,31 @@ function loadHcpData() {
                 cache.results || null
             );
             
+            // v1.03: Check if table was rendered, if not retry
             setTimeout(function() {
+                var container = document.getElementById('hcpTableContainer');
+                var hasTable = container ? container.querySelector('table') : null;
+                if (!hasTable) {
+                    console.warn("[HCP-ADJUST-PAGE] Table not rendered, retrying initForViewer...");
+                    HandicapAdjustment.initForViewer(
+                        gameId,
+                        cache.players || [],
+                        cache.f1DataString || '',
+                        cache.f2DataString || '',
+                        cache.course?.si || [],
+                        cache.course?.par || [],
+                        cache.startingHole || 1,
+                        cache.results || null
+                    );
+                }
+                
                 var anchorName = 'Anchor';
                 if (cache.players && cache.players.length > 0) {
                     var sorted = cache.players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
                     anchorName = sorted[0]?.name || 'Anchor';
                 }
                 renderButtons(anchorName);
-            }, 300);
+            }, 500);
         } else {
             console.error("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer not available");
             document.getElementById('debug').textContent = 'Error: HandicapAdjustment module not loaded';
@@ -472,7 +501,10 @@ function init() {
         document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
     });
     
-    loadHcpData();
+    // v1.03: Small delay to ensure all modules are loaded
+    setTimeout(function() {
+        loadHcpData();
+    }, 200);
 }
 
 if (document.readyState === 'loading') {
@@ -487,11 +519,13 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: Cache-busting now preserves gameId and other query parameters
-   - Previously the ?v=1.01 redirect stripped all parameters
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Added retry mechanism for GameLoader availability
+   - FIXED: loadHcpData now handles cases where GameLoader is not yet ready
+   - Added delay to ensure all modules are loaded before loading data
+   - Added table render check with retry
+   - All existing functionality preserved from v1.02
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
