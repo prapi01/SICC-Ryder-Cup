@@ -1,12 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.34
-KEY CHANGES from v7.33:
-   - FIXED: Added URL parameter fallback for gameId
-   - Previously ignored URL parameters entirely
-   - Now reads from URL as fallback: session → sessionStorage → URL
-   - Fixes Scorecard button from hcp-adjust.html
-   - All existing functionality preserved from v7.33
+VERSION: 7.35
+KEY CHANGES from v7.34:
+   - FIXED: gameId logic now correctly checks session.activeGame.gameId
+   - Previously, session.activeGame existed but had null gameId
+   - Now properly falls back to sessionStorage and URL
+   - All existing functionality preserved from v7.34
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -20,8 +19,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.34"></script>
-    <script src="js/session.js?v=7.34"></script>
+    <script src="js/firebase-config.js?v=7.35"></script>
+    <script src="js/session.js?v=7.35"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -30,11 +29,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.34"></script>
-    <script src="js/history-record.js?v=7.34"></script>
-    <script src="js/sign-card.js?v=7.34"></script>
-    <script src="js/hcp-adjust.js?v=7.34"></script>
-    <script src="js/modal.js?v=7.34"></script>
+    <script src="js/ticker.js?v=7.35"></script>
+    <script src="js/history-record.js?v=7.35"></script>
+    <script src="js/sign-card.js?v=7.35"></script>
+    <script src="js/hcp-adjust.js?v=7.35"></script>
+    <script src="js/modal.js?v=7.35"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -155,14 +154,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.34</div>
+<div class="version-tag">v7.35</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.34: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v7.35: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "7.34";
-var CACHE_KEY = "view_game_version_v734";
+var APP_VERSION = "7.35";
+var CACHE_KEY = "view_game_version_v735";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -180,8 +179,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.34";
-console.log("[VIEW-GAME] Initializing v7.34 - Fixed URL parameter fallback for gameId");
+window.VIEW_GAME_VERSION = "7.35";
+console.log("[VIEW-GAME] Initializing v7.35 - FIXED gameId logic");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1294,7 +1293,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v7.34: Initialization - FIXED: Reads gameId from URL
+// v7.35: Initialization - FIXED gameId logic
 // ============================================================
 
 async function init() {
@@ -1305,7 +1304,7 @@ async function init() {
         SessionManager.initSession("view-game.html", "index.html", resolve);
     });
     
-    // v7.34: FIXED - Read gameId from URL as fallback
+    // v7.35: FIXED - Check gameId properly
     var urlParams = new URLSearchParams(window.location.search);
     var urlGameId = urlParams.get('gameId');
     
@@ -1313,10 +1312,11 @@ async function init() {
     console.log("[VIEW-GAME] session.activeGame:", session.activeGame);
     console.log("[VIEW-GAME] sessionStorage.currentGameId:", sessionStorage.getItem('currentGameId'));
     
-    // Priority: session.activeGame → sessionStorage → URL parameter
-    gameId = session.activeGame ? session.activeGame.gameId : 
-             sessionStorage.getItem('currentGameId') || 
-             urlGameId;
+    // v7.35: Check if session.activeGame has a valid gameId
+    var sessionGameId = (session.activeGame && session.activeGame.gameId) ? session.activeGame.gameId : null;
+    
+    // Priority: session.activeGame.gameId → sessionStorage → URL parameter
+    gameId = sessionGameId || sessionStorage.getItem('currentGameId') || urlGameId;
     
     console.log("[VIEW-GAME] Final gameId:", gameId);
     
@@ -1420,13 +1420,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.34
-KEY CHANGES from v7.33:
-   - FIXED: Added URL parameter fallback for gameId
-   - Previously ignored URL parameters entirely
-   - Now reads from URL as fallback: session → sessionStorage → URL
-   - Fixes Scorecard button from hcp-adjust.html
-   - All existing functionality preserved from v7.33
+VERSION: 7.35
+KEY CHANGES from v7.34:
+   - FIXED: gameId logic now correctly checks session.activeGame.gameId
+   - Previously, session.activeGame existed but had null gameId
+   - Now properly falls back to sessionStorage and URL
+   - All existing functionality preserved from v7.34
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
