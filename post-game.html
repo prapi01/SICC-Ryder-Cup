@@ -1,11 +1,13 @@
 <!--
 FILE: post-game.html
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
-   - Updated modal title and message text
-   - All existing functionality preserved from v1.03
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v1.04
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -13,22 +15,23 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SICC Ryder Cup - POST GAME</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=1.04"></script>
-    <script src="js/session.js?v=1.04"></script>
-    <script src="js/modal.js?v=1.04"></script>
-    <script src="js/waiting-screen.js?v=1.04"></script>
+    <script src="js/firebase-config.js?v=1.05"></script>
+    <script src="js/session.js?v=1.05"></script>
+    <script src="js/settings.js?v=1.05"></script>
+    <script src="js/modal.js?v=1.05"></script>
+    <script src="js/waiting-screen.js?v=1.05"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.25"></script>
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/sign-card.js?v=1.17"></script>
+    <script src="js/sign-card.js?v=1.18"></script>
     <script src="js/firebase-retry.js"></script>
     
     <style>
@@ -173,14 +176,23 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.04</div>
+<div class="version-tag">v1.05</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v1.04: Preserves all URL parameters
+// Apply user settings IMMEDIATELY before anything else
 // ============================================================
-var APP_VERSION = "1.04";
-var CACHE_KEY = "post_game_version_v104";
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[POST-GAME] AppSettings not loaded, zoom may be enabled by default");
+}
+
+// ============================================================
+// VERSION CACHE-BUSTING - v1.05: Preserves all URL parameters
+// ============================================================
+var APP_VERSION = "1.05";
+var CACHE_KEY = "post_game_version_v105";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -198,8 +210,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.04";
-console.log("[POST-GAME] Initializing v1.04 - Changed to GAME COMPLETED");
+window.POST_GAME_PAGE_VERSION = "1.05";
+console.log("[POST-GAME] Initializing v1.05 - Added settings.js zoom control");
 
 // ============================================================
 // Main Logic
@@ -395,11 +407,13 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
-   - Updated modal title and message text
-   - All existing functionality preserved from v1.03
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v1.04
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js
 STATUS: Ready for integration
 -->
