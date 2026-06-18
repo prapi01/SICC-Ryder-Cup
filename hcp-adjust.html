@@ -1,11 +1,11 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Only SessionManager.getShortNameOnly() error - it returns a string, not a Promise
-   - Removed .then() chain that was breaking initialization
-   - No UI changes - uses standard WaitingScreen as before
-   - All existing functionality preserved from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - REMOVED: Green border, background, and padding from hcpTableContainer
+   - Container now has no border or background - table provides its own styling
+   - Prevents empty green rectangle from appearing before table loads
+   - All existing functionality preserved from v1.06
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -22,9 +22,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.06"></script>
-    <script src="js/session.js?v=1.06"></script>
-    <script src="js/modal.js?v=1.06"></script>
+    <script src="js/firebase-config.js?v=1.07"></script>
+    <script src="js/session.js?v=1.07"></script>
+    <script src="js/modal.js?v=1.07"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -34,7 +34,7 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/hcp-adjust.js?v=2.47"></script>
+    <script src="js/hcp-adjust.js?v=2.48"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -107,16 +107,14 @@ STATUS: Ready for integration
             margin-top: 4px;
         }
         
+        /* v1.07: Removed green border, background, and padding from container */
         #hcpTableContainer {
-            background: #1a1a1a;
-            border-radius: 24px;
-            padding: 12px;
-            border: 2px solid #4caf50;
             margin-bottom: 16px;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
         }
         
+        /* Table styles are applied by hcp-adjust.js renderTableToContainer() */
         #hcpTableContainer table {
             width: 100%;
             border-collapse: collapse;
@@ -274,14 +272,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.06</div>
+<div class="version-tag">v1.07</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Preserve all query parameters
 // ============================================================
-var APP_VERSION = "1.06";
-var CACHE_KEY = "hcp_adjust_version_v106";
+var APP_VERSION = "1.07";
+var CACHE_KEY = "hcp_adjust_version_v107";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -303,8 +301,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.06";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.06 - Fixed SessionManager error");
+window.HCP_ADJUST_PAGE_VERSION = "1.07";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.07 - Removed green border from container");
 
 // ============================================================
 // Main Logic
@@ -474,7 +472,6 @@ function init() {
         return;
     }
     
-    // v1.06: SessionManager.getShortNameOnly() returns a string, not a Promise
     try {
         if (typeof SessionManager !== 'undefined' && typeof SessionManager.getShortNameOnly === 'function') {
             var deviceName = SessionManager.getShortNameOnly();
@@ -501,12 +498,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Only SessionManager.getShortNameOnly() error - it returns a string, not a Promise
-   - Removed .then() chain that was breaking initialization
-   - No UI changes - uses standard WaitingScreen as before
-   - All existing functionality preserved from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - REMOVED: Green border, background, and padding from hcpTableContainer
+   - Container now has no border or background - table provides its own styling
+   - Prevents empty green rectangle from appearing before table loads
+   - All existing functionality preserved from v1.06
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
