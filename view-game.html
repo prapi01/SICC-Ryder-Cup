@@ -1,11 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.32
-KEY CHANGES from v7.31:
-   - CHANGED: showGameCompleteModal() now redirects to post-game.html
-   - Replaced Modal.confirmGameComplete() with redirect to centralized post-game entry point
-   - Sets sessionStorage.isPostGame and sessionStorage.currentGameId before redirect
-   - All existing functionality preserved from v7.31
+VERSION: 7.33
+KEY CHANGES from v7.32:
+   - FIXED: Removed automatic navigation to hcp-adjust.html from onClose callback
+   - Now user must click "HANDICAP ADJUSTMENT" button on celebration screen
+   - onClose callback now only hides waiting screen and logs
+   - All existing functionality preserved from v7.32
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -19,8 +19,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.32"></script>
-    <script src="js/session.js?v=7.32"></script>
+    <script src="js/firebase-config.js?v=7.33"></script>
+    <script src="js/session.js?v=7.33"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -29,11 +29,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.32"></script>
-    <script src="js/history-record.js?v=7.32"></script>
-    <script src="js/sign-card.js?v=7.32"></script>
-    <script src="js/hcp-adjust.js?v=7.32"></script>
-    <script src="js/modal.js?v=7.32"></script>
+    <script src="js/ticker.js?v=7.33"></script>
+    <script src="js/history-record.js?v=7.33"></script>
+    <script src="js/sign-card.js?v=7.33"></script>
+    <script src="js/hcp-adjust.js?v=7.33"></script>
+    <script src="js/modal.js?v=7.33"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -154,26 +154,33 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.32</div>
+<div class="version-tag">v7.33</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - Forces reload on new deployment
+// VERSION CACHE-BUSTING - Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "7.32";
-var CACHE_KEY = "view_game_version_v732";
+var APP_VERSION = "7.33";
+var CACHE_KEY = "view_game_version_v733";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
-    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+    
+    // Preserve ALL existing URL parameters
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[VIEW-GAME] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.32";
-console.log("[VIEW-GAME] Initializing v7.32 - Redirect to post-game.html");
+window.VIEW_GAME_VERSION = "7.33";
+console.log("[VIEW-GAME] Initializing v7.33 - Fixed onClose callback (no auto-navigation)");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -289,13 +296,13 @@ function showPostGameExitModal() {
 }
 
 // ============================================================
-// v7.32: Show Game Complete modal - Redirect to post-game.html
+// v7.33: Show Game Complete modal - Redirect to post-game.html
 // ============================================================
 
 function showGameCompleteModal() {
     console.log("[VIEW-GAME] showGameCompleteModal called - redirecting to post-game.html");
     
-    // v7.32: Redirect to post-game.html instead of showing modal
+    // v7.33: Redirect to post-game.html instead of showing modal
     if (gameId) {
         console.log("[VIEW-GAME] Game complete on Game Day - redirecting to post-game.html");
         
@@ -906,7 +913,7 @@ function onToggleDisplayMode(displayMode) {
 }
 
 // ============================================================
-// Celebration & RHP for Viewer
+// Celebration & RHP for Viewer - v7.33: Fixed onClose callback
 // ============================================================
 
 function showCelebrationModal() {
@@ -925,9 +932,20 @@ function showCelebrationModal() {
     };
     
     if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-        SignCard.showCelebrationScreen(winner, tr.teamA, tr.teamB, winningPlayers, gameId, function() {
-            openRHPForViewer();
-        });
+        // v7.33: onClose callback does NOT navigate - user must click "HANDICAP ADJUSTMENT"
+        SignCard.showCelebrationScreen(
+            winner, 
+            tr.teamA, 
+            tr.teamB, 
+            winningPlayers, 
+            gameId,
+            function() {
+                // onClose callback - do NOT navigate automatically
+                console.log("[VIEW-GAME] Celebration screen closed by user (onClose fired)");
+                // User will click "HANDICAP ADJUSTMENT" button on celebration screen
+                // No auto-navigation here!
+            }
+        );
     } else {
         console.error("SignCard.showCelebrationScreen not available");
     }
@@ -961,7 +979,7 @@ function openRHPForViewer() {
 }
 
 // ============================================================
-// v7.32: renderCompactHeader - fixed with template literals
+// v7.33: renderCompactHeader - fixed with template literals
 // ============================================================
 
 function renderCompactHeader() {
@@ -1275,7 +1293,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v7.32: Initialization with Game Complete detection - redirect to post-game.html
+// v7.33: Initialization - Fixed onClose callback
 // ============================================================
 
 async function init() {
@@ -1361,7 +1379,7 @@ async function init() {
             gameCompleteFlag = isGameComplete();
             isPostGameContext = checkPostGameContext(cache);
             
-            // v7.32: Check if game is complete AND it's Game Day
+            // v7.33: Check if game is complete AND it's Game Day
             var gameDate = cache.course?.date || null;
             var today = new Date().toISOString().split('T')[0];
             var isToday = (gameDate === today);
@@ -1387,12 +1405,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.32
-KEY CHANGES from v7.31:
-   - CHANGED: showGameCompleteModal() now redirects to post-game.html
-   - Replaced Modal.confirmGameComplete() with redirect to centralized post-game entry point
-   - Sets sessionStorage.isPostGame and sessionStorage.currentGameId before redirect
-   - All existing functionality preserved from v7.31
+VERSION: 7.33
+KEY CHANGES from v7.32:
+   - FIXED: Removed automatic navigation to hcp-adjust.html from onClose callback
+   - Now user must click "HANDICAP ADJUSTMENT" button on celebration screen
+   - onClose callback now only hides waiting screen and logs
+   - All existing functionality preserved from v7.32
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
