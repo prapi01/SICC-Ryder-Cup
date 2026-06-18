@@ -1,22 +1,22 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: createHistoryRecord() now passes full cache.signatures object
-   - Previously passed malformed { f1: { signed: cache.signatures?.f1 || false } }
-   - This caused history records to have signatures.f1.signed = false
-   - Now preserves all signature fields (signed, signedAt, captainName)
-   - All existing functionality preserved
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: WaitingScreen calls for smooth transitions
+   - showGameCompleteScreen() now shows waiting screen before celebration
+   - showCelebrationAndHandicap() now hides waiting screen after celebration loads
+   - Prevents real-game screen flash during transitions
+   - All existing functionality preserved from v1.01
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.01";
+window.REAL_GAME_NAV_VERSION = "1.02";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.01 - fixed signatures in history record");
+    console.log("[REAL-GAME-NAV] Initializing v1.02 - Added WaitingScreen for transitions");
     
     // ============================================================
     // Private Helpers
@@ -337,7 +337,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen
+    // showGameCompleteScreen - v1.02: Added WaitingScreen
     // ============================================================
     
     function showGameCompleteScreen() {
@@ -361,18 +361,37 @@ var RealGameNav = (function() {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         setActiveCompleteModal(document.getElementById("completeModalNew"));
         
+        // v1.02: Show waiting screen when "See Results" is clicked
         document.getElementById("seeResultsBtnNew").onclick = function() {
+            // Show waiting screen immediately
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                WaitingScreen.show("Loading Celebration...");
+                console.log("[NAV] Waiting screen shown");
+            } else {
+                // Fallback
+                var overlay = document.createElement('div');
+                overlay.id = 'waitingScreenOverlay';
+                overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
+                overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Celebration...</div>';
+                document.body.appendChild(overlay);
+                console.log("[NAV] Fallback waiting screen shown");
+            }
+            
             var modal = getActiveCompleteModal();
             if (modal) {
                 modal.remove();
                 setActiveCompleteModal(null);
             }
-            showCelebrationAndHandicap();
+            
+            // Small delay to let waiting screen render
+            setTimeout(function() {
+                showCelebrationAndHandicap();
+            }, 300);
         };
     }
     
     // ============================================================
-    // createHistoryRecord - FIXED v1.01: Pass full signatures object
+    // createHistoryRecord
     // ============================================================
     
     async function createHistoryRecord() {
@@ -411,8 +430,6 @@ var RealGameNav = (function() {
         
         return new Promise(function(resolve, reject) {
             if (typeof HistoryRecord !== 'undefined' && HistoryRecord.createPendingRecord) {
-                // v1.01: FIXED - Pass full signatures object instead of malformed partial
-                // This preserves signed, signedAt, and captainName fields
                 HistoryRecord.createPendingRecord(
                     gameId,
                     gameDataForHistory,
@@ -434,12 +451,21 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showCelebrationAndHandicap
+    // showCelebrationAndHandicap - v1.02: Added WaitingScreen hide
     // ============================================================
     
     function showCelebrationAndHandicap() {
         if (isCelebrationTriggered()) return;
         setCelebrationTriggered(true);
+        
+        // v1.02: Ensure waiting screen is hidden when celebration loads
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+            WaitingScreen.hide();
+        } else {
+            var fallback = document.getElementById('waitingScreenOverlay');
+            if (fallback) fallback.remove();
+        }
+        console.log("[NAV] Waiting screen hidden");
         
         var currentHole = getCurrentHole();
         var gameId = getGameId();
@@ -502,13 +528,13 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: createHistoryRecord() now passes full cache.signatures object
-   - Previously passed malformed { f1: { signed: cache.signatures?.f1 || false } }
-   - This caused history records to have signatures.f1.signed = false
-   - Now preserves all signature fields (signed, signedAt, captainName)
-   - All existing functionality preserved
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: WaitingScreen calls for smooth transitions
+   - showGameCompleteScreen() now shows waiting screen before celebration
+   - showCelebrationAndHandicap() now hides waiting screen after celebration loads
+   - Prevents real-game screen flash during transitions
+   - All existing functionality preserved from v1.01
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
 STATUS: Ready for integration
 */
