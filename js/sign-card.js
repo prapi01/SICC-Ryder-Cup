@@ -2,12 +2,12 @@
 FILE: js/sign-card.js
 VERSION: 1.12
 KEY CHANGES from v1.11:
-   - FIXED: Added loading overlay between celebration and handicap adjustment screens
+   - FIXED: Use WaitingScreen module for loading overlay between celebration and handicap adjustment
    - FIXED: Proper confetti cleanup when transitioning
    - FIXED: Button click handler properly attached with event listener
-   - ADDED: waitForHandicapAdjustment with loading screen to prevent real-game flash
+   - ADDED: waitForHandicapAdjustment with WaitingScreen to prevent real-game flash
    - All existing functionality preserved from v1.11
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
 
@@ -72,31 +72,8 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Waiting Screen
+    // Waiting Screen (legacy - kept for compatibility)
     // ============================================================
-    
-    function showLoadingScreen(message) {
-        // Remove any existing loading screen
-        var existing = document.getElementById('loadingOverlay');
-        if (existing) existing.remove();
-        
-        var modalHtml = `
-            <div class="modal-overlay" id="loadingOverlay" style="z-index: 9999;">
-                <div class="waiting-modal-container" style="border: 2px solid #ffaa44;">
-                    <div class="waiting-spinner" style="border-top-color: #ffaa44;"></div>
-                    <div style="margin-top: 16px; font-size: 1rem; color: #ffaa44; font-weight: 600;">${escapeHtml(message || 'Loading...')}</div>
-                    <div style="margin-top: 8px; font-size: 0.75rem; color: #888;">Please wait</div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        return document.getElementById('loadingOverlay');
-    }
-    
-    function hideLoadingScreen() {
-        var loading = document.getElementById('loadingOverlay');
-        if (loading) loading.remove();
-    }
     
     function showWaitingScreen(flightNumber, onComplete) {
         var existingModal = document.getElementById('waitingModal');
@@ -220,7 +197,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.12: With loading overlay
+    // Celebration Screen - v1.12: Uses WaitingScreen
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -292,7 +269,7 @@ var SignCard = (function() {
             addCelebrationStyles();
             launchConfetti();
             
-            // v1.12: Properly attach click handler with loading overlay
+            // v1.12: Properly attach click handler with WaitingScreen
             var btn = document.getElementById("handicapAdjustBtn");
             if (btn) {
                 // Remove any existing listeners by cloning
@@ -300,8 +277,17 @@ var SignCard = (function() {
                 btn.parentNode.replaceChild(newBtn, btn);
                 
                 newBtn.addEventListener("click", function() {
-                    // STEP 1: Show loading overlay immediately
-                    var loading = showLoadingScreen("Loading Handicap Adjustment...");
+                    // STEP 1: Show waiting screen immediately using WaitingScreen module
+                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                        WaitingScreen.show("Loading Handicap Adjustment...");
+                    } else {
+                        // Fallback: create a simple overlay
+                        var overlay = document.createElement('div');
+                        overlay.id = 'fallbackWaitingOverlay';
+                        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
+                        overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Handicap Adjustment...</div>';
+                        document.body.appendChild(overlay);
+                    }
                     
                     // STEP 2: Remove celebration modal
                     var modal = document.getElementById('celebrationModal');
@@ -321,16 +307,29 @@ var SignCard = (function() {
                             }, 200);
                         } else {
                             console.error("HandicapAdjustment module failed to load after 6 seconds");
-                            hideLoadingScreen();
+                            // Hide waiting screen
+                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                                WaitingScreen.hide();
+                            } else {
+                                var fallback = document.getElementById('fallbackWaitingOverlay');
+                                if (fallback) fallback.remove();
+                            }
                             Modal.alert("Handicap adjustment is taking longer than expected. Please try again.");
                         }
                     }
                     
                     waitForHandicapAdjustment(function() {
                         ensureArchiveRecord(gameId, function(err, archiveId) {
+                            // STEP 5: Hide waiting screen
+                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                                WaitingScreen.hide();
+                            } else {
+                                var fallback = document.getElementById('fallbackWaitingOverlay');
+                                if (fallback) fallback.remove();
+                            }
+                            
                             if (err) {
                                 console.error("Failed to get archive record:", err);
-                                hideLoadingScreen();
                                 Modal.alert("Unable to load handicap data. Please try again.");
                             } else {
                                 var matchPoints = {};
@@ -367,9 +366,6 @@ var SignCard = (function() {
                                     }
                                 }
                                 
-                                // STEP 5: Remove loading overlay
-                                hideLoadingScreen();
-                                
                                 // STEP 6: Call HandicapAdjustment with isViewOnlyMode = true
                                 if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
                                     HandicapAdjustment.init(gameId, archiveId, celebrationData.winningPlayers, matchPoints, {}, true);
@@ -398,7 +394,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Styles - v1.12
+    // Celebration Styles
     // ============================================================
     
     function addCelebrationStyles() {
@@ -707,9 +703,7 @@ var SignCard = (function() {
         getWinner: getWinner,
         launchConfetti: launchConfetti,
         clearConfetti: clearConfetti,
-        ensureArchiveRecord: ensureArchiveRecord,
-        showLoadingScreen: showLoadingScreen,
-        hideLoadingScreen: hideLoadingScreen
+        ensureArchiveRecord: ensureArchiveRecord
     };
     
 })();
@@ -721,11 +715,11 @@ window.SignCard = SignCard;
 FILE: js/sign-card.js
 VERSION: 1.12
 KEY CHANGES from v1.11:
-   - FIXED: Added loading overlay between celebration and handicap adjustment screens
+   - FIXED: Use WaitingScreen module for loading overlay between celebration and handicap adjustment
    - FIXED: Proper confetti cleanup when transitioning
    - FIXED: Button click handler properly attached with event listener
-   - ADDED: waitForHandicapAdjustment with loading screen to prevent real-game flash
+   - ADDED: waitForHandicapAdjustment with WaitingScreen to prevent real-game flash
    - All existing functionality preserved from v1.11
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
