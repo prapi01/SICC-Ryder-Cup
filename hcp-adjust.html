@@ -1,12 +1,12 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - RESTORED: #hcpTableContainer CSS with opacity:0 initially
-   - Container is hidden until table is rendered (visible class added by JavaScript)
-   - Eliminates flashing green rectangle
-   - All existing functionality preserved from v1.13
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED: Celebration button now properly loads SignCard and hides waiting screen
+   - Added dynamic loading of sign-card.js if not available
+   - Waiting screen auto-hides after celebration loads
+   - All existing functionality preserved from v1.16
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
 
@@ -22,9 +22,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.14"></script>
-    <script src="js/session.js?v=1.14"></script>
-    <script src="js/modal.js?v=1.14"></script>
+    <script src="js/firebase-config.js?v=1.17"></script>
+    <script src="js/session.js?v=1.17"></script>
+    <script src="js/modal.js?v=1.17"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -35,6 +35,7 @@ STATUS: Ready for integration
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
     <script src="js/hcp-adjust.js?v=2.50"></script>
+    <script src="js/sign-card.js?v=1.16"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -89,7 +90,23 @@ STATUS: Ready for integration
             z-index: 1000;
         }
         
-        /* v1.14: Container with opacity:0 initially - hidden until table is ready */
+        .hcp-header {
+            text-align: center;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+        
+        .hcp-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #4caf50;
+            text-align: center;
+            white-space: nowrap;
+            margin: 0 auto;
+        }
+        
         #hcpTableContainer {
             background: #1a1a1a;
             border-radius: 24px;
@@ -109,14 +126,14 @@ STATUS: Ready for integration
         #hcpTableContainer table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.8rem;
+            font-size: 16px;
             min-width: 340px;
         }
         
         #hcpTableContainer th {
-            padding: 8px 4px;
+            padding: 12px 8px;
             text-align: center;
-            font-size: 0.75rem;
+            font-size: 16px;
             background: #1a3a1a;
             color: #4caf50;
         }
@@ -143,13 +160,16 @@ STATUS: Ready for integration
         }
         
         #hcpTableContainer td {
-            padding: 6px 4px;
+            padding: 10px 8px;
             text-align: center;
+            font-size: 16px;
             border-bottom: 1px solid #333;
         }
         
         #hcpTableContainer td:first-child {
             text-align: left;
+            font-size: 16px;
+            font-weight: 600;
         }
         
         #hcpTableContainer .team-header td {
@@ -157,7 +177,7 @@ STATUS: Ready for integration
             text-align: center;
             color: #4caf50;
             font-weight: 700;
-            font-size: 0.75rem;
+            font-size: 16px;
             background: #1a3a1a;
             border-top: 2px solid #000;
         }
@@ -165,11 +185,13 @@ STATUS: Ready for integration
         #hcpTableContainer .anchor-row td {
             color: #ffaa44;
             font-weight: 600;
+            font-size: 16px;
         }
         
         #hcpTableContainer .final-zero td {
             color: #ffaa44;
             font-weight: 700;
+            font-size: 16px;
         }
         
         .hcp-buttons {
@@ -182,9 +204,9 @@ STATUS: Ready for integration
         .hcp-btn {
             flex: 1;
             min-width: 80px;
-            padding: 10px 12px;
+            padding: 14px 20px;
             border-radius: 30px;
-            font-size: 0.75rem;
+            font-size: 16px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
@@ -207,7 +229,7 @@ STATUS: Ready for integration
             border-color: #ffaa44;
             color: #ffaa44;
             flex: 0 0 auto;
-            padding: 10px 20px;
+            padding: 14px 20px;
             font-size: 1.2rem;
         }
         
@@ -240,7 +262,10 @@ STATUS: Ready for integration
 <body>
 
 <div class="container" id="mainContainer">
-    <!-- v1.14: Container is in HTML but hidden (opacity:0) until table is ready -->
+    <div class="hcp-header">
+        <div class="hcp-title">HANDICAP ADJUSTMENT</div>
+    </div>
+    
     <div id="hcpTableContainer"></div>
     
     <div class="hcp-buttons" id="hcpButtons"></div>
@@ -249,14 +274,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.14</div>
+<div class="version-tag">v1.17</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Preserve all query parameters
 // ============================================================
-var APP_VERSION = "1.14";
-var CACHE_KEY = "hcp_adjust_version_v114";
+var APP_VERSION = "1.17";
+var CACHE_KEY = "hcp_adjust_version_v117";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -278,8 +303,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.14";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.14 - Container hidden until table ready");
+window.HCP_ADJUST_PAGE_VERSION = "1.17";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.17 - Celebration button fixed");
 
 // ============================================================
 // Main Logic
@@ -313,9 +338,9 @@ function renderButtons(anchorName) {
         }
     } else {
         html = `
-            <button class="hcp-btn hcp-btn-scorecard" id="backToScorecardBtn">📋 Scorecard</button>
+            <button class="hcp-btn hcp-btn-scorecard" id="backToScorecardBtn">Scorecard</button>
             <button class="hcp-btn hcp-btn-celebration" id="celebrationBtn">🎉</button>
-            <button class="hcp-btn hcp-btn-menu" id="mainMenuBtn">🏠 Main Menu</button>
+            <button class="hcp-btn hcp-btn-menu" id="mainMenuBtn">Main Menu</button>
         `;
     }
     
@@ -332,18 +357,59 @@ function renderButtons(anchorName) {
             });
         }
         
+        // v1.17: Celebration button with proper SignCard handling
         var celebrationBtn = document.getElementById('celebrationBtn');
         if (celebrationBtn) {
             celebrationBtn.addEventListener('click', function() {
+                console.log("[HCP-ADJUST] Celebration button clicked");
+                
                 if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                     WaitingScreen.show("Loading Celebration...");
                 }
-                if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
-                    SignCard.replayCelebration();
+                
+                // Check if SignCard is available
+                if (typeof SignCard === 'undefined') {
+                    console.log("[HCP-ADJUST] SignCard not loaded, loading dynamically...");
+                    var script = document.createElement('script');
+                    script.src = 'js/sign-card.js?v=1.16';
+                    script.onload = function() {
+                        console.log("[HCP-ADJUST] SignCard loaded");
+                        setTimeout(function() {
+                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                                WaitingScreen.hide();
+                            }
+                        }, 500);
+                        if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
+                            SignCard.replayCelebration();
+                        } else {
+                            alert('Celebration screen not available');
+                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                                WaitingScreen.hide();
+                            }
+                        }
+                    };
+                    script.onerror = function() {
+                        console.error("[HCP-ADJUST] Failed to load SignCard");
+                        alert('Celebration screen not available');
+                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                            WaitingScreen.hide();
+                        }
+                    };
+                    document.head.appendChild(script);
                 } else {
-                    alert('Celebration screen not available');
-                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                        WaitingScreen.hide();
+                    // SignCard is available
+                    if (typeof SignCard.replayCelebration === 'function') {
+                        setTimeout(function() {
+                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                                WaitingScreen.hide();
+                            }
+                        }, 500);
+                        SignCard.replayCelebration();
+                    } else {
+                        alert('Celebration screen not available');
+                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                            WaitingScreen.hide();
+                        }
                     }
                 }
             });
@@ -421,7 +487,6 @@ function loadHcpData() {
             );
             console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer called");
             
-            // v1.14: After table renders, show the container
             var container = document.getElementById('hcpTableContainer');
             if (container) {
                 var checkTable = setInterval(function() {
@@ -431,7 +496,6 @@ function loadHcpData() {
                         clearInterval(checkTable);
                     }
                 }, 100);
-                // Timeout fallback
                 setTimeout(function() {
                     clearInterval(checkTable);
                     if (!container.classList.contains('visible')) {
@@ -489,12 +553,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - RESTORED: #hcpTableContainer CSS with opacity:0 initially
-   - Container is hidden until table is rendered (visible class added by JavaScript)
-   - Eliminates flashing green rectangle
-   - All existing functionality preserved from v1.13
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED: Celebration button now properly loads SignCard and hides waiting screen
+   - Added dynamic loading of sign-card.js if not available
+   - Waiting screen auto-hides after celebration loads
+   - All existing functionality preserved from v1.16
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
