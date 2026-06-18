@@ -1,9 +1,11 @@
 <!--
 FILE: real-game.html
-VERSION: 6.18
-KEY CHANGES from v6.17:
-   - UPDATED: sign-card.js from v1.15 to v1.16 (gameId closure fix)
-   - Version bump only - all other functionality preserved from v6.17
+VERSION: 6.19
+KEY CHANGES from v6.18:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v6.18
 DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.20), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js (v1.06), js/real-game-init.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -20,9 +22,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=6.18"></script>
-    <script src="js/session.js?v=6.18"></script>
-    <script src="js/modal.js?v=6.18"></script>
+    <script src="js/firebase-config.js?v=6.19"></script>
+    <script src="js/session.js?v=6.19"></script>
+    <script src="js/modal.js?v=6.19"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -32,11 +34,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/card-submit.js?v=6.18"></script>
+    <script src="js/card-submit.js?v=6.19"></script>
     <script src="js/sign-card.js?v=1.16"></script>
     <script src="js/hcp-adjust.js?v=2.47"></script>
-    <script src="js/ticker.js?v=6.18"></script>
-    <script src="js/history-record.js?v=6.18"></script>
+    <script src="js/ticker.js?v=6.19"></script>
+    <script src="js/history-record.js?v=6.19"></script>
     
     <!-- Real Game Modules - Load in order of dependency -->
     <script src="js/real-game-state.js?v=1.00"></script>
@@ -309,26 +311,33 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v6.18</div>
+<div class="version-tag">v6.19</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - Forces reload on new deployment
+// VERSION CACHE-BUSTING - v6.19: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "6.18";
-var CACHE_KEY = "real_game_version_v618";
+var APP_VERSION = "6.19";
+var CACHE_KEY = "real_game_version_v619";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
-    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+    
+    // v6.19: Preserve ALL existing URL parameters
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[REAL-GAME] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "6.18";
-console.log("[REAL-GAME] Initializing v6.18 - sign-card.js v1.16 (gameId closure fix)");
+window.REAL_GAME_VERSION = "6.19";
+console.log("[REAL-GAME] Initializing v6.19 - Fixed cache-busting preserves parameters");
 console.log("[REAL-GAME] =========================================");
 console.log("[REAL-GAME] sign-card.js v1.16: Fixed gameId navigation");
 console.log("[REAL-GAME] real-game-nav.js v1.06: Clean separation");
@@ -355,10 +364,12 @@ setTimeout(function() {
 
 <!--
 FILE: real-game.html
-VERSION: 6.18
-KEY CHANGES from v6.17:
-   - UPDATED: sign-card.js from v1.15 to v1.16 (gameId closure fix)
-   - Version bump only - all other functionality preserved from v6.17
+VERSION: 6.19
+KEY CHANGES from v6.18:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v6.18
 DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.20), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js (v1.06), js/real-game-init.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
