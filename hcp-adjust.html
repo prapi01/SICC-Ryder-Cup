@@ -1,11 +1,11 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: SessionManager.getShortNameOnly() error - it returns a string, not a Promise
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: Only SessionManager.getShortNameOnly() error - it returns a string, not a Promise
    - Removed .then() chain that was breaking initialization
-   - Added try/catch for SessionManager calls
-   - All existing functionality preserved from v1.04
+   - No UI changes - uses standard WaitingScreen as before
+   - All existing functionality preserved from v1.05
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -22,9 +22,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.05"></script>
-    <script src="js/session.js?v=1.05"></script>
-    <script src="js/modal.js?v=1.05"></script>
+    <script src="js/firebase-config.js?v=1.06"></script>
+    <script src="js/session.js?v=1.06"></script>
+    <script src="js/modal.js?v=1.06"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -274,14 +274,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.05</div>
+<div class="version-tag">v1.06</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Preserve all query parameters
 // ============================================================
-var APP_VERSION = "1.05";
-var CACHE_KEY = "hcp_adjust_version_v105";
+var APP_VERSION = "1.06";
+var CACHE_KEY = "hcp_adjust_version_v106";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -303,8 +303,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.05";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.05 - Fixed SessionManager error");
+window.HCP_ADJUST_PAGE_VERSION = "1.06";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.06 - Fixed SessionManager error");
 
 // ============================================================
 // Main Logic
@@ -394,10 +394,6 @@ function renderButtons(anchorName) {
     }
 }
 
-// ============================================================
-// v1.05: DIRECT LOAD - same logic that works in console
-// ============================================================
-
 function loadHcpData() {
     if (loadAttempted) {
         console.log("[HCP-ADJUST-PAGE] Load already attempted, skipping");
@@ -417,7 +413,6 @@ function loadHcpData() {
     if (typeof GameLoader === 'undefined' || typeof GameLoader.loadGame !== 'function') {
         console.error("[HCP-ADJUST-PAGE] GameLoader not available");
         document.getElementById('debug').textContent = 'Error: GameLoader not loaded';
-        // Retry once
         setTimeout(function() {
             loadAttempted = false;
             loadHcpData();
@@ -456,7 +451,6 @@ function loadHcpData() {
             );
             console.log("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer called");
             
-            // Render buttons
             var anchorName = 'Anchor';
             if (cache.players && cache.players.length > 0) {
                 var sorted = cache.players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
@@ -470,10 +464,6 @@ function loadHcpData() {
     });
 }
 
-// ============================================================
-// v1.05: Initialize - call load directly when DOM is ready
-// ============================================================
-
 function init() {
     console.log("[HCP-ADJUST-PAGE] Initializing...");
     getUrlParams();
@@ -484,28 +474,21 @@ function init() {
         return;
     }
     
-    // v1.05: Handle SessionManager safely - it returns a string, not a Promise
+    // v1.06: SessionManager.getShortNameOnly() returns a string, not a Promise
     try {
         if (typeof SessionManager !== 'undefined' && typeof SessionManager.getShortNameOnly === 'function') {
             var deviceName = SessionManager.getShortNameOnly();
-            if (deviceName && typeof deviceName === 'string') {
-                document.getElementById('deviceTag').textContent = '🏌️ ' + deviceName;
-            } else {
-                document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
-            }
+            document.getElementById('deviceTag').textContent = '🏌️ ' + (deviceName || 'DEV-??');
         } else {
             document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
         }
     } catch(e) {
-        console.warn("[HCP-ADJUST-PAGE] SessionManager error:", e);
         document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
     }
     
-    // v1.05: Call load directly - no setTimeout delay
     loadHcpData();
 }
 
-// v1.05: Run init when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
@@ -518,12 +501,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: SessionManager.getShortNameOnly() error - it returns a string, not a Promise
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: Only SessionManager.getShortNameOnly() error - it returns a string, not a Promise
    - Removed .then() chain that was breaking initialization
-   - Added try/catch for SessionManager calls
-   - All existing functionality preserved from v1.04
+   - No UI changes - uses standard WaitingScreen as before
+   - All existing functionality preserved from v1.05
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
