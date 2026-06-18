@@ -1,11 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.36
-KEY CHANGES from v7.35:
-   - FIXED: setInitialHole() now properly sets to HOLE 18 when all holes are saved
-   - Previously defaulted to HOLE 1 for completed games
-   - Added lastSavedHole tracking to find the last saved hole
-   - All existing functionality preserved from v7.35
+VERSION: 7.37
+KEY CHANGES from v7.36:
+   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
+   - Updated modal title and message text
+   - Updated fallback modal text
+   - All existing functionality preserved from v7.36
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -19,8 +19,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.36"></script>
-    <script src="js/session.js?v=7.36"></script>
+    <script src="js/firebase-config.js?v=7.37"></script>
+    <script src="js/session.js?v=7.37"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -29,11 +29,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.36"></script>
-    <script src="js/history-record.js?v=7.36"></script>
-    <script src="js/sign-card.js?v=7.36"></script>
-    <script src="js/hcp-adjust.js?v=7.36"></script>
-    <script src="js/modal.js?v=7.36"></script>
+    <script src="js/ticker.js?v=7.37"></script>
+    <script src="js/history-record.js?v=7.37"></script>
+    <script src="js/sign-card.js?v=7.37"></script>
+    <script src="js/hcp-adjust.js?v=7.37"></script>
+    <script src="js/modal.js?v=7.37"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -154,14 +154,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.36</div>
+<div class="version-tag">v7.37</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.36: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v7.37: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "7.36";
-var CACHE_KEY = "view_game_version_v736";
+var APP_VERSION = "7.37";
+var CACHE_KEY = "view_game_version_v737";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -179,8 +179,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.36";
-console.log("[VIEW-GAME] Initializing v7.36 - FIXED setInitialHole for completed games");
+window.VIEW_GAME_VERSION = "7.37";
+console.log("[VIEW-GAME] Initializing v7.37 - Changed to GAME COMPLETED");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -296,15 +296,15 @@ function showPostGameExitModal() {
 }
 
 // ============================================================
-// v7.34: Show Game Complete modal - Redirect to post-game.html
+// v7.37: Show Game Completed modal - Redirect to post-game.html
 // ============================================================
 
 function showGameCompleteModal() {
     console.log("[VIEW-GAME] showGameCompleteModal called - redirecting to post-game.html");
     
-    // v7.34: Redirect to post-game.html instead of showing modal
+    // v7.37: Redirect to post-game.html instead of showing modal
     if (gameId) {
-        console.log("[VIEW-GAME] Game complete on Game Day - redirecting to post-game.html");
+        console.log("[VIEW-GAME] Game completed - redirecting to post-game.html");
         
         // Set post-game context
         sessionStorage.setItem('isPostGame', 'true');
@@ -361,7 +361,7 @@ function showGameCompleteModal() {
             var modalHtml = `
                 <div class="modal-overlay" id="completeModalNew">
                     <div class="complete-modal-container">
-                        <div class="complete-title">🏆 GAME COMPLETE</div>
+                        <div class="complete-title">🏆 GAME COMPLETED</div>
                         <div class="complete-emojis">🍺 🏆 🍺</div>
                         <div class="complete-message">Both cards have been signed!</div>
                         <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
@@ -993,7 +993,7 @@ function openRHPForViewer() {
 }
 
 // ============================================================
-// v7.34: renderCompactHeader - fixed with template literals
+// v7.37: renderCompactHeader - fixed with template literals
 // ============================================================
 
 function renderCompactHeader() {
@@ -1307,7 +1307,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v7.36: Initialization - FIXED setInitialHole
+// v7.37: Initialization
 // ============================================================
 
 async function init() {
@@ -1410,13 +1410,13 @@ async function init() {
             gameCompleteFlag = isGameComplete();
             isPostGameContext = checkPostGameContext(cache);
             
-            // v7.34: Check if game is complete AND it's Game Day
+            // v7.37: Check if game is complete AND it's Game Day
             var gameDate = cache.course?.date || null;
             var today = new Date().toISOString().split('T')[0];
             var isToday = (gameDate === today);
             
             if (isToday && gameCompleteFlag && !celebrationTriggered && !hasSwitchedToHistory) {
-                console.log("[VIEW-GAME] Game Day - showing GAME COMPLETE modal (redirect to post-game.html)");
+                console.log("[VIEW-GAME] Game Day - showing GAME COMPLETED modal (redirect to post-game.html)");
                 showGameCompleteModal();
             } else {
                 renderAll();
@@ -1436,12 +1436,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.36
-KEY CHANGES from v7.35:
-   - FIXED: setInitialHole() now properly sets to HOLE 18 when all holes are saved
-   - Previously defaulted to HOLE 1 for completed games
-   - Added lastSavedHole tracking to find the last saved hole
-   - All existing functionality preserved from v7.35
+VERSION: 7.37
+KEY CHANGES from v7.36:
+   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
+   - Updated modal title and message text
+   - Updated fallback modal text
+   - All existing functionality preserved from v7.36
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
