@@ -1,12 +1,13 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - ADDED: Safety check for gameId before navigating to Scorecard
-   - Prevents navigation with null/undefined gameId
-   - Shows Modal.alert if gameId is missing
-   - All existing functionality preserved from v1.20
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v1.21
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -14,7 +15,7 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SICC Ryder Cup - HANDICAP ADJUSTMENT</title>
     
     <!-- Third-party libraries -->
@@ -22,9 +23,10 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.21"></script>
-    <script src="js/session.js?v=1.21"></script>
-    <script src="js/modal.js?v=1.21"></script>
+    <script src="js/firebase-config.js?v=1.22"></script>
+    <script src="js/session.js?v=1.22"></script>
+    <script src="js/settings.js?v=1.22"></script>
+    <script src="js/modal.js?v=1.22"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -35,7 +37,7 @@ STATUS: Ready for integration
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
     <script src="js/hcp-adjust.js?v=2.50"></script>
-    <script src="js/sign-card.js?v=1.16"></script>
+    <script src="js/sign-card.js?v=1.18"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -274,14 +276,23 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.21</div>
+<div class="version-tag">v1.22</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v1.21: Preserves all URL parameters
+// Apply user settings IMMEDIATELY before anything else
 // ============================================================
-var APP_VERSION = "1.21";
-var CACHE_KEY = "hcp_adjust_version_v121";
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[HCP-ADJUST-PAGE] AppSettings not loaded, zoom may be enabled by default");
+}
+
+// ============================================================
+// VERSION CACHE-BUSTING - v1.22: Preserves all URL parameters
+// ============================================================
+var APP_VERSION = "1.22";
+var CACHE_KEY = "hcp_adjust_version_v122";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -299,8 +310,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.21";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.21 - Added gameId safety check");
+window.HCP_ADJUST_PAGE_VERSION = "1.22";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.22 - Added settings.js zoom control");
 
 // ============================================================
 // v1.18: Restore celebration data from sessionStorage
@@ -599,12 +610,13 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - ADDED: Safety check for gameId before navigating to Scorecard
-   - Prevents navigation with null/undefined gameId
-   - Shows Modal.alert if gameId is missing
-   - All existing functionality preserved from v1.20
-DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v1.21
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
