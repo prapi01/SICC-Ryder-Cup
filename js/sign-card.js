@@ -1,11 +1,11 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - FIXED: Waiting screen now shows when "HANDICAP ADJUSTMENT" button is clicked
-   - Waiting screen stays visible until HCP Adjust screen is fully rendered
-   - Added proper waiting screen hide after HandicapAdjustment.init completes
-   - All existing functionality preserved from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - CHANGED: "HANDICAP ADJUSTMENT" button now navigates to hcp-adjust.html standalone page
+   - Removed direct HandicapAdjustment.init call from button handler
+   - Navigation flow: Celebration → hcp-adjust.html?gameId=xxx
+   - All existing functionality preserved from v1.14
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -196,7 +196,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.14: Fixed waiting screen on button click
+    // Celebration Screen - v1.15: Navigate to hcp-adjust.html
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -266,7 +266,7 @@ var SignCard = (function() {
             addCelebrationStyles();
             launchConfetti();
             
-            // v1.14: Call onClose callback after modal is rendered
+            // Call onClose callback after modal is rendered
             setTimeout(function() {
                 console.log("[SignCard] Celebration modal fully rendered - calling onClose callback");
                 if (typeof onClose === 'function') {
@@ -274,14 +274,14 @@ var SignCard = (function() {
                 }
             }, 500);
             
-            // v1.14: Fix button handler - show waiting screen and keep it visible
+            // v1.15: Button navigates to hcp-adjust.html standalone page
             var btn = document.getElementById("handicapAdjustBtn");
             if (btn) {
                 var newBtn = btn.cloneNode(true);
                 btn.parentNode.replaceChild(newBtn, btn);
                 
                 newBtn.addEventListener("click", function() {
-                    console.log("[SignCard] HANDICAP ADJUSTMENT button clicked");
+                    console.log("[SignCard] HANDICAP ADJUSTMENT button clicked - navigating to standalone page");
                     
                     // Show waiting screen
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
@@ -306,102 +306,11 @@ var SignCard = (function() {
                     clearConfetti();
                     console.log("[SignCard] Confetti cleared");
                     
-                    // Wait for HandicapAdjustment to be available
-                    function waitForHandicapAdjustment(callback, attempts) {
-                        attempts = attempts || 0;
-                        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
-                            callback();
-                        } else if (attempts < 30) {
-                            setTimeout(function() {
-                                waitForHandicapAdjustment(callback, attempts + 1);
-                            }, 200);
-                        } else {
-                            console.error("[SignCard] HandicapAdjustment module failed to load");
-                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                WaitingScreen.hide();
-                            } else {
-                                var el = document.getElementById('waitingScreenOverlay');
-                                if (el) el.remove();
-                            }
-                            Modal.alert("Handicap adjustment is taking longer than expected. Please try again.");
-                        }
-                    }
-                    
-                    waitForHandicapAdjustment(function() {
-                        ensureArchiveRecord(gameId, function(err, archiveId) {
-                            if (err) {
-                                console.error("[SignCard] Failed to get archive record:", err);
-                                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                    WaitingScreen.hide();
-                                } else {
-                                    var el = document.getElementById('waitingScreenOverlay');
-                                    if (el) el.remove();
-                                }
-                                Modal.alert("Unable to load handicap data. Please try again.");
-                            } else {
-                                var matchPoints = {};
-                                if (typeof window !== 'undefined' && window.GameLoader) {
-                                    var cache = window.GameLoader.getLocalCache();
-                                    if (cache && cache.results && cache.results.matchResults) {
-                                        var allPlayers = cache.players || [];
-                                        var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; });
-                                        var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; });
-                                        
-                                        var finalMatchResults = cache.results.matchResults[17];
-                                        if (finalMatchResults) {
-                                            for (var a = 0; a < teamAPlayers.length; a++) {
-                                                for (var b = 0; b < teamBPlayers.length; b++) {
-                                                    var playerA = teamAPlayers[a];
-                                                    var playerB = teamBPlayers[b];
-                                                    var matchIndex = a * teamBPlayers.length + b;
-                                                    var matchValue = finalMatchResults[matchIndex] || 0;
-                                                    
-                                                    if (!matchPoints[playerA.name]) matchPoints[playerA.name] = { total: 0 };
-                                                    if (!matchPoints[playerB.name]) matchPoints[playerB.name] = { total: 0 };
-                                                    
-                                                    if (matchValue > 0) {
-                                                        matchPoints[playerA.name].total += 1;
-                                                    } else if (matchValue < 0) {
-                                                        matchPoints[playerB.name].total += 1;
-                                                    } else {
-                                                        matchPoints[playerA.name].total += 0.5;
-                                                        matchPoints[playerB.name].total += 0.5;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // v1.14: Call HandicapAdjustment.init
-                                if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
-                                    console.log("[SignCard] Calling HandicapAdjustment.init");
-                                    HandicapAdjustment.init(gameId, archiveId, celebrationData.winningPlayers, matchPoints, {}, true);
-                                    
-                                    // v1.14: Hide waiting screen after HCP Adjust loads
-                                    setTimeout(function() {
-                                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                            WaitingScreen.hide();
-                                            console.log("[SignCard] Waiting screen hidden after HCP Adjust loaded");
-                                        } else {
-                                            var el = document.getElementById('waitingScreenOverlay');
-                                            if (el) el.remove();
-                                        }
-                                    }, 500);
-                                } else {
-                                    console.error("[SignCard] HandicapAdjustment not available");
-                                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                        WaitingScreen.hide();
-                                    } else {
-                                        var el = document.getElementById('waitingScreenOverlay');
-                                        if (el) el.remove();
-                                    }
-                                    Modal.alert("Handicap adjustment module is not available. Please try again.");
-                                    if (celebrationData.onClose) celebrationData.onClose();
-                                }
-                            }
-                        });
-                    });
+                    // v1.15: Navigate to standalone hcp-adjust page
+                    setTimeout(function() {
+                        console.log("[SignCard] Navigating to hcp-adjust.html?gameId=" + gameId);
+                        window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+                    }, 300);
                 });
             }
             
@@ -739,12 +648,12 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - FIXED: Waiting screen now shows when "HANDICAP ADJUSTMENT" button is clicked
-   - Waiting screen stays visible until HCP Adjust screen is fully rendered
-   - Added proper waiting screen hide after HandicapAdjustment.init completes
-   - All existing functionality preserved from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - CHANGED: "HANDICAP ADJUSTMENT" button now navigates to hcp-adjust.html standalone page
+   - Removed direct HandicapAdjustment.init call from button handler
+   - Navigation flow: Celebration → hcp-adjust.html?gameId=xxx
+   - All existing functionality preserved from v1.14
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
