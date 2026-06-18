@@ -1,0 +1,497 @@
+<!--
+FILE: hcp-adjust.html
+VERSION: 1.00
+KEY CHANGES:
+   - NEW: Standalone handicap adjustment page
+   - Extracted from view-game.html modal
+   - Shows handicap adjustment table with full page layout
+   - Navigation: Scorecard → view-game.html, Celebration → replay, Main Menu → index.html
+   - Uses WaitingScreen for transitions
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
+STATUS: Ready for integration
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <title>SICC Ryder Cup - HANDICAP ADJUSTMENT</title>
+    
+    <!-- Third-party libraries -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Core dependencies -->
+    <script src="js/firebase-config.js?v=1.00"></script>
+    <script src="js/session.js?v=1.00"></script>
+    <script src="js/modal.js?v=1.00"></script>
+    <script src="js/waiting-screen.js?v=1.00"></script>
+    <script src="js/game-order.js?v=1.00"></script>
+    <script src="js/game-data.js?v=2.07"></script>
+    <script src="js/game-match.js?v=2.25"></script>
+    <script src="js/game-team.js?v=1.13"></script>
+    <script src="js/game-stroke.js?v=1.09"></script>
+    <script src="js/game-scorecard.js?v=1.16"></script>
+    <script src="js/game-ui.js?v=5.08"></script>
+    <script src="js/game-loader.js?v=1.09"></script>
+    <script src="js/hcp-adjust.js?v=2.47"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html, body {
+            min-height: 100vh;
+            background: #000;
+        }
+        
+        body {
+            background: #000;
+            font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+        .container {
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 16px;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            left: max(8px, env(safe-area-inset-left));
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            cursor: pointer;
+        }
+        
+        .version-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        
+        .hcp-header {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        
+        .hcp-title {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #4caf50;
+            letter-spacing: 0.5px;
+        }
+        
+        .hcp-subtitle {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 4px;
+        }
+        
+        /* HCP Table container - styles from hcp-adjust.js showAdjustmentTable */
+        .hcp-table-container {
+            background: #1a1a1a;
+            border-radius: 24px;
+            padding: 12px;
+            border: 2px solid #4caf50;
+            margin-bottom: 16px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .hcp-table-container table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            min-width: 340px;
+        }
+        
+        .hcp-table-container th {
+            padding: 8px 4px;
+            text-align: center;
+            font-size: 0.75rem;
+            background: #1a3a1a;
+            color: #4caf50;
+        }
+        
+        .hcp-table-container th:first-child {
+            text-align: left;
+            width: 45px;
+        }
+        
+        .hcp-table-container th:nth-child(2) {
+            width: 38px;
+        }
+        
+        .hcp-table-container th:nth-child(3) {
+            width: 55px;
+        }
+        
+        .hcp-table-container th:nth-child(4) {
+            width: 55px;
+        }
+        
+        .hcp-table-container th:nth-child(5) {
+            width: 38px;
+        }
+        
+        .hcp-table-container td {
+            padding: 6px 4px;
+            text-align: center;
+            border-bottom: 1px solid #333;
+        }
+        
+        .hcp-table-container td:first-child {
+            text-align: left;
+        }
+        
+        .hcp-table-container .team-header td {
+            padding: 6px 4px;
+            text-align: center;
+            color: #4caf50;
+            font-weight: 700;
+            font-size: 0.75rem;
+            background: #1a3a1a;
+            border-top: 2px solid #000;
+        }
+        
+        .hcp-table-container .anchor-row td {
+            color: #ffaa44;
+            font-weight: 600;
+        }
+        
+        .hcp-table-container .final-zero td {
+            color: #ffaa44;
+            font-weight: 700;
+        }
+        
+        /* Buttons */
+        .hcp-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .hcp-btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 10px 12px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            border: 1px solid;
+        }
+        
+        .hcp-btn:active {
+            transform: scale(0.97);
+        }
+        
+        .hcp-btn-scorecard {
+            background: #1a3a1a;
+            border-color: #4caf50;
+            color: #4caf50;
+        }
+        
+        .hcp-btn-celebration {
+            background: #1a3a1a;
+            border-color: #ffaa44;
+            color: #ffaa44;
+            flex: 0 0 auto;
+            padding: 10px 20px;
+            font-size: 1.2rem;
+        }
+        
+        .hcp-btn-menu {
+            background: #1a1a1a;
+            border-color: #333;
+            color: #888;
+        }
+        
+        .hcp-btn-back {
+            background: #1a1a1a;
+            border-color: #333;
+            color: #888;
+        }
+        
+        .hcp-btn-close {
+            background: #1a1a1a;
+            border-color: #333;
+            color: #ccc;
+        }
+        
+        .loading-placeholder {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+        }
+        
+        .debug {
+            text-align: center;
+            font-size: 0.6rem;
+            color: #555;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="mainContainer">
+    <div class="hcp-header">
+        <div class="hcp-title">🏌️ HANDICAP ADJUSTMENT</div>
+        <div class="hcp-subtitle" id="gameInfo">Loading...</div>
+    </div>
+    
+    <div id="hcpContent">
+        <div class="loading-placeholder">⛳ Loading handicap data...</div>
+    </div>
+    
+    <div class="hcp-buttons" id="hcpButtons">
+        <!-- Buttons rendered by JavaScript -->
+    </div>
+    
+    <div class="debug" id="debug"></div>
+</div>
+
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.00</div>
+
+<script>
+// ============================================================
+// VERSION CACHE-BUSTING
+// ============================================================
+var APP_VERSION = "1.00";
+var CACHE_KEY = "hcp_adjust_version";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
+    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+}
+
+// ============================================================
+// Version Exposure for Console Debugging
+// ============================================================
+window.HCP_ADJUST_PAGE_VERSION = "1.00";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.00 - Standalone page");
+
+// ============================================================
+// Main Logic
+// ============================================================
+
+var gameId = null;
+var isReadOnly = false;
+var returnToHistory = false;
+
+function getUrlParams() {
+    var params = new URLSearchParams(window.location.search);
+    gameId = params.get('gameId');
+    var mode = params.get('mode');
+    isReadOnly = (mode === 'readonly' || mode === 'history');
+    returnToHistory = (mode === 'history');
+    console.log("[HCP-ADJUST-PAGE] gameId:", gameId, "mode:", mode);
+}
+
+function renderButtons(anchorName) {
+    var container = document.getElementById('hcpButtons');
+    if (!container) return;
+    
+    var html = '';
+    
+    if (isReadOnly) {
+        if (returnToHistory) {
+            html = '<button class="hcp-btn hcp-btn-close" id="hcpBackBtn">← Close</button>';
+        } else {
+            html = '<button class="hcp-btn hcp-btn-back" id="hcpBackBtn">← Back</button>';
+        }
+    } else {
+        html = `
+            <button class="hcp-btn hcp-btn-scorecard" id="backToScorecardBtn">📋 Scorecard</button>
+            <button class="hcp-btn hcp-btn-celebration" id="celebrationBtn">🎉</button>
+            <button class="hcp-btn hcp-btn-menu" id="mainMenuBtn">🏠 Main Menu</button>
+        `;
+    }
+    
+    container.innerHTML = html;
+    
+    // Attach event handlers
+    if (!isReadOnly) {
+        var scorecardBtn = document.getElementById('backToScorecardBtn');
+        if (scorecardBtn) {
+            scorecardBtn.addEventListener('click', function() {
+                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                    WaitingScreen.show("Loading Scorecard...");
+                }
+                window.location.href = 'view-game.html?gameId=' + gameId;
+            });
+        }
+        
+        var celebrationBtn = document.getElementById('celebrationBtn');
+        if (celebrationBtn) {
+            celebrationBtn.addEventListener('click', function() {
+                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                    WaitingScreen.show("Loading Celebration...");
+                }
+                if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
+                    SignCard.replayCelebration();
+                } else {
+                    alert('Celebration screen not available');
+                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                        WaitingScreen.hide();
+                    }
+                }
+            });
+        }
+        
+        var mainMenuBtn = document.getElementById('mainMenuBtn');
+        if (mainMenuBtn) {
+            mainMenuBtn.addEventListener('click', function() {
+                window.location.href = 'index.html';
+            });
+        }
+    } else {
+        var backBtn = document.getElementById('hcpBackBtn');
+        if (backBtn) {
+            backBtn.addEventListener('click', function() {
+                if (returnToHistory) {
+                    window.location.href = 'view-history.html?gameId=' + gameId;
+                } else {
+                    window.history.back();
+                }
+            });
+        }
+    }
+}
+
+function loadHcpData() {
+    if (!gameId) {
+        document.getElementById('gameInfo').textContent = 'Error: No game ID provided';
+        document.getElementById('debug').textContent = 'Error: No game ID provided';
+        return;
+    }
+    
+    console.log("[HCP-ADJUST-PAGE] Loading game:", gameId);
+    
+    // Show loading state
+    document.getElementById('gameInfo').textContent = 'Loading game data...';
+    
+    // Load game data using GameLoader
+    if (typeof GameLoader === 'undefined') {
+        document.getElementById('debug').textContent = 'Error: GameLoader not loaded';
+        return;
+    }
+    
+    GameLoader.loadGame(gameId, 'scheduledGames', function(result) {
+        if (!result.success) {
+            console.error("[HCP-ADJUST-PAGE] Failed to load game:", result.error);
+            document.getElementById('gameInfo').textContent = 'Error loading game';
+            document.getElementById('debug').textContent = 'Error: ' + result.error;
+            return;
+        }
+        
+        var cache = result.cache;
+        if (!cache) {
+            document.getElementById('debug').textContent = 'Error: No cache data';
+            return;
+        }
+        
+        document.getElementById('gameInfo').textContent = cache.course?.name || 'Unknown Course';
+        
+        console.log("[HCP-ADJUST-PAGE] Cache loaded, calling HandicapAdjustment.initForViewer");
+        
+        // Call HandicapAdjustment.initForViewer to render the table
+        if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForViewer) {
+            HandicapAdjustment.initForViewer(
+                gameId,
+                cache.players || [],
+                cache.f1DataString || '',
+                cache.f2DataString || '',
+                cache.course?.si || [],
+                cache.course?.par || [],
+                cache.startingHole || 1,
+                cache.results || null
+            );
+            
+            // Buttons are now rendered inside the table, but we also render our own buttons
+            // Need to wait for the table to render, then add our buttons
+            setTimeout(function() {
+                renderButtons('Anchor');
+            }, 300);
+        } else {
+            console.error("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer not available");
+            document.getElementById('debug').textContent = 'Error: HandicapAdjustment module not loaded';
+        }
+    });
+}
+
+// ============================================================
+// Initialize
+// ============================================================
+
+function init() {
+    console.log("[HCP-ADJUST-PAGE] Initializing...");
+    
+    getUrlParams();
+    
+    if (!gameId) {
+        document.getElementById('gameInfo').textContent = 'Error: No game ID provided';
+        document.getElementById('debug').textContent = 'Error: No game ID in URL';
+        return;
+    }
+    
+    // Set device tag
+    SessionManager.getShortNameOnly().then(function(name) {
+        document.getElementById('deviceTag').textContent = '🏌️ ' + name;
+    }).catch(function() {
+        document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
+    });
+    
+    loadHcpData();
+}
+
+// Wait for DOM and dependencies
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
+</script>
+
+</body>
+</html>
+
+<!--
+FILE: hcp-adjust.html
+VERSION: 1.00
+KEY CHANGES:
+   - NEW: Standalone handicap adjustment page
+   - Extracted from view-game.html modal
+   - Shows handicap adjustment table with full page layout
+   - Navigation: Scorecard → view-game.html, Celebration → replay, Main Menu → index.html
+   - Uses WaitingScreen for transitions
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
+STATUS: Ready for integration
+-->
