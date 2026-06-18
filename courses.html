@@ -1,10 +1,11 @@
 <!--
 FILE: courses.html
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - REPLACED: System confirm() with Modal.confirm() in deleteCourse()
-   - ADDED: js/modal.js dependency for consistent custom modals
-   - All existing functionality preserved (course management, add/edit)
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.32
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -101,18 +102,25 @@ STATUS: Ready for integration
     <div class="loading">Loading courses...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.32</div>
+<div class="version-tag">v1.33</div>
 
 <script>
-// FILE: courses.html - VERSION 1.32
+// FILE: courses.html - VERSION 1.33
 
-var VERSION = "1.32";
-var CACHE_KEY = "courses_version";
+var VERSION = "1.33";
+var CACHE_KEY = "courses_version_v133";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
-    window.location.href = window.location.pathname + "?v=" + VERSION;
+    
+    // v1.33: Preserve ALL existing URL parameters
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[COURSES] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // Firebase already initialized in firebase-config.js
@@ -572,11 +580,12 @@ SessionManager.initSession("courses.html", "admin.html", function(session) {
 
 <!--
 FILE: courses.html
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - REPLACED: System confirm() with Modal.confirm() in deleteCourse()
-   - ADDED: js/modal.js dependency for consistent custom modals
-   - All existing functionality preserved (course management, add/edit)
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.32
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
 STATUS: Ready for integration
 -->
