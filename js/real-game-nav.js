@@ -1,23 +1,21 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - CHANGED: showGameCompleteScreen() now redirects to post-game.html
-   - Removed hardcoded modal from real-game flow
-   - Now uses centralized post-game entry point
-   - Fallback: if no gameId, uses Modal.confirmGameComplete()
-   - Kept showCelebrationAndHandicap() for replay from HCP Adjust page
-   - All existing functionality preserved from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Removed automatic navigation to hcp-adjust.html from onClose callback
+   - Now user must click "HANDICAP ADJUSTMENT" button on celebration screen
+   - onClose callback now only hides waiting screen and logs
+   - All existing functionality preserved from v1.08
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.08";
+window.REAL_GAME_NAV_VERSION = "1.09";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.08 - Redirect to post-game.html");
+    console.log("[REAL-GAME-NAV] Initializing v1.09 - Fixed onClose callback (no auto-navigation)");
     
     // ============================================================
     // Private Helpers
@@ -338,7 +336,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen - v1.08: Redirect to post-game.html
+    // showGameCompleteScreen - v1.09: Fixed onClose callback
     // ============================================================
     
     function showGameCompleteScreen() {
@@ -483,7 +481,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showCelebrationAndHandicap - Kept for replay from HCP Adjust
+    // showCelebrationAndHandicap - v1.09: Fixed onClose callback
     // ============================================================
     
     function showCelebrationAndHandicap() {
@@ -521,6 +519,7 @@ var RealGameNav = (function() {
         };
         
         if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+            // v1.09: onClose callback does NOT navigate - user must click "HANDICAP ADJUSTMENT"
             SignCard.showCelebrationScreen(
                 winner,
                 tr.teamA,
@@ -528,8 +527,10 @@ var RealGameNav = (function() {
                 winningPlayers,
                 gameId,
                 function() {
-                    console.log("[NAV] Celebration fully rendered - hiding waiting screen");
+                    // onClose callback - do NOT navigate automatically
+                    console.log("[NAV] Celebration screen closed by user (onClose fired)");
                     
+                    // Only hide waiting screen, no navigation
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                         WaitingScreen.hide();
                     } else {
@@ -537,6 +538,8 @@ var RealGameNav = (function() {
                         if (el) el.remove();
                     }
                     console.log("[NAV] Waiting screen hidden");
+                    // User will click "HANDICAP ADJUSTMENT" button on celebration screen
+                    // No auto-navigation here!
                 }
             );
         } else {
@@ -574,14 +577,12 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - CHANGED: showGameCompleteScreen() now redirects to post-game.html
-   - Removed hardcoded modal from real-game flow
-   - Now uses centralized post-game entry point
-   - Fallback: if no gameId, uses Modal.confirmGameComplete()
-   - Kept showCelebrationAndHandicap() for replay from HCP Adjust page
-   - All existing functionality preserved from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Removed automatic navigation to hcp-adjust.html from onClose callback
+   - Now user must click "HANDICAP ADJUSTMENT" button on celebration screen
+   - onClose callback now only hides waiting screen and logs
+   - All existing functionality preserved from v1.08
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
