@@ -1,21 +1,21 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Removed automatic navigation to hcp-adjust.html from onClose callback
-   - Now user must click "HANDICAP ADJUSTMENT" button on celebration screen
-   - onClose callback now only hides waiting screen and logs
-   - All existing functionality preserved from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: Safety check for gameId before navigating to post-game.html
+   - Prevents navigation with null/undefined gameId
+   - Shows Modal.alert if gameId is missing
+   - All existing functionality preserved from v1.09
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.09";
+window.REAL_GAME_NAV_VERSION = "1.10";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.09 - Fixed onClose callback (no auto-navigation)");
+    console.log("[REAL-GAME-NAV] Initializing v1.10 - Added gameId safety check");
     
     // ============================================================
     // Private Helpers
@@ -336,7 +336,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen - v1.09: Fixed onClose callback
+    // showGameCompleteScreen - v1.10: Added gameId safety check
     // ============================================================
     
     function showGameCompleteScreen() {
@@ -345,79 +345,38 @@ var RealGameNav = (function() {
         var gameId = getGameId();
         console.log("[NAV] showGameCompleteScreen called, gameId:", gameId);
         
-        // v1.08: Redirect to post-game.html instead of showing modal
-        if (gameId) {
-            console.log("[NAV] Game complete - redirecting to post-game.html");
-            
-            // Store post-game context
-            sessionStorage.setItem('isPostGame', 'true');
-            sessionStorage.setItem('currentGameId', gameId);
-            
-            // Show waiting screen while redirecting
-            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                WaitingScreen.show("Loading Post-Game...");
-                console.log("[NAV] Waiting screen shown");
-            } else {
-                var overlay = document.createElement('div');
-                overlay.id = 'waitingScreenOverlay';
-                overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
-                overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Post-Game...</div>';
-                document.body.appendChild(overlay);
-                console.log("[NAV] Fallback waiting screen shown");
+        // v1.10: Safety check for gameId before navigation
+        if (!gameId) {
+            console.error("[NAV] Cannot navigate to post-game - no gameId");
+            if (typeof Modal !== 'undefined' && Modal.alert) {
+                Modal.alert("Error: No game ID found. Please return to the main menu.");
             }
-            
-            setTimeout(function() {
-                console.log("[NAV] Navigating to: post-game.html?gameId=" + gameId);
-                window.location.href = 'post-game.html?gameId=' + gameId;
-            }, 300);
-        } else {
-            // Fallback: no gameId - use modal (should not happen normally)
-            console.warn("[NAV] No gameId available - using modal fallback");
-            if (typeof Modal !== 'undefined' && Modal.confirmGameComplete) {
-                Modal.confirmGameComplete(function() {
-                    console.log("[NAV] User clicked SEE RESULTS (fallback)");
-                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                        WaitingScreen.show("Loading Celebration...");
-                    }
-                    setTimeout(function() {
-                        showCelebrationAndHandicap();
-                    }, 300);
-                });
-            } else {
-                // Ultimate fallback - hardcoded modal
-                var existingModal = getActiveCompleteModal();
-                if (existingModal) {
-                    existingModal.remove();
-                }
-                
-                var modalHtml = `
-                    <div class="modal-overlay" id="completeModalNew">
-                        <div class="complete-modal-container">
-                            <div class="complete-title">🏆 GAME COMPLETE</div>
-                            <div class="complete-emojis">🍺 🏆 🍺</div>
-                            <div class="complete-message">Both cards have been signed!</div>
-                            <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
-                        </div>
-                    </div>
-                `;
-                document.body.insertAdjacentHTML('beforeend', modalHtml);
-                setActiveCompleteModal(document.getElementById("completeModalNew"));
-                
-                document.getElementById("seeResultsBtnNew").onclick = function() {
-                    var modal = getActiveCompleteModal();
-                    if (modal) {
-                        modal.remove();
-                        setActiveCompleteModal(null);
-                    }
-                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                        WaitingScreen.show("Loading Celebration...");
-                    }
-                    setTimeout(function() {
-                        showCelebrationAndHandicap();
-                    }, 300);
-                };
-            }
+            return;
         }
+        
+        console.log("[NAV] Game complete - redirecting to post-game.html");
+        
+        // Store post-game context
+        sessionStorage.setItem('isPostGame', 'true');
+        sessionStorage.setItem('currentGameId', gameId);
+        
+        // Show waiting screen while redirecting
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+            WaitingScreen.show("Loading Post-Game...");
+            console.log("[NAV] Waiting screen shown");
+        } else {
+            var overlay = document.createElement('div');
+            overlay.id = 'waitingScreenOverlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
+            overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Post-Game...</div>';
+            document.body.appendChild(overlay);
+            console.log("[NAV] Fallback waiting screen shown");
+        }
+        
+        setTimeout(function() {
+            console.log("[NAV] Navigating to: post-game.html?gameId=" + gameId);
+            window.location.href = 'post-game.html?gameId=' + gameId;
+        }, 300);
     }
     
     // ============================================================
@@ -577,12 +536,12 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Removed automatic navigation to hcp-adjust.html from onClose callback
-   - Now user must click "HANDICAP ADJUSTMENT" button on celebration screen
-   - onClose callback now only hides waiting screen and logs
-   - All existing functionality preserved from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: Safety check for gameId before navigating to post-game.html
+   - Prevents navigation with null/undefined gameId
+   - Shows Modal.alert if gameId is missing
+   - All existing functionality preserved from v1.09
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
