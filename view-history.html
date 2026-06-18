@@ -1,13 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.26
-KEY CHANGES from v8.25:
-   - REFACTORED: Now uses GameOrder as the single source of truth for order operations
-   - Added game-order.js to dynamically loaded modules
-   - Updated renderScorecardView() to use GameOrder for play order and conversions
-   - Replaced local getPlayOrder(), getHolePosition(), getDisplayHoles() with GameOrder delegates
-   - Updated GameScorecard.renderScorecard() call to new signature (displayMode, startingHole)
-   - Maintains backward compatibility for all existing functionality
+VERSION: 8.27
+KEY CHANGES from v8.26:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v8.26
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -341,26 +339,33 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.26</div>
+<div class="version-tag">v8.27</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - Forces reload on new deployment
+// VERSION CACHE-BUSTING - v8.27: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "8.26";
-var CACHE_KEY = "view_history_version";
+var APP_VERSION = "8.27";
+var CACHE_KEY = "view_history_version_v827";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
-    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+    
+    // v8.27: Preserve ALL existing URL parameters
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[VIEW-HISTORY] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.26";
-console.log("[VIEW-HISTORY] Initializing v8.26 - using GameOrder for order operations");
+window.VIEW_HISTORY_VERSION = "8.27";
+console.log("[VIEW-HISTORY] Initializing v8.27 - Fixed cache-busting preserves parameters");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1150,14 +1155,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.26
-KEY CHANGES from v8.25:
-   - REFACTORED: Now uses GameOrder as the single source of truth for order operations
-   - Added game-order.js to dynamically loaded modules
-   - Updated renderScorecardView() to use GameOrder for play order and conversions
-   - Replaced local getPlayOrder(), getHolePosition(), getDisplayHoles() with GameOrder delegates
-   - Updated GameScorecard.renderScorecard() call to new signature (displayMode, startingHole)
-   - Maintains backward compatibility for all existing functionality
+VERSION: 8.27
+KEY CHANGES from v8.26:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v8.26
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
