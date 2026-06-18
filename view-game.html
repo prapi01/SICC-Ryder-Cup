@@ -1,10 +1,12 @@
 <!--
 FILE: view-game.html
-VERSION: 7.26
-KEY CHANGES from v7.25:
-   - FIXED: Syntax error in renderCompactHeader() - unescaped string literals
-   - Converted multi-line HTML strings to template literals with backticks
-   - All existing functionality preserved from v7.25
+VERSION: 7.27
+KEY CHANGES from v7.26:
+   - REMOVED: All HCP Adjust modal code and mode=handicap detection
+   - REMOVED: isReturningFromHcpAdjust logic
+   - UPDATED: "Handicap Screen →" button now navigates to hcp-adjust.html standalone page
+   - CLEANED: Removed HCP Adjust related functions and variables
+   - All existing functionality preserved from v7.26
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -18,8 +20,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.26"></script>
-    <script src="js/session.js?v=7.26"></script>
+    <script src="js/firebase-config.js?v=7.27"></script>
+    <script src="js/session.js?v=7.27"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -28,11 +30,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.26"></script>
-    <script src="js/history-record.js?v=7.26"></script>
-    <script src="js/sign-card.js?v=7.26"></script>
-    <script src="js/hcp-adjust.js?v=7.26"></script>
-    <script src="js/modal.js?v=7.26"></script>
+    <script src="js/ticker.js?v=7.27"></script>
+    <script src="js/history-record.js?v=7.27"></script>
+    <script src="js/sign-card.js?v=7.27"></script>
+    <script src="js/hcp-adjust.js?v=7.27"></script>
+    <script src="js/modal.js?v=7.27"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -153,14 +155,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.26</div>
+<div class="version-tag">v7.27</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "7.26";
-var CACHE_KEY = "view_game_version_v726";
+var APP_VERSION = "7.27";
+var CACHE_KEY = "view_game_version_v727";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -171,8 +173,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.26";
-console.log("[VIEW-GAME] Initializing v7.26 - Fixed syntax error in renderCompactHeader");
+window.VIEW_GAME_VERSION = "7.27";
+console.log("[VIEW-GAME] Initializing v7.27 - Clean standalone HCP Adjust navigation");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -201,25 +203,9 @@ var hasSwitchedToHistory = false;
 var isPostGameContext = false;
 
 var firestoreUnsubscribe = null;
-var isReturningFromHcpAdjust = false;
 
 // ============================================================
-// v7.25: Check if mode=handicap in URL
-// ============================================================
-
-function checkHcpAdjustMode() {
-    var urlParams = new URLSearchParams(window.location.search);
-    var mode = urlParams.get('mode');
-    if (mode === 'handicap') {
-        console.log("[VIEW-GAME] mode=handicap detected - will hide waiting screen");
-        isReturningFromHcpAdjust = true;
-        return true;
-    }
-    return false;
-}
-
-// ============================================================
-// v7.25: Post-game context detection
+// v7.27: Post-game context detection
 // ============================================================
 
 function checkPostGameContext(cache) {
@@ -239,7 +225,7 @@ function checkPostGameContext(cache) {
 }
 
 // ============================================================
-// v7.25: Show post-game exit modal with waiting screen on back
+// v7.27: Show post-game exit modal - updated to navigate to hcp-adjust.html
 // ============================================================
 
 function showPostGameExitModal() {
@@ -267,9 +253,10 @@ function showPostGameExitModal() {
         window.location.href = 'index.html';
     };
     
+    // v7.27: Navigate to standalone hcp-adjust.html
     document.getElementById('postGameBackBtn').onclick = function() {
         document.getElementById('postGameExitModal').remove();
-        console.log("[VIEW-GAME] Going back to HCP Adjust - showing waiting screen");
+        console.log("[VIEW-GAME] Going to HCP Adjust standalone page");
         
         if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
             WaitingScreen.show("Loading Handicap Adjustment...");
@@ -281,7 +268,7 @@ function showPostGameExitModal() {
             document.body.appendChild(overlay);
         }
         
-        window.location.href = 'view-game.html?gameId=' + gameId + '&mode=handicap';
+        window.location.href = 'hcp-adjust.html?gameId=' + gameId;
     };
 }
 
@@ -858,7 +845,7 @@ function openRHPForViewer() {
 }
 
 // ============================================================
-// v7.26: renderCompactHeader - FIXED syntax error with template literals
+// v7.27: renderCompactHeader - fixed syntax with template literals
 // ============================================================
 
 function renderCompactHeader() {
@@ -1111,7 +1098,7 @@ function renderAll() {
 }
 
 // ============================================================
-// v7.25: Render bottom menu with context-aware button
+// v7.27: Render bottom menu with context-aware button
 // ============================================================
 
 function renderBottomMenuWithContext() {
@@ -1172,22 +1159,10 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v7.25: Initialization with waiting screen detection
+// Initialization
 // ============================================================
 
 async function init() {
-    checkHcpAdjustMode();
-    
-    if (isReturningFromHcpAdjust) {
-        console.log("[VIEW-GAME] Returning from HCP Adjust - hiding waiting screen");
-        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-            WaitingScreen.hide();
-        } else {
-            var el = document.getElementById('waitingScreenOverlay');
-            if (el) el.remove();
-        }
-    }
-    
     var myDeviceShortName = await SessionManager.getShortNameOnly();
     document.getElementById("deviceTag").innerHTML = "👁️ " + myDeviceShortName;
     
@@ -1286,11 +1261,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.26
-KEY CHANGES from v7.25:
-   - FIXED: Syntax error in renderCompactHeader() - unescaped string literals
-   - Converted multi-line HTML strings to template literals with backticks
-   - All existing functionality preserved from v7.25
+VERSION: 7.27
+KEY CHANGES from v7.26:
+   - REMOVED: All HCP Adjust modal code and mode=handicap detection
+   - REMOVED: isReturningFromHcpAdjust logic
+   - UPDATED: "Handicap Screen →" button now navigates to hcp-adjust.html standalone page
+   - CLEANED: Removed HCP Adjust related functions and variables
+   - All existing functionality preserved from v7.26
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
