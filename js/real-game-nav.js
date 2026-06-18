@@ -1,20 +1,23 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - CHANGED: showGameCompleteScreen() now uses Modal.confirmGameComplete()
-   - Replaced hardcoded modal with standardized modal from modal.js
-   - All existing functionality preserved from v1.06
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - CHANGED: showGameCompleteScreen() now redirects to post-game.html
+   - Removed hardcoded modal from real-game flow
+   - Now uses centralized post-game entry point
+   - Fallback: if no gameId, uses Modal.confirmGameComplete()
+   - Kept showCelebrationAndHandicap() for replay from HCP Adjust page
+   - All existing functionality preserved from v1.07
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.07";
+window.REAL_GAME_NAV_VERSION = "1.08";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.07 - Using standardized GAME COMPLETE modal");
+    console.log("[REAL-GAME-NAV] Initializing v1.08 - Redirect to post-game.html");
     
     // ============================================================
     // Private Helpers
@@ -335,61 +338,87 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen - v1.07: Uses Modal.confirmGameComplete()
+    // showGameCompleteScreen - v1.08: Redirect to post-game.html
     // ============================================================
     
     function showGameCompleteScreen() {
         hideWaitingScreen();
         
-        // v1.07: Use standardized Modal.confirmGameComplete()
-        if (typeof Modal !== 'undefined' && Modal.confirmGameComplete) {
-            Modal.confirmGameComplete(function() {
-                console.log("[NAV] User clicked SEE RESULTS");
-                
-                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                    WaitingScreen.show("Loading Celebration...");
-                    console.log("[NAV] Waiting screen shown");
-                }
-                
-                // Remove modal and go to celebration
-                setTimeout(function() {
-                    showCelebrationAndHandicap();
-                }, 300);
-            });
-        } else {
-            // Fallback: use hardcoded modal
-            console.warn("[NAV] Modal.confirmGameComplete not available, using fallback");
-            var existingModal = getActiveCompleteModal();
-            if (existingModal) {
-                existingModal.remove();
+        var gameId = getGameId();
+        console.log("[NAV] showGameCompleteScreen called, gameId:", gameId);
+        
+        // v1.08: Redirect to post-game.html instead of showing modal
+        if (gameId) {
+            console.log("[NAV] Game complete - redirecting to post-game.html");
+            
+            // Store post-game context
+            sessionStorage.setItem('isPostGame', 'true');
+            sessionStorage.setItem('currentGameId', gameId);
+            
+            // Show waiting screen while redirecting
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                WaitingScreen.show("Loading Post-Game...");
+                console.log("[NAV] Waiting screen shown");
+            } else {
+                var overlay = document.createElement('div');
+                overlay.id = 'waitingScreenOverlay';
+                overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
+                overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Post-Game...</div>';
+                document.body.appendChild(overlay);
+                console.log("[NAV] Fallback waiting screen shown");
             }
             
-            var modalHtml = `
-                <div class="modal-overlay" id="completeModalNew">
-                    <div class="complete-modal-container">
-                        <div class="complete-title">🏆 GAME COMPLETE</div>
-                        <div class="complete-emojis">🍺 🏆 🍺</div>
-                        <div class="complete-message">Both cards have been signed!</div>
-                        <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
+            setTimeout(function() {
+                console.log("[NAV] Navigating to: post-game.html?gameId=" + gameId);
+                window.location.href = 'post-game.html?gameId=' + gameId;
+            }, 300);
+        } else {
+            // Fallback: no gameId - use modal (should not happen normally)
+            console.warn("[NAV] No gameId available - using modal fallback");
+            if (typeof Modal !== 'undefined' && Modal.confirmGameComplete) {
+                Modal.confirmGameComplete(function() {
+                    console.log("[NAV] User clicked SEE RESULTS (fallback)");
+                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                        WaitingScreen.show("Loading Celebration...");
+                    }
+                    setTimeout(function() {
+                        showCelebrationAndHandicap();
+                    }, 300);
+                });
+            } else {
+                // Ultimate fallback - hardcoded modal
+                var existingModal = getActiveCompleteModal();
+                if (existingModal) {
+                    existingModal.remove();
+                }
+                
+                var modalHtml = `
+                    <div class="modal-overlay" id="completeModalNew">
+                        <div class="complete-modal-container">
+                            <div class="complete-title">🏆 GAME COMPLETE</div>
+                            <div class="complete-emojis">🍺 🏆 🍺</div>
+                            <div class="complete-message">Both cards have been signed!</div>
+                            <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
+                        </div>
                     </div>
-                </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-            setActiveCompleteModal(document.getElementById("completeModalNew"));
-            
-            document.getElementById("seeResultsBtnNew").onclick = function() {
-                var modal = getActiveCompleteModal();
-                if (modal) {
-                    modal.remove();
-                    setActiveCompleteModal(null);
-                }
-                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                    WaitingScreen.show("Loading Celebration...");
-                }
-                setTimeout(function() {
-                    showCelebrationAndHandicap();
-                }, 300);
-            };
+                `;
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+                setActiveCompleteModal(document.getElementById("completeModalNew"));
+                
+                document.getElementById("seeResultsBtnNew").onclick = function() {
+                    var modal = getActiveCompleteModal();
+                    if (modal) {
+                        modal.remove();
+                        setActiveCompleteModal(null);
+                    }
+                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                        WaitingScreen.show("Loading Celebration...");
+                    }
+                    setTimeout(function() {
+                        showCelebrationAndHandicap();
+                    }, 300);
+                };
+            }
         }
     }
     
@@ -454,7 +483,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showCelebrationAndHandicap - v1.06: Clean separation
+    // showCelebrationAndHandicap - Kept for replay from HCP Adjust
     // ============================================================
     
     function showCelebrationAndHandicap() {
@@ -545,11 +574,14 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - CHANGED: showGameCompleteScreen() now uses Modal.confirmGameComplete()
-   - Replaced hardcoded modal with standardized modal from modal.js
-   - All existing functionality preserved from v1.06
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - CHANGED: showGameCompleteScreen() now redirects to post-game.html
+   - Removed hardcoded modal from real-game flow
+   - Now uses centralized post-game entry point
+   - Fallback: if no gameId, uses Modal.confirmGameComplete()
+   - Kept showCelebrationAndHandicap() for replay from HCP Adjust page
+   - All existing functionality preserved from v1.07
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
