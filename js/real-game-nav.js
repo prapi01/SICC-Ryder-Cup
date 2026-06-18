@@ -1,20 +1,21 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: Archive ID suffix changed from "_history" to "_H" to match history record creation
-   - This fixes "No document to update" error when saving handicap data
-   - All existing functionality preserved from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: Celebration screen no longer auto-navigates to HCP Adjust
+   - onClose callback now only hides waiting screen, does NOT call HandicapAdjustment.init
+   - User must click "HANDICAP ADJUSTMENT" button on celebration screen to proceed
+   - All existing functionality preserved from v1.04
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.04";
+window.REAL_GAME_NAV_VERSION = "1.05";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.04 - Fixed archive ID suffix");
+    console.log("[REAL-GAME-NAV] Initializing v1.05 - Fixed auto-navigation to HCP Adjust");
     
     // ============================================================
     // Private Helpers
@@ -445,7 +446,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showCelebrationAndHandicap - v1.04: Fixed archive ID suffix
+    // showCelebrationAndHandicap - v1.05: FIXED auto-navigation
     // ============================================================
     
     function showCelebrationAndHandicap() {
@@ -473,11 +474,18 @@ var RealGameNav = (function() {
             teamB: allPlayers.filter(function(p) { return p.team === "B"; })
         };
         
-        // v1.04: FIXED - Use "_H" suffix to match history record creation
         var historyRecordId = gameId + "_H";
         console.log("[NAV] Using archive ID:", historyRecordId);
         
+        // v1.05: Store data for the button click handler
+        window._celebrationDataForHandler = {
+            gameId: gameId,
+            historyRecordId: historyRecordId,
+            winningPlayers: winningPlayers
+        };
+        
         if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+            // v1.05: onClose callback ONLY hides waiting screen, does NOT navigate
             SignCard.showCelebrationScreen(
                 winner,
                 tr.teamA,
@@ -485,6 +493,8 @@ var RealGameNav = (function() {
                 winningPlayers,
                 gameId,
                 function() {
+                    // This callback ONLY hides waiting screen
+                    // Navigation to HCP Adjust happens when user clicks the button
                     console.log("[NAV] Celebration fully rendered - hiding waiting screen");
                     
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
@@ -495,10 +505,8 @@ var RealGameNav = (function() {
                     }
                     console.log("[NAV] Waiting screen hidden");
                     
-                    if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
-                        console.log("[NAV] Calling HandicapAdjustment.init with archiveId:", historyRecordId);
-                        HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, {}, {}, false);
-                    }
+                    // v1.05: DO NOT call HandicapAdjustment.init here
+                    // User must click the "HANDICAP ADJUSTMENT" button
                 }
             );
         } else {
@@ -536,11 +544,12 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - FIXED: Archive ID suffix changed from "_history" to "_H" to match history record creation
-   - This fixes "No document to update" error when saving handicap data
-   - All existing functionality preserved from v1.03
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: Celebration screen no longer auto-navigates to HCP Adjust
+   - onClose callback now only hides waiting screen, does NOT call HandicapAdjustment.init
+   - User must click "HANDICAP ADJUSTMENT" button on celebration screen to proceed
+   - All existing functionality preserved from v1.04
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
 STATUS: Ready for integration
 */
