@@ -1,12 +1,12 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v1.23
-DEPENDS ON: js/tutorial-scoring.js, js/tutorial-results.js, js/tutorial-postgame.js
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - ADDED: js/settings.js dependency for user preferences
+   - ADDED: Viewport meta tag with settings.js control
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v1.24
+DEPENDS ON: js/tutorial-scoring.js, js/tutorial-results.js, js/tutorial-postgame.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -14,8 +14,10 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SICC Ryder Cup - Demo & Tutorial</title>
+    
+    <script src="js/settings.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -732,14 +734,23 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.24</div>
+<div class="version-tag">v1.25</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v1.24: Preserves all URL parameters
+// Apply user settings IMMEDIATELY before anything else
 // ============================================================
-var APP_VERSION = "1.24";
-var CACHE_KEY = "tutorial_version_v124";
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[TUTORIAL] AppSettings not loaded, zoom may be enabled by default");
+}
+
+// ============================================================
+// VERSION CACHE-BUSTING - v1.25: Preserves all URL parameters
+// ============================================================
+var APP_VERSION = "1.25";
+var CACHE_KEY = "tutorial_version_v125";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -995,12 +1006,12 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v1.23
-DEPENDS ON: js/tutorial-scoring.js, js/tutorial-results.js, js/tutorial-postgame.js
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - ADDED: js/settings.js dependency for user preferences
+   - ADDED: Viewport meta tag with settings.js control
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v1.24
+DEPENDS ON: js/tutorial-scoring.js, js/tutorial-results.js, js/tutorial-postgame.js, js/settings.js
 STATUS: Ready for integration
 -->
