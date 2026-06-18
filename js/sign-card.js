@@ -1,11 +1,11 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - FIXED: onClose callback is now called when celebration modal is fully rendered
-   - Previously callback only fired on button click, causing waiting screen to stay stuck
-   - Added callback call after modal is rendered and visible
-   - All existing functionality preserved from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - FIXED: Waiting screen now shows when "HANDICAP ADJUSTMENT" button is clicked
+   - Waiting screen stays visible until HCP Adjust screen is fully rendered
+   - Added proper waiting screen hide after HandicapAdjustment.init completes
+   - All existing functionality preserved from v1.13
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -196,14 +196,13 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.13: Fixed onClose callback timing
+    // Celebration Screen - v1.14: Fixed waiting screen on button click
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
         var existingModal = document.getElementById('celebrationModal');
         if (existingModal) existingModal.remove();
         
-        // Clear any old confetti
         clearConfetti();
         
         var winnerText = "";
@@ -232,7 +231,6 @@ var SignCard = (function() {
             onClose: onClose
         };
         
-        // Get image first, then render modal
         getCelebrationImage(function(imageSrc) {
             var imageHtml = '';
             if (imageSrc) {
@@ -268,8 +266,7 @@ var SignCard = (function() {
             addCelebrationStyles();
             launchConfetti();
             
-            // v1.13: Call onClose callback AFTER modal is fully rendered and visible
-            // This ensures waiting screen is hidden only after celebration is visible
+            // v1.14: Call onClose callback after modal is rendered
             setTimeout(function() {
                 console.log("[SignCard] Celebration modal fully rendered - calling onClose callback");
                 if (typeof onClose === 'function') {
@@ -277,28 +274,39 @@ var SignCard = (function() {
                 }
             }, 500);
             
-            // Attach button handler
+            // v1.14: Fix button handler - show waiting screen and keep it visible
             var btn = document.getElementById("handicapAdjustBtn");
             if (btn) {
                 var newBtn = btn.cloneNode(true);
                 btn.parentNode.replaceChild(newBtn, btn);
                 
                 newBtn.addEventListener("click", function() {
+                    console.log("[SignCard] HANDICAP ADJUSTMENT button clicked");
+                    
+                    // Show waiting screen
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                         WaitingScreen.show("Loading Handicap Adjustment...");
+                        console.log("[SignCard] Waiting screen shown");
                     } else {
                         var overlay = document.createElement('div');
                         overlay.id = 'waitingScreenOverlay';
                         overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
                         overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Handicap Adjustment...</div>';
                         document.body.appendChild(overlay);
+                        console.log("[SignCard] Fallback waiting screen shown");
                     }
                     
+                    // Remove celebration modal
                     var modal = document.getElementById('celebrationModal');
-                    if (modal) modal.remove();
+                    if (modal) {
+                        modal.remove();
+                        console.log("[SignCard] Celebration modal removed");
+                    }
                     
                     clearConfetti();
+                    console.log("[SignCard] Confetti cleared");
                     
+                    // Wait for HandicapAdjustment to be available
                     function waitForHandicapAdjustment(callback, attempts) {
                         attempts = attempts || 0;
                         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
@@ -308,7 +316,7 @@ var SignCard = (function() {
                                 waitForHandicapAdjustment(callback, attempts + 1);
                             }, 200);
                         } else {
-                            console.error("HandicapAdjustment module failed to load");
+                            console.error("[SignCard] HandicapAdjustment module failed to load");
                             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                                 WaitingScreen.hide();
                             } else {
@@ -321,15 +329,14 @@ var SignCard = (function() {
                     
                     waitForHandicapAdjustment(function() {
                         ensureArchiveRecord(gameId, function(err, archiveId) {
-                            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-                                WaitingScreen.hide();
-                            } else {
-                                var el = document.getElementById('waitingScreenOverlay');
-                                if (el) el.remove();
-                            }
-                            
                             if (err) {
-                                console.error("Failed to get archive record:", err);
+                                console.error("[SignCard] Failed to get archive record:", err);
+                                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                                    WaitingScreen.hide();
+                                } else {
+                                    var el = document.getElementById('waitingScreenOverlay');
+                                    if (el) el.remove();
+                                }
                                 Modal.alert("Unable to load handicap data. Please try again.");
                             } else {
                                 var matchPoints = {};
@@ -366,9 +373,29 @@ var SignCard = (function() {
                                     }
                                 }
                                 
+                                // v1.14: Call HandicapAdjustment.init
                                 if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
+                                    console.log("[SignCard] Calling HandicapAdjustment.init");
                                     HandicapAdjustment.init(gameId, archiveId, celebrationData.winningPlayers, matchPoints, {}, true);
+                                    
+                                    // v1.14: Hide waiting screen after HCP Adjust loads
+                                    setTimeout(function() {
+                                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                                            WaitingScreen.hide();
+                                            console.log("[SignCard] Waiting screen hidden after HCP Adjust loaded");
+                                        } else {
+                                            var el = document.getElementById('waitingScreenOverlay');
+                                            if (el) el.remove();
+                                        }
+                                    }, 500);
                                 } else {
+                                    console.error("[SignCard] HandicapAdjustment not available");
+                                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                                        WaitingScreen.hide();
+                                    } else {
+                                        var el = document.getElementById('waitingScreenOverlay');
+                                        if (el) el.remove();
+                                    }
                                     Modal.alert("Handicap adjustment module is not available. Please try again.");
                                     if (celebrationData.onClose) celebrationData.onClose();
                                 }
@@ -712,12 +739,12 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - FIXED: onClose callback is now called when celebration modal is fully rendered
-   - Previously callback only fired on button click, causing waiting screen to stay stuck
-   - Added callback call after modal is rendered and visible
-   - All existing functionality preserved from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - FIXED: Waiting screen now shows when "HANDICAP ADJUSTMENT" button is clicked
+   - Waiting screen stays visible until HCP Adjust screen is fully rendered
+   - Added proper waiting screen hide after HandicapAdjustment.init completes
+   - All existing functionality preserved from v1.13
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
