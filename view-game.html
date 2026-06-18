@@ -1,11 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.35
-KEY CHANGES from v7.34:
-   - FIXED: gameId logic now correctly checks session.activeGame.gameId
-   - Previously, session.activeGame existed but had null gameId
-   - Now properly falls back to sessionStorage and URL
-   - All existing functionality preserved from v7.34
+VERSION: 7.36
+KEY CHANGES from v7.35:
+   - FIXED: setInitialHole() now properly sets to HOLE 18 when all holes are saved
+   - Previously defaulted to HOLE 1 for completed games
+   - Added lastSavedHole tracking to find the last saved hole
+   - All existing functionality preserved from v7.35
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -19,8 +19,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.35"></script>
-    <script src="js/session.js?v=7.35"></script>
+    <script src="js/firebase-config.js?v=7.36"></script>
+    <script src="js/session.js?v=7.36"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -29,11 +29,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.35"></script>
-    <script src="js/history-record.js?v=7.35"></script>
-    <script src="js/sign-card.js?v=7.35"></script>
-    <script src="js/hcp-adjust.js?v=7.35"></script>
-    <script src="js/modal.js?v=7.35"></script>
+    <script src="js/ticker.js?v=7.36"></script>
+    <script src="js/history-record.js?v=7.36"></script>
+    <script src="js/sign-card.js?v=7.36"></script>
+    <script src="js/hcp-adjust.js?v=7.36"></script>
+    <script src="js/modal.js?v=7.36"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -154,14 +154,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.35</div>
+<div class="version-tag">v7.36</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.35: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v7.36: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "7.35";
-var CACHE_KEY = "view_game_version_v735";
+var APP_VERSION = "7.36";
+var CACHE_KEY = "view_game_version_v736";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -179,8 +179,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.35";
-console.log("[VIEW-GAME] Initializing v7.35 - FIXED gameId logic");
+window.VIEW_GAME_VERSION = "7.36";
+console.log("[VIEW-GAME] Initializing v7.36 - FIXED setInitialHole for completed games");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -588,23 +588,37 @@ function loadFromHistoryRecord(historyId) {
 }
 
 // ============================================================
-// Set initial hole based on BOTH flights
+// v7.36: Set initial hole - FIXED for completed games
 // ============================================================
 
 function setInitialHole() {
     var playOrder = getPlayOrder();
     var startHole = playOrder[0];
+    var lastSavedHole = null;
+    var foundUnsaved = false;
     
     for (var i = 0; i < playOrder.length; i++) {
         var hole = playOrder[i];
-        if (!isHoleSaved(1, hole) || !isHoleSaved(2, hole)) {
+        var saved1 = isHoleSaved(1, hole);
+        var saved2 = isHoleSaved(2, hole);
+        
+        if (saved1 && saved2) {
+            lastSavedHole = hole;  // Track the last saved hole
+        } else {
+            // First unsaved hole found - this is where play should start
             startHole = hole;
+            foundUnsaved = true;
             break;
         }
     }
     
+    // If all holes are saved, go to the last one (HOLE 18)
+    if (!foundUnsaved && lastSavedHole !== null) {
+        startHole = lastSavedHole;
+    }
+    
     currentHole = startHole;
-    console.log("Initial hole set to:", currentHole);
+    console.log("[VIEW-GAME] setInitialHole: currentHole=", currentHole, "allSaved=", !foundUnsaved, "lastSavedHole=", lastSavedHole);
 }
 
 // ============================================================
@@ -1293,7 +1307,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v7.35: Initialization - FIXED gameId logic
+// v7.36: Initialization - FIXED setInitialHole
 // ============================================================
 
 async function init() {
@@ -1339,6 +1353,7 @@ async function init() {
         GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
         setTimeout(function() { GameUI.addFlightBadge(currentFlight); }, 100);
         
+        // v7.36: setInitialHole now properly handles completed games
         setInitialHole();
         updateHoleNumberDisplay();
         initTicker();
@@ -1387,6 +1402,7 @@ async function init() {
             GameUI.setDisplayMode(GameUI.getDisplayMode(), null);
             setTimeout(function() { GameUI.addFlightBadge(currentFlight); }, 100);
             
+            // v7.36: setInitialHole now properly handles completed games
             setInitialHole();
             updateHoleNumberDisplay();
             initTicker();
@@ -1420,12 +1436,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.35
-KEY CHANGES from v7.34:
-   - FIXED: gameId logic now correctly checks session.activeGame.gameId
-   - Previously, session.activeGame existed but had null gameId
-   - Now properly falls back to sessionStorage and URL
-   - All existing functionality preserved from v7.34
+VERSION: 7.36
+KEY CHANGES from v7.35:
+   - FIXED: setInitialHole() now properly sets to HOLE 18 when all holes are saved
+   - Previously defaulted to HOLE 1 for completed games
+   - Added lastSavedHole tracking to find the last saved hole
+   - All existing functionality preserved from v7.35
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
