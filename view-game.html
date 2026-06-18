@@ -1,12 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 7.37
-KEY CHANGES from v7.36:
-   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
-   - Updated modal title and message text
-   - Updated fallback modal text
-   - All existing functionality preserved from v7.36
-DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
+VERSION: 7.38
+KEY CHANGES from v7.37:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called to apply user's zoom preference
+   - All existing functionality preserved from v7.37
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -14,13 +15,14 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SICC Ryder Cup - VIEWER</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.37"></script>
-    <script src="js/session.js?v=7.37"></script>
+    <script src="js/firebase-config.js?v=7.38"></script>
+    <script src="js/session.js?v=7.38"></script>
+    <script src="js/settings.js?v=7.38"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -29,11 +31,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.37"></script>
-    <script src="js/history-record.js?v=7.37"></script>
-    <script src="js/sign-card.js?v=7.37"></script>
-    <script src="js/hcp-adjust.js?v=7.37"></script>
-    <script src="js/modal.js?v=7.37"></script>
+    <script src="js/ticker.js?v=7.38"></script>
+    <script src="js/history-record.js?v=7.38"></script>
+    <script src="js/sign-card.js?v=7.38"></script>
+    <script src="js/hcp-adjust.js?v=7.38"></script>
+    <script src="js/modal.js?v=7.38"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -154,14 +156,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.37</div>
+<div class="version-tag">v7.38</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v7.37: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v7.38: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "7.37";
-var CACHE_KEY = "view_game_version_v737";
+var APP_VERSION = "7.38";
+var CACHE_KEY = "view_game_version_v738";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -179,8 +181,17 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.37";
-console.log("[VIEW-GAME] Initializing v7.37 - Changed to GAME COMPLETED");
+window.VIEW_GAME_VERSION = "7.38";
+console.log("[VIEW-GAME] Initializing v7.38 - Added settings.js zoom control");
+
+// ============================================================
+// Apply user settings IMMEDIATELY before anything else
+// ============================================================
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[VIEW-GAME] AppSettings not loaded, zoom may be enabled by default");
+}
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1307,7 +1318,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// v7.37: Initialization
+// v7.38: Initialization - with settings.js
 // ============================================================
 
 async function init() {
@@ -1428,6 +1439,7 @@ async function init() {
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
 }
 
+// v7.38: settings.js already initialized at top of script
 init();
 </script>
 
@@ -1436,12 +1448,13 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.37
-KEY CHANGES from v7.36:
-   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
-   - Updated modal title and message text
-   - Updated fallback modal text
-   - All existing functionality preserved from v7.36
-DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
+VERSION: 7.38
+KEY CHANGES from v7.37:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called to apply user's zoom preference
+   - All existing functionality preserved from v7.37
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
