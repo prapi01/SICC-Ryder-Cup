@@ -1,11 +1,10 @@
 /*
 FILE: js/modal.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: confirmGameComplete() method for GAME COMPLETE modal
-   - Consistent styling with green border, gold title, emojis
-   - Single "SEE RESULTS" button with green theme
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
+   - Updated confirmGameComplete() title and message text
+   - All existing functionality preserved from v1.02
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -312,7 +311,7 @@ var Modal = (function() {
     }
     
     // ============================================================
-    // v1.02: GAME COMPLETE Modal (Single button, gold title, green border)
+    // v1.03: GAME COMPLETED Modal (Single button, gold title, green border)
     // ============================================================
     
     function confirmGameComplete(onConfirm) {
@@ -321,7 +320,7 @@ var Modal = (function() {
         
         var modalHtml = `
             <div class="shared-modal-container" style="padding: 32px 28px;">
-                <div style="font-size: 1.5rem; font-weight: 700; color: #ffaa44; margin-bottom: 12px; text-align: center;">🏆 GAME COMPLETE</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: #ffaa44; margin-bottom: 12px; text-align: center;">🏆 GAME COMPLETED</div>
                 <div style="font-size: 0.9rem; color: #ccc; text-align: center; margin-bottom: 16px;">Both cards have been signed!</div>
                 <div style="font-size: 1.5rem; text-align: center; margin-bottom: 24px;">🍺 🏆 🍺</div>
                 <button class="shared-modal-btn shared-modal-btn-confirm" id="sharedModalConfirmBtn" style="width: 100%; padding: 14px; font-size: 1rem; font-weight: 700;">🏆 SEE RESULTS</button>
@@ -358,12 +357,11 @@ window.Modal = Modal;
 
 /*
 FILE: js/modal.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: confirmGameComplete() method for GAME COMPLETE modal
-   - Consistent styling with green border, gold title, emojis
-   - Single "SEE RESULTS" button with green theme
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
+   - Updated confirmGameComplete() title and message text
+   - All existing functionality preserved from v1.02
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
