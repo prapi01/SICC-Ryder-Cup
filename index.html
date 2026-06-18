@@ -1,12 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.57
-KEY CHANGES from v3.56:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v3.56
-DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
+VERSION: 3.58
+KEY CHANGES from v3.57:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v3.57
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -14,7 +15,7 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SICC Ryder Cup</title>
     
     <!-- iOS / iPadOS Web App Settings -->
@@ -35,6 +36,7 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/settings.js"></script>
     <script src="js/firebase-retry.js"></script>
     <script src="js/modal.js"></script>
     <script src="js/index-hidden.js?v=1.08"></script>
@@ -599,16 +601,25 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.57</div>
+<div class="version-tag">v3.58</div>
 
 <script>
-// FILE: index.html - VERSION 3.57
+// FILE: index.html - VERSION 3.58
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.57";
+window.INDEX_VERSION = "3.58";
 
-var APP_VERSION = "3.57";
-var CACHE_KEY = "index_version_v357";
+// ============================================================
+// Apply user settings IMMEDIATELY before anything else
+// ============================================================
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
+}
+
+var APP_VERSION = "3.58";
+var CACHE_KEY = "index_version_v358";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -865,7 +876,7 @@ function handleGameDayClick(gameId) {
                 console.log("[INDEX] Game is complete - going to post-game page");
                 sessionStorage.setItem('isPostGame', 'true');
                 sessionStorage.setItem('currentGameId', gameId);
-                // v3.56: Go to post-game.html which shows GAME COMPLETE modal → Celebration
+                // v3.56: Go to post-game.html which shows GAME COMPLETED modal → Celebration
                 window.location.href = 'post-game.html?gameId=' + gameId;
             } else {
                 console.log("[INDEX] Game is NOT complete - going to pre-game");
@@ -1356,7 +1367,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.57
+// Initialization - v3.58
 // ============================================================
 
 function initApp() {
@@ -1440,7 +1451,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.57
+// Start the app - v3.58
 // ============================================================
 
 if (isFirstLoad) {
@@ -1476,12 +1487,13 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.57
-KEY CHANGES from v3.56:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v3.56
-DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
+VERSION: 3.58
+KEY CHANGES from v3.57:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v3.57
+DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
