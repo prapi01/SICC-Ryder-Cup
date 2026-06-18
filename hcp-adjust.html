@@ -1,10 +1,10 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Container ID changed from "hcpContent" to "hcpTableContainer" to match hcp-adjust.js
-   - Removed redundant hcpContent wrapper
-   - All existing functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Cache-busting now preserves gameId and other query parameters
+   - Previously the ?v=1.01 redirect stripped all parameters
+   - All existing functionality preserved from v1.01
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -21,9 +21,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.01"></script>
-    <script src="js/session.js?v=1.01"></script>
-    <script src="js/modal.js?v=1.01"></script>
+    <script src="js/firebase-config.js?v=1.02"></script>
+    <script src="js/session.js?v=1.02"></script>
+    <script src="js/modal.js?v=1.02"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -106,7 +106,6 @@ STATUS: Ready for integration
             margin-top: 4px;
         }
         
-        /* v1.01: hcpTableContainer styles - matches hcp-adjust.js renderTableToContainer */
         #hcpTableContainer {
             background: #1a1a1a;
             border-radius: 24px;
@@ -183,7 +182,6 @@ STATUS: Ready for integration
             font-weight: 700;
         }
         
-        /* Buttons */
         .hcp-buttons {
             display: flex;
             gap: 8px;
@@ -263,7 +261,6 @@ STATUS: Ready for integration
         <div class="hcp-subtitle" id="gameInfo">Loading...</div>
     </div>
     
-    <!-- v1.01: Changed from hcpContent to hcpTableContainer to match hcp-adjust.js -->
     <div id="hcpTableContainer">
         <div class="loading-placeholder">⛳ Loading handicap data...</div>
     </div>
@@ -276,26 +273,41 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.01</div>
+<div class="version-tag">v1.02</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING
+// VERSION CACHE-BUSTING - Preserve all query parameters
 // ============================================================
-var APP_VERSION = "1.01";
-var CACHE_KEY = "hcp_adjust_version_v101";
+var APP_VERSION = "1.02";
+var CACHE_KEY = "hcp_adjust_version_v102";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
-    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+    
+    // Preserve ALL existing query parameters
+    var currentParams = new URLSearchParams(window.location.search);
+    
+    // Build new URL with version and all existing params
+    var newUrl = window.location.pathname + "?v=" + APP_VERSION;
+    
+    // Add back all existing params EXCEPT 'v' (which we're replacing)
+    currentParams.forEach(function(value, key) {
+        if (key !== 'v') {
+            newUrl += "&" + key + "=" + encodeURIComponent(value);
+        }
+    });
+    
+    console.log("[HCP-ADJUST-PAGE] Cache-busting redirect:", newUrl);
+    window.location.href = newUrl;
 }
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.01";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.01 - Fixed container ID");
+window.HCP_ADJUST_PAGE_VERSION = "1.02";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.02 - Preserves query params");
 
 // ============================================================
 // Main Logic
@@ -336,7 +348,6 @@ function renderButtons(anchorName) {
     
     container.innerHTML = html;
     
-    // Attach event handlers
     if (!isReadOnly) {
         var scorecardBtn = document.getElementById('backToScorecardBtn');
         if (scorecardBtn) {
@@ -419,7 +430,6 @@ function loadHcpData() {
         console.log("[HCP-ADJUST-PAGE] Cache loaded, calling HandicapAdjustment.initForViewer");
         
         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForViewer) {
-            // v1.01: initForViewer will render into hcpTableContainer
             HandicapAdjustment.initForViewer(
                 gameId,
                 cache.players || [],
@@ -431,12 +441,9 @@ function loadHcpData() {
                 cache.results || null
             );
             
-            // Buttons are rendered separately
             setTimeout(function() {
-                // Get anchor from calculation result or use default
                 var anchorName = 'Anchor';
                 if (cache.players && cache.players.length > 0) {
-                    // Sort by handicap to find lowest
                     var sorted = cache.players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
                     anchorName = sorted[0]?.name || 'Anchor';
                 }
@@ -448,10 +455,6 @@ function loadHcpData() {
         }
     });
 }
-
-// ============================================================
-// Initialize
-// ============================================================
 
 function init() {
     console.log("[HCP-ADJUST-PAGE] Initializing...");
@@ -484,11 +487,11 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Container ID changed from "hcpContent" to "hcpTableContainer" to match hcp-adjust.js
-   - Removed redundant hcpContent wrapper
-   - All existing functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Cache-busting now preserves gameId and other query parameters
+   - Previously the ?v=1.01 redirect stripped all parameters
+   - All existing functionality preserved from v1.01
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
