@@ -1,11 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.42
-KEY CHANGES from v2.41:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v2.41
+VERSION: 2.43
+KEY CHANGES from v2.42:
+   - FIXED: saveAdjustmentToFirestore now uses HistoryRecord.updateWithHandicap
+   - This ensures history record status is updated to "completed" after handicap adjustment
+   - Previously status remained "pending_handicap", hiding the game from view-history
+   - All existing functionality preserved from v2.42
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
@@ -339,7 +339,7 @@ var HandicapAdjustment = (function() {
                 currentTeam = playerTeam;
                 var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
                 tableHtml += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
-                tableHtml += `<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">${teamLabel}</td>`;
+                tableHtml += '<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">' + teamLabel + '</td>';
                 tableHtml += '<tr>';
             }
             
@@ -396,11 +396,11 @@ var HandicapAdjustment = (function() {
             var stColor = isAnchor ? '#ffaa44' : '#ffffff';
             
             tableHtml += '<tr style="border-bottom:1px solid #333;">';
-            tableHtml += `<td style="padding:6px 4px; text-align:left;">${escapeHtml(p.label || p.name.substring(0, 3).toUpperCase())}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${stColor}; font-weight:600;">${stDisplayValue}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${ancAdjColor}; font-weight:600;">${ancDisplay}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${perfAdjColor}; font-weight:600;">${perfDisplay}</td>`;
-            tableHtml += `<td style="padding:6px 4px; text-align:center; color: ${finalColor}; font-weight:700;">${displayHcp}</td>`;
+            tableHtml += '<td style="padding:6px 4px; text-align:left;">' + escapeHtml(p.label || p.name.substring(0, 3).toUpperCase()) + '</td>';
+            tableHtml += '<td style="padding:6px 4px; text-align:center; color: ' + stColor + '; font-weight:600;">' + stDisplayValue + '</td>';
+            tableHtml += '<td style="padding:6px 4px; text-align:center; color: ' + ancAdjColor + '; font-weight:600;">' + ancDisplay + '</td>';
+            tableHtml += '<td style="padding:6px 4px; text-align:center; color: ' + perfAdjColor + '; font-weight:600;">' + perfDisplay + '</td>';
+            tableHtml += '<td style="padding:6px 4px; text-align:center; color: ' + finalColor + '; font-weight:700;">' + displayHcp + '</td>';
             tableHtml += '</tr>';
         }
         
@@ -409,46 +409,46 @@ var HandicapAdjustment = (function() {
         var buttonsHtml = '';
         if (isReadOnly) {
             if (returnToPreviousPage) {
-                buttonsHtml = `
+                buttonsHtml = '
                     <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
                         <button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:8px 16px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">← Close</button>
                     </div>
-                `;
+                ';
             } else {
-                buttonsHtml = `
+                buttonsHtml = '
                     <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
                         <button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:8px 16px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">← Back</button>
                     </div>
-                `;
+                ';
             }
         } else {
             var changeAnchorHtml = '';
             if (hasMultipleZeroHandicap) {
-                changeAnchorHtml = `
+                changeAnchorHtml = '
                     <button id="changeAnchorBtn" style="background:#1a1a1a; border:1px solid #ffaa44; color:#ffaa44; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🔄 Change Anchor</button>
-                `;
+                ';
             }
             
-            buttonsHtml = `
+            buttonsHtml = '
                 <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">
                     <button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">📋 Scorecard</button>
-                    ${changeAnchorHtml}
+                    ' + changeAnchorHtml + '
                     <button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🎉</button>
                     <button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🏠 Menu</button>
                     <button id="exitBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🚪 Exit</button>
                 </div>
-            `;
+            ';
         }
         
-        var modalHtml = `
+        var modalHtml = '
             <div class="modal-overlay" id="hcpAdjustModal" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:10000;">
                 <div style="background:#1a1a1a; border-radius:24px; padding:12px; max-width:95%; width:auto; border:2px solid #4caf50;">
                     <div style="font-size:1.2rem; font-weight:800; color:#4caf50; text-align:center; margin-bottom:12px;">🏌️ HANDICAP ADJUSTMENT</div>
-                    ${tableHtml}
-                    ${buttonsHtml}
+                    ' + tableHtml + '
+                    ' + buttonsHtml + '
                 </div>
             </div>
-        `;
+        ';
         
         var existingModal = document.getElementById('hcpAdjustModal');
         if (existingModal) existingModal.remove();
@@ -526,16 +526,16 @@ var HandicapAdjustment = (function() {
         var optionsHtml = '';
         for (var i = 0; i < zeroHcpPlayers.length; i++) {
             var selected = (anchorPlayer && anchorPlayer.name === zeroHcpPlayers[i].name) ? 'selected' : '';
-            optionsHtml += `<option value="${zeroHcpPlayers[i].name}" ${selected}>${zeroHcpPlayers[i].name} (HCP ${zeroHcpPlayers[i].handicap})</option>`;
+            optionsHtml += '<option value="' + zeroHcpPlayers[i].name + '" ' + selected + '>' + zeroHcpPlayers[i].name + ' (HCP ' + zeroHcpPlayers[i].handicap + ')</option>';
         }
         
-        var modalHtml = `
+        var modalHtml = '
             <div class="modal-overlay" id="changeAnchorModal" style="z-index: 10001;">
                 <div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:360px; width:90%; text-align:center; border:2px solid #ffaa44;">
                     <div style="font-size:1.3rem; font-weight:800; color:#ffaa44; margin-bottom:16px;">🔄 CHANGE ANCHOR</div>
-                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:20px;">Select a new anchor for today's game.</div>
+                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:20px;">Select a new anchor for today\'s game.</div>
                     <select id="changeAnchorSelect" style="width:100%; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:30px; font-size:1rem; margin-bottom:20px;">
-                        ${optionsHtml}
+                        ' + optionsHtml + '
                     </select>
                     <div style="display:flex; gap:12px;">
                         <button id="changeAnchorCancelBtn" style="flex:1; background:#1a1a1a; border:1px solid #333; color:#ccc; padding:12px; border-radius:40px; font-weight:600; cursor:pointer;">Cancel</button>
@@ -543,7 +543,7 @@ var HandicapAdjustment = (function() {
                     </div>
                 </div>
             </div>
-        `;
+        ';
         
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         
@@ -573,12 +573,12 @@ var HandicapAdjustment = (function() {
         var loadingModal = document.createElement('div');
         loadingModal.className = 'modal-overlay';
         loadingModal.id = 'loadingModal';
-        loadingModal.innerHTML = `
+        loadingModal.innerHTML = '
             <div style="background:#1a1a1a; border-radius:24px; padding:28px; text-align:center;">
                 <div class="spin"></div>
                 <div style="margin-top:16px; color:#4caf50;">Recalculating handicaps...</div>
             </div>
-        `;
+        ';
         document.body.appendChild(loadingModal);
         
         var db = getDb();
@@ -822,6 +822,48 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
+    // v2.43: FIXED - saveAdjustmentToFirestore now uses HistoryRecord.updateWithHandicap
+    // This ensures history record status is updated to "completed"
+    // ============================================================
+    
+    function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
+        var handicapData = {
+            anchor: anchor.name,
+            players: calculationResult.players.map(function(p) {
+                return {
+                    name: p.name,
+                    currentHcp: p.currentHcp,
+                    anchorAdj: p.anchorAdj,
+                    perfAdj: p.perfAdj,
+                    newHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp,
+                    anchorRaw: p.anchorRaw,
+                    perfRaw: p.perfRaw
+                };
+            }),
+            needsZeroRise: calculationResult.needsZeroRise,
+            zeroRiseAmount: calculationResult.zeroRiseAmount,
+            newAnchor: calculationResult.newAnchorName || anchor.name
+        };
+        
+        // v2.43 FIX: Always use HistoryRecord.updateWithHandicap to set status to "completed"
+        if (currentArchiveId && typeof HistoryRecord !== 'undefined' && HistoryRecord.updateWithHandicap) {
+            HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, allPlayers, function(err) {
+                if (err) {
+                    console.error("Error saving handicap data:", err);
+                    if (callback) callback(err);
+                } else {
+                    // Update player profiles after history record is updated
+                    updatePlayerProfiles(handicapData.players, callback);
+                }
+            });
+        } else {
+            // Fallback: update player profiles only
+            console.warn("HistoryRecord.updateWithHandicap not available, skipping status update");
+            updatePlayerProfiles(handicapData.players, callback);
+        }
+    }
+    
+    // ============================================================
     // Legacy init function (for real-game)
     // v2.42: Uses firebase.firestore() instead of global db
     // ============================================================
@@ -926,44 +968,6 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Save to Firestore and update player profiles
-    // v2.42: Uses firebase.firestore() instead of global db
-    // ============================================================
-    
-    function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
-        var handicapData = {
-            anchor: anchor.name,
-            players: calculationResult.players.map(function(p) {
-                return {
-                    name: p.name,
-                    currentHcp: p.currentHcp,
-                    anchorAdj: p.anchorAdj,
-                    perfAdj: p.perfAdj,
-                    newHcp: calculationResult.needsZeroRise ? p.newAnchor : p.newHcp,
-                    anchorRaw: p.anchorRaw,
-                    perfRaw: p.perfRaw
-                };
-            }),
-            needsZeroRise: calculationResult.needsZeroRise,
-            zeroRiseAmount: calculationResult.zeroRiseAmount,
-            newAnchor: calculationResult.newAnchorName || anchor.name
-        };
-        
-        if (currentArchiveId && typeof HistoryRecord !== 'undefined') {
-            HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, allPlayers, function(err) {
-                if (err) {
-                    console.error("Error saving handicap data:", err);
-                    if (callback) callback(err);
-                } else {
-                    updatePlayerProfiles(handicapData.players, callback);
-                }
-            });
-        } else {
-            updatePlayerProfiles(handicapData.players, callback);
-        }
-    }
-    
-    // ============================================================
     // Update player profiles
     // v2.42: Uses firebase.firestore() instead of global db
     // ============================================================
@@ -978,7 +982,7 @@ var HandicapAdjustment = (function() {
                         for (var j = 0; j < players.length; j++) {
                             if (currentPlayers[i].name === players[j].name) {
                                 currentPlayers[i].handicap = players[j].newHcp;
-                                console.log(`Updated ${players[j].name}: ${players[j].currentHcp} → ${players[j].newHcp}`);
+                                console.log('Updated ' + players[j].name + ': ' + players[j].currentHcp + ' → ' + players[j].newHcp);
                             }
                         }
                     }
@@ -1001,27 +1005,27 @@ var HandicapAdjustment = (function() {
     function showAnchorSelectionModal(zeroHcpPlayers) {
         var optionsHtml = '';
         for (var i = 0; i < zeroHcpPlayers.length; i++) {
-            optionsHtml += `<option value="${zeroHcpPlayers[i].name}">${zeroHcpPlayers[i].name} (HCP ${zeroHcpPlayers[i].handicap})</option>`;
+            optionsHtml += '<option value="' + zeroHcpPlayers[i].name + '">' + zeroHcpPlayers[i].name + ' (HCP ' + zeroHcpPlayers[i].handicap + ')</option>';
         }
         
-        var modalHtml = `
+        var modalHtml = '
             <div class="modal-overlay" id="anchorSelectModal" style="z-index: 10001;">
                 <div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:360px; width:90%; text-align:center; border:2px solid #4caf50;">
                     <div style="font-size:1.3rem; font-weight:800; color:#4caf50; margin-bottom:16px;">🏌️ SELECT ANCHOR</div>
-                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:20px;">Who is today's Anchor? (Lowest handicap player)</div>
+                    <div style="font-size:0.9rem; color:#ccc; margin-bottom:20px;">Who is today\'s Anchor? (Lowest handicap player)</div>
                     <select id="anchorSelect" style="width:100%; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:30px; font-size:1rem; margin-bottom:20px;">
-                        ${optionsHtml}
+                        ' + optionsHtml + '
                     </select>
                     <button id="anchorConfirmBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px 24px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer; width:100%;">✓ Confirm Anchor</button>
                 </div>
             </div>
-        `;
+        ';
         
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         
         document.getElementById('anchorConfirmBtn').addEventListener('click', function() {
             var selectedName = document.getElementById('anchorSelect').value;
-            var selectedAnchor = allPlayers.find(p => p.name === selectedName);
+            var selectedAnchor = allPlayers.find(function(p) { return p.name === selectedName; });
             document.getElementById('anchorSelectModal').remove();
             
             anchorPlayer = selectedAnchor;
@@ -1066,7 +1070,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.42";
+    window.HANDICAP_ADJUST_VERSION = "2.43";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1088,12 +1092,12 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.42
-KEY CHANGES from v2.41:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v2.41
+VERSION: 2.43
+KEY CHANGES from v2.42:
+   - FIXED: saveAdjustmentToFirestore now uses HistoryRecord.updateWithHandicap
+   - This ensures history record status is updated to "completed" after handicap adjustment
+   - Previously status remained "pending_handicap", hiding the game from view-history
+   - All existing functionality preserved from v2.42
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
 STATUS: Ready for integration
 */
