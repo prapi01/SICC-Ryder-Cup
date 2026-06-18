@@ -1,11 +1,11 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - FIXED: gameId now properly captured in setTimeout closure
-   - Added fallback to get gameId from celebrationData if undefined
-   - Added debug logging for gameId before navigation
-   - All existing functionality preserved from v1.15
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - UPDATED: Celebration score format - numbers larger than text
+   - Format: "Team A | 6 : 13 | Team B" with 2.4rem numbers and 1.2rem text
+   - Added spacing and symmetry between elements
+   - All existing functionality preserved from v1.16
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -196,7 +196,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.16: FIXED gameId closure
+    // Celebration Screen - v1.17: Updated score format
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -222,7 +222,6 @@ var SignCard = (function() {
         var teamADisplay = teamAScore % 1 === 0 ? teamAScore : teamAScore.toFixed(1);
         var teamBDisplay = teamBScore % 1 === 0 ? teamBScore : teamBScore.toFixed(1);
         
-        // v1.16: Store data in a closure variable that will be accessible in setTimeout
         var celebrationData = {
             winner: winner,
             teamAScore: teamAScore,
@@ -244,6 +243,7 @@ var SignCard = (function() {
                 imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
             }
             
+            // v1.17: Updated score format with larger numbers
             var modalHtml = `
                 <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                     <div class="celebration-modal">
@@ -253,10 +253,12 @@ var SignCard = (function() {
                         <div class="celebration-winner ${winnerClass}">
                             ${winnerText}
                         </div>
-                        <div class="celebration-score">
-                            <span class="score-team-a">Team A ${teamADisplay}</span>
-                            <span class="score-vs">│</span>
-                            <span class="score-team-b">${teamBDisplay} Team B</span>
+                        <div class="celebration-score" style="display:flex; justify-content:center; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 0; border-top:1px solid #2a2a2a; border-bottom:1px solid #2a2a2a;">
+                            <span class="score-team-a" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team A</span>
+                            <span class="score-number-a" style="font-size:2.4rem; font-weight:700; color:#4caf50; margin-left:8px;">${teamADisplay}</span>
+                            <span class="score-vs" style="font-size:1.6rem; color:#555; margin:0 12px;">|</span>
+                            <span class="score-number-b" style="font-size:2.4rem; font-weight:700; color:#4caf50; margin-right:8px;">${teamBDisplay}</span>
+                            <span class="score-team-b" style="font-size:1.2rem; font-weight:600; color:#4caf50;">Team B</span>
                         </div>
                         <button class="celebration-btn" id="handicapAdjustBtn">🏌️ HANDICAP ADJUSTMENT</button>
                     </div>
@@ -281,13 +283,11 @@ var SignCard = (function() {
                 var newBtn = btn.cloneNode(true);
                 btn.parentNode.replaceChild(newBtn, btn);
                 
-                // v1.16: Capture gameId in closure for the click handler
                 var capturedGameId = gameId;
                 
                 newBtn.addEventListener("click", function() {
                     console.log("[SignCard] HANDICAP ADJUSTMENT button clicked");
                     
-                    // v1.16: Use capturedGameId, fallback to celebrationData.gameId
                     var targetGameId = capturedGameId || celebrationData.gameId;
                     console.log("[SignCard] targetGameId:", targetGameId);
                     
@@ -299,7 +299,14 @@ var SignCard = (function() {
                         return;
                     }
                     
-                    // Show waiting screen
+                    // Save celebration data to sessionStorage for HCP page
+                    try {
+                        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+                        console.log("[SignCard] Celebration data saved to sessionStorage");
+                    } catch(e) {
+                        console.warn("[SignCard] Failed to save celebration data:", e.message);
+                    }
+                    
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                         WaitingScreen.show("Loading Handicap Adjustment...");
                         console.log("[SignCard] Waiting screen shown");
@@ -312,7 +319,6 @@ var SignCard = (function() {
                         console.log("[SignCard] Fallback waiting screen shown");
                     }
                     
-                    // Remove celebration modal
                     var modal = document.getElementById('celebrationModal');
                     if (modal) {
                         modal.remove();
@@ -322,7 +328,6 @@ var SignCard = (function() {
                     clearConfetti();
                     console.log("[SignCard] Confetti cleared");
                     
-                    // v1.16: Navigate to standalone hcp-adjust page with captured gameId
                     setTimeout(function() {
                         var navigateUrl = 'hcp-adjust.html?gameId=' + targetGameId;
                         console.log("[SignCard] Navigating to:", navigateUrl);
@@ -489,22 +494,40 @@ var SignCard = (function() {
                     border: 1px solid #ffaa44;
                 }
                 
+                /* v1.17: Score styles updated for new format */
                 .celebration-score {
-                    font-size: 28px;
-                    font-weight: 700;
-                    color: #ffffff;
-                    margin-bottom: 16px;
-                    padding: 12px 0;
-                    border-top: 1px solid #2a2a2a;
-                    border-bottom: 1px solid #2a2a2a;
                     display: flex;
                     justify-content: center;
                     align-items: center;
-                    gap: 20px;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                    padding: 12px 0;
+                    border-top: 1px solid #2a2a2a;
+                    border-bottom: 1px solid #2a2a2a;
                 }
-                .score-team-a { color: #4caf50; }
-                .score-team-b { color: #4caf50; }
-                .score-vs { color: #555555; font-weight: 300; }
+                .celebration-score .score-team-a,
+                .celebration-score .score-team-b {
+                    font-size: 1.2rem;
+                    font-weight: 600;
+                    color: #4caf50;
+                }
+                .celebration-score .score-number-a,
+                .celebration-score .score-number-b {
+                    font-size: 2.4rem;
+                    font-weight: 700;
+                    color: #4caf50;
+                }
+                .celebration-score .score-number-a {
+                    margin-left: 8px;
+                }
+                .celebration-score .score-number-b {
+                    margin-right: 8px;
+                }
+                .celebration-score .score-vs {
+                    font-size: 1.6rem;
+                    color: #555;
+                    margin: 0 12px;
+                }
                 
                 .celebration-btn {
                     background: #1a3a1a;
@@ -537,7 +560,11 @@ var SignCard = (function() {
                     .celebration-title { font-size: 22px; }
                     .celebration-beer { font-size: 28px; }
                     .celebration-winner { font-size: 18px; padding: 8px 16px; }
-                    .celebration-score { font-size: 20px; gap: 12px; padding: 10px 0; }
+                    .celebration-score .score-team-a,
+                    .celebration-score .score-team-b { font-size: 1rem; }
+                    .celebration-score .score-number-a,
+                    .celebration-score .score-number-b { font-size: 1.8rem; }
+                    .celebration-score .score-vs { font-size: 1.2rem; margin: 0 8px; }
                     .celebration-btn { font-size: 16px; padding: 14px 16px; }
                     .celebration-image { max-height: 30vh; min-height: 80px; }
                 }
@@ -547,7 +574,8 @@ var SignCard = (function() {
                     .celebration-title { font-size: 28px; }
                     .celebration-beer { font-size: 36px; }
                     .celebration-winner { font-size: 24px; }
-                    .celebration-score { font-size: 28px; }
+                    .celebration-score .score-number-a,
+                    .celebration-score .score-number-b { font-size: 2.4rem; }
                     .celebration-image { max-height: 35vh; }
                 }
                 
@@ -556,7 +584,8 @@ var SignCard = (function() {
                     .celebration-title { font-size: 32px; }
                     .celebration-beer { font-size: 40px; }
                     .celebration-winner { font-size: 28px; padding: 14px 28px; }
-                    .celebration-score { font-size: 32px; gap: 28px; }
+                    .celebration-score .score-number-a,
+                    .celebration-score .score-number-b { font-size: 3rem; }
                     .celebration-btn { font-size: 22px; padding: 18px 28px; }
                     .celebration-image { max-height: 45vh; }
                 }
@@ -665,12 +694,12 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - FIXED: gameId now properly captured in setTimeout closure
-   - Added fallback to get gameId from celebrationData if undefined
-   - Added debug logging for gameId before navigation
-   - All existing functionality preserved from v1.15
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - UPDATED: Celebration score format - numbers larger than text
+   - Format: "Team A | 6 : 13 | Team B" with 2.4rem numbers and 1.2rem text
+   - Added spacing and symmetry between elements
+   - All existing functionality preserved from v1.16
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
