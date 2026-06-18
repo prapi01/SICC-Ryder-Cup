@@ -1,14 +1,11 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.22
-KEY CHANGES from v1.21:
-   - FIXED: COPY function now preserves ALL source data except date, id, updatedAt, lastActive
-   - Removed hardcoded values (gameStarted, currentHoleF1, currentHoleF2, signatures, submitted, locks)
-   - createdAt is now preserved from source (not overwritten)
-   - updatedAt is set to new timestamp
-   - lastActive is removed
-   - All other fields are exact copies from source
-   - All existing functionality preserved
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (showAll, etc.)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.22
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -357,18 +354,25 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.22</div>
+<div class="version-tag">v1.23</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.22
+// FILE: manage-games.html - VERSION 1.23
 
-var VERSION = "1.22";
-var CACHE_KEY = "manage_games_version";
+var VERSION = "1.23";
+var CACHE_KEY = "manage_games_version_v123";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
-    window.location.href = window.location.pathname + "?v=" + VERSION;
+    
+    // v1.23: Preserve ALL existing URL parameters (showAll, etc.)
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[MANAGE-GAMES] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // Firebase already initialized in firebase-config.js
@@ -886,15 +890,12 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.22
-KEY CHANGES from v1.21:
-   - FIXED: COPY function now preserves ALL source data except date, id, updatedAt, lastActive
-   - Removed hardcoded values (gameStarted, currentHoleF1, currentHoleF2, signatures, submitted, locks)
-   - createdAt is now preserved from source (not overwritten)
-   - updatedAt is set to new timestamp
-   - lastActive is removed
-   - All other fields are exact copies from source
-   - All existing functionality preserved
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (showAll, etc.)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.22
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
