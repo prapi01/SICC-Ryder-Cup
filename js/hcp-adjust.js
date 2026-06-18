@@ -1,10 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.49
-KEY CHANGES from v2.48:
-   - FIXED: Standalone detection now checks for '/hcp-adjust' instead of '/hcp-adjust.html'
-   - This ensures the page renders to the container instead of creating a modal
-   - All existing functionality preserved from v2.48
+VERSION: 2.50
+KEY CHANGES from v2.49:
+   - CHANGED: renderTableToContainer() now creates the container dynamically
+   - Container is only created when table is ready to render
+   - Eliminates flashing green box before table loads
+   - All existing functionality preserved from v2.49
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -268,14 +269,24 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // renderTableToContainer - renders table directly to a container
+    // v2.50: renderTableToContainer - creates container dynamically
     // ============================================================
     
     function renderTableToContainer(calculationResult, anchorName, containerId) {
+        // v2.50: Create container if it doesn't exist
         var container = document.getElementById(containerId);
         if (!container) {
-            console.error("[HCP-ADJUST] Container not found:", containerId);
-            return;
+            container = document.createElement('div');
+            container.id = containerId;
+            // Insert before hcpButtons
+            var buttonsContainer = document.getElementById('hcpButtons');
+            var mainContainer = document.getElementById('mainContainer');
+            if (buttonsContainer) {
+                mainContainer.insertBefore(container, buttonsContainer);
+            } else {
+                mainContainer.appendChild(container);
+            }
+            console.log('[HCP-ADJUST] Container created:', containerId);
         }
         
         var players = calculationResult.players;
@@ -407,7 +418,12 @@ var HandicapAdjustment = (function() {
         
         html += '</tbody></table></div>';
         
+        // v2.50: Set container HTML and make visible
         container.innerHTML = html;
+        container.style.display = 'block';
+        container.style.opacity = '1';
+        
+        console.log('[HCP-ADJUST] Table rendered to container:', containerId);
     }
     
     // ============================================================
@@ -936,13 +952,13 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.49: initForViewer - FIXED standalone detection
+    // v2.50: initForViewer - standalone detection fixed
     // ============================================================
     
     function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
         console.log('[HCP-ADJUST] initForViewer - viewer mode');
         
-        // v2.49: FIXED - Check for '/hcp-adjust' (without .html) instead of '/hcp-adjust.html'
+        // v2.49: Check for '/hcp-adjust' (without .html)
         var isStandalone = window.location.pathname.indexOf('/hcp-adjust') !== -1;
         console.log('[HCP-ADJUST] isStandalone:', isStandalone, 'pathname:', window.location.pathname);
         
@@ -979,14 +995,11 @@ var HandicapAdjustment = (function() {
         
         // Use standalone mode if detected
         if (isStandaloneMode && standaloneContainerId) {
+            // v2.50: renderTableToContainer will create the container if needed
             renderTableToContainer(calculationResult, anchor.name, standaloneContainerId);
-            // Update game info if available
-            var gameInfo = document.getElementById('gameInfo');
-            if (gameInfo && resultsCacheParam && resultsCacheParam.tr) {
-                var lastIdx = resultsCacheParam.tr.teamA.length - 1;
-                var trA = resultsCacheParam.tr.teamA[lastIdx] || 9.5;
-                var trB = resultsCacheParam.tr.teamB[lastIdx] || 9.5;
-                gameInfo.textContent = 'Final: Team A ' + trA + ' - ' + trB + ' Team B';
+            // Hide waiting screen after table is rendered
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                WaitingScreen.hide();
             }
             return;
         }
@@ -1249,7 +1262,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.49";
+    window.HANDICAP_ADJUST_VERSION = "2.50";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1271,11 +1284,12 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.49
-KEY CHANGES from v2.48:
-   - FIXED: Standalone detection now checks for '/hcp-adjust' instead of '/hcp-adjust.html'
-   - This ensures the page renders to the container instead of creating a modal
-   - All existing functionality preserved from v2.48
+VERSION: 2.50
+KEY CHANGES from v2.49:
+   - CHANGED: renderTableToContainer() now creates the container dynamically
+   - Container is only created when table is ready to render
+   - Eliminates flashing green box before table loads
+   - All existing functionality preserved from v2.49
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
