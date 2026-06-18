@@ -1,10 +1,12 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.44
-KEY CHANGES from v2.43:
-   - FIXED: Syntax errors in string literals (unescaped line breaks in showAdjustmentTable)
-   - All existing functionality preserved from v2.43
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
+VERSION: 2.45
+KEY CHANGES from v2.44:
+   - ADDED: Waiting screen to "📋 Scorecard" button (HCP Adjust → Scorecard transition)
+   - ADDED: Waiting screen to "🎉" button (HCP Adjust → Celebration transition)
+   - Both transitions now show waiting screen to prevent real-game screen flash
+   - All existing functionality preserved from v2.44
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
 
@@ -405,17 +407,11 @@ var HandicapAdjustment = (function() {
                 buttonsHtml = '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;"><button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:8px 16px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">← Back</button></div>';
             }
         } else {
-            var changeAnchorHtml = '';
-            if (hasMultipleZeroHandicap) {
-                changeAnchorHtml = '<button id="changeAnchorBtn" style="background:#1a1a1a; border:1px solid #ffaa44; color:#ffaa44; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🔄 Change Anchor</button>';
-            }
-            
-            buttonsHtml = '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;">' +
-                '<button id="backToScorecardBtn" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">📋 Scorecard</button>' +
-                changeAnchorHtml +
-                '<button id="celebrationBtn" style="background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🎉</button>' +
-                '<button id="mainMenuBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🏠 Menu</button>' +
-                '<button id="exitBtn" style="background:#1a1a1a; border:1px solid #333; color:#888; padding:6px 10px; border-radius:30px; font-size:0.65rem; font-weight:600; cursor:pointer;">🚪 Exit</button>' +
+            // v2.45: Buttons with waiting screen - [Scorecard] [🎉] [Main Menu]
+            buttonsHtml = '<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; justify-content:center;">' +
+                '<button id="backToScorecardBtn" style="flex:1; min-width:80px; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:8px 10px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">📋 Scorecard</button>' +
+                '<button id="celebrationBtn" style="flex:0 0 auto; padding:8px 20px; background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; border-radius:30px; font-size:1.2rem; font-weight:600; cursor:pointer;">🎉</button>' +
+                '<button id="mainMenuBtn" style="flex:1; min-width:80px; background:#1a1a1a; border:1px solid #333; color:#888; padding:8px 10px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">🏠 Main Menu</button>' +
                 '</div>';
         }
         
@@ -446,44 +442,61 @@ var HandicapAdjustment = (function() {
                 });
             }
         } else {
+            // v2.45: Scorecard button with waiting screen
             var backToScorecardBtn = document.getElementById('backToScorecardBtn');
             if (backToScorecardBtn) {
                 backToScorecardBtn.addEventListener('click', function() {
+                    // Show waiting screen
+                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                        WaitingScreen.show("Loading Scorecard...");
+                    } else {
+                        var overlay = document.createElement('div');
+                        overlay.id = 'waitingScreenOverlay';
+                        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
+                        overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Scorecard...</div>';
+                        document.body.appendChild(overlay);
+                    }
+                    
                     document.getElementById('hcpAdjustModal').remove();
-                    window.location.href = 'view-game.html';
+                    window.location.href = 'view-game.html?gameId=' + currentGameId;
                 });
             }
             
-            var changeAnchorBtn = document.getElementById('changeAnchorBtn');
-            if (changeAnchorBtn) {
-                changeAnchorBtn.addEventListener('click', function() {
-                    document.getElementById('hcpAdjustModal').remove();
-                    showChangeAnchorModal();
-                });
-            }
-            
+            // v2.45: Celebration button with waiting screen
             var celebrationBtn = document.getElementById('celebrationBtn');
             if (celebrationBtn) {
                 celebrationBtn.addEventListener('click', function() {
+                    // Show waiting screen
+                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                        WaitingScreen.show("Loading Celebration...");
+                    } else {
+                        var overlay = document.createElement('div');
+                        overlay.id = 'waitingScreenOverlay';
+                        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
+                        overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Celebration...</div>';
+                        document.body.appendChild(overlay);
+                    }
+                    
                     document.getElementById('hcpAdjustModal').remove();
                     if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
+                        // Hide waiting screen when celebration loads (handled in SignCard)
                         SignCard.replayCelebration();
                     } else {
                         alert('Celebration screen not available');
+                        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                            WaitingScreen.hide();
+                        } else {
+                            var el = document.getElementById('waitingScreenOverlay');
+                            if (el) el.remove();
+                        }
                     }
                 });
             }
             
+            // Main Menu button
             var mainMenuBtn = document.getElementById('mainMenuBtn');
             if (mainMenuBtn) {
                 mainMenuBtn.addEventListener('click', function() {
-                    window.location.href = 'index.html';
-                });
-            }
-            
-            var exitBtn = document.getElementById('exitBtn');
-            if (exitBtn) {
-                exitBtn.addEventListener('click', function() {
                     window.location.href = 'index.html';
                 });
             }
@@ -788,7 +801,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.44: saveAdjustmentToFirestore - fixed syntax errors
+    // saveAdjustmentToFirestore
     // ============================================================
     
     function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
@@ -1026,7 +1039,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.44";
+    window.HANDICAP_ADJUST_VERSION = "2.45";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1048,10 +1061,12 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.44
-KEY CHANGES from v2.43:
-   - FIXED: Syntax errors in string literals (unescaped line breaks in showAdjustmentTable)
-   - All existing functionality preserved from v2.43
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js
+VERSION: 2.45
+KEY CHANGES from v2.44:
+   - ADDED: Waiting screen to "📋 Scorecard" button (HCP Adjust → Scorecard transition)
+   - ADDED: Waiting screen to "🎉" button (HCP Adjust → Celebration transition)
+   - Both transitions now show waiting screen to prevent real-game screen flash
+   - All existing functionality preserved from v2.44
+DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
