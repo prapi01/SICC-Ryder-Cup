@@ -1,11 +1,11 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (gameId, etc.)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v1.19
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - ADDED: Safety check for gameId before navigating to Scorecard
+   - Prevents navigation with null/undefined gameId
+   - Shows Modal.alert if gameId is missing
+   - All existing functionality preserved from v1.20
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -22,9 +22,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.20"></script>
-    <script src="js/session.js?v=1.20"></script>
-    <script src="js/modal.js?v=1.20"></script>
+    <script src="js/firebase-config.js?v=1.21"></script>
+    <script src="js/session.js?v=1.21"></script>
+    <script src="js/modal.js?v=1.21"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -274,14 +274,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.20</div>
+<div class="version-tag">v1.21</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v1.20: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v1.21: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "1.20";
-var CACHE_KEY = "hcp_adjust_version_v120";
+var APP_VERSION = "1.21";
+var CACHE_KEY = "hcp_adjust_version_v121";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -299,8 +299,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.20";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.20 - Fixed cache-busting preserves gameId");
+window.HCP_ADJUST_PAGE_VERSION = "1.21";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.21 - Added gameId safety check");
 
 // ============================================================
 // v1.18: Restore celebration data from sessionStorage
@@ -366,6 +366,17 @@ function renderButtons(anchorName) {
         var scorecardBtn = document.getElementById('backToScorecardBtn');
         if (scorecardBtn) {
             scorecardBtn.addEventListener('click', function() {
+                // v1.21: Safety check for gameId before navigation
+                if (!gameId) {
+                    console.error("[HCP-ADJUST] Cannot navigate to scorecard - no gameId");
+                    if (typeof Modal !== 'undefined' && Modal.alert) {
+                        Modal.alert("Error: No game ID found. Please return to the main menu.");
+                    } else {
+                        alert("Error: No game ID found. Please return to the main menu.");
+                    }
+                    return;
+                }
+                
                 if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                     WaitingScreen.show("Loading Scorecard...");
                 }
@@ -588,12 +599,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (gameId, etc.)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v1.19
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - ADDED: Safety check for gameId before navigating to Scorecard
+   - Prevents navigation with null/undefined gameId
+   - Shows Modal.alert if gameId is missing
+   - All existing functionality preserved from v1.20
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
