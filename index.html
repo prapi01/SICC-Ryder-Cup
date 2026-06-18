@@ -1,10 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.56
-KEY CHANGES from v3.55:
-   - CHANGED: GAME DAY → Completed game now redirects to post-game.html
-   - This shows the GAME COMPLETE modal → Celebration → HCP Adjust
-   - All existing functionality preserved from v3.55
+VERSION: 3.57
+KEY CHANGES from v3.56:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v3.56
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -598,21 +599,28 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.56</div>
+<div class="version-tag">v3.57</div>
 
 <script>
-// FILE: index.html - VERSION 3.56
+// FILE: index.html - VERSION 3.57
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.56";
+window.INDEX_VERSION = "3.57";
 
-var APP_VERSION = "3.56";
-var CACHE_KEY = "index_version_v356";
+var APP_VERSION = "3.57";
+var CACHE_KEY = "index_version_v357";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
-    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+    
+    // v3.57: Preserve ALL existing URL parameters
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[INDEX] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // v3.53: Determine if this is first load of the session
@@ -1348,7 +1356,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.56
+// Initialization - v3.57
 // ============================================================
 
 function initApp() {
@@ -1432,7 +1440,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.56
+// Start the app - v3.57
 // ============================================================
 
 if (isFirstLoad) {
@@ -1468,11 +1476,12 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.56
-KEY CHANGES from v3.55:
-   - CHANGED: GAME DAY → Completed game now redirects to post-game.html
-   - This shows the GAME COMPLETE modal → Celebration → HCP Adjust
-   - All existing functionality preserved from v3.55
+VERSION: 3.57
+KEY CHANGES from v3.56:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v3.56
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
 -->
