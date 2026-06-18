@@ -1,10 +1,11 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - REMOVED: Loading placeholder div and its CSS
-   - Container is now empty initially - no flashing green box
-   - All existing functionality preserved from v1.08
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - REMOVED: All waiting screen elements (title, subtitle, loading text, placeholder)
+   - Page now shows only table container and buttons
+   - Waiting screen is handled by WaitingScreen module during transitions
+   - All existing functionality preserved from v1.11
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -21,9 +22,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.09"></script>
-    <script src="js/session.js?v=1.09"></script>
-    <script src="js/modal.js?v=1.09"></script>
+    <script src="js/firebase-config.js?v=1.12"></script>
+    <script src="js/session.js?v=1.12"></script>
+    <script src="js/modal.js?v=1.12"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -86,24 +87,6 @@ STATUS: Ready for integration
             border-radius: 16px;
             font-family: monospace;
             z-index: 1000;
-        }
-        
-        .hcp-header {
-            text-align: center;
-            margin-bottom: 16px;
-        }
-        
-        .hcp-title {
-            font-size: 1.4rem;
-            font-weight: 800;
-            color: #4caf50;
-            letter-spacing: 0.5px;
-        }
-        
-        .hcp-subtitle {
-            font-size: 0.8rem;
-            color: #888;
-            margin-top: 4px;
         }
         
         #hcpTableContainer {
@@ -250,12 +233,8 @@ STATUS: Ready for integration
 <body>
 
 <div class="container" id="mainContainer">
-    <div class="hcp-header">
-        <div class="hcp-title">🏌️ HANDICAP ADJUSTMENT</div>
-        <div class="hcp-subtitle" id="gameInfo">Loading...</div>
-    </div>
+    <!-- v1.12: NO waiting screen elements - no title, no subtitle, no loading text -->
     
-    <!-- v1.09: Container is empty initially - no flashing green box -->
     <div id="hcpTableContainer"></div>
     
     <div class="hcp-buttons" id="hcpButtons"></div>
@@ -264,14 +243,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.09</div>
+<div class="version-tag">v1.12</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Preserve all query parameters
 // ============================================================
-var APP_VERSION = "1.09";
-var CACHE_KEY = "hcp_adjust_version_v109";
+var APP_VERSION = "1.12";
+var CACHE_KEY = "hcp_adjust_version_v112";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -293,8 +272,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.09";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.09 - Removed loading placeholder");
+window.HCP_ADJUST_PAGE_VERSION = "1.12";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.12 - Clean page, no waiting elements");
 
 // ============================================================
 // Main Logic
@@ -392,13 +371,11 @@ function loadHcpData() {
     loadAttempted = true;
     
     if (!gameId) {
-        document.getElementById('gameInfo').textContent = 'Error: No game ID provided';
         document.getElementById('debug').textContent = 'Error: No game ID in URL';
         return;
     }
     
     console.log("[HCP-ADJUST-PAGE] Loading game:", gameId);
-    document.getElementById('gameInfo').textContent = 'Loading game data...';
     
     if (typeof GameLoader === 'undefined' || typeof GameLoader.loadGame !== 'function') {
         console.error("[HCP-ADJUST-PAGE] GameLoader not available");
@@ -413,7 +390,6 @@ function loadHcpData() {
     GameLoader.loadGame(gameId, 'scheduledGames', function(result) {
         if (!result.success) {
             console.error("[HCP-ADJUST-PAGE] Failed to load game:", result.error);
-            document.getElementById('gameInfo').textContent = 'Error loading game';
             document.getElementById('debug').textContent = 'Error: ' + result.error;
             return;
         }
@@ -423,8 +399,6 @@ function loadHcpData() {
             document.getElementById('debug').textContent = 'Error: No cache data';
             return;
         }
-        
-        document.getElementById('gameInfo').textContent = cache.course?.name || 'Unknown Course';
         
         console.log("[HCP-ADJUST-PAGE] Cache loaded, players:", cache.players ? cache.players.length : 0);
         
@@ -459,7 +433,6 @@ function init() {
     getUrlParams();
     
     if (!gameId) {
-        document.getElementById('gameInfo').textContent = 'Error: No game ID provided';
         document.getElementById('debug').textContent = 'Error: No game ID in URL';
         return;
     }
@@ -490,11 +463,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - REMOVED: Loading placeholder div and its CSS
-   - Container is now empty initially - no flashing green box
-   - All existing functionality preserved from v1.08
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - REMOVED: All waiting screen elements (title, subtitle, loading text, placeholder)
+   - Page now shows only table container and buttons
+   - Waiting screen is handled by WaitingScreen module during transitions
+   - All existing functionality preserved from v1.11
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
