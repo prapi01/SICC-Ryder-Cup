@@ -1,14 +1,11 @@
 <!--
 FILE: tutorial.html
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - REFACTORED: Split tutorial into 3 modular JS files
-     * js/tutorial-scoring.js (Steps 2-4) with updated control bar and flight toggle
-     * js/tutorial-results.js (Steps 5-6) with fixed Step 6 table (no editing issues)
-     * js/tutorial-postgame.js (Steps 7-9) with sign card, waiting screen, handicap adjustment
-   - Step 1 (Main Menu) remains in tutorial.html
-   - Cleaner navigation between steps using module functions
-   - All existing functionality preserved (exit modal, step indicator, instruction panel)
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.23
 DEPENDS ON: js/tutorial-scoring.js, js/tutorial-results.js, js/tutorial-postgame.js
 STATUS: Ready for integration
 -->
@@ -735,9 +732,28 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag">📖 TUTORIAL MODE</div>
-<div class="version-tag">v1.23</div>
+<div class="version-tag">v1.24</div>
 
 <script>
+// ============================================================
+// VERSION CACHE-BUSTING - v1.24: Preserves all URL parameters
+// ============================================================
+var APP_VERSION = "1.24";
+var CACHE_KEY = "tutorial_version_v124";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
+    
+    // v1.24: Preserve ALL existing URL parameters
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[TUTORIAL] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
+}
+
 // ============================================================
 // Tutorial Data - 9 Steps (v1.23 with modular JS)
 // ============================================================
@@ -979,15 +995,12 @@ renderStep();
 
 <!--
 FILE: tutorial.html
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - REFACTORED: Split tutorial into 3 modular JS files
-     * js/tutorial-scoring.js (Steps 2-4) with updated control bar and flight toggle
-     * js/tutorial-results.js (Steps 5-6) with fixed Step 6 table (no editing issues)
-     * js/tutorial-postgame.js (Steps 7-9) with sign card, waiting screen, handicap adjustment
-   - Step 1 (Main Menu) remains in tutorial.html
-   - Cleaner navigation between steps using module functions
-   - All existing functionality preserved (exit modal, step indicator, instruction panel)
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.23
 DEPENDS ON: js/tutorial-scoring.js, js/tutorial-results.js, js/tutorial-postgame.js
 STATUS: Ready for integration
 -->
