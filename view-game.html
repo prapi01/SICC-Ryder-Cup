@@ -1,11 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.30
-KEY CHANGES from v7.29:
-   - ADDED: Confirmation modal when clicking "Main Menu" in the Leave Post-Game modal
-   - User must confirm before being redirected to index.html
-   - Uses Modal.confirm for consistent UX
-   - All existing functionality preserved from v7.29
+VERSION: 7.31
+KEY CHANGES from v7.30:
+   - CHANGED: GAME COMPLETE modal now uses Modal.confirmGameComplete()
+   - On Game Day, when game is complete, shows standardized modal
+   - Replaced hardcoded modal with modal.js method
+   - All existing functionality preserved from v7.30
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -19,8 +19,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.30"></script>
-    <script src="js/session.js?v=7.30"></script>
+    <script src="js/firebase-config.js?v=7.31"></script>
+    <script src="js/session.js?v=7.31"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -29,11 +29,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.30"></script>
-    <script src="js/history-record.js?v=7.30"></script>
-    <script src="js/sign-card.js?v=7.30"></script>
-    <script src="js/hcp-adjust.js?v=7.30"></script>
-    <script src="js/modal.js?v=7.30"></script>
+    <script src="js/ticker.js?v=7.31"></script>
+    <script src="js/history-record.js?v=7.31"></script>
+    <script src="js/sign-card.js?v=7.31"></script>
+    <script src="js/hcp-adjust.js?v=7.31"></script>
+    <script src="js/modal.js?v=7.31"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -154,14 +154,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.30</div>
+<div class="version-tag">v7.31</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "7.30";
-var CACHE_KEY = "view_game_version_v730";
+var APP_VERSION = "7.31";
+var CACHE_KEY = "view_game_version_v731";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -172,8 +172,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.30";
-console.log("[VIEW-GAME] Initializing v7.30 - Main Menu confirmation modal");
+window.VIEW_GAME_VERSION = "7.31";
+console.log("[VIEW-GAME] Initializing v7.31 - Using Modal.confirmGameComplete");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -224,7 +224,7 @@ function checkPostGameContext(cache) {
 }
 
 // ============================================================
-// v7.30: Show post-game exit modal with confirmation on Main Menu
+// v7.30: Show post-game exit modal with green theme
 // ============================================================
 
 function showPostGameExitModal() {
@@ -245,7 +245,6 @@ function showPostGameExitModal() {
     `;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
-    // v7.30: Main Menu button with confirmation modal
     document.getElementById('postGameExitBtn').onclick = function() {
         if (typeof Modal !== 'undefined' && Modal.confirm) {
             Modal.confirm(
@@ -262,7 +261,6 @@ function showPostGameExitModal() {
                 }
             );
         } else {
-            // Fallback to native confirm
             if (confirm("⚠️ Leave Game?\n\nYou will not be able to return to this game.")) {
                 var modalEl = document.getElementById('postGameExitModal');
                 if (modalEl) modalEl.remove();
@@ -288,6 +286,79 @@ function showPostGameExitModal() {
         
         window.location.href = 'hcp-adjust.html?gameId=' + gameId;
     };
+}
+
+// ============================================================
+// v7.31: Show Game Complete modal using Modal.confirmGameComplete
+// ============================================================
+
+function showGameCompleteModal() {
+    if (typeof Modal !== 'undefined' && Modal.confirmGameComplete) {
+        Modal.confirmGameComplete(function() {
+            console.log("[VIEW-GAME] SEE RESULTS clicked - navigating to post-game");
+            
+            // Set post-game context
+            sessionStorage.setItem('isPostGame', 'true');
+            celebrationTriggered = false;
+            
+            // Store celebration data
+            var cache = GameLoader.getLocalCache();
+            var tr = GameLoader.getTRForHole(18);
+            var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
+            var winningPlayers = { 
+                teamA: allPlayers.filter(function(p) { return p.team === "A"; }), 
+                teamB: allPlayers.filter(function(p) { return p.team === "B"; }) 
+            };
+            
+            var celebrationData = {
+                winner: winner,
+                teamAScore: tr.teamA,
+                teamBScore: tr.teamB,
+                winningPlayers: winningPlayers,
+                gameId: gameId
+            };
+            sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+            
+            // Navigate to HCP Adjust
+            window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+        });
+    } else {
+        // Fallback: use hardcoded modal
+        console.warn("[VIEW-GAME] Modal.confirmGameComplete not available, using fallback");
+        var modalHtml = `
+            <div class="modal-overlay" id="completeModalNew">
+                <div class="complete-modal-container">
+                    <div class="complete-title">🏆 GAME COMPLETE</div>
+                    <div class="complete-emojis">🍺 🏆 🍺</div>
+                    <div class="complete-message">Both cards have been signed!</div>
+                    <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        document.getElementById("seeResultsBtnNew").onclick = function() {
+            document.getElementById("completeModalNew").remove();
+            sessionStorage.setItem('isPostGame', 'true');
+            celebrationTriggered = false;
+            var cache = GameLoader.getLocalCache();
+            var tr = GameLoader.getTRForHole(18);
+            var winner = tr.teamA > tr.teamB ? 'A' : (tr.teamB > tr.teamA ? 'B' : 'Tie');
+            var winningPlayers = { 
+                teamA: allPlayers.filter(function(p) { return p.team === "A"; }), 
+                teamB: allPlayers.filter(function(p) { return p.team === "B"; }) 
+            };
+            var celebrationData = {
+                winner: winner,
+                teamAScore: tr.teamA,
+                teamBScore: tr.teamB,
+                winningPlayers: winningPlayers,
+                gameId: gameId
+            };
+            sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+            window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+        };
+    }
 }
 
 // ============================================================
@@ -863,7 +934,7 @@ function openRHPForViewer() {
 }
 
 // ============================================================
-// v7.30: renderCompactHeader - fixed with template literals
+// v7.31: renderCompactHeader - fixed with template literals
 // ============================================================
 
 function renderCompactHeader() {
@@ -1177,7 +1248,7 @@ function onCacheUpdate(cache) {
 }
 
 // ============================================================
-// Initialization
+// v7.31: Initialization with Game Complete detection
 // ============================================================
 
 async function init() {
@@ -1262,10 +1333,20 @@ async function init() {
             if (allPlayers && allPlayers.length) Ticker.setPlayers(allPlayers);
             gameCompleteFlag = isGameComplete();
             isPostGameContext = checkPostGameContext(cache);
-            renderAll();
             
-            document.getElementById("mainContainer").classList.add("data-ready");
-            setupRealtimeListener();
+            // v7.31: Check if game is complete AND it's Game Day
+            var gameDate = cache.course?.date || null;
+            var today = new Date().toISOString().split('T')[0];
+            var isToday = (gameDate === today);
+            
+            if (isToday && gameCompleteFlag && !celebrationTriggered && !hasSwitchedToHistory) {
+                console.log("[VIEW-GAME] Game Day - showing GAME COMPLETE modal");
+                showGameCompleteModal();
+            } else {
+                renderAll();
+                document.getElementById("mainContainer").classList.add("data-ready");
+                setupRealtimeListener();
+            }
         });
     }
     GameUI.updateToggleButtons(GameUI.getDisplayMode());
@@ -1279,12 +1360,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.30
-KEY CHANGES from v7.29:
-   - ADDED: Confirmation modal when clicking "Main Menu" in the Leave Post-Game modal
-   - User must confirm before being redirected to index.html
-   - Uses Modal.confirm for consistent UX
-   - All existing functionality preserved from v7.29
+VERSION: 7.31
+KEY CHANGES from v7.30:
+   - CHANGED: GAME COMPLETE modal now uses Modal.confirmGameComplete()
+   - On Game Day, when game is complete, shows standardized modal
+   - Replaced hardcoded modal with modal.js method
+   - All existing functionality preserved from v7.30
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
