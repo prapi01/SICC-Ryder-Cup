@@ -1,22 +1,21 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: WaitingScreen calls for smooth transitions
-   - showGameCompleteScreen() now shows waiting screen before celebration
-   - showCelebrationAndHandicap() now hides waiting screen after celebration loads
-   - Prevents real-game screen flash during transitions
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Waiting screen now hides AFTER celebration screen is fully rendered
+   - Added delay to ensure celebration modal exists before hiding waiting screen
+   - Prevents real-game screen flash during transition
+   - All existing functionality preserved from v1.02
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.02";
+window.REAL_GAME_NAV_VERSION = "1.03";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.02 - Added WaitingScreen for transitions");
+    console.log("[REAL-GAME-NAV] Initializing v1.03 - Fixed waiting screen timing");
     
     // ============================================================
     // Private Helpers
@@ -147,7 +146,7 @@ var RealGameNav = (function() {
         var currentHole = getCurrentHole();
         var editableFlight = getEditableFlight();
         
-        console.log(`[DEBUG-NAV] nextHole called, currentHole=${currentHole}`);
+        console.log("[DEBUG-NAV] nextHole called, currentHole=" + currentHole);
         
         if (isGameComplete() && !isCelebrationTriggered()) {
             showCelebrationAndHandicap();
@@ -159,7 +158,7 @@ var RealGameNav = (function() {
         }
         
         if (isViewOtherFlight()) {
-            console.log(`[DEBUG-NAV] Cannot advance hole while viewing other flight`);
+            console.log("[DEBUG-NAV] Cannot advance hole while viewing other flight");
             return;
         }
         
@@ -175,7 +174,7 @@ var RealGameNav = (function() {
         }
         
         if (!isCurrentSaved) {
-            console.log(`[DEBUG-NAV] Cannot advance - hole ${currentHole} not saved`);
+            console.log("[DEBUG-NAV] Cannot advance - hole " + currentHole + " not saved");
             return;
         }
         
@@ -184,7 +183,7 @@ var RealGameNav = (function() {
         var nextIndex = (currentIndex + 1) % 18;
         setCurrentHole(playOrder[nextIndex]);
         
-        console.log(`[DEBUG-NAV] Moved to hole ${getCurrentHole()}`);
+        console.log("[DEBUG-NAV] Moved to hole " + getCurrentHole());
         updateHoleNumberDisplay();
         
         if (typeof RealGameSave !== 'undefined' && RealGameSave.setSaveButtonIdle) {
@@ -202,7 +201,7 @@ var RealGameNav = (function() {
     
     function prevHole() {
         if (isViewOtherFlight()) {
-            console.log(`[DEBUG-NAV] Cannot navigate holes while viewing other flight`);
+            console.log("[DEBUG-NAV] Cannot navigate holes while viewing other flight");
             return;
         }
         
@@ -232,7 +231,7 @@ var RealGameNav = (function() {
     
     function onToggleFlightView() {
         setViewOtherFlight(!isViewOtherFlight());
-        console.log(`[REAL-GAME] Toggle flight view: viewOtherFlight = ${isViewOtherFlight()}`);
+        console.log("[REAL-GAME] Toggle flight view: viewOtherFlight = " + isViewOtherFlight());
         if (typeof RealGameUI !== 'undefined') {
             RealGameUI.renderAll();
         }
@@ -337,7 +336,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen - v1.02: Added WaitingScreen
+    // showGameCompleteScreen
     // ============================================================
     
     function showGameCompleteScreen() {
@@ -361,14 +360,12 @@ var RealGameNav = (function() {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         setActiveCompleteModal(document.getElementById("completeModalNew"));
         
-        // v1.02: Show waiting screen when "See Results" is clicked
         document.getElementById("seeResultsBtnNew").onclick = function() {
             // Show waiting screen immediately
             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                 WaitingScreen.show("Loading Celebration...");
                 console.log("[NAV] Waiting screen shown");
             } else {
-                // Fallback
                 var overlay = document.createElement('div');
                 overlay.id = 'waitingScreenOverlay';
                 overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
@@ -383,7 +380,7 @@ var RealGameNav = (function() {
                 setActiveCompleteModal(null);
             }
             
-            // Small delay to let waiting screen render
+            // Call celebration after short delay
             setTimeout(function() {
                 showCelebrationAndHandicap();
             }, 300);
@@ -451,21 +448,14 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showCelebrationAndHandicap - v1.02: Added WaitingScreen hide
+    // showCelebrationAndHandicap - v1.03: Fixed waiting screen timing
     // ============================================================
     
     function showCelebrationAndHandicap() {
         if (isCelebrationTriggered()) return;
         setCelebrationTriggered(true);
         
-        // v1.02: Ensure waiting screen is hidden when celebration loads
-        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
-            WaitingScreen.hide();
-        } else {
-            var fallback = document.getElementById('waitingScreenOverlay');
-            if (fallback) fallback.remove();
-        }
-        console.log("[NAV] Waiting screen hidden");
+        console.log("[NAV] showCelebrationAndHandicap called");
         
         var currentHole = getCurrentHole();
         var gameId = getGameId();
@@ -489,6 +479,8 @@ var RealGameNav = (function() {
         var historyRecordId = gameId + "_history";
         
         if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+            // v1.03: Wait for celebration to fully render before hiding waiting screen
+            // The celebration screen will call the onClose callback when fully rendered
             SignCard.showCelebrationScreen(
                 winner,
                 tr.teamA,
@@ -496,11 +488,33 @@ var RealGameNav = (function() {
                 winningPlayers,
                 gameId,
                 function() {
+                    // This callback runs AFTER celebration is fully rendered
+                    console.log("[NAV] Celebration fully rendered - hiding waiting screen");
+                    
+                    // Hide waiting screen now that celebration is visible
+                    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                        WaitingScreen.hide();
+                    } else {
+                        var el = document.getElementById('waitingScreenOverlay');
+                        if (el) el.remove();
+                    }
+                    console.log("[NAV] Waiting screen hidden");
+                    
+                    // Now call handicap adjustment
                     if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
                         HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, {}, {}, false);
                     }
                 }
             );
+        } else {
+            console.error("[NAV] SignCard.showCelebrationScreen not available");
+            // Hide waiting screen on error
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                WaitingScreen.hide();
+            } else {
+                var el = document.getElementById('waitingScreenOverlay');
+                if (el) el.remove();
+            }
         }
     }
     
@@ -528,13 +542,12 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: WaitingScreen calls for smooth transitions
-   - showGameCompleteScreen() now shows waiting screen before celebration
-   - showCelebrationAndHandicap() now hides waiting screen after celebration loads
-   - Prevents real-game screen flash during transitions
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Waiting screen now hides AFTER celebration screen is fully rendered
+   - Added delay to ensure celebration modal exists before hiding waiting screen
+   - Prevents real-game screen flash during transition
+   - All existing functionality preserved from v1.02
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
 STATUS: Ready for integration
 */
