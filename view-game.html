@@ -1,13 +1,11 @@
 <!--
 FILE: view-game.html
-VERSION: 7.29
-KEY CHANGES from v7.28:
-   - FIXED: Leave Post-Game modal now uses green theme
-   - Border: #4caf50 (green)
-   - Title: #4caf50 (green)
-   - "Handicap Screen" button: green theme
-   - "Main Menu" button: grey/exit theme
-   - All existing functionality preserved from v7.28
+VERSION: 7.30
+KEY CHANGES from v7.29:
+   - ADDED: Confirmation modal when clicking "Main Menu" in the Leave Post-Game modal
+   - User must confirm before being redirected to index.html
+   - Uses Modal.confirm for consistent UX
+   - All existing functionality preserved from v7.29
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -21,8 +19,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.29"></script>
-    <script src="js/session.js?v=7.29"></script>
+    <script src="js/firebase-config.js?v=7.30"></script>
+    <script src="js/session.js?v=7.30"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -31,11 +29,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.29"></script>
-    <script src="js/history-record.js?v=7.29"></script>
-    <script src="js/sign-card.js?v=7.29"></script>
-    <script src="js/hcp-adjust.js?v=7.29"></script>
-    <script src="js/modal.js?v=7.29"></script>
+    <script src="js/ticker.js?v=7.30"></script>
+    <script src="js/history-record.js?v=7.30"></script>
+    <script src="js/sign-card.js?v=7.30"></script>
+    <script src="js/hcp-adjust.js?v=7.30"></script>
+    <script src="js/modal.js?v=7.30"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -156,14 +154,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.29</div>
+<div class="version-tag">v7.30</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "7.29";
-var CACHE_KEY = "view_game_version_v729";
+var APP_VERSION = "7.30";
+var CACHE_KEY = "view_game_version_v730";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -174,8 +172,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.29";
-console.log("[VIEW-GAME] Initializing v7.29 - Post-game modal green theme");
+window.VIEW_GAME_VERSION = "7.30";
+console.log("[VIEW-GAME] Initializing v7.30 - Main Menu confirmation modal");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -226,7 +224,7 @@ function checkPostGameContext(cache) {
 }
 
 // ============================================================
-// v7.29: Show post-game exit modal with green theme
+// v7.30: Show post-game exit modal with confirmation on Main Menu
 // ============================================================
 
 function showPostGameExitModal() {
@@ -247,11 +245,31 @@ function showPostGameExitModal() {
     `;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
+    // v7.30: Main Menu button with confirmation modal
     document.getElementById('postGameExitBtn').onclick = function() {
-        document.getElementById('postGameExitModal').remove();
-        console.log("[VIEW-GAME] Exiting to main menu");
-        sessionStorage.removeItem('isPostGame');
-        window.location.href = 'index.html';
+        if (typeof Modal !== 'undefined' && Modal.confirm) {
+            Modal.confirm(
+                "⚠️ Leave Game?\n\nYou will not be able to return to this game.",
+                function() {
+                    var modalEl = document.getElementById('postGameExitModal');
+                    if (modalEl) modalEl.remove();
+                    console.log("[VIEW-GAME] User confirmed - exiting to main menu");
+                    sessionStorage.removeItem('isPostGame');
+                    window.location.href = 'index.html';
+                },
+                function() {
+                    console.log("[VIEW-GAME] User cancelled - staying on page");
+                }
+            );
+        } else {
+            // Fallback to native confirm
+            if (confirm("⚠️ Leave Game?\n\nYou will not be able to return to this game.")) {
+                var modalEl = document.getElementById('postGameExitModal');
+                if (modalEl) modalEl.remove();
+                sessionStorage.removeItem('isPostGame');
+                window.location.href = 'index.html';
+            }
+        }
     };
     
     document.getElementById('postGameBackBtn').onclick = function() {
@@ -845,7 +863,7 @@ function openRHPForViewer() {
 }
 
 // ============================================================
-// v7.29: renderCompactHeader - fixed with template literals
+// v7.30: renderCompactHeader - fixed with template literals
 // ============================================================
 
 function renderCompactHeader() {
@@ -1261,14 +1279,12 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.29
-KEY CHANGES from v7.28:
-   - FIXED: Leave Post-Game modal now uses green theme
-   - Border: #4caf50 (green)
-   - Title: #4caf50 (green)
-   - "Handicap Screen" button: green theme
-   - "Main Menu" button: grey/exit theme
-   - All existing functionality preserved from v7.28
+VERSION: 7.30
+KEY CHANGES from v7.29:
+   - ADDED: Confirmation modal when clicking "Main Menu" in the Leave Post-Game modal
+   - User must confirm before being redirected to index.html
+   - Uses Modal.confirm for consistent UX
+   - All existing functionality preserved from v7.29
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
