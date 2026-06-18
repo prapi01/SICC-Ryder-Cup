@@ -1,12 +1,13 @@
 <!--
 FILE: view-game.html
-VERSION: 7.27
-KEY CHANGES from v7.26:
-   - REMOVED: All HCP Adjust modal code and mode=handicap detection
-   - REMOVED: isReturningFromHcpAdjust logic
-   - UPDATED: "Handicap Screen →" button now navigates to hcp-adjust.html standalone page
-   - CLEANED: Removed HCP Adjust related functions and variables
-   - All existing functionality preserved from v7.26
+VERSION: 7.29
+KEY CHANGES from v7.28:
+   - FIXED: Leave Post-Game modal now uses green theme
+   - Border: #4caf50 (green)
+   - Title: #4caf50 (green)
+   - "Handicap Screen" button: green theme
+   - "Main Menu" button: grey/exit theme
+   - All existing functionality preserved from v7.28
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -20,8 +21,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.27"></script>
-    <script src="js/session.js?v=7.27"></script>
+    <script src="js/firebase-config.js?v=7.29"></script>
+    <script src="js/session.js?v=7.29"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -30,11 +31,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.27"></script>
-    <script src="js/history-record.js?v=7.27"></script>
-    <script src="js/sign-card.js?v=7.27"></script>
-    <script src="js/hcp-adjust.js?v=7.27"></script>
-    <script src="js/modal.js?v=7.27"></script>
+    <script src="js/ticker.js?v=7.29"></script>
+    <script src="js/history-record.js?v=7.29"></script>
+    <script src="js/sign-card.js?v=7.29"></script>
+    <script src="js/hcp-adjust.js?v=7.29"></script>
+    <script src="js/modal.js?v=7.29"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -155,14 +156,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.27</div>
+<div class="version-tag">v7.29</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "7.27";
-var CACHE_KEY = "view_game_version_v727";
+var APP_VERSION = "7.29";
+var CACHE_KEY = "view_game_version_v729";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -173,8 +174,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.27";
-console.log("[VIEW-GAME] Initializing v7.27 - Clean standalone HCP Adjust navigation");
+window.VIEW_GAME_VERSION = "7.29";
+console.log("[VIEW-GAME] Initializing v7.29 - Post-game modal green theme");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -225,7 +226,7 @@ function checkPostGameContext(cache) {
 }
 
 // ============================================================
-// v7.27: Show post-game exit modal - updated to navigate to hcp-adjust.html
+// v7.29: Show post-game exit modal with green theme
 // ============================================================
 
 function showPostGameExitModal() {
@@ -234,12 +235,12 @@ function showPostGameExitModal() {
     
     var modalHtml = `
         <div class="modal-overlay" id="postGameExitModal" style="z-index: 10001;">
-            <div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:360px; width:90%; text-align:center; border:2px solid #ffaa44;">
-                <div style="font-size:1.3rem; font-weight:700; color:#ffaa44; margin-bottom:12px;">🏌️ Leave Post-Game?</div>
+            <div style="background:#1a1a1a; border-radius:28px; padding:28px; max-width:360px; width:90%; text-align:center; border:2px solid #4caf50;">
+                <div style="font-size:1.3rem; font-weight:700; color:#4caf50; margin-bottom:12px;">🏌️ Leave Post-Game?</div>
                 <div style="font-size:0.9rem; color:#ccc; margin-bottom:24px;">You are about to leave the post-game review.</div>
                 <div style="display:flex; gap:12px;">
-                    <button id="postGameExitBtn" style="flex:1; background:#1a1a1a; border:1px solid #333; color:#888; padding:12px; border-radius:40px; font-weight:600; cursor:pointer;">← Main Menu</button>
-                    <button id="postGameBackBtn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:40px; font-weight:600; cursor:pointer;">Handicap Screen →</button>
+                    <button id="postGameExitBtn" style="flex:1; background:#1a1a1a; border:1px solid #333; color:#888; padding:12px; border-radius:40px; font-weight:600; cursor:pointer;">Main Menu</button>
+                    <button id="postGameBackBtn" style="flex:1; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:12px; border-radius:40px; font-weight:600; cursor:pointer;">Handicap Screen</button>
                 </div>
             </div>
         </div>
@@ -253,7 +254,6 @@ function showPostGameExitModal() {
         window.location.href = 'index.html';
     };
     
-    // v7.27: Navigate to standalone hcp-adjust.html
     document.getElementById('postGameBackBtn').onclick = function() {
         document.getElementById('postGameExitModal').remove();
         console.log("[VIEW-GAME] Going to HCP Adjust standalone page");
@@ -845,7 +845,7 @@ function openRHPForViewer() {
 }
 
 // ============================================================
-// v7.27: renderCompactHeader - fixed syntax with template literals
+// v7.29: renderCompactHeader - fixed with template literals
 // ============================================================
 
 function renderCompactHeader() {
@@ -1261,13 +1261,14 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.27
-KEY CHANGES from v7.26:
-   - REMOVED: All HCP Adjust modal code and mode=handicap detection
-   - REMOVED: isReturningFromHcpAdjust logic
-   - UPDATED: "Handicap Screen →" button now navigates to hcp-adjust.html standalone page
-   - CLEANED: Removed HCP Adjust related functions and variables
-   - All existing functionality preserved from v7.26
+VERSION: 7.29
+KEY CHANGES from v7.28:
+   - FIXED: Leave Post-Game modal now uses green theme
+   - Border: #4caf50 (green)
+   - Title: #4caf50 (green)
+   - "Handicap Screen" button: green theme
+   - "Main Menu" button: grey/exit theme
+   - All existing functionality preserved from v7.28
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
