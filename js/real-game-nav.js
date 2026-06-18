@@ -1,22 +1,20 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - REMOVED: HandicapAdjustment.init call from showCelebrationAndHandicap()
-   - Navigation to HCP Adjust is now handled by sign-card.js button click
-   - onClose callback now only hides waiting screen
-   - Cleaner separation of concerns: real-game-nav handles navigation, sign-card handles button
-   - All existing functionality preserved from v1.05
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - CHANGED: showGameCompleteScreen() now uses Modal.confirmGameComplete()
+   - Replaced hardcoded modal with standardized modal from modal.js
+   - All existing functionality preserved from v1.06
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.06";
+window.REAL_GAME_NAV_VERSION = "1.07";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.06 - Clean separation of navigation");
+    console.log("[REAL-GAME-NAV] Initializing v1.07 - Using standardized GAME COMPLETE modal");
     
     // ============================================================
     // Private Helpers
@@ -337,53 +335,62 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen
+    // showGameCompleteScreen - v1.07: Uses Modal.confirmGameComplete()
     // ============================================================
     
     function showGameCompleteScreen() {
         hideWaitingScreen();
         
-        var existingModal = getActiveCompleteModal();
-        if (existingModal) {
-            existingModal.remove();
-        }
-        
-        var modalHtml = `
-            <div class="modal-overlay" id="completeModalNew">
-                <div class="complete-modal-container">
-                    <div class="complete-title">🏆 GAME COMPLETE</div>
-                    <div class="complete-emojis">🍺 🏆 🍺</div>
-                    <div class="complete-message">Both cards have been signed!</div>
-                    <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
+        // v1.07: Use standardized Modal.confirmGameComplete()
+        if (typeof Modal !== 'undefined' && Modal.confirmGameComplete) {
+            Modal.confirmGameComplete(function() {
+                console.log("[NAV] User clicked SEE RESULTS");
+                
+                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                    WaitingScreen.show("Loading Celebration...");
+                    console.log("[NAV] Waiting screen shown");
+                }
+                
+                // Remove modal and go to celebration
+                setTimeout(function() {
+                    showCelebrationAndHandicap();
+                }, 300);
+            });
+        } else {
+            // Fallback: use hardcoded modal
+            console.warn("[NAV] Modal.confirmGameComplete not available, using fallback");
+            var existingModal = getActiveCompleteModal();
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            var modalHtml = `
+                <div class="modal-overlay" id="completeModalNew">
+                    <div class="complete-modal-container">
+                        <div class="complete-title">🏆 GAME COMPLETE</div>
+                        <div class="complete-emojis">🍺 🏆 🍺</div>
+                        <div class="complete-message">Both cards have been signed!</div>
+                        <button id="seeResultsBtnNew" class="complete-btn">🏆 SEE RESULTS</button>
+                    </div>
                 </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        setActiveCompleteModal(document.getElementById("completeModalNew"));
-        
-        document.getElementById("seeResultsBtnNew").onclick = function() {
-            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
-                WaitingScreen.show("Loading Celebration...");
-                console.log("[NAV] Waiting screen shown");
-            } else {
-                var overlay = document.createElement('div');
-                overlay.id = 'waitingScreenOverlay';
-                overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;';
-                overlay.innerHTML = '<div style="font-size:5rem;filter:grayscale(100%);opacity:0.6;">⛳</div><div style="color:#888;font-size:0.8rem;margin-top:16px;letter-spacing:1px;">Loading Celebration...</div>';
-                document.body.appendChild(overlay);
-                console.log("[NAV] Fallback waiting screen shown");
-            }
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            setActiveCompleteModal(document.getElementById("completeModalNew"));
             
-            var modal = getActiveCompleteModal();
-            if (modal) {
-                modal.remove();
-                setActiveCompleteModal(null);
-            }
-            
-            setTimeout(function() {
-                showCelebrationAndHandicap();
-            }, 300);
-        };
+            document.getElementById("seeResultsBtnNew").onclick = function() {
+                var modal = getActiveCompleteModal();
+                if (modal) {
+                    modal.remove();
+                    setActiveCompleteModal(null);
+                }
+                if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+                    WaitingScreen.show("Loading Celebration...");
+                }
+                setTimeout(function() {
+                    showCelebrationAndHandicap();
+                }, 300);
+            };
+        }
     }
     
     // ============================================================
@@ -478,7 +485,6 @@ var RealGameNav = (function() {
         var historyRecordId = gameId + "_H";
         console.log("[NAV] Using archive ID:", historyRecordId);
         
-        // v1.06: Store data for the button click handler in sign-card.js
         window._celebrationDataForHandler = {
             gameId: gameId,
             historyRecordId: historyRecordId,
@@ -486,8 +492,6 @@ var RealGameNav = (function() {
         };
         
         if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-            // v1.06: onClose callback ONLY hides waiting screen
-            // Navigation to HCP Adjust is handled by sign-card.js button click
             SignCard.showCelebrationScreen(
                 winner,
                 tr.teamA,
@@ -495,7 +499,6 @@ var RealGameNav = (function() {
                 winningPlayers,
                 gameId,
                 function() {
-                    // This callback ONLY hides waiting screen
                     console.log("[NAV] Celebration fully rendered - hiding waiting screen");
                     
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
@@ -505,10 +508,6 @@ var RealGameNav = (function() {
                         if (el) el.remove();
                     }
                     console.log("[NAV] Waiting screen hidden");
-                    
-                    // v1.06: DO NOT call HandicapAdjustment.init here
-                    // User must click the "HANDICAP ADJUSTMENT" button in celebration screen
-                    // Which now navigates to hcp-adjust.html standalone page
                 }
             );
         } else {
@@ -546,13 +545,11 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - REMOVED: HandicapAdjustment.init call from showCelebrationAndHandicap()
-   - Navigation to HCP Adjust is now handled by sign-card.js button click
-   - onClose callback now only hides waiting screen
-   - Cleaner separation of concerns: real-game-nav handles navigation, sign-card handles button
-   - All existing functionality preserved from v1.05
-DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - CHANGED: showGameCompleteScreen() now uses Modal.confirmGameComplete()
+   - Replaced hardcoded modal with standardized modal from modal.js
+   - All existing functionality preserved from v1.06
+DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
