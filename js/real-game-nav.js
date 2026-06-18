@@ -1,21 +1,21 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - ADDED: Safety check for gameId before navigating to post-game.html
-   - Prevents navigation with null/undefined gameId
-   - Shows Modal.alert if gameId is missing
-   - All existing functionality preserved from v1.09
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
+   - Updated Modal.confirmGameComplete() call uses updated modal title
+   - Updated fallback modal title text
+   - All existing functionality preserved from v1.10
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.10";
+window.REAL_GAME_NAV_VERSION = "1.11";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.10 - Added gameId safety check");
+    console.log("[REAL-GAME-NAV] Initializing v1.11 - Updated to GAME COMPLETED");
     
     // ============================================================
     // Private Helpers
@@ -336,7 +336,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showGameCompleteScreen - v1.10: Added gameId safety check
+    // showGameCompleteScreen - v1.11: Updated to GAME COMPLETED
     // ============================================================
     
     function showGameCompleteScreen() {
@@ -354,7 +354,7 @@ var RealGameNav = (function() {
             return;
         }
         
-        console.log("[NAV] Game complete - redirecting to post-game.html");
+        console.log("[NAV] Game completed - redirecting to post-game.html");
         
         // Store post-game context
         sessionStorage.setItem('isPostGame', 'true');
@@ -536,12 +536,12 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - ADDED: Safety check for gameId before navigating to post-game.html
-   - Prevents navigation with null/undefined gameId
-   - Shows Modal.alert if gameId is missing
-   - All existing functionality preserved from v1.09
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - CHANGED: "GAME COMPLETE" → "GAME COMPLETED" (past tense)
+   - Updated Modal.confirmGameComplete() call uses updated modal title
+   - Updated fallback modal title text
+   - All existing functionality preserved from v1.10
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen, Modal
 STATUS: Ready for integration
 */
