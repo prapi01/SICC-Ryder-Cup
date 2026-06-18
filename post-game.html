@@ -1,13 +1,11 @@
 <!--
 FILE: post-game.html
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: SessionManager.getShortNameOnly() - now sync (removed .then())
-   - FIXED: Added null checks for gameData.results.tr
-   - FIXED: Added WaitingScreen before Firestore read
-   - FIXED: WaitingScreen.hide() after Firestore read (success or error)
-   - FIXED: Better error handling when game data is missing
-   - All existing functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Cache-busting now preserves existing URL parameters (gameId)
+   - Previously, cache-busting dropped gameId parameter, breaking the page
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.01
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
@@ -21,10 +19,10 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=1.01"></script>
-    <script src="js/session.js?v=1.01"></script>
-    <script src="js/modal.js?v=1.01"></script>
-    <script src="js/waiting-screen.js?v=1.01"></script>
+    <script src="js/firebase-config.js?v=1.02"></script>
+    <script src="js/session.js?v=1.02"></script>
+    <script src="js/modal.js?v=1.02"></script>
+    <script src="js/waiting-screen.js?v=1.02"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.25"></script>
@@ -176,26 +174,33 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.01</div>
+<div class="version-tag">v1.02</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING
+// VERSION CACHE-BUSTING - v1.02: PRESERVES all URL parameters
 // ============================================================
-var APP_VERSION = "1.01";
-var CACHE_KEY = "post_game_version_v101";
+var APP_VERSION = "1.02";
+var CACHE_KEY = "post_game_version_v102";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
-    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+    
+    // v1.02: Preserve ALL existing URL parameters (gameId, etc.)
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[POST-GAME] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.01";
-console.log("[POST-GAME] Initializing v1.01 - Fixed waiting screen and error handling");
+window.POST_GAME_PAGE_VERSION = "1.02";
+console.log("[POST-GAME] Initializing v1.02 - Fixed cache-busting preserves gameId");
 
 // ============================================================
 // Main Logic
@@ -286,7 +291,7 @@ function loadGameData() {
         return;
     }
     
-    // v1.01: Show waiting screen before Firestore read
+    // Show waiting screen before Firestore read
     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
         WaitingScreen.show("Loading game data...");
         console.log("[POST-GAME] Waiting screen shown");
@@ -294,14 +299,13 @@ function loadGameData() {
     
     FirebaseRetry.getDocument("scheduledGames", gameId, {
         onExit: function() {
-            // v1.01: Hide waiting screen on exit/retry
             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                 WaitingScreen.hide();
             }
             window.location.href = "index.html";
         }
     }).then(function(doc) {
-        // v1.01: Hide waiting screen on success
+        // Hide waiting screen on success
         if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
             WaitingScreen.hide();
             console.log("[POST-GAME] Waiting screen hidden (success)");
@@ -315,7 +319,7 @@ function loadGameData() {
         gameData = doc.data();
         console.log("[POST-GAME] Game loaded, players:", gameData.players ? gameData.players.length : 0);
         
-        // v1.01: Check if game data is valid
+        // Check if game data is valid
         if (!gameData.players || gameData.players.length === 0) {
             document.getElementById('debug').textContent = 'Error: Invalid game data - no players';
             return;
@@ -337,7 +341,7 @@ function loadGameData() {
         showGameCompleteModal();
         
     }).catch(function(err) {
-        // v1.01: Hide waiting screen on error
+        // Hide waiting screen on error
         if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
             WaitingScreen.hide();
             console.log("[POST-GAME] Waiting screen hidden (error)");
@@ -368,7 +372,7 @@ function init() {
         return;
     }
     
-    // v1.01: SessionManager.getShortNameOnly() is SYNC - no .then()
+    // SessionManager.getShortNameOnly() is SYNC - no .then()
     try {
         var name = SessionManager.getShortNameOnly();
         document.getElementById('deviceTag').textContent = '🏌️ ' + (name || 'DEV-??');
@@ -392,14 +396,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: SessionManager.getShortNameOnly() - now sync (removed .then())
-   - FIXED: Added null checks for gameData.results.tr
-   - FIXED: Added WaitingScreen before Firestore read
-   - FIXED: WaitingScreen.hide() after Firestore read (success or error)
-   - FIXED: Better error handling when game data is missing
-   - All existing functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Cache-busting now preserves existing URL parameters (gameId)
+   - Previously, cache-busting dropped gameId parameter, breaking the page
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.01
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js
 STATUS: Ready for integration
 -->
