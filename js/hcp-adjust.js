@@ -1,11 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.45
-KEY CHANGES from v2.44:
-   - ADDED: Waiting screen to "📋 Scorecard" button (HCP Adjust → Scorecard transition)
-   - ADDED: Waiting screen to "🎉" button (HCP Adjust → Celebration transition)
-   - Both transitions now show waiting screen to prevent real-game screen flash
-   - All existing functionality preserved from v2.44
+VERSION: 2.46
+KEY CHANGES from v2.45:
+   - FIXED: saveAdjustmentToFirestore now correctly handles archiveId when called from celebration
+   - Added fallback to create archive record if currentArchiveId is not set
+   - Improved error handling and logging
+   - All existing functionality preserved from v2.45
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -407,7 +407,6 @@ var HandicapAdjustment = (function() {
                 buttonsHtml = '<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; justify-content:center;"><button id="hcpBackBtn" style="background:#1a1a1a; border:1px solid #333; color:#ccc; padding:8px 16px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">← Back</button></div>';
             }
         } else {
-            // v2.45: Buttons with waiting screen - [Scorecard] [🎉] [Main Menu]
             buttonsHtml = '<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; justify-content:center;">' +
                 '<button id="backToScorecardBtn" style="flex:1; min-width:80px; background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:8px 10px; border-radius:30px; font-size:0.7rem; font-weight:600; cursor:pointer;">📋 Scorecard</button>' +
                 '<button id="celebrationBtn" style="flex:0 0 auto; padding:8px 20px; background:#1a3a1a; border:1px solid #ffaa44; color:#ffaa44; border-radius:30px; font-size:1.2rem; font-weight:600; cursor:pointer;">🎉</button>' +
@@ -442,11 +441,9 @@ var HandicapAdjustment = (function() {
                 });
             }
         } else {
-            // v2.45: Scorecard button with waiting screen
             var backToScorecardBtn = document.getElementById('backToScorecardBtn');
             if (backToScorecardBtn) {
                 backToScorecardBtn.addEventListener('click', function() {
-                    // Show waiting screen
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                         WaitingScreen.show("Loading Scorecard...");
                     } else {
@@ -462,11 +459,9 @@ var HandicapAdjustment = (function() {
                 });
             }
             
-            // v2.45: Celebration button with waiting screen
             var celebrationBtn = document.getElementById('celebrationBtn');
             if (celebrationBtn) {
                 celebrationBtn.addEventListener('click', function() {
-                    // Show waiting screen
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                         WaitingScreen.show("Loading Celebration...");
                     } else {
@@ -479,7 +474,6 @@ var HandicapAdjustment = (function() {
                     
                     document.getElementById('hcpAdjustModal').remove();
                     if (typeof SignCard !== 'undefined' && SignCard.replayCelebration) {
-                        // Hide waiting screen when celebration loads (handled in SignCard)
                         SignCard.replayCelebration();
                     } else {
                         alert('Celebration screen not available');
@@ -493,7 +487,6 @@ var HandicapAdjustment = (function() {
                 });
             }
             
-            // Main Menu button
             var mainMenuBtn = document.getElementById('mainMenuBtn');
             if (mainMenuBtn) {
                 mainMenuBtn.addEventListener('click', function() {
@@ -801,7 +794,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // saveAdjustmentToFirestore
+    // v2.46: saveAdjustmentToFirestore - fixed archiveId handling
     // ============================================================
     
     function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
@@ -823,17 +816,33 @@ var HandicapAdjustment = (function() {
             newAnchor: calculationResult.newAnchorName || anchor.name
         };
         
+        console.log("[HCP-ADJUST] saveAdjustmentToFirestore called");
+        console.log("  archiveId:", currentArchiveId);
+        console.log("  gameId:", currentGameId);
+        console.log("  players:", allPlayers ? allPlayers.length : 0);
+        
+        // If we don't have an archiveId, create one
+        if (!currentArchiveId && currentGameId) {
+            currentArchiveId = currentGameId + "_H";
+            console.log("  Created archiveId:", currentArchiveId);
+        }
+        
         if (currentArchiveId && typeof HistoryRecord !== 'undefined' && HistoryRecord.updateWithHandicap) {
+            console.log("  Calling HistoryRecord.updateWithHandicap for:", currentArchiveId);
             HistoryRecord.updateWithHandicap(currentArchiveId, handicapData, allPlayers, function(err) {
                 if (err) {
                     console.error("Error saving handicap data:", err);
                     if (callback) callback(err);
                 } else {
+                    console.log("  ✅ Handicap data saved successfully");
+                    // Update player profiles after history record is updated
                     updatePlayerProfiles(handicapData.players, callback);
                 }
             });
         } else {
             console.warn("HistoryRecord.updateWithHandicap not available, skipping status update");
+            console.warn("  currentArchiveId:", currentArchiveId);
+            console.warn("  HistoryRecord:", typeof HistoryRecord);
             updatePlayerProfiles(handicapData.players, callback);
         }
     }
@@ -843,6 +852,7 @@ var HandicapAdjustment = (function() {
     // ============================================================
     
     function init(gameId, archiveId, winningPlayers, matchPoints, holeResults, isViewOnlyMode) {
+        console.log("[HCP-ADJUST] init called with gameId:", gameId, "archiveId:", archiveId);
         currentGameId = gameId;
         currentArchiveId = archiveId;
         allPlayers = winningPlayers.teamA.concat(winningPlayers.teamB);
@@ -1039,7 +1049,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.45";
+    window.HANDICAP_ADJUST_VERSION = "2.46";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1061,12 +1071,12 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.45
-KEY CHANGES from v2.44:
-   - ADDED: Waiting screen to "📋 Scorecard" button (HCP Adjust → Scorecard transition)
-   - ADDED: Waiting screen to "🎉" button (HCP Adjust → Celebration transition)
-   - Both transitions now show waiting screen to prevent real-game screen flash
-   - All existing functionality preserved from v2.44
+VERSION: 2.46
+KEY CHANGES from v2.45:
+   - FIXED: saveAdjustmentToFirestore now correctly handles archiveId when called from celebration
+   - Added fallback to create archive record if currentArchiveId is not set
+   - Improved error handling and logging
+   - All existing functionality preserved from v2.45
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
