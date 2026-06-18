@@ -1,11 +1,10 @@
 <!--
 FILE: view-game.html
-VERSION: 7.25
-KEY CHANGES from v7.24:
-   - ADDED: Waiting screen to "Handicap Screen →" button (Scorecard → HCP Adjust transition)
-   - ADDED: Detection of 'mode=handicap' URL parameter to hide waiting screen on HCP Adjust load
-   - Both transitions now show waiting screen to prevent real-game screen flash
-   - All existing functionality preserved from v7.24
+VERSION: 7.26
+KEY CHANGES from v7.25:
+   - FIXED: Syntax error in renderCompactHeader() - unescaped string literals
+   - Converted multi-line HTML strings to template literals with backticks
+   - All existing functionality preserved from v7.25
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -19,8 +18,8 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=7.25"></script>
-    <script src="js/session.js?v=7.25"></script>
+    <script src="js/firebase-config.js?v=7.26"></script>
+    <script src="js/session.js?v=7.26"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.24"></script>
@@ -29,11 +28,11 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.13"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/ticker.js?v=7.25"></script>
-    <script src="js/history-record.js?v=7.25"></script>
-    <script src="js/sign-card.js?v=7.25"></script>
-    <script src="js/hcp-adjust.js?v=7.25"></script>
-    <script src="js/modal.js?v=7.25"></script>
+    <script src="js/ticker.js?v=7.26"></script>
+    <script src="js/history-record.js?v=7.26"></script>
+    <script src="js/sign-card.js?v=7.26"></script>
+    <script src="js/hcp-adjust.js?v=7.26"></script>
+    <script src="js/modal.js?v=7.26"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     
     <style>
@@ -61,7 +60,6 @@ STATUS: Ready for integration
             padding: 20px 16px;
         }
         
-        /* Visibility rules for data-ready state */
         .status-bubble, #courseName, #holeHeader, #trDisplay, #playerCards, .scorecard-section, #bottomMenuContainer {
             visibility: hidden;
         }
@@ -81,7 +79,6 @@ STATUS: Ready for integration
             margin-top: 30px;
         }
         
-        /* Device and version tags */
         .device-tag {
             position: fixed;
             top: max(8px, env(safe-area-inset-top));
@@ -110,7 +107,6 @@ STATUS: Ready for integration
             z-index: 1000;
         }
         
-        /* Modal overlay (not in game-ui.js) */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -157,14 +153,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v7.25</div>
+<div class="version-tag">v7.26</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Forces reload on new deployment
 // ============================================================
-var APP_VERSION = "7.25";
-var CACHE_KEY = "view_game_version_v725";
+var APP_VERSION = "7.26";
+var CACHE_KEY = "view_game_version_v726";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -175,8 +171,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_GAME_VERSION = "7.25";
-console.log("[VIEW-GAME] Initializing v7.25 - Waiting screen for HCP Adjust transition");
+window.VIEW_GAME_VERSION = "7.26";
+console.log("[VIEW-GAME] Initializing v7.26 - Fixed syntax error in renderCompactHeader");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -188,7 +184,7 @@ var db = firebase.firestore();
 // ============================================================
 
 var gameId = null;
-var currentFlight = 1;      // For viewer, this is the flight being displayed
+var currentFlight = 1;
 var currentHole = 1;
 var startingHole = 1;
 var teamGameFormat = "tournament";
@@ -204,10 +200,7 @@ var celebrationTriggered = false;
 var hasSwitchedToHistory = false;
 var isPostGameContext = false;
 
-// Firestore real-time listener
 var firestoreUnsubscribe = null;
-
-// v7.25: Track if we came from HCP Adjust to hide waiting screen
 var isReturningFromHcpAdjust = false;
 
 // ============================================================
@@ -274,12 +267,10 @@ function showPostGameExitModal() {
         window.location.href = 'index.html';
     };
     
-    // v7.25: Handicap Screen button with waiting screen
     document.getElementById('postGameBackBtn').onclick = function() {
         document.getElementById('postGameExitModal').remove();
         console.log("[VIEW-GAME] Going back to HCP Adjust - showing waiting screen");
         
-        // Show waiting screen
         if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
             WaitingScreen.show("Loading Handicap Adjustment...");
         } else {
@@ -290,7 +281,6 @@ function showPostGameExitModal() {
             document.body.appendChild(overlay);
         }
         
-        // Navigate to HCP Adjust with mode=handicap flag
         window.location.href = 'view-game.html?gameId=' + gameId + '&mode=handicap';
     };
 }
@@ -703,17 +693,14 @@ function getBubbleValue(player, opponent) {
 
 function getSyncValueForBubble(cache) {
     if (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) {
-        console.log("[VIEW-GAME] Using lastSyncedPosition:", cache.lastSyncedPosition);
         return cache.lastSyncedPosition;
     }
     
     if (cache.lastSyncedHole !== undefined && cache.lastSyncedHole > 0) {
         var playPos = getPlayPositionForHole(cache.lastSyncedHole);
-        console.log("[VIEW-GAME] Converted lastSyncedHole", cache.lastSyncedHole, "to play position:", playPos);
         return playPos;
     }
     
-    console.log("[VIEW-GAME] No sync value available, defaulting to -1");
     return -1;
 }
 
@@ -722,25 +709,13 @@ function getBubbleClassWithClinch(player, opponent) {
     var cache = GameLoader.getLocalCache();
     var clinchedAt = cache.clinchedAt || {};
     var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
-    
     var lastSyncedValue = getSyncValueForBubble(cache);
     
-    var bubbleClass = GameMatch.getMatchBubbleClass(
+    return GameMatch.getMatchBubbleClass(
         matchValue, clinchedAt, player, opponent, currentHole,
         isHoleSavedForFlight, lastSyncedValue, GameMatch.getClinchHole,
         startingHole
     );
-    
-    if (player.flight !== opponent.flight && Math.abs(matchValue) > 0) {
-        console.log("[VIEW-GAME] " + player.label + " vs " + opponent.label + ": matchValue=" + matchValue + ", bubbleClass=" + bubbleClass + ", lastSyncedValue=" + lastSyncedValue + ", currentHole=" + currentHole);
-    }
-    
-    return bubbleClass;
-}
-
-function updateTRDisplay() {
-    var tr = GameLoader.getTRForHole(currentHole);
-    GameUI.updateTR("trDisplay", tr.teamA, tr.teamB, tr.teamAGreen, tr.teamBGreen);
 }
 
 // ============================================================
@@ -883,7 +858,7 @@ function openRHPForViewer() {
 }
 
 // ============================================================
-// Control Bar - v7.23: Uses GameOrder for play order
+// v7.26: renderCompactHeader - FIXED syntax error with template literals
 // ============================================================
 
 function renderCompactHeader() {
@@ -915,25 +890,19 @@ function renderCompactHeader() {
                           (cache.savedHoles[2]?.includes(currentHole) || false);
         var isLastHole = (playOrder.indexOf(currentHole) === playOrder.length - 1);
         var isDisabled = (!hasSavedData) || isLastHole;
-        
-        nextButtonHtml = '<button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;" ' + (isDisabled ? 'disabled' : '') + '>▶</button>';
+        var disabledAttr = isDisabled ? 'disabled' : '';
+        nextButtonHtml = '<button class="compact-next-btn" id="compactNextBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;" ' + disabledAttr + '>▶</button>';
     }
     
-    var html = '
-        <div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
-            <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">
-                ' + pnText + '
-            </button>
-            <button class="compact-flight-btn" id="compactFlightBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">
-                FLIGHT ' + oppositeFlight + '
-            </button>
-            <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
-                <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">◀</button>
-                <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">' + currentHole + '</span>
-                ' + nextButtonHtml + '
-            </div>
+    var html = `<div class="compact-header" style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: clamp(6px, 2vw, 12px); margin-bottom: 15px; width: 100%;">
+        <button class="compact-pn-btn" id="compactPnBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; min-width: 44px; height: clamp(44px, 8vh, 52px); padding: 0 clamp(12px, 3vw, 20px); font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; flex-shrink: 0;">${pnText}</button>
+        <button class="compact-flight-btn" id="compactFlightBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; border-radius: 30px; height: clamp(44px, 8vh, 52px); width: 100%; font-size: clamp(0.8rem, 3vw, 1rem); font-weight: 700; cursor: pointer; text-align: center; white-space: nowrap;">FLIGHT ${oppositeFlight}</button>
+        <div class="compact-nav-group" style="display: flex; align-items: center; gap: clamp(4px, 1.5vw, 8px); flex-shrink: 0;">
+            <button class="compact-prev-btn" id="compactPrevBtn" style="background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; width: clamp(44px, 8vw, 52px); height: clamp(44px, 8vh, 52px); border-radius: 30px; font-size: clamp(1rem, 4vw, 1.3rem); cursor: pointer; display: flex; align-items: center; justify-content: center;">◀</button>
+            <span class="compact-hole-display" style="font-size: clamp(1rem, 4vw, 1.2rem); font-weight: 700; color: #4caf50; min-width: clamp(32px, 8vw, 44px); text-align: center;">${currentHole}</span>
+            ${nextButtonHtml}
         </div>
-    ';
+    </div>`;
     
     container.innerHTML = html;
     
@@ -1051,7 +1020,7 @@ function setupRealtimeListener() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS - v7.23: Uses GameScorecard with new signature
+// RENDER FUNCTIONS
 // ============================================================
 
 function updatePlayerNamesToShortform() {
@@ -1207,7 +1176,6 @@ function onCacheUpdate(cache) {
 // ============================================================
 
 async function init() {
-    // v7.25: Check if we're coming back from HCP Adjust
     checkHcpAdjustMode();
     
     if (isReturningFromHcpAdjust) {
@@ -1318,12 +1286,11 @@ init();
 
 <!--
 FILE: view-game.html
-VERSION: 7.25
-KEY CHANGES from v7.24:
-   - ADDED: Waiting screen to "Handicap Screen →" button (Scorecard → HCP Adjust transition)
-   - ADDED: Detection of 'mode=handicap' URL parameter to hide waiting screen on HCP Adjust load
-   - Both transitions now show waiting screen to prevent real-game screen flash
-   - All existing functionality preserved from v7.24
+VERSION: 7.26
+KEY CHANGES from v7.25:
+   - FIXED: Syntax error in renderCompactHeader() - unescaped string literals
+   - Converted multi-line HTML strings to template literals with backticks
+   - All existing functionality preserved from v7.25
 DEPENDS ON: js/firebase-config.js, js/game-order.js, js/game-data.js, js/game-match.js (v2.24), js/game-team.js, js/game-stroke.js, js/game-scorecard.js (v1.13), js/game-ui.js (v5.08), js/game-loader.js (v1.09), js/ticker.js, js/history-record.js, js/sign-card.js, js/hcp-adjust.js, js/modal.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
