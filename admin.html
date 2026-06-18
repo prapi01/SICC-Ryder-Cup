@@ -1,12 +1,13 @@
 <!--
 FILE: admin.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v1.08
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: js/settings.js dependency for user preferences
+   - ADDED: Pinch-to-Zoom toggle button in settings menu
+   - ADDED: toggleZoomSetting() function for immediate effect
+   - Shows current zoom status on button label
+   - All existing functionality preserved from v1.09
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -21,6 +22,7 @@ STATUS: Ready for integration
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
     <script src="js/modal.js"></script>
+    <script src="js/settings.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -102,6 +104,12 @@ STATUS: Ready for integration
             font-size: 0.65rem; 
             color: #888; 
         }
+        .admin-btn .status {
+            font-size: 0.65rem;
+            color: #ffaa44;
+            font-weight: 600;
+            margin-top: 2px;
+        }
         
         /* Back button - matches admin buttons */
         .back-btn {
@@ -141,13 +149,13 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.09</div>
+<div class="version-tag">v1.10</div>
 
 <script>
-// FILE: admin.html - VERSION 1.09
+// FILE: admin.html - VERSION 1.10
 
-var VERSION = "1.09";
-var CACHE_KEY = "admin_version_v109";
+var VERSION = "1.10";
+var CACHE_KEY = "admin_version_v110";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -198,6 +206,24 @@ function goToCourses() {
 
 function goBackToMenu() {
     window.location.href = "index.html";
+}
+
+// v1.10: Toggle pinch-to-zoom setting - immediate effect
+function toggleZoomSetting() {
+    if (typeof AppSettings === 'undefined') {
+        console.error("[ADMIN] AppSettings not loaded");
+        Modal.alert("Settings module not loaded. Please refresh.");
+        return;
+    }
+    
+    var newState = AppSettings.toggleZoom();
+    var label = document.getElementById('zoomLabel');
+    if (label) {
+        label.textContent = 'PINCH-TO-ZOOM: ' + (newState ? 'ON' : 'OFF');
+    }
+    
+    // Show confirmation
+    Modal.alert('🔍 Pinch-to-Zoom is now ' + (newState ? 'ENABLED' : 'DISABLED') + '.\n\nChanges take effect immediately on all pages.');
 }
 
 // v1.08: Updated duplicateMasterRecord to use Modal.alert and Modal.confirm
@@ -281,6 +307,13 @@ function initHiddenAdmin() {
 }
 
 function render() {
+    // Get current zoom status for display
+    var zoomEnabled = false;
+    if (typeof AppSettings !== 'undefined') {
+        zoomEnabled = AppSettings.getZoomEnabled();
+    }
+    var zoomStatusText = zoomEnabled ? 'ON' : 'OFF';
+    
     var html = `
         <div class="header">
             <div class="title">⚙️ GAME SETTINGS</div>
@@ -305,6 +338,14 @@ function render() {
                 <div class="label">COURSE MANAGEMENT</div>
                 <div class="desc">Add or edit courses</div>
             </div>
+            
+            <!-- v1.10: Pinch-to-Zoom Toggle -->
+            <div class="admin-btn" onclick="toggleZoomSetting()">
+                <div class="icon">🔍</div>
+                <div class="label" id="zoomLabel">PINCH-TO-ZOOM: ${zoomStatusText}</div>
+                <div class="desc">Toggle pinch-to-zoom on/off (instant effect)</div>
+                <div class="status">Current: ${zoomStatusText}</div>
+            </div>
         </div>
         
         <div class="back-btn" onclick="goBackToMenu()">
@@ -321,6 +362,7 @@ function render() {
 window.duplicateMasterRecord = duplicateMasterRecord;
 window.initHiddenAdmin = initHiddenAdmin;
 window.generateGameId = generateGameId;
+window.toggleZoomSetting = toggleZoomSetting;
 window.displayGameId = function(gameId) {
     // Optional: display game ID in device tag
     var deviceTag = document.getElementById("deviceTag");
@@ -346,12 +388,13 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v1.08
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - ADDED: js/settings.js dependency for user preferences
+   - ADDED: Pinch-to-Zoom toggle button in settings menu
+   - ADDED: toggleZoomSetting() function for immediate effect
+   - Shows current zoom status on button label
+   - All existing functionality preserved from v1.09
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
