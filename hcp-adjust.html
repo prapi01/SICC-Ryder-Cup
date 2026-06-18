@@ -1,12 +1,10 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Standalone handicap adjustment page
-   - Extracted from view-game.html modal
-   - Shows handicap adjustment table with full page layout
-   - Navigation: Scorecard → view-game.html, Celebration → replay, Main Menu → index.html
-   - Uses WaitingScreen for transitions
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Container ID changed from "hcpContent" to "hcpTableContainer" to match hcp-adjust.js
+   - Removed redundant hcpContent wrapper
+   - All existing functionality preserved from v1.00
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -23,9 +21,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.00"></script>
-    <script src="js/session.js?v=1.00"></script>
-    <script src="js/modal.js?v=1.00"></script>
+    <script src="js/firebase-config.js?v=1.01"></script>
+    <script src="js/session.js?v=1.01"></script>
+    <script src="js/modal.js?v=1.01"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -108,8 +106,8 @@ STATUS: Ready for integration
             margin-top: 4px;
         }
         
-        /* HCP Table container - styles from hcp-adjust.js showAdjustmentTable */
-        .hcp-table-container {
+        /* v1.01: hcpTableContainer styles - matches hcp-adjust.js renderTableToContainer */
+        #hcpTableContainer {
             background: #1a1a1a;
             border-radius: 24px;
             padding: 12px;
@@ -119,14 +117,14 @@ STATUS: Ready for integration
             -webkit-overflow-scrolling: touch;
         }
         
-        .hcp-table-container table {
+        #hcpTableContainer table {
             width: 100%;
             border-collapse: collapse;
             font-size: 0.8rem;
             min-width: 340px;
         }
         
-        .hcp-table-container th {
+        #hcpTableContainer th {
             padding: 8px 4px;
             text-align: center;
             font-size: 0.75rem;
@@ -134,38 +132,38 @@ STATUS: Ready for integration
             color: #4caf50;
         }
         
-        .hcp-table-container th:first-child {
+        #hcpTableContainer th:first-child {
             text-align: left;
             width: 45px;
         }
         
-        .hcp-table-container th:nth-child(2) {
+        #hcpTableContainer th:nth-child(2) {
             width: 38px;
         }
         
-        .hcp-table-container th:nth-child(3) {
+        #hcpTableContainer th:nth-child(3) {
             width: 55px;
         }
         
-        .hcp-table-container th:nth-child(4) {
+        #hcpTableContainer th:nth-child(4) {
             width: 55px;
         }
         
-        .hcp-table-container th:nth-child(5) {
+        #hcpTableContainer th:nth-child(5) {
             width: 38px;
         }
         
-        .hcp-table-container td {
+        #hcpTableContainer td {
             padding: 6px 4px;
             text-align: center;
             border-bottom: 1px solid #333;
         }
         
-        .hcp-table-container td:first-child {
+        #hcpTableContainer td:first-child {
             text-align: left;
         }
         
-        .hcp-table-container .team-header td {
+        #hcpTableContainer .team-header td {
             padding: 6px 4px;
             text-align: center;
             color: #4caf50;
@@ -175,12 +173,12 @@ STATUS: Ready for integration
             border-top: 2px solid #000;
         }
         
-        .hcp-table-container .anchor-row td {
+        #hcpTableContainer .anchor-row td {
             color: #ffaa44;
             font-weight: 600;
         }
         
-        .hcp-table-container .final-zero td {
+        #hcpTableContainer .final-zero td {
             color: #ffaa44;
             font-weight: 700;
         }
@@ -265,7 +263,8 @@ STATUS: Ready for integration
         <div class="hcp-subtitle" id="gameInfo">Loading...</div>
     </div>
     
-    <div id="hcpContent">
+    <!-- v1.01: Changed from hcpContent to hcpTableContainer to match hcp-adjust.js -->
+    <div id="hcpTableContainer">
         <div class="loading-placeholder">⛳ Loading handicap data...</div>
     </div>
     
@@ -277,14 +276,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.00</div>
+<div class="version-tag">v1.01</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING
 // ============================================================
-var APP_VERSION = "1.00";
-var CACHE_KEY = "hcp_adjust_version";
+var APP_VERSION = "1.01";
+var CACHE_KEY = "hcp_adjust_version_v101";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -295,8 +294,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.00";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.00 - Standalone page");
+window.HCP_ADJUST_PAGE_VERSION = "1.01";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.01 - Fixed container ID");
 
 // ============================================================
 // Main Logic
@@ -394,11 +393,8 @@ function loadHcpData() {
     }
     
     console.log("[HCP-ADJUST-PAGE] Loading game:", gameId);
-    
-    // Show loading state
     document.getElementById('gameInfo').textContent = 'Loading game data...';
     
-    // Load game data using GameLoader
     if (typeof GameLoader === 'undefined') {
         document.getElementById('debug').textContent = 'Error: GameLoader not loaded';
         return;
@@ -422,8 +418,8 @@ function loadHcpData() {
         
         console.log("[HCP-ADJUST-PAGE] Cache loaded, calling HandicapAdjustment.initForViewer");
         
-        // Call HandicapAdjustment.initForViewer to render the table
         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForViewer) {
+            // v1.01: initForViewer will render into hcpTableContainer
             HandicapAdjustment.initForViewer(
                 gameId,
                 cache.players || [],
@@ -435,10 +431,16 @@ function loadHcpData() {
                 cache.results || null
             );
             
-            // Buttons are now rendered inside the table, but we also render our own buttons
-            // Need to wait for the table to render, then add our buttons
+            // Buttons are rendered separately
             setTimeout(function() {
-                renderButtons('Anchor');
+                // Get anchor from calculation result or use default
+                var anchorName = 'Anchor';
+                if (cache.players && cache.players.length > 0) {
+                    // Sort by handicap to find lowest
+                    var sorted = cache.players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
+                    anchorName = sorted[0]?.name || 'Anchor';
+                }
+                renderButtons(anchorName);
             }, 300);
         } else {
             console.error("[HCP-ADJUST-PAGE] HandicapAdjustment.initForViewer not available");
@@ -453,7 +455,6 @@ function loadHcpData() {
 
 function init() {
     console.log("[HCP-ADJUST-PAGE] Initializing...");
-    
     getUrlParams();
     
     if (!gameId) {
@@ -462,7 +463,6 @@ function init() {
         return;
     }
     
-    // Set device tag
     SessionManager.getShortNameOnly().then(function(name) {
         document.getElementById('deviceTag').textContent = '🏌️ ' + name;
     }).catch(function() {
@@ -472,7 +472,6 @@ function init() {
     loadHcpData();
 }
 
-// Wait for DOM and dependencies
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
@@ -485,13 +484,11 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Standalone handicap adjustment page
-   - Extracted from view-game.html modal
-   - Shows handicap adjustment table with full page layout
-   - Navigation: Scorecard → view-game.html, Celebration → replay, Main Menu → index.html
-   - Uses WaitingScreen for transitions
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Container ID changed from "hcpContent" to "hcpTableContainer" to match hcp-adjust.js
+   - Removed redundant hcpContent wrapper
+   - All existing functionality preserved from v1.00
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
