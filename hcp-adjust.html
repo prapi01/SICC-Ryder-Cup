@@ -1,11 +1,11 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - REMOVED: All waiting screen elements (title, subtitle, loading text, placeholder)
-   - Page now shows only table container and buttons
-   - Waiting screen is handled by WaitingScreen module during transitions
-   - All existing functionality preserved from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - REMOVED: hcpTableContainer from HTML - now created dynamically by JavaScript
+   - No empty container renders before table loads
+   - Eliminates narrow green rectangle flash
+   - All existing functionality preserved from v1.12
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -22,9 +22,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.12"></script>
-    <script src="js/session.js?v=1.12"></script>
-    <script src="js/modal.js?v=1.12"></script>
+    <script src="js/firebase-config.js?v=1.13"></script>
+    <script src="js/session.js?v=1.13"></script>
+    <script src="js/modal.js?v=1.13"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -34,7 +34,7 @@ STATUS: Ready for integration
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/hcp-adjust.js?v=2.49"></script>
+    <script src="js/hcp-adjust.js?v=2.50"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -89,81 +89,7 @@ STATUS: Ready for integration
             z-index: 1000;
         }
         
-        #hcpTableContainer {
-            background: #1a1a1a;
-            border-radius: 24px;
-            padding: 12px;
-            border: 2px solid #4caf50;
-            margin-bottom: 16px;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        
-        #hcpTableContainer table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.8rem;
-            min-width: 340px;
-        }
-        
-        #hcpTableContainer th {
-            padding: 8px 4px;
-            text-align: center;
-            font-size: 0.75rem;
-            background: #1a3a1a;
-            color: #4caf50;
-        }
-        
-        #hcpTableContainer th:first-child {
-            text-align: left;
-            width: 45px;
-        }
-        
-        #hcpTableContainer th:nth-child(2) {
-            width: 38px;
-        }
-        
-        #hcpTableContainer th:nth-child(3) {
-            width: 55px;
-        }
-        
-        #hcpTableContainer th:nth-child(4) {
-            width: 55px;
-        }
-        
-        #hcpTableContainer th:nth-child(5) {
-            width: 38px;
-        }
-        
-        #hcpTableContainer td {
-            padding: 6px 4px;
-            text-align: center;
-            border-bottom: 1px solid #333;
-        }
-        
-        #hcpTableContainer td:first-child {
-            text-align: left;
-        }
-        
-        #hcpTableContainer .team-header td {
-            padding: 6px 4px;
-            text-align: center;
-            color: #4caf50;
-            font-weight: 700;
-            font-size: 0.75rem;
-            background: #1a3a1a;
-            border-top: 2px solid #000;
-        }
-        
-        #hcpTableContainer .anchor-row td {
-            color: #ffaa44;
-            font-weight: 600;
-        }
-        
-        #hcpTableContainer .final-zero td {
-            color: #ffaa44;
-            font-weight: 700;
-        }
+        /* v1.13: No container styles needed - created by JavaScript */
         
         .hcp-buttons {
             display: flex;
@@ -233,9 +159,8 @@ STATUS: Ready for integration
 <body>
 
 <div class="container" id="mainContainer">
-    <!-- v1.12: NO waiting screen elements - no title, no subtitle, no loading text -->
-    
-    <div id="hcpTableContainer"></div>
+    <!-- v1.13: No container in HTML - created dynamically by JavaScript -->
+    <!-- Nothing renders until table is ready -->
     
     <div class="hcp-buttons" id="hcpButtons"></div>
     
@@ -243,14 +168,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.12</div>
+<div class="version-tag">v1.13</div>
 
 <script>
 // ============================================================
 // VERSION CACHE-BUSTING - Preserve all query parameters
 // ============================================================
-var APP_VERSION = "1.12";
-var CACHE_KEY = "hcp_adjust_version_v112";
+var APP_VERSION = "1.13";
+var CACHE_KEY = "hcp_adjust_version_v113";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -272,8 +197,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.12";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.12 - Clean page, no waiting elements");
+window.HCP_ADJUST_PAGE_VERSION = "1.13";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.13 - Container created dynamically");
 
 // ============================================================
 // Main Logic
@@ -403,6 +328,7 @@ function loadHcpData() {
         console.log("[HCP-ADJUST-PAGE] Cache loaded, players:", cache.players ? cache.players.length : 0);
         
         if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.initForViewer) {
+            // v1.13: initForViewer will create the container dynamically
             HandicapAdjustment.initForViewer(
                 gameId,
                 cache.players || [],
@@ -463,12 +389,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - REMOVED: All waiting screen elements (title, subtitle, loading text, placeholder)
-   - Page now shows only table container and buttons
-   - Waiting screen is handled by WaitingScreen module during transitions
-   - All existing functionality preserved from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - REMOVED: hcpTableContainer from HTML - now created dynamically by JavaScript
+   - No empty container renders before table loads
+   - Eliminates narrow green rectangle flash
+   - All existing functionality preserved from v1.12
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
