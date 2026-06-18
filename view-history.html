@@ -1,12 +1,13 @@
 <!--
 FILE: view-history.html
-VERSION: 8.28
-KEY CHANGES from v8.27:
-   - ADDED: Safety check for gameId before navigating to view-game.html
-   - Prevents navigation with null/undefined gameId
-   - Shows Modal.alert if gameId is missing
-   - All existing functionality preserved from v8.27
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js
+VERSION: 8.29
+KEY CHANGES from v8.28:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v8.28
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -14,13 +15,14 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SICC Ryder Cup - HISTORY VIEWER</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/settings.js"></script>
     <script src="js/firebase-retry.js"></script>
     <script src="js/modal.js"></script>
     
@@ -339,14 +341,23 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.28</div>
+<div class="version-tag">v8.29</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.28: Preserves all URL parameters
+// Apply user settings IMMEDIATELY before anything else
 // ============================================================
-var APP_VERSION = "8.28";
-var CACHE_KEY = "view_history_version_v828";
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[VIEW-HISTORY] AppSettings not loaded, zoom may be enabled by default");
+}
+
+// ============================================================
+// VERSION CACHE-BUSTING - v8.29: Preserves all URL parameters
+// ============================================================
+var APP_VERSION = "8.29";
+var CACHE_KEY = "view_history_version_v829";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -364,8 +375,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.28";
-console.log("[VIEW-HISTORY] Initializing v8.28 - Added gameId safety check");
+window.VIEW_HISTORY_VERSION = "8.29";
+console.log("[VIEW-HISTORY] Initializing v8.29 - Added settings.js zoom control");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -1174,12 +1185,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.28
-KEY CHANGES from v8.27:
-   - ADDED: Safety check for gameId before navigating to view-game.html
-   - Prevents navigation with null/undefined gameId
-   - Shows Modal.alert if gameId is missing
-   - All existing functionality preserved from v8.27
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js
+VERSION: 8.29
+KEY CHANGES from v8.28:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v8.28
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
