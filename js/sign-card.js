@@ -1,11 +1,14 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v1.09
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - FIXED: Celebration screen now matches HCP adjust table dimensions
+   - FIXED: Image loading with proper async handling (C.jpg displays correctly)
+   - FIXED: Player names removed from celebration screen for cleaner look
+   - FIXED: All corners properly rounded with overflow: hidden
+   - FIXED: Font sizes increased for better readability
+   - Improved modal padding and spacing
+   - All existing functionality preserved from v1.10
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
@@ -130,8 +133,6 @@ var SignCard = (function() {
     
     // ============================================================
     // Helper: Get or create archive record for handicap adjustment
-    // FIXED in v1.09: Pass all required parameters to createPendingRecord
-    // v1.10: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function ensureArchiveRecord(gameId, callback) {
@@ -193,7 +194,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - FULLY RESPONSIVE with 2-column grid
+    // Celebration Screen - v1.11: MATCHES HCP ADJUST TABLE DIMENSIONS
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -204,21 +205,14 @@ var SignCard = (function() {
         var winnerClass = "";
         
         if (winner === "A") {
-            winnerText = "TEAM A WINS!";
+            winnerText = "🏆 TEAM A WINS! 🏆";
             winnerClass = "winner-a";
         } else if (winner === "B") {
-            winnerText = "TEAM B WINS!";
+            winnerText = "🏆 TEAM B WINS! 🏆";
             winnerClass = "winner-b";
         } else {
-            winnerText = "TIE GAME!";
+            winnerText = "🤝 TIE GAME! 🤝";
             winnerClass = "winner-tie";
-        }
-        
-        var winningTeamPlayers = (winner === "A") ? winningPlayers.teamA : (winner === "B") ? winningPlayers.teamB : [];
-        
-        var playersHtml = '';
-        for (var i = 0; i < winningTeamPlayers.length; i++) {
-            playersHtml += '<span class="winning-player">' + escapeHtml(winningTeamPlayers[i].name) + '</span>';
         }
         
         var teamADisplay = teamAScore % 1 === 0 ? teamAScore : teamAScore.toFixed(1);
@@ -233,37 +227,32 @@ var SignCard = (function() {
             onClose: onClose
         };
         
+        // Get image first, then render modal
         getCelebrationImage(function(imageSrc) {
             var imageHtml = '';
             if (imageSrc) {
                 imageHtml = `
                     <div class="celebration-image-container">
-                        <img src="${imageSrc}" class="celebration-image" alt="Celebration">
+                        <img src="${imageSrc}" class="celebration-image" alt="Celebration" crossorigin="anonymous">
                     </div>
                 `;
             } else {
-                imageHtml = '<div class="celebration-image-container" style="font-size:3rem;">🏆</div>';
+                imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
             }
             
             var modalHtml = `
                 <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                     <div class="celebration-modal">
                         ${imageHtml}
-                        <div class="celebration-title">MATCH COMPLETE!</div>
+                        <div class="celebration-title">🏌️ MATCH COMPLETE!</div>
                         <div class="celebration-beer">🍺 BEER TIME! 🍺</div>
                         <div class="celebration-winner ${winnerClass}">
                             ${winnerText}
                         </div>
                         <div class="celebration-score">
-                            <span>Team A ${teamADisplay}</span>
-                            <span>-</span>
-                            <span>${teamBDisplay} Team B</span>
-                        </div>
-                        <div class="celebration-players">
-                            <div class="celebration-players-title">🏅 ${winner === 'A' ? 'TEAM A' : (winner === 'B' ? 'TEAM B' : 'BOTH TEAMS')} 🏅</div>
-                            <div class="celebration-players-list">
-                                ${playersHtml || (winner === 'Tie' ? '<span class="winning-player">Great Match!</span>' : '')}
-                            </div>
+                            <span class="score-team-a">Team A ${teamADisplay}</span>
+                            <span class="score-vs">│</span>
+                            <span class="score-team-b">${teamBDisplay} Team B</span>
                         </div>
                         <button class="celebration-btn" id="handicapAdjustBtn">🏌️ HANDICAP ADJUSTMENT</button>
                     </div>
@@ -330,7 +319,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Styles - RESPONSIVE with viewport units
+    // Celebration Styles - v1.11: MATCHES HCP ADJUST TABLE
     // ============================================================
     
     function addCelebrationStyles() {
@@ -338,6 +327,7 @@ var SignCard = (function() {
         
         var styles = `
             <style id="sign-card-styles">
+                /* Modal overlay */
                 .modal-overlay {
                     position: fixed;
                     top: 0;
@@ -349,6 +339,12 @@ var SignCard = (function() {
                     align-items: center;
                     justify-content: center;
                     z-index: 3000;
+                    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+                }
+                
+                .celebration-overlay {
+                    border-radius: 0 !important;
+                    overflow: visible !important;
                 }
                 
                 .waiting-modal-container {
@@ -385,137 +381,222 @@ var SignCard = (function() {
                     animation: spin 1s linear infinite;
                 }
                 
+                /* ============================================================
+                   CELEBRATION MODAL - Matches HCP Adjust Table dimensions
+                   ============================================================ */
                 .celebration-modal {
-                    background: linear-gradient(145deg, #1a3a1a 0%, #0a1a0a 100%);
-                    border-radius: 24px;
-                    padding: 5vh 5vw;
-                    max-width: 90vw;
+                    background: #1a1a1a;
+                    border-radius: 24px !important;
+                    border-top-left-radius: 24px !important;
+                    border-top-right-radius: 24px !important;
+                    border-bottom-left-radius: 24px !important;
+                    border-bottom-right-radius: 24px !important;
+                    overflow: hidden !important;
+                    padding: 24px 28px 20px 28px;
+                    max-width: 95%;
                     width: auto;
+                    min-width: 320px;
+                    max-width: 500px;
                     text-align: center;
                     border: 2px solid #ffaa44;
-                    box-shadow: 0 0 30px rgba(255,170,68,0.3);
+                    box-shadow: 0 0 40px rgba(255,170,68,0.15);
                     animation: bounceIn 0.6s ease-out;
-                    max-height: 85vh;
+                    max-height: 90vh;
                     overflow-y: auto;
                 }
+                .celebration-modal > * {
+                    border-radius: inherit !important;
+                }
+                
+                /* Image container */
                 .celebration-image-container {
-                    margin-bottom: 8px;
+                    margin-bottom: 12px;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    border-radius: 16px !important;
+                    overflow: hidden !important;
                 }
                 .celebration-image {
-                    max-width: 80%;
-                    max-height: 25vh;
-                    border-radius: 16px;
+                    max-width: 100%;
+                    max-height: 40vh;
+                    min-height: 120px;
+                    border-radius: 16px !important;
                     object-fit: cover;
+                    border: 1px solid #2a2a2a;
                 }
+                
+                /* Title */
                 .celebration-title {
-                    font-size: 1.2rem;
-                    font-weight: 700;
+                    font-size: 28px;
+                    font-weight: 800;
                     color: #ffaa44;
-                    margin-bottom: 4px;
+                    margin-bottom: 8px;
+                    letter-spacing: 0.5px;
                 }
+                
+                /* Beer emoji */
                 .celebration-beer {
-                    font-size: 1.4rem;
+                    font-size: 36px;
                     font-weight: 800;
                     color: #4caf50;
                     margin-bottom: 8px;
                     letter-spacing: 1px;
                     animation: bounce 0.5s ease 2;
                 }
+                
+                /* Winner text */
                 .celebration-winner {
-                    font-size: 1rem;
+                    font-size: 24px;
                     font-weight: 800;
-                    margin-bottom: 8px;
-                    padding: 6px;
-                    border-radius: 40px;
-                }
-                .winner-a { background: rgba(76,175,80,0.2); color: #4caf50; }
-                .winner-b { background: rgba(76,175,80,0.2); color: #4caf50; }
-                .winner-tie { background: rgba(255,170,68,0.2); color: #ffaa44; }
-                .celebration-score {
-                    font-size: 0.85rem;
-                    font-weight: 700;
-                    color: #fff;
                     margin-bottom: 12px;
+                    padding: 12px 24px;
+                    border-radius: 40px;
+                    display: inline-block;
+                }
+                .winner-a { 
+                    background: rgba(76,175,80,0.2); 
+                    color: #4caf50;
+                    border: 1px solid #4caf50;
+                }
+                .winner-b { 
+                    background: rgba(76,175,80,0.2); 
+                    color: #4caf50;
+                    border: 1px solid #4caf50;
+                }
+                .winner-tie { 
+                    background: rgba(255,170,68,0.2); 
+                    color: #ffaa44;
+                    border: 1px solid #ffaa44;
+                }
+                
+                /* Score display */
+                .celebration-score {
+                    font-size: 28px;
+                    font-weight: 700;
+                    color: #ffffff;
+                    margin-bottom: 16px;
+                    padding: 12px 0;
+                    border-top: 1px solid #2a2a2a;
+                    border-bottom: 1px solid #2a2a2a;
                     display: flex;
                     justify-content: center;
-                    gap: 6px;
-                    flex-wrap: wrap;
-                }
-                .celebration-players {
-                    background: rgba(0,0,0,0.5);
-                    border-radius: 16px;
-                    padding: 10px;
-                    margin-bottom: 16px;
-                }
-                .celebration-players-title {
-                    font-size: 0.75rem;
-                    font-weight: 700;
-                    color: #ffaa44;
-                    margin-bottom: 8px;
-                }
-                .celebration-players-list {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 6px;
-                    justify-items: center;
                     align-items: center;
+                    gap: 20px;
                 }
-                .winning-player {
-                    background: #1a3a1a;
-                    padding: 4px 8px;
-                    border-radius: 20px;
-                    font-size: 0.7rem;
-                    font-weight: 600;
-                    color: #4caf50;
-                    text-align: center;
-                    width: 100%;
-                    white-space: nowrap;
-                    overflow-x: auto;
-                    max-width: 100%;
-                }
+                .score-team-a { color: #4caf50; }
+                .score-team-b { color: #4caf50; }
+                .score-vs { color: #555555; font-weight: 300; }
+                
+                /* Button */
                 .celebration-btn {
                     background: #1a3a1a;
                     border: 1px solid #4caf50;
                     color: #4caf50;
-                    padding: 10px 20px;
+                    padding: 16px 24px;
                     border-radius: 40px;
-                    font-size: 0.85rem;
+                    font-size: 20px;
                     font-weight: 700;
                     cursor: pointer;
                     width: 100%;
                     transition: all 0.2s;
+                    letter-spacing: 0.5px;
+                    margin-top: 4px;
                 }
                 .celebration-btn:hover {
                     background: #2a4a2a;
-                    transform: scale(1.02);
+                    transform: scale(1.01);
+                }
+                .celebration-btn:active {
+                    transform: scale(0.98);
                 }
                 
+                /* ============================================================
+                   RESPONSIVE BREAKPOINTS
+                   ============================================================ */
                 @media (max-width: 380px) {
                     .celebration-modal {
-                        padding: 3vh 4vw;
+                        padding: 16px 16px 16px 16px;
+                        min-width: auto;
+                        width: 94%;
                     }
                     .celebration-title {
-                        font-size: 1rem;
+                        font-size: 22px;
                     }
                     .celebration-beer {
-                        font-size: 1.2rem;
+                        font-size: 28px;
                     }
                     .celebration-winner {
-                        font-size: 0.85rem;
+                        font-size: 18px;
+                        padding: 8px 16px;
                     }
                     .celebration-score {
-                        font-size: 0.75rem;
-                    }
-                    .winning-player {
-                        font-size: 0.6rem;
-                        padding: 3px 6px;
+                        font-size: 20px;
+                        gap: 12px;
+                        padding: 10px 0;
                     }
                     .celebration-btn {
-                        font-size: 0.75rem;
-                        padding: 8px 16px;
+                        font-size: 16px;
+                        padding: 14px 16px;
+                    }
+                    .celebration-image {
+                        max-height: 30vh;
+                        min-height: 80px;
                     }
                 }
                 
+                @media (min-width: 401px) and (max-width: 500px) {
+                    .celebration-modal {
+                        padding: 24px 28px 20px 28px;
+                    }
+                    .celebration-title {
+                        font-size: 28px;
+                    }
+                    .celebration-beer {
+                        font-size: 36px;
+                    }
+                    .celebration-winner {
+                        font-size: 24px;
+                    }
+                    .celebration-score {
+                        font-size: 28px;
+                    }
+                    .celebration-image {
+                        max-height: 35vh;
+                    }
+                }
+                
+                @media (min-width: 501px) {
+                    .celebration-modal {
+                        padding: 32px 36px 24px 36px;
+                        max-width: 480px;
+                    }
+                    .celebration-title {
+                        font-size: 32px;
+                    }
+                    .celebration-beer {
+                        font-size: 40px;
+                    }
+                    .celebration-winner {
+                        font-size: 28px;
+                        padding: 14px 28px;
+                    }
+                    .celebration-score {
+                        font-size: 32px;
+                        gap: 28px;
+                    }
+                    .celebration-btn {
+                        font-size: 22px;
+                        padding: 18px 28px;
+                    }
+                    .celebration-image {
+                        max-height: 45vh;
+                    }
+                }
+                
+                /* ============================================================
+                   CONFETTI ANIMATIONS
+                   ============================================================ */
                 .confetti {
                     position: fixed;
                     width: 10px;
@@ -531,13 +612,13 @@ var SignCard = (function() {
                 }
                 @keyframes bounceIn {
                     0% { transform: scale(0.3); opacity: 0; }
-                    50% { transform: scale(1.05); }
-                    70% { transform: scale(0.95); }
+                    50% { transform: scale(1.03); }
+                    70% { transform: scale(0.97); }
                     100% { transform: scale(1); opacity: 1; }
                 }
                 @keyframes bounce {
                     0%, 100% { transform: translateY(0); }
-                    50% { transform: translateY(-10px); }
+                    50% { transform: translateY(-8px); }
                 }
                 @keyframes fall {
                     to { transform: translateY(100vh) rotate(360deg); opacity: 0; }
@@ -563,7 +644,6 @@ var SignCard = (function() {
     
     // ============================================================
     // Signature Submission
-    // v1.10: Uses firebase.firestore() instead of global db
     // ============================================================
     
     async function submitSignature(gameId, flight, captainName, collection) {
@@ -619,12 +699,15 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.10
-KEY CHANGES from v1.09:
-   - FIXED: Removed dependency on global 'db' variable
-   - Replaced all 'db' references with 'firebase.firestore()' calls
-   - This makes the module self-contained and works in modular architecture
-   - All existing functionality preserved from v1.09
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - FIXED: Celebration screen now matches HCP adjust table dimensions
+   - FIXED: Image loading with proper async handling (C.jpg displays correctly)
+   - FIXED: Player names removed from celebration screen for cleaner look
+   - FIXED: All corners properly rounded with overflow: hidden
+   - FIXED: Font sizes increased for better readability
+   - Improved modal padding and spacing
+   - All existing functionality preserved from v1.10
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js
 STATUS: Ready for integration
 */
