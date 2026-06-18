@@ -1,0 +1,360 @@
+<!--
+FILE: post-game.html
+VERSION: 1.00
+KEY CHANGES:
+   - NEW: Standalone post-game entry page
+   - Shows GAME COMPLETE modal with "SEE RESULTS" button
+   - On "SEE RESULTS" → goes to Celebration → HCP Adjust
+   - Used by index.html GAME DAY button for completed games
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-loader.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/firebase-retry.js
+STATUS: Ready for integration
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <title>SICC Ryder Cup - POST GAME</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js?v=1.00"></script>
+    <script src="js/session.js?v=1.00"></script>
+    <script src="js/modal.js?v=1.00"></script>
+    <script src="js/waiting-screen.js?v=1.00"></script>
+    <script src="js/game-order.js?v=1.00"></script>
+    <script src="js/game-data.js?v=2.07"></script>
+    <script src="js/game-match.js?v=2.25"></script>
+    <script src="js/game-scorecard.js?v=1.16"></script>
+    <script src="js/game-ui.js?v=5.08"></script>
+    <script src="js/game-loader.js?v=1.09"></script>
+    <script src="js/sign-card.js?v=1.17"></script>
+    <script src="js/firebase-retry.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html, body {
+            min-height: 100vh;
+            background: #000;
+        }
+        
+        body {
+            background: #000;
+            font-family: system-ui, sans-serif;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+        .container {
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 16px;
+            text-align: center;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            left: max(8px, env(safe-area-inset-left));
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            cursor: pointer;
+        }
+        
+        .version-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        
+        .loading-placeholder {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+        }
+        
+        .debug {
+            text-align: center;
+            font-size: 0.6rem;
+            color: #555;
+            margin-top: 20px;
+        }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+        .game-complete-modal {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px 28px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        
+        .game-complete-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 12px;
+        }
+        
+        .game-complete-message {
+            font-size: 0.9rem;
+            color: #ccc;
+            margin-bottom: 16px;
+            line-height: 1.4;
+        }
+        
+        .game-complete-emojis {
+            font-size: 1.5rem;
+            margin-bottom: 24px;
+        }
+        
+        .game-complete-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 14px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+        }
+        
+        .game-complete-btn:hover {
+            background: #2a4a2a;
+        }
+        
+        .game-complete-btn:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="mainContainer">
+    <div id="content">
+        <div class="loading-placeholder">⛳ Loading game data...</div>
+    </div>
+    <div class="debug" id="debug"></div>
+</div>
+
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.00</div>
+
+<script>
+// ============================================================
+// VERSION CACHE-BUSTING
+// ============================================================
+var APP_VERSION = "1.00";
+var CACHE_KEY = "post_game_version_v100";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
+    window.location.href = window.location.pathname + "?v=" + APP_VERSION;
+}
+
+// ============================================================
+// Version Exposure for Console Debugging
+// ============================================================
+window.POST_GAME_PAGE_VERSION = "1.00";
+console.log("[POST-GAME] Initializing v1.00 - Post-game entry page");
+
+// ============================================================
+// Main Logic
+// ============================================================
+
+var gameId = null;
+var gameData = null;
+
+function getUrlParams() {
+    var params = new URLSearchParams(window.location.search);
+    gameId = params.get('gameId');
+    console.log("[POST-GAME] gameId:", gameId);
+}
+
+function showGameCompleteModal() {
+    var content = document.getElementById('content');
+    
+    var html = `
+        <div class="modal-overlay" id="postGameModal" style="position:relative; background:transparent; z-index:auto;">
+            <div class="game-complete-modal">
+                <div class="game-complete-title">🏆 GAME COMPLETE</div>
+                <div class="game-complete-message">Both cards have been signed!</div>
+                <div class="game-complete-emojis">🍺 🏆 🍺</div>
+                <button class="game-complete-btn" id="seeResultsBtn">🏆 SEE RESULTS</button>
+            </div>
+        </div>
+    `;
+    
+    content.innerHTML = html;
+    
+    document.getElementById('seeResultsBtn').addEventListener('click', function() {
+        console.log("[POST-GAME] SEE RESULTS clicked");
+        
+        // Store celebration data and go to celebration
+        var players = gameData.players || [];
+        var results = gameData.results || {};
+        var tr = results.tr || {};
+        var lastIdx = tr.teamA ? tr.teamA.length - 1 : 0;
+        var teamAScore = tr.teamA ? tr.teamA[lastIdx] : 9.5;
+        var teamBScore = tr.teamB ? tr.teamB[lastIdx] : 9.5;
+        var winner = teamAScore > teamBScore ? 'A' : (teamBScore > teamAScore ? 'B' : 'Tie');
+        
+        var winningPlayers = {
+            teamA: players.filter(function(p) { return p.team === "A"; }),
+            teamB: players.filter(function(p) { return p.team === "B"; })
+        };
+        
+        var celebrationData = {
+            winner: winner,
+            teamAScore: teamAScore,
+            teamBScore: teamBScore,
+            winningPlayers: winningPlayers,
+            gameId: gameId
+        };
+        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+        window._currentCelebrationData = celebrationData;
+        
+        // Go to celebration
+        if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+            SignCard.showCelebrationScreen(
+                winner,
+                teamAScore,
+                teamBScore,
+                winningPlayers,
+                gameId,
+                function() {
+                    console.log("[POST-GAME] Celebration complete - going to HCP Adjust");
+                    window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+                }
+            );
+        } else {
+            console.error("[POST-GAME] SignCard not loaded");
+            window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+        }
+    });
+}
+
+function loadGameData() {
+    if (!gameId) {
+        document.getElementById('debug').textContent = 'Error: No game ID provided';
+        return;
+    }
+    
+    console.log("[POST-GAME] Loading game:", gameId);
+    
+    if (typeof FirebaseRetry === 'undefined') {
+        document.getElementById('debug').textContent = 'Error: FirebaseRetry not loaded';
+        return;
+    }
+    
+    FirebaseRetry.getDocument("scheduledGames", gameId, {
+        onExit: function() {
+            window.location.href = "index.html";
+        }
+    }).then(function(doc) {
+        if (!doc.exists) {
+            document.getElementById('debug').textContent = 'Error: Game not found';
+            return;
+        }
+        
+        gameData = doc.data();
+        console.log("[POST-GAME] Game loaded, players:", gameData.players ? gameData.players.length : 0);
+        
+        // Check if game is complete
+        var signatures = gameData.signatures || {};
+        var f1Signed = signatures.f1?.signed === true;
+        var f2Signed = signatures.f2?.signed === true;
+        var isComplete = f1Signed && f2Signed;
+        
+        if (!isComplete) {
+            console.log("[POST-GAME] Game not complete - redirecting to pre-game");
+            window.location.href = 'pre-game.html?gameId=' + gameId;
+            return;
+        }
+        
+        // Show the GAME COMPLETE modal
+        showGameCompleteModal();
+        
+    }).catch(function(err) {
+        console.error("[POST-GAME] Error loading game:", err);
+        document.getElementById('debug').textContent = 'Error: ' + err.message;
+    });
+}
+
+function init() {
+    console.log("[POST-GAME] Initializing...");
+    
+    getUrlParams();
+    
+    if (!gameId) {
+        document.getElementById('debug').textContent = 'Error: No game ID in URL';
+        return;
+    }
+    
+    SessionManager.getShortNameOnly().then(function(name) {
+        document.getElementById('deviceTag').textContent = '🏌️ ' + name;
+    }).catch(function() {
+        document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
+    });
+    
+    loadGameData();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
+</script>
+
+</body>
+</html>
+
+<!--
+FILE: post-game.html
+VERSION: 1.00
+KEY CHANGES:
+   - NEW: Standalone post-game entry page
+   - Shows GAME COMPLETE modal with "SEE RESULTS" button
+   - On "SEE RESULTS" → goes to Celebration → HCP Adjust
+   - Used by index.html GAME DAY button for completed games
+DEPENDS ON: js/firebase-config.js, js/session.js, js/game-loader.js, js/sign-card.js, js/waiting-screen.js, js/modal.js, js/firebase-retry.js
+STATUS: Ready for integration
+-->
