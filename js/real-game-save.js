@@ -1,6 +1,6 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.07
+VERSION: 1.20
 KEY CHANGES from v1.06:
    - FIXED: updateLocalCacheWithResults() now updates game1.pointsA and game1.pointsB
    - Previously game1 points were not updated during cascade, causing TR values to remain static
@@ -11,11 +11,11 @@ STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.07";
+window.REAL_GAME_SAVE_VERSION = "1.20";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.07 - fixed game1 points in cascade");
+    console.log("[REAL-GAME-SAVE] Initializing v1.20 - fixed game1 points in cascade");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -116,7 +116,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.07] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.20] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -749,7 +749,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // v1.07: updateLocalCacheWithResults - FIXED game1 points
+    // v1.20: updateLocalCacheWithResults - FIXED game1 points
     // ============================================================
     
     function updateLocalCacheWithResults(resultsData) {
@@ -799,7 +799,7 @@ var RealGameSave = (function() {
         }
         
         // ============================================================
-        // v1.07: FIX - Update game1 points (Match Game) for cascade
+        // v1.20: FIX - Update game1 points (Match Game) for cascade
         // This was the missing piece - game1 points were never updated
         // during cascade, causing TR values to remain static
         // ============================================================
@@ -905,7 +905,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.07: Uses updated updateLocalCacheWithResults
+    // performSave - v1.20: Uses updated updateLocalCacheWithResults
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1081,7 +1081,7 @@ var RealGameSave = (function() {
                                     );
                                     
                                     if (loopResultsData) {
-                                        // v1.07: updateLocalCacheWithResults now updates game1 points too
+                                        // v1.20: updateLocalCacheWithResults now updates game1 points too
                                         updateLocalCacheWithResults(loopResultsData);
                                         if (renderAllCallback) renderAllCallback();
                                         cascadeResultsQueue.push({
@@ -1376,7 +1376,7 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.07
+VERSION: 1.20
 KEY CHANGES from v1.06:
    - FIXED: updateLocalCacheWithResults() now updates game1.pointsA and game1.pointsB
    - Previously game1 points were not updated during cascade, causing TR values to remain static
