@@ -1,12 +1,13 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.26
-KEY CHANGES from v3.25:
-   - ADDED: Safety check for gameId before navigating to view-game.html or real-game.html
-   - Prevents navigation with null/undefined gameId
-   - Shows Modal.alert if gameId is missing
-   - All existing functionality preserved from v3.25
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+VERSION: 3.27
+KEY CHANGES from v3.26:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v3.26
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -14,12 +15,13 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Ready to Play - SICC Ryder Cup</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/session.js"></script>
+    <script src="js/settings.js"></script>
     <script src="js/firebase-retry.js"></script>
     <script src="js/modal.js"></script>
     
@@ -634,13 +636,22 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.26</div>
+<div class="version-tag">v3.27</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.26
+// FILE: pre-game.html - VERSION 3.27
 
-var VERSION = "3.26";
-var CACHE_KEY = "pre_game_version_v326";
+// ============================================================
+// Apply user settings IMMEDIATELY before anything else
+// ============================================================
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[PRE-GAME] AppSettings not loaded, zoom may be enabled by default");
+}
+
+var VERSION = "3.27";
+var CACHE_KEY = "pre_game_version_v327";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -1691,12 +1702,13 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.26
-KEY CHANGES from v3.25:
-   - ADDED: Safety check for gameId before navigating to view-game.html or real-game.html
-   - Prevents navigation with null/undefined gameId
-   - Shows Modal.alert if gameId is missing
-   - All existing functionality preserved from v3.25
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
+VERSION: 3.27
+KEY CHANGES from v3.26:
+   - ADDED: js/settings.js dependency for user preferences
+   - CHANGED: Viewport meta tag now controlled by settings.js
+   - REMOVED: hardcoded user-scalable (now dynamic)
+   - AppSettings.init() called early in page load
+   - All existing functionality preserved from v3.26
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js, js/settings.js
 STATUS: Ready for integration
 -->
