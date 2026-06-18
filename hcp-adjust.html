@@ -1,10 +1,11 @@
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - FIXED: Main Menu button now shows confirmation modal before navigating to index.html
-   - Uses Modal.confirm for consistent UX with the rest of the app
-   - All existing functionality preserved from v1.18
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (gameId, etc.)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.19
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -21,9 +22,9 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=1.19"></script>
-    <script src="js/session.js?v=1.19"></script>
-    <script src="js/modal.js?v=1.19"></script>
+    <script src="js/firebase-config.js?v=1.20"></script>
+    <script src="js/session.js?v=1.20"></script>
+    <script src="js/modal.js?v=1.20"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
@@ -273,37 +274,33 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.19</div>
+<div class="version-tag">v1.20</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - Preserve all query parameters
+// VERSION CACHE-BUSTING - v1.20: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "1.19";
-var CACHE_KEY = "hcp_adjust_version_v119";
+var APP_VERSION = "1.20";
+var CACHE_KEY = "hcp_adjust_version_v120";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
     
+    // v1.20: Preserve ALL existing URL parameters (gameId, etc.)
     var currentParams = new URLSearchParams(window.location.search);
-    var newUrl = window.location.pathname + "?v=" + APP_VERSION;
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
     
-    currentParams.forEach(function(value, key) {
-        if (key !== 'v') {
-            newUrl += "&" + key + "=" + encodeURIComponent(value);
-        }
-    });
-    
-    console.log("[HCP-ADJUST-PAGE] Cache-busting redirect:", newUrl);
+    console.log("[HCP-ADJUST-PAGE] Cache-busting redirect. Preserving params:", currentParams.toString());
     window.location.href = newUrl;
 }
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.HCP_ADJUST_PAGE_VERSION = "1.19";
-console.log("[HCP-ADJUST-PAGE] Initializing v1.19 - Main Menu confirmation modal");
+window.HCP_ADJUST_PAGE_VERSION = "1.20";
+console.log("[HCP-ADJUST-PAGE] Initializing v1.20 - Fixed cache-busting preserves gameId");
 
 // ============================================================
 // v1.18: Restore celebration data from sessionStorage
@@ -591,11 +588,12 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: hcp-adjust.html
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - FIXED: Main Menu button now shows confirmation modal before navigating to index.html
-   - Uses Modal.confirm for consistent UX with the rest of the app
-   - All existing functionality preserved from v1.18
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (gameId, etc.)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v1.19
 DEPENDS ON: js/firebase-config.js, js/session.js, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-scorecard.js, js/game-ui.js, js/game-loader.js, js/hcp-adjust.js, js/sign-card.js, js/waiting-screen.js, js/modal.js
 STATUS: Ready for integration
 -->
