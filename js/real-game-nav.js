@@ -1,21 +1,20 @@
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: Waiting screen now hides AFTER celebration screen is fully rendered
-   - Added delay to ensure celebration modal exists before hiding waiting screen
-   - Prevents real-game screen flash during transition
-   - All existing functionality preserved from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: Archive ID suffix changed from "_history" to "_H" to match history record creation
+   - This fixes "No document to update" error when saving handicap data
+   - All existing functionality preserved from v1.03
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_NAV_VERSION = "1.03";
+window.REAL_GAME_NAV_VERSION = "1.04";
 
 var RealGameNav = (function() {
     
-    console.log("[REAL-GAME-NAV] Initializing v1.03 - Fixed waiting screen timing");
+    console.log("[REAL-GAME-NAV] Initializing v1.04 - Fixed archive ID suffix");
     
     // ============================================================
     // Private Helpers
@@ -361,7 +360,6 @@ var RealGameNav = (function() {
         setActiveCompleteModal(document.getElementById("completeModalNew"));
         
         document.getElementById("seeResultsBtnNew").onclick = function() {
-            // Show waiting screen immediately
             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                 WaitingScreen.show("Loading Celebration...");
                 console.log("[NAV] Waiting screen shown");
@@ -380,7 +378,6 @@ var RealGameNav = (function() {
                 setActiveCompleteModal(null);
             }
             
-            // Call celebration after short delay
             setTimeout(function() {
                 showCelebrationAndHandicap();
             }, 300);
@@ -448,7 +445,7 @@ var RealGameNav = (function() {
     }
     
     // ============================================================
-    // showCelebrationAndHandicap - v1.03: Fixed waiting screen timing
+    // showCelebrationAndHandicap - v1.04: Fixed archive ID suffix
     // ============================================================
     
     function showCelebrationAndHandicap() {
@@ -476,11 +473,11 @@ var RealGameNav = (function() {
             teamB: allPlayers.filter(function(p) { return p.team === "B"; })
         };
         
-        var historyRecordId = gameId + "_history";
+        // v1.04: FIXED - Use "_H" suffix to match history record creation
+        var historyRecordId = gameId + "_H";
+        console.log("[NAV] Using archive ID:", historyRecordId);
         
         if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-            // v1.03: Wait for celebration to fully render before hiding waiting screen
-            // The celebration screen will call the onClose callback when fully rendered
             SignCard.showCelebrationScreen(
                 winner,
                 tr.teamA,
@@ -488,10 +485,8 @@ var RealGameNav = (function() {
                 winningPlayers,
                 gameId,
                 function() {
-                    // This callback runs AFTER celebration is fully rendered
                     console.log("[NAV] Celebration fully rendered - hiding waiting screen");
                     
-                    // Hide waiting screen now that celebration is visible
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                         WaitingScreen.hide();
                     } else {
@@ -500,15 +495,14 @@ var RealGameNav = (function() {
                     }
                     console.log("[NAV] Waiting screen hidden");
                     
-                    // Now call handicap adjustment
                     if (typeof HandicapAdjustment !== 'undefined' && HandicapAdjustment.init) {
+                        console.log("[NAV] Calling HandicapAdjustment.init with archiveId:", historyRecordId);
                         HandicapAdjustment.init(gameId, historyRecordId, winningPlayers, {}, {}, false);
                     }
                 }
             );
         } else {
             console.error("[NAV] SignCard.showCelebrationScreen not available");
-            // Hide waiting screen on error
             if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
                 WaitingScreen.hide();
             } else {
@@ -542,12 +536,11 @@ window.RealGameNav = RealGameNav;
 
 /*
 FILE: js/real-game-nav.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: Waiting screen now hides AFTER celebration screen is fully rendered
-   - Added delay to ensure celebration modal exists before hiding waiting screen
-   - Prevents real-game screen flash during transition
-   - All existing functionality preserved from v1.02
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - FIXED: Archive ID suffix changed from "_history" to "_H" to match history record creation
+   - This fixes "No document to update" error when saving handicap data
+   - All existing functionality preserved from v1.03
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, GameUI, SignCard, HistoryRecord, HandicapAdjustment, WaitingScreen
 STATUS: Ready for integration
 */
