@@ -1,11 +1,11 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.25
-KEY CHANGES from v3.24:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v3.24
+VERSION: 3.26
+KEY CHANGES from v3.25:
+   - ADDED: Safety check for gameId before navigating to view-game.html or real-game.html
+   - Prevents navigation with null/undefined gameId
+   - Shows Modal.alert if gameId is missing
+   - All existing functionality preserved from v3.25
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -634,13 +634,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.25</div>
+<div class="version-tag">v3.26</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.25
+// FILE: pre-game.html - VERSION 3.26
 
-var VERSION = "3.25";
-var CACHE_KEY = "pre_game_version_v325";
+var VERSION = "3.26";
+var CACHE_KEY = "pre_game_version_v326";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -1282,6 +1282,15 @@ function loadGame() {
 }
 
 function startGame() {
+    // v3.26: Safety check for gameId before navigation
+    if (!gameId) {
+        console.error("[PRE-GAME] Cannot navigate - no gameId");
+        if (typeof Modal !== 'undefined' && Modal.alert) {
+            Modal.alert("Error: No game ID found. Please return to the main menu.");
+        }
+        return;
+    }
+    
     if (!tempSelectedRole) {
         Modal.alert("Please select a role first");
         return;
@@ -1307,7 +1316,7 @@ function startGame() {
             });
             SessionManager.addNavigationHistory("view-game.html", "tee_off_view", { gameId: gameId });
         }
-        window.location.href = "view-game.html";
+        window.location.href = "view-game.html?gameId=" + gameId;
         return;
     }
     
@@ -1401,9 +1410,9 @@ function startGame() {
             });
             
             SessionManager.addNavigationHistory(targetPage, "tee_off_" + tempSelectedRole, { gameId: gameId });
-            window.location.href = targetPage;
+            window.location.href = targetPage + "?gameId=" + gameId;
         } else {
-            window.location.href = targetPage;
+            window.location.href = targetPage + "?gameId=" + gameId;
         }
     }).catch(function(e) {
         console.error("Error locking role:", e);
@@ -1682,12 +1691,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.25
-KEY CHANGES from v3.24:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v3.24
+VERSION: 3.26
+KEY CHANGES from v3.25:
+   - ADDED: Safety check for gameId before navigating to view-game.html or real-game.html
+   - Prevents navigation with null/undefined gameId
+   - Shows Modal.alert if gameId is missing
+   - All existing functionality preserved from v3.25
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
