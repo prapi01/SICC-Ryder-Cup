@@ -1,10 +1,10 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.48
-KEY CHANGES from v2.47:
-   - FIXED: Replaced legacy waiting modal with WaitingScreen module
-   - Now uses consistent grey icon waiting screen across all pages
-   - All existing functionality preserved from v2.47
+VERSION: 2.49
+KEY CHANGES from v2.48:
+   - FIXED: Standalone detection now checks for '/hcp-adjust' instead of '/hcp-adjust.html'
+   - This ensures the page renders to the container instead of creating a modal
+   - All existing functionality preserved from v2.48
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -30,7 +30,6 @@ var HandicapAdjustment = (function() {
     var anchorRawResults = {};
     var perfRawPoints = {};
     
-    // v2.48: Track if we're in standalone page mode
     var isStandaloneMode = false;
     var standaloneContainerId = null;
     
@@ -269,7 +268,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.47: renderTableToContainer - renders table directly to a container
+    // renderTableToContainer - renders table directly to a container
     // ============================================================
     
     function renderTableToContainer(calculationResult, anchorName, containerId) {
@@ -412,11 +411,11 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.48: showAdjustmentTable - now uses WaitingScreen module
+    // showAdjustmentTable - modal mode (backward compatible)
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
-        // v2.47: Check if we're in standalone mode
+        // Check if we're in standalone mode
         if (isStandaloneMode && standaloneContainerId) {
             renderTableToContainer(calculationResult, anchorName, standaloneContainerId);
             return;
@@ -597,7 +596,6 @@ var HandicapAdjustment = (function() {
             var backToScorecardBtn = document.getElementById('backToScorecardBtn');
             if (backToScorecardBtn) {
                 backToScorecardBtn.addEventListener('click', function() {
-                    // v2.48: Use WaitingScreen module
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                         WaitingScreen.show("Loading Scorecard...");
                     } else {
@@ -616,7 +614,6 @@ var HandicapAdjustment = (function() {
             var celebrationBtn = document.getElementById('celebrationBtn');
             if (celebrationBtn) {
                 celebrationBtn.addEventListener('click', function() {
-                    // v2.48: Use WaitingScreen module
                     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
                         WaitingScreen.show("Loading Celebration...");
                     } else {
@@ -704,7 +701,6 @@ var HandicapAdjustment = (function() {
     // ============================================================
     
     function updateAnchorAndRecalculate(newAnchor) {
-        // v2.48: Use WaitingScreen module
         if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
             WaitingScreen.show("Recalculating handicaps...");
         } else {
@@ -940,14 +936,16 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.47: initForViewer - now supports standalone mode
+    // v2.49: initForViewer - FIXED standalone detection
     // ============================================================
     
     function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
         console.log('[HCP-ADJUST] initForViewer - viewer mode');
         
-        // v2.47: Check if we're in standalone page
-        var isStandalone = window.location.pathname.indexOf('hcp-adjust.html') !== -1;
+        // v2.49: FIXED - Check for '/hcp-adjust' (without .html) instead of '/hcp-adjust.html'
+        var isStandalone = window.location.pathname.indexOf('/hcp-adjust') !== -1;
+        console.log('[HCP-ADJUST] isStandalone:', isStandalone, 'pathname:', window.location.pathname);
+        
         if (isStandalone) {
             isStandaloneMode = true;
             standaloneContainerId = 'hcpTableContainer';
@@ -979,9 +977,8 @@ var HandicapAdjustment = (function() {
         var calculationResult = calculateAllAdjustments(anchor);
         currentTableData = calculationResult;
         
-        // v2.47: Use standalone mode if detected
+        // Use standalone mode if detected
         if (isStandaloneMode && standaloneContainerId) {
-            // Render directly to container
             renderTableToContainer(calculationResult, anchor.name, standaloneContainerId);
             // Update game info if available
             var gameInfo = document.getElementById('gameInfo');
@@ -991,7 +988,6 @@ var HandicapAdjustment = (function() {
                 var trB = resultsCacheParam.tr.teamB[lastIdx] || 9.5;
                 gameInfo.textContent = 'Final: Team A ' + trA + ' - ' + trB + ' Team B';
             }
-            // Buttons are rendered by hcp-adjust.html, not by this function
             return;
         }
         
@@ -1000,7 +996,7 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // v2.46: saveAdjustmentToFirestore - fixed archiveId handling
+    // saveAdjustmentToFirestore
     // ============================================================
     
     function saveAdjustmentToFirestore(anchor, calculationResult, callback) {
@@ -1253,7 +1249,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.48";
+    window.HANDICAP_ADJUST_VERSION = "2.49";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1275,11 +1271,11 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.48
-KEY CHANGES from v2.47:
-   - FIXED: Replaced legacy waiting modal with WaitingScreen module
-   - Now uses consistent grey icon waiting screen across all pages
-   - All existing functionality preserved from v2.47
+VERSION: 2.49
+KEY CHANGES from v2.48:
+   - FIXED: Standalone detection now checks for '/hcp-adjust' instead of '/hcp-adjust.html'
+   - This ensures the page renders to the container instead of creating a modal
+   - All existing functionality preserved from v2.48
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
