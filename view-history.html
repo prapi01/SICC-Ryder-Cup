@@ -1,11 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.27
-KEY CHANGES from v8.26:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v8.26
+VERSION: 8.28
+KEY CHANGES from v8.27:
+   - ADDED: Safety check for gameId before navigating to view-game.html
+   - Prevents navigation with null/undefined gameId
+   - Shows Modal.alert if gameId is missing
+   - All existing functionality preserved from v8.27
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
@@ -339,14 +339,14 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.27</div>
+<div class="version-tag">v8.28</div>
 
 <script>
 // ============================================================
-// VERSION CACHE-BUSTING - v8.27: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v8.28: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "8.27";
-var CACHE_KEY = "view_history_version_v827";
+var APP_VERSION = "8.28";
+var CACHE_KEY = "view_history_version_v828";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -364,8 +364,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.27";
-console.log("[VIEW-HISTORY] Initializing v8.27 - Fixed cache-busting preserves parameters");
+window.VIEW_HISTORY_VERSION = "8.28";
+console.log("[VIEW-HISTORY] Initializing v8.28 - Added gameId safety check");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -506,6 +506,15 @@ function showScorecardView(game) {
     var listView = document.getElementById('gameListView');
     var detailView = document.getElementById('gameDetailView');
     var detailContent = document.getElementById('detailContent');
+    
+    // v8.28: Safety check for gameId before navigation
+    if (!game || !game.originalGameId) {
+        console.error("[VIEW-HISTORY] Cannot show scorecard - no game ID");
+        if (typeof Modal !== 'undefined' && Modal.alert) {
+            Modal.alert("Error: No game ID found. Please return to the game list.");
+        }
+        return;
+    }
     
     listView.style.display = 'none';
     detailView.style.display = 'block';
@@ -921,7 +930,17 @@ function attachEventHandlers() {
                 e.stopPropagation();
                 console.log("[VIEW-HISTORY] Scorecard button clicked for game index:", gameIndex);
                 var game = allGames[gameIndex];
-                if (game) showScorecardView(game);
+                if (game) {
+                    // v8.28: Safety check before showing scorecard
+                    if (!game.originalGameId) {
+                        console.error("[VIEW-HISTORY] Cannot show scorecard - no game ID for index:", gameIndex);
+                        if (typeof Modal !== 'undefined' && Modal.alert) {
+                            Modal.alert("Error: No game ID found. Please refresh and try again.");
+                        }
+                        return;
+                    }
+                    showScorecardView(game);
+                }
             });
         })(i);
     }
@@ -1155,12 +1174,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.27
-KEY CHANGES from v8.26:
-   - FIXED: Cache-busting now preserves existing URL parameters
-   - Previously, cache-busting dropped URL parameters (if any)
-   - Now uses URLSearchParams to preserve all query parameters
-   - All existing functionality preserved from v8.26
+VERSION: 8.28
+KEY CHANGES from v8.27:
+   - ADDED: Safety check for gameId before navigating to view-game.html
+   - Prevents navigation with null/undefined gameId
+   - Shows Modal.alert if gameId is missing
+   - All existing functionality preserved from v8.27
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js
 STATUS: Ready for integration
 -->
