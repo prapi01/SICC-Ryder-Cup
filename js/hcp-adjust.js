@@ -1,11 +1,11 @@
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.46
-KEY CHANGES from v2.45:
-   - FIXED: saveAdjustmentToFirestore now correctly handles archiveId when called from celebration
-   - Added fallback to create archive record if currentArchiveId is not set
-   - Improved error handling and logging
-   - All existing functionality preserved from v2.45
+VERSION: 2.47
+KEY CHANGES from v2.46:
+   - ADDED: renderToContainer() - renders table directly to a container (standalone page mode)
+   - ADDED: auto-detect standalone mode (hcp-adjust.html)
+   - MODIFIED: showAdjustmentTable() now checks for standalone mode before rendering modal
+   - All existing functionality preserved from v2.46
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -30,6 +30,10 @@ var HandicapAdjustment = (function() {
     
     var anchorRawResults = {};
     var perfRawPoints = {};
+    
+    // v2.47: Track if we're in standalone page mode
+    var isStandaloneMode = false;
+    var standaloneContainerId = null;
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -266,10 +270,160 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // Display Table
+    // v2.47: renderTableToContainer - renders table directly to a container
+    // ============================================================
+    
+    function renderTableToContainer(calculationResult, anchorName, containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) {
+            console.error("[HCP-ADJUST] Container not found:", containerId);
+            return;
+        }
+        
+        var players = calculationResult.players;
+        var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
+        
+        players.sort(function(a, b) {
+            var teamA = a.team || 'B';
+            var teamB = b.team || 'B';
+            if (teamA !== teamB) {
+                return teamA === 'A' ? -1 : 1;
+            }
+            var hcpA = a.startingHcp !== undefined ? a.startingHcp : a.currentHcp;
+            var hcpB = b.startingHcp !== undefined ? b.startingHcp : b.currentHcp;
+            return hcpA - hcpB;
+        });
+        
+        var html = '<div style="overflow-x: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;">';
+        html += '<table style="width:100%; border-collapse: collapse; font-size:0.8rem; min-width: 340px;">';
+        
+        html += '<thead><tr style="background:#1a3a1a;">';
+        html += '<th style="padding:8px 4px; text-align:left; width:45px; font-size:0.75rem;"></th>';
+        html += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">Old</th>';
+        html += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Anc</th>';
+        html += '<th style="padding:8px 4px; text-align:center; width:55px; font-size:0.75rem;">Perf</th>';
+        html += '<th style="padding:8px 4px; text-align:center; width:38px; font-size:0.75rem;">New</th>';
+        html += '<tr></thead><tbody>';
+        
+        var currentTeam = null;
+        
+        for (var i = 0; i < players.length; i++) {
+            var p = players[i];
+            
+            var displayHcp = null;
+            if (p.finalHcp !== undefined && p.finalHcp !== null) {
+                displayHcp = p.finalHcp;
+            } else if (p.newHcp !== undefined && p.newHcp !== null) {
+                displayHcp = p.newHcp;
+            } else if (p.newAnchor !== undefined && p.newAnchor !== null) {
+                displayHcp = p.newAnchor;
+            } else if (p.rawNew !== undefined && p.rawNew !== null) {
+                if (hasNewAnchor && calculationResult.zeroRiseAmount) {
+                    displayHcp = p.rawNew + calculationResult.zeroRiseAmount;
+                } else {
+                    displayHcp = p.rawNew;
+                }
+            }
+            
+            if (displayHcp === null || displayHcp === undefined) {
+                displayHcp = p.currentHcp;
+            }
+            
+            var startingHcp = p.currentHcp;
+            if (startingHcp === undefined || startingHcp === null) {
+                startingHcp = p.startingHcp;
+            }
+            var stDisplayValue = (startingHcp !== undefined && startingHcp !== null) ? startingHcp : "?";
+            
+            var playerTeam = p.team || 'B';
+            var isAnchor = (p.name === anchorName);
+            var isFinalZero = (displayHcp === 0);
+            
+            if (playerTeam !== currentTeam) {
+                currentTeam = playerTeam;
+                var teamLabel = currentTeam === 'A' ? 'TEAM A' : 'TEAM B';
+                html += '<tr style="background:#1a3a1a; border-top: 2px solid #000;">';
+                html += '<td colspan="5" style="padding:6px 4px; text-align:center; color:#4caf50; font-weight:700; font-size:0.75rem;">' + teamLabel + '</td>';
+                html += '<tr>';
+            }
+            
+            var ancAdj = p.anchorAdj;
+            var ancRaw = p.anchorRaw;
+            var ancRawAbs = Math.abs(ancRaw);
+            
+            var ancRawDisplay = ancRawAbs;
+            
+            var ancRawColor = '#888';
+            if (ancRaw > 0) {
+                ancRawColor = '#4caf50';
+            } else if (ancRaw < 0) {
+                ancRawColor = '#ff6b6b';
+            }
+            
+            var ancDisplayValue = '';
+            var ancAdjColor = '#888';
+            if (ancAdj < 0) {
+                ancDisplayValue = Math.abs(ancAdj).toString();
+                ancAdjColor = '#ff6b6b';
+            } else if (ancAdj > 0) {
+                ancDisplayValue = ancAdj.toString();
+                ancAdjColor = '#4caf50';
+            } else {
+                ancDisplayValue = '0';
+                ancAdjColor = '#888';
+            }
+            
+            var ancDisplay = ancDisplayValue + '<span style="font-size:0.6rem; color:' + ancRawColor + ';"> [' + ancRawDisplay + ']</span>';
+            
+            var perfAdj = p.perfAdj;
+            var perfRaw = p.perfRaw;
+            
+            var perfRawDisplay = perfRaw % 1 === 0 ? perfRaw.toString() : perfRaw.toFixed(1);
+            
+            var perfDisplayValue = '';
+            var perfAdjColor = '#888';
+            if (perfAdj < 0) {
+                perfDisplayValue = Math.abs(perfAdj).toString();
+                perfAdjColor = '#ff6b6b';
+            } else if (perfAdj > 0) {
+                perfDisplayValue = perfAdj.toString();
+                perfAdjColor = '#4caf50';
+            } else {
+                perfDisplayValue = '0';
+                perfAdjColor = '#888';
+            }
+            
+            var perfDisplay = perfDisplayValue + '<span style="font-size:0.6rem; color:#4caf50;"> [' + perfRawDisplay + ']</span>';
+            
+            var finalColor = isFinalZero ? '#ffaa44' : '#4caf50';
+            var stColor = isAnchor ? '#ffaa44' : '#ffffff';
+            
+            html += '<tr style="border-bottom:1px solid #333;">';
+            html += '<td style="padding:6px 4px; text-align:left;">' + escapeHtml(p.label || p.name.substring(0, 3).toUpperCase()) + '</td>';
+            html += '<td style="padding:6px 4px; text-align:center; color: ' + stColor + '; font-weight:600;">' + stDisplayValue + '</td>';
+            html += '<td style="padding:6px 4px; text-align:center; color: ' + ancAdjColor + '; font-weight:600;">' + ancDisplay + '</td>';
+            html += '<td style="padding:6px 4px; text-align:center; color: ' + perfAdjColor + '; font-weight:600;">' + perfDisplay + '</td>';
+            html += '<td style="padding:6px 4px; text-align:center; color: ' + finalColor + '; font-weight:700;">' + displayHcp + '</td>';
+            html += '</tr>';
+        }
+        
+        html += '</tbody></table></div>';
+        
+        container.innerHTML = html;
+    }
+    
+    // ============================================================
+    // v2.47: showAdjustmentTable - now detects standalone mode
     // ============================================================
     
     function showAdjustmentTable(calculationResult, anchorName, isReadOnly) {
+        // v2.47: Check if we're in standalone mode
+        if (isStandaloneMode && standaloneContainerId) {
+            renderTableToContainer(calculationResult, anchorName, standaloneContainerId);
+            return;
+        }
+        
+        // Original modal mode - preserve existing behavior
         var players = calculationResult.players;
         var hasNewAnchor = calculationResult.needsZeroRise && calculationResult.zeroRiseAmount > 0;
         
@@ -764,11 +918,22 @@ var HandicapAdjustment = (function() {
     }
     
     // ============================================================
-    // initForViewer
+    // v2.47: initForViewer - now supports standalone mode
     // ============================================================
     
     function initForViewer(gameIdParam, players, flight1DataStr, flight2DataStr, courseSiParam, courseParParam, startingHoleParam, resultsCacheParam) {
-        console.log('HandicapAdjustment.initForViewer - viewer mode');
+        console.log('[HCP-ADJUST] initForViewer - viewer mode');
+        
+        // v2.47: Check if we're in standalone page
+        var isStandalone = window.location.pathname.indexOf('hcp-adjust.html') !== -1;
+        if (isStandalone) {
+            isStandaloneMode = true;
+            standaloneContainerId = 'hcpTableContainer';
+            console.log('[HCP-ADJUST] Running in standalone mode, container:', standaloneContainerId);
+        } else {
+            isStandaloneMode = false;
+            standaloneContainerId = null;
+        }
         
         currentGameId = gameIdParam;
         allPlayers = players || [];
@@ -790,6 +955,25 @@ var HandicapAdjustment = (function() {
         
         var anchor = allPlayers[0];
         var calculationResult = calculateAllAdjustments(anchor);
+        currentTableData = calculationResult;
+        
+        // v2.47: Use standalone mode if detected
+        if (isStandaloneMode && standaloneContainerId) {
+            // Render directly to container
+            renderTableToContainer(calculationResult, anchor.name, standaloneContainerId);
+            // Update game info if available
+            var gameInfo = document.getElementById('gameInfo');
+            if (gameInfo && resultsCacheParam && resultsCacheParam.tr) {
+                var lastIdx = resultsCacheParam.tr.teamA.length - 1;
+                var trA = resultsCacheParam.tr.teamA[lastIdx] || 9.5;
+                var trB = resultsCacheParam.tr.teamB[lastIdx] || 9.5;
+                gameInfo.textContent = 'Final: Team A ' + trA + ' - ' + trB + ' Team B';
+            }
+            // Buttons are rendered by hcp-adjust.html, not by this function
+            return;
+        }
+        
+        // Fallback to modal mode
         showAdjustmentTable(calculationResult, anchor.name, true);
     }
     
@@ -821,7 +1005,6 @@ var HandicapAdjustment = (function() {
         console.log("  gameId:", currentGameId);
         console.log("  players:", allPlayers ? allPlayers.length : 0);
         
-        // If we don't have an archiveId, create one
         if (!currentArchiveId && currentGameId) {
             currentArchiveId = currentGameId + "_H";
             console.log("  Created archiveId:", currentArchiveId);
@@ -835,7 +1018,6 @@ var HandicapAdjustment = (function() {
                     if (callback) callback(err);
                 } else {
                     console.log("  ✅ Handicap data saved successfully");
-                    // Update player profiles after history record is updated
                     updatePlayerProfiles(handicapData.players, callback);
                 }
             });
@@ -1049,7 +1231,7 @@ var HandicapAdjustment = (function() {
         });
     }
     
-    window.HANDICAP_ADJUST_VERSION = "2.46";
+    window.HANDICAP_ADJUST_VERSION = "2.47";
     
     if (typeof window !== 'undefined') {
         checkUrlAndInit();
@@ -1071,12 +1253,12 @@ window.HandicapAdjustment = HandicapAdjustment;
 
 /*
 FILE: js/hcp-adjust.js
-VERSION: 2.46
-KEY CHANGES from v2.45:
-   - FIXED: saveAdjustmentToFirestore now correctly handles archiveId when called from celebration
-   - Added fallback to create archive record if currentArchiveId is not set
-   - Improved error handling and logging
-   - All existing functionality preserved from v2.45
+VERSION: 2.47
+KEY CHANGES from v2.46:
+   - ADDED: renderToContainer() - renders table directly to a container (standalone page mode)
+   - ADDED: auto-detect standalone mode (hcp-adjust.html)
+   - MODIFIED: showAdjustmentTable() now checks for standalone mode before rendering modal
+   - All existing functionality preserved from v2.46
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/game-match.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
