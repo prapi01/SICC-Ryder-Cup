@@ -1,12 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.54
-KEY CHANGES from v3.53:
-   - ADDED: GAME DAY button now checks if game is complete before redirecting
-   - If game complete → shows GAME COMPLETE modal → post-game context
-   - If game not complete → goes to pre-game.html (LIVE scoring setup)
-   - Uses standardized Modal.confirmGameComplete() for consistency
-   - All existing functionality preserved from v3.53
+VERSION: 3.55
+KEY CHANGES from v3.54:
+   - FIXED: GAME DAY → SEE RESULTS now goes to view-game.html (Celebration) instead of hcp-adjust.html
+   - This allows the GAME COMPLETE modal and Celebration screen to appear before HCP Adjust
+   - All existing functionality preserved from v3.54
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
 -->
@@ -600,16 +598,16 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.54</div>
+<div class="version-tag">v3.55</div>
 
 <script>
-// FILE: index.html - VERSION 3.54
+// FILE: index.html - VERSION 3.55
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.54";
+window.INDEX_VERSION = "3.55";
 
-var APP_VERSION = "3.54";
-var CACHE_KEY = "index_version_v354";
+var APP_VERSION = "3.55";
+var CACHE_KEY = "index_version_v355";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -837,7 +835,7 @@ function preloadGameData(gameId, callback) {
 }
 
 // ============================================================
-// v3.54: GAME DAY - Check if game is complete
+// v3.55: GAME DAY - Check if game is complete
 // ============================================================
 
 function handleGameDayClick(gameId) {
@@ -856,18 +854,11 @@ function handleGameDayClick(gameId) {
             var isComplete = f1Signed && f2Signed;
             
             if (isComplete) {
-                console.log("[INDEX] Game is complete - showing GAME COMPLETE modal");
-                if (typeof Modal !== 'undefined' && Modal.confirmGameComplete) {
-                    Modal.confirmGameComplete(function() {
-                        console.log("[INDEX] SEE RESULTS clicked - navigating to post-game");
-                        sessionStorage.setItem('isPostGame', 'true');
-                        sessionStorage.setItem('currentGameId', gameId);
-                        window.location.href = 'hcp-adjust.html?gameId=' + gameId;
-                    });
-                } else {
-                    // Fallback
-                    showGameCompletedModal(gameId);
-                }
+                console.log("[INDEX] Game is complete - going to view-game (Celebration)");
+                sessionStorage.setItem('isPostGame', 'true');
+                sessionStorage.setItem('currentGameId', gameId);
+                // v3.55: Go to view-game which shows GAME COMPLETE modal → Celebration
+                window.location.href = 'view-game.html?gameId=' + gameId;
             } else {
                 console.log("[INDEX] Game is NOT complete - going to pre-game");
                 proceedToRealGame(gameId, "real");
@@ -911,7 +902,7 @@ function showGameCompletedModal(gameId) {
         document.getElementById('completedGameModal').remove();
         sessionStorage.setItem('isPostGame', 'true');
         sessionStorage.setItem('currentGameId', gameId);
-        window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+        window.location.href = 'view-game.html?gameId=' + gameId;
     });
 }
 
@@ -1193,7 +1184,7 @@ function handleTodayGame() {
             displayGameId(gameId);
         }
         
-        // v3.54: Use the new completion check
+        // v3.55: Use the new completion check
         handleGameDayClick(gameId);
         
     }).catch(function(e) {
@@ -1357,7 +1348,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.54
+// Initialization - v3.55
 // ============================================================
 
 function initApp() {
@@ -1441,7 +1432,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.54
+// Start the app - v3.55
 // ============================================================
 
 if (isFirstLoad) {
@@ -1477,13 +1468,11 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.54
-KEY CHANGES from v3.53:
-   - ADDED: GAME DAY button now checks if game is complete before redirecting
-   - If game complete → shows GAME COMPLETE modal → post-game context
-   - If game not complete → goes to pre-game.html (LIVE scoring setup)
-   - Uses standardized Modal.confirmGameComplete() for consistency
-   - All existing functionality preserved from v3.53
+VERSION: 3.55
+KEY CHANGES from v3.54:
+   - FIXED: GAME DAY → SEE RESULTS now goes to view-game.html (Celebration) instead of hcp-adjust.html
+   - This allows the GAME COMPLETE modal and Celebration screen to appear before HCP Adjust
+   - All existing functionality preserved from v3.54
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js
 STATUS: Ready for integration
 -->
