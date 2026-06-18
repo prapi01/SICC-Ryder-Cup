@@ -1,12 +1,11 @@
 <!--
 FILE: pre-game.html
-VERSION: 3.24
-KEY CHANGES from v3.23:
-   - FIXED: Admin bubble now matches index.html style (larger square, stacked text)
-   - FIXED: Prevent text selection on long press (user-select: none on body)
-   - Admin bubble: 80x80px square with "ADMIN" / "FUNCTION" stacked text
-   - Same green border, dark background as index.html
-   - All existing functionality preserved
+VERSION: 3.25
+KEY CHANGES from v3.24:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v3.24
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
@@ -635,13 +634,13 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.24</div>
+<div class="version-tag">v3.25</div>
 
 <script>
-// FILE: pre-game.html - VERSION 3.24
+// FILE: pre-game.html - VERSION 3.25
 
-var VERSION = "3.24";
-var CACHE_KEY = "pre_game_version";
+var VERSION = "3.25";
+var CACHE_KEY = "pre_game_version_v325";
 
 var LOCK_DURATION_MS = 6 * 60 * 60 * 1000;
 var STALE_THRESHOLD_MS = 60 * 60 * 1000;
@@ -649,7 +648,14 @@ var STALE_THRESHOLD_MS = 60 * 60 * 1000;
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
-    window.location.href = window.location.pathname + "?v=" + VERSION;
+    
+    // v3.25: Preserve ALL existing URL parameters
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    
+    console.log("[PRE-GAME] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
 }
 
 // Firebase already initialized in firebase-config.js
@@ -1676,13 +1682,12 @@ SessionManager.initSession("pre-game.html", "index.html", function(session) {
 
 <!--
 FILE: pre-game.html
-VERSION: 3.24
-KEY CHANGES from v3.23:
-   - FIXED: Admin bubble now matches index.html style (larger square, stacked text)
-   - FIXED: Prevent text selection on long press (user-select: none on body)
-   - Admin bubble: 80x80px square with "ADMIN" / "FUNCTION" stacked text
-   - Same green border, dark background as index.html
-   - All existing functionality preserved
+VERSION: 3.25
+KEY CHANGES from v3.24:
+   - FIXED: Cache-busting now preserves existing URL parameters
+   - Previously, cache-busting dropped URL parameters (if any)
+   - Now uses URLSearchParams to preserve all query parameters
+   - All existing functionality preserved from v3.24
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js, js/game-loader.js
 STATUS: Ready for integration
 -->
