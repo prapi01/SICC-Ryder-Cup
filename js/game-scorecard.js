@@ -1,21 +1,20 @@
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - ADDED: Green background + white text for player scores on holes where ANY match event occurred
-   - Added hasAnyMatchEvent() function to detect win/loss/clinch for a player on a specific hole
-   - Added getMatchValueForPlayer() function to get match result for a player vs opponent
-   - Player score cells now use .score-event class (green bg, white text) when ANY match event occurred
-   - T-1, T-2, Strk rows unchanged (team games, not individual)
-   - All existing functionality preserved from v1.16
-DEPENDS ON: GameData (for getLastHole), GameOrder (optional), GameMatch (for match data)
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - FIXED: Changed highlight logic from "any match event" to "only clinch events"
+   - Replaced hasAnyMatchEvent() with isClinchHole()
+   - Now uses clinchedAt data to determine if a match was clinched on a specific hole
+   - Only highlights player scores when they clinched a match on that hole
+   - All existing functionality preserved from v1.17
+DEPENDS ON: GameData (for getLastHole), GameOrder (optional), GameMatch (for getClinchHole)
 STATUS: Ready for integration
 */
 
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.GAME_SCORECARD_VERSION = "1.17";
+window.GAME_SCORECARD_VERSION = "1.18";
 
 var GameScorecard = (function() {
     
@@ -80,84 +79,27 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // v1.17: Helper: Get match value for a player vs opponent on a hole
+    // v1.18: Helper: Check if a player clinched ANY match on a specific hole
+    // Uses clinchedAt data to determine if a match was clinched on this hole
     // ============================================================
-    function getMatchValueForPlayer(player, opponent, holeNumber, results, allPlayers) {
-        if (!results || !results.matchResults) return 0;
+    function isClinchHole(player, holeNumber, clinchedAt) {
+        if (!clinchedAt) return false;
         
-        var position = getPlayOrderPosition(holeNumber, allPlayers[0]?.startingHole || 1);
-        // Actually we need startingHole passed in, but this is a helper used within renderScorecard
-        // The actual implementation will be inside renderScorecard where we have startingHole
-        return 0; // Placeholder - actual implementation in renderScorecard
-    }
-    
-    // ============================================================
-    // v1.17: Helper: Check if a player has ANY match event on a hole
-    // Returns true if the player won, lost, or clinched ANY match on this hole
-    // ============================================================
-    function hasAnyMatchEvent(player, holeNumber, results, allPlayers, startingHole) {
-        if (!results || !results.matchResults) return false;
-        
-        var position = getPlayOrderPosition(holeNumber, startingHole);
-        var matchResultsArray = results.matchResults[position];
-        if (!matchResultsArray) return false;
-        
-        // Get all opponents (players on the other team)
-        var opponents = allPlayers.filter(function(p) { return p.team !== player.team; });
-        
-        // Sort opponents: intra-flight first, then cross-flight
-        opponents.sort(function(a, b) {
-            var aIntra = (a.flight === player.flight);
-            var bIntra = (b.flight === player.flight);
-            if (aIntra && !bIntra) return -1;
-            if (!aIntra && bIntra) return 1;
-            return a.handicap - b.handicap;
-        });
-        
-        // Check each match against opponents
-        for (var i = 0; i < opponents.length; i++) {
-            var opp = opponents[i];
+        // Check all clinched matches
+        for (var matchKey in clinchedAt) {
+            var entry = clinchedAt[matchKey];
+            var clinchHole = (typeof entry === 'number') ? entry : entry.clinchedAtHole;
             
-            // Build match index
-            var teamAPlayers = allPlayers.filter(function(p) { return p.team === "A"; }).sort(function(a, b) {
-                if (a.flight !== b.flight) return a.flight - b.flight;
-                return a.handicap - b.handicap;
-            });
-            var teamBPlayers = allPlayers.filter(function(p) { return p.team === "B"; }).sort(function(a, b) {
-                if (a.flight !== b.flight) return a.flight - b.flight;
-                return a.handicap - b.handicap;
-            });
-            
-            var aIdx = -1;
-            var bIdx = -1;
-            
-            if (player.team === "A") {
-                for (var j = 0; j < teamAPlayers.length; j++) {
-                    if (teamAPlayers[j].name === player.name) aIdx = j;
+            if (clinchHole === holeNumber) {
+                // Check if this player is involved in this match
+                var players = matchKey.split('_vs_');
+                if (players.length === 2) {
+                    if (players[0] === player.name || players[1] === player.name) {
+                        return true;
+                    }
                 }
-                for (var j = 0; j < teamBPlayers.length; j++) {
-                    if (teamBPlayers[j].name === opp.name) bIdx = j;
-                }
-            } else {
-                for (var j = 0; j < teamAPlayers.length; j++) {
-                    if (teamAPlayers[j].name === opp.name) aIdx = j;
-                }
-                for (var j = 0; j < teamBPlayers.length; j++) {
-                    if (teamBPlayers[j].name === player.name) bIdx = j;
-                }
-            }
-            
-            if (aIdx === -1 || bIdx === -1) continue;
-            
-            var matchIndex = aIdx * teamBPlayers.length + bIdx;
-            var matchValue = matchResultsArray[matchIndex] || 0;
-            
-            // If match value is not 0 (win/loss/clinch), something happened
-            if (matchValue !== 0) {
-                return true;
             }
         }
-        
         return false;
     }
     
@@ -190,7 +132,7 @@ var GameScorecard = (function() {
     }
     
     // ============================================================
-    // Scorecard Rendering - v1.17: Added green BG for match events
+    // Scorecard Rendering - v1.18: Clinch-only highlighting
     // ============================================================
     
     function renderScorecard(containerId, param2, param3, param4, param5, param6, param7, param8, param9, param10, param11, param12, param13, param14, param15) {
@@ -199,7 +141,7 @@ var GameScorecard = (function() {
         
         var holes, players, getStoredScore, isHoleSaved, t1Row, t2Row, strkRow, coursePar, courseSi, t1ClinchedHole, t2ClinchedHole, t1Display, t2Display, strkDisplay;
         var startingHole;
-        var results = null;
+        var clinchedAt = {};
         
         // Detect calling convention
         if (typeof param2 === 'string' && (param2 === 'play' || param2 === 'natural')) {
@@ -220,11 +162,15 @@ var GameScorecard = (function() {
             t2Display = param15;
             strkDisplay = arguments[16];
             
-            // Try to get results from the cache
+            // v1.18: Get clinchedAt from cache
             if (typeof GameLoader !== 'undefined') {
                 var cache = GameLoader.getLocalCache();
-                if (cache && cache.results) {
-                    results = cache.results;
+                if (cache && cache.clinchedAt) {
+                    clinchedAt = cache.clinchedAt;
+                }
+                // Also try results.clinchedAt
+                if (cache && cache.results && cache.results.clinchedAt) {
+                    clinchedAt = cache.results.clinchedAt;
                 }
             }
             
@@ -245,6 +191,17 @@ var GameScorecard = (function() {
             t1Display = param13;
             t2Display = param14;
             strkDisplay = param15;
+            
+            // v1.18: Get clinchedAt from cache
+            if (typeof GameLoader !== 'undefined') {
+                var cache = GameLoader.getLocalCache();
+                if (cache && cache.clinchedAt) {
+                    clinchedAt = cache.clinchedAt;
+                }
+                if (cache && cache.results && cache.results.clinchedAt) {
+                    clinchedAt = cache.results.clinchedAt;
+                }
+            }
             
             // Get startingHole from the first hole in the display order
             startingHole = holes[0];
@@ -321,7 +278,7 @@ var GameScorecard = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // ============================================================
-        // v1.17: FLIGHT 1 PLAYERS - With match event highlighting
+        // v1.18: FLIGHT 1 PLAYERS - Clinch-only highlighting
         // ============================================================
         for (var p = 0; p < flight1Players.length; p++) {
             var player = flight1Players[p];
@@ -335,15 +292,15 @@ var GameScorecard = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 
-                // v1.17: Check if this player had a match event on this hole
-                var hasEvent = false;
-                if (saved && results && results.matchResults) {
-                    hasEvent = hasAnyMatchEvent(player, hole, results, players, startingHole);
+                // v1.18: Check if this player clinched a match on this hole
+                var hasClinch = false;
+                if (saved && clinchedAt) {
+                    hasClinch = isClinchHole(player, hole, clinchedAt);
                 }
                 
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                // v1.17: Override to green background + white text if event occurred
-                if (hasEvent && saved) {
+                // v1.18: Green background + white text if clinched on this hole
+                if (hasClinch && saved) {
                     cellClass = 'score-event';
                 }
                 
@@ -430,7 +387,7 @@ var GameScorecard = (function() {
         html += '<tr class="green-line"><td colspan="20"><\/tr>';
         
         // ============================================================
-        // v1.17: FLIGHT 2 PLAYERS - With match event highlighting
+        // v1.18: FLIGHT 2 PLAYERS - Clinch-only highlighting
         // ============================================================
         for (var p = 0; p < flight2Players.length; p++) {
             var player = flight2Players[p];
@@ -444,15 +401,15 @@ var GameScorecard = (function() {
                 playerTotal += score;
                 var saved = isHoleSaved(player.flight, hole);
                 
-                // v1.17: Check if this player had a match event on this hole
-                var hasEvent = false;
-                if (saved && results && results.matchResults) {
-                    hasEvent = hasAnyMatchEvent(player, hole, results, players, startingHole);
+                // v1.18: Check if this player clinched a match on this hole
+                var hasClinch = false;
+                if (saved && clinchedAt) {
+                    hasClinch = isClinchHole(player, hole, clinchedAt);
                 }
                 
                 var cellClass = saved ? 'score-green' : 'score-invisible';
-                // v1.17: Override to green background + white text if event occurred
-                if (hasEvent && saved) {
+                // v1.18: Green background + white text if clinched on this hole
+                if (hasClinch && saved) {
                     cellClass = 'score-event';
                 }
                 
@@ -696,7 +653,7 @@ var GameScorecard = (function() {
         renderScorecard: renderScorecard,
         tightenScorecardRows: tightenScorecardRows,
         getAsSquareHtml: getAsSquareHtml,
-        getVersion: function() { return "1.17"; }
+        getVersion: function() { return "1.18"; }
     };
     
 })();
@@ -708,14 +665,13 @@ window.GameScorecard = GameScorecard;
 
 /*
 FILE: js/game-scorecard.js
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - ADDED: Green background + white text for player scores on holes where ANY match event occurred
-   - Added hasAnyMatchEvent() function to detect win/loss/clinch for a player on a specific hole
-   - Added getMatchValueForPlayer() function to get match result for a player vs opponent
-   - Player score cells now use .score-event class (green bg, white text) when ANY match event occurred
-   - T-1, T-2, Strk rows unchanged (team games, not individual)
-   - All existing functionality preserved from v1.16
-DEPENDS ON: GameData (for getLastHole), GameOrder (optional), GameMatch (for match data)
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - FIXED: Changed highlight logic from "any match event" to "only clinch events"
+   - Replaced hasAnyMatchEvent() with isClinchHole()
+   - Now uses clinchedAt data to determine if a match was clinched on a specific hole
+   - Only highlights player scores when they clinched a match on that hole
+   - All existing functionality preserved from v1.17
+DEPENDS ON: GameData (for getLastHole), GameOrder (optional), GameMatch (for getClinchHole)
 STATUS: Ready for integration
 */
