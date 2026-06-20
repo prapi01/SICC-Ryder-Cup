@@ -1,15 +1,13 @@
 <!--
 FILE: validate.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: TR table now correctly uses teamGameTR and strokeTR (not invented T-1A/T-1B columns)
-   - T-1 points come from t1.teamGameTR (0, 0.5, or 1 per hole)
-   - T-2 points come from t2.teamGameTR (0, 0.5, or 1 per hole)
-   - Strk points come from strk.strokeTR (0, 0.5, or 1 per hole)
-   - TR per hole = MatchA + MatchB + T1points + T2points + Strkpoints = 19 total
-   - Removed invented T-1A/T-1B, T-2A/T-2B, StrkA/StrkB columns
-   - Table now shows: Hole | MatchA | MatchB | T-1 Pts | T-2 Pts | Strk Pts | TR A | TR B | Total | Record A | Record B | ✅
-   - All other functionality preserved from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - CHANGED: TR table now shows breakdown in two columns: Team A and Team B
+   - Format for Team A: [MatchA + T-1 + T-2 + Strk] = TR A
+   - Format for Team B: [MatchB + T-1 + T-2 + Strk] = TR B
+   - Each hole total = 19.0 (16 + 1 + 1 + 1)
+   - Added comparison columns: Rec A, Rec B, and ✅
+   - All other functionality preserved from v1.11
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -61,6 +59,11 @@ STATUS: Ready for integration
         .col-red { color: #ff6b6b; font-weight: 600; }
         .col-gold { color: #ffaa44; font-weight: 600; }
         .tr-total { font-weight: 700; color: #ffaa44; }
+        .breakdown { font-size: 0.6rem; color: #888; font-weight: 400; }
+        .team-a-col { color: #4caf50; }
+        .team-b-col { color: #ff6b6b; }
+        .team-a-bg { background: rgba(76, 175, 80, 0.05); }
+        .team-b-bg { background: rgba(255, 107, 107, 0.05); }
         
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
@@ -96,7 +99,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.11</span>
+        <span class="version-tag">v1.12</span>
     </h1>
     
     <!-- Input -->
@@ -151,7 +154,7 @@ STATUS: Ready for integration
         </div>
         
         <div class="card">
-            <div class="card-title">🏆 TR — Per Hole (19 points per hole)</div>
+            <div class="card-title">🏆 TR — Per Hole Breakdown [Match + T-1 + T-2 + Strk] (19 points per hole)</div>
             <div id="trTable"></div>
         </div>
         
@@ -162,7 +165,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v1.11 — TR: Correctly uses teamGameTR and strokeTR (not invented columns).
+        Validator v1.12 — TR: Two-column breakdown format [Match + T-1 + T-2 + Strk] = Total.
     </div>
 </div>
 
@@ -170,8 +173,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "1.11";
-console.log("[Validator] v1.11 - TR uses teamGameTR and strokeTR correctly");
+window.VALIDATOR_VERSION = "1.12";
+console.log("[Validator] v1.12 - TR breakdown format [Match + T-1 + T-2 + Strk]");
 
 // ============================================================
 // FIREBASE
@@ -675,18 +678,15 @@ function renderMatchTable(orderedPlayers, matchResults) {
 }
 
 // ============================================================
-// v1.11: renderTRTable — CORRECT: uses teamGameTR and strokeTR
+// v1.12: renderTRTable — Two-column breakdown format
 // ============================================================
 function renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, gameData) {
     var container = document.getElementById('trTable');
     
     var html = '<div class="scroll-x"><table>';
     html += '<tr><th>Hole</th>';
-    html += '<th>MatchA</th><th>MatchB</th>';
-    html += '<th>T-1 Pts</th><th>T-2 Pts</th><th>Strk Pts</th>';
-    html += '<th style="color:#4caf50;">TR A</th>';
-    html += '<th style="color:#4caf50;">TR B</th>';
-    html += '<th style="color:#ffaa44;">Total</th>';
+    html += '<th style="color:#4caf50;">Team A</th>';
+    html += '<th style="color:#ff6b6b;">Team B</th>';
     html += '<th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
     
     for (var i = 0; i < 18; i++) {
@@ -713,7 +713,10 @@ function renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, 
         // TR per hole = Match + T-1 + T-2 + Strk
         var trA = mA + t1A + t2A + sA;
         var trB = mB + t1B + t2B + sB;
-        var total = trA + trB; // Should always be 19.0
+        
+        // Build breakdown strings: [Match + T-1 + T-2 + Strk]
+        var teamABreakdown = '[' + mA.toFixed(1) + ' + ' + t1A.toFixed(1) + ' + ' + t2A.toFixed(1) + ' + ' + sA.toFixed(1) + ']';
+        var teamBBreakdown = '[' + mB.toFixed(1) + ' + ' + t1B.toFixed(1) + ' + ' + t2B.toFixed(1) + ' + ' + sB.toFixed(1) + ']';
         
         // Get record values for comparison
         var recA = gameData.results?.tr?.teamA?.[i];
@@ -725,11 +728,8 @@ function renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, 
         var recBDisplay = (recB !== undefined && recB !== null) ? recB : '-';
         
         html += '<tr><td style="color:#888;font-weight:600;">' + (i+1) + '</td>';
-        html += '<td>' + mA.toFixed(1) + '</td><td>' + mB.toFixed(1) + '</td>';
-        html += '<td>' + t1A.toFixed(1) + '</td><td>' + t2A.toFixed(1) + '</td><td>' + sA.toFixed(1) + '</td>';
-        html += '<td style="font-weight:700;color:#4caf50;">' + trA.toFixed(1) + '</td>';
-        html += '<td style="font-weight:700;color:#4caf50;">' + trB.toFixed(1) + '</td>';
-        html += '<td style="font-weight:700;color:#ffaa44;">' + total.toFixed(1) + '</td>';
+        html += '<td class="team-a-col">' + teamABreakdown + ' = <strong>' + trA.toFixed(1) + '</strong></td>';
+        html += '<td class="team-b-col">' + teamBBreakdown + ' = <strong>' + trB.toFixed(1) + '</strong></td>';
         html += '<td class="' + matchClass + '">' + recADisplay + '</td>';
         html += '<td class="' + matchClass + '">' + recBDisplay + '</td>';
         html += '<td>' + (match ? '✅' : '❌') + '</td></tr>';
@@ -833,7 +833,7 @@ function processGameData(data) {
         matchCumB[h] = (h > 0 ? matchCumB[h-1] : 0) + holeB;
     }
     
-    // v1.11: TR table now uses teamGameTR and strokeTR correctly
+    // v1.12: TR table with two-column breakdown format
     renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, data);
     renderSummary(t1Results, t2Results, strkResults, matchCumA, matchCumB, data);
     document.getElementById('results').style.display = 'block';
@@ -855,23 +855,21 @@ document.getElementById('clearBtn').addEventListener('click', function() {
 // INIT
 // ============================================================
 fetchRecords();
-console.log('🔬 Game Data Validator v1.11 loaded.');
+console.log('🔬 Game Data Validator v1.12 loaded.');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - FIXED: TR table now correctly uses teamGameTR and strokeTR (not invented T-1A/T-1B columns)
-   - T-1 points come from t1.teamGameTR (0, 0.5, or 1 per hole)
-   - T-2 points come from t2.teamGameTR (0, 0.5, or 1 per hole)
-   - Strk points come from strk.strokeTR (0, 0.5, or 1 per hole)
-   - TR per hole = MatchA + MatchB + T1points + T2points + Strkpoints = 19 total
-   - Removed invented T-1A/T-1B, T-2A/T-2B, StrkA/StrkB columns
-   - Table now shows: Hole | MatchA | MatchB | T-1 Pts | T-2 Pts | Strk Pts | TR A | TR B | Total | Record A | Record B | ✅
-   - All other functionality preserved from v1.10
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - CHANGED: TR table now shows breakdown in two columns: Team A and Team B
+   - Format for Team A: [MatchA + T-1 + T-2 + Strk] = TR A
+   - Format for Team B: [MatchB + T-1 + T-2 + Strk] = TR B
+   - Each hole total = 19.0 (16 + 1 + 1 + 1)
+   - Added comparison columns: Rec A, Rec B, and ✅
+   - All other functionality preserved from v1.11
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
