@@ -1,3 +1,16 @@
+<!--
+FILE: validate.html
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Error handling for missing course/player data
+   - CHANGED: Manual input replaced with dropdown selection
+   - Added: Fetch and populate historyGames records
+   - Added: Display game info with fallbacks for missing data
+   - Added: Better error messaging
+DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
+STATUS: Ready for integration
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -32,6 +45,16 @@
             border-bottom: 1px solid #2a2a2a;
             padding-bottom: 12px;
         }
+        h1 .version-tag {
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            opacity: 0.8;
+            margin-left: 10px;
+        }
         
         .card {
             background: #141414;
@@ -61,7 +84,7 @@
             font-size: 0.85rem;
             color: #aaa;
         }
-        .input-group input {
+        .input-group select {
             background: #1a1a1a;
             border: 1px solid #333;
             color: #fff;
@@ -70,10 +93,19 @@
             font-size: 0.85rem;
             flex: 1;
             min-width: 200px;
+            cursor: pointer;
         }
-        .input-group input:focus {
+        .input-group select:focus {
             outline: none;
             border-color: #4caf50;
+        }
+        .input-group select option {
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .input-group select:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         .btn {
             background: #1a3a1a;
@@ -84,9 +116,14 @@
             cursor: pointer;
             font-size: 0.85rem;
             font-weight: 600;
+            white-space: nowrap;
         }
         .btn:hover {
             background: #2a4a2a;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         .btn-secondary {
             background: #1a1a1a;
@@ -117,6 +154,11 @@
             background: #0a1a2a;
             border: 1px solid #2a3a5a;
             color: #64b5f6;
+        }
+        .status-warning {
+            background: #2a2a0a;
+            border: 1px solid #5a5a2a;
+            color: #ffa726;
         }
         
         table {
@@ -156,6 +198,11 @@
         .col-total {
             font-weight: 700;
             color: #4caf50;
+        }
+        .col-mismatch {
+            background: #3a1a1a !important;
+            color: #ef5350 !important;
+            font-weight: 700;
         }
         
         .highlight-wrong {
@@ -215,9 +262,7 @@
             margin-right: 8px;
         }
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
         
         .footnote {
@@ -228,32 +273,48 @@
             padding-top: 12px;
         }
         
-        .inline-code {
-            background: #1a1a1a;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 0.75rem;
-            color: #aaa;
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+        .empty-state .icon {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+        
+        .game-info-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 4px 16px;
+            font-size: 0.85rem;
+        }
+        .game-info-grid .label {
+            color: #666;
+        }
+        .game-info-grid .value {
+            color: #e0e0e0;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🔬 Game Data Validator</h1>
+    <h1>
+        🔬 Game Data Validator
+        <span class="version-tag">v1.01</span>
+    </h1>
     
     <!-- Input Section -->
     <div class="card">
-        <div class="card-title">📥 Load Game Record</div>
+        <div class="card-title">📥 Select Game Record</div>
         <div class="input-group">
-            <label for="gameIdInput">Game ID:</label>
-            <input type="text" id="gameIdInput" placeholder="e.g. GM_260620_xxxx_xx" value="GM_260619_1148_78">
-            <select id="collectionSelect" style="background:#1a1a1a; border:1px solid #333; color:#fff; padding:8px 12px; border-radius:6px; font-size:0.85rem;">
-                <option value="scheduledGames">scheduledGames</option>
-                <option value="historyGames" selected>historyGames</option>
+            <label for="recordSelect">Game:</label>
+            <select id="recordSelect">
+                <option value="">— Loading records... —</option>
             </select>
             <button class="btn" id="loadBtn">Load & Validate</button>
+            <button class="btn btn-secondary" id="refreshBtn">↻ Refresh</button>
             <button class="btn btn-secondary" id="clearBtn">Clear</button>
         </div>
         <div id="statusMessage"></div>
@@ -312,11 +373,17 @@
     </div>
     
     <div class="footnote">
-        Validator v1.0 — Uses the same calculation logic as the app. Raw data is the source of truth.
+        Validator v1.01 — Uses the same calculation logic as the app. Raw data is the source of truth.
     </div>
 </div>
 
 <script>
+// ============================================================
+// Version exposure
+// ============================================================
+window.VALIDATOR_VERSION = "1.01";
+console.log("[Validator] v1.01 - Dropdown selection + error handling");
+
 // ============================================================
 // Firebase Config
 // ============================================================
@@ -329,7 +396,6 @@ var FIREBASE_CONFIG = {
     appId: "1:137641493845:web:32399940bce639b01ddbdc"
 };
 
-// DEV config fallback
 var DEV_CONFIG = {
     apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
     authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
@@ -340,23 +406,19 @@ var DEV_CONFIG = {
 };
 
 if (typeof firebase !== 'undefined' && firebase.apps && !firebase.apps.length) {
-    // Use staging config if on staging domain
-    if (window.location.hostname.includes('staging')) {
-        firebase.initializeApp(DEV_CONFIG);
-        console.log("Using DEV config (staging)");
-    } else {
-        firebase.initializeApp(FIREBASE_CONFIG);
-        console.log("Using PROD config");
-    }
+    var config = window.location.hostname.includes('staging') ? DEV_CONFIG : FIREBASE_CONFIG;
+    firebase.initializeApp(config);
+    console.log("[Validator] Firebase initialized with project:", firebase.apps[0].options.projectId);
 }
 
 var db = firebase.firestore();
 
 // ============================================================
-// Global state
+// State
 // ============================================================
+var records = [];
 var gameData = null;
-var cachedData = null;
+var isLoading = false;
 
 // ============================================================
 // Utility
@@ -374,8 +436,70 @@ function escapeHtml(str) {
 function setStatus(msg, type) {
     var el = document.getElementById('statusMessage');
     if (!msg) { el.innerHTML = ''; return; }
-    var icons = { success: '✅', error: '❌', info: 'ℹ️' };
+    var icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
     el.innerHTML = '<div class="status status-' + type + '">' + (icons[type] || '') + ' ' + msg + '</div>';
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return 'Unknown';
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+        var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return parts[2] + ' ' + months[parseInt(parts[1]) - 1] + ' ' + parts[0];
+    }
+    return dateStr;
+}
+
+// ============================================================
+// Fetch Records
+// ============================================================
+function fetchRecords() {
+    var select = document.getElementById('recordSelect');
+    select.disabled = true;
+    select.innerHTML = '<option value="">Loading...</option>';
+    setStatus('Loading records from Firestore...', 'info');
+    
+    db.collection('historyGames')
+        .where('status', 'in', ['pending_handicap', 'completed'])
+        .orderBy('createdAt', 'desc')
+        .limit(100)
+        .get()
+        .then(function(snapshot) {
+            records = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                records.push({
+                    id: doc.id,
+                    originalGameId: data.originalGameId || doc.id,
+                    date: data.gameInfo?.date || 'Unknown',
+                    courseName: data.gameInfo?.course?.name || 'Unknown Course',
+                    status: data.status || 'unknown',
+                    rawData: data
+                });
+            });
+            
+            if (records.length === 0) {
+                select.innerHTML = '<option value="">No records found</option>';
+                setStatus('No history records found. Try scheduling a game first.', 'warning');
+                return;
+            }
+            
+            var html = '<option value="">— Select a game —</option>';
+            for (var i = 0; i < records.length; i++) {
+                var r = records[i];
+                var label = r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')';
+                html += '<option value="' + i + '">' + escapeHtml(label) + '</option>';
+            }
+            select.innerHTML = html;
+            select.disabled = false;
+            setStatus('Loaded ' + records.length + ' records', 'success');
+        })
+        .catch(function(err) {
+            console.error('Error fetching records:', err);
+            select.innerHTML = '<option value="">Error loading records</option>';
+            select.disabled = false;
+            setStatus('Error loading records: ' + err.message, 'error');
+        });
 }
 
 // ============================================================
@@ -397,24 +521,6 @@ function parseDataString(dataStr) {
     return scores;
 }
 
-function getPlayerScore(playerName, flightScores, players) {
-    // Find the player's position in the flight
-    var flightPlayers = players.filter(function(p) { return p.flight === (playerName === 'KF' || playerName === 'CK' ? 2 : 1); });
-    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    for (var i = 0; i < flightScores.length; i++) {
-        var hole = flightScores[i];
-        // Check Team A
-        if (teamA[0] && teamA[0].name === playerName) return hole.a1;
-        if (teamA[1] && teamA[1].name === playerName) return hole.a2;
-        // Check Team B
-        if (teamB[0] && teamB[0].name === playerName) return hole.b1;
-        if (teamB[1] && teamB[1].name === playerName) return hole.b2;
-    }
-    return null;
-}
-
 // ============================================================
 // T-1 Calculation (Flight 1 Team Game)
 // ============================================================
@@ -429,7 +535,7 @@ function calculateT1(flightScores, players) {
     for (var h = 0; h < 18; h++) {
         var hole = flightScores[h];
         if (!hole || !hole.saved) {
-            results.push({ hole: h+1, result: '-', cumulative: '-' });
+            results.push({ hole: h+1, match1: null, match2: null, holeResult: null, running: null, display: '-' });
             continue;
         }
         
@@ -473,7 +579,7 @@ function calculateT2(flightScores, players) {
     for (var h = 0; h < 18; h++) {
         var hole = flightScores[h];
         if (!hole || !hole.saved) {
-            results.push({ hole: h+1, result: '-', cumulative: '-' });
+            results.push({ hole: h+1, match1: null, match2: null, holeResult: null, running: null, display: '-' });
             continue;
         }
         
@@ -507,12 +613,10 @@ function calculateT2(flightScores, players) {
 // Strk Calculation (Stroke Game)
 // ============================================================
 function calculateStrk(flight1Scores, flight2Scores, players) {
-    // Total team handicaps
     var teamA = players.filter(function(p) { return p.team === 'A'; });
     var teamB = players.filter(function(p) { return p.team === 'B'; });
     var hcpA = teamA.reduce(function(sum, p) { return sum + p.handicap; }, 0);
     var hcpB = teamB.reduce(function(sum, p) { return sum + p.handicap; }, 0);
-    var hcpDiff = hcpA - hcpB;
     
     var results = [];
     var runningA = 0, runningB = 0;
@@ -522,7 +626,7 @@ function calculateStrk(flight1Scores, flight2Scores, players) {
         var f2 = flight2Scores[h];
         
         if (!f1 || !f1.saved || !f2 || !f2.saved) {
-            results.push({ hole: h+1, grossA: '-', grossB: '-', netA: '-', netB: '-', display: '-' });
+            results.push({ hole: h+1, grossA: null, grossB: null, runningA: null, runningB: null, netA: null, netB: null, diff: null, display: '-' });
             continue;
         }
         
@@ -558,14 +662,25 @@ function calculateStrk(flight1Scores, flight2Scores, players) {
 // Render Functions
 // ============================================================
 function renderGameInfo(data) {
-    var html = '<table style="width:auto;">';
-    html += '<tr><td style="padding:4px 12px 4px 0; color:#888;">Date</td><td style="padding:4px 8px;">' + escapeHtml(data.date) + '</td></tr>';
-    html += '<tr><td style="padding:4px 12px 4px 0; color:#888;">Course</td><td style="padding:4px 8px;">' + escapeHtml(data.course.name) + '</td></tr>';
-    html += '<tr><td style="padding:4px 12px 4px 0; color:#888;">Starting Hole</td><td style="padding:4px 8px;">' + data.startingHole + '</td></tr>';
-    html += '<tr><td style="padding:4px 12px 4px 0; color:#888;">Team Format</td><td style="padding:4px 8px;">' + escapeHtml(data.teamGameFormat || 'tournament') + '</td></tr>';
-    html += '<tr><td style="padding:4px 12px 4px 0; color:#888;">Players</td><td style="padding:4px 8px;">' + data.players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ') + '</td></tr>';
-    html += '</table>';
-    document.getElementById('gameInfoContent').innerHTML = html;
+    var container = document.getElementById('gameInfoContent');
+    
+    // Safe access with fallbacks
+    var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown Course';
+    var date = data.gameInfo?.date || data.date || 'Unknown';
+    var startingHole = data.gameInfo?.startingHole || data.startingHole || 1;
+    var teamFormat = data.gameInfo?.teamGameFormat || data.teamGameFormat || 'tournament';
+    var players = data.players || data.gameInfo?.players || [];
+    
+    var html = '<div class="game-info-grid">';
+    html += '<span class="label">ID</span><span class="value">' + escapeHtml(data.id || 'Unknown') + '</span>';
+    html += '<span class="label">Date</span><span class="value">' + escapeHtml(date) + '</span>';
+    html += '<span class="label">Course</span><span class="value">' + escapeHtml(courseName) + '</span>';
+    html += '<span class="label">Starting Hole</span><span class="value">' + startingHole + '</span>';
+    html += '<span class="label">Format</span><span class="value">' + escapeHtml(teamFormat) + '</span>';
+    html += '<span class="label">Players</span><span class="value">' + (players.length > 0 ? players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ') : 'No players') + '</span>';
+    html += '<span class="label">Status</span><span class="value">' + escapeHtml(data.status || 'unknown') + '</span>';
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 function renderFlightTable(flightScores, players, flightNum, containerId) {
@@ -578,17 +693,21 @@ function renderFlightTable(flightScores, players, flightNum, containerId) {
     for (var i = 0; i < teamA.length; i++) playerNames.push(teamA[i].label);
     for (var i = 0; i < teamB.length; i++) playerNames.push(teamB[i].label);
     
+    if (playerNames.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div>No players found for this flight</div>';
+        return;
+    }
+    
     var html = '<table>';
     html += '<tr><th>Hole</th>';
     for (var i = 0; i < playerNames.length; i++) {
-        html += '<th>' + playerNames[i] + '</th>';
+        html += '<th>' + escapeHtml(playerNames[i]) + '</th>';
     }
     html += '<th style="color:#888;">Saved</th></tr>';
     
     for (var h = 0; h < 18; h++) {
         var hole = flightScores[h];
         var scores = [];
-        // Team A
         if (hole) {
             scores.push(hole.a1);
             scores.push(hole.a2);
@@ -617,10 +736,10 @@ function renderT1Table(results) {
         var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
         html += '<tr>' +
             '<td style="color:#888;">' + r.hole + '</td>' +
-            '<td>' + (r.match1 !== undefined ? (r.match1 > 0 ? 'A' : r.match1 < 0 ? 'B' : 'AS') : '-') + '</td>' +
-            '<td>' + (r.match2 !== undefined ? (r.match2 > 0 ? 'A' : r.match2 < 0 ? 'B' : 'AS') : '-') + '</td>' +
-            '<td>' + (r.holeResult !== undefined ? r.holeResult : '-') + '</td>' +
-            '<td class="' + cls + '">' + (r.running !== undefined ? r.running : '-') + '</td>' +
+            '<td>' + (r.match1 !== null ? (r.match1 > 0 ? 'A' : r.match1 < 0 ? 'B' : 'AS') : '-') + '</td>' +
+            '<td>' + (r.match2 !== null ? (r.match2 > 0 ? 'A' : r.match2 < 0 ? 'B' : 'AS') : '-') + '</td>' +
+            '<td>' + (r.holeResult !== null ? r.holeResult : '-') + '</td>' +
+            '<td class="' + cls + '">' + (r.running !== null ? r.running : '-') + '</td>' +
             '<td class="' + cls + '">' + (r.display || '-') + '</td>' +
             '</tr>';
     }
@@ -629,7 +748,7 @@ function renderT1Table(results) {
 }
 
 function renderT2Table(results) {
-    renderT1Table.call(null, results); // Same format
+    renderT1Table.call(null, results);
 }
 
 function renderStrkTable(results) {
@@ -641,13 +760,13 @@ function renderStrkTable(results) {
         var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
         html += '<tr>' +
             '<td style="color:#888;">' + r.hole + '</td>' +
-            '<td>' + r.grossA + '</td>' +
-            '<td>' + r.grossB + '</td>' +
-            '<td>' + r.runningA + '</td>' +
-            '<td>' + r.runningB + '</td>' +
-            '<td>' + r.netA + '</td>' +
-            '<td>' + r.netB + '</td>' +
-            '<td>' + (r.diff !== undefined ? r.diff.toFixed(1) : '-') + '</td>' +
+            '<td>' + (r.grossA !== null ? r.grossA : '-') + '</td>' +
+            '<td>' + (r.grossB !== null ? r.grossB : '-') + '</td>' +
+            '<td>' + (r.runningA !== null ? r.runningA : '-') + '</td>' +
+            '<td>' + (r.runningB !== null ? r.runningB : '-') + '</td>' +
+            '<td>' + (r.netA !== null ? r.netA : '-') + '</td>' +
+            '<td>' + (r.netB !== null ? r.netB : '-') + '</td>' +
+            '<td>' + (r.diff !== null ? r.diff.toFixed(1) : '-') + '</td>' +
             '<td class="' + cls + '">' + (r.display || '-') + '</td>' +
             '</tr>';
     }
@@ -666,30 +785,30 @@ function renderTRComparison(t1Result, t2Result, strkResult, gameData) {
     var t2Display = t2Final ? t2Final.display : '-';
     var strkDisplay = strkFinal ? strkFinal.display : '-';
     
-    // Get cached values from record
     var cachedT1 = gameData.results?.game2?.displayT1?.[17] || '-';
     var cachedT2 = gameData.results?.game2?.displayT2?.[17] || '-';
     var cachedStrk = gameData.results?.game3?.displayStrk?.[17] || '-';
-    var cachedTR = gameData.finalResults ? gameData.finalResults.teamAScore + ' - ' + gameData.finalResults.teamBScore : '-';
     
-    // Calculate TR from derived values (T-1, T-2, Strk points)
-    // T-1: if display starts with 'A' -> Team A wins, 'B' -> Team B wins, 'AS' -> tie
+    var cachedTR = gameData.finalResults ? 
+        (gameData.finalResults.teamAScore + ' - ' + gameData.finalResults.teamBScore) : 
+        (gameData.results?.tr?.teamA?.[17] + ' - ' + gameData.results?.tr?.teamB?.[17]) || '-';
+    
+    // Calculate TR points
     var t1PointsA = 0, t1PointsB = 0;
     if (t1Display.startsWith('A')) { t1PointsA = 1; }
     else if (t1Display.startsWith('B')) { t1PointsB = 1; }
-    else { t1PointsA = 0.5; t1PointsB = 0.5; }
+    else if (t1Display !== '-') { t1PointsA = 0.5; t1PointsB = 0.5; }
     
     var t2PointsA = 0, t2PointsB = 0;
     if (t2Display.startsWith('A')) { t2PointsA = 1; }
     else if (t2Display.startsWith('B')) { t2PointsB = 1; }
-    else { t2PointsA = 0.5; t2PointsB = 0.5; }
+    else if (t2Display !== '-') { t2PointsA = 0.5; t2PointsB = 0.5; }
     
     var strkPointsA = 0, strkPointsB = 0;
     if (strkDisplay.startsWith('A')) { strkPointsA = 1; }
     else if (strkDisplay.startsWith('B')) { strkPointsB = 1; }
-    else { strkPointsA = 0.5; strkPointsB = 0.5; }
+    else if (strkDisplay !== '-') { strkPointsA = 0.5; strkPointsB = 0.5; }
     
-    // Match game points from record
     var matchA = gameData.results?.game1?.pointsA?.[17] || 0;
     var matchB = gameData.results?.game1?.pointsB?.[17] || 0;
     
@@ -720,30 +839,14 @@ function renderTRComparison(t1Result, t2Result, strkResult, gameData) {
         '<td>' + cachedStrk + '</td>' +
         '<td>' + (strkMatch ? '✅' : '❌') + '</td></tr>';
     
-    // TR (calculated vs cached)
+    // TR
     var trDisplay = trA.toFixed(1) + ' - ' + trB.toFixed(1);
-    var trMatch = (trA === (gameData.finalResults?.teamAScore || 0) && trB === (gameData.finalResults?.teamBScore || 0));
+    var trMatch = (trA === (gameData.finalResults?.teamAScore || 0) && 
+                   trB === (gameData.finalResults?.teamBScore || 0));
     html += '<tr style="border-top:2px solid #2a2a2a;"><td style="text-align:left; color:#4caf50; font-weight:700;">TR</td>' +
         '<td style="font-weight:700; color:#4caf50;">' + trDisplay + '</td>' +
         '<td>' + cachedTR + '</td>' +
         '<td>' + (trMatch ? '✅' : '❌') + '</td></tr>';
-    
-    // Match Game points
-    html += '<tr><td style="text-align:left; color:#888;">Match Game</td>' +
-        '<td>' + matchA.toFixed(1) + ' - ' + matchB.toFixed(1) + '</td>' +
-        '<td>' + matchA.toFixed(1) + ' - ' + matchB.toFixed(1) + '</td>' +
-        '<td>✅</td></tr>';
-    
-    // Points breakdown
-    html += '<tr><td style="text-align:left; color:#888; font-size:0.7rem;">T-1 Points</td>' +
-        '<td style="font-size:0.7rem;">' + t1PointsA + ' - ' + t1PointsB + '</td>' +
-        '<td style="font-size:0.7rem;">-</td><td></td></tr>';
-    html += '<tr><td style="text-align:left; color:#888; font-size:0.7rem;">T-2 Points</td>' +
-        '<td style="font-size:0.7rem;">' + t2PointsA + ' - ' + t2PointsB + '</td>' +
-        '<td style="font-size:0.7rem;">-</td><td></td></tr>';
-    html += '<tr><td style="text-align:left; color:#888; font-size:0.7rem;">Strk Points</td>' +
-        '<td style="font-size:0.7rem;">' + strkPointsA + ' - ' + strkPointsB + '</td>' +
-        '<td style="font-size:0.7rem;">-</td><td></td></tr>';
     
     html += '</table>';
     container.innerHTML = html;
@@ -790,93 +893,77 @@ function renderSummary(t1Result, t2Result, strkResult, gameData) {
 // Main Load Function
 // ============================================================
 function loadAndValidate() {
-    var gameId = document.getElementById('gameIdInput').value.trim();
-    var collection = document.getElementById('collectionSelect').value;
+    var select = document.getElementById('recordSelect');
+    var index = parseInt(select.value);
     
-    if (!gameId) {
-        setStatus('Please enter a Game ID', 'error');
+    if (isNaN(index) || index < 0 || index >= records.length) {
+        setStatus('Please select a game from the dropdown', 'warning');
         return;
     }
     
-    setStatus('Loading... <span class="loader"></span>', 'info');
+    var record = records[index];
+    var data = record.rawData;
+    
+    if (!data) {
+        setStatus('Error: No data found for this record', 'error');
+        return;
+    }
+    
+    gameData = data;
+    gameData.id = record.id;
+    
+    setStatus('Loading: ' + record.originalGameId + '... <span class="loader"></span>', 'info');
     document.getElementById('results').style.display = 'none';
     
-    db.collection(collection).doc(gameId).get().then(function(doc) {
-        if (!doc.exists) {
-            setStatus('Game not found in ' + collection + ': ' + gameId, 'error');
-            return;
-        }
-        
-        gameData = doc.data();
-        gameData.id = doc.id;
-        
-        // Also try to get from scheduledGames if in historyGames (for comparison)
-        if (collection === 'historyGames' && gameData.originalGameId) {
-            db.collection('scheduledGames').doc(gameData.originalGameId).get().then(function(sgDoc) {
-                if (sgDoc.exists) {
-                    cachedData = sgDoc.data();
-                    cachedData.id = sgDoc.id;
-                }
-                processGameData(gameData, cachedData);
-            }).catch(function() {
-                processGameData(gameData, null);
-            });
-        } else {
-            processGameData(gameData, null);
-        }
-    }).catch(function(err) {
-        setStatus('Error loading game: ' + err.message, 'error');
-        console.error(err);
-    });
-}
-
-function processGameData(data, scheduledData) {
     try {
-        // Parse raw scores
-        var f1Scores = parseDataString(data.f1DataString);
-        var f2Scores = parseDataString(data.f2DataString);
-        
-        if (!f1Scores || !f2Scores) {
-            setStatus('Invalid data strings (length must be 162)', 'error');
-            return;
-        }
-        
-        var players = data.players || [];
-        if (players.length === 0) {
-            setStatus('No players found in record', 'error');
-            return;
-        }
-        
-        // Render game info
-        renderGameInfo(data);
-        
-        // Render raw scores
-        renderFlightTable(f1Scores, players, 1, 'flight1Table');
-        renderFlightTable(f2Scores, players, 2, 'flight2Table');
-        
-        // Calculate T-1, T-2, Strk
-        var t1Results = calculateT1(f1Scores, players);
-        var t2Results = calculateT2(f2Scores, players);
-        var strkResults = calculateStrk(f1Scores, f2Scores, players);
-        
-        // Render tables
-        renderT1Table(t1Results);
-        renderT2Table(t2Results);
-        renderStrkTable(strkResults);
-        
-        // TR Comparison
-        renderTRComparison(t1Results, t2Results, strkResults, data);
-        
-        // Summary
-        renderSummary(t1Results, t2Results, strkResults, data);
-        
-        document.getElementById('results').style.display = 'block';
-        setStatus('✅ Loaded successfully: ' + data.id + ' (' + data.date + ')', 'success');
-        
+        processGameData(gameData);
     } catch (err) {
         setStatus('Error processing data: ' + err.message, 'error');
         console.error(err);
     }
+}
+
+function processGameData(data) {
+    // Parse raw scores with fallbacks
+    var f1Scores = parseDataString(data.f1DataString);
+    var f2Scores = parseDataString(data.f2DataString);
+    
+    if (!f1Scores || !f2Scores) {
+        setStatus('Invalid data strings (length must be 162)', 'error');
+        return;
+    }
+    
+    var players = data.players || [];
+    if (players.length === 0) {
+        setStatus('No players found in record', 'error');
+        return;
+    }
+    
+    // Render game info
+    renderGameInfo(data);
+    
+    // Render raw scores
+    renderFlightTable(f1Scores, players, 1, 'flight1Table');
+    renderFlightTable(f2Scores, players, 2, 'flight2Table');
+    
+    // Calculate T-1, T-2, Strk
+    var t1Results = calculateT1(f1Scores, players);
+    var t2Results = calculateT2(f2Scores, players);
+    var strkResults = calculateStrk(f1Scores, f2Scores, players);
+    
+    // Render tables
+    renderT1Table(t1Results);
+    renderT2Table(t2Results);
+    renderStrkTable(strkResults);
+    
+    // TR Comparison
+    renderTRComparison(t1Results, t2Results, strkResults, data);
+    
+    // Summary
+    renderSummary(t1Results, t2Results, strkResults, data);
+    
+    document.getElementById('results').style.display = 'block';
+    setStatus('✅ Loaded successfully: ' + data.id + ' (' + formatDate(data.date) + ')', 'success');
 }
 
 // ============================================================
@@ -884,30 +971,42 @@ function processGameData(data, scheduledData) {
 // ============================================================
 document.getElementById('loadBtn').addEventListener('click', loadAndValidate);
 
+document.getElementById('refreshBtn').addEventListener('click', function() {
+    setStatus('Refreshing records...', 'info');
+    fetchRecords();
+});
+
 document.getElementById('clearBtn').addEventListener('click', function() {
     document.getElementById('results').style.display = 'none';
     document.getElementById('statusMessage').innerHTML = '';
-    document.getElementById('gameIdInput').value = '';
+    document.getElementById('recordSelect').value = '';
 });
 
 // Enter key to load
-document.getElementById('gameIdInput').addEventListener('keydown', function(e) {
+document.getElementById('recordSelect').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') loadAndValidate();
 });
 
-// Auto-load on page load if gameId is in URL
-window.addEventListener('load', function() {
-    var params = new URLSearchParams(window.location.search);
-    var gameId = params.get('gameId');
-    if (gameId) {
-        document.getElementById('gameIdInput').value = gameId;
-        document.getElementById('collectionSelect').value = 'historyGames';
-        loadAndValidate();
-    }
-});
+// ============================================================
+// Initialization
+// ============================================================
+fetchRecords();
 
-console.log('🔬 Game Data Validator loaded.');
-console.log('Usage: Enter a Game ID (e.g., GM_260619_1148_78) and click Load.');
+console.log('🔬 Game Data Validator v1.01 loaded.');
+console.log('Usage: Select a game from the dropdown and click Load.');
 </script>
 </body>
 </html>
+
+<!--
+FILE: validate.html
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Error handling for missing course/player data
+   - CHANGED: Manual input replaced with dropdown selection
+   - Added: Fetch and populate historyGames records
+   - Added: Display game info with fallbacks for missing data
+   - Added: Better error messaging
+DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
+STATUS: Ready for integration
+-->
