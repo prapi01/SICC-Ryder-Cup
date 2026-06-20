@@ -1,13 +1,15 @@
 <!--
 FILE: validate.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - CHANGED: TR table now shows breakdown in two columns: Team A and Team B
-   - Format for Team A: [MatchA + T-1 + T-2 + Strk] = TR A
-   - Format for Team B: [MatchB + T-1 + T-2 + Strk] = TR B
-   - Each hole total = 19.0 (16 + 1 + 1 + 1)
-   - Added comparison columns: Rec A, Rec B, and ✅
-   - All other functionality preserved from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - ADDED: Clinch detection in Match Game table
+   - Each player's cell shows their points AND 🏆 if they clinched on that hole
+   - For matches already clinched, the cell shows points with ⭐ indicator
+   - Uses clinchedAt data from the record to detect clinch holes
+   - Match Game table now shows: Hole | Player1 | Player2 | ... | Player8 | Total
+   - Each cell format: "X.X 🏆" if clinched on that hole, "X.X" if not
+   - For holes after clinch: "X.X ⭐" (match already won)
+   - All other functionality preserved from v1.12
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -64,6 +66,9 @@ STATUS: Ready for integration
         .team-b-col { color: #ff6b6b; }
         .team-a-bg { background: rgba(76, 175, 80, 0.05); }
         .team-b-bg { background: rgba(255, 107, 107, 0.05); }
+        .clinch-cell { background: rgba(255, 170, 68, 0.25) !important; border-radius: 4px; }
+        .clinch-icon { color: #ffaa44; font-size: 0.7rem; margin-left: 2px; }
+        .clinch-star { color: #4caf50; font-size: 0.6rem; margin-left: 2px; }
         
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
@@ -99,7 +104,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.12</span>
+        <span class="version-tag">v1.13</span>
     </h1>
     
     <!-- Input -->
@@ -149,7 +154,7 @@ STATUS: Ready for integration
         </div>
         
         <div class="card">
-            <div class="card-title">🏅 Match Game — Per Hole (16 matches per hole)</div>
+            <div class="card-title">🏅 Match Game — Per Hole (16 matches per hole) — 🏆 = clinched on this hole, ⭐ = already clinched</div>
             <div id="matchTable"></div>
         </div>
         
@@ -165,7 +170,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v1.12 — TR: Two-column breakdown format [Match + T-1 + T-2 + Strk] = Total.
+        Validator v1.13 — Match Game: Clinch detection with 🏆 (clinch hole) and ⭐ (already clinched).
     </div>
 </div>
 
@@ -173,8 +178,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "1.12";
-console.log("[Validator] v1.12 - TR breakdown format [Match + T-1 + T-2 + Strk]");
+window.VALIDATOR_VERSION = "1.13";
+console.log("[Validator] v1.13 - Match Game with clinch detection");
 
 // ============================================================
 // FIREBASE
@@ -356,9 +361,9 @@ function parseHoleData(dataStr, holeNumber) {
 }
 
 // ============================================================
-// v1.09: calculateMatchGamePerHole — returns per-hole results for each player
+// v1.13: calculateMatchGamePerHoleWithClinch — returns per-hole results with clinch detection
 // ============================================================
-function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, coursePar) {
+function calculateMatchGamePerHoleWithClinch(f1Scores, f2Scores, allPlayers, courseSi, coursePar, clinchedAt) {
     var flight1Data = f1Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
     var flight2Data = f2Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
     
@@ -379,12 +384,40 @@ function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, cou
         }
     }
     
+    // Build clinch lookup: map of "Winner_vs_Loser" -> clinchHole
+    var clinchLookup = {};
+    if (clinchedAt) {
+        for (var key in clinchedAt) {
+            var entry = clinchedAt[key];
+            var clinchHole = (typeof entry === 'number') ? entry : entry.clinchedAtHole;
+            if (clinchHole) {
+                clinchLookup[key] = clinchHole;
+            }
+        }
+    }
+    
     // results[holeIndex][playerIndex] = points for that player on that hole
+    // with clinch info
     var results = [];
+    var cumulativeLeads = {};
+    
+    // Initialize cumulative leads for all matches
+    for (var m = 0; m < allMatches.length; m++) {
+        var match = allMatches[m];
+        var keyA = match.playerA.name + "_vs_" + match.playerB.name;
+        var keyB = match.playerB.name + "_vs_" + match.playerA.name;
+        cumulativeLeads[keyA] = 0;
+        cumulativeLeads[keyB] = 0;
+    }
+    
     for (var hole = 1; hole <= 18; hole++) {
         var holeResults = {};
+        var holeClinchInfo = {};
+        
+        // Initialize all players to 0
         for (var p = 0; p < orderedPlayers.length; p++) {
             holeResults[orderedPlayers[p].name] = 0;
+            holeClinchInfo[orderedPlayers[p].name] = { clinched: false, alreadyClinched: false };
         }
         
         for (var m = 0; m < allMatches.length; m++) {
@@ -396,16 +429,55 @@ function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, cou
             } else {
                 margin = getCrossMatchResultForHole(match.playerA, match.playerB, flight1Data, flight2Data, allPlayers, courseSi, hole, coursePar);
             }
+            
+            var keyA = match.playerA.name + "_vs_" + match.playerB.name;
+            var keyB = match.playerB.name + "_vs_" + match.playerA.name;
+            
+            // Check if this match is already clinched (from earlier holes)
+            var clinchHole = clinchLookup[keyA] || clinchLookup[keyB];
+            var isClinched = (clinchHole !== undefined && clinchHole < hole);
+            var isClinchHole = (clinchHole !== undefined && clinchHole === hole);
+            
+            // Award points for this hole
+            var pointsA = 0, pointsB = 0;
             if (margin > 0) {
-                holeResults[match.playerA.name] += 1;
+                pointsA = 1;
+                pointsB = 0;
             } else if (margin < 0) {
-                holeResults[match.playerB.name] += 1;
+                pointsA = 0;
+                pointsB = 1;
             } else {
-                holeResults[match.playerA.name] += 0.5;
-                holeResults[match.playerB.name] += 0.5;
+                pointsA = 0.5;
+                pointsB = 0.5;
+            }
+            
+            // Update cumulative leads
+            cumulativeLeads[keyA] += (pointsA - pointsB);
+            cumulativeLeads[keyB] += (pointsB - pointsA);
+            
+            // Store points with clinch info
+            if (isClinchHole) {
+                holeResults[match.playerA.name] += pointsA;
+                holeClinchInfo[match.playerA.name].clinched = true;
+                holeClinchInfo[match.playerA.name].clinchOpponent = match.playerB.name;
+                holeResults[match.playerB.name] += pointsB;
+            } else if (isClinched) {
+                // Already clinched - points still count, mark as alreadyClinched
+                holeResults[match.playerA.name] += pointsA;
+                holeClinchInfo[match.playerA.name].alreadyClinched = true;
+                holeResults[match.playerB.name] += pointsB;
+                holeClinchInfo[match.playerB.name].alreadyClinched = true;
+            } else {
+                holeResults[match.playerA.name] += pointsA;
+                holeResults[match.playerB.name] += pointsB;
             }
         }
-        results.push(holeResults);
+        
+        results.push({
+            hole: hole,
+            points: holeResults,
+            clinchInfo: holeClinchInfo
+        });
     }
     
     return {
@@ -635,7 +707,7 @@ function renderStrkTable(results) {
 }
 
 // ============================================================
-// v1.09: renderMatchTable — per-hole results for all 8 players
+// v1.13: renderMatchTable — per-hole results with clinch detection
 // ============================================================
 function renderMatchTable(orderedPlayers, matchResults) {
     var container = document.getElementById('matchTable');
@@ -659,18 +731,52 @@ function renderMatchTable(orderedPlayers, matchResults) {
     // Data rows
     for (var h = 0; h < matchResults.length; h++) {
         var holeData = matchResults[h];
+        var holePoints = holeData.points;
+        var holeClinch = holeData.clinchInfo;
         var total = 0;
+        var isClinchRow = false;
+        
+        // Check if any clinch on this hole
+        for (var p = 0; p < orderedPlayers.length; p++) {
+            var player = orderedPlayers[p];
+            if (holeClinch[player.name] && holeClinch[player.name].clinched) {
+                isClinchRow = true;
+                break;
+            }
+        }
+        
         html += '<tr><td style="color:#888;font-weight:600;">' + (h+1) + '</td>';
         
         for (var p = 0; p < orderedPlayers.length; p++) {
             var player = orderedPlayers[p];
-            var score = holeData[player.name] || 0;
+            var score = holePoints[player.name] || 0;
             total += score;
-            var colorClass = score > 0 ? 'col-green' : (score === 0 ? 'col-red' : 'col-gold');
-            html += '<td class="' + colorClass + '">' + score.toFixed(1) + '</td>';
+            
+            var clinchInfo = holeClinch[player.name] || {};
+            var isClinched = clinchInfo.clinched;
+            var alreadyClinched = clinchInfo.alreadyClinched;
+            
+            var displayText = score.toFixed(1);
+            var cellClass = '';
+            var extraClass = '';
+            
+            if (score > 0) cellClass = 'col-green';
+            else if (score === 0) cellClass = 'col-red';
+            else cellClass = 'col-gold';
+            
+            if (isClinched) {
+                extraClass = ' clinch-cell';
+                displayText += ' <span class="clinch-icon">🏆</span>';
+            } else if (alreadyClinched) {
+                displayText += ' <span class="clinch-star">⭐</span>';
+            }
+            
+            html += '<td class="' + cellClass + extraClass + '">' + displayText + '</td>';
         }
         
-        html += '<td class="total-cell">' + total.toFixed(1) + '</td></tr>';
+        // Highlight the total row if any clinch occurred
+        var totalClass = isClinchRow ? 'total-cell clinch-cell' : 'total-cell';
+        html += '<td class="' + totalClass + '">' + total.toFixed(1) + '</td></tr>';
     }
     
     html += '</table></div>';
@@ -809,8 +915,9 @@ function processGameData(data) {
     renderTeamGameTable(t2Results, 't2Table', 'T-2');
     renderStrkTable(strkResults);
     
-    // v1.09: Match Game per-hole player view
-    var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
+    // v1.13: Match Game per-hole with clinch detection
+    var clinchedAt = data.results?.clinchedAt || {};
+    var matchData = calculateMatchGamePerHoleWithClinch(f1Scores, f2Scores, players, courseSi, coursePar, clinchedAt);
     var orderedPlayers = matchData.orderedPlayers;
     var matchResults = matchData.results;
     renderMatchTable(orderedPlayers, matchResults);
@@ -822,12 +929,13 @@ function processGameData(data) {
     var teamBplayers = players.filter(function(p) { return p.team === 'B'; });
     for (var h = 0; h < 18; h++) {
         var holeData = matchResults[h];
+        var holePoints = holeData.points;
         var holeA = 0, holeB = 0;
         for (var p = 0; p < teamAplayers.length; p++) {
-            holeA += holeData[teamAplayers[p].name] || 0;
+            holeA += holePoints[teamAplayers[p].name] || 0;
         }
         for (var p = 0; p < teamBplayers.length; p++) {
-            holeB += holeData[teamBplayers[p].name] || 0;
+            holeB += holePoints[teamBplayers[p].name] || 0;
         }
         matchCumA[h] = (h > 0 ? matchCumA[h-1] : 0) + holeA;
         matchCumB[h] = (h > 0 ? matchCumB[h-1] : 0) + holeB;
@@ -855,21 +963,23 @@ document.getElementById('clearBtn').addEventListener('click', function() {
 // INIT
 // ============================================================
 fetchRecords();
-console.log('🔬 Game Data Validator v1.12 loaded.');
+console.log('🔬 Game Data Validator v1.13 loaded.');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - CHANGED: TR table now shows breakdown in two columns: Team A and Team B
-   - Format for Team A: [MatchA + T-1 + T-2 + Strk] = TR A
-   - Format for Team B: [MatchB + T-1 + T-2 + Strk] = TR B
-   - Each hole total = 19.0 (16 + 1 + 1 + 1)
-   - Added comparison columns: Rec A, Rec B, and ✅
-   - All other functionality preserved from v1.11
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - ADDED: Clinch detection in Match Game table
+   - Each player's cell shows their points AND 🏆 if they clinched on that hole
+   - For matches already clinched, the cell shows points with ⭐ indicator
+   - Uses clinchedAt data from the record to detect clinch holes
+   - Match Game table now shows: Hole | Player1 | Player2 | ... | Player8 | Total
+   - Each cell format: "X.X 🏆" if clinched on that hole, "X.X" if not
+   - For holes after clinch: "X.X ⭐" (match already won)
+   - All other functionality preserved from v1.12
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
