@@ -1,11 +1,13 @@
 <!--
 FILE: validate.html
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: Removed orderBy from Firestore query to avoid index requirement
-   - Added: In-memory sorting of records by createdAt
-   - Added: Better error handling for missing fields
-   - Added: Loading state for record refresh
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: Handicap and SI logic to all calculations
+   - T-1 now uses net scores (handicap + SI applied)
+   - T-2 now uses net scores (handicap + SI applied)
+   - Strk now uses cumulative net scores
+   - Added getNetScore() helper function
+   - Now matches the actual app's calculation logic
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -197,6 +199,10 @@ STATUS: Ready for integration
             color: #ef5350 !important;
             font-weight: 700;
         }
+        .net-score {
+            color: #ffa726;
+            font-size: 0.7rem;
+        }
         
         .two-col {
             display: grid;
@@ -281,7 +287,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.02</span>
+        <span class="version-tag">v1.03</span>
     </h1>
     
     <!-- Input Section -->
@@ -352,7 +358,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v1.02 — Uses the same calculation logic as the app. Raw data is the source of truth.
+        Validator v1.03 — Uses handicap + SI logic to calculate net scores. Matches the actual app's calculation logic.
     </div>
 </div>
 
@@ -360,8 +366,8 @@ STATUS: Ready for integration
 // ============================================================
 // Version exposure
 // ============================================================
-window.VALIDATOR_VERSION = "1.02";
-console.log("[Validator] v1.02 - No index required, in-memory sorting");
+window.VALIDATOR_VERSION = "1.03";
+console.log("[Validator] v1.03 - Handicap + SI logic added");
 
 // ============================================================
 // Firebase Config
@@ -427,6 +433,17 @@ function formatDate(dateStr) {
         return parts[2] + ' ' + months[parseInt(parts[1]) - 1] + ' ' + parts[0];
     }
     return dateStr;
+}
+
+// ============================================================
+// v1.03: Net Score with Handicap + SI
+// ============================================================
+function getNetScore(gross, handicap, si) {
+    var strokes = 0;
+    if (handicap > 0 && si <= handicap) {
+        strokes = 1;
+    }
+    return gross - strokes;
 }
 
 // ============================================================
@@ -508,9 +525,9 @@ function parseDataString(dataStr) {
 }
 
 // ============================================================
-// T-1 Calculation (Flight 1 Team Game)
+// v1.03: T-1 Calculation with Handicap + SI
 // ============================================================
-function calculateT1(flightScores, players) {
+function calculateT1(flightScores, players, courseSi) {
     var flight1Players = players.filter(function(p) { return p.flight === 1; });
     var teamA = flight1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flight1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -525,12 +542,22 @@ function calculateT1(flightScores, players) {
             continue;
         }
         
-        var match1 = 0, match2 = 0;
-        if (hole.a1 < hole.b1) match1 = 1;
-        else if (hole.a1 > hole.b1) match1 = -1;
+        var si = courseSi[h] || 1;
         
-        if (hole.a2 < hole.b2) match2 = 1;
-        else if (hole.a2 > hole.b2) match2 = -1;
+        // Net scores for Team A
+        var a1Net = getNetScore(hole.a1, teamA[0]?.handicap || 0, si);
+        var a2Net = getNetScore(hole.a2, teamA[1]?.handicap || 0, si);
+        
+        // Net scores for Team B
+        var b1Net = getNetScore(hole.b1, teamB[0]?.handicap || 0, si);
+        var b2Net = getNetScore(hole.b2, teamB[1]?.handicap || 0, si);
+        
+        var match1 = 0, match2 = 0;
+        if (a1Net < b1Net) match1 = 1;
+        else if (a1Net > b1Net) match1 = -1;
+        
+        if (a2Net < b2Net) match2 = 1;
+        else if (a2Net > b2Net) match2 = -1;
         
         var holeResult = match1 + match2;
         running += holeResult;
@@ -545,16 +572,20 @@ function calculateT1(flightScores, players) {
             match2: match2,
             holeResult: holeResult,
             running: running,
-            display: display
+            display: display,
+            a1Net: a1Net,
+            a2Net: a2Net,
+            b1Net: b1Net,
+            b2Net: b2Net
         });
     }
     return results;
 }
 
 // ============================================================
-// T-2 Calculation (Flight 2 Team Game)
+// v1.03: T-2 Calculation with Handicap + SI
 // ============================================================
-function calculateT2(flightScores, players) {
+function calculateT2(flightScores, players, courseSi) {
     var flight2Players = players.filter(function(p) { return p.flight === 2; });
     var teamA = flight2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flight2Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -569,12 +600,19 @@ function calculateT2(flightScores, players) {
             continue;
         }
         
-        var match1 = 0, match2 = 0;
-        if (hole.a1 < hole.b1) match1 = 1;
-        else if (hole.a1 > hole.b1) match1 = -1;
+        var si = courseSi[h] || 1;
         
-        if (hole.a2 < hole.b2) match2 = 1;
-        else if (hole.a2 > hole.b2) match2 = -1;
+        var a1Net = getNetScore(hole.a1, teamA[0]?.handicap || 0, si);
+        var a2Net = getNetScore(hole.a2, teamA[1]?.handicap || 0, si);
+        var b1Net = getNetScore(hole.b1, teamB[0]?.handicap || 0, si);
+        var b2Net = getNetScore(hole.b2, teamB[1]?.handicap || 0, si);
+        
+        var match1 = 0, match2 = 0;
+        if (a1Net < b1Net) match1 = 1;
+        else if (a1Net > b1Net) match1 = -1;
+        
+        if (a2Net < b2Net) match2 = 1;
+        else if (a2Net > b2Net) match2 = -1;
         
         var holeResult = match1 + match2;
         running += holeResult;
@@ -589,54 +627,76 @@ function calculateT2(flightScores, players) {
             match2: match2,
             holeResult: holeResult,
             running: running,
-            display: display
+            display: display,
+            a1Net: a1Net,
+            a2Net: a2Net,
+            b1Net: b1Net,
+            b2Net: b2Net
         });
     }
     return results;
 }
 
 // ============================================================
-// Strk Calculation (Stroke Game)
+// v1.03: Strk Calculation with Handicap + SI
 // ============================================================
-function calculateStrk(flight1Scores, flight2Scores, players) {
-    var teamA = players.filter(function(p) { return p.team === 'A'; });
-    var teamB = players.filter(function(p) { return p.team === 'B'; });
-    var hcpA = teamA.reduce(function(sum, p) { return sum + p.handicap; }, 0);
-    var hcpB = teamB.reduce(function(sum, p) { return sum + p.handicap; }, 0);
+function calculateStrk(flight1Scores, flight2Scores, players, courseSi) {
+    // For stroke game, each player's net score per hole = gross - strokes based on handicap vs SI
+    // Then sum all players' net scores per hole cumulatively
     
+    var allPlayers = players.slice();
     var results = [];
-    var runningA = 0, runningB = 0;
+    var runningNetA = 0, runningNetB = 0;
     
     for (var h = 0; h < 18; h++) {
         var f1 = flight1Scores[h];
         var f2 = flight2Scores[h];
+        var si = courseSi[h] || 1;
         
         if (!f1 || !f1.saved || !f2 || !f2.saved) {
-            results.push({ hole: h+1, grossA: null, grossB: null, runningA: null, runningB: null, netA: null, netB: null, diff: null, display: '-' });
+            results.push({ hole: h+1, netA: null, netB: null, runningNetA: null, runningNetB: null, display: '-' });
             continue;
         }
         
-        var grossA = f1.a1 + f1.a2 + f2.a1 + f2.a2;
-        var grossB = f1.b1 + f1.b2 + f2.b1 + f2.b2;
-        runningA += grossA;
-        runningB += grossB;
+        // Flight 1 players
+        var f1Players = players.filter(function(p) { return p.flight === 1; });
+        var f1A = f1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var f1B = f1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
-        var netA = runningA - hcpA;
-        var netB = runningB - hcpB;
+        // Flight 2 players
+        var f2Players = players.filter(function(p) { return p.flight === 2; });
+        var f2A = f2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var f2B = f2Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         
-        var diff = netB - netA;
+        // Team A net scores (all 4 players)
+        var a1Net = getNetScore(f1.a1, f1A[0]?.handicap || 0, si);
+        var a2Net = getNetScore(f1.a2, f1A[1]?.handicap || 0, si);
+        var a3Net = getNetScore(f2.a1, f2A[0]?.handicap || 0, si);
+        var a4Net = getNetScore(f2.a2, f2A[1]?.handicap || 0, si);
+        
+        // Team B net scores (all 4 players)
+        var b1Net = getNetScore(f1.b1, f1B[0]?.handicap || 0, si);
+        var b2Net = getNetScore(f1.b2, f1B[1]?.handicap || 0, si);
+        var b3Net = getNetScore(f2.b1, f2B[0]?.handicap || 0, si);
+        var b4Net = getNetScore(f2.b2, f2B[1]?.handicap || 0, si);
+        
+        var holeNetA = a1Net + a2Net + a3Net + a4Net;
+        var holeNetB = b1Net + b2Net + b3Net + b4Net;
+        
+        runningNetA += holeNetA;
+        runningNetB += holeNetB;
+        
+        var diff = runningNetB - runningNetA;
         var display = 'AS';
         if (diff > 0) display = 'A' + Math.round(diff);
         else if (diff < 0) display = 'B' + Math.round(Math.abs(diff));
         
         results.push({
             hole: h+1,
-            grossA: grossA,
-            grossB: grossB,
-            runningA: runningA,
-            runningB: runningB,
-            netA: netA,
-            netB: netB,
+            netA: holeNetA,
+            netB: holeNetB,
+            runningNetA: runningNetA,
+            runningNetB: runningNetB,
             diff: diff,
             display: display
         });
@@ -656,6 +716,7 @@ function renderGameInfo(data) {
     var teamFormat = data.gameInfo?.teamGameFormat || data.teamGameFormat || 'tournament';
     var players = data.players || data.gameInfo?.players || [];
     var status = data.status || 'unknown';
+    var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
     
     var html = '<div class="game-info-grid">';
     html += '<span class="label">ID</span><span class="value">' + escapeHtml(data.id || 'Unknown') + '</span>';
@@ -665,6 +726,7 @@ function renderGameInfo(data) {
     html += '<span class="label">Format</span><span class="value">' + escapeHtml(teamFormat) + '</span>';
     html += '<span class="label">Players</span><span class="value">' + (players.length > 0 ? players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ') : 'No players') + '</span>';
     html += '<span class="label">Status</span><span class="value">' + escapeHtml(status) + '</span>';
+    html += '<span class="label">SI</span><span class="value">' + (courseSi.length > 0 ? courseSi.join(', ') : 'Not available') + '</span>';
     html += '</div>';
     container.innerHTML = html;
 }
@@ -716,14 +778,16 @@ function renderFlightTable(flightScores, players, flightNum, containerId) {
 function renderT1Table(results) {
     var container = document.getElementById('t1Table');
     var html = '<table>';
-    html += '<tr><th>Hole</th><th>Match 1</th><th>Match 2</th><th>Hole Result</th><th>Running</th><th>Display</th></tr>';
+    html += '<tr><th>Hole</th><th>Match 1 (Net)</th><th>Match 2 (Net)</th><th>Result</th><th>Running</th><th>Display</th></tr>';
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
         var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
+        var netDisplay1 = (r.a1Net !== undefined) ? r.a1Net + '-' + r.b1Net : '-';
+        var netDisplay2 = (r.a2Net !== undefined) ? r.a2Net + '-' + r.b2Net : '-';
         html += '<tr>' +
             '<td style="color:#888;">' + r.hole + '</td>' +
-            '<td>' + (r.match1 !== null ? (r.match1 > 0 ? 'A' : r.match1 < 0 ? 'B' : 'AS') : '-') + '</td>' +
-            '<td>' + (r.match2 !== null ? (r.match2 > 0 ? 'A' : r.match2 < 0 ? 'B' : 'AS') : '-') + '</td>' +
+            '<td>' + netDisplay1 + '</td>' +
+            '<td>' + netDisplay2 + '</td>' +
             '<td>' + (r.holeResult !== null ? r.holeResult : '-') + '</td>' +
             '<td class="' + cls + '">' + (r.running !== null ? r.running : '-') + '</td>' +
             '<td class="' + cls + '">' + (r.display || '-') + '</td>' +
@@ -740,18 +804,16 @@ function renderT2Table(results) {
 function renderStrkTable(results) {
     var container = document.getElementById('strkTable');
     var html = '<table>';
-    html += '<tr><th>Hole</th><th>Gross A</th><th>Gross B</th><th>Running A</th><th>Running B</th><th>Net A</th><th>Net B</th><th>Diff</th><th>Display</th></tr>';
+    html += '<tr><th>Hole</th><th>Net A</th><th>Net B</th><th>Running Net A</th><th>Running Net B</th><th>Diff</th><th>Display</th></tr>';
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
         var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
         html += '<tr>' +
             '<td style="color:#888;">' + r.hole + '</td>' +
-            '<td>' + (r.grossA !== null ? r.grossA : '-') + '</td>' +
-            '<td>' + (r.grossB !== null ? r.grossB : '-') + '</td>' +
-            '<td>' + (r.runningA !== null ? r.runningA : '-') + '</td>' +
-            '<td>' + (r.runningB !== null ? r.runningB : '-') + '</td>' +
             '<td>' + (r.netA !== null ? r.netA : '-') + '</td>' +
             '<td>' + (r.netB !== null ? r.netB : '-') + '</td>' +
+            '<td>' + (r.runningNetA !== null ? r.runningNetA : '-') + '</td>' +
+            '<td>' + (r.runningNetB !== null ? r.runningNetB : '-') + '</td>' +
             '<td>' + (r.diff !== null ? r.diff.toFixed(1) : '-') + '</td>' +
             '<td class="' + cls + '">' + (r.display || '-') + '</td>' +
             '</tr>';
@@ -924,13 +986,22 @@ function processGameData(data) {
         return;
     }
     
+    // Get course SI from the record
+    var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
+    if (courseSi.length === 0) {
+        setStatus('Warning: No SI data found. Using default SI 1-18.', 'warning');
+        for (var i = 0; i < 18; i++) {
+            courseSi[i] = i + 1;
+        }
+    }
+    
     renderGameInfo(data);
     renderFlightTable(f1Scores, players, 1, 'flight1Table');
     renderFlightTable(f2Scores, players, 2, 'flight2Table');
     
-    var t1Results = calculateT1(f1Scores, players);
-    var t2Results = calculateT2(f2Scores, players);
-    var strkResults = calculateStrk(f1Scores, f2Scores, players);
+    var t1Results = calculateT1(f1Scores, players, courseSi);
+    var t2Results = calculateT2(f2Scores, players, courseSi);
+    var strkResults = calculateStrk(f1Scores, f2Scores, players, courseSi);
     
     renderT1Table(t1Results);
     renderT2Table(t2Results);
@@ -964,20 +1035,23 @@ document.getElementById('clearBtn').addEventListener('click', function() {
 // ============================================================
 fetchRecords();
 
-console.log('🔬 Game Data Validator v1.02 loaded.');
+console.log('🔬 Game Data Validator v1.03 loaded.');
 console.log('Usage: Select a game from the dropdown and click Load.');
+console.log('Now using handicap + SI logic for all calculations.');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - FIXED: Removed orderBy from Firestore query to avoid index requirement
-   - Added: In-memory sorting of records by createdAt
-   - Added: Better error handling for missing fields
-   - Added: Loading state for record refresh
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: Handicap and SI logic to all calculations
+   - T-1 now uses net scores (handicap + SI applied)
+   - T-2 now uses net scores (handicap + SI applied)
+   - Strk now uses cumulative net scores
+   - Added getNetScore() helper function
+   - Now matches the actual app's calculation logic
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
