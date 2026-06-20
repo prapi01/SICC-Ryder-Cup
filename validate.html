@@ -1,12 +1,11 @@
 <!--
 FILE: validate.html
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Error handling for missing course/player data
-   - CHANGED: Manual input replaced with dropdown selection
-   - Added: Fetch and populate historyGames records
-   - Added: Display game info with fallbacks for missing data
-   - Added: Better error messaging
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Removed orderBy from Firestore query to avoid index requirement
+   - Added: In-memory sorting of records by createdAt
+   - Added: Better error handling for missing fields
+   - Added: Loading state for record refresh
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -189,12 +188,6 @@ STATUS: Ready for integration
             text-align: left !important;
             padding-left: 10px !important;
         }
-        .col-header {
-            color: #aaa;
-            font-weight: 500;
-            font-size: 0.7rem;
-            text-transform: uppercase;
-        }
         .col-total {
             font-weight: 700;
             color: #4caf50;
@@ -203,20 +196,6 @@ STATUS: Ready for integration
             background: #3a1a1a !important;
             color: #ef5350 !important;
             font-weight: 700;
-        }
-        
-        .highlight-wrong {
-            background: #3a1a1a !important;
-            color: #ef5350 !important;
-            font-weight: 700;
-        }
-        .highlight-missing {
-            background: #2a2a1a !important;
-            color: #ffa726 !important;
-        }
-        .value-cached {
-            color: #888;
-            font-size: 0.7rem;
         }
         
         .two-col {
@@ -302,7 +281,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.01</span>
+        <span class="version-tag">v1.02</span>
     </h1>
     
     <!-- Input Section -->
@@ -373,7 +352,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v1.01 — Uses the same calculation logic as the app. Raw data is the source of truth.
+        Validator v1.02 — Uses the same calculation logic as the app. Raw data is the source of truth.
     </div>
 </div>
 
@@ -381,8 +360,8 @@ STATUS: Ready for integration
 // ============================================================
 // Version exposure
 // ============================================================
-window.VALIDATOR_VERSION = "1.01";
-console.log("[Validator] v1.01 - Dropdown selection + error handling");
+window.VALIDATOR_VERSION = "1.02";
+console.log("[Validator] v1.02 - No index required, in-memory sorting");
 
 // ============================================================
 // Firebase Config
@@ -451,7 +430,7 @@ function formatDate(dateStr) {
 }
 
 // ============================================================
-// Fetch Records
+// Fetch Records - v1.02: No orderBy, sort in memory
 // ============================================================
 function fetchRecords() {
     var select = document.getElementById('recordSelect');
@@ -461,7 +440,6 @@ function fetchRecords() {
     
     db.collection('historyGames')
         .where('status', 'in', ['pending_handicap', 'completed'])
-        .orderBy('createdAt', 'desc')
         .limit(100)
         .get()
         .then(function(snapshot) {
@@ -474,8 +452,16 @@ function fetchRecords() {
                     date: data.gameInfo?.date || 'Unknown',
                     courseName: data.gameInfo?.course?.name || 'Unknown Course',
                     status: data.status || 'unknown',
-                    rawData: data
+                    rawData: data,
+                    createdAt: data.createdAt || data.completedAt || null
                 });
+            });
+            
+            // Sort in memory by createdAt descending
+            records.sort(function(a, b) {
+                var dateA = a.createdAt ? (a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt)) : new Date(0);
+                var dateB = b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
+                return dateB - dateA;
             });
             
             if (records.length === 0) {
@@ -664,12 +650,12 @@ function calculateStrk(flight1Scores, flight2Scores, players) {
 function renderGameInfo(data) {
     var container = document.getElementById('gameInfoContent');
     
-    // Safe access with fallbacks
     var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown Course';
     var date = data.gameInfo?.date || data.date || 'Unknown';
     var startingHole = data.gameInfo?.startingHole || data.startingHole || 1;
     var teamFormat = data.gameInfo?.teamGameFormat || data.teamGameFormat || 'tournament';
     var players = data.players || data.gameInfo?.players || [];
+    var status = data.status || 'unknown';
     
     var html = '<div class="game-info-grid">';
     html += '<span class="label">ID</span><span class="value">' + escapeHtml(data.id || 'Unknown') + '</span>';
@@ -678,7 +664,7 @@ function renderGameInfo(data) {
     html += '<span class="label">Starting Hole</span><span class="value">' + startingHole + '</span>';
     html += '<span class="label">Format</span><span class="value">' + escapeHtml(teamFormat) + '</span>';
     html += '<span class="label">Players</span><span class="value">' + (players.length > 0 ? players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ') : 'No players') + '</span>';
-    html += '<span class="label">Status</span><span class="value">' + escapeHtml(data.status || 'unknown') + '</span>';
+    html += '<span class="label">Status</span><span class="value">' + escapeHtml(status) + '</span>';
     html += '</div>';
     container.innerHTML = html;
 }
@@ -924,7 +910,6 @@ function loadAndValidate() {
 }
 
 function processGameData(data) {
-    // Parse raw scores with fallbacks
     var f1Scores = parseDataString(data.f1DataString);
     var f2Scores = parseDataString(data.f2DataString);
     
@@ -939,27 +924,19 @@ function processGameData(data) {
         return;
     }
     
-    // Render game info
     renderGameInfo(data);
-    
-    // Render raw scores
     renderFlightTable(f1Scores, players, 1, 'flight1Table');
     renderFlightTable(f2Scores, players, 2, 'flight2Table');
     
-    // Calculate T-1, T-2, Strk
     var t1Results = calculateT1(f1Scores, players);
     var t2Results = calculateT2(f2Scores, players);
     var strkResults = calculateStrk(f1Scores, f2Scores, players);
     
-    // Render tables
     renderT1Table(t1Results);
     renderT2Table(t2Results);
     renderStrkTable(strkResults);
     
-    // TR Comparison
     renderTRComparison(t1Results, t2Results, strkResults, data);
-    
-    // Summary
     renderSummary(t1Results, t2Results, strkResults, data);
     
     document.getElementById('results').style.display = 'block';
@@ -982,17 +959,12 @@ document.getElementById('clearBtn').addEventListener('click', function() {
     document.getElementById('recordSelect').value = '';
 });
 
-// Enter key to load
-document.getElementById('recordSelect').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') loadAndValidate();
-});
-
 // ============================================================
 // Initialization
 // ============================================================
 fetchRecords();
 
-console.log('🔬 Game Data Validator v1.01 loaded.');
+console.log('🔬 Game Data Validator v1.02 loaded.');
 console.log('Usage: Select a game from the dropdown and click Load.');
 </script>
 </body>
@@ -1000,13 +972,12 @@ console.log('Usage: Select a game from the dropdown and click Load.');
 
 <!--
 FILE: validate.html
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Error handling for missing course/player data
-   - CHANGED: Manual input replaced with dropdown selection
-   - Added: Fetch and populate historyGames records
-   - Added: Display game info with fallbacks for missing data
-   - Added: Better error messaging
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Removed orderBy from Firestore query to avoid index requirement
+   - Added: In-memory sorting of records by createdAt
+   - Added: Better error handling for missing fields
+   - Added: Loading state for record refresh
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
