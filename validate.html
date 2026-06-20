@@ -1,14 +1,14 @@
 <!--
 FILE: validate.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: Match Game calculation was incorrectly using cumulative differentials
-   - Replaced getIntraMatchResult() with getIntraMatchResultForHole() - returns single hole result
-   - Replaced getCrossMatchResult() with getCrossMatchResultForHole() - returns single hole result
-   - Rewrote calculateMatchGame() to loop through holes and accumulate match points correctly
-   - Match points now correctly accumulate per hole (1 point per match win, 0.5 each for tie)
-   - Removed upToHole parameter logic (not needed for per-hole calculation)
-   - All other functionality preserved from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - CHANGED: Match Game table now shows per-hole results (not cumulative)
+   - Each hole shows points for all 8 players (4 Team A, 4 Team B)
+   - Each player's score = number of matches won on that hole (1 per win, 0.5 per tie)
+   - Each hole sums to exactly 16.0 (4 Team A × 4 Team B = 16 matches)
+   - Removed cumulative MatchA/MatchB columns
+   - Updated renderMatchTable() function completely
+   - All other functionality preserved from v1.08
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -56,6 +56,9 @@ STATUS: Ready for integration
         .col-total { font-weight: 700; color: #4caf50; }
         .col-mismatch { background: #3a1a1a !important; color: #ef5350 !important; font-weight: 700; }
         .col-match { background: #1a2a1a !important; color: #8bc34a !important; }
+        .col-green { color: #4caf50; font-weight: 600; }
+        .col-red { color: #ff6b6b; font-weight: 600; }
+        .col-gold { color: #ffaa44; font-weight: 600; }
         
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
@@ -79,6 +82,11 @@ STATUS: Ready for integration
         .game-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 0.85rem; }
         .game-info-grid .label { color: #666; }
         .game-info-grid .value { color: #e0e0e0; }
+        
+        .team-a-header { color: #4caf50; }
+        .team-b-header { color: #ff6b6b; }
+        .player-cell { font-weight: 600; }
+        .total-cell { font-weight: 700; color: #ffaa44; }
     </style>
 </head>
 <body>
@@ -86,7 +94,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.08</span>
+        <span class="version-tag">v1.09</span>
     </h1>
     
     <!-- Input -->
@@ -136,7 +144,7 @@ STATUS: Ready for integration
         </div>
         
         <div class="card">
-            <div class="card-title">🏅 Match Game</div>
+            <div class="card-title">🏅 Match Game — Per Hole (16 matches per hole)</div>
             <div id="matchTable"></div>
         </div>
         
@@ -152,7 +160,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v1.08 — Fixed Match Game calculation (per-hole match points, not cumulative differentials).
+        Validator v1.09 — Match Game: Per-hole results for all 8 players (16 points per hole).
     </div>
 </div>
 
@@ -160,8 +168,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "1.08";
-console.log("[Validator] v1.08 - Fixed Match Game calculation");
+window.VALIDATOR_VERSION = "1.09";
+console.log("[Validator] v1.09 - Match Game per-hole player view");
 
 // ============================================================
 // FIREBASE
@@ -343,9 +351,9 @@ function parseHoleData(dataStr, holeNumber) {
 }
 
 // ============================================================
-// v1.08: FIXED — calculateMatchGame (per-hole match points, not cumulative differentials)
+// v1.09: calculateMatchGamePerHole — returns per-hole results for each player
 // ============================================================
-function calculateMatchGame(f1Scores, f2Scores, allPlayers, courseSi, coursePar) {
+function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, coursePar) {
     var flight1Data = f1Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
     var flight2Data = f2Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
     
@@ -354,6 +362,11 @@ function calculateMatchGame(f1Scores, f2Scores, allPlayers, courseSi, coursePar)
     teamAPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
     teamBPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
     
+    // Order: Team A players first (Flight 1, then Flight 2), then Team B players (Flight 1, then Flight 2)
+    var orderedPlayers = [];
+    for (var i = 0; i < teamAPlayers.length; i++) orderedPlayers.push(teamAPlayers[i]);
+    for (var i = 0; i < teamBPlayers.length; i++) orderedPlayers.push(teamBPlayers[i]);
+    
     var allMatches = [];
     for (var a = 0; a < teamAPlayers.length; a++) {
         for (var b = 0; b < teamBPlayers.length; b++) {
@@ -361,14 +374,14 @@ function calculateMatchGame(f1Scores, f2Scores, allPlayers, courseSi, coursePar)
         }
     }
     
-    var cumulativeA = 0, cumulativeB = 0;
-    var resultA = new Array(18).fill(0), resultB = new Array(18).fill(0);
-    
-    // Loop through each hole
+    // results[holeIndex][playerIndex] = points for that player on that hole
+    var results = [];
     for (var hole = 1; hole <= 18; hole++) {
-        var holeA = 0, holeB = 0;
+        var holeResults = {};
+        for (var p = 0; p < orderedPlayers.length; p++) {
+            holeResults[orderedPlayers[p].name] = 0;
+        }
         
-        // For each match, get the result for THIS SPECIFIC HOLE
         for (var m = 0; m < allMatches.length; m++) {
             var match = allMatches[m];
             var margin;
@@ -378,17 +391,22 @@ function calculateMatchGame(f1Scores, f2Scores, allPlayers, courseSi, coursePar)
             } else {
                 margin = getCrossMatchResultForHole(match.playerA, match.playerB, flight1Data, flight2Data, allPlayers, courseSi, hole, coursePar);
             }
-            if (margin > 0) { holeA += 1; }
-            else if (margin < 0) { holeB += 1; }
-            else { holeA += 0.5; holeB += 0.5; }
+            if (margin > 0) {
+                holeResults[match.playerA.name] += 1;
+            } else if (margin < 0) {
+                holeResults[match.playerB.name] += 1;
+            } else {
+                holeResults[match.playerA.name] += 0.5;
+                holeResults[match.playerB.name] += 0.5;
+            }
         }
-        
-        cumulativeA += holeA;
-        cumulativeB += holeB;
-        resultA[hole-1] = cumulativeA;
-        resultB[hole-1] = cumulativeB;
+        results.push(holeResults);
     }
-    return { pointsA: resultA, pointsB: resultB };
+    
+    return {
+        orderedPlayers: orderedPlayers,
+        results: results
+    };
 }
 
 // ============================================================
@@ -590,13 +608,45 @@ function renderStrkTable(results) {
     container.innerHTML = html;
 }
 
-function renderMatchTable(matchA, matchB) {
+// ============================================================
+// v1.09: renderMatchTable — per-hole results for all 8 players
+// ============================================================
+function renderMatchTable(orderedPlayers, matchResults) {
     var container = document.getElementById('matchTable');
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Match A</th><th>Match B</th><th>Total</th></tr>';
-    for (var i = 0; i < 18; i++) {
-        var total = matchA[i] + matchB[i];
-        html += '<tr><td style="color:#888;">' + (i+1) + '</td><td>' + matchA[i].toFixed(1) + '</td><td>' + matchB[i].toFixed(1) + '</td><td>' + total.toFixed(1) + '</td></tr>';
+    
+    if (!orderedPlayers || orderedPlayers.length === 0) {
+        container.innerHTML = '<div class="empty-state">No players found</div>';
+        return;
     }
+    
+    var html = '<div class="scroll-x"><table>';
+    
+    // Header row
+    html += '<tr><th>Hole</th>';
+    for (var p = 0; p < orderedPlayers.length; p++) {
+        var player = orderedPlayers[p];
+        var teamClass = player.team === 'A' ? 'team-a-header' : 'team-b-header';
+        html += '<th class="' + teamClass + '">' + escapeHtml(player.label) + '</th>';
+    }
+    html += '<th style="color:#ffaa44;">Total</th></tr>';
+    
+    // Data rows
+    for (var h = 0; h < matchResults.length; h++) {
+        var holeData = matchResults[h];
+        var total = 0;
+        html += '<tr><td style="color:#888;font-weight:600;">' + (h+1) + '</td>';
+        
+        for (var p = 0; p < orderedPlayers.length; p++) {
+            var player = orderedPlayers[p];
+            var score = holeData[player.name] || 0;
+            total += score;
+            var colorClass = score > 0 ? 'col-green' : (score === 0 ? 'col-red' : 'col-gold');
+            html += '<td class="' + colorClass + '">' + score.toFixed(1) + '</td>';
+        }
+        
+        html += '<td class="total-cell">' + total.toFixed(1) + '</td></tr>';
+    }
+    
     html += '</table></div>';
     container.innerHTML = html;
 }
@@ -708,10 +758,33 @@ function processGameData(data) {
     renderTeamGameTable(t1Results, 't1Table', 'T-1');
     renderTeamGameTable(t2Results, 't2Table', 'T-2');
     renderStrkTable(strkResults);
-    var matchResults = calculateMatchGame(f1Scores, f2Scores, players, courseSi, coursePar);
-    renderMatchTable(matchResults.pointsA, matchResults.pointsB);
-    renderTRTable(t1Results, t2Results, strkResults, matchResults.pointsA, matchResults.pointsB, data);
-    renderSummary(t1Results, t2Results, strkResults, matchResults.pointsA, matchResults.pointsB, data);
+    
+    // v1.09: Match Game per-hole player view
+    var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
+    var orderedPlayers = matchData.orderedPlayers;
+    var matchResults = matchData.results;
+    renderMatchTable(orderedPlayers, matchResults);
+    
+    // Calculate cumulative MatchA/MatchB for TR and Summary
+    var matchCumA = new Array(18).fill(0);
+    var matchCumB = new Array(18).fill(0);
+    var teamAplayers = players.filter(function(p) { return p.team === 'A'; });
+    var teamBplayers = players.filter(function(p) { return p.team === 'B'; });
+    for (var h = 0; h < 18; h++) {
+        var holeData = matchResults[h];
+        var holeA = 0, holeB = 0;
+        for (var p = 0; p < teamAplayers.length; p++) {
+            holeA += holeData[teamAplayers[p].name] || 0;
+        }
+        for (var p = 0; p < teamBplayers.length; p++) {
+            holeB += holeData[teamBplayers[p].name] || 0;
+        }
+        matchCumA[h] = (h > 0 ? matchCumA[h-1] : 0) + holeA;
+        matchCumB[h] = (h > 0 ? matchCumB[h-1] : 0) + holeB;
+    }
+    
+    renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, data);
+    renderSummary(t1Results, t2Results, strkResults, matchCumA, matchCumB, data);
     document.getElementById('results').style.display = 'block';
     setStatus('✅ Loaded: ' + data.id, 'success');
 }
@@ -731,22 +804,22 @@ document.getElementById('clearBtn').addEventListener('click', function() {
 // INIT
 // ============================================================
 fetchRecords();
-console.log('🔬 Game Data Validator v1.08 loaded.');
+console.log('🔬 Game Data Validator v1.09 loaded.');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: Match Game calculation was incorrectly using cumulative differentials
-   - Replaced getIntraMatchResult() with getIntraMatchResultForHole() - returns single hole result
-   - Replaced getCrossMatchResult() with getCrossMatchResultForHole() - returns single hole result
-   - Rewrote calculateMatchGame() to loop through holes and accumulate match points correctly
-   - Match points now correctly accumulate per hole (1 point per match win, 0.5 each for tie)
-   - Removed upToHole parameter logic (not needed for per-hole calculation)
-   - All other functionality preserved from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - CHANGED: Match Game table now shows per-hole results (not cumulative)
+   - Each hole shows points for all 8 players (4 Team A, 4 Team B)
+   - Each player's score = number of matches won on that hole (1 per win, 0.5 per tie)
+   - Each hole sums to exactly 16.0 (4 Team A × 4 Team B = 16 matches)
+   - Removed cumulative MatchA/MatchB columns
+   - Updated renderMatchTable() function completely
+   - All other functionality preserved from v1.08
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
