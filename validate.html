@@ -1,14 +1,15 @@
 <!--
 FILE: validate.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - CHANGED: Match Game table now shows per-hole results (not cumulative)
-   - Each hole shows points for all 8 players (4 Team A, 4 Team B)
-   - Each player's score = number of matches won on that hole (1 per win, 0.5 per tie)
-   - Each hole sums to exactly 16.0 (4 Team A × 4 Team B = 16 matches)
-   - Removed cumulative MatchA/MatchB columns
-   - Updated renderMatchTable() function completely
-   - All other functionality preserved from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: TR table now shows per-hole results (not cumulative)
+   - Each hole TR = Match Game (16 points) + T-1 (1 point) + T-2 (1 point) + Strk (1 point) = 19 total
+   - Each hole sums to exactly 19.0 (16 + 1 + 1 + 1)
+   - Replaced cumulative TR columns with per-hole values
+   - MatchA/MatchB in TR table now show per-hole (not cumulative)
+   - T-1A/T-1B, T-2A/T-2B, StrkA/StrkB show per-hole points (0, 0.5, or 1)
+   - Added "Total" column showing per-hole sum (should always be 19.0)
+   - All other functionality preserved from v1.09
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -59,6 +60,7 @@ STATUS: Ready for integration
         .col-green { color: #4caf50; font-weight: 600; }
         .col-red { color: #ff6b6b; font-weight: 600; }
         .col-gold { color: #ffaa44; font-weight: 600; }
+        .tr-total { font-weight: 700; color: #ffaa44; }
         
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
@@ -94,7 +96,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.09</span>
+        <span class="version-tag">v1.10</span>
     </h1>
     
     <!-- Input -->
@@ -149,7 +151,7 @@ STATUS: Ready for integration
         </div>
         
         <div class="card">
-            <div class="card-title">🏆 TR — Hole-by-Hole</div>
+            <div class="card-title">🏆 TR — Per Hole (19 points per hole)</div>
             <div id="trTable"></div>
         </div>
         
@@ -160,7 +162,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v1.09 — Match Game: Per-hole results for all 8 players (16 points per hole).
+        Validator v1.10 — TR: Per-hole results (19 points per hole: 16 Match + 1 T-1 + 1 T-2 + 1 Strk).
     </div>
 </div>
 
@@ -168,8 +170,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "1.09";
-console.log("[Validator] v1.09 - Match Game per-hole player view");
+window.VALIDATOR_VERSION = "1.10";
+console.log("[Validator] v1.10 - TR per-hole view (19 points per hole)");
 
 // ============================================================
 // FIREBASE
@@ -651,22 +653,43 @@ function renderMatchTable(orderedPlayers, matchResults) {
     container.innerHTML = html;
 }
 
-function renderTRTable(t1Results, t2Results, strkResults, matchA, matchB, gameData) {
+// ============================================================
+// v1.10: renderTRTable — PER-HOLE (not cumulative)
+// ============================================================
+function renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, gameData) {
     var container = document.getElementById('trTable');
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Match A</th><th>Match B</th><th>T-1 A</th><th>T-1 B</th><th>T-2 A</th><th>T-2 B</th><th>Strk A</th><th>Strk B</th><th>TR A</th><th>TR B</th><th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
+    
+    var html = '<div class="scroll-x"><table>';
+    html += '<tr><th>Hole</th>';
+    html += '<th>MatchA</th><th>MatchB</th>';
+    html += '<th>T-1A</th><th>T-1B</th>';
+    html += '<th>T-2A</th><th>T-2B</th>';
+    html += '<th>StrkA</th><th>StrkB</th>';
+    html += '<th style="color:#4caf50;">TRA</th>';
+    html += '<th style="color:#4caf50;">TRB</th>';
+    html += '<th style="color:#ffaa44;">Total</th>';
+    html += '<th>RecA</th><th>RecB</th><th>✅</th></tr>';
+    
     for (var i = 0; i < 18; i++) {
         var t1 = t1Results[i] || {};
         var t2 = t2Results[i] || {};
         var strk = strkResults[i] || {};
-        var mA = matchA[i] || 0, mB = matchB[i] || 0;
+        
+        // PER-HOLE values (not cumulative)
+        var mA = matchCumA[i] - (i > 0 ? matchCumA[i-1] : 0);
+        var mB = matchCumB[i] - (i > 0 ? matchCumB[i-1] : 0);
+        
         var t1A = t1.trPointsA !== undefined ? t1.trPointsA : 0.5;
         var t1B = t1.trPointsB !== undefined ? t1.trPointsB : 0.5;
         var t2A = t2.trPointsA !== undefined ? t2.trPointsA : 0.5;
         var t2B = t2.trPointsB !== undefined ? t2.trPointsB : 0.5;
         var sA = strk.trPointsA !== undefined ? strk.trPointsA : 0.5;
         var sB = strk.trPointsB !== undefined ? strk.trPointsB : 0.5;
+        
         var trA = mA + t1A + t2A + sA;
         var trB = mB + t1B + t2B + sB;
+        var total = trA + trB; // Should always be 19.0
+        
         var recA = gameData.results?.tr?.teamA?.[i];
         var recB = gameData.results?.tr?.teamB?.[i];
         var recMatch = (recA !== undefined && recA !== null && recB !== undefined && recB !== null);
@@ -674,6 +697,7 @@ function renderTRTable(t1Results, t2Results, strkResults, matchA, matchB, gameDa
         var matchClass = match ? 'col-match' : 'col-mismatch';
         var recADisplay = (recA !== undefined && recA !== null) ? recA : '-';
         var recBDisplay = (recB !== undefined && recB !== null) ? recB : '-';
+        
         html += '<tr><td style="color:#888;font-weight:600;">' + (i+1) + '</td>';
         html += '<td>' + mA.toFixed(1) + '</td><td>' + mB.toFixed(1) + '</td>';
         html += '<td>' + t1A.toFixed(1) + '</td><td>' + t1B.toFixed(1) + '</td>';
@@ -681,15 +705,17 @@ function renderTRTable(t1Results, t2Results, strkResults, matchA, matchB, gameDa
         html += '<td>' + sA.toFixed(1) + '</td><td>' + sB.toFixed(1) + '</td>';
         html += '<td style="font-weight:700;color:#4caf50;">' + trA.toFixed(1) + '</td>';
         html += '<td style="font-weight:700;color:#4caf50;">' + trB.toFixed(1) + '</td>';
+        html += '<td style="font-weight:700;color:#ffaa44;">' + total.toFixed(1) + '</td>';
         html += '<td class="' + matchClass + '">' + recADisplay + '</td>';
         html += '<td class="' + matchClass + '">' + recBDisplay + '</td>';
         html += '<td>' + (match ? '✅' : '❌') + '</td></tr>';
     }
+    
     html += '</table></div>';
     container.innerHTML = html;
 }
 
-function renderSummary(t1Results, t2Results, strkResults, matchA, matchB, gameData) {
+function renderSummary(t1Results, t2Results, strkResults, matchCumA, matchCumB, gameData) {
     var container = document.getElementById('validationSummary');
     var t1Final = t1Results[t1Results.length-1] || {};
     var t2Final = t2Results[t2Results.length-1] || {};
@@ -704,8 +730,8 @@ function renderSummary(t1Results, t2Results, strkResults, matchA, matchB, gameDa
     var t2Match = (t2Display === recT2) || (t2Display === '-' && recT2 === '-');
     var strkMatch = (strkDisplay === recStrk) || (strkDisplay === '-' && recStrk === '-');
     var allMatch = t1Match && t2Match && strkMatch;
-    var matchA_final = matchA[17] || 0;
-    var matchB_final = matchB[17] || 0;
+    var matchA_final = matchCumA[17] || 0;
+    var matchB_final = matchCumB[17] || 0;
     var trA = matchA_final + (t1Final.trPointsA || 0.5) + (t2Final.trPointsA || 0.5) + (strkFinal.trPointsA || 0.5);
     var trB = matchB_final + (t1Final.trPointsB || 0.5) + (t2Final.trPointsB || 0.5) + (strkFinal.trPointsB || 0.5);
     var recA = gameData.finalResults?.teamAScore || gameData.results?.tr?.teamA?.[17] || '-';
@@ -783,6 +809,7 @@ function processGameData(data) {
         matchCumB[h] = (h > 0 ? matchCumB[h-1] : 0) + holeB;
     }
     
+    // v1.10: TR table now shows per-hole values
     renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, data);
     renderSummary(t1Results, t2Results, strkResults, matchCumA, matchCumB, data);
     document.getElementById('results').style.display = 'block';
@@ -804,22 +831,23 @@ document.getElementById('clearBtn').addEventListener('click', function() {
 // INIT
 // ============================================================
 fetchRecords();
-console.log('🔬 Game Data Validator v1.09 loaded.');
+console.log('🔬 Game Data Validator v1.10 loaded.');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - CHANGED: Match Game table now shows per-hole results (not cumulative)
-   - Each hole shows points for all 8 players (4 Team A, 4 Team B)
-   - Each player's score = number of matches won on that hole (1 per win, 0.5 per tie)
-   - Each hole sums to exactly 16.0 (4 Team A × 4 Team B = 16 matches)
-   - Removed cumulative MatchA/MatchB columns
-   - Updated renderMatchTable() function completely
-   - All other functionality preserved from v1.08
+VERSION: 1.10
+KEY CHANGES from v1.09:
+   - FIXED: TR table now shows per-hole results (not cumulative)
+   - Each hole TR = Match Game (16 points) + T-1 (1 point) + T-2 (1 point) + Strk (1 point) = 19 total
+   - Each hole sums to exactly 19.0 (16 + 1 + 1 + 1)
+   - Replaced cumulative TR columns with per-hole values
+   - MatchA/MatchB in TR table now show per-hole (not cumulative)
+   - T-1A/T-1B, T-2A/T-2B, StrkA/StrkB show per-hole points (0, 0.5, or 1)
+   - Added "Total" column showing per-hole sum (should always be 19.0)
+   - All other functionality preserved from v1.09
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
