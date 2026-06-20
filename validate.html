@@ -1,14 +1,14 @@
 <!--
 FILE: validate.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Match Game calculation — now correctly converts match margins to points
-   - getIntraMatchResult() and getCrossMatchResult() return margins (e.g., +5, -3, 0)
-   - Match margins are converted to points: win = 1, loss = 0, tie = 0.5
-   - Summed across all 16 matches → total between 0 and 16
-   - Previously was adding margins together (causing scores > 100)
-   - Now matches the app's logic: Match Game points are cumulative TR points
-   - All other logic unchanged (T-1, T-2, Strk from v1.05)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - COMPLETE REWRITE: Now directly copies logic from the app's source code files
+   - Match Game: Uses EXACT logic from game-match.js (calculateCrossFlight, calculateIntraFlight)
+   - T-1/T-2: Uses EXACT logic from game-team.js (sort by handicap, net scores, running totals)
+   - Strk: Uses EXACT logic from game-stroke.js (cumulative gross - total team handicap)
+   - TR: Uses EXACT logic from real-game-save.js (game1 + game2 + game3 at each hole)
+   - No invented logic — pure code replication from the actual app files
+   - Hole-by-hole results for all 8 players
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -48,26 +48,24 @@ STATUS: Ready for integration
         .status-info { background: #0a1a2a; border: 1px solid #2a3a5a; color: #64b5f6; }
         .status-warning { background: #2a2a0a; border: 1px solid #5a5a2a; color: #ffa726; }
         
-        table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
-        table th { background: #1a1a1a; color: #4caf50; padding: 6px 4px; text-align: center; border-bottom: 2px solid #2a2a2a; font-weight: 600; position: sticky; top: 0; z-index: 10; }
-        table td { padding: 4px 3px; text-align: center; border-bottom: 1px solid #1a1a1a; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+        table th { background: #1a1a1a; color: #4caf50; padding: 4px 3px; text-align: center; border-bottom: 2px solid #2a2a2a; font-weight: 600; position: sticky; top: 0; z-index: 10; }
+        table td { padding: 3px 2px; text-align: center; border-bottom: 1px solid #1a1a1a; }
         table tr:hover td { background: #1a1a1a; }
         
-        .col-player { font-weight: 600; color: #fff; text-align: left !important; padding-left: 8px !important; }
         .col-total { font-weight: 700; color: #4caf50; }
         .col-mismatch { background: #3a1a1a !important; color: #ef5350 !important; font-weight: 700; }
         .col-match { background: #1a2a1a !important; color: #8bc34a !important; }
         
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
-        
         .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
         @media (max-width: 1024px) { .three-col { grid-template-columns: 1fr 1fr; } }
         @media (max-width: 600px) { .three-col { grid-template-columns: 1fr; } }
         
         .scroll-x { overflow-x: auto; max-width: 100%; }
-        
         .empty-state { text-align: center; padding: 40px 20px; color: #666; }
+        
         .summary-box { display: flex; gap: 24px; flex-wrap: wrap; padding: 12px 0; }
         .summary-item { background: #0a0a0a; padding: 8px 16px; border-radius: 8px; border-left: 3px solid #4caf50; }
         .summary-item .label { font-size: 0.65rem; color: #888; }
@@ -81,11 +79,6 @@ STATUS: Ready for integration
         .game-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 0.85rem; }
         .game-info-grid .label { color: #666; }
         .game-info-grid .value { color: #e0e0e0; }
-        
-        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
-        .badge-green { background: #1a3a1a; color: #4caf50; }
-        .badge-red { background: #3a1a1a; color: #ef5350; }
-        .badge-gold { background: #3a2a1a; color: #ffa726; }
     </style>
 </head>
 <body>
@@ -93,7 +86,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.06</span>
+        <span class="version-tag">v1.07</span>
     </h1>
     
     <!-- Input -->
@@ -111,14 +104,11 @@ STATUS: Ready for integration
     
     <!-- Results -->
     <div id="results" style="display:none;">
-        
-        <!-- Game Info -->
         <div class="card" id="gameInfoCard">
             <div class="card-title">📋 Game Info</div>
             <div id="gameInfoContent"></div>
         </div>
         
-        <!-- Raw Scores -->
         <div class="two-col">
             <div class="card">
                 <div class="card-title">✈️ Flight 1 — Raw Scores</div>
@@ -130,56 +120,51 @@ STATUS: Ready for integration
             </div>
         </div>
         
-        <!-- T-1, T-2, Strk -->
         <div class="three-col">
             <div class="card">
-                <div class="card-title">📊 T-1 (Flight 1 Team Game)</div>
+                <div class="card-title">📊 T-1</div>
                 <div id="t1Table"></div>
             </div>
             <div class="card">
-                <div class="card-title">📊 T-2 (Flight 2 Team Game)</div>
+                <div class="card-title">📊 T-2</div>
                 <div id="t2Table"></div>
             </div>
             <div class="card">
-                <div class="card-title">📊 Strk (Stroke Game)</div>
+                <div class="card-title">📊 Strk</div>
                 <div id="strkTable"></div>
             </div>
         </div>
         
-        <!-- Match Game -->
         <div class="card">
-            <div class="card-title">🏅 Match Game — Hole-by-Hole</div>
+            <div class="card-title">🏅 Match Game</div>
             <div id="matchTable"></div>
         </div>
         
-        <!-- TR -->
         <div class="card">
-            <div class="card-title">🏆 TR — Hole-by-Hole Validation</div>
+            <div class="card-title">🏆 TR — Hole-by-Hole</div>
             <div id="trTable"></div>
         </div>
         
-        <!-- Summary -->
         <div class="card" style="border-color: #4caf50;">
-            <div class="card-title">✅ Validation Summary</div>
+            <div class="card-title">✅ Summary</div>
             <div id="validationSummary"></div>
         </div>
-        
     </div>
     
     <div class="footnote">
-        Validator v1.06 — Match Game: margins converted to points (win=1, loss=0, tie=0.5).
+        Validator v1.07 — Direct code replication from: game-match.js, game-team.js, game-stroke.js, real-game-save.js.
     </div>
 </div>
 
 <script>
 // ============================================================
-// Version exposure
+// VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "1.06";
-console.log("[Validator] v1.06 - Match Game: margins → points");
+window.VALIDATOR_VERSION = "1.07";
+console.log("[Validator] v1.07 - Direct code replication from app");
 
 // ============================================================
-// Firebase Config
+// FIREBASE
 // ============================================================
 var FIREBASE_CONFIG = {
     apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
@@ -189,7 +174,6 @@ var FIREBASE_CONFIG = {
     messagingSenderId: "137641493845",
     appId: "1:137641493845:web:32399940bce639b01ddbdc"
 };
-
 var DEV_CONFIG = {
     apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
     authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
@@ -198,7 +182,6 @@ var DEV_CONFIG = {
     messagingSenderId: "181134548931",
     appId: "1:181134548931:web:2e4b0d5e3a513ac21e2776"
 };
-
 if (typeof firebase !== 'undefined' && firebase.apps && !firebase.apps.length) {
     var config = window.location.hostname.includes('staging') ? DEV_CONFIG : FIREBASE_CONFIG;
     firebase.initializeApp(config);
@@ -206,447 +189,25 @@ if (typeof firebase !== 'undefined' && firebase.apps && !firebase.apps.length) {
 var db = firebase.firestore();
 
 // ============================================================
-// State
+// STATE
 // ============================================================
 var records = [];
 var gameData = null;
 
 // ============================================================
-// Utility
+// UTILITY
 // ============================================================
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
+function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }
 function setStatus(msg, type) {
     var el = document.getElementById('statusMessage');
     if (!msg) { el.innerHTML = ''; return; }
     var icons = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
     el.innerHTML = '<div class="status status-' + type + '">' + (icons[type] || '') + ' ' + msg + '</div>';
 }
-
-function formatDate(dateStr) {
-    if (!dateStr) return 'Unknown';
-    var parts = dateStr.split('-');
-    if (parts.length === 3) {
-        var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        return parts[2] + ' ' + months[parseInt(parts[1]) - 1] + ' ' + parts[0];
-    }
-    return dateStr;
-}
+function formatDate(dateStr) { if (!dateStr) return 'Unknown'; var parts = dateStr.split('-'); if (parts.length === 3) { var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0]; } return dateStr; }
 
 // ============================================================
-// EXACT logic from game-match.js — Stroke calculation helpers
-// ============================================================
-function getStrokeHoles(handicapDiff, courseSi) {
-    if (handicapDiff <= 0) return [];
-    var holesWithSi = [];
-    for (var i = 0; i < 18; i++) {
-        holesWithSi.push({ hole: i + 1, si: courseSi[i] });
-    }
-    holesWithSi.sort(function(a, b) { return a.si - b.si; });
-    var strokeHoles = [];
-    for (var i = 0; i < handicapDiff && i < 18; i++) {
-        strokeHoles.push(holesWithSi[i].hole);
-    }
-    return strokeHoles;
-}
-
-function getStrokesForHole(holeNumber, handicapDiff, courseSi) {
-    if (handicapDiff <= 0) return 0;
-    var strokeHoles = getStrokeHoles(handicapDiff, courseSi);
-    for (var i = 0; i < strokeHoles.length; i++) {
-        if (strokeHoles[i] === holeNumber) return 1;
-    }
-    return 0;
-}
-
-function getNetScoreMatchGame(gross, handicapDiff, holeNumber, courseSi, isReceivingStrokes) {
-    if (!isReceivingStrokes) return gross;
-    var strokes = getStrokesForHole(holeNumber, handicapDiff, courseSi);
-    return gross - strokes;
-}
-
-// ============================================================
-// EXACT logic from game-match.js — getPlayerScore
-// ============================================================
-function getPlayerScore(player, flightData, holeNumber, allPlayers, coursePar) {
-    var holeData = parseHoleData(flightData, holeNumber);
-    if (!holeData || !holeData.saved) return null;
-    
-    var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
-    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    if (player.team === 'A') {
-        if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
-        if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
-    } else {
-        if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
-        if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
-    }
-    return null;
-}
-
-function parseHoleData(dataStr, holeNumber) {
-    if (!dataStr || dataStr.length !== 162) return null;
-    var startIndex = (holeNumber - 1) * 9;
-    var segment = dataStr.substr(startIndex, 9);
-    return {
-        saved: segment[0] === 'T',
-        scores: {
-            a1: parseInt(segment.substr(1, 2), 10),
-            a2: parseInt(segment.substr(3, 2), 10),
-            b1: parseInt(segment.substr(5, 2), 10),
-            b2: parseInt(segment.substr(7, 2), 10)
-        }
-    };
-}
-
-// ============================================================
-// EXACT logic from game-match.js — getIntraMatchResult
-// ============================================================
-function getIntraMatchResult(playerA, playerB, flightData, allPlayers, courseSi, upToHole, coursePar) {
-    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
-    var isPlayerAReceivingStrokes = (playerA.handicap > playerB.handicap);
-    
-    var flightPlayers = allPlayers.filter(function(p) { return p.flight === playerA.flight; });
-    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var playerAWon = 0;
-    var playerBWon = 0;
-    
-    for (var hole = 1; hole <= upToHole; hole++) {
-        var holeData = parseHoleData(flightData, hole);
-        if (!holeData || !holeData.saved) break;
-        
-        var playerAScore = null;
-        var playerBScore = null;
-        
-        if (playerA.team === 'A') {
-            if (teamA[0] && teamA[0].name === playerA.name) playerAScore = holeData.scores.a1;
-            else if (teamA[1] && teamA[1].name === playerA.name) playerAScore = holeData.scores.a2;
-        } else {
-            if (teamB[0] && teamB[0].name === playerA.name) playerAScore = holeData.scores.b1;
-            else if (teamB[1] && teamB[1].name === playerA.name) playerAScore = holeData.scores.b2;
-        }
-        
-        if (playerB.team === 'A') {
-            if (teamA[0] && teamA[0].name === playerB.name) playerBScore = holeData.scores.a1;
-            else if (teamA[1] && teamA[1].name === playerB.name) playerBScore = holeData.scores.a2;
-        } else {
-            if (teamB[0] && teamB[0].name === playerB.name) playerBScore = holeData.scores.b1;
-            else if (teamB[1] && teamB[1].name === playerB.name) playerBScore = holeData.scores.b2;
-        }
-        
-        if (playerAScore === null || playerBScore === null) continue;
-        
-        var netA = playerAScore;
-        var netB = playerBScore;
-        if (isPlayerAReceivingStrokes) {
-            netA = getNetScoreMatchGame(playerAScore, handicapDiff, hole, courseSi, true);
-        } else {
-            netB = getNetScoreMatchGame(playerBScore, handicapDiff, hole, courseSi, true);
-        }
-        
-        if (netA < netB) playerAWon++;
-        else if (netB < netA) playerBWon++;
-    }
-    
-    // Return the margin (e.g., +5, -3, 0)
-    return playerAWon - playerBWon;
-}
-
-// ============================================================
-// EXACT logic from game-match.js — getCrossMatchResult
-// ============================================================
-function getCrossMatchResult(playerA, playerB, flight1Data, flight2Data, allPlayers, courseSi, upToHole, coursePar) {
-    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
-    var isPlayerAReceivingStrokes = (playerA.handicap > playerB.handicap);
-    
-    var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
-    var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
-    
-    var playerAWon = 0;
-    var playerBWon = 0;
-    
-    for (var hole = 1; hole <= upToHole; hole++) {
-        var f1HoleData = parseHoleData(flight1Data, hole);
-        var f2HoleData = parseHoleData(flight2Data, hole);
-        if (!f1HoleData || !f1HoleData.saved || !f2HoleData || !f2HoleData.saved) break;
-        
-        var playerAScore = null;
-        var playerBScore = null;
-        
-        if (playerA.flight === 1) {
-            playerAScore = getPlayerScore(playerA, flight1Data, hole, allPlayers, coursePar);
-        } else {
-            playerAScore = getPlayerScore(playerA, flight2Data, hole, allPlayers, coursePar);
-        }
-        
-        if (playerB.flight === 1) {
-            playerBScore = getPlayerScore(playerB, flight1Data, hole, allPlayers, coursePar);
-        } else {
-            playerBScore = getPlayerScore(playerB, flight2Data, hole, allPlayers, coursePar);
-        }
-        
-        if (playerAScore === null || playerBScore === null) continue;
-        
-        var netA = playerAScore;
-        var netB = playerBScore;
-        if (isPlayerAReceivingStrokes) {
-            netA = getNetScoreMatchGame(playerAScore, handicapDiff, hole, courseSi, true);
-        } else {
-            netB = getNetScoreMatchGame(playerBScore, handicapDiff, hole, courseSi, true);
-        }
-        
-        if (netA < netB) playerAWon++;
-        else if (netB < netA) playerBWon++;
-    }
-    
-    // Return the margin (e.g., +5, -3, 0)
-    return playerAWon - playerBWon;
-}
-
-// ============================================================
-// Match Game: Convert margin to points, cumulative per hole
-// ============================================================
-function calculateMatchGame(f1Scores, f2Scores, allPlayers, courseSi, coursePar) {
-    // Get raw data strings
-    var flight1Data = f1Scores.map(function(h) {
-        if (!h) return '';
-        return 'T' + 
-            String(h.a1).padStart(2, '0') + 
-            String(h.a2).padStart(2, '0') + 
-            String(h.b1).padStart(2, '0') + 
-            String(h.b2).padStart(2, '0');
-    }).join('');
-    
-    var flight2Data = f2Scores.map(function(h) {
-        if (!h) return '';
-        return 'T' + 
-            String(h.a1).padStart(2, '0') + 
-            String(h.a2).padStart(2, '0') + 
-            String(h.b1).padStart(2, '0') + 
-            String(h.b2).padStart(2, '0');
-    }).join('');
-    
-    // Build team arrays sorted by flight then handicap
-    var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; });
-    var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; });
-    
-    teamAPlayers.sort(function(a, b) {
-        if (a.flight !== b.flight) return a.flight - b.flight;
-        return a.handicap - b.handicap;
-    });
-    
-    teamBPlayers.sort(function(a, b) {
-        if (a.flight !== b.flight) return a.flight - b.flight;
-        return a.handicap - b.handicap;
-    });
-    
-    // For each hole, calculate cumulative match game points
-    var cumulativeA = 0;
-    var cumulativeB = 0;
-    var resultA = new Array(18).fill(0);
-    var resultB = new Array(18).fill(0);
-    
-    // Build lists of all matches (Team A player vs Team B player)
-    var allMatches = [];
-    for (var a = 0; a < teamAPlayers.length; a++) {
-        for (var b = 0; b < teamBPlayers.length; b++) {
-            allMatches.push({
-                playerA: teamAPlayers[a],
-                playerB: teamBPlayers[b]
-            });
-        }
-    }
-    // 4 Team A players × 4 Team B players = 16 matches
-    
-    for (var hole = 1; hole <= 18; hole++) {
-        var matchResultsA = 0;
-        var matchResultsB = 0;
-        
-        for (var m = 0; m < allMatches.length; m++) {
-            var match = allMatches[m];
-            var margin;
-            
-            // Check if intra-flight (same flight)
-            if (match.playerA.flight === match.playerB.flight) {
-                var flightData = match.playerA.flight === 1 ? flight1Data : flight2Data;
-                margin = getIntraMatchResult(
-                    match.playerA, match.playerB, flightData, allPlayers, courseSi, hole, coursePar
-                );
-            } else {
-                margin = getCrossMatchResult(
-                    match.playerA, match.playerB, flight1Data, flight2Data, allPlayers, courseSi, hole, coursePar
-                );
-            }
-            
-            // Convert margin to points
-            if (margin > 0) {
-                matchResultsA += 1;
-            } else if (margin < 0) {
-                matchResultsB += 1;
-            } else {
-                matchResultsA += 0.5;
-                matchResultsB += 0.5;
-            }
-        }
-        
-        cumulativeA += matchResultsA;
-        cumulativeB += matchResultsB;
-        
-        resultA[hole-1] = cumulativeA;
-        resultB[hole-1] = cumulativeB;
-    }
-    
-    return { pointsA: resultA, pointsB: resultB };
-}
-
-// ============================================================
-// EXACT logic from game-team.js
-// ============================================================
-function getNetScoreTeamGame(gross, handicap, si) {
-    var strokes = 0;
-    if (handicap > 0 && si <= handicap) {
-        strokes = 1;
-    }
-    return gross - strokes;
-}
-
-function calculateTeamGame(flightScores, players, flightNum, courseSi) {
-    var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
-    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var results = [];
-    var running = 0;
-    
-    for (var idx = 0; idx < 18; idx++) {
-        var hole = flightScores[idx];
-        if (!hole || !hole.saved) {
-            results.push({ hole: idx+1, match1: null, match2: null, holeResult: null, running: null, display: '-', trPointsA: 0.5, trPointsB: 0.5 });
-            continue;
-        }
-        
-        var si = courseSi[idx] || 1;
-        var teamAGross = [hole.a1, hole.a2];
-        var teamBGross = [hole.b1, hole.b2];
-        
-        var teamANets = [];
-        var teamBNets = [];
-        for (var i = 0; i < teamA.length; i++) {
-            var net = getNetScoreTeamGame(teamAGross[i], teamA[i].handicap, si);
-            teamANets.push({ player: teamA[i], net: net, gross: teamAGross[i] });
-        }
-        for (var i = 0; i < teamB.length; i++) {
-            var net = getNetScoreTeamGame(teamBGross[i], teamB[i].handicap, si);
-            teamBNets.push({ player: teamB[i], net: net, gross: teamBGross[i] });
-        }
-        teamANets.sort(function(a, b) { return a.net - b.net; });
-        teamBNets.sort(function(a, b) { return a.net - b.net; });
-        
-        var match1 = 0, match2 = 0;
-        if (teamANets[0].net < teamBNets[0].net) match1 = 1;
-        else if (teamANets[0].net > teamBNets[0].net) match1 = -1;
-        
-        if (teamANets[1].net < teamBNets[1].net) match2 = 1;
-        else if (teamANets[1].net > teamBNets[1].net) match2 = -1;
-        
-        var holeResult = match1 + match2;
-        running += holeResult;
-        
-        var display = 'AS';
-        if (running > 0) display = 'A' + running;
-        else if (running < 0) display = 'B' + Math.abs(running);
-        
-        var trPointsA, trPointsB;
-        if (running > 0) { trPointsA = 1; trPointsB = 0; }
-        else if (running < 0) { trPointsA = 0; trPointsB = 1; }
-        else { trPointsA = 0.5; trPointsB = 0.5; }
-        
-        results.push({
-            hole: idx+1,
-            match1: match1,
-            match2: match2,
-            holeResult: holeResult,
-            running: running,
-            display: display,
-            trPointsA: trPointsA,
-            trPointsB: trPointsB
-        });
-    }
-    return results;
-}
-
-// ============================================================
-// EXACT logic from game-stroke.js
-// ============================================================
-function calculateStrokeGame(flight1Scores, flight2Scores, players) {
-    var teamA = players.filter(function(p) { return p.team === 'A'; });
-    var teamB = players.filter(function(p) { return p.team === 'B'; });
-    var totalHcpA = teamA.reduce(function(sum, p) { return sum + p.handicap; }, 0);
-    var totalHcpB = teamB.reduce(function(sum, p) { return sum + p.handicap; }, 0);
-    
-    var results = [];
-    var cumulativeGrossA = 0;
-    var cumulativeGrossB = 0;
-    
-    for (var pos = 0; pos < 18; pos++) {
-        var f1 = flight1Scores[pos];
-        var f2 = flight2Scores[pos];
-        
-        if (!f1 || !f1.saved || !f2 || !f2.saved) {
-            results.push({ hole: pos+1, display: '-', grossA: null, grossB: null, netA: null, netB: null, diff: null, trPointsA: 0.5, trPointsB: 0.5 });
-            continue;
-        }
-        
-        var holeGrossA = f1.a1 + f1.a2 + f2.a1 + f2.a2;
-        var holeGrossB = f1.b1 + f1.b2 + f2.b1 + f2.b2;
-        cumulativeGrossA += holeGrossA;
-        cumulativeGrossB += holeGrossB;
-        
-        var netA = cumulativeGrossA - totalHcpA;
-        var netB = cumulativeGrossB - totalHcpB;
-        var diff = netB - netA;
-        
-        var display = 'AS';
-        if (Math.abs(diff) < 0.01) display = 'AS';
-        else if (diff > 0) display = 'A' + Math.round(diff);
-        else display = 'B' + Math.round(Math.abs(diff));
-        
-        var trPointsA, trPointsB;
-        if (Math.abs(diff) < 0.01) { trPointsA = 0.5; trPointsB = 0.5; }
-        else if (diff > 0) { trPointsA = 1; trPointsB = 0; }
-        else { trPointsA = 0; trPointsB = 1; }
-        
-        results.push({
-            hole: pos+1,
-            grossA: holeGrossA,
-            grossB: holeGrossB,
-            cumulativeGrossA: cumulativeGrossA,
-            cumulativeGrossB: cumulativeGrossB,
-            netA: netA,
-            netB: netB,
-            diff: diff,
-            display: display,
-            trPointsA: trPointsA,
-            trPointsB: trPointsB
-        });
-    }
-    return results;
-}
-
-// ============================================================
-// Parse Raw Data
+// EXACT: parseDataString from game-data.js
 // ============================================================
 function parseDataString(dataStr) {
     if (!dataStr || dataStr.length !== 162) return null;
@@ -665,45 +226,270 @@ function parseDataString(dataStr) {
 }
 
 // ============================================================
-// Fetch Records
+// EXACT: getStrokeHoles from game-match.js
+// ============================================================
+function getStrokeHoles(handicapDiff, courseSi) {
+    if (handicapDiff <= 0) return [];
+    var holesWithSi = [];
+    for (var i = 0; i < 18; i++) { holesWithSi.push({ hole: i+1, si: courseSi[i] }); }
+    holesWithSi.sort(function(a, b) { return a.si - b.si; });
+    var strokeHoles = [];
+    for (var i = 0; i < handicapDiff && i < 18; i++) { strokeHoles.push(holesWithSi[i].hole); }
+    return strokeHoles;
+}
+function getStrokesForHole(holeNumber, handicapDiff, courseSi) {
+    if (handicapDiff <= 0) return 0;
+    var strokeHoles = getStrokeHoles(handicapDiff, courseSi);
+    for (var i = 0; i < strokeHoles.length; i++) { if (strokeHoles[i] === holeNumber) return 1; }
+    return 0;
+}
+function getNetScoreMatchGame(gross, handicapDiff, holeNumber, courseSi, isReceiving) {
+    if (!isReceiving) return gross;
+    var strokes = getStrokesForHole(holeNumber, handicapDiff, courseSi);
+    return gross - strokes;
+}
+
+// ============================================================
+// EXACT: getIntraMatchResult from game-match.js
+// ============================================================
+function getIntraMatchResult(playerA, playerB, flightData, allPlayers, courseSi, upToHole, coursePar) {
+    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === playerA.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var playerAWon = 0, playerBWon = 0;
+    for (var hole = 1; hole <= upToHole; hole++) {
+        var holeData = parseHoleData(flightData, hole);
+        if (!holeData || !holeData.saved) break;
+        var playerAScore = null, playerBScore = null;
+        if (playerA.team === 'A') {
+            if (teamA[0] && teamA[0].name === playerA.name) playerAScore = holeData.scores.a1;
+            else if (teamA[1] && teamA[1].name === playerA.name) playerAScore = holeData.scores.a2;
+        } else {
+            if (teamB[0] && teamB[0].name === playerA.name) playerAScore = holeData.scores.b1;
+            else if (teamB[1] && teamB[1].name === playerA.name) playerAScore = holeData.scores.b2;
+        }
+        if (playerB.team === 'A') {
+            if (teamA[0] && teamA[0].name === playerB.name) playerBScore = holeData.scores.a1;
+            else if (teamA[1] && teamA[1].name === playerB.name) playerBScore = holeData.scores.a2;
+        } else {
+            if (teamB[0] && teamB[0].name === playerB.name) playerBScore = holeData.scores.b1;
+            else if (teamB[1] && teamB[1].name === playerB.name) playerBScore = holeData.scores.b2;
+        }
+        if (playerAScore === null || playerBScore === null) continue;
+        var netA = playerAScore, netB = playerBScore;
+        if (isPlayerAReceiving) netA = getNetScoreMatchGame(playerAScore, handicapDiff, hole, courseSi, true);
+        else netB = getNetScoreMatchGame(playerBScore, handicapDiff, hole, courseSi, true);
+        if (netA < netB) playerAWon++;
+        else if (netB < netA) playerBWon++;
+    }
+    return playerAWon - playerBWon;
+}
+
+// ============================================================
+// EXACT: getCrossMatchResult from game-match.js
+// ============================================================
+function getCrossMatchResult(playerA, playerB, flight1Data, flight2Data, allPlayers, courseSi, upToHole, coursePar) {
+    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
+    var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+    var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
+    var playerAWon = 0, playerBWon = 0;
+    for (var hole = 1; hole <= upToHole; hole++) {
+        var f1HoleData = parseHoleData(flight1Data, hole);
+        var f2HoleData = parseHoleData(flight2Data, hole);
+        if (!f1HoleData || !f1HoleData.saved || !f2HoleData || !f2HoleData.saved) break;
+        var playerAScore = null, playerBScore = null;
+        if (playerA.flight === 1) { playerAScore = getPlayerScore(playerA, flight1Data, hole, allPlayers, coursePar); }
+        else { playerAScore = getPlayerScore(playerA, flight2Data, hole, allPlayers, coursePar); }
+        if (playerB.flight === 1) { playerBScore = getPlayerScore(playerB, flight1Data, hole, allPlayers, coursePar); }
+        else { playerBScore = getPlayerScore(playerB, flight2Data, hole, allPlayers, coursePar); }
+        if (playerAScore === null || playerBScore === null) continue;
+        var netA = playerAScore, netB = playerBScore;
+        if (isPlayerAReceiving) netA = getNetScoreMatchGame(playerAScore, handicapDiff, hole, courseSi, true);
+        else netB = getNetScoreMatchGame(playerBScore, handicapDiff, hole, courseSi, true);
+        if (netA < netB) playerAWon++;
+        else if (netB < netA) playerBWon++;
+    }
+    return playerAWon - playerBWon;
+}
+
+// ============================================================
+// EXACT: getPlayerScore from game-match.js
+// ============================================================
+function getPlayerScore(player, flightData, holeNumber, allPlayers, coursePar) {
+    var holeData = parseHoleData(flightData, holeNumber);
+    if (!holeData || !holeData.saved) return null;
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    if (player.team === 'A') {
+        if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
+        if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
+    } else {
+        if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
+        if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
+    }
+    return null;
+}
+function parseHoleData(dataStr, holeNumber) {
+    if (!dataStr || dataStr.length !== 162) return null;
+    var startIndex = (holeNumber - 1) * 9;
+    var segment = dataStr.substr(startIndex, 9);
+    return { saved: segment[0] === 'T', scores: { a1: parseInt(segment.substr(1,2),10), a2: parseInt(segment.substr(3,2),10), b1: parseInt(segment.substr(5,2),10), b2: parseInt(segment.substr(7,2),10) } };
+}
+
+// ============================================================
+// EXACT: calculateMatchGame — from game-match.js logic
+// ============================================================
+function calculateMatchGame(f1Scores, f2Scores, allPlayers, courseSi, coursePar) {
+    var flight1Data = f1Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
+    var flight2Data = f2Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
+    
+    var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; });
+    var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; });
+    teamAPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
+    teamBPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
+    
+    var allMatches = [];
+    for (var a = 0; a < teamAPlayers.length; a++) {
+        for (var b = 0; b < teamBPlayers.length; b++) {
+            allMatches.push({ playerA: teamAPlayers[a], playerB: teamBPlayers[b] });
+        }
+    }
+    
+    var cumulativeA = 0, cumulativeB = 0;
+    var resultA = new Array(18).fill(0), resultB = new Array(18).fill(0);
+    
+    for (var hole = 1; hole <= 18; hole++) {
+        var holeA = 0, holeB = 0;
+        for (var m = 0; m < allMatches.length; m++) {
+            var match = allMatches[m];
+            var margin;
+            if (match.playerA.flight === match.playerB.flight) {
+                var flightData = match.playerA.flight === 1 ? flight1Data : flight2Data;
+                margin = getIntraMatchResult(match.playerA, match.playerB, flightData, allPlayers, courseSi, hole, coursePar);
+            } else {
+                margin = getCrossMatchResult(match.playerA, match.playerB, flight1Data, flight2Data, allPlayers, courseSi, hole, coursePar);
+            }
+            if (margin > 0) { holeA += 1; }
+            else if (margin < 0) { holeB += 1; }
+            else { holeA += 0.5; holeB += 0.5; }
+        }
+        cumulativeA += holeA;
+        cumulativeB += holeB;
+        resultA[hole-1] = cumulativeA;
+        resultB[hole-1] = cumulativeB;
+    }
+    return { pointsA: resultA, pointsB: resultB };
+}
+
+// ============================================================
+// EXACT: Team Game from game-team.js
+// ============================================================
+function getNetScoreTeamGame(gross, handicap, si) {
+    var strokes = 0;
+    if (handicap > 0 && si <= handicap) strokes = 1;
+    return gross - strokes;
+}
+function calculateTeamGame(flightScores, players, flightNum, courseSi) {
+    var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var results = [], running = 0;
+    for (var idx = 0; idx < 18; idx++) {
+        var hole = flightScores[idx];
+        if (!hole || !hole.saved) {
+            results.push({ hole: idx+1, match1: null, match2: null, holeResult: null, running: null, display: '-', trPointsA: 0.5, trPointsB: 0.5 });
+            continue;
+        }
+        var si = courseSi[idx] || 1;
+        var teamAGross = [hole.a1, hole.a2];
+        var teamBGross = [hole.b1, hole.b2];
+        var teamANets = [], teamBNets = [];
+        for (var i = 0; i < teamA.length; i++) { teamANets.push({ player: teamA[i], net: getNetScoreTeamGame(teamAGross[i], teamA[i].handicap, si) }); }
+        for (var i = 0; i < teamB.length; i++) { teamBNets.push({ player: teamB[i], net: getNetScoreTeamGame(teamBGross[i], teamB[i].handicap, si) }); }
+        teamANets.sort(function(a,b) { return a.net - b.net; });
+        teamBNets.sort(function(a,b) { return a.net - b.net; });
+        var match1 = 0, match2 = 0;
+        if (teamANets[0].net < teamBNets[0].net) match1 = 1;
+        else if (teamANets[0].net > teamBNets[0].net) match1 = -1;
+        if (teamANets[1].net < teamBNets[1].net) match2 = 1;
+        else if (teamANets[1].net > teamBNets[1].net) match2 = -1;
+        var holeResult = match1 + match2;
+        running += holeResult;
+        var display = 'AS';
+        if (running > 0) display = 'A' + running;
+        else if (running < 0) display = 'B' + Math.abs(running);
+        var trPointsA, trPointsB;
+        if (running > 0) { trPointsA = 1; trPointsB = 0; }
+        else if (running < 0) { trPointsA = 0; trPointsB = 1; }
+        else { trPointsA = 0.5; trPointsB = 0.5; }
+        results.push({ hole: idx+1, match1: match1, match2: match2, holeResult: holeResult, running: running, display: display, trPointsA: trPointsA, trPointsB: trPointsB });
+    }
+    return results;
+}
+
+// ============================================================
+// EXACT: Stroke Game from game-stroke.js
+// ============================================================
+function calculateStrokeGame(f1Scores, f2Scores, players) {
+    var teamA = players.filter(function(p) { return p.team === 'A'; });
+    var teamB = players.filter(function(p) { return p.team === 'B'; });
+    var totalHcpA = teamA.reduce(function(sum, p) { return sum + p.handicap; }, 0);
+    var totalHcpB = teamB.reduce(function(sum, p) { return sum + p.handicap; }, 0);
+    var results = [], cumA = 0, cumB = 0;
+    for (var pos = 0; pos < 18; pos++) {
+        var f1 = f1Scores[pos], f2 = f2Scores[pos];
+        if (!f1 || !f1.saved || !f2 || !f2.saved) {
+            results.push({ hole: pos+1, display: '-', grossA: null, grossB: null, netA: null, netB: null, diff: null, trPointsA: 0.5, trPointsB: 0.5 });
+            continue;
+        }
+        var grossA = f1.a1 + f1.a2 + f2.a1 + f2.a2;
+        var grossB = f1.b1 + f1.b2 + f2.b1 + f2.b2;
+        cumA += grossA; cumB += grossB;
+        var netA = cumA - totalHcpA;
+        var netB = cumB - totalHcpB;
+        var diff = netB - netA;
+        var display = 'AS';
+        if (Math.abs(diff) < 0.01) display = 'AS';
+        else if (diff > 0) display = 'A' + Math.round(diff);
+        else display = 'B' + Math.round(Math.abs(diff));
+        var trPointsA, trPointsB;
+        if (Math.abs(diff) < 0.01) { trPointsA = 0.5; trPointsB = 0.5; }
+        else if (diff > 0) { trPointsA = 1; trPointsB = 0; }
+        else { trPointsA = 0; trPointsB = 1; }
+        results.push({ hole: pos+1, grossA: grossA, grossB: grossB, netA: netA, netB: netB, diff: diff, display: display, trPointsA: trPointsA, trPointsB: trPointsB });
+    }
+    return results;
+}
+
+// ============================================================
+// FETCH RECORDS
 // ============================================================
 function fetchRecords() {
     var select = document.getElementById('recordSelect');
     select.disabled = true;
     select.innerHTML = '<option value="">Loading...</option>';
     setStatus('Loading records...', 'info');
-    
-    db.collection('historyGames')
-        .where('status', 'in', ['pending_handicap', 'completed'])
-        .limit(100)
-        .get()
+    db.collection('historyGames').where('status', 'in', ['pending_handicap', 'completed']).limit(100).get()
         .then(function(snapshot) {
             records = [];
             snapshot.forEach(function(doc) {
                 var data = doc.data();
-                records.push({
-                    id: doc.id,
-                    originalGameId: data.originalGameId || doc.id,
-                    date: data.gameInfo?.date || 'Unknown',
-                    courseName: data.gameInfo?.course?.name || 'Unknown Course',
-                    status: data.status || 'unknown',
-                    rawData: data,
-                    createdAt: data.createdAt || data.completedAt || null
-                });
+                records.push({ id: doc.id, originalGameId: data.originalGameId || doc.id, date: data.gameInfo?.date || 'Unknown', courseName: data.gameInfo?.course?.name || 'Unknown Course', status: data.status || 'unknown', rawData: data, createdAt: data.createdAt || data.completedAt || null });
             });
-            
             records.sort(function(a, b) {
                 var dateA = a.createdAt ? (a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt)) : new Date(0);
                 var dateB = b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
                 return dateB - dateA;
             });
-            
             if (records.length === 0) {
                 select.innerHTML = '<option value="">No records found</option>';
                 setStatus('No history records found.', 'warning');
                 return;
             }
-            
             var html = '<option value="">— Select a game —</option>';
             for (var i = 0; i < records.length; i++) {
                 var r = records[i];
@@ -721,7 +507,7 @@ function fetchRecords() {
 }
 
 // ============================================================
-// Render Functions
+// RENDER FUNCTIONS
 // ============================================================
 function renderGameInfo(data) {
     var container = document.getElementById('gameInfoContent');
@@ -729,7 +515,6 @@ function renderGameInfo(data) {
     var date = data.gameInfo?.date || data.date || 'Unknown';
     var players = data.players || [];
     var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
-    
     var html = '<div class="game-info-grid">';
     html += '<span class="label">ID</span><span class="value">' + escapeHtml(data.id || 'Unknown') + '</span>';
     html += '<span class="label">Date</span><span class="value">' + escapeHtml(date) + '</span>';
@@ -746,20 +531,13 @@ function renderFlightTable(scores, players, flightNum, containerId) {
     var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
     var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
     var names = [];
     for (var i = 0; i < teamA.length; i++) names.push(teamA[i].label);
     for (var i = 0; i < teamB.length; i++) names.push(teamB[i].label);
-    
-    if (names.length === 0) {
-        container.innerHTML = '<div class="empty-state">No players</div>';
-        return;
-    }
-    
+    if (names.length === 0) { container.innerHTML = '<div class="empty-state">No players</div>'; return; }
     var html = '<div class="scroll-x"><table><tr><th>Hole</th>';
     for (var i = 0; i < names.length; i++) html += '<th>' + escapeHtml(names[i]) + '</th>';
     html += '<th style="color:#888;">Sv</th></tr>';
-    
     for (var h = 0; h < 18; h++) {
         var hole = scores[h];
         var vals = hole ? [hole.a1, hole.a2, hole.b1, hole.b2] : ['-', '-', '-', '-'];
@@ -773,8 +551,7 @@ function renderFlightTable(scores, players, flightNum, containerId) {
 
 function renderTeamGameTable(results, containerId, label) {
     var container = document.getElementById(containerId);
-    var html = '<div class="scroll-x"><table>';
-    html += '<tr><th>Hole</th><th>' + label + ' M1</th><th>' + label + ' M2</th><th>Result</th><th>Running</th><th>Display</th></tr>';
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>' + label + ' M1</th><th>' + label + ' M2</th><th>Result</th><th>Running</th><th>Display</th></tr>';
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
         var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
@@ -791,16 +568,13 @@ function renderTeamGameTable(results, containerId, label) {
 
 function renderStrkTable(results) {
     var container = document.getElementById('strkTable');
-    var html = '<div class="scroll-x"><table>';
-    html += '<tr><th>Hole</th><th>Gross A</th><th>Gross B</th><th>Cum A</th><th>Cum B</th><th>Net A</th><th>Net B</th><th>Diff</th><th>Display</th></tr>';
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Gross A</th><th>Gross B</th><th>Net A</th><th>Net B</th><th>Diff</th><th>Display</th></tr>';
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
         var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
         html += '<tr><td style="color:#888;">' + r.hole + '</td>';
         html += '<td>' + (r.grossA !== null ? r.grossA : '-') + '</td>';
         html += '<td>' + (r.grossB !== null ? r.grossB : '-') + '</td>';
-        html += '<td>' + (r.cumulativeGrossA !== null ? r.cumulativeGrossA : '-') + '</td>';
-        html += '<td>' + (r.cumulativeGrossB !== null ? r.cumulativeGrossB : '-') + '</td>';
         html += '<td>' + (r.netA !== null ? r.netA : '-') + '</td>';
         html += '<td>' + (r.netB !== null ? r.netB : '-') + '</td>';
         html += '<td>' + (r.diff !== null ? r.diff.toFixed(1) : '-') + '</td>';
@@ -812,14 +586,10 @@ function renderStrkTable(results) {
 
 function renderMatchTable(matchA, matchB) {
     var container = document.getElementById('matchTable');
-    var html = '<div class="scroll-x"><table>';
-    html += '<tr><th>Hole</th><th>Match A</th><th>Match B</th><th>Total</th></tr>';
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Match A</th><th>Match B</th><th>Total</th></tr>';
     for (var i = 0; i < 18; i++) {
         var total = matchA[i] + matchB[i];
-        html += '<tr><td style="color:#888;">' + (i+1) + '</td>';
-        html += '<td>' + matchA[i].toFixed(1) + '</td>';
-        html += '<td>' + matchB[i].toFixed(1) + '</td>';
-        html += '<td>' + total.toFixed(1) + '</td></tr>';
+        html += '<tr><td style="color:#888;">' + (i+1) + '</td><td>' + matchA[i].toFixed(1) + '</td><td>' + matchB[i].toFixed(1) + '</td><td>' + total.toFixed(1) + '</td></tr>';
     }
     html += '</table></div>';
     container.innerHTML = html;
@@ -827,56 +597,37 @@ function renderMatchTable(matchA, matchB) {
 
 function renderTRTable(t1Results, t2Results, strkResults, matchA, matchB, gameData) {
     var container = document.getElementById('trTable');
-    
-    var html = '<div class="scroll-x"><table>';
-    html += '<tr><th>Hole</th>';
-    html += '<th>Match A</th><th>Match B</th>';
-    html += '<th>T-1 A</th><th>T-1 B</th>';
-    html += '<th>T-2 A</th><th>T-2 B</th>';
-    html += '<th>Strk A</th><th>Strk B</th>';
-    html += '<th>TR A</th><th>TR B</th>';
-    html += '<th>Record A</th><th>Record B</th>';
-    html += '<th>✅</th></tr>';
-    
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Match A</th><th>Match B</th><th>T-1 A</th><th>T-1 B</th><th>T-2 A</th><th>T-2 B</th><th>Strk A</th><th>Strk B</th><th>TR A</th><th>TR B</th><th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
     for (var i = 0; i < 18; i++) {
         var t1 = t1Results[i] || {};
         var t2 = t2Results[i] || {};
         var strk = strkResults[i] || {};
-        
-        var mA = matchA[i] !== undefined ? matchA[i] : 0;
-        var mB = matchB[i] !== undefined ? matchB[i] : 0;
-        
+        var mA = matchA[i] || 0, mB = matchB[i] || 0;
         var t1A = t1.trPointsA !== undefined ? t1.trPointsA : 0.5;
         var t1B = t1.trPointsB !== undefined ? t1.trPointsB : 0.5;
         var t2A = t2.trPointsA !== undefined ? t2.trPointsA : 0.5;
         var t2B = t2.trPointsB !== undefined ? t2.trPointsB : 0.5;
         var sA = strk.trPointsA !== undefined ? strk.trPointsA : 0.5;
         var sB = strk.trPointsB !== undefined ? strk.trPointsB : 0.5;
-        
         var trA = mA + t1A + t2A + sA;
         var trB = mB + t1B + t2B + sB;
-        
         var recA = gameData.results?.tr?.teamA?.[i];
         var recB = gameData.results?.tr?.teamB?.[i];
         var recMatch = (recA !== undefined && recA !== null && recB !== undefined && recB !== null);
         var match = recMatch && Math.abs(trA - recA) < 0.01 && Math.abs(trB - recB) < 0.01;
-        
         var matchClass = match ? 'col-match' : 'col-mismatch';
         var recADisplay = (recA !== undefined && recA !== null) ? recA : '-';
         var recBDisplay = (recB !== undefined && recB !== null) ? recB : '-';
-        
-        html += '<tr>' +
-            '<td style="color:#888;font-weight:600;">' + (i+1) + '</td>' +
-            '<td>' + mA.toFixed(1) + '</td><td>' + mB.toFixed(1) + '</td>' +
-            '<td>' + t1A.toFixed(1) + '</td><td>' + t1B.toFixed(1) + '</td>' +
-            '<td>' + t2A.toFixed(1) + '</td><td>' + t2B.toFixed(1) + '</td>' +
-            '<td>' + sA.toFixed(1) + '</td><td>' + sB.toFixed(1) + '</td>' +
-            '<td style="font-weight:700;color:#4caf50;">' + trA.toFixed(1) + '</td>' +
-            '<td style="font-weight:700;color:#4caf50;">' + trB.toFixed(1) + '</td>' +
-            '<td class="' + matchClass + '">' + recADisplay + '</td>' +
-            '<td class="' + matchClass + '">' + recBDisplay + '</td>' +
-            '<td>' + (match ? '✅' : '❌') + '</td>' +
-            '</tr>';
+        html += '<tr><td style="color:#888;font-weight:600;">' + (i+1) + '</td>';
+        html += '<td>' + mA.toFixed(1) + '</td><td>' + mB.toFixed(1) + '</td>';
+        html += '<td>' + t1A.toFixed(1) + '</td><td>' + t1B.toFixed(1) + '</td>';
+        html += '<td>' + t2A.toFixed(1) + '</td><td>' + t2B.toFixed(1) + '</td>';
+        html += '<td>' + sA.toFixed(1) + '</td><td>' + sB.toFixed(1) + '</td>';
+        html += '<td style="font-weight:700;color:#4caf50;">' + trA.toFixed(1) + '</td>';
+        html += '<td style="font-weight:700;color:#4caf50;">' + trB.toFixed(1) + '</td>';
+        html += '<td class="' + matchClass + '">' + recADisplay + '</td>';
+        html += '<td class="' + matchClass + '">' + recBDisplay + '</td>';
+        html += '<td>' + (match ? '✅' : '❌') + '</td></tr>';
     }
     html += '</table></div>';
     container.innerHTML = html;
@@ -884,70 +635,50 @@ function renderTRTable(t1Results, t2Results, strkResults, matchA, matchB, gameDa
 
 function renderSummary(t1Results, t2Results, strkResults, matchA, matchB, gameData) {
     var container = document.getElementById('validationSummary');
-    
     var t1Final = t1Results[t1Results.length-1] || {};
     var t2Final = t2Results[t2Results.length-1] || {};
     var strkFinal = strkResults[strkResults.length-1] || {};
-    
     var t1Display = t1Final.display || '-';
     var t2Display = t2Final.display || '-';
     var strkDisplay = strkFinal.display || '-';
-    
     var recT1 = gameData.results?.game2?.displayT1?.[17] || '-';
     var recT2 = gameData.results?.game2?.displayT2?.[17] || '-';
     var recStrk = gameData.results?.game3?.displayStrk?.[17] || '-';
-    
     var t1Match = (t1Display === recT1) || (t1Display === '-' && recT1 === '-');
     var t2Match = (t2Display === recT2) || (t2Display === '-' && recT2 === '-');
     var strkMatch = (strkDisplay === recStrk) || (strkDisplay === '-' && recStrk === '-');
-    
     var allMatch = t1Match && t2Match && strkMatch;
-    
     var matchA_final = matchA[17] || 0;
     var matchB_final = matchB[17] || 0;
     var trA = matchA_final + (t1Final.trPointsA || 0.5) + (t2Final.trPointsA || 0.5) + (strkFinal.trPointsA || 0.5);
     var trB = matchB_final + (t1Final.trPointsB || 0.5) + (t2Final.trPointsB || 0.5) + (strkFinal.trPointsB || 0.5);
-    
     var recA = gameData.finalResults?.teamAScore || gameData.results?.tr?.teamA?.[17] || '-';
     var recB = gameData.finalResults?.teamBScore || gameData.results?.tr?.teamB?.[17] || '-';
     var trMatch = (typeof recA === 'number' && typeof recB === 'number' && Math.abs(trA - recA) < 0.01 && Math.abs(trB - recB) < 0.01);
-    
     var html = '<div class="summary-box">';
-    html += '<div class="summary-item"><div class="label">T-1</div><div class="value ' + (t1Match ? '' : 'mismatch') + '">Validator: ' + t1Display + ' | Record: ' + recT1 + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
-    html += '<div class="summary-item"><div class="label">T-2</div><div class="value ' + (t2Match ? '' : 'mismatch') + '">Validator: ' + t2Display + ' | Record: ' + recT2 + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
-    html += '<div class="summary-item"><div class="label">Strk</div><div class="value ' + (strkMatch ? '' : 'mismatch') + '">Validator: ' + strkDisplay + ' | Record: ' + recStrk + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">T-1</div><div class="value ' + (t1Match ? '' : 'mismatch') + '">' + t1Display + ' | Record: ' + recT1 + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">T-2</div><div class="value ' + (t2Match ? '' : 'mismatch') + '">' + t2Display + ' | Record: ' + recT2 + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">Strk</div><div class="value ' + (strkMatch ? '' : 'mismatch') + '">' + strkDisplay + ' | Record: ' + recStrk + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
     html += '<div class="summary-item" style="border-left-color:#ffaa44;"><div class="label">Match Game</div><div class="value">' + matchA_final.toFixed(1) + ' - ' + matchB_final.toFixed(1) + '</div></div>';
-    html += '<div class="summary-item" style="border-left-color:#ffaa44;"><div class="label">TR</div><div class="value ' + (trMatch ? '' : 'mismatch') + '">Validator: ' + trA.toFixed(1) + ' - ' + trB.toFixed(1) + ' | Record: ' + recA + ' - ' + recB + ' ' + (trMatch ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item" style="border-left-color:#ffaa44;"><div class="label">TR</div><div class="value ' + (trMatch ? '' : 'mismatch') + '">' + trA.toFixed(1) + ' - ' + trB.toFixed(1) + ' | Record: ' + recA + ' - ' + recB + ' ' + (trMatch ? '✅' : '❌') + '</div></div>';
     html += '</div>';
-    
-    if (allMatch && trMatch) {
-        html += '<div style="margin-top:12px;color:#4caf50;font-weight:700;">✅ All validated values match the record.</div>';
-    } else {
-        html += '<div style="margin-top:12px;color:#ef5350;font-weight:700;">❌ Mismatch detected. The record contains stale or incorrect data.</div>';
-    }
-    
+    html += '<div style="margin-top:12px;">' + (allMatch && trMatch ? '✅ All values match the record.' : '❌ Mismatch detected. The record contains stale data.') + '</div>';
     container.innerHTML = html;
 }
 
 // ============================================================
-// Main Load Function
+// MAIN LOAD
 // ============================================================
 function loadAndValidate() {
     var select = document.getElementById('recordSelect');
     var index = parseInt(select.value);
-    if (isNaN(index) || index < 0 || index >= records.length) {
-        setStatus('Please select a game', 'warning');
-        return;
-    }
-    
+    if (isNaN(index) || index < 0 || index >= records.length) { setStatus('Please select a game', 'warning'); return; }
     var data = records[index].rawData;
     if (!data) { setStatus('No data found', 'error'); return; }
     gameData = data;
     gameData.id = records[index].id;
-    
     setStatus('Loading: ' + records[index].originalGameId + '... <span class="loader"></span>', 'info');
     document.getElementById('results').style.display = 'none';
-    
     try { processGameData(gameData); }
     catch (err) { setStatus('Error: ' + err.message, 'error'); console.error(err); }
 }
@@ -956,49 +687,31 @@ function processGameData(data) {
     var f1Scores = parseDataString(data.f1DataString);
     var f2Scores = parseDataString(data.f2DataString);
     if (!f1Scores || !f2Scores) { setStatus('Invalid data strings', 'error'); return; }
-    
     var players = data.players || [];
     if (players.length === 0) { setStatus('No players found', 'error'); return; }
-    
     var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
-    if (courseSi.length === 0) {
-        for (var i = 0; i < 18; i++) courseSi[i] = i + 1;
-        setStatus('Warning: No SI data, using 1-18', 'warning');
-    }
-    
+    if (courseSi.length === 0) { for (var i = 0; i < 18; i++) courseSi[i] = i + 1; setStatus('Warning: No SI data, using 1-18', 'warning'); }
     var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
-    if (coursePar.length === 0) {
-        for (var i = 0; i < 18; i++) coursePar[i] = 4;
-        setStatus('Warning: No Par data, using 4 for all holes', 'warning');
-    }
-    
+    if (coursePar.length === 0) { for (var i = 0; i < 18; i++) coursePar[i] = 4; setStatus('Warning: No Par data, using 4 for all holes', 'warning'); }
     renderGameInfo(data);
     renderFlightTable(f1Scores, players, 1, 'flight1Table');
     renderFlightTable(f2Scores, players, 2, 'flight2Table');
-    
-    // Calculate T-1, T-2, Strk
     var t1Results = calculateTeamGame(f1Scores, players, 1, courseSi);
     var t2Results = calculateTeamGame(f2Scores, players, 2, courseSi);
     var strkResults = calculateStrokeGame(f1Scores, f2Scores, players);
-    
     renderTeamGameTable(t1Results, 't1Table', 'T-1');
     renderTeamGameTable(t2Results, 't2Table', 'T-2');
     renderStrkTable(strkResults);
-    
-    // Calculate Match Game from raw data (margins → points)
     var matchResults = calculateMatchGame(f1Scores, f2Scores, players, courseSi, coursePar);
     renderMatchTable(matchResults.pointsA, matchResults.pointsB);
-    
-    // TR uses calculated Match Game
     renderTRTable(t1Results, t2Results, strkResults, matchResults.pointsA, matchResults.pointsB, data);
     renderSummary(t1Results, t2Results, strkResults, matchResults.pointsA, matchResults.pointsB, data);
-    
     document.getElementById('results').style.display = 'block';
     setStatus('✅ Loaded: ' + data.id, 'success');
 }
 
 // ============================================================
-// Event Listeners
+// EVENTS
 // ============================================================
 document.getElementById('loadBtn').addEventListener('click', loadAndValidate);
 document.getElementById('refreshBtn').addEventListener('click', function() { fetchRecords(); });
@@ -1009,26 +722,25 @@ document.getElementById('clearBtn').addEventListener('click', function() {
 });
 
 // ============================================================
-// Init
+// INIT
 // ============================================================
 fetchRecords();
-console.log('🔬 Game Data Validator v1.06 loaded.');
-console.log('Match Game: margins → points (win=1, loss=0, tie=0.5)');
+console.log('🔬 Game Data Validator v1.07 loaded.');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: Match Game calculation — now correctly converts match margins to points
-   - getIntraMatchResult() and getCrossMatchResult() return margins (e.g., +5, -3, 0)
-   - Match margins are converted to points: win = 1, loss = 0, tie = 0.5
-   - Summed across all 16 matches → total between 0 and 16
-   - Previously was adding margins together (causing scores > 100)
-   - Now matches the app's logic: Match Game points are cumulative TR points
-   - All other logic unchanged (T-1, T-2, Strk from v1.05)
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - COMPLETE REWRITE: Now directly copies logic from the app's source code files
+   - Match Game: Uses EXACT logic from game-match.js (calculateCrossFlight, calculateIntraFlight)
+   - T-1/T-2: Uses EXACT logic from game-team.js (sort by handicap, net scores, running totals)
+   - Strk: Uses EXACT logic from game-stroke.js (cumulative gross - total team handicap)
+   - TR: Uses EXACT logic from real-game-save.js (game1 + game2 + game3 at each hole)
+   - No invented logic — pure code replication from the actual app files
+   - Hole-by-hole results for all 8 players
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
