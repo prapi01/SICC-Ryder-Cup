@@ -1,13 +1,16 @@
 <!--
 FILE: validate.html
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: Handicap and SI logic to all calculations
-   - T-1 now uses net scores (handicap + SI applied)
-   - T-2 now uses net scores (handicap + SI applied)
-   - Strk now uses cumulative net scores
-   - Added getNetScore() helper function
-   - Now matches the actual app's calculation logic
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - COMPLETE REWRITE: Now uses EXACT logic from the app's codebase
+   - T-1/T-2: Uses GameTeam.calculate() logic (net scores, sorting by handicap, match results)
+   - Strk: Uses GameStroke.calculate() logic (cumulative gross - total team handicap)
+   - TR: Uses RealGameSave.writeNewHoleData() logic (Match Game + T-1 + T-2 + Strk at each hole)
+   - Ties in T-1/T-2 are 0 (not 0.5) - matches game-team.js
+   - T-1/T-2 contribute 1 point each to TR (0.5 if AS) - matches game-team.js teamGameTR
+   - Displays hole-by-hole results for all 8 players
+   - Shows barebone validation with mismatches highlighted
+   - No invented logic - pure code replication
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -23,263 +26,71 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            background: #0a0a0a;
-            color: #e0e0e0;
-            font-family: system-ui, -apple-system, sans-serif;
-            padding: 20px;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        h1 {
-            color: #4caf50;
-            font-size: 1.5rem;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #2a2a2a;
-            padding-bottom: 12px;
-        }
-        h1 .version-tag {
-            font-size: 0.65rem;
-            color: #4caf50;
-            background: rgba(0,0,0,0.6);
-            padding: 2px 10px;
-            border-radius: 16px;
-            font-family: monospace;
-            opacity: 0.8;
-            margin-left: 10px;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0a0a0a; color: #e0e0e0; font-family: system-ui, sans-serif; padding: 20px; min-height: 100vh; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #4caf50; font-size: 1.5rem; margin-bottom: 20px; border-bottom: 1px solid #2a2a2a; padding-bottom: 12px; }
+        h1 .version-tag { font-size: 0.65rem; color: #4caf50; background: rgba(0,0,0,0.6); padding: 2px 10px; border-radius: 16px; font-family: monospace; opacity: 0.8; margin-left: 10px; }
         
-        .card {
-            background: #141414;
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            overflow-x: auto;
-        }
-        .card-title {
-            color: #4caf50;
-            font-weight: 600;
-            font-size: 0.9rem;
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+        .card { background: #141414; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 20px; overflow-x: auto; }
+        .card-title { color: #4caf50; font-weight: 600; font-size: 0.9rem; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
         
-        .input-group {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-        .input-group label {
-            font-size: 0.85rem;
-            color: #aaa;
-        }
-        .input-group select {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #fff;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            flex: 1;
-            min-width: 200px;
-            cursor: pointer;
-        }
-        .input-group select:focus {
-            outline: none;
-            border-color: #4caf50;
-        }
-        .input-group select option {
-            background: #1a1a1a;
-            color: #fff;
-        }
-        .input-group select:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            padding: 8px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        .btn:hover {
-            background: #2a4a2a;
-        }
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn-secondary {
-            background: #1a1a1a;
-            border-color: #555;
-            color: #aaa;
-        }
-        .btn-secondary:hover {
-            background: #2a2a2a;
-        }
+        .input-group { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+        .input-group label { font-size: 0.85rem; color: #aaa; }
+        .input-group select { background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; flex: 1; min-width: 200px; cursor: pointer; }
+        .input-group select:focus { outline: none; border-color: #4caf50; }
+        .btn { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
+        .btn:hover { background: #2a4a2a; }
+        .btn-secondary { background: #1a1a1a; border-color: #555; color: #aaa; }
+        .btn-secondary:hover { background: #2a2a2a; }
         
-        .status {
-            padding: 12px 16px;
-            border-radius: 6px;
-            margin-bottom: 16px;
-            font-size: 0.85rem;
-        }
-        .status-success {
-            background: #0a2a0a;
-            border: 1px solid #2a5a2a;
-            color: #8bc34a;
-        }
-        .status-error {
-            background: #2a0a0a;
-            border: 1px solid #5a2a2a;
-            color: #ef5350;
-        }
-        .status-info {
-            background: #0a1a2a;
-            border: 1px solid #2a3a5a;
-            color: #64b5f6;
-        }
-        .status-warning {
-            background: #2a2a0a;
-            border: 1px solid #5a5a2a;
-            color: #ffa726;
-        }
+        .status { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.85rem; }
+        .status-success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #8bc34a; }
+        .status-error { background: #2a0a0a; border: 1px solid #5a2a2a; color: #ef5350; }
+        .status-info { background: #0a1a2a; border: 1px solid #2a3a5a; color: #64b5f6; }
+        .status-warning { background: #2a2a0a; border: 1px solid #5a5a2a; color: #ffa726; }
         
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.8rem;
-        }
-        table th {
-            background: #1a1a1a;
-            color: #4caf50;
-            padding: 8px 6px;
-            text-align: center;
-            border-bottom: 2px solid #2a2a2a;
-            font-weight: 600;
-        }
-        table td {
-            padding: 6px 6px;
-            text-align: center;
-            border-bottom: 1px solid #1a1a1a;
-        }
-        table tr:hover td {
-            background: #1a1a1a;
-        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        table th { background: #1a1a1a; color: #4caf50; padding: 6px 4px; text-align: center; border-bottom: 2px solid #2a2a2a; font-weight: 600; position: sticky; top: 0; z-index: 10; }
+        table td { padding: 4px 3px; text-align: center; border-bottom: 1px solid #1a1a1a; }
+        table tr:hover td { background: #1a1a1a; }
         
-        .col-player {
-            font-weight: 600;
-            color: #fff;
-            text-align: left !important;
-            padding-left: 10px !important;
-        }
-        .col-total {
-            font-weight: 700;
-            color: #4caf50;
-        }
-        .col-mismatch {
-            background: #3a1a1a !important;
-            color: #ef5350 !important;
-            font-weight: 700;
-        }
-        .net-score {
-            color: #ffa726;
-            font-size: 0.7rem;
-        }
+        .col-player { font-weight: 600; color: #fff; text-align: left !important; padding-left: 8px !important; }
+        .col-total { font-weight: 700; color: #4caf50; }
+        .col-mismatch { background: #3a1a1a !important; color: #ef5350 !important; font-weight: 700; }
+        .col-match { background: #1a2a1a !important; color: #8bc34a !important; }
+        .net-score { color: #ffa726; font-size: 0.65rem; }
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+        .badge-green { background: #1a3a1a; color: #4caf50; }
+        .badge-red { background: #3a1a1a; color: #ef5350; }
+        .badge-gold { background: #3a2a1a; color: #ffa726; }
         
-        .two-col {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        @media (max-width: 768px) {
-            .two-col {
-                grid-template-columns: 1fr;
-            }
-        }
+        .loader { display: inline-block; width: 16px; height: 16px; border: 2px solid #333; border-top-color: #4caf50; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 8px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         
-        .badge {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: 600;
-        }
-        .badge-green {
-            background: #1a3a1a;
-            color: #4caf50;
-        }
-        .badge-red {
-            background: #3a1a1a;
-            color: #ef5350;
-        }
-        .badge-gold {
-            background: #3a2a1a;
-            color: #ffa726;
-        }
+        .footnote { font-size: 0.7rem; color: #555; margin-top: 12px; border-top: 1px solid #1a1a1a; padding-top: 12px; }
+        .game-info-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 0.85rem; }
+        .game-info-grid .label { color: #666; }
+        .game-info-grid .value { color: #e0e0e0; }
         
-        .loader {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #333;
-            border-top-color: #4caf50;
-            border-radius: 50%;
-            animation: spin 0.6s linear infinite;
-            vertical-align: middle;
-            margin-right: 8px;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
         
-        .footnote {
-            font-size: 0.7rem;
-            color: #555;
-            margin-top: 12px;
-            border-top: 1px solid #1a1a1a;
-            padding-top: 12px;
-        }
+        .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+        @media (max-width: 1024px) { .three-col { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 600px) { .three-col { grid-template-columns: 1fr; } }
         
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: #666;
-        }
-        .empty-state .icon {
-            font-size: 2rem;
-            margin-bottom: 12px;
-        }
+        .scroll-x { overflow-x: auto; max-width: 100%; }
+        .sticky-col { position: sticky; left: 0; background: #141414; z-index: 5; }
         
-        .game-info-grid {
-            display: grid;
-            grid-template-columns: auto 1fr;
-            gap: 4px 16px;
-            font-size: 0.85rem;
-        }
-        .game-info-grid .label {
-            color: #666;
-        }
-        .game-info-grid .value {
-            color: #e0e0e0;
-        }
+        .empty-state { text-align: center; padding: 40px 20px; color: #666; }
+        .empty-state .icon { font-size: 2rem; margin-bottom: 12px; }
+        
+        .summary-box { display: flex; gap: 24px; flex-wrap: wrap; padding: 12px 0; }
+        .summary-item { background: #0a0a0a; padding: 8px 16px; border-radius: 8px; border-left: 3px solid #4caf50; }
+        .summary-item .label { font-size: 0.65rem; color: #888; }
+        .summary-item .value { font-size: 1rem; font-weight: 700; color: #fff; }
+        .summary-item .value.mismatch { color: #ef5350; }
     </style>
 </head>
 <body>
@@ -287,17 +98,15 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.03</span>
+        <span class="version-tag">v1.04</span>
     </h1>
     
-    <!-- Input Section -->
+    <!-- Input -->
     <div class="card">
         <div class="card-title">📥 Select Game Record</div>
         <div class="input-group">
             <label for="recordSelect">Game:</label>
-            <select id="recordSelect">
-                <option value="">— Loading records... —</option>
-            </select>
+            <select id="recordSelect"><option value="">— Loading records... —</option></select>
             <button class="btn" id="loadBtn">Load & Validate</button>
             <button class="btn btn-secondary" id="refreshBtn">↻ Refresh</button>
             <button class="btn btn-secondary" id="clearBtn">Clear</button>
@@ -326,8 +135,8 @@ STATUS: Ready for integration
             </div>
         </div>
         
-        <!-- Calculated Results -->
-        <div class="two-col">
+        <!-- T-1, T-2, Strk -->
+        <div class="three-col">
             <div class="card">
                 <div class="card-title">📊 T-1 (Flight 1 Team Game)</div>
                 <div id="t1Table"></div>
@@ -336,17 +145,16 @@ STATUS: Ready for integration
                 <div class="card-title">📊 T-2 (Flight 2 Team Game)</div>
                 <div id="t2Table"></div>
             </div>
+            <div class="card">
+                <div class="card-title">📊 Strk (Stroke Game)</div>
+                <div id="strkTable"></div>
+            </div>
         </div>
         
+        <!-- TR -->
         <div class="card">
-            <div class="card-title">📊 Strk (Stroke Game)</div>
-            <div id="strkTable"></div>
-        </div>
-        
-        <!-- TR Comparison -->
-        <div class="card">
-            <div class="card-title">🏆 TR Comparison</div>
-            <div id="trComparison"></div>
+            <div class="card-title">🏆 TR — Hole-by-Hole Validation</div>
+            <div id="trTable"></div>
         </div>
         
         <!-- Summary -->
@@ -358,7 +166,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v1.03 — Uses handicap + SI logic to calculate net scores. Matches the actual app's calculation logic.
+        Validator v1.04 — Uses EXACT logic from the app's codebase: game-team.js, game-stroke.js, real-game-save.js.
     </div>
 </div>
 
@@ -366,8 +174,8 @@ STATUS: Ready for integration
 // ============================================================
 // Version exposure
 // ============================================================
-window.VALIDATOR_VERSION = "1.03";
-console.log("[Validator] v1.03 - Handicap + SI logic added");
+window.VALIDATOR_VERSION = "1.04";
+console.log("[Validator] v1.04 - Exact code replication from app");
 
 // ============================================================
 // Firebase Config
@@ -393,9 +201,7 @@ var DEV_CONFIG = {
 if (typeof firebase !== 'undefined' && firebase.apps && !firebase.apps.length) {
     var config = window.location.hostname.includes('staging') ? DEV_CONFIG : FIREBASE_CONFIG;
     firebase.initializeApp(config);
-    console.log("[Validator] Firebase initialized with project:", firebase.apps[0].options.projectId);
 }
-
 var db = firebase.firestore();
 
 // ============================================================
@@ -403,7 +209,6 @@ var db = firebase.firestore();
 // ============================================================
 var records = [];
 var gameData = null;
-var isLoading = false;
 
 // ============================================================
 // Utility
@@ -436,9 +241,11 @@ function formatDate(dateStr) {
 }
 
 // ============================================================
-// v1.03: Net Score with Handicap + SI
+// EXACT logic from game-team.js
 // ============================================================
-function getNetScore(gross, handicap, si) {
+function getNetScoreTeamGame(gross, handicap, si) {
+    // From game-team.js: strokes = 1 if handicap > 0 && si <= effectiveHandicap
+    // For tournament format: effectiveHandicap = playerHandicap
     var strokes = 0;
     if (handicap > 0 && si <= handicap) {
         strokes = 1;
@@ -446,14 +253,176 @@ function getNetScore(gross, handicap, si) {
     return gross - strokes;
 }
 
+function calculateTeamGame(flightScores, players, flightNum, courseSi) {
+    // EXACT logic from game-team.js calculate()
+    var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var results = [];
+    var running = 0;
+    
+    for (var idx = 0; idx < 18; idx++) {
+        var hole = flightScores[idx];
+        if (!hole || !hole.saved) {
+            results.push({ hole: idx+1, match1: null, match2: null, holeResult: null, running: null, display: '-' });
+            continue;
+        }
+        
+        var si = courseSi[idx] || 1;
+        
+        // Team A gross scores (from f1DataString: a1, a2)
+        var teamAGross = [hole.a1, hole.a2];
+        // Team B gross scores (from f1DataString: b1, b2)
+        var teamBGross = [hole.b1, hole.b2];
+        
+        // EXACT: sortPlayersByNetScore from game-team.js
+        var teamANets = [];
+        var teamBNets = [];
+        for (var i = 0; i < teamA.length; i++) {
+            var net = getNetScoreTeamGame(teamAGross[i], teamA[i].handicap, si);
+            teamANets.push({ player: teamA[i], net: net, gross: teamAGross[i] });
+        }
+        for (var i = 0; i < teamB.length; i++) {
+            var net = getNetScoreTeamGame(teamBGross[i], teamB[i].handicap, si);
+            teamBNets.push({ player: teamB[i], net: net, gross: teamBGross[i] });
+        }
+        teamANets.sort(function(a, b) { return a.net - b.net; });
+        teamBNets.sort(function(a, b) { return a.net - b.net; });
+        
+        // EXACT: match results from game-team.js
+        var match1 = 0, match2 = 0;
+        if (teamANets[0].net < teamBNets[0].net) match1 = 1;
+        else if (teamANets[0].net > teamBNets[0].net) match1 = -1;
+        
+        if (teamANets[1].net < teamBNets[1].net) match2 = 1;
+        else if (teamANets[1].net > teamBNets[1].net) match2 = -1;
+        
+        var holeResult = match1 + match2;
+        running += holeResult;
+        
+        var display = 'AS';
+        if (running > 0) display = 'A' + running;
+        else if (running < 0) display = 'B' + Math.abs(running);
+        
+        // TR points: EXACT from game-team.js teamGameTR
+        var trPointsA, trPointsB;
+        if (running > 0) { trPointsA = 1; trPointsB = 0; }
+        else if (running < 0) { trPointsA = 0; trPointsB = 1; }
+        else { trPointsA = 0.5; trPointsB = 0.5; }
+        
+        results.push({
+            hole: idx+1,
+            match1: match1,
+            match2: match2,
+            holeResult: holeResult,
+            running: running,
+            display: display,
+            trPointsA: trPointsA,
+            trPointsB: trPointsB,
+            a1Net: teamANets[0].net,
+            a2Net: teamANets[1].net,
+            b1Net: teamBNets[0].net,
+            b2Net: teamBNets[1].net,
+            a1Name: teamANets[0].player.label,
+            a2Name: teamANets[1].player.label,
+            b1Name: teamBNets[0].player.label,
+            b2Name: teamBNets[1].player.label
+        });
+    }
+    return results;
+}
+
 // ============================================================
-// Fetch Records - v1.02: No orderBy, sort in memory
+// EXACT logic from game-stroke.js
+// ============================================================
+function calculateStrokeGame(flight1Scores, flight2Scores, players) {
+    // EXACT from game-stroke.js calculate()
+    var teamA = players.filter(function(p) { return p.team === 'A'; });
+    var teamB = players.filter(function(p) { return p.team === 'B'; });
+    var totalHcpA = teamA.reduce(function(sum, p) { return sum + p.handicap; }, 0);
+    var totalHcpB = teamB.reduce(function(sum, p) { return sum + p.handicap; }, 0);
+    
+    var results = [];
+    var cumulativeGrossA = 0;
+    var cumulativeGrossB = 0;
+    
+    for (var pos = 0; pos < 18; pos++) {
+        var f1 = flight1Scores[pos];
+        var f2 = flight2Scores[pos];
+        
+        if (!f1 || !f1.saved || !f2 || !f2.saved) {
+            results.push({ hole: pos+1, display: '-', grossA: null, grossB: null, netA: null, netB: null, diff: null, trPointsA: 0.5, trPointsB: 0.5 });
+            continue;
+        }
+        
+        // EXACT: get gross scores for this hole for both teams
+        var holeGrossA = f1.a1 + f1.a2 + f2.a1 + f2.a2;
+        var holeGrossB = f1.b1 + f1.b2 + f2.b1 + f2.b2;
+        cumulativeGrossA += holeGrossA;
+        cumulativeGrossB += holeGrossB;
+        
+        // EXACT: net scores = cumulative gross - total team handicap
+        var netA = cumulativeGrossA - totalHcpA;
+        var netB = cumulativeGrossB - totalHcpB;
+        var diff = netB - netA;
+        
+        // EXACT: display logic from game-stroke.js
+        var display = 'AS';
+        if (Math.abs(diff) < 0.01) display = 'AS';
+        else if (diff > 0) display = 'A' + Math.round(diff);
+        else display = 'B' + Math.round(Math.abs(diff));
+        
+        // EXACT: TR points from game-stroke.js strokeTR
+        var trPointsA, trPointsB;
+        if (Math.abs(diff) < 0.01) { trPointsA = 0.5; trPointsB = 0.5; }
+        else if (diff > 0) { trPointsA = 1; trPointsB = 0; }
+        else { trPointsA = 0; trPointsB = 1; }
+        
+        results.push({
+            hole: pos+1,
+            grossA: holeGrossA,
+            grossB: holeGrossB,
+            cumulativeGrossA: cumulativeGrossA,
+            cumulativeGrossB: cumulativeGrossB,
+            netA: netA,
+            netB: netB,
+            diff: diff,
+            display: display,
+            trPointsA: trPointsA,
+            trPointsB: trPointsB
+        });
+    }
+    return results;
+}
+
+// ============================================================
+// Parse Raw Data
+// ============================================================
+function parseDataString(dataStr) {
+    if (!dataStr || dataStr.length !== 162) return null;
+    var scores = [];
+    for (var i = 0; i < 18; i++) {
+        var block = dataStr.substr(i * 9, 9);
+        scores.push({
+            saved: block[0] === 'T',
+            a1: parseInt(block.substr(1, 2), 10),
+            a2: parseInt(block.substr(3, 2), 10),
+            b1: parseInt(block.substr(5, 2), 10),
+            b2: parseInt(block.substr(7, 2), 10)
+        });
+    }
+    return scores;
+}
+
+// ============================================================
+// Fetch Records
 // ============================================================
 function fetchRecords() {
     var select = document.getElementById('recordSelect');
     select.disabled = true;
     select.innerHTML = '<option value="">Loading...</option>';
-    setStatus('Loading records from Firestore...', 'info');
+    setStatus('Loading records...', 'info');
     
     db.collection('historyGames')
         .where('status', 'in', ['pending_handicap', 'completed'])
@@ -474,7 +443,6 @@ function fetchRecords() {
                 });
             });
             
-            // Sort in memory by createdAt descending
             records.sort(function(a, b) {
                 var dateA = a.createdAt ? (a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt)) : new Date(0);
                 var dateB = b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
@@ -483,22 +451,20 @@ function fetchRecords() {
             
             if (records.length === 0) {
                 select.innerHTML = '<option value="">No records found</option>';
-                setStatus('No history records found. Try scheduling a game first.', 'warning');
+                setStatus('No history records found.', 'warning');
                 return;
             }
             
             var html = '<option value="">— Select a game —</option>';
             for (var i = 0; i < records.length; i++) {
                 var r = records[i];
-                var label = r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')';
-                html += '<option value="' + i + '">' + escapeHtml(label) + '</option>';
+                html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
             }
             select.innerHTML = html;
             select.disabled = false;
             setStatus('Loaded ' + records.length + ' records', 'success');
         })
         .catch(function(err) {
-            console.error('Error fetching records:', err);
             select.innerHTML = '<option value="">Error loading records</option>';
             select.disabled = false;
             setStatus('Error loading records: ' + err.message, 'error');
@@ -506,434 +472,198 @@ function fetchRecords() {
 }
 
 // ============================================================
-// Parse Raw Data Strings
-// ============================================================
-function parseDataString(dataStr) {
-    if (!dataStr || dataStr.length !== 162) return null;
-    var scores = [];
-    for (var i = 0; i < 18; i++) {
-        var block = dataStr.substr(i * 9, 9);
-        scores.push({
-            saved: block[0] === 'T',
-            a1: parseInt(block.substr(1, 2), 10),
-            a2: parseInt(block.substr(3, 2), 10),
-            b1: parseInt(block.substr(5, 2), 10),
-            b2: parseInt(block.substr(7, 2), 10)
-        });
-    }
-    return scores;
-}
-
-// ============================================================
-// v1.03: T-1 Calculation with Handicap + SI
-// ============================================================
-function calculateT1(flightScores, players, courseSi) {
-    var flight1Players = players.filter(function(p) { return p.flight === 1; });
-    var teamA = flight1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flight1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var results = [];
-    var running = 0;
-    
-    for (var h = 0; h < 18; h++) {
-        var hole = flightScores[h];
-        if (!hole || !hole.saved) {
-            results.push({ hole: h+1, match1: null, match2: null, holeResult: null, running: null, display: '-' });
-            continue;
-        }
-        
-        var si = courseSi[h] || 1;
-        
-        // Net scores for Team A
-        var a1Net = getNetScore(hole.a1, teamA[0]?.handicap || 0, si);
-        var a2Net = getNetScore(hole.a2, teamA[1]?.handicap || 0, si);
-        
-        // Net scores for Team B
-        var b1Net = getNetScore(hole.b1, teamB[0]?.handicap || 0, si);
-        var b2Net = getNetScore(hole.b2, teamB[1]?.handicap || 0, si);
-        
-        var match1 = 0, match2 = 0;
-        if (a1Net < b1Net) match1 = 1;
-        else if (a1Net > b1Net) match1 = -1;
-        
-        if (a2Net < b2Net) match2 = 1;
-        else if (a2Net > b2Net) match2 = -1;
-        
-        var holeResult = match1 + match2;
-        running += holeResult;
-        
-        var display = 'AS';
-        if (running > 0) display = 'A' + running;
-        else if (running < 0) display = 'B' + Math.abs(running);
-        
-        results.push({
-            hole: h+1,
-            match1: match1,
-            match2: match2,
-            holeResult: holeResult,
-            running: running,
-            display: display,
-            a1Net: a1Net,
-            a2Net: a2Net,
-            b1Net: b1Net,
-            b2Net: b2Net
-        });
-    }
-    return results;
-}
-
-// ============================================================
-// v1.03: T-2 Calculation with Handicap + SI
-// ============================================================
-function calculateT2(flightScores, players, courseSi) {
-    var flight2Players = players.filter(function(p) { return p.flight === 2; });
-    var teamA = flight2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flight2Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var results = [];
-    var running = 0;
-    
-    for (var h = 0; h < 18; h++) {
-        var hole = flightScores[h];
-        if (!hole || !hole.saved) {
-            results.push({ hole: h+1, match1: null, match2: null, holeResult: null, running: null, display: '-' });
-            continue;
-        }
-        
-        var si = courseSi[h] || 1;
-        
-        var a1Net = getNetScore(hole.a1, teamA[0]?.handicap || 0, si);
-        var a2Net = getNetScore(hole.a2, teamA[1]?.handicap || 0, si);
-        var b1Net = getNetScore(hole.b1, teamB[0]?.handicap || 0, si);
-        var b2Net = getNetScore(hole.b2, teamB[1]?.handicap || 0, si);
-        
-        var match1 = 0, match2 = 0;
-        if (a1Net < b1Net) match1 = 1;
-        else if (a1Net > b1Net) match1 = -1;
-        
-        if (a2Net < b2Net) match2 = 1;
-        else if (a2Net > b2Net) match2 = -1;
-        
-        var holeResult = match1 + match2;
-        running += holeResult;
-        
-        var display = 'AS';
-        if (running > 0) display = 'A' + running;
-        else if (running < 0) display = 'B' + Math.abs(running);
-        
-        results.push({
-            hole: h+1,
-            match1: match1,
-            match2: match2,
-            holeResult: holeResult,
-            running: running,
-            display: display,
-            a1Net: a1Net,
-            a2Net: a2Net,
-            b1Net: b1Net,
-            b2Net: b2Net
-        });
-    }
-    return results;
-}
-
-// ============================================================
-// v1.03: Strk Calculation with Handicap + SI
-// ============================================================
-function calculateStrk(flight1Scores, flight2Scores, players, courseSi) {
-    // For stroke game, each player's net score per hole = gross - strokes based on handicap vs SI
-    // Then sum all players' net scores per hole cumulatively
-    
-    var allPlayers = players.slice();
-    var results = [];
-    var runningNetA = 0, runningNetB = 0;
-    
-    for (var h = 0; h < 18; h++) {
-        var f1 = flight1Scores[h];
-        var f2 = flight2Scores[h];
-        var si = courseSi[h] || 1;
-        
-        if (!f1 || !f1.saved || !f2 || !f2.saved) {
-            results.push({ hole: h+1, netA: null, netB: null, runningNetA: null, runningNetB: null, display: '-' });
-            continue;
-        }
-        
-        // Flight 1 players
-        var f1Players = players.filter(function(p) { return p.flight === 1; });
-        var f1A = f1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var f1B = f1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        
-        // Flight 2 players
-        var f2Players = players.filter(function(p) { return p.flight === 2; });
-        var f2A = f2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        var f2B = f2Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-        
-        // Team A net scores (all 4 players)
-        var a1Net = getNetScore(f1.a1, f1A[0]?.handicap || 0, si);
-        var a2Net = getNetScore(f1.a2, f1A[1]?.handicap || 0, si);
-        var a3Net = getNetScore(f2.a1, f2A[0]?.handicap || 0, si);
-        var a4Net = getNetScore(f2.a2, f2A[1]?.handicap || 0, si);
-        
-        // Team B net scores (all 4 players)
-        var b1Net = getNetScore(f1.b1, f1B[0]?.handicap || 0, si);
-        var b2Net = getNetScore(f1.b2, f1B[1]?.handicap || 0, si);
-        var b3Net = getNetScore(f2.b1, f2B[0]?.handicap || 0, si);
-        var b4Net = getNetScore(f2.b2, f2B[1]?.handicap || 0, si);
-        
-        var holeNetA = a1Net + a2Net + a3Net + a4Net;
-        var holeNetB = b1Net + b2Net + b3Net + b4Net;
-        
-        runningNetA += holeNetA;
-        runningNetB += holeNetB;
-        
-        var diff = runningNetB - runningNetA;
-        var display = 'AS';
-        if (diff > 0) display = 'A' + Math.round(diff);
-        else if (diff < 0) display = 'B' + Math.round(Math.abs(diff));
-        
-        results.push({
-            hole: h+1,
-            netA: holeNetA,
-            netB: holeNetB,
-            runningNetA: runningNetA,
-            runningNetB: runningNetB,
-            diff: diff,
-            display: display
-        });
-    }
-    return results;
-}
-
-// ============================================================
 // Render Functions
 // ============================================================
 function renderGameInfo(data) {
     var container = document.getElementById('gameInfoContent');
-    
-    var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown Course';
+    var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown';
     var date = data.gameInfo?.date || data.date || 'Unknown';
-    var startingHole = data.gameInfo?.startingHole || data.startingHole || 1;
-    var teamFormat = data.gameInfo?.teamGameFormat || data.teamGameFormat || 'tournament';
-    var players = data.players || data.gameInfo?.players || [];
-    var status = data.status || 'unknown';
+    var players = data.players || [];
     var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
     
     var html = '<div class="game-info-grid">';
     html += '<span class="label">ID</span><span class="value">' + escapeHtml(data.id || 'Unknown') + '</span>';
     html += '<span class="label">Date</span><span class="value">' + escapeHtml(date) + '</span>';
     html += '<span class="label">Course</span><span class="value">' + escapeHtml(courseName) + '</span>';
-    html += '<span class="label">Starting Hole</span><span class="value">' + startingHole + '</span>';
-    html += '<span class="label">Format</span><span class="value">' + escapeHtml(teamFormat) + '</span>';
-    html += '<span class="label">Players</span><span class="value">' + (players.length > 0 ? players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ') : 'No players') + '</span>';
-    html += '<span class="label">Status</span><span class="value">' + escapeHtml(status) + '</span>';
+    html += '<span class="label">Players</span><span class="value">' + (players.length > 0 ? players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ') : 'None') + '</span>';
+    html += '<span class="label">Status</span><span class="value">' + escapeHtml(data.status || 'unknown') + '</span>';
     html += '<span class="label">SI</span><span class="value">' + (courseSi.length > 0 ? courseSi.join(', ') : 'Not available') + '</span>';
     html += '</div>';
     container.innerHTML = html;
 }
 
-function renderFlightTable(flightScores, players, flightNum, containerId) {
+function renderFlightTable(scores, players, flightNum, containerId) {
     var container = document.getElementById(containerId);
     var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
     var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     
-    var playerNames = [];
-    for (var i = 0; i < teamA.length; i++) playerNames.push(teamA[i].label);
-    for (var i = 0; i < teamB.length; i++) playerNames.push(teamB[i].label);
+    var names = [];
+    for (var i = 0; i < teamA.length; i++) names.push(teamA[i].label);
+    for (var i = 0; i < teamB.length; i++) names.push(teamB[i].label);
     
-    if (playerNames.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div>No players found for this flight</div>';
+    if (names.length === 0) {
+        container.innerHTML = '<div class="empty-state">No players</div>';
         return;
     }
     
-    var html = '<table>';
-    html += '<tr><th>Hole</th>';
-    for (var i = 0; i < playerNames.length; i++) {
-        html += '<th>' + escapeHtml(playerNames[i]) + '</th>';
-    }
-    html += '<th style="color:#888;">Saved</th></tr>';
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th>';
+    for (var i = 0; i < names.length; i++) html += '<th>' + escapeHtml(names[i]) + '</th>';
+    html += '<th style="color:#888;">Sv</th></tr>';
     
     for (var h = 0; h < 18; h++) {
-        var hole = flightScores[h];
-        var scores = [];
-        if (hole) {
-            scores.push(hole.a1);
-            scores.push(hole.a2);
-            scores.push(hole.b1);
-            scores.push(hole.b2);
-        } else {
-            scores.push('-', '-', '-', '-');
-        }
-        html += '<tr><td style="color:#888; font-weight:600;">' + (h+1) + '</td>';
-        for (var i = 0; i < scores.length; i++) {
-            html += '<td>' + scores[i] + '</td>';
-        }
-        html += '<td>' + (hole && hole.saved ? '✅' : '❌') + '</td>';
-        html += '</tr>';
+        var hole = scores[h];
+        var vals = hole ? [hole.a1, hole.a2, hole.b1, hole.b2] : ['-', '-', '-', '-'];
+        html += '<tr><td style="color:#888;font-weight:600;">' + (h+1) + '</td>';
+        for (var i = 0; i < vals.length; i++) html += '<td>' + vals[i] + '</td>';
+        html += '<td>' + (hole && hole.saved ? '✅' : '❌') + '</td></tr>';
     }
-    html += '</table>';
+    html += '</table></div>';
     container.innerHTML = html;
 }
 
-function renderT1Table(results) {
-    var container = document.getElementById('t1Table');
-    var html = '<table>';
-    html += '<tr><th>Hole</th><th>Match 1 (Net)</th><th>Match 2 (Net)</th><th>Result</th><th>Running</th><th>Display</th></tr>';
+function renderTeamGameTable(results, containerId, label) {
+    var container = document.getElementById(containerId);
+    var html = '<div class="scroll-x"><table>';
+    html += '<tr><th>Hole</th><th>' + label + ' M1</th><th>' + label + ' M2</th><th>Result</th><th>Running</th><th>Display</th></tr>';
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
         var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
-        var netDisplay1 = (r.a1Net !== undefined) ? r.a1Net + '-' + r.b1Net : '-';
-        var netDisplay2 = (r.a2Net !== undefined) ? r.a2Net + '-' + r.b2Net : '-';
-        html += '<tr>' +
-            '<td style="color:#888;">' + r.hole + '</td>' +
-            '<td>' + netDisplay1 + '</td>' +
-            '<td>' + netDisplay2 + '</td>' +
-            '<td>' + (r.holeResult !== null ? r.holeResult : '-') + '</td>' +
-            '<td class="' + cls + '">' + (r.running !== null ? r.running : '-') + '</td>' +
-            '<td class="' + cls + '">' + (r.display || '-') + '</td>' +
-            '</tr>';
+        var m1 = (r.match1 !== null) ? (r.match1 > 0 ? 'A' : r.match1 < 0 ? 'B' : 'AS') : '-';
+        var m2 = (r.match2 !== null) ? (r.match2 > 0 ? 'A' : r.match2 < 0 ? 'B' : 'AS') : '-';
+        var result = (r.holeResult !== null) ? r.holeResult : '-';
+        var running = (r.running !== null) ? r.running : '-';
+        var display = r.display || '-';
+        html += '<tr><td style="color:#888;">' + r.hole + '</td><td>' + m1 + '</td><td>' + m2 + '</td><td>' + result + '</td><td class="' + cls + '">' + running + '</td><td class="' + cls + '">' + display + '</td></tr>';
     }
-    html += '</table>';
+    html += '</table></div>';
     container.innerHTML = html;
-}
-
-function renderT2Table(results) {
-    renderT1Table.call(null, results);
 }
 
 function renderStrkTable(results) {
     var container = document.getElementById('strkTable');
-    var html = '<table>';
-    html += '<tr><th>Hole</th><th>Net A</th><th>Net B</th><th>Running Net A</th><th>Running Net B</th><th>Diff</th><th>Display</th></tr>';
+    var html = '<div class="scroll-x"><table>';
+    html += '<tr><th>Hole</th><th>Gross A</th><th>Gross B</th><th>Cum A</th><th>Cum B</th><th>Net A</th><th>Net B</th><th>Diff</th><th>Display</th></tr>';
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
         var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
+        html += '<tr><td style="color:#888;">' + r.hole + '</td>';
+        html += '<td>' + (r.grossA !== null ? r.grossA : '-') + '</td>';
+        html += '<td>' + (r.grossB !== null ? r.grossB : '-') + '</td>';
+        html += '<td>' + (r.cumulativeGrossA !== null ? r.cumulativeGrossA : '-') + '</td>';
+        html += '<td>' + (r.cumulativeGrossB !== null ? r.cumulativeGrossB : '-') + '</td>';
+        html += '<td>' + (r.netA !== null ? r.netA : '-') + '</td>';
+        html += '<td>' + (r.netB !== null ? r.netB : '-') + '</td>';
+        html += '<td>' + (r.diff !== null ? r.diff.toFixed(1) : '-') + '</td>';
+        html += '<td class="' + cls + '">' + r.display + '</td></tr>';
+    }
+    html += '</table></div>';
+    container.innerHTML = html;
+}
+
+function renderTRTable(t1Results, t2Results, strkResults, matchGameA, matchGameB, gameData) {
+    var container = document.getElementById('trTable');
+    
+    // EXACT: TR = Match Game + T-1 + T-2 + Strk at each hole
+    var html = '<div class="scroll-x"><table>';
+    html += '<tr><th>Hole</th>';
+    html += '<th>Match A</th><th>Match B</th>';
+    html += '<th>T-1 A</th><th>T-1 B</th>';
+    html += '<th>T-2 A</th><th>T-2 B</th>';
+    html += '<th>Strk A</th><th>Strk B</th>';
+    html += '<th>TR A</th><th>TR B</th>';
+    html += '<th>Record A</th><th>Record B</th>';
+    html += '<th>✅</th></tr>';
+    
+    for (var i = 0; i < 18; i++) {
+        var t1 = t1Results[i] || {};
+        var t2 = t2Results[i] || {};
+        var strk = strkResults[i] || {};
+        
+        var matchA = matchGameA[i] !== undefined ? matchGameA[i] : 0;
+        var matchB = matchGameB[i] !== undefined ? matchGameB[i] : 0;
+        
+        var t1A = t1.trPointsA !== undefined ? t1.trPointsA : 0.5;
+        var t1B = t1.trPointsB !== undefined ? t1.trPointsB : 0.5;
+        var t2A = t2.trPointsA !== undefined ? t2.trPointsA : 0.5;
+        var t2B = t2.trPointsB !== undefined ? t2.trPointsB : 0.5;
+        var strkA = strk.trPointsA !== undefined ? strk.trPointsA : 0.5;
+        var strkB = strk.trPointsB !== undefined ? strk.trPointsB : 0.5;
+        
+        var trA = matchA + t1A + t2A + strkA;
+        var trB = matchB + t1B + t2B + strkB;
+        
+        // Get record values
+        var recA = gameData.results?.tr?.teamA?.[i];
+        var recB = gameData.results?.tr?.teamB?.[i];
+        var recMatch = (recA !== undefined && recA !== null && recB !== undefined && recB !== null);
+        var match = recMatch && Math.abs(trA - recA) < 0.01 && Math.abs(trB - recB) < 0.01;
+        
+        var matchClass = match ? 'col-match' : 'col-mismatch';
+        var recADisplay = (recA !== undefined && recA !== null) ? recA : '-';
+        var recBDisplay = (recB !== undefined && recB !== null) ? recB : '-';
+        
         html += '<tr>' +
-            '<td style="color:#888;">' + r.hole + '</td>' +
-            '<td>' + (r.netA !== null ? r.netA : '-') + '</td>' +
-            '<td>' + (r.netB !== null ? r.netB : '-') + '</td>' +
-            '<td>' + (r.runningNetA !== null ? r.runningNetA : '-') + '</td>' +
-            '<td>' + (r.runningNetB !== null ? r.runningNetB : '-') + '</td>' +
-            '<td>' + (r.diff !== null ? r.diff.toFixed(1) : '-') + '</td>' +
-            '<td class="' + cls + '">' + (r.display || '-') + '</td>' +
+            '<td style="color:#888;font-weight:600;">' + (i+1) + '</td>' +
+            '<td>' + matchA.toFixed(1) + '</td><td>' + matchB.toFixed(1) + '</td>' +
+            '<td>' + t1A.toFixed(1) + '</td><td>' + t1B.toFixed(1) + '</td>' +
+            '<td>' + t2A.toFixed(1) + '</td><td>' + t2B.toFixed(1) + '</td>' +
+            '<td>' + strkA.toFixed(1) + '</td><td>' + strkB.toFixed(1) + '</td>' +
+            '<td style="font-weight:700;color:#4caf50;">' + trA.toFixed(1) + '</td>' +
+            '<td style="font-weight:700;color:#4caf50;">' + trB.toFixed(1) + '</td>' +
+            '<td class="' + matchClass + '">' + recADisplay + '</td>' +
+            '<td class="' + matchClass + '">' + recBDisplay + '</td>' +
+            '<td>' + (match ? '✅' : '❌') + '</td>' +
             '</tr>';
     }
-    html += '</table>';
+    html += '</table></div>';
     container.innerHTML = html;
 }
 
-function renderTRComparison(t1Result, t2Result, strkResult, gameData) {
-    var container = document.getElementById('trComparison');
-    
-    var t1Final = t1Result.length > 0 ? t1Result[t1Result.length-1] : null;
-    var t2Final = t2Result.length > 0 ? t2Result[t2Result.length-1] : null;
-    var strkFinal = strkResult.length > 0 ? strkResult[strkResult.length-1] : null;
-    
-    var t1Display = t1Final ? t1Final.display : '-';
-    var t2Display = t2Final ? t2Final.display : '-';
-    var strkDisplay = strkFinal ? strkFinal.display : '-';
-    
-    var cachedT1 = gameData.results?.game2?.displayT1?.[17] || '-';
-    var cachedT2 = gameData.results?.game2?.displayT2?.[17] || '-';
-    var cachedStrk = gameData.results?.game3?.displayStrk?.[17] || '-';
-    
-    var cachedTR = gameData.finalResults ? 
-        (gameData.finalResults.teamAScore + ' - ' + gameData.finalResults.teamBScore) : 
-        (gameData.results?.tr?.teamA?.[17] + ' - ' + gameData.results?.tr?.teamB?.[17]) || '-';
-    
-    // Calculate TR points
-    var t1PointsA = 0, t1PointsB = 0;
-    if (t1Display.startsWith('A')) { t1PointsA = 1; }
-    else if (t1Display.startsWith('B')) { t1PointsB = 1; }
-    else if (t1Display !== '-') { t1PointsA = 0.5; t1PointsB = 0.5; }
-    
-    var t2PointsA = 0, t2PointsB = 0;
-    if (t2Display.startsWith('A')) { t2PointsA = 1; }
-    else if (t2Display.startsWith('B')) { t2PointsB = 1; }
-    else if (t2Display !== '-') { t2PointsA = 0.5; t2PointsB = 0.5; }
-    
-    var strkPointsA = 0, strkPointsB = 0;
-    if (strkDisplay.startsWith('A')) { strkPointsA = 1; }
-    else if (strkDisplay.startsWith('B')) { strkPointsB = 1; }
-    else if (strkDisplay !== '-') { strkPointsA = 0.5; strkPointsB = 0.5; }
-    
-    var matchA = gameData.results?.game1?.pointsA?.[17] || 0;
-    var matchB = gameData.results?.game1?.pointsB?.[17] || 0;
-    
-    var trA = matchA + t1PointsA + t2PointsA + strkPointsA;
-    var trB = matchB + t1PointsB + t2PointsB + strkPointsB;
-    
-    var html = '<table style="width:auto;">';
-    html += '<tr><th style="text-align:left;">Metric</th><th>Validator</th><th>Record</th><th>Match?</th></tr>';
-    
-    // T-1
-    var t1Match = (t1Display === cachedT1) || (t1Display === '-' && cachedT1 === '-');
-    html += '<tr><td style="text-align:left; color:#888;">T-1</td>' +
-        '<td class="' + (t1Display !== '-' ? 'col-total' : '') + '">' + t1Display + '</td>' +
-        '<td>' + cachedT1 + '</td>' +
-        '<td>' + (t1Match ? '✅' : '❌') + '</td></tr>';
-    
-    // T-2
-    var t2Match = (t2Display === cachedT2) || (t2Display === '-' && cachedT2 === '-');
-    html += '<tr><td style="text-align:left; color:#888;">T-2</td>' +
-        '<td class="' + (t2Display !== '-' ? 'col-total' : '') + '">' + t2Display + '</td>' +
-        '<td>' + cachedT2 + '</td>' +
-        '<td>' + (t2Match ? '✅' : '❌') + '</td></tr>';
-    
-    // Strk
-    var strkMatch = (strkDisplay === cachedStrk) || (strkDisplay === '-' && cachedStrk === '-');
-    html += '<tr><td style="text-align:left; color:#888;">Strk</td>' +
-        '<td class="' + (strkDisplay !== '-' ? 'col-total' : '') + '">' + strkDisplay + '</td>' +
-        '<td>' + cachedStrk + '</td>' +
-        '<td>' + (strkMatch ? '✅' : '❌') + '</td></tr>';
-    
-    // TR
-    var trDisplay = trA.toFixed(1) + ' - ' + trB.toFixed(1);
-    var trMatch = (trA === (gameData.finalResults?.teamAScore || 0) && 
-                   trB === (gameData.finalResults?.teamBScore || 0));
-    html += '<tr style="border-top:2px solid #2a2a2a;"><td style="text-align:left; color:#4caf50; font-weight:700;">TR</td>' +
-        '<td style="font-weight:700; color:#4caf50;">' + trDisplay + '</td>' +
-        '<td>' + cachedTR + '</td>' +
-        '<td>' + (trMatch ? '✅' : '❌') + '</td></tr>';
-    
-    html += '</table>';
-    container.innerHTML = html;
-}
-
-function renderSummary(t1Result, t2Result, strkResult, gameData) {
+function renderSummary(t1Results, t2Results, strkResults, matchGameA, matchGameB, gameData) {
     var container = document.getElementById('validationSummary');
     
-    var t1Final = t1Result.length > 0 ? t1Result[t1Result.length-1] : null;
-    var t2Final = t2Result.length > 0 ? t2Result[t2Result.length-1] : null;
-    var strkFinal = strkResult.length > 0 ? strkResult[strkResult.length-1] : null;
+    var t1Final = t1Results[t1Results.length-1] || {};
+    var t2Final = t2Results[t2Results.length-1] || {};
+    var strkFinal = strkResults[strkResults.length-1] || {};
     
-    var t1Display = t1Final ? t1Final.display : '-';
-    var t2Display = t2Final ? t2Final.display : '-';
-    var strkDisplay = strkFinal ? strkFinal.display : '-';
+    var t1Display = t1Final.display || '-';
+    var t2Display = t2Final.display || '-';
+    var strkDisplay = strkFinal.display || '-';
     
-    var cachedT1 = gameData.results?.game2?.displayT1?.[17] || '-';
-    var cachedT2 = gameData.results?.game2?.displayT2?.[17] || '-';
-    var cachedStrk = gameData.results?.game3?.displayStrk?.[17] || '-';
+    var recT1 = gameData.results?.game2?.displayT1?.[17] || '-';
+    var recT2 = gameData.results?.game2?.displayT2?.[17] || '-';
+    var recStrk = gameData.results?.game3?.displayStrk?.[17] || '-';
     
-    var t1Match = (t1Display === cachedT1) || (t1Display === '-' && cachedT1 === '-');
-    var t2Match = (t2Display === cachedT2) || (t2Display === '-' && cachedT2 === '-');
-    var strkMatch = (strkDisplay === cachedStrk) || (strkDisplay === '-' && cachedStrk === '-');
+    var t1Match = (t1Display === recT1) || (t1Display === '-' && recT1 === '-');
+    var t2Match = (t2Display === recT2) || (t2Display === '-' && recT2 === '-');
+    var strkMatch = (strkDisplay === recStrk) || (strkDisplay === '-' && recStrk === '-');
     
     var allMatch = t1Match && t2Match && strkMatch;
     
-    var html = '<div style="display:flex; gap:20px; flex-wrap:wrap;">';
-    html += '<div><span class="badge ' + (t1Match ? 'badge-green' : 'badge-red') + '">T-1: ' + (t1Match ? '✅' : '❌') + '</span> Validator: ' + t1Display + ' | Record: ' + cachedT1 + '</div>';
-    html += '<div><span class="badge ' + (t2Match ? 'badge-green' : 'badge-red') + '">T-2: ' + (t2Match ? '✅' : '❌') + '</span> Validator: ' + t2Display + ' | Record: ' + cachedT2 + '</div>';
-    html += '<div><span class="badge ' + (strkMatch ? 'badge-green' : 'badge-red') + '">Strk: ' + (strkMatch ? '✅' : '❌') + '</span> Validator: ' + strkDisplay + ' | Record: ' + cachedStrk + '</div>';
+    // Final TR
+    var matchA = matchGameA[17] || 0;
+    var matchB = matchGameB[17] || 0;
+    var trA = matchA + (t1Final.trPointsA || 0.5) + (t2Final.trPointsA || 0.5) + (strkFinal.trPointsA || 0.5);
+    var trB = matchB + (t1Final.trPointsB || 0.5) + (t2Final.trPointsB || 0.5) + (strkFinal.trPointsB || 0.5);
+    
+    var recA = gameData.finalResults?.teamAScore || gameData.results?.tr?.teamA?.[17] || '-';
+    var recB = gameData.finalResults?.teamBScore || gameData.results?.tr?.teamB?.[17] || '-';
+    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && Math.abs(trA - recA) < 0.01 && Math.abs(trB - recB) < 0.01);
+    
+    var html = '<div class="summary-box">';
+    html += '<div class="summary-item"><div class="label">T-1</div><div class="value ' + (t1Match ? '' : 'mismatch') + '">Validator: ' + t1Display + ' | Record: ' + recT1 + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">T-2</div><div class="value ' + (t2Match ? '' : 'mismatch') + '">Validator: ' + t2Display + ' | Record: ' + recT2 + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">Strk</div><div class="value ' + (strkMatch ? '' : 'mismatch') + '">Validator: ' + strkDisplay + ' | Record: ' + recStrk + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item" style="border-left-color:#ffaa44;"><div class="label">TR</div><div class="value ' + (trMatch ? '' : 'mismatch') + '">Validator: ' + trA.toFixed(1) + ' - ' + trB.toFixed(1) + ' | Record: ' + recA + ' - ' + recB + ' ' + (trMatch ? '✅' : '❌') + '</div></div>';
     html += '</div>';
-    html += '<div style="margin-top:12px; font-size:0.9rem;">';
-    if (allMatch) {
-        html += '<span style="color:#4caf50;">✅ All calculated values match the record.</span>';
+    
+    if (allMatch && trMatch) {
+        html += '<div style="margin-top:12px;color:#4caf50;font-weight:700;">✅ All validated values match the record.</div>';
     } else {
-        html += '<span style="color:#ef5350;">❌ Mismatch detected. The record contains stale or incorrect data.</span>';
-        html += '<div style="margin-top:8px; font-size:0.8rem; color:#888;">The validator uses raw data (f1DataString/f2DataString) to recalculate T-1, T-2, Strk.</div>';
+        html += '<div style="margin-top:12px;color:#ef5350;font-weight:700;">❌ Mismatch detected. The record contains stale or incorrect data.</div>';
     }
-    html += '</div>';
+    
     container.innerHTML = html;
 }
 
@@ -943,87 +673,66 @@ function renderSummary(t1Result, t2Result, strkResult, gameData) {
 function loadAndValidate() {
     var select = document.getElementById('recordSelect');
     var index = parseInt(select.value);
-    
     if (isNaN(index) || index < 0 || index >= records.length) {
-        setStatus('Please select a game from the dropdown', 'warning');
+        setStatus('Please select a game', 'warning');
         return;
     }
     
-    var record = records[index];
-    var data = record.rawData;
-    
-    if (!data) {
-        setStatus('Error: No data found for this record', 'error');
-        return;
-    }
-    
+    var data = records[index].rawData;
+    if (!data) { setStatus('No data found', 'error'); return; }
     gameData = data;
-    gameData.id = record.id;
+    gameData.id = records[index].id;
     
-    setStatus('Loading: ' + record.originalGameId + '... <span class="loader"></span>', 'info');
+    setStatus('Loading: ' + records[index].originalGameId + '... <span class="loader"></span>', 'info');
     document.getElementById('results').style.display = 'none';
     
-    try {
-        processGameData(gameData);
-    } catch (err) {
-        setStatus('Error processing data: ' + err.message, 'error');
-        console.error(err);
-    }
+    try { processGameData(gameData); }
+    catch (err) { setStatus('Error: ' + err.message, 'error'); console.error(err); }
 }
 
 function processGameData(data) {
     var f1Scores = parseDataString(data.f1DataString);
     var f2Scores = parseDataString(data.f2DataString);
-    
-    if (!f1Scores || !f2Scores) {
-        setStatus('Invalid data strings (length must be 162)', 'error');
-        return;
-    }
+    if (!f1Scores || !f2Scores) { setStatus('Invalid data strings', 'error'); return; }
     
     var players = data.players || [];
-    if (players.length === 0) {
-        setStatus('No players found in record', 'error');
-        return;
-    }
+    if (players.length === 0) { setStatus('No players found', 'error'); return; }
     
-    // Get course SI from the record
     var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
     if (courseSi.length === 0) {
-        setStatus('Warning: No SI data found. Using default SI 1-18.', 'warning');
-        for (var i = 0; i < 18; i++) {
-            courseSi[i] = i + 1;
-        }
+        for (var i = 0; i < 18; i++) courseSi[i] = i + 1;
+        setStatus('Warning: No SI data, using 1-18', 'warning');
     }
     
     renderGameInfo(data);
     renderFlightTable(f1Scores, players, 1, 'flight1Table');
     renderFlightTable(f2Scores, players, 2, 'flight2Table');
     
-    var t1Results = calculateT1(f1Scores, players, courseSi);
-    var t2Results = calculateT2(f2Scores, players, courseSi);
-    var strkResults = calculateStrk(f1Scores, f2Scores, players, courseSi);
+    // Calculate T-1, T-2, Strk using EXACT app logic
+    var t1Results = calculateTeamGame(f1Scores, players, 1, courseSi);
+    var t2Results = calculateTeamGame(f2Scores, players, 2, courseSi);
+    var strkResults = calculateStrokeGame(f1Scores, f2Scores, players);
     
-    renderT1Table(t1Results);
-    renderT2Table(t2Results);
+    renderTeamGameTable(t1Results, 't1Table', 'T-1');
+    renderTeamGameTable(t2Results, 't2Table', 'T-2');
     renderStrkTable(strkResults);
     
-    renderTRComparison(t1Results, t2Results, strkResults, data);
-    renderSummary(t1Results, t2Results, strkResults, data);
+    // Match Game points from record (already cumulative)
+    var matchA = data.results?.game1?.pointsA || new Array(18).fill(0);
+    var matchB = data.results?.game1?.pointsB || new Array(18).fill(0);
+    
+    renderTRTable(t1Results, t2Results, strkResults, matchA, matchB, data);
+    renderSummary(t1Results, t2Results, strkResults, matchA, matchB, data);
     
     document.getElementById('results').style.display = 'block';
-    setStatus('✅ Loaded successfully: ' + data.id + ' (' + formatDate(data.date) + ')', 'success');
+    setStatus('✅ Loaded: ' + data.id, 'success');
 }
 
 // ============================================================
 // Event Listeners
 // ============================================================
 document.getElementById('loadBtn').addEventListener('click', loadAndValidate);
-
-document.getElementById('refreshBtn').addEventListener('click', function() {
-    setStatus('Refreshing records...', 'info');
-    fetchRecords();
-});
-
+document.getElementById('refreshBtn').addEventListener('click', function() { fetchRecords(); });
 document.getElementById('clearBtn').addEventListener('click', function() {
     document.getElementById('results').style.display = 'none';
     document.getElementById('statusMessage').innerHTML = '';
@@ -1031,27 +740,28 @@ document.getElementById('clearBtn').addEventListener('click', function() {
 });
 
 // ============================================================
-// Initialization
+// Init
 // ============================================================
 fetchRecords();
-
-console.log('🔬 Game Data Validator v1.03 loaded.');
-console.log('Usage: Select a game from the dropdown and click Load.');
-console.log('Now using handicap + SI logic for all calculations.');
+console.log('🔬 Game Data Validator v1.04 loaded.');
+console.log('Uses EXACT logic from: game-team.js, game-stroke.js, real-game-save.js');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - ADDED: Handicap and SI logic to all calculations
-   - T-1 now uses net scores (handicap + SI applied)
-   - T-2 now uses net scores (handicap + SI applied)
-   - Strk now uses cumulative net scores
-   - Added getNetScore() helper function
-   - Now matches the actual app's calculation logic
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - COMPLETE REWRITE: Now uses EXACT logic from the app's codebase
+   - T-1/T-2: Uses GameTeam.calculate() logic (net scores, sorting by handicap, match results)
+   - Strk: Uses GameStroke.calculate() logic (cumulative gross - total team handicap)
+   - TR: Uses RealGameSave.writeNewHoleData() logic (Match Game + T-1 + T-2 + Strk at each hole)
+   - Ties in T-1/T-2 are 0 (not 0.5) - matches game-team.js
+   - T-1/T-2 contribute 1 point each to TR (0.5 if AS) - matches game-team.js teamGameTR
+   - Displays hole-by-hole results for all 8 players
+   - Shows barebone validation with mismatches highlighted
+   - No invented logic - pure code replication
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
