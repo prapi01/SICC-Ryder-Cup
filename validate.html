@@ -1,17 +1,15 @@
 <!--
 FILE: validate.html
-VERSION: 1.34
-KEY CHANGES from v1.33:
-   - FIXED: Restore now does a SIMPLE COPY from backupFolder to destination
-   - NO recalculations during restore — preserves ALL data exactly as in backup
-   - Preserves matchResults, f1IntraMatches, f2IntraMatches exactly
-   - Preserves game1, game2, game3, tr, clinchedAt, adjustedHandicaps exactly
-   - Only changes: document ID (naming convention), status flags for scheduledGames
-   - For scheduledGames: sets H18 to F00000000, resets locks/signatures/submitted
-   - For historyGames: no changes to data, only document ID
-   - Validate & Fix module still available to fix records after restore
-   - All other functionality preserved from v1.33
-DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
+VERSION: 1.35
+KEY CHANGES from v1.34:
+   - ADDED: Module imports for game-order.js, game-data.js, game-match.js, game-team.js, game-stroke.js
+   - ADDED: buildCompleteResultsFromRawData() using shared modules for all calculations
+   - REMOVED: Self-contained calculation functions (calculateTeamGame, calculateStrokeGame, calculateMatchGamePerHole, etc.)
+   - CHANGED: fixRecord() now uses buildCompleteResultsFromRawData() with shared modules
+   - CHANGED: renderSummary() and renderTRTable() now expect data from shared modules
+   - CHANGED: All display functions updated to work with new data structure
+   - PRESERVED: Everything else (backup, restore, UI, etc.) from v1.34
+DEPENDS ON: Firebase Firestore, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 -->
 
@@ -24,6 +22,13 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Shared calculation modules -->
+    <script src="js/game-order.js"></script>
+    <script src="js/game-data.js"></script>
+    <script src="js/game-match.js"></script>
+    <script src="js/game-team.js"></script>
+    <script src="js/game-stroke.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -218,7 +223,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.34</span>
+        <span class="version-tag">v1.35</span>
     </h1>
     
     <!-- Tab Navigation -->
@@ -350,6 +355,7 @@ STATUS: Ready for integration
                         <br><strong style="color:#4caf50;">Preserves: raw scores (f1DataString, f2DataString), players, course, gameInfo</strong>
                         <br><strong style="color:#ffaa44;">This action cannot be undone.</strong>
                         <br><span style="color:#4a8af4; font-size:0.75rem;">A backup will be created before updating.</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses the same calculation logic as the live game (game-match.js, game-team.js, game-stroke.js).</span>
                     </div>
                     <div id="fixProgress" class="fix-progress"></div>
                     <div class="fix-btn-container">
@@ -362,7 +368,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v1.34 — Restore: SIMPLE COPY from backupFolder to destination. NO recalculation.
+        Validator v1.35 — Uses shared calculation modules (game-match.js, game-team.js, game-stroke.js) for accurate recalculation.
     </div>
 </div>
 
@@ -370,8 +376,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "1.34";
-console.log("[Validator] v1.34 - Restore: SIMPLE COPY from backupFolder to destination");
+window.VALIDATOR_VERSION = "1.35";
+console.log("[Validator] v1.35 - Using shared calculation modules");
 
 // ============================================================
 // FIREBASE
@@ -449,7 +455,7 @@ function sanitizeArray(arr, defaultVal) {
 }
 
 // ============================================================
-// PARSE DATA STRING
+// PARSE DATA STRING (kept for backward compatibility)
 // ============================================================
 function parseDataString(dataStr) {
     if (!dataStr || dataStr.length !== 162) return null;
@@ -468,493 +474,324 @@ function parseDataString(dataStr) {
 }
 
 // ============================================================
-// getStrokeHoles
+// v1.35: buildCompleteResultsFromRawData() — Uses shared modules
 // ============================================================
-function getStrokeHoles(handicapDiff, courseSi) {
-    if (handicapDiff <= 0) return [];
-    var holesWithSi = [];
-    for (var i = 0; i < 18; i++) { holesWithSi.push({ hole: i+1, si: courseSi[i] }); }
-    holesWithSi.sort(function(a, b) { return a.si - b.si; });
-    var strokeHoles = [];
-    for (var i = 0; i < handicapDiff && i < 18; i++) { strokeHoles.push(holesWithSi[i].hole); }
-    return strokeHoles;
-}
-function getStrokesForHole(holeNumber, handicapDiff, courseSi) {
-    if (handicapDiff <= 0) return 0;
-    var strokeHoles = getStrokeHoles(handicapDiff, courseSi);
-    for (var i = 0; i < strokeHoles.length; i++) { if (strokeHoles[i] === holeNumber) return 1; }
-    return 0;
-}
-function getNetScoreMatchGame(gross, handicapDiff, holeNumber, courseSi, isReceiving) {
-    if (!isReceiving) return gross;
-    var strokes = getStrokesForHole(holeNumber, handicapDiff, courseSi);
-    return gross - strokes;
-}
-
-// ============================================================
-// getIntraMatchResultForHole
-// ============================================================
-function getIntraMatchResultForHole(playerA, playerB, flightData, allPlayers, courseSi, holeNumber, coursePar) {
-    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
-    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
-    var flightPlayers = allPlayers.filter(function(p) { return p.flight === playerA.flight; });
-    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole, teamGameFormat) {
+    console.log('[VALIDATOR] buildCompleteResultsFromRawData starting...');
+    console.log('[VALIDATOR] startingHole:', startingHole, 'teamGameFormat:', teamGameFormat);
+    console.log('[VALIDATOR] players:', players.length, 'courseSi:', courseSi.length, 'coursePar:', coursePar.length);
     
-    var holeData = parseHoleData(flightData, holeNumber);
-    if (!holeData || !holeData.saved) return 0;
-    
-    var playerAScore = null, playerBScore = null;
-    if (playerA.team === 'A') {
-        if (teamA[0] && teamA[0].name === playerA.name) playerAScore = holeData.scores.a1;
-        else if (teamA[1] && teamA[1].name === playerA.name) playerAScore = holeData.scores.a2;
-    } else {
-        if (teamB[0] && teamB[0].name === playerA.name) playerAScore = holeData.scores.b1;
-        else if (teamB[1] && teamB[1].name === playerA.name) playerAScore = holeData.scores.b2;
+    // Ensure GameOrder has the correct starting hole
+    if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
+        GameOrder.setStartingHole(startingHole || 1);
     }
-    if (playerB.team === 'A') {
-        if (teamA[0] && teamA[0].name === playerB.name) playerBScore = holeData.scores.a1;
-        else if (teamA[1] && teamA[1].name === playerB.name) playerBScore = holeData.scores.a2;
-    } else {
-        if (teamB[0] && teamB[0].name === playerB.name) playerBScore = holeData.scores.b1;
-        else if (teamB[1] && teamB[1].name === playerB.name) playerBScore = holeData.scores.b2;
+    
+    // Reconstruct data strings from parsed scores for the modules
+    var f1DataString = '';
+    var f2DataString = '';
+    for (var h = 0; h < 18; h++) {
+        var h1 = f1Scores[h];
+        var h2 = f2Scores[h];
+        if (h1 && h1.saved) {
+            f1DataString += 'T' + String(h1.a1).padStart(2, '0') + String(h1.a2).padStart(2, '0') + String(h1.b1).padStart(2, '0') + String(h1.b2).padStart(2, '0');
+        } else {
+            f1DataString += 'F' + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0');
+        }
+        if (h2 && h2.saved) {
+            f2DataString += 'T' + String(h2.a1).padStart(2, '0') + String(h2.a2).padStart(2, '0') + String(h2.b1).padStart(2, '0') + String(h2.b2).padStart(2, '0');
+        } else {
+            f2DataString += 'F' + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0');
+        }
     }
-    if (playerAScore === null || playerBScore === null) return 0;
     
-    var netA = playerAScore, netB = playerBScore;
-    if (isPlayerAReceiving) netA = getNetScoreMatchGame(playerAScore, handicapDiff, holeNumber, courseSi, true);
-    else netB = getNetScoreMatchGame(playerBScore, handicapDiff, holeNumber, courseSi, true);
+    var result = {};
     
-    if (netA < netB) return 1;
-    if (netB < netA) return -1;
-    return 0;
+    // 1. TEAM GAME (T-1 and T-2) using GameTeam
+    console.log('[VALIDATOR] Calculating team game with GameTeam...');
+    var teamResult = GameTeam.calculateWithClinched(
+        players,
+        f1DataString,
+        f2DataString,
+        courseSi,
+        startingHole || 1,
+        teamGameFormat || 'tournament',
+        getRemainingHolesByPosition(startingHole || 1),
+        null
+    );
+    
+    // 2. STROKE GAME using GameStroke
+    console.log('[VALIDATOR] Calculating stroke game with GameStroke...');
+    var strokeResult = GameStroke.calculate(
+        players,
+        f1DataString,
+        f2DataString,
+        courseSi,
+        startingHole || 1,
+        coursePar
+    );
+    
+    // 3. MATCH GAME using GameMatch
+    console.log('[VALIDATOR] Calculating match game with GameMatch...');
+    var intraF1 = GameMatch.calculateIntraFlight(1, players.filter(function(p) { return p.flight === 1; }), f1DataString, courseSi, startingHole || 1, 18, coursePar);
+    var intraF2 = GameMatch.calculateIntraFlight(2, players.filter(function(p) { return p.flight === 2; }), f2DataString, courseSi, startingHole || 1, 18, coursePar);
+    var crossResult = GameMatch.calculateCrossFlight(f1DataString, f2DataString, players, courseSi, startingHole || 1, 18, coursePar);
+    
+    // Build matchResults array
+    var teamAPlayers = players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) {
+        if (a.flight !== b.flight) return a.flight - b.flight;
+        return a.handicap - b.handicap;
+    });
+    var teamBPlayers = players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) {
+        if (a.flight !== b.flight) return a.flight - b.flight;
+        return a.handicap - b.handicap;
+    });
+    
+    var matchResultsArray = [];
+    for (var pos = 0; pos < 18; pos++) {
+        var row = [];
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
+                var value = crossResult[key] || 0;
+                row.push(value);
+            }
+        }
+        matchResultsArray.push(row);
+    }
+    
+    // Build f1IntraMatches and f2IntraMatches arrays
+    var f1IntraMatches = [];
+    var f2IntraMatches = [];
+    for (var pos = 0; pos < 18; pos++) {
+        f1IntraMatches.push(intraF1);
+        f2IntraMatches.push(intraF2);
+    }
+    
+    // Build TR array
+    var trTeamA = [];
+    var trTeamB = [];
+    var trTeamAGreen = [];
+    var trTeamBGreen = [];
+    var matchPointsPerHole = [];
+    
+    for (var pos = 0; pos < 18; pos++) {
+        // Get match points for this hole
+        var matchA = 0;
+        var matchB = 0;
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
+                var val = crossResult[key] || 0;
+                var keyA = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
+                var keyB = teamBPlayers[b].name + "_vs_" + teamAPlayers[a].name;
+                // Determine points based on lead
+                var leadA = crossResult[keyA] || 0;
+                var leadB = crossResult[keyB] || 0;
+                if (leadA > 0) { matchA += 1; } 
+                else if (leadA < 0) { matchA += 0; } 
+                else { matchA += 0.5; }
+                if (leadB > 0) { matchB += 1; } 
+                else if (leadB < 0) { matchB += 0; } 
+                else { matchB += 0.5; }
+            }
+        }
+        var t1A = teamResult.teamGameTR[pos]?.A || 0.5;
+        var t1B = teamResult.teamGameTR[pos]?.B || 0.5;
+        var t2A = teamResult.teamGameTR[pos]?.A || 0.5;
+        var t2B = teamResult.teamGameTR[pos]?.B || 0.5;
+        var sA = strokeResult.pointsA[pos] || 0.5;
+        var sB = strokeResult.pointsB[pos] || 0.5;
+        
+        // For TR, we need the actual team game points per hole, not cumulative
+        // Get the hole-by-hole points from teamResult
+        var teamGamePointsA = teamResult.pointsA[pos] || 0.5;
+        var teamGamePointsB = teamResult.pointsB[pos] || 0.5;
+        
+        var trA = matchA + teamGamePointsA + sA;
+        var trB = matchB + teamGamePointsB + sB;
+        trTeamA.push(trA);
+        trTeamB.push(trB);
+        trTeamAGreen.push(trA > trB);
+        trTeamBGreen.push(trB > trA);
+    }
+    
+    // Build player totals
+    var playerTotals = {};
+    for (var i = 0; i < players.length; i++) {
+        var p = players[i];
+        var totalGross = 0;
+        var holesPlayed = 0;
+        var totalPar = 0;
+        for (var h = 0; h < 18; h++) {
+            totalPar += coursePar[h] || 4;
+            var score = getPlayerGrossFromScores(p, h + 1, f1Scores, f2Scores);
+            if (score !== null) {
+                totalGross += score;
+                holesPlayed++;
+            }
+        }
+        if (holesPlayed > 0) {
+            playerTotals[p.name] = {
+                name: p.name,
+                label: p.label,
+                team: p.team,
+                flight: p.flight,
+                totalGross: totalGross,
+                holesPlayed: holesPlayed,
+                totalPar: totalPar,
+                relativeToPar: totalGross - totalPar
+            };
+        }
+    }
+    
+    // Build final results
+    var finalTrA = trTeamA[17] || 9.5;
+    var finalTrB = trTeamB[17] || 9.5;
+    var winner = finalTrA > finalTrB ? 'A' : (finalTrB > finalTrA ? 'B' : 'Tie');
+    
+    // Build clinchedAt from teamResult
+    var clinchedAt = {};
+    if (teamResult.flight1ClinchedHole) {
+        clinchedAt['flight1_clinched'] = { clinchedAtHole: teamResult.flight1ClinchedHole };
+    }
+    if (teamResult.flight2ClinchedHole) {
+        clinchedAt['flight2_clinched'] = { clinchedAtHole: teamResult.flight2ClinchedHole };
+    }
+    
+    // Build display arrays from teamResult
+    var displayT1 = teamResult.displayT1 || new Array(18).fill('AS');
+    var displayT2 = teamResult.displayT2 || new Array(18).fill('AS');
+    var displayStrk = strokeResult.displayStrk || new Array(18).fill('AS');
+    
+    // Build game1 (match game points)
+    var game1PointsA = [];
+    var game1PointsB = [];
+    for (var pos = 0; pos < 18; pos++) {
+        // Recalculate match points for this hole
+        var matchAPoints = 0;
+        var matchBPoints = 0;
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                var keyA = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
+                var leadA = crossResult[keyA] || 0;
+                if (leadA > 0) { matchAPoints += 1; } 
+                else if (leadA < 0) { matchAPoints += 0; } 
+                else { matchAPoints += 0.5; }
+            }
+        }
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                var keyB = teamBPlayers[a].name + "_vs_" + teamAPlayers[b].name;
+                var leadB = crossResult[keyB] || 0;
+                if (leadB > 0) { matchBPoints += 1; } 
+                else if (leadB < 0) { matchBPoints += 0; } 
+                else { matchBPoints += 0.5; }
+            }
+        }
+        game1PointsA.push(matchAPoints);
+        game1PointsB.push(matchBPoints);
+    }
+    
+    // Build game2 (team game)
+    var game2 = {
+        flight1: {
+            leader: teamResult.flight1Leaders || new Array(18).fill('AS'),
+            cumulativePoints: teamResult.flight1Cumulative || new Array(18).fill(0),
+            clinchedHole: teamResult.flight1ClinchedHole || null
+        },
+        flight2: {
+            leader: teamResult.flight2Leaders || new Array(18).fill('AS'),
+            cumulativePoints: teamResult.flight2Cumulative || new Array(18).fill(0),
+            clinchedHole: teamResult.flight2ClinchedHole || null
+        },
+        pointsA: teamResult.pointsA || new Array(18).fill(0.5),
+        pointsB: teamResult.pointsB || new Array(18).fill(0.5),
+        displayT1: displayT1,
+        displayT2: displayT2
+    };
+    
+    // Build game3 (stroke game)
+    var game3 = {
+        leader: strokeResult.leader || new Array(18).fill('AS'),
+        displayStrk: strokeResult.displayStrk || new Array(18).fill('AS'),
+        pointsA: strokeResult.pointsA || new Array(18).fill(0.5),
+        pointsB: strokeResult.pointsB || new Array(18).fill(0.5),
+        nettA: strokeResult.nettA || new Array(18).fill(0),
+        nettB: strokeResult.nettB || new Array(18).fill(0)
+    };
+    
+    // Build matchResults (for display)
+    var matchResultsDisplay = {};
+    for (var pos = 0; pos < 18; pos++) {
+        matchResultsDisplay[pos] = {};
+        for (var a = 0; a < teamAPlayers.length; a++) {
+            for (var b = 0; b < teamBPlayers.length; b++) {
+                var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
+                matchResultsDisplay[pos][key] = crossResult[key] || 0;
+            }
+        }
+    }
+    
+    // Build final results object
+    result = {
+        version: 1,
+        game1: {
+            pointsA: game1PointsA,
+            pointsB: game1PointsB
+        },
+        game2: game2,
+        game3: game3,
+        matchResults: matchResultsArray,
+        f1IntraMatches: f1IntraMatches,
+        f2IntraMatches: f2IntraMatches,
+        tr: {
+            teamA: trTeamA,
+            teamB: trTeamB,
+            teamAGreen: trTeamAGreen,
+            teamBGreen: trTeamBGreen
+        },
+        clinchedAt: clinchedAt,
+        playerTotals: playerTotals,
+        computedUpToHole: 18,
+        lastComputedAt: new Date().toISOString()
+    };
+    
+    console.log('[VALIDATOR] buildCompleteResultsFromRawData complete');
+    console.log('[VALIDATOR] tr.teamA[17]:', result.tr.teamA[17], 'tr.teamB[17]:', result.tr.teamB[17]);
+    
+    return result;
 }
 
 // ============================================================
-// getCrossMatchResultForHole
+// Helper: getPlayerGrossFromScores
 // ============================================================
-function getCrossMatchResultForHole(playerA, playerB, flight1Data, flight2Data, allPlayers, courseSi, holeNumber, coursePar) {
-    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
-    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
-    var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
-    var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
-    
-    var f1HoleData = parseHoleData(flight1Data, holeNumber);
-    var f2HoleData = parseHoleData(flight2Data, holeNumber);
-    if (!f1HoleData || !f1HoleData.saved || !f2HoleData || !f2HoleData.saved) return 0;
-    
-    var playerAScore = null, playerBScore = null;
-    if (playerA.flight === 1) { playerAScore = getPlayerScore(playerA, flight1Data, holeNumber, allPlayers, coursePar); }
-    else { playerAScore = getPlayerScore(playerA, flight2Data, holeNumber, allPlayers, coursePar); }
-    if (playerB.flight === 1) { playerBScore = getPlayerScore(playerB, flight1Data, holeNumber, allPlayers, coursePar); }
-    else { playerBScore = getPlayerScore(playerB, flight2Data, holeNumber, allPlayers, coursePar); }
-    if (playerAScore === null || playerBScore === null) return 0;
-    
-    var netA = playerAScore, netB = playerBScore;
-    if (isPlayerAReceiving) netA = getNetScoreMatchGame(playerAScore, handicapDiff, holeNumber, courseSi, true);
-    else netB = getNetScoreMatchGame(playerBScore, handicapDiff, holeNumber, courseSi, true);
-    
-    if (netA < netB) return 1;
-    if (netB < netA) return -1;
-    return 0;
-}
-
-// ============================================================
-// getPlayerScore
-// ============================================================
-function getPlayerScore(player, flightData, holeNumber, allPlayers, coursePar) {
-    var holeData = parseHoleData(flightData, holeNumber);
+function getPlayerGrossFromScores(player, holeNumber, f1Scores, f2Scores) {
+    var holeData = player.flight === 1 ? f1Scores[holeNumber - 1] : f2Scores[holeNumber - 1];
     if (!holeData || !holeData.saved) return null;
-    var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
-    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
     if (player.team === 'A') {
-        if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
-        if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
+        if (holeData.a1 !== undefined) return holeData.a1;
+        if (holeData.a2 !== undefined) return holeData.a2;
     } else {
-        if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
-        if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
+        if (holeData.b1 !== undefined) return holeData.b1;
+        if (holeData.b2 !== undefined) return holeData.b2;
     }
     return null;
 }
-function parseHoleData(dataStr, holeNumber) {
-    if (!dataStr || dataStr.length !== 162) return null;
-    var startIndex = (holeNumber - 1) * 9;
-    var segment = dataStr.substr(startIndex, 9);
-    return { saved: segment[0] === 'T', scores: { a1: parseInt(segment.substr(1,2),10), a2: parseInt(segment.substr(3,2),10), b1: parseInt(segment.substr(5,2),10), b2: parseInt(segment.substr(7,2),10) } };
-}
 
 // ============================================================
-// calculateMatchGamePerHole — for validation display only
+// Helper: getRemainingHolesByPosition
 // ============================================================
-function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, coursePar) {
-    var flight1Data = f1Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
-    var flight2Data = f2Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
-    
-    var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; });
-    var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; });
-    teamAPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
-    teamBPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
-    
-    var orderedPlayers = [];
-    for (var i = 0; i < teamAPlayers.length; i++) orderedPlayers.push(teamAPlayers[i]);
-    for (var i = 0; i < teamBPlayers.length; i++) orderedPlayers.push(teamBPlayers[i]);
-    
-    var allMatches = [];
-    for (var a = 0; a < teamAPlayers.length; a++) {
-        for (var b = 0; b < teamBPlayers.length; b++) {
-            allMatches.push({ playerA: teamAPlayers[a], playerB: teamBPlayers[b] });
-        }
-    }
-    
-    var results = [];
-    var matchPointsPerHole = [];
-    var cumulativeLeads = {};
-    var matchClinched = {};
-    var clinchedAt = {};
-    
-    for (var m = 0; m < allMatches.length; m++) {
-        var match = allMatches[m];
-        var keyA = match.playerA.name + "_vs_" + match.playerB.name;
-        var keyB = match.playerB.name + "_vs_" + match.playerA.name;
-        cumulativeLeads[keyA] = 0;
-        cumulativeLeads[keyB] = 0;
-        matchClinched[keyA] = false;
-        matchClinched[keyB] = false;
-    }
-    
-    for (var hole = 1; hole <= 18; hole++) {
-        var holePoints = {};
-        var holeClinchInfo = {};
-        var holeMatchPoints = {};
-        
-        for (var p = 0; p < orderedPlayers.length; p++) {
-            holePoints[orderedPlayers[p].name] = 0;
-            holeClinchInfo[orderedPlayers[p].name] = { clinched: false, asAtH18: false };
-        }
-        
-        var remainingHoles = 18 - hole;
-        
-        for (var m = 0; m < allMatches.length; m++) {
-            var match = allMatches[m];
-            
-            var margin;
-            if (match.playerA.flight === match.playerB.flight) {
-                var flightData = match.playerA.flight === 1 ? flight1Data : flight2Data;
-                margin = getIntraMatchResultForHole(match.playerA, match.playerB, flightData, allPlayers, courseSi, hole, coursePar);
-            } else {
-                margin = getCrossMatchResultForHole(match.playerA, match.playerB, flight1Data, flight2Data, allPlayers, courseSi, hole, coursePar);
-            }
-            
-            var keyA = match.playerA.name + "_vs_" + match.playerB.name;
-            var keyB = match.playerB.name + "_vs_" + match.playerA.name;
-            
-            if (margin > 0) {
-                cumulativeLeads[keyA] += 1;
-                cumulativeLeads[keyB] -= 1;
-            } else if (margin < 0) {
-                cumulativeLeads[keyA] -= 1;
-                cumulativeLeads[keyB] += 1;
-            }
-            
-            var leadA = cumulativeLeads[keyA];
-            var leadB = cumulativeLeads[keyB];
-            
-            var pointsA, pointsB;
-            if (leadA > 0) { pointsA = 1; } 
-            else if (leadA < 0) { pointsA = 0; } 
-            else { pointsA = 0.5; }
-            
-            if (leadB > 0) { pointsB = 1; } 
-            else if (leadB < 0) { pointsB = 0; } 
-            else { pointsB = 0.5; }
-            
-            var matchKey = match.playerA.name + "_vs_" + match.playerB.name;
-            holeMatchPoints[matchKey] = { pointsA: pointsA, pointsB: pointsB };
-            
-            var isClinchHole = false;
-            var clinchWinner = null;
-            var clinchLoser = null;
-            var alreadyClinched = matchClinched[keyA] || matchClinched[keyB];
-            
-            if (!alreadyClinched) {
-                if (leadA > remainingHoles && leadA !== 0) {
-                    isClinchHole = true;
-                    clinchWinner = match.playerA.name;
-                    clinchLoser = match.playerB.name;
-                    matchClinched[keyA] = true;
-                    matchClinched[keyB] = true;
-                    clinchedAt[clinchWinner + "_vs_" + clinchLoser] = {
-                        clinchedAtHole: hole,
-                        winner: clinchWinner,
-                        loser: clinchLoser,
-                        leadAtClinch: leadA,
-                        remainingHolesAtClinch: remainingHoles
-                    };
-                } else if (leadB > remainingHoles && leadB !== 0) {
-                    isClinchHole = true;
-                    clinchWinner = match.playerB.name;
-                    clinchLoser = match.playerA.name;
-                    matchClinched[keyA] = true;
-                    matchClinched[keyB] = true;
-                    clinchedAt[clinchWinner + "_vs_" + clinchLoser] = {
-                        clinchedAtHole: hole,
-                        winner: clinchWinner,
-                        loser: clinchLoser,
-                        leadAtClinch: leadB,
-                        remainingHolesAtClinch: remainingHoles
-                    };
-                }
-            }
-            
-            var isASAtH18 = (hole === 18 && leadA === 0 && leadB === 0);
-            
-            if (isClinchHole) {
-                holePoints[match.playerA.name] += pointsA;
-                if (clinchWinner === match.playerA.name) {
-                    holeClinchInfo[match.playerA.name].clinched = true;
-                    holeClinchInfo[match.playerA.name].clinchOpponent = match.playerB.name;
-                    holeClinchInfo[match.playerA.name].clinchHole = hole;
-                }
-                if (clinchWinner === match.playerB.name) {
-                    holeClinchInfo[match.playerB.name].clinched = true;
-                    holeClinchInfo[match.playerB.name].clinchOpponent = match.playerA.name;
-                    holeClinchInfo[match.playerB.name].clinchHole = hole;
-                }
-                holePoints[match.playerB.name] += pointsB;
-            } else if (isASAtH18) {
-                holePoints[match.playerA.name] += pointsA;
-                holePoints[match.playerB.name] += pointsB;
-                holeClinchInfo[match.playerA.name].asAtH18 = true;
-                holeClinchInfo[match.playerB.name].asAtH18 = true;
-            } else {
-                holePoints[match.playerA.name] += pointsA;
-                holePoints[match.playerB.name] += pointsB;
-            }
-        }
-        
-        results.push({
-            hole: hole,
-            points: holePoints,
-            clinchInfo: holeClinchInfo
-        });
-        
-        matchPointsPerHole.push(holeMatchPoints);
-    }
-    
-    return {
-        orderedPlayers: orderedPlayers,
-        results: results,
-        matchPointsPerHole: matchPointsPerHole,
-        clinchedAt: clinchedAt
-    };
-}
-
-// ============================================================
-// Team Game — for validation
-// ============================================================
-function getNetScoreTeamGame(gross, handicap, si) {
-    var strokes = 0;
-    if (handicap > 0 && si <= handicap) strokes = 1;
-    return gross - strokes;
-}
-
-function calculateTeamGame(f1Scores, f2Scores, players, flightNum, courseSi) {
-    var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
-    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    var flightScores = flightNum === 1 ? f1Scores : f2Scores;
-    
-    var cumulative = [];
-    var leaders = [];
-    var displayArr = [];
-    var pointsA = [];
-    var pointsB = [];
-    var results = [];
-    var running = 0;
-    
-    for (var idx = 0; idx < 18; idx++) {
-        var hole = flightScores[idx];
-        var trA, trB;
-        
-        if (!hole || !hole.saved) {
-            trA = 0.5;
-            trB = 0.5;
-            results.push({ 
-                hole: idx+1, 
-                match1: null, 
-                match2: null, 
-                holeResult: null, 
-                running: null, 
-                display: '-', 
-                trPointsA: trA, 
-                trPointsB: trB
-            });
-            cumulative.push(0);
-            leaders.push("AS");
-            displayArr.push("AS");
-            pointsA.push(0.5);
-            pointsB.push(0.5);
-            continue;
-        }
-        
-        var si = courseSi[idx] || 1;
-        var teamAGross = [hole.a1, hole.a2];
-        var teamBGross = [hole.b1, hole.b2];
-        
-        var teamANets = [];
-        var teamBNets = [];
-        for (var i = 0; i < teamA.length; i++) {
-            teamANets.push({ player: teamA[i], net: getNetScoreTeamGame(teamAGross[i], teamA[i].handicap, si) });
-        }
-        for (var i = 0; i < teamB.length; i++) {
-            teamBNets.push({ player: teamB[i], net: getNetScoreTeamGame(teamBGross[i], teamB[i].handicap, si) });
-        }
-        
-        teamANets.sort(function(a, b) { return a.net - b.net; });
-        teamBNets.sort(function(a, b) { return a.net - b.net; });
-        
-        var match1 = 0, match2 = 0;
-        if (teamANets[0].net < teamBNets[0].net) { match1 = 1; }
-        else if (teamANets[0].net > teamBNets[0].net) { match1 = -1; }
-        if (teamANets[1].net < teamBNets[1].net) { match2 = 1; }
-        else if (teamANets[1].net > teamBNets[1].net) { match2 = -1; }
-        
-        var holeResult = match1 + match2;
-        running += holeResult;
-        
-        var display = 'AS';
-        if (running > 0) display = 'A' + running;
-        else if (running < 0) display = 'B' + Math.abs(running);
-        
-        if (running > 0) { trA = 1; trB = 0; }
-        else if (running < 0) { trA = 0; trB = 1; }
-        else { trA = 0.5; trB = 0.5; }
-        
-        results.push({
-            hole: idx+1,
-            match1: match1 === 1 ? 'A' : (match1 === -1 ? 'B' : 'AS'),
-            match2: match2 === 1 ? 'A' : (match2 === -1 ? 'B' : 'AS'),
-            holeResult: holeResult,
-            running: running,
-            display: display,
-            trPointsA: trA,
-            trPointsB: trB
-        });
-        cumulative.push(running);
-        leaders.push(running > 0 ? "A" : (running < 0 ? "B" : "AS"));
-        displayArr.push(display);
-        pointsA.push(trA);
-        pointsB.push(trB);
-    }
-    
-    return {
-        cumulative: sanitizeArray(cumulative, 0),
-        leaders: sanitizeArray(leaders, "AS"),
-        display: sanitizeArray(displayArr, "AS"),
-        pointsA: sanitizeArray(pointsA, 0.5),
-        pointsB: sanitizeArray(pointsB, 0.5),
-        results: results
-    };
-}
-
-// ============================================================
-// Stroke Game — for validation
-// ============================================================
-function calculateStrokeGame(f1Scores, f2Scores, players, courseSi, coursePar) {
-    var teamA = players.filter(function(p) { return p.team === 'A'; });
-    var teamB = players.filter(function(p) { return p.team === 'B'; });
-    var totalHcpA = teamA.reduce(function(sum, p) { return sum + p.handicap; }, 0);
-    var totalHcpB = teamB.reduce(function(sum, p) { return sum + p.handicap; }, 0);
-    
-    var leaders = [];
-    var displays = [];
-    var pointsA = [];
-    var pointsB = [];
-    var results = [];
-    var nettA = [];
-    var nettB = [];
-    var cumA = 0, cumB = 0;
-    
+function getRemainingHolesByPosition(startingHole) {
+    var remaining = [];
     for (var pos = 0; pos < 18; pos++) {
-        var f1 = f1Scores[pos], f2 = f2Scores[pos];
-        var trA, trB;
-        
-        if (!f1 || !f1.saved || !f2 || !f2.saved) {
-            trA = 0.5;
-            trB = 0.5;
-            var netA = cumA - totalHcpA;
-            var netB = cumB - totalHcpB;
-            results.push({ 
-                hole: pos+1, 
-                display: '-', 
-                grossA: null, 
-                grossB: null, 
-                netA: netA, 
-                netB: netB, 
-                diff: null, 
-                trPointsA: trA, 
-                trPointsB: trB 
-            });
-            leaders.push("AS");
-            displays.push("AS");
-            pointsA.push(0.5);
-            pointsB.push(0.5);
-            nettA.push(netA);
-            nettB.push(netB);
-            continue;
-        }
-        
-        var grossA = f1.a1 + f1.a2 + f2.a1 + f2.a2;
-        var grossB = f1.b1 + f1.b2 + f2.b1 + f2.b2;
-        cumA += grossA;
-        cumB += grossB;
-        var netA = cumA - totalHcpA;
-        var netB = cumB - totalHcpB;
-        var diff = netB - netA;
-        
-        var display = 'AS';
-        if (Math.abs(diff) < 0.01) display = 'AS';
-        else if (diff > 0) display = 'A' + Math.round(diff);
-        else display = 'B' + Math.round(Math.abs(diff));
-        
-        if (Math.abs(diff) < 0.01) { trA = 0.5; trB = 0.5; }
-        else if (diff > 0) { trA = 1; trB = 0; }
-        else { trA = 0; trB = 1; }
-        
-        results.push({
-            hole: pos+1,
-            grossA: grossA,
-            grossB: grossB,
-            netA: netA,
-            netB: netB,
-            diff: diff,
-            display: display,
-            trPointsA: trA,
-            trPointsB: trB
-        });
-        leaders.push(diff > 0 ? "A" : (diff < 0 ? "B" : "AS"));
-        displays.push(display);
-        pointsA.push(trA);
-        pointsB.push(trB);
-        nettA.push(netA);
-        nettB.push(netB);
+        remaining.push(17 - pos);
     }
-    
-    return {
-        leader: sanitizeArray(leaders, "AS"),
-        displayStrk: sanitizeArray(displays, "AS"),
-        pointsA: sanitizeArray(pointsA, 0.5),
-        pointsB: sanitizeArray(pointsB, 0.5),
-        nettA: nettA,
-        nettB: nettB,
-        results: results
-    };
+    return remaining;
 }
 
 // ============================================================
-// calculateAdjustedHandicaps — for validation
+// Helper: calculateAdjustedHandicaps
 // ============================================================
 function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar) {
     var adjusted = {};
@@ -965,7 +802,7 @@ function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar) {
         var totalPar = 0;
         
         for (var h = 0; h < 18; h++) {
-            var score = getPlayerGrossForHole(player, h + 1, f1Scores, f2Scores, coursePar, players);
+            var score = getPlayerGrossFromScores(player, h + 1, f1Scores, f2Scores);
             if (score !== null) {
                 totalGross += score;
                 holesPlayed++;
@@ -991,27 +828,448 @@ function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar) {
     return adjusted;
 }
 
-function getPlayerGrossForHole(player, holeNumber, f1Scores, f2Scores, coursePar, players) {
-    var flightData = player.flight === 1 ? f1Scores : f2Scores;
-    var holeData = flightData[holeNumber - 1];
-    if (!holeData || !holeData.saved) return null;
-    
-    var flightPlayers = players.filter(function(p) { return p.flight === player.flight; });
+// ============================================================
+// RENDER FUNCTIONS
+// ============================================================
+function renderGameInfo(data) {
+    var container = document.getElementById('gameInfoContent');
+    var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown';
+    var date = data.gameInfo?.date || data.date || 'Unknown';
+    var players = data.players || [];
+    var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
+    var html = '<div class="game-info-grid">';
+    html += '<span class="label">ID</span><span class="value">' + escapeHtml(data.id || 'Unknown') + '</span>';
+    html += '<span class="label">Date</span><span class="value">' + escapeHtml(date) + '</span>';
+    html += '<span class="label">Course</span><span class="value">' + escapeHtml(courseName) + '</span>';
+    html += '<span class="label">Players</span><span class="value">' + (players.length > 0 ? players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ') : 'None') + '</span>';
+    html += '<span class="label">Status</span><span class="value">' + escapeHtml(data.status || 'unknown') + '</span>';
+    html += '<span class="label">SI</span><span class="value">' + (courseSi.length > 0 ? courseSi.join(', ') : 'Not available') + '</span>';
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function renderFlightTable(scores, players, flightNum, containerId) {
+    var container = document.getElementById(containerId);
+    var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
     var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    
-    if (player.team === 'A') {
-        if (teamA[0] && teamA[0].name === player.name) return holeData.a1;
-        if (teamA[1] && teamA[1].name === player.name) return holeData.a2;
-    } else {
-        if (teamB[0] && teamB[0].name === player.name) return holeData.b1;
-        if (teamB[1] && teamB[1].name === player.name) return holeData.b2;
+    var names = [];
+    for (var i = 0; i < teamA.length; i++) names.push(teamA[i].label);
+    for (var i = 0; i < teamB.length; i++) names.push(teamB[i].label);
+    if (names.length === 0) { container.innerHTML = '<div class="empty-state">No players</div>'; return; }
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th>';
+    for (var i = 0; i < names.length; i++) html += '<th>' + escapeHtml(names[i]) + '</th>';
+    html += '<th style="color:#888;">Sv</th></tr>';
+    for (var h = 0; h < 18; h++) {
+        var hole = scores[h];
+        var vals = hole ? [hole.a1, hole.a2, hole.b1, hole.b2] : ['-', '-', '-', '-'];
+        html += '<tr><td style="color:#888;font-weight:600;">' + (h+1) + '</td>';
+        for (var i = 0; i < vals.length; i++) html += '<td>' + vals[i] + '</td>';
+        html += '<td>' + (hole && hole.saved ? '✅' : '❌') + '</td></tr>';
     }
-    return null;
+    html += '</table></div>';
+    container.innerHTML = html;
+}
+
+function renderTeamGameTableFromResults(results, containerId, label) {
+    var container = document.getElementById(containerId);
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Display</th><th>Points A</th><th>Points B</th></tr>';
+    for (var i = 0; i < 18; i++) {
+        var display = results.displayT1 ? results.displayT1[i] : '-';
+        var pointsA = results.pointsA ? results.pointsA[i] : 0.5;
+        var pointsB = results.pointsB ? results.pointsB[i] : 0.5;
+        var cls = (display && display !== '-' && display !== 'AS') ? 'col-total' : '';
+        html += '<tr><td style="color:#888;">' + (i+1) + '</td>';
+        html += '<td class="' + cls + '">' + display + '</td>';
+        html += '<td>' + pointsA + '</td>';
+        html += '<td>' + pointsB + '</td></tr>';
+    }
+    html += '</table></div>';
+    container.innerHTML = html;
+}
+
+function renderStrkTableFromResults(results) {
+    var container = document.getElementById('strkTable');
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Net A</th><th>Net B</th><th>Display</th><th>Points A</th><th>Points B</th></tr>';
+    for (var i = 0; i < 18; i++) {
+        var display = results.displayStrk ? results.displayStrk[i] : '-';
+        var netA = results.nettA ? results.nettA[i] : 0;
+        var netB = results.nettB ? results.nettB[i] : 0;
+        var pointsA = results.pointsA ? results.pointsA[i] : 0.5;
+        var pointsB = results.pointsB ? results.pointsB[i] : 0.5;
+        var cls = (display && display !== '-' && display !== 'AS') ? 'col-total' : '';
+        html += '<tr><td style="color:#888;">' + (i+1) + '</td>';
+        html += '<td>' + netA + '</td>';
+        html += '<td>' + netB + '</td>';
+        html += '<td class="' + cls + '">' + display + '</td>';
+        html += '<td>' + pointsA + '</td>';
+        html += '<td>' + pointsB + '</td></tr>';
+    }
+    html += '</table></div>';
+    container.innerHTML = html;
+}
+
+function renderMatchTableFromResults(orderedPlayers, matchResults) {
+    var container = document.getElementById('matchTable');
+    if (!orderedPlayers || orderedPlayers.length === 0) {
+        container.innerHTML = '<div class="empty-state">No players found</div>';
+        return;
+    }
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th>';
+    for (var p = 0; p < orderedPlayers.length; p++) {
+        var player = orderedPlayers[p];
+        var teamClass = player.team === 'A' ? 'team-a-header' : 'team-b-header';
+        html += '<th class="' + teamClass + '">' + escapeHtml(player.label) + '</th>';
+    }
+    html += '<th style="color:#ffaa44;">Total</th></tr>';
+    
+    for (var pos = 0; pos < 18; pos++) {
+        var total = 0;
+        html += '<tr><td style="color:#888;font-weight:600;">' + (pos+1) + '</td>';
+        for (var p = 0; p < orderedPlayers.length; p++) {
+            var player = orderedPlayers[p];
+            var score = 0;
+            // Calculate points for this player at this hole
+            var teamAPlayers = orderedPlayers.filter(function(p) { return p.team === 'A'; });
+            var teamBPlayers = orderedPlayers.filter(function(p) { return p.team === 'B'; });
+            if (player.team === 'A') {
+                for (var b = 0; b < teamBPlayers.length; b++) {
+                    var key = player.name + "_vs_" + teamBPlayers[b].name;
+                    var val = matchResults[pos]?.[key] || 0;
+                    var lead = val;
+                    if (lead > 0) { score += 1; } 
+                    else if (lead < 0) { score += 0; } 
+                    else { score += 0.5; }
+                }
+            } else {
+                for (var a = 0; a < teamAPlayers.length; a++) {
+                    var key = teamAPlayers[a].name + "_vs_" + player.name;
+                    var val = matchResults[pos]?.[key] || 0;
+                    var lead = val;
+                    if (lead > 0) { score += 0; } 
+                    else if (lead < 0) { score += 1; } 
+                    else { score += 0.5; }
+                }
+            }
+            total += score;
+            var cellClass = score > 0 ? 'col-green' : (score < 0 ? 'col-red' : 'col-gold');
+            html += '<td class="' + cellClass + '">' + score.toFixed(1) + '</td>';
+        }
+        html += '<td class="total-cell">' + total.toFixed(1) + '</td></tr>';
+    }
+    html += '</table></div>';
+    container.innerHTML = html;
+}
+
+function renderTRTableFromResults(trTeamA, trTeamB, gameData) {
+    var container = document.getElementById('trTable');
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th style="color:#4caf50;">Team A</th><th style="color:#ff6b6b;">Team B</th><th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
+    for (var i = 0; i < 18; i++) {
+        var trA = trTeamA[i] || 9.5;
+        var trB = trTeamB[i] || 9.5;
+        var recA = gameData.results?.tr?.teamA?.[i];
+        var recB = gameData.results?.tr?.teamB?.[i];
+        var recMatch = (recA !== undefined && recA !== null && recB !== undefined && recB !== null);
+        var match = recMatch && Math.abs(trA - recA) < 0.01 && Math.abs(trB - recB) < 0.01;
+        var matchClass = match ? 'col-match' : 'col-mismatch';
+        var recADisplay = (recA !== undefined && recA !== null) ? recA : '-';
+        var recBDisplay = (recB !== undefined && recB !== null) ? recB : '-';
+        var rowClass = (i === 17) ? ' final-row' : '';
+        html += '<tr class="' + rowClass + '"><td style="color:#888;font-weight:600;">' + (i+1) + '</td>';
+        html += '<td class="team-a-col">' + trA.toFixed(1) + '</td>';
+        html += '<td class="team-b-col">' + trB.toFixed(1) + '</td>';
+        html += '<td class="' + matchClass + '">' + recADisplay + '</td>';
+        html += '<td class="' + matchClass + '">' + recBDisplay + '</td>';
+        html += '<td>' + (match ? '✅' : '❌') + '</td></tr>';
+        if (i === 17) {
+            html += '<tr class="final-row"><td colspan="6" style="color:#ffaa44; font-weight:700; text-align:center; padding:8px;">🏆 FINAL RESULT: ' + trA.toFixed(1) + ' - ' + trB.toFixed(1) + ' 🏆</td></tr>';
+        }
+    }
+    html += '</table></div>';
+    container.innerHTML = html;
+}
+
+function renderSummaryFromResults(trTeamA, trTeamB, gameData) {
+    var container = document.getElementById('validationSummary');
+    var trA_h18 = trTeamA[17] || 9.5;
+    var trB_h18 = trTeamB[17] || 9.5;
+    var recA = gameData.finalResults?.teamAScore || gameData.results?.tr?.teamA?.[17] || '-';
+    var recB = gameData.finalResults?.teamBScore || gameData.results?.tr?.teamB?.[17] || '-';
+    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
+    var html = '<div class="summary-box">';
+    var trClass = trMatch ? '' : 'mismatch';
+    var trDisplayText = trA_h18.toFixed(1) + ' - ' + trB_h18.toFixed(1);
+    var recordDisplayText = recA + ' - ' + recB;
+    var matchIcon = trMatch ? '✅' : '❌';
+    html += '<div class="summary-item" style="border-left-color: #ffaa44; border-left-width: 4px; background: #1a1a1a; flex: 1 1 100%;">';
+    html += '<div class="label" style="color: #ffaa44; font-weight: 700; font-size: 0.8rem;">🏆 TR at H18 (FINAL RESULT)</div>';
+    html += '<div class="value final ' + trClass + '" style="font-size: 1.5rem;">' + trDisplayText + ' | Record: ' + recordDisplayText + ' ' + matchIcon + '</div></div>';
+    html += '</div>';
+    var verdict = trMatch ? '✅ All values match the record.' : '❌ Mismatch detected. The record contains stale data.';
+    html += '<div style="margin-top:12px; padding:8px 12px; border-radius:6px; background: ' + (trMatch ? '#0a2a0a' : '#2a0a0a') + '; border: 1px solid ' + (trMatch ? '#2a5a2a' : '#5a2a2a') + ';">' + verdict + '</div>';
+    container.innerHTML = html;
 }
 
 // ============================================================
-// FIND BACKUPS
+// VALIDATE & FIX
+// ============================================================
+function fetchRecords() {
+    var select = document.getElementById('recordSelect');
+    select.disabled = true;
+    select.innerHTML = '<option value="">Loading...</option>';
+    setStatus('Loading records...', 'info');
+    db.collection('historyGames').where('status', 'in', ['pending_handicap', 'completed']).limit(100).get()
+        .then(function(snapshot) {
+            records = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                records.push({ id: doc.id, originalGameId: data.originalGameId || doc.id, date: data.gameInfo?.date || 'Unknown', courseName: data.gameInfo?.course?.name || 'Unknown Course', status: data.status || 'unknown', rawData: data, createdAt: data.createdAt || data.completedAt || null });
+            });
+            records.sort(function(a, b) {
+                var dateA = a.createdAt ? (a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt)) : new Date(0);
+                var dateB = b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
+                return dateB - dateA;
+            });
+            if (records.length === 0) {
+                select.innerHTML = '<option value="">No records found</option>';
+                setStatus('No history records found.', 'warning');
+                return;
+            }
+            var html = '<option value="">— Select a game —</option>';
+            for (var i = 0; i < records.length; i++) {
+                var r = records[i];
+                html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
+            }
+            select.innerHTML = html;
+            select.disabled = false;
+            setStatus('Loaded ' + records.length + ' records', 'success');
+        })
+        .catch(function(err) {
+            select.innerHTML = '<option value="">Error loading records</option>';
+            select.disabled = false;
+            setStatus('Error loading records: ' + err.message, 'error');
+        });
+}
+
+function createBackup(record, progressEl) {
+    return new Promise(function(resolve, reject) {
+        var docId = record.id;
+        var data = record.rawData;
+        var originalGameId = record.originalGameId || docId;
+        var now = new Date();
+        var dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '_' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+        var backupId = 'Backup_' + dateStr + '_' + originalGameId;
+        progressEl.innerHTML += '<div class="step backup">💾 Creating backup: ' + backupId + '...</div>';
+        var backupData = JSON.parse(JSON.stringify(data));
+        backupData._backupTimestamp = firebase.firestore.FieldValue.serverTimestamp();
+        backupData._backupOriginalId = docId;
+        backupData._backupOriginalCollection = 'historyGames';
+        backupData._backupCreatedAt = new Date().toISOString();
+        backupData._backupReason = 'Pre-fix backup from validator v1.35';
+        db.collection('backupFolder').doc(backupId).set(backupData)
+            .then(function() { progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>'; resolve(backupId); })
+            .catch(function(err) { progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>'; reject(err); });
+    });
+}
+
+function fixRecord() {
+    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) { setStatus('No record selected', 'error'); return; }
+    var record = records[currentRecordIndex];
+    var data = record.rawData;
+    var docId = record.id;
+    if (!confirm('⚠️ This will RECALCULATE ALL derived data from raw data and update the Firestore record.\n\nID: ' + docId + '\nGame: ' + record.originalGameId + '\nStatus: ' + data.status + ' → completed\n\nPRESERVES: raw scores, players, course, gameInfo\nRECALCULATES: game1, game2, game3, matchResults, f1IntraMatches, f2IntraMatches, TR, clinchedAt, adjustedHandicaps\n\nUses the same calculation logic as the live game (game-match.js, game-team.js, game-stroke.js).\n\nA backup will be created before updating.\nThis action cannot be undone. Continue?')) { return; }
+    var fixBtn = document.getElementById('fixBtn');
+    var backupBtn = document.getElementById('backupOnlyBtn');
+    var progressEl = document.getElementById('fixProgress');
+    fixBtn.disabled = true; backupBtn.disabled = true;
+    fixBtn.className = 'fix-btn fix-btn-fixing'; fixBtn.textContent = '⏳ Fixing...';
+    backupBtn.className = 'fix-btn fix-btn-fixing'; backupBtn.textContent = '⏳ ...';
+    progressEl.className = 'fix-progress active'; progressEl.innerHTML = '';
+    createBackup(record, progressEl)
+        .then(function(backupId) {
+            progressEl.innerHTML += '<div class="step">📊 Step 2: Parsing raw data...</div>';
+            var f1Scores = parseDataString(data.f1DataString);
+            var f2Scores = parseDataString(data.f2DataString);
+            var players = data.players || [];
+            var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
+            var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
+            var startingHole = data.gameInfo?.startingHole || 1;
+            var teamGameFormat = data.gameInfo?.teamGameFormat || 'tournament';
+            
+            if (!f1Scores || !f2Scores) { throw new Error('Invalid data strings'); }
+            if (players.length === 0) { throw new Error('No players found'); }
+            progressEl.innerHTML += '<div class="step done">✅ Data parsed</div>';
+            
+            progressEl.innerHTML += '<div class="step">📊 Step 3: Recalculating ALL derived data from raw data using shared modules...</div>';
+            progressEl.innerHTML += '<div class="step info">🔄 Using game-match.js v' + (window.GAME_MATCH_VERSION || '?') + '</div>';
+            progressEl.innerHTML += '<div class="step info">🔄 Using game-team.js v' + (window.GAME_TEAM_VERSION || '?') + '</div>';
+            progressEl.innerHTML += '<div class="step info">🔄 Using game-stroke.js v' + (window.GAME_STROKE_VERSION || '?') + '</div>';
+            
+            var results = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole, teamGameFormat);
+            var adjustedHandicaps = calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar);
+            progressEl.innerHTML += '<div class="step done">✅ All derived data recalculated</div>';
+            
+            progressEl.innerHTML += '<div class="step">📝 Step 4: Building update payload...</div>';
+            var sanitizedResults = JSON.parse(JSON.stringify(results));
+            var updatePayload = {
+                results: sanitizedResults,
+                adjustedHandicaps: adjustedHandicaps,
+                status: 'completed',
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            progressEl.innerHTML += '<div class="step done">✅ Update payload built</div>';
+            
+            progressEl.innerHTML += '<div class="step">💾 Step 5: Writing to Firestore...</div>';
+            return db.collection('historyGames').doc(docId).update(updatePayload)
+                .then(function() {
+                    progressEl.innerHTML += '<div class="step done">✅ Firestore updated successfully!</div>';
+                    progressEl.innerHTML += '<div class="step done">📦 Backup ID: ' + backupId + '</div>';
+                    progressEl.innerHTML += '<div class="step done">✅ ALL derived data recalculated from raw data using shared modules</div>';
+                    fixBtn.className = 'fix-btn fix-btn-done'; fixBtn.textContent = '✅ Fixed!'; fixBtn.disabled = false;
+                    backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
+                    setStatus('✅ Record fixed successfully! All derived data recalculated. Backup: ' + backupId, 'success');
+                    setTimeout(function() { loadAndValidate(); }, 1500);
+                });
+        })
+        .catch(function(err) {
+            progressEl.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
+            fixBtn.className = 'fix-btn fix-btn-error'; fixBtn.textContent = '❌ Error'; fixBtn.disabled = false;
+            backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
+            setStatus('❌ Error fixing record: ' + err.message, 'error');
+            console.error(err);
+        });
+}
+
+function backupOnly() {
+    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) { setStatus('No record selected', 'error'); return; }
+    var record = records[currentRecordIndex];
+    if (!confirm('💾 Create a backup of this record?\n\nID: ' + record.id + '\nGame: ' + record.originalGameId + '\n\nThe backup will be saved to the "backupFolder" collection.')) { return; }
+    var fixBtn = document.getElementById('fixBtn');
+    var backupBtn = document.getElementById('backupOnlyBtn');
+    var progressEl = document.getElementById('fixProgress');
+    fixBtn.disabled = true; backupBtn.disabled = true;
+    backupBtn.className = 'fix-btn fix-btn-fixing'; backupBtn.textContent = '⏳ Creating backup...';
+    progressEl.className = 'fix-progress active'; progressEl.innerHTML = '';
+    createBackup(record, progressEl)
+        .then(function(backupId) {
+            progressEl.innerHTML += '<div class="step done">✅ Backup complete!</div>';
+            backupBtn.className = 'fix-btn fix-btn-done'; backupBtn.textContent = '✅ Backup: ' + backupId;
+            fixBtn.disabled = false; backupBtn.disabled = false;
+            setStatus('✅ Backup created: ' + backupId, 'success');
+        })
+        .catch(function(err) {
+            progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
+            backupBtn.className = 'fix-btn fix-btn-error'; backupBtn.textContent = '❌ Error';
+            fixBtn.disabled = false; backupBtn.disabled = false;
+            setStatus('❌ Backup failed: ' + err.message, 'error');
+        });
+}
+
+function loadAndValidate() {
+    var select = document.getElementById('recordSelect');
+    var index = parseInt(select.value);
+    if (isNaN(index) || index < 0 || index >= records.length) { setStatus('Please select a game', 'warning'); return; }
+    currentRecordIndex = index;
+    var data = records[index].rawData;
+    if (!data) { setStatus('No data found', 'error'); return; }
+    gameData = data; gameData.id = records[index].id;
+    setStatus('Loading: ' + records[index].originalGameId + '... <span class="loader"></span>', 'info');
+    document.getElementById('results').style.display = 'none';
+    document.getElementById('fixCard').style.display = 'none';
+    try { processGameData(gameData); } catch (err) { setStatus('Error: ' + err.message, 'error'); console.error(err); }
+}
+
+function processGameData(data) {
+    var f1Scores = parseDataString(data.f1DataString);
+    var f2Scores = parseDataString(data.f2DataString);
+    if (!f1Scores || !f2Scores) { setStatus('Invalid data strings', 'error'); return; }
+    var players = data.players || [];
+    if (players.length === 0) { setStatus('No players found', 'error'); return; }
+    var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
+    if (courseSi.length === 0) { for (var i = 0; i < 18; i++) courseSi[i] = i + 1; setStatus('Warning: No SI data, using 1-18', 'warning'); }
+    var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
+    if (coursePar.length === 0) { for (var i = 0; i < 18; i++) coursePar[i] = 4; setStatus('Warning: No Par data, using 4 for all holes', 'warning'); }
+    var startingHole = data.gameInfo?.startingHole || 1;
+    var teamGameFormat = data.gameInfo?.teamGameFormat || 'tournament';
+    
+    renderGameInfo(data);
+    renderFlightTable(f1Scores, players, 1, 'flight1Table');
+    renderFlightTable(f2Scores, players, 2, 'flight2Table');
+    
+    // Recalculate using shared modules
+    var results = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole, teamGameFormat);
+    
+    // Extract data for display
+    var trTeamA = results.tr.teamA;
+    var trTeamB = results.tr.teamB;
+    
+    // Team game display
+    var teamResult = {
+        displayT1: results.game2.displayT1 || new Array(18).fill('AS'),
+        displayT2: results.game2.displayT2 || new Array(18).fill('AS'),
+        pointsA: results.game2.pointsA || new Array(18).fill(0.5),
+        pointsB: results.game2.pointsB || new Array(18).fill(0.5)
+    };
+    
+    // Stroke display
+    var strokeResult = {
+        displayStrk: results.game3.displayStrk || new Array(18).fill('AS'),
+        nettA: results.game3.nettA || new Array(18).fill(0),
+        nettB: results.game3.nettB || new Array(18).fill(0),
+        pointsA: results.game3.pointsA || new Array(18).fill(0.5),
+        pointsB: results.game3.pointsB || new Array(18).fill(0.5)
+    };
+    
+    // Match display
+    var orderedPlayers = [];
+    var teamAPlayers = players.filter(function(p) { return p.team === 'A'; });
+    var teamBPlayers = players.filter(function(p) { return p.team === 'B'; });
+    teamAPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
+    teamBPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
+    for (var i = 0; i < teamAPlayers.length; i++) orderedPlayers.push(teamAPlayers[i]);
+    for (var i = 0; i < teamBPlayers.length; i++) orderedPlayers.push(teamBPlayers[i]);
+    
+    // Build match results for display
+    var matchResultsDisplay = {};
+    for (var pos = 0; pos < 18; pos++) {
+        matchResultsDisplay[pos] = results.matchResults[pos] || {};
+    }
+    
+    renderTeamGameTableFromResults(teamResult, 't1Table', 'T-1');
+    renderTeamGameTableFromResults(teamResult, 't2Table', 'T-2');
+    renderStrkTableFromResults(strokeResult);
+    renderMatchTableFromResults(orderedPlayers, matchResultsDisplay);
+    renderTRTableFromResults(trTeamA, trTeamB, data);
+    renderSummaryFromResults(trTeamA, trTeamB, data);
+    document.getElementById('results').style.display = 'block';
+    
+    // Check for mismatches
+    var recA = data.results?.tr?.teamA?.[17];
+    var recB = data.results?.tr?.teamB?.[17];
+    var trA_h18 = trTeamA[17] || 9.5;
+    var trB_h18 = trTeamB[17] || 9.5;
+    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
+    var hasMismatch = !trMatch;
+    var isPending = data.status === 'pending_handicap';
+    
+    if (isPending || hasMismatch) {
+        document.getElementById('fixCard').style.display = 'block';
+        var fixBtn = document.getElementById('fixBtn');
+        var backupBtn = document.getElementById('backupOnlyBtn');
+        fixBtn.className = 'fix-btn fix-btn-fix'; fixBtn.textContent = '🔧 Fix Record (Recalculate All)'; fixBtn.disabled = false;
+        backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
+        document.getElementById('fixProgress').className = 'fix-progress'; document.getElementById('fixProgress').innerHTML = '';
+        setStatus('⚠️ Record needs fixing. Click "Fix Record" to recalculate all derived data from raw data using shared modules.', 'warning');
+    } else {
+        document.getElementById('fixCard').style.display = 'none';
+        setStatus('✅ Record is valid.', 'success');
+    }
+    document.getElementById('fixBtn').onclick = fixRecord;
+    document.getElementById('backupOnlyBtn').onclick = backupOnly;
+}
+
+// ============================================================
+// RESTORE FUNCTIONS (unchanged from v1.34)
 // ============================================================
 function loadBackupList() {
     var container = document.getElementById('backupListContainer');
@@ -1110,9 +1368,6 @@ function renderBackupList(backups) {
     }
 }
 
-// ============================================================
-// UPDATE DESTINATION PREVIEWS
-// ============================================================
 function updateDestPreviews() {
     var selectedBackup = null;
     for (var i = 0; i < allBackups.length; i++) {
@@ -1140,9 +1395,6 @@ function updateDestPreviews() {
     }
 }
 
-// ============================================================
-// v1.34: RESTORE — SIMPLE COPY, NO RECALCULATION
-// ============================================================
 function executeRestore() {
     if (!selectedBackupId) {
         var statusEl = document.getElementById('restoreStatus');
@@ -1208,10 +1460,8 @@ function executeRestore() {
             progressEl.innerHTML = '<div class="step restore">↩️ Copying from backup: ' + selectedBackupId + '...</div>';
             progressEl.innerHTML += '<div class="step restore">📦 Destination: ' + destination + ' → ' + restoredDocId + '</div>';
             
-            // SIMPLE COPY — NO RECALCULATION
             var backupData = JSON.parse(JSON.stringify(selectedBackup.data));
             
-            // Remove backup metadata fields
             delete backupData._backupTimestamp;
             delete backupData._backupOriginalId;
             delete backupData._backupOriginalCollection;
@@ -1219,7 +1469,6 @@ function executeRestore() {
             delete backupData._backupReason;
             delete backupData.id;
             
-            // For scheduledGames: set H18 to F00000000, reset locks/signatures/submitted
             if (destination === 'scheduledGames') {
                 backupData.status = 'scheduled';
                 backupData.gameStarted = true;
@@ -1234,7 +1483,6 @@ function executeRestore() {
                 if (backupData.f2DataString) {
                     backupData.f2DataString = backupData.f2DataString.substring(0, 153) + 'F00000000';
                 }
-                // Set TR H18 to null if it exists
                 if (backupData.results && backupData.results.tr) {
                     if (backupData.results.tr.teamA && backupData.results.tr.teamA.length > 17) {
                         backupData.results.tr.teamA[17] = null;
@@ -1244,11 +1492,9 @@ function executeRestore() {
                     }
                 }
             } else {
-                // historyGames: keep status as-is from backup
                 backupData.status = backupData.status || 'completed';
             }
             
-            // Add restore metadata
             backupData._restoredFrom = selectedBackupId;
             backupData._restoredAt = new Date().toISOString();
             backupData._restoredTo = destination;
@@ -1269,7 +1515,6 @@ function executeRestore() {
             restoreBtn.textContent = '✅ Restored';
             restoreBtn.disabled = false;
             
-            // Show a summary of what was restored
             progressEl.innerHTML += '<div class="step info">📊 Restore Summary:</div>';
             progressEl.innerHTML += '<div class="step done">✅ All data preserved exactly as in backup</div>';
             progressEl.innerHTML += '<div class="step done">✅ matchResults, f1IntraMatches, f2IntraMatches preserved</div>';
@@ -1298,474 +1543,6 @@ function executeRestore() {
             progressEl.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
             console.error('Restore error:', err);
         });
-}
-
-// ============================================================
-// VALIDATE & FIX MODULE — from previous versions
-// ============================================================
-function fetchRecords() {
-    var select = document.getElementById('recordSelect');
-    select.disabled = true;
-    select.innerHTML = '<option value="">Loading...</option>';
-    setStatus('Loading records...', 'info');
-    db.collection('historyGames').where('status', 'in', ['pending_handicap', 'completed']).limit(100).get()
-        .then(function(snapshot) {
-            records = [];
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                records.push({ id: doc.id, originalGameId: data.originalGameId || doc.id, date: data.gameInfo?.date || 'Unknown', courseName: data.gameInfo?.course?.name || 'Unknown Course', status: data.status || 'unknown', rawData: data, createdAt: data.createdAt || data.completedAt || null });
-            });
-            records.sort(function(a, b) {
-                var dateA = a.createdAt ? (a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt)) : new Date(0);
-                var dateB = b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
-                return dateB - dateA;
-            });
-            if (records.length === 0) {
-                select.innerHTML = '<option value="">No records found</option>';
-                setStatus('No history records found.', 'warning');
-                return;
-            }
-            var html = '<option value="">— Select a game —</option>';
-            for (var i = 0; i < records.length; i++) {
-                var r = records[i];
-                html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
-            }
-            select.innerHTML = html;
-            select.disabled = false;
-            setStatus('Loaded ' + records.length + ' records', 'success');
-        })
-        .catch(function(err) {
-            select.innerHTML = '<option value="">Error loading records</option>';
-            select.disabled = false;
-            setStatus('Error loading records: ' + err.message, 'error');
-        });
-}
-
-// ============================================================
-// RENDER FUNCTIONS (abbreviated from previous versions)
-// ============================================================
-function renderGameInfo(data) {
-    var container = document.getElementById('gameInfoContent');
-    var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown';
-    var date = data.gameInfo?.date || data.date || 'Unknown';
-    var players = data.players || [];
-    var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
-    var html = '<div class="game-info-grid">';
-    html += '<span class="label">ID</span><span class="value">' + escapeHtml(data.id || 'Unknown') + '</span>';
-    html += '<span class="label">Date</span><span class="value">' + escapeHtml(date) + '</span>';
-    html += '<span class="label">Course</span><span class="value">' + escapeHtml(courseName) + '</span>';
-    html += '<span class="label">Players</span><span class="value">' + (players.length > 0 ? players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ') : 'None') + '</span>';
-    html += '<span class="label">Status</span><span class="value">' + escapeHtml(data.status || 'unknown') + '</span>';
-    html += '<span class="label">SI</span><span class="value">' + (courseSi.length > 0 ? courseSi.join(', ') : 'Not available') + '</span>';
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-function renderFlightTable(scores, players, flightNum, containerId) {
-    var container = document.getElementById(containerId);
-    var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
-    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var names = [];
-    for (var i = 0; i < teamA.length; i++) names.push(teamA[i].label);
-    for (var i = 0; i < teamB.length; i++) names.push(teamB[i].label);
-    if (names.length === 0) { container.innerHTML = '<div class="empty-state">No players</div>'; return; }
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th>';
-    for (var i = 0; i < names.length; i++) html += '<th>' + escapeHtml(names[i]) + '</th>';
-    html += '<th style="color:#888;">Sv</th></tr>';
-    for (var h = 0; h < 18; h++) {
-        var hole = scores[h];
-        var vals = hole ? [hole.a1, hole.a2, hole.b1, hole.b2] : ['-', '-', '-', '-'];
-        html += '<tr><td style="color:#888;font-weight:600;">' + (h+1) + '</td>';
-        for (var i = 0; i < vals.length; i++) html += '<td>' + vals[i] + '</td>';
-        html += '<td>' + (hole && hole.saved ? '✅' : '❌') + '</td></tr>';
-    }
-    html += '</table></div>';
-    container.innerHTML = html;
-}
-
-function renderTeamGameTable(results, containerId, label) {
-    var container = document.getElementById(containerId);
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>' + label + ' M1</th><th>' + label + ' M2</th><th>Result</th><th>Running</th><th>Display</th></tr>';
-    for (var i = 0; i < results.length; i++) {
-        var r = results[i];
-        var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
-        var m1 = r.match1 || '-';
-        var m2 = r.match2 || '-';
-        var result = r.holeResult !== null ? r.holeResult : '-';
-        var running = r.running !== null ? r.running : '-';
-        var display = r.display || '-';
-        html += '<tr><td style="color:#888;">' + r.hole + '</td><td>' + m1 + '</td><td>' + m2 + '</td><td>' + result + '</td><td class="' + cls + '">' + running + '</td><td class="' + cls + '">' + display + '</td></tr>';
-    }
-    html += '</table></div>';
-    container.innerHTML = html;
-}
-
-function renderStrkTable(results) {
-    var container = document.getElementById('strkTable');
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Gross A</th><th>Gross B</th><th>Net A</th><th>Net B</th><th>Diff</th><th>Display</th></tr>';
-    for (var i = 0; i < results.length; i++) {
-        var r = results[i];
-        var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
-        html += '<tr><td style="color:#888;">' + r.hole + '</td>';
-        html += '<td>' + (r.grossA !== null ? r.grossA : '-') + '</td>';
-        html += '<td>' + (r.grossB !== null ? r.grossB : '-') + '</td>';
-        html += '<td>' + (r.netA !== null ? r.netA : '-') + '</td>';
-        html += '<td>' + (r.netB !== null ? r.netB : '-') + '</td>';
-        html += '<td>' + (r.diff !== null ? r.diff.toFixed(1) : '-') + '</td>';
-        html += '<td class="' + cls + '">' + r.display + '</td></tr>';
-    }
-    html += '</table></div>';
-    container.innerHTML = html;
-}
-
-function renderMatchTable(orderedPlayers, matchResults) {
-    var container = document.getElementById('matchTable');
-    if (!orderedPlayers || orderedPlayers.length === 0) {
-        container.innerHTML = '<div class="empty-state">No players found</div>';
-        return;
-    }
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th>';
-    for (var p = 0; p < orderedPlayers.length; p++) {
-        var player = orderedPlayers[p];
-        var teamClass = player.team === 'A' ? 'team-a-header' : 'team-b-header';
-        html += '<th class="' + teamClass + '">' + escapeHtml(player.label) + '</th>';
-    }
-    html += '<th style="color:#ffaa44;">Total</th></tr>';
-    for (var h = 0; h < matchResults.length; h++) {
-        var holeData = matchResults[h];
-        var holePoints = holeData.points;
-        var holeClinch = holeData.clinchInfo;
-        var total = 0;
-        var isClinchRow = false;
-        for (var p = 0; p < orderedPlayers.length; p++) {
-            var player = orderedPlayers[p];
-            if (holeClinch[player.name] && holeClinch[player.name].clinched) { isClinchRow = true; break; }
-        }
-        html += '<tr><td style="color:#888;font-weight:600;">' + (h+1) + '</td>';
-        for (var p = 0; p < orderedPlayers.length; p++) {
-            var player = orderedPlayers[p];
-            var score = holePoints[player.name] || 0;
-            total += score;
-            var clinchInfo = holeClinch[player.name] || {};
-            var isClinched = clinchInfo.clinched;
-            var isASAtH18 = clinchInfo.asAtH18 || false;
-            var displayText = score.toFixed(1);
-            var cellClass = '';
-            var extraClass = '';
-            if (score > 0) cellClass = 'col-green';
-            else if (score === 0) cellClass = 'col-red';
-            else cellClass = 'col-gold';
-            if (isClinched) {
-                extraClass = ' clinch-cell';
-                displayText += ' <span class="clinch-trophy">🏆</span>';
-            } else if (isASAtH18 && h === 17) {
-                displayText += ' <span class="clinch-star">⭐</span>';
-            }
-            html += '<td class="' + cellClass + extraClass + '">' + displayText + '</td>';
-        }
-        var totalClass = isClinchRow ? 'total-cell clinch-cell' : 'total-cell';
-        html += '<td class="' + totalClass + '">' + total.toFixed(1) + '</td></tr>';
-    }
-    html += '</table></div>';
-    container.innerHTML = html;
-}
-
-function renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, gameData) {
-    var container = document.getElementById('trTable');
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th style="color:#4caf50;">Team A</th><th style="color:#ff6b6b;">Team B</th><th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
-    for (var i = 0; i < 18; i++) {
-        var t1 = t1Results.results[i] || { trPointsA: 0.5, trPointsB: 0.5 };
-        var t2 = t2Results.results[i] || { trPointsA: 0.5, trPointsB: 0.5 };
-        var strk = strkResults.results[i] || { trPointsA: 0.5, trPointsB: 0.5 };
-        var holeMatchData = matchPointsPerHole[i] || {};
-        var mA = 0, mB = 0;
-        for (var matchKey in holeMatchData) { var match = holeMatchData[matchKey]; mA += match.pointsA || 0; mB += match.pointsB || 0; }
-        var t1A = t1.trPointsA !== undefined ? t1.trPointsA : 0.5;
-        var t1B = t1.trPointsB !== undefined ? t1.trPointsB : 0.5;
-        var t2A = t2.trPointsA !== undefined ? t2.trPointsA : 0.5;
-        var t2B = t2.trPointsB !== undefined ? t2.trPointsB : 0.5;
-        var sA = strk.trPointsA !== undefined ? strk.trPointsA : 0.5;
-        var sB = strk.trPointsB !== undefined ? strk.trPointsB : 0.5;
-        var trA = mA + t1A + t2A + sA;
-        var trB = mB + t1B + t2B + sB;
-        var teamABreakdown = '[' + mA.toFixed(1) + ' + ' + t1A.toFixed(1) + ' + ' + t2A.toFixed(1) + ' + ' + sA.toFixed(1) + ']';
-        var teamBBreakdown = '[' + mB.toFixed(1) + ' + ' + t1B.toFixed(1) + ' + ' + t2B.toFixed(1) + ' + ' + sB.toFixed(1) + ']';
-        var recA = gameData.results?.tr?.teamA?.[i];
-        var recB = gameData.results?.tr?.teamB?.[i];
-        var recMatch = (recA !== undefined && recA !== null && recB !== undefined && recB !== null);
-        var match = recMatch && Math.abs(trA - recA) < 0.01 && Math.abs(trB - recB) < 0.01;
-        var matchClass = match ? 'col-match' : 'col-mismatch';
-        var recADisplay = (recA !== undefined && recA !== null) ? recA : '-';
-        var recBDisplay = (recB !== undefined && recB !== null) ? recB : '-';
-        var rowClass = (i === 17) ? ' final-row' : '';
-        html += '<tr class="' + rowClass + '"><td style="color:#888;font-weight:600;">' + (i+1) + '</td>';
-        html += '<td class="team-a-col">' + teamABreakdown + ' = <strong>' + trA.toFixed(1) + '</strong></td>';
-        html += '<td class="team-b-col">' + teamBBreakdown + ' = <strong>' + trB.toFixed(1) + '</strong></td>';
-        html += '<td class="' + matchClass + '">' + recADisplay + '</td>';
-        html += '<td class="' + matchClass + '">' + recBDisplay + '</td>';
-        html += '<td>' + (match ? '✅' : '❌') + '</td></tr>';
-        if (i === 17) {
-            html += '<tr class="final-row"><td colspan="6" style="color:#ffaa44; font-weight:700; text-align:center; padding:8px;">🏆 FINAL RESULT: ' + trA.toFixed(1) + ' - ' + trB.toFixed(1) + ' 🏆</td></tr>';
-        }
-    }
-    html += '</table></div>';
-    container.innerHTML = html;
-}
-
-function renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, gameData) {
-    var container = document.getElementById('validationSummary');
-    var t1Final = t1Results.results && t1Results.results[17] ? t1Results.results[17] : { display: '-', trPointsA: 0.5, trPointsB: 0.5 };
-    var t2Final = t2Results.results && t2Results.results[17] ? t2Results.results[17] : { display: '-', trPointsA: 0.5, trPointsB: 0.5 };
-    var strkFinal = strkResults.results && strkResults.results[17] ? strkResults.results[17] : { display: '-', trPointsA: 0.5, trPointsB: 0.5 };
-    var t1Display = t1Final.display || '-';
-    var t2Display = t2Final.display || '-';
-    var strkDisplay = strkFinal.display || '-';
-    var recT1 = gameData.results?.game2?.displayT1?.[17] || '-';
-    var recT2 = gameData.results?.game2?.displayT2?.[17] || '-';
-    var recStrk = gameData.results?.game3?.displayStrk?.[17] || '-';
-    var t1Match = (t1Display === recT1) || (t1Display === '-' && recT1 === '-');
-    var t2Match = (t2Display === recT2) || (t2Display === '-' && recT2 === '-');
-    var strkMatch = (strkDisplay === recStrk) || (strkDisplay === '-' && recStrk === '-');
-    var h18MatchData = matchPointsPerHole[17] || {};
-    var h18mA = 0, h18mB = 0;
-    for (var matchKey in h18MatchData) { var match = h18MatchData[matchKey]; h18mA += match.pointsA || 0; h18mB += match.pointsB || 0; }
-    var t1A = t1Final.trPointsA !== undefined ? t1Final.trPointsA : 0.5;
-    var t1B = t1Final.trPointsB !== undefined ? t1Final.trPointsB : 0.5;
-    var t2A = t2Final.trPointsA !== undefined ? t2Final.trPointsA : 0.5;
-    var t2B = t2Final.trPointsB !== undefined ? t2Final.trPointsB : 0.5;
-    var sA = strkFinal.trPointsA !== undefined ? strkFinal.trPointsA : 0.5;
-    var sB = strkFinal.trPointsB !== undefined ? strkFinal.trPointsB : 0.5;
-    var trA_h18 = h18mA + t1A + t2A + sA;
-    var trB_h18 = h18mB + t1B + t2B + sB;
-    var recA = gameData.finalResults?.teamAScore || gameData.results?.tr?.teamA?.[17] || '-';
-    var recB = gameData.finalResults?.teamBScore || gameData.results?.tr?.teamB?.[17] || '-';
-    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
-    var html = '<div class="summary-box">';
-    html += '<div class="summary-item"><div class="label">T-1</div><div class="value ' + (t1Match ? '' : 'mismatch') + '">' + t1Display + ' | Record: ' + recT1 + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
-    html += '<div class="summary-item"><div class="label">T-2</div><div class="value ' + (t2Match ? '' : 'mismatch') + '">' + t2Display + ' | Record: ' + recT2 + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
-    html += '<div class="summary-item"><div class="label">Strk</div><div class="value ' + (strkMatch ? '' : 'mismatch') + '">' + strkDisplay + ' | Record: ' + recStrk + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
-    var trClass = trMatch ? '' : 'mismatch';
-    var trDisplayText = trA_h18.toFixed(1) + ' - ' + trB_h18.toFixed(1);
-    var recordDisplayText = recA + ' - ' + recB;
-    var matchIcon = trMatch ? '✅' : '❌';
-    html += '<div class="summary-item" style="border-left-color: #ffaa44; border-left-width: 4px; background: #1a1a1a; flex: 1 1 100%;">';
-    html += '<div class="label" style="color: #ffaa44; font-weight: 700; font-size: 0.8rem;">🏆 TR at H18 (FINAL RESULT)</div>';
-    html += '<div class="value final ' + trClass + '" style="font-size: 1.5rem;">' + trDisplayText + ' | Record: ' + recordDisplayText + ' ' + matchIcon + '</div></div>';
-    html += '</div>';
-    var allMatch = t1Match && t2Match && strkMatch;
-    var verdict = (allMatch && trMatch) ? '✅ All values match the record.' : '❌ Mismatch detected. The record contains stale data.';
-    html += '<div style="margin-top:12px; padding:8px 12px; border-radius:6px; background: ' + (allMatch && trMatch ? '#0a2a0a' : '#2a0a0a') + '; border: 1px solid ' + (allMatch && trMatch ? '#2a5a2a' : '#5a2a2a') + ';">' + verdict + '</div>';
-    html += '<div style="margin-top:12px; font-size:0.7rem; color:#666; border-top:1px solid #2a2a2a; padding-top:8px;">';
-    html += 'H18 Breakdown: Match (' + h18mA.toFixed(1) + ' - ' + h18mB.toFixed(1) + ') + T-1 (' + t1A.toFixed(1) + ' - ' + t1B.toFixed(1) + ') + T-2 (' + t2A.toFixed(1) + ' - ' + t2B.toFixed(1) + ') + Strk (' + sA.toFixed(1) + ' - ' + sB.toFixed(1) + ') = ' + trA_h18.toFixed(1) + ' - ' + trB_h18.toFixed(1);
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-// ============================================================
-// FIX RECORD FUNCTION (Validate tab)
-// ============================================================
-function createBackup(record, progressEl) {
-    return new Promise(function(resolve, reject) {
-        var docId = record.id;
-        var data = record.rawData;
-        var originalGameId = record.originalGameId || docId;
-        var now = new Date();
-        var dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '_' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
-        var backupId = 'Backup_' + dateStr + '_' + originalGameId;
-        progressEl.innerHTML += '<div class="step backup">💾 Creating backup: ' + backupId + '...</div>';
-        var backupData = JSON.parse(JSON.stringify(data));
-        backupData._backupTimestamp = firebase.firestore.FieldValue.serverTimestamp();
-        backupData._backupOriginalId = docId;
-        backupData._backupOriginalCollection = 'historyGames';
-        backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v1.34';
-        db.collection('backupFolder').doc(backupId).set(backupData)
-            .then(function() { progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>'; resolve(backupId); })
-            .catch(function(err) { progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>'; reject(err); });
-    });
-}
-
-function fixRecord() {
-    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) { setStatus('No record selected', 'error'); return; }
-    var record = records[currentRecordIndex];
-    var data = record.rawData;
-    var docId = record.id;
-    if (!confirm('⚠️ This will RECALCULATE ALL derived data from raw data and update the Firestore record.\n\nID: ' + docId + '\nGame: ' + record.originalGameId + '\nStatus: ' + data.status + ' → completed\n\nPRESERVES: raw scores, players, course, gameInfo\nRECALCULATES: game1, game2, game3, matchResults, f1IntraMatches, f2IntraMatches, TR, clinchedAt, adjustedHandicaps\n\nA backup will be created before updating.\nThis action cannot be undone. Continue?')) { return; }
-    var fixBtn = document.getElementById('fixBtn');
-    var backupBtn = document.getElementById('backupOnlyBtn');
-    var progressEl = document.getElementById('fixProgress');
-    fixBtn.disabled = true; backupBtn.disabled = true;
-    fixBtn.className = 'fix-btn fix-btn-fixing'; fixBtn.textContent = '⏳ Fixing...';
-    backupBtn.className = 'fix-btn fix-btn-fixing'; backupBtn.textContent = '⏳ ...';
-    progressEl.className = 'fix-progress active'; progressEl.innerHTML = '';
-    createBackup(record, progressEl)
-        .then(function(backupId) {
-            progressEl.innerHTML += '<div class="step">📊 Step 2: Parsing raw data...</div>';
-            var f1Scores = parseDataString(data.f1DataString);
-            var f2Scores = parseDataString(data.f2DataString);
-            var players = data.players || [];
-            var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
-            var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
-            if (!f1Scores || !f2Scores) { throw new Error('Invalid data strings'); }
-            if (players.length === 0) { throw new Error('No players found'); }
-            progressEl.innerHTML += '<div class="step done">✅ Data parsed</div>';
-            
-            progressEl.innerHTML += '<div class="step">📊 Step 3: Recalculating ALL derived data from raw data...</div>';
-            var results = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar);
-            var adjustedHandicaps = calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar);
-            progressEl.innerHTML += '<div class="step done">✅ All derived data recalculated</div>';
-            
-            progressEl.innerHTML += '<div class="step">📝 Step 4: Building update payload...</div>';
-            var sanitizedResults = JSON.parse(JSON.stringify(results));
-            var updatePayload = {
-                results: sanitizedResults,
-                adjustedHandicaps: adjustedHandicaps,
-                status: 'completed',
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            progressEl.innerHTML += '<div class="step done">✅ Update payload built</div>';
-            
-            progressEl.innerHTML += '<div class="step">📤 Step 5: Preparing update...</div>';
-            progressEl.innerHTML += '<div class="step done">✅ Update prepared</div>';
-            
-            progressEl.innerHTML += '<div class="step">💾 Step 6: Writing to Firestore...</div>';
-            return db.collection('historyGames').doc(docId).update(updatePayload)
-                .then(function() {
-                    progressEl.innerHTML += '<div class="step done">✅ Firestore updated successfully!</div>';
-                    progressEl.innerHTML += '<div class="step done">📦 Backup ID: ' + backupId + '</div>';
-                    progressEl.innerHTML += '<div class="step done">✅ ALL derived data recalculated from raw data</div>';
-                    fixBtn.className = 'fix-btn fix-btn-done'; fixBtn.textContent = '✅ Fixed!'; fixBtn.disabled = false;
-                    backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
-                    setStatus('✅ Record fixed successfully! All derived data recalculated. Backup: ' + backupId, 'success');
-                    setTimeout(function() { loadAndValidate(); }, 1500);
-                });
-        })
-        .catch(function(err) {
-            progressEl.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
-            fixBtn.className = 'fix-btn fix-btn-error'; fixBtn.textContent = '❌ Error'; fixBtn.disabled = false;
-            backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
-            setStatus('❌ Error fixing record: ' + err.message, 'error');
-            console.error(err);
-        });
-}
-
-function backupOnly() {
-    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) { setStatus('No record selected', 'error'); return; }
-    var record = records[currentRecordIndex];
-    if (!confirm('💾 Create a backup of this record?\n\nID: ' + record.id + '\nGame: ' + record.originalGameId + '\n\nThe backup will be saved to the "backupFolder" collection.')) { return; }
-    var fixBtn = document.getElementById('fixBtn');
-    var backupBtn = document.getElementById('backupOnlyBtn');
-    var progressEl = document.getElementById('fixProgress');
-    fixBtn.disabled = true; backupBtn.disabled = true;
-    backupBtn.className = 'fix-btn fix-btn-fixing'; backupBtn.textContent = '⏳ Creating backup...';
-    progressEl.className = 'fix-progress active'; progressEl.innerHTML = '';
-    createBackup(record, progressEl)
-        .then(function(backupId) {
-            progressEl.innerHTML += '<div class="step done">✅ Backup complete!</div>';
-            backupBtn.className = 'fix-btn fix-btn-done'; backupBtn.textContent = '✅ Backup: ' + backupId;
-            fixBtn.disabled = false; backupBtn.disabled = false;
-            setStatus('✅ Backup created: ' + backupId, 'success');
-        })
-        .catch(function(err) {
-            progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
-            backupBtn.className = 'fix-btn fix-btn-error'; backupBtn.textContent = '❌ Error';
-            fixBtn.disabled = false; backupBtn.disabled = false;
-            setStatus('❌ Backup failed: ' + err.message, 'error');
-        });
-}
-
-function loadAndValidate() {
-    var select = document.getElementById('recordSelect');
-    var index = parseInt(select.value);
-    if (isNaN(index) || index < 0 || index >= records.length) { setStatus('Please select a game', 'warning'); return; }
-    currentRecordIndex = index;
-    var data = records[index].rawData;
-    if (!data) { setStatus('No data found', 'error'); return; }
-    gameData = data; gameData.id = records[index].id;
-    setStatus('Loading: ' + records[index].originalGameId + '... <span class="loader"></span>', 'info');
-    document.getElementById('results').style.display = 'none';
-    document.getElementById('fixCard').style.display = 'none';
-    try { processGameData(gameData); } catch (err) { setStatus('Error: ' + err.message, 'error'); console.error(err); }
-}
-
-function processGameData(data) {
-    var f1Scores = parseDataString(data.f1DataString);
-    var f2Scores = parseDataString(data.f2DataString);
-    if (!f1Scores || !f2Scores) { setStatus('Invalid data strings', 'error'); return; }
-    var players = data.players || [];
-    if (players.length === 0) { setStatus('No players found', 'error'); return; }
-    var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
-    if (courseSi.length === 0) { for (var i = 0; i < 18; i++) courseSi[i] = i + 1; setStatus('Warning: No SI data, using 1-18', 'warning'); }
-    var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
-    if (coursePar.length === 0) { for (var i = 0; i < 18; i++) coursePar[i] = 4; setStatus('Warning: No Par data, using 4 for all holes', 'warning'); }
-    renderGameInfo(data);
-    renderFlightTable(f1Scores, players, 1, 'flight1Table');
-    renderFlightTable(f2Scores, players, 2, 'flight2Table');
-    
-    var t1Results = calculateTeamGame(f1Scores, f2Scores, players, 1, courseSi);
-    var t2Results = calculateTeamGame(f1Scores, f2Scores, players, 2, courseSi);
-    var strkResults = calculateStrokeGame(f1Scores, f2Scores, players, courseSi, coursePar);
-    var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
-    var orderedPlayers = [];
-    var teamAPlayers = players.filter(function(p) { return p.team === 'A'; });
-    var teamBPlayers = players.filter(function(p) { return p.team === 'B'; });
-    teamAPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
-    teamBPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
-    for (var i = 0; i < teamAPlayers.length; i++) orderedPlayers.push(teamAPlayers[i]);
-    for (var i = 0; i < teamBPlayers.length; i++) orderedPlayers.push(teamBPlayers[i]);
-    var matchResults = [];
-    var matchPointsPerHole = matchData.matchPointsPerHole;
-    for (var h = 0; h < 18; h++) {
-        var holePoints = {};
-        var holeClinchInfo = {};
-        var holeMatchData = matchPointsPerHole[h] || {};
-        for (var p = 0; p < orderedPlayers.length; p++) {
-            var player = orderedPlayers[p];
-            holePoints[player.name] = 0;
-            holeClinchInfo[player.name] = { clinched: false, asAtH18: false };
-        }
-        for (var matchKey in holeMatchData) {
-            var match = holeMatchData[matchKey];
-            var parts = matchKey.split('_vs_');
-            if (parts.length === 2) {
-                var playerA = parts[0];
-                var playerB = parts[1];
-                holePoints[playerA] += match.pointsA || 0;
-                holePoints[playerB] += match.pointsB || 0;
-            }
-        }
-        matchResults.push({
-            hole: h+1,
-            points: holePoints,
-            clinchInfo: holeClinchInfo
-        });
-    }
-    
-    renderTeamGameTable(t1Results.results, 't1Table', 'T-1');
-    renderTeamGameTable(t2Results.results, 't2Table', 'T-2');
-    renderStrkTable(strkResults.results);
-    renderMatchTable(orderedPlayers, matchResults);
-    renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, data);
-    renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, data);
-    document.getElementById('results').style.display = 'block';
-    
-    var hasMismatch = document.querySelector('.col-mismatch') !== null;
-    var isPending = data.status === 'pending_handicap';
-    if (isPending || hasMismatch) {
-        document.getElementById('fixCard').style.display = 'block';
-        var fixBtn = document.getElementById('fixBtn');
-        var backupBtn = document.getElementById('backupOnlyBtn');
-        fixBtn.className = 'fix-btn fix-btn-fix'; fixBtn.textContent = '🔧 Fix Record (Recalculate All)'; fixBtn.disabled = false;
-        backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
-        document.getElementById('fixProgress').className = 'fix-progress'; document.getElementById('fixProgress').innerHTML = '';
-        setStatus('⚠️ Record needs fixing. Click "Fix Record" to recalculate all derived data from raw data.', 'warning');
-    } else {
-        document.getElementById('fixCard').style.display = 'none';
-        setStatus('✅ Record is valid.', 'success');
-    }
-    document.getElementById('fixBtn').onclick = fixRecord;
-    document.getElementById('backupOnlyBtn').onclick = backupOnly;
 }
 
 // ============================================================
@@ -1798,25 +1575,27 @@ document.querySelectorAll('input[name="restoreDestination"]').forEach(function(r
 fetchRecords();
 loadBackupList();
 updateDestPreviews();
-console.log('🔬 Game Data Validator v1.34 loaded.');
-console.log('📌 Restore: SIMPLE COPY from backupFolder to destination. NO recalculation.');
+console.log('🔬 Game Data Validator v1.35 loaded.');
+console.log('📌 Using shared calculation modules (game-match.js, game-team.js, game-stroke.js)');
+console.log('📌 Module versions:');
+console.log('  - game-match.js: ' + (window.GAME_MATCH_VERSION || 'not loaded'));
+console.log('  - game-team.js: ' + (window.GAME_TEAM_VERSION || 'not loaded'));
+console.log('  - game-stroke.js: ' + (window.GAME_STROKE_VERSION || 'not loaded'));
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.34
-KEY CHANGES from v1.33:
-   - FIXED: Restore now does a SIMPLE COPY from backupFolder to destination
-   - NO recalculations during restore — preserves ALL data exactly as in backup
-   - Preserves matchResults, f1IntraMatches, f2IntraMatches exactly
-   - Preserves game1, game2, game3, tr, clinchedAt, adjustedHandicaps exactly
-   - Only changes: document ID (naming convention), status flags for scheduledGames
-   - For scheduledGames: sets H18 to F00000000, resets locks/signatures/submitted
-   - For historyGames: no changes to data, only document ID
-   - Validate & Fix module still available to fix records after restore
-   - All other functionality preserved from v1.33
-DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
+VERSION: 1.35
+KEY CHANGES from v1.34:
+   - ADDED: Module imports for game-order.js, game-data.js, game-match.js, game-team.js, game-stroke.js
+   - ADDED: buildCompleteResultsFromRawData() using shared modules for all calculations
+   - REMOVED: Self-contained calculation functions (calculateTeamGame, calculateStrokeGame, calculateMatchGamePerHole, etc.)
+   - CHANGED: fixRecord() now uses buildCompleteResultsFromRawData() with shared modules
+   - CHANGED: renderSummary() and renderTRTable() now expect data from shared modules
+   - CHANGED: All display functions updated to work with new data structure
+   - PRESERVED: Everything else (backup, restore, UI, etc.) from v1.34
+DEPENDS ON: Firebase Firestore, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
 STATUS: Ready for integration
 -->
