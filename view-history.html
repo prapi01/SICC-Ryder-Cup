@@ -1,12 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.32
-KEY CHANGES from v8.31:
-   - FIXED: Scorecard now uses displayT2 instead of flight2.leader for T-2 display row
-   - FIXED: T-2 values at H16 and H17 now correctly show B4 and B5 instead of AS/empty
-   - CHANGED: renderDetailView() now uses displayT2 for T-2 row
-   - CHANGED: renderScorecardView() now uses displayT2 for T-2 row
-   - All existing functionality preserved from v8.31
+VERSION: 8.33
+KEY CHANGES from v8.32:
+   - FIXED: Scorecard now uses displayStrk instead of game3.leader for Strk display row
+   - FIXED: Strk values now correctly show margins (A6, B9, etc.) instead of just A/B
+   - CHANGED: renderDetailView() now uses displayStrk for Strk row
+   - CHANGED: renderScorecardView() now uses displayStrk for Strk row
+   - All existing functionality preserved from v8.32
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -341,7 +341,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.32</div>
+<div class="version-tag">v8.33</div>
 
 <script>
 // ============================================================
@@ -354,10 +354,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.32: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v8.33: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "8.32";
-var CACHE_KEY = "view_history_version_v832";
+var APP_VERSION = "8.33";
+var CACHE_KEY = "view_history_version_v833";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -375,8 +375,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.32";
-console.log("[VIEW-HISTORY] Initializing v8.32 - Fixed T-2 display using displayT2");
+window.VIEW_HISTORY_VERSION = "8.33";
+console.log("[VIEW-HISTORY] Initializing v8.33 - Fixed Strk display using displayStrk");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -803,7 +803,7 @@ function renderScorecardView(game) {
         if (typeof Ticker !== 'undefined') Ticker.refresh();
     }
     
-    // v8.26: Updated renderDetailView to use GameScorecard with new signature
+    // v8.33: Updated renderDetailView - uses displayT2 and displayStrk
     function renderDetailView() {
         if (!f1DataString || !f2DataString) return;
         
@@ -827,10 +827,10 @@ function renderScorecardView(game) {
         
         GameUI.updateFlightBadge(currentFlight);
         
-        // v8.32: FIXED - Use displayT2 instead of flight2.leader for T-2 display row
+        // v8.33: FIXED - Use displayT2 instead of flight2.leader, displayStrk instead of game3.leader
         var t1Row = resultsCache?.game2?.flight1?.leader || new Array(18).fill('_');
         var t2Row = resultsCache?.game2?.displayT2 || new Array(18).fill('_');
-        var strkRow = resultsCache?.game3?.leader || new Array(18).fill('_');
+        var strkRow = resultsCache?.game3?.displayStrk || new Array(18).fill('_');
         var t1ClinchedHole = resultsCache?.game2?.flight1?.clinchedHole;
         var t2ClinchedHole = resultsCache?.game2?.flight2?.clinchedHole;
         var t1Display = resultsCache?.game2?.displayT1 || null;
@@ -1212,13 +1212,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.32
-KEY CHANGES from v8.31:
-   - FIXED: Scorecard now uses displayT2 instead of flight2.leader for T-2 display row
-   - FIXED: T-2 values at H16 and H17 now correctly show B4 and B5 instead of AS/empty
-   - CHANGED: renderDetailView() now uses displayT2 for T-2 row
-   - CHANGED: renderScorecardView() now uses displayT2 for T-2 row
-   - All existing functionality preserved from v8.31
+VERSION: 8.33
+KEY CHANGES from v8.32:
+   - FIXED: Scorecard now uses displayStrk instead of game3.leader for Strk display row
+   - FIXED: Strk values now correctly show margins (A6, B9, etc.) instead of just A/B
+   - CHANGED: renderDetailView() now uses displayStrk for Strk row
+   - CHANGED: renderScorecardView() now uses displayStrk for Strk row
+   - All existing functionality preserved from v8.32
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
