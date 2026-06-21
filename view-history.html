@@ -1,12 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.30
-KEY CHANGES from v8.29:
-   - CHANGED: Query from FirebaseRetry.queryWhereLimit() to FirebaseRetry.getCollection()
-   - REMOVED: status filter entirely - now shows ALL historyGames records
-   - CHANGED: Title from "COMPLETED GAMES" to "HISTORY GAMES"
-   - CHANGED: Empty message from "No completed games found" to "No history games found"
-   - All existing functionality preserved from v8.29
+VERSION: 8.31
+KEY CHANGES from v8.30:
+   - FIXED: Sort function now correctly handles Firestore Timestamp objects
+   - FIXED: Records are now sorted newest first (GM_260619_1148_78_H_R appears before GM_260606_1010_13_H)
+   - FIXED: Added proper timestamp parsing for both string and Firestore Timestamp formats
+   - All existing functionality preserved from v8.30
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -341,7 +340,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.30</div>
+<div class="version-tag">v8.31</div>
 
 <script>
 // ============================================================
@@ -354,10 +353,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.30: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v8.31: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "8.30";
-var CACHE_KEY = "view_history_version_v830";
+var APP_VERSION = "8.31";
+var CACHE_KEY = "view_history_version_v831";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -375,8 +374,22 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.30";
-console.log("[VIEW-HISTORY] Initializing v8.30 - Removed status filter, shows ALL historyGames");
+window.VIEW_HISTORY_VERSION = "8.31";
+console.log("[VIEW-HISTORY] Initializing v8.31 - Fixed sort for Firestore Timestamps");
+
+// ============================================================
+// Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
+// ============================================================
+function parseCompletedAt(completedAt) {
+    if (!completedAt) return new Date(0);
+    if (completedAt.toDate) {
+        return completedAt.toDate();
+    }
+    if (completedAt.seconds !== undefined) {
+        return new Date(completedAt.seconds * 1000);
+    }
+    return new Date(completedAt);
+}
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -942,7 +955,8 @@ function attachEventHandlers() {
                 console.log("[VIEW-HISTORY] Scorecard button clicked for game index:", gameIndex);
                 var game = allGames[gameIndex];
                 if (game) {
-                    // v8.28: Safety check before showing scorecard                    if (!game.originalGameId) {
+                    // v8.28: Safety check before showing scorecard
+                    if (!game.originalGameId) {
                         console.error("[VIEW-HISTORY] Cannot show scorecard - no game ID for index:", gameIndex);
                         if (typeof Modal !== 'undefined' && Modal.alert) {
                             Modal.alert("Error: No game ID found. Please refresh and try again.");
@@ -999,6 +1013,13 @@ function renderGameList(games) {
         checkBothReady();
         return;
     }
+    
+    // v8.31: FIXED SORT - handles both string and Firestore Timestamp
+    games.sort(function(a, b) {
+        var dateA = parseCompletedAt(a.completedAt);
+        var dateB = parseCompletedAt(b.completedAt);
+        return dateB - dateA; // Newest first
+    });
     
     var html = '';
     for (var i = 0; i < games.length; i++) {
@@ -1093,10 +1114,11 @@ function loadGameListAndModules() {
                 });
             });
             
+            // v8.31: Sort uses parseCompletedAt helper
             games.sort(function(a, b) {
-                var dateA = a.completedAt ? (a.completedAt.toDate ? a.completedAt.toDate() : new Date(a.completedAt)) : new Date(0);
-                var dateB = b.completedAt ? (b.completedAt.toDate ? b.completedAt.toDate() : new Date(b.completedAt)) : new Date(0);
-                return dateB - dateA;
+                var dateA = parseCompletedAt(a.completedAt);
+                var dateB = parseCompletedAt(b.completedAt);
+                return dateB - dateA; // Newest first
             });
             
             renderGameList(games);
@@ -1188,13 +1210,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.30
-KEY CHANGES from v8.29:
-   - CHANGED: Query from FirebaseRetry.queryWhereLimit() to FirebaseRetry.getCollection()
-   - REMOVED: status filter entirely - now shows ALL historyGames records
-   - CHANGED: Title from "COMPLETED GAMES" to "HISTORY GAMES"
-   - CHANGED: Empty message from "No completed games found" to "No history games found"
-   - All existing functionality preserved from v8.29
+VERSION: 8.31
+KEY CHANGES from v8.30:
+   - FIXED: Sort function now correctly handles Firestore Timestamp objects
+   - FIXED: Records are now sorted newest first (GM_260619_1148_78_H_R appears before GM_260606_1010_13_H)
+   - FIXED: Added proper timestamp parsing for both string and Firestore Timestamp formats
+   - All existing functionality preserved from v8.30
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
