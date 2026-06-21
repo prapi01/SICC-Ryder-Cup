@@ -1,12 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.29
-KEY CHANGES from v8.28:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v8.28
+VERSION: 8.30
+KEY CHANGES from v8.29:
+   - CHANGED: Query from FirebaseRetry.queryWhereLimit() to FirebaseRetry.getCollection()
+   - REMOVED: status filter entirely - now shows ALL historyGames records
+   - CHANGED: Title from "COMPLETED GAMES" to "HISTORY GAMES"
+   - CHANGED: Empty message from "No completed games found" to "No history games found"
+   - All existing functionality preserved from v8.29
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -323,7 +323,7 @@ STATUS: Ready for integration
 
 <!-- GAME LIST VIEW (Landing Page) -->
 <div class="container game-list-view" id="gameListView">
-    <div class="game-list-title">📜 COMPLETED GAMES</div>
+    <div class="game-list-title">📜 HISTORY GAMES</div>
     <div class="game-list" id="gameListContainer">
         <div class="grey-icon-container">
             <div class="grey-icon-loading">⛳</div>
@@ -341,7 +341,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.29</div>
+<div class="version-tag">v8.30</div>
 
 <script>
 // ============================================================
@@ -354,10 +354,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.29: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v8.30: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "8.29";
-var CACHE_KEY = "view_history_version_v829";
+var APP_VERSION = "8.30";
+var CACHE_KEY = "view_history_version_v830";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -375,8 +375,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.29";
-console.log("[VIEW-HISTORY] Initializing v8.29 - Added settings.js zoom control");
+window.VIEW_HISTORY_VERSION = "8.30";
+console.log("[VIEW-HISTORY] Initializing v8.30 - Removed status filter, shows ALL historyGames");
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -942,8 +942,7 @@ function attachEventHandlers() {
                 console.log("[VIEW-HISTORY] Scorecard button clicked for game index:", gameIndex);
                 var game = allGames[gameIndex];
                 if (game) {
-                    // v8.28: Safety check before showing scorecard
-                    if (!game.originalGameId) {
+                    // v8.28: Safety check before showing scorecard                    if (!game.originalGameId) {
                         console.error("[VIEW-HISTORY] Cannot show scorecard - no game ID for index:", gameIndex);
                         if (typeof Modal !== 'undefined' && Modal.alert) {
                             Modal.alert("Error: No game ID found. Please refresh and try again.");
@@ -995,7 +994,7 @@ function renderGameList(games) {
     var container = document.getElementById('gameListContainer');
     
     if (games.length === 0) {
-        container.innerHTML = '<div class="empty-message">No completed games found.</div>';
+        container.innerHTML = '<div class="empty-message">No history games found.</div>';
         dataLoaded = true;
         checkBothReady();
         return;
@@ -1069,8 +1068,12 @@ function loadGameListAndModules() {
     dataLoaded = false;
     modulesLoaded = false;
     
-    console.log("[VIEW-HISTORY] Loading games from Firestore with FirebaseRetry...");
-    FirebaseRetry.queryWhereLimit("historyGames", "status", "==", "completed", 50)
+    console.log("[VIEW-HISTORY] Loading ALL games from Firestore with FirebaseRetry.getCollection()...");
+    FirebaseRetry.getCollection("historyGames", {
+        onExit: function() {
+            window.location.href = "index.html";
+        }
+    })
         .then(function(snapshot) {
             var games = [];
             snapshot.forEach(function(doc) {
@@ -1185,13 +1188,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.29
-KEY CHANGES from v8.28:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v8.28
+VERSION: 8.30
+KEY CHANGES from v8.29:
+   - CHANGED: Query from FirebaseRetry.queryWhereLimit() to FirebaseRetry.getCollection()
+   - REMOVED: status filter entirely - now shows ALL historyGames records
+   - CHANGED: Title from "COMPLETED GAMES" to "HISTORY GAMES"
+   - CHANGED: Empty message from "No completed games found" to "No history games found"
+   - All existing functionality preserved from v8.29
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
