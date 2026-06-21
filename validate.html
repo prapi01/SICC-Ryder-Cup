@@ -1,14 +1,14 @@
 <!--
 FILE: validate.html
-VERSION: 2.00
-KEY CHANGES from v1.20:
-   - ADDED: Restore from backup functionality (simple copy, no recalculation)
-   - ADDED: Fix Record functionality using v1.20's self-contained calculations
-   - ADDED: buildCompleteResultsFromRawData() - builds complete results object
-   - ADDED: Backup Only functionality
-   - PRESERVED: All v1.20 calculation logic (T-1, T-2, Strk, Match Game, TR, Clinch)
-   - PRESERVED: v1.34 restore logic (simple copy, no modification)
-   - COMBINED: Best of v1.20 (calculations) + v1.34 (restore) + fix functionality
+VERSION: 2.01
+KEY CHANGES from v2.00:
+   - ADDED: Preview screen before fixing — shows all values to be written
+   - ADDED: Compare function — only updates fields that are different
+   - ADDED: Safety check — if record is already correct, show message and do nothing
+   - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
+   - PRESERVED: All v2.00 calculation logic and restore functionality
+   - IMPROVED: Selective update — only writes changed fields (not full document)
+   - IMPROVED: Clear visual comparison with color coding (red=mismatch, green=match, blue=not touched)
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -145,6 +145,8 @@ STATUS: Ready for integration
         .fix-btn-fixing { background: #2a2a1a; border-color: #ffaa44; color: #ffaa44; cursor: wait; opacity: 0.7; }
         .fix-btn-done { background: #0a2a0a; border-color: #4caf50; color: #4caf50; cursor: default; }
         .fix-btn-error { background: #2a0a0a; border-color: #ff6b6b; color: #ff6b6b; cursor: default; }
+        .fix-btn-cancel { background: #2a2a2a; border-color: #555; color: #888; }
+        .fix-btn-cancel:hover { background: #3a3a3a; }
         
         .fix-progress { margin-top: 12px; padding: 12px; border-radius: 8px; background: #0a0a0a; font-size: 0.8rem; color: #888; display: none; max-height: 400px; overflow-y: auto; }
         .fix-progress.active { display: block; }
@@ -155,6 +157,7 @@ STATUS: Ready for integration
         .fix-progress .step.backup { color: #4a8af4; }
         .fix-progress .step.warning { color: #ffa726; }
         .fix-progress .step.restore { color: #ff6b6b; }
+        .fix-progress .step.unchanged { color: #888; }
         
         .destination-select { display: flex; gap: 12px; margin: 12px 0; align-items: center; flex-wrap: wrap; }
         .destination-select label { font-size: 0.85rem; color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 6px; }
@@ -187,6 +190,122 @@ STATUS: Ready for integration
         .backup-item .bstatus.completed { background: #0a2a0a; color: #4caf50; }
         .backup-item .bselect { color: #4caf50; font-size: 0.7rem; font-weight: 600; }
         .backup-item .bselect.empty { color: #666; }
+        
+        /* Preview Modal Styles */
+        .preview-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20000;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            overflow-y: auto;
+        }
+        .preview-modal {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 28px;
+            max-width: 700px;
+            width: 95%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 2px solid #4caf50;
+        }
+        .preview-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #ffaa44;
+            text-align: center;
+            margin-bottom: 4px;
+        }
+        .preview-subtitle {
+            font-size: 0.75rem;
+            color: #888;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .preview-section {
+            margin-bottom: 16px;
+            padding: 12px;
+            background: #0a0a0a;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+        }
+        .preview-section-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .preview-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 8px;
+            border-bottom: 1px solid #1a1a1a;
+            font-size: 0.8rem;
+        }
+        .preview-row:last-child { border-bottom: none; }
+        .preview-row .label { color: #888; flex: 1; }
+        .preview-row .value-current { color: #ff6b6b; flex: 0 0 120px; text-align: right; padding-right: 16px; }
+        .preview-row .value-new { color: #4caf50; flex: 0 0 120px; text-align: left; }
+        .preview-row .arrow { color: #666; flex: 0 0 30px; text-align: center; }
+        .preview-row .unchanged-label { color: #4caf50; font-size: 0.65rem; margin-left: 8px; }
+        .preview-row .not-touched-label { color: #4a8af4; font-size: 0.65rem; margin-left: 8px; }
+        .preview-row.match { background: rgba(76, 175, 80, 0.1); }
+        .preview-row.mismatch { background: rgba(255, 107, 107, 0.15); }
+        .preview-row.not-touched { background: rgba(74, 138, 244, 0.08); }
+        .preview-row .status-icon { flex: 0 0 24px; text-align: center; }
+        .preview-summary {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            padding: 8px 0;
+            margin: 12px 0;
+            border-top: 1px solid #2a2a2a;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .preview-summary-item { font-size: 0.8rem; }
+        .preview-summary-item .count { font-weight: 700; font-size: 1.1rem; }
+        .preview-summary-item .count.mismatch { color: #ff6b6b; }
+        .preview-summary-item .count.match { color: #4caf50; }
+        .preview-summary-item .count.unchanged { color: #4a8af4; }
+        .preview-summary-item .label { color: #888; }
+        .preview-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            justify-content: center;
+        }
+        .preview-btn {
+            padding: 14px 40px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            border: 2px solid;
+            transition: all 0.2s;
+        }
+        .preview-btn:active { transform: scale(0.97); }
+        .preview-btn-confirm { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+        .preview-btn-confirm:hover { background: #2a4a2a; }
+        .preview-btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+        .preview-btn-cancel { background: #2a2a2a; border-color: #555; color: #888; }
+        .preview-btn-cancel:hover { background: #3a3a3a; }
+        .preview-no-changes {
+            text-align: center;
+            padding: 20px;
+            color: #4caf50;
+            font-size: 1.1rem;
+        }
+        .preview-no-changes .icon { font-size: 2rem; display: block; margin-bottom: 8px; }
     </style>
 </head>
 <body>
@@ -194,7 +313,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v2.00</span>
+        <span class="version-tag">v2.01</span>
     </h1>
     
     <!-- Tab Navigation -->
@@ -324,6 +443,7 @@ STATUS: Ready for integration
                     <div style="font-size:0.85rem; color:#ccc; margin-bottom:12px;">
                         This will recalculate all derived data from raw data and update the Firestore record.
                         <br><strong style="color:#4caf50;">Preserves: raw scores (f1DataString, f2DataString), players, course, gameInfo</strong>
+                        <br><strong style="color:#4a8af4;">NOT TOUCHED: f1IntraMatches, f2IntraMatches, matchResults (already correct)</strong>
                         <br><strong style="color:#ffaa44;">This action cannot be undone.</strong>
                         <br><span style="color:#4a8af4; font-size:0.75rem;">A backup will be created before updating.</span>
                         <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.00 self-contained calculation logic (proven correct from v1.20).</span>
@@ -339,7 +459,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v2.00 — Restore: SIMPLE COPY. Fix: Recalculates derived data using proven v1.20 logic.
+        Validator v2.01 — Restore: SIMPLE COPY. Fix: Preview before writing, only updates changed fields.
     </div>
 </div>
 
@@ -347,8 +467,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "2.00";
-console.log("[Validator] v2.00 - Restore: SIMPLE COPY. Fix: Recalculates derived data using v1.20 logic.");
+window.VALIDATOR_VERSION = "2.01";
+console.log("[Validator] v2.01 - Preview before fix, selective update only");
 
 // ============================================================
 // FIREBASE
@@ -799,25 +919,19 @@ function calculateStrokeGame(f1Scores, f2Scores, players) {
 }
 
 // ============================================================
-// V2.00: buildCompleteResultsFromRawData — uses v1.20 logic
+// V2.01: buildCompleteResultsFromRawData — uses v1.20 logic
 // ============================================================
 function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar) {
     console.log('[VALIDATOR] buildCompleteResultsFromRawData starting...');
     
-    // 1. Team Games (T-1, T-2)
     var t1Results = calculateTeamGame(f1Scores, players, 1, courseSi);
     var t2Results = calculateTeamGame(f2Scores, players, 2, courseSi);
-    
-    // 2. Stroke Game
     var strkResults = calculateStrokeGame(f1Scores, f2Scores, players);
-    
-    // 3. Match Game with clinch detection
     var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
     var orderedPlayers = matchData.orderedPlayers;
     var matchResults = matchData.results;
     var matchPointsPerHole = matchData.matchPointsPerHole;
     
-    // 4. Build TR per hole (19 points per hole)
     var trTeamA = [];
     var trTeamB = [];
     var trTeamAGreen = [];
@@ -852,7 +966,7 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
         trTeamBGreen.push(trB > trA);
     }
     
-    // 5. Build player totals
+    // Player totals
     var playerTotals = {};
     for (var p = 0; p < players.length; p++) {
         var player = players[p];
@@ -881,7 +995,7 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
         }
     }
     
-    // 6. Build clinchedAt from match data
+    // ClinchedAt
     var clinchedAt = {};
     for (var h = 0; h < matchResults.length; h++) {
         var holeData = matchResults[h];
@@ -901,12 +1015,10 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
         }
     }
     
-    // 7. Build display arrays
     var displayT1 = t1Results.map(function(r) { return r.display || 'AS'; });
     var displayT2 = t2Results.map(function(r) { return r.display || 'AS'; });
     var displayStrk = strkResults.map(function(r) { return r.display || 'AS'; });
     
-    // 8. Build matchResults array (for cross-flight)
     var teamAPlayers = players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) {
         if (a.flight !== b.flight) return a.flight - b.flight;
         return a.handicap - b.handicap;
@@ -932,7 +1044,6 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
         matchResultsArray.push(row);
     }
     
-    // 9. Build f1IntraMatches and f2IntraMatches
     var f1IntraMatches = [];
     var f2IntraMatches = [];
     for (var pos = 0; pos < 18; pos++) {
@@ -940,7 +1051,6 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
         var f2HoleData = parseHoleData(flight2Data, pos + 1);
         var f1MatchResults = {};
         var f2MatchResults = {};
-        // Build intra-flight matches for F1
         var f1Players = players.filter(function(p) { return p.flight === 1; });
         var f1TeamA = f1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var f1TeamB = f1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -951,7 +1061,6 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
                 f1MatchResults[f1TeamB[b].name + "_vs_" + f1TeamA[a].name] = -margin;
             }
         }
-        // Build intra-flight matches for F2
         var f2Players = players.filter(function(p) { return p.flight === 2; });
         var f2TeamA = f2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var f2TeamB = f2Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
@@ -966,7 +1075,6 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
         f2IntraMatches.push(f2MatchResults);
     }
     
-    // 10. Build game1, game2, game3 structures
     var game1PointsA = [];
     var game1PointsB = [];
     for (var pos = 0; pos < 18; pos++) {
@@ -1006,7 +1114,6 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
         nettB: strkResults.map(function(r) { return r.netB || 0; })
     };
     
-    // 11. Build final results object
     var finalResults = {
         version: 1,
         game1: {
@@ -1043,7 +1150,6 @@ function getPlayerGrossFromScores(player, holeNumber, f1Scores, f2Scores) {
     var holeData = player.flight === 1 ? f1Scores[holeNumber - 1] : f2Scores[holeNumber - 1];
     if (!holeData || !holeData.saved) return null;
     
-    var flightPlayers = player.flight === 1 ? [] : [];
     if (player.team === 'A') {
         if (holeData.a1 !== undefined) return holeData.a1;
         if (holeData.a2 !== undefined) return holeData.a2;
@@ -1381,7 +1487,532 @@ function fetchRecords() {
 }
 
 // ============================================================
-// FIX RECORD — v2.00
+// V2.01: FIX RECORD — WITH PREVIEW AND SELECTIVE UPDATE
+// ============================================================
+
+// Helper: Deep compare two values
+function deepEqual(a, b) {
+    if (a === b) return true;
+    if (a === null || b === null) return a === b;
+    if (typeof a !== 'object' || typeof b !== 'object') return a === b;
+    if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) return false;
+        for (var i = 0; i < a.length; i++) {
+            if (!deepEqual(a[i], b[i])) return false;
+        }
+        return true;
+    }
+    var keysA = Object.keys(a);
+    var keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    for (var k = 0; k < keysA.length; k++) {
+        var key = keysA[k];
+        if (!deepEqual(a[key], b[key])) return false;
+    }
+    return true;
+}
+
+// Helper: Compare two arrays of numbers with tolerance
+function compareArrays(arr1, arr2, tolerance) {
+    tolerance = tolerance || 0.01;
+    if (!arr1 || !arr2) return false;
+    if (arr1.length !== arr2.length) return false;
+    for (var i = 0; i < arr1.length; i++) {
+        if (Math.abs((arr1[i] || 0) - (arr2[i] || 0)) > tolerance) return false;
+    }
+    return true;
+}
+
+// Helper: Build the fix preview comparison
+function buildFixPreview(record, recalculated) {
+    var changes = [];
+    var unchanged = [];
+    var notTouched = [];
+    
+    // Check TR
+    var recTrA = record.results?.tr?.teamA || [];
+    var recTrB = record.results?.tr?.teamB || [];
+    var newTrA = recalculated.tr.teamA || [];
+    var newTrB = recalculated.tr.teamB || [];
+    
+    var trAMatch = compareArrays(recTrA, newTrA);
+    var trBMatch = compareArrays(recTrB, newTrB);
+    
+    if (!trAMatch || !trBMatch) {
+        changes.push({ field: 'TR (teamA)', current: recTrA, new: newTrA });
+        changes.push({ field: 'TR (teamB)', current: recTrB, new: newTrB });
+    } else {
+        unchanged.push('TR values match');
+    }
+    
+    // Check displayT1
+    var recT1 = record.results?.game2?.displayT1 || [];
+    var newT1 = recalculated.game2.displayT1 || [];
+    if (!compareArrays(recT1, newT1, 0)) {
+        changes.push({ field: 'T-1 Display', current: recT1, new: newT1 });
+    } else {
+        unchanged.push('T-1 Display matches');
+    }
+    
+    // Check displayT2
+    var recT2 = record.results?.game2?.displayT2 || [];
+    var newT2 = recalculated.game2.displayT2 || [];
+    if (!compareArrays(recT2, newT2, 0)) {
+        changes.push({ field: 'T-2 Display', current: recT2, new: newT2 });
+    } else {
+        unchanged.push('T-2 Display matches');
+    }
+    
+    // Check displayStrk
+    var recStrk = record.results?.game3?.displayStrk || [];
+    var newStrk = recalculated.game3.displayStrk || [];
+    if (!compareArrays(recStrk, newStrk, 0)) {
+        changes.push({ field: 'Strk Display', current: recStrk, new: newStrk });
+    } else {
+        unchanged.push('Strk Display matches');
+    }
+    
+    // Check game1 points
+    var recG1A = record.results?.game1?.pointsA || [];
+    var newG1A = recalculated.game1.pointsA || [];
+    var recG1B = record.results?.game1?.pointsB || [];
+    var newG1B = recalculated.game1.pointsB || [];
+    if (!compareArrays(recG1A, newG1A) || !compareArrays(recG1B, newG1B)) {
+        changes.push({ field: 'Game1 Points', current: { A: recG1A, B: recG1B }, new: { A: newG1A, B: newG1B } });
+    } else {
+        unchanged.push('Game1 Points match');
+    }
+    
+    // Check game2 points
+    var recG2A = record.results?.game2?.pointsA || [];
+    var newG2A = recalculated.game2.pointsA || [];
+    var recG2B = record.results?.game2?.pointsB || [];
+    var newG2B = recalculated.game2.pointsB || [];
+    if (!compareArrays(recG2A, newG2A) || !compareArrays(recG2B, newG2B)) {
+        changes.push({ field: 'Game2 Points', current: { A: recG2A, B: recG2B }, new: { A: newG2A, B: newG2B } });
+    } else {
+        unchanged.push('Game2 Points match');
+    }
+    
+    // Check game3 points
+    var recG3A = record.results?.game3?.pointsA || [];
+    var newG3A = recalculated.game3.pointsA || [];
+    var recG3B = record.results?.game3?.pointsB || [];
+    var newG3B = recalculated.game3.pointsB || [];
+    if (!compareArrays(recG3A, newG3A) || !compareArrays(recG3B, newG3B)) {
+        changes.push({ field: 'Game3 Points', current: { A: recG3A, B: recG3B }, new: { A: newG3A, B: newG3B } });
+    } else {
+        unchanged.push('Game3 Points match');
+    }
+    
+    // Check playerTotals
+    if (!deepEqual(record.results?.playerTotals || {}, recalculated.playerTotals || {})) {
+        changes.push({ field: 'Player Totals', current: record.results?.playerTotals || {}, new: recalculated.playerTotals || {} });
+    } else {
+        unchanged.push('Player Totals match');
+    }
+    
+    // Check clinchedAt
+    if (!deepEqual(record.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
+        changes.push({ field: 'Clinched At', current: record.results?.clinchedAt || {}, new: recalculated.clinchedAt || {} });
+    } else {
+        unchanged.push('Clinched At match');
+    }
+    
+    // Check adjustedHandicaps
+    var recAdj = record.adjustedHandicaps || {};
+    var newAdj = calculateAdjustedHandicaps(
+        parseDataString(record.f1DataString),
+        parseDataString(record.f2DataString),
+        record.players || [],
+        record.gameInfo?.course?.par || []
+    );
+    if (!deepEqual(recAdj, newAdj)) {
+        changes.push({ field: 'Adjusted Handicaps', current: recAdj, new: newAdj });
+    } else {
+        unchanged.push('Adjusted Handicaps match');
+    }
+    
+    // Status change
+    if (record.status !== 'completed') {
+        changes.push({ field: 'Status', current: record.status || 'unknown', new: 'completed' });
+    } else {
+        unchanged.push('Status already completed');
+    }
+    
+    // These are NEVER touched
+    notTouched.push('f1DataString (raw scores)');
+    notTouched.push('f2DataString (raw scores)');
+    notTouched.push('players');
+    notTouched.push('gameInfo');
+    notTouched.push('signatures');
+    notTouched.push('completedAt');
+    notTouched.push('createdAt');
+    notTouched.push('f1IntraMatches (match bubbles)');
+    notTouched.push('f2IntraMatches (match bubbles)');
+    notTouched.push('matchResults (match bubbles)');
+    
+    return {
+        changes: changes,
+        unchanged: unchanged,
+        notTouched: notTouched,
+        hasChanges: changes.length > 0
+    };
+}
+
+// ============================================================
+// V2.01: showFixPreview — displays the preview modal
+// ============================================================
+function showFixPreview(record, recalculated, previewData, backupId) {
+    var overlay = document.createElement('div');
+    overlay.className = 'preview-overlay';
+    overlay.id = 'previewOverlay';
+    
+    var hasChanges = previewData.hasChanges;
+    var changeCount = previewData.changes.length;
+    var unchangedCount = previewData.unchanged.length;
+    var notTouchedCount = previewData.notTouched.length;
+    
+    var html = '<div class="preview-modal">';
+    html += '<div class="preview-title">🔍 Fix Preview</div>';
+    html += '<div class="preview-subtitle">Review changes before writing to Firestore</div>';
+    
+    // Summary
+    html += '<div class="preview-summary">';
+    html += '<div class="preview-summary-item"><span class="count ' + (hasChanges ? 'mismatch' : 'match') + '">' + changeCount + '</span> <span class="label">will be updated</span></div>';
+    html += '<div class="preview-summary-item"><span class="count match">' + unchangedCount + '</span> <span class="label">already match</span></div>';
+    html += '<div class="preview-summary-item"><span class="count unchanged">' + notTouchedCount + '</span> <span class="label">not touched</span></div>';
+    html += '</div>';
+    
+    if (!hasChanges) {
+        html += '<div class="preview-no-changes">';
+        html += '<span class="icon">✅</span>';
+        html += 'Record is already correct. No changes needed.';
+        html += '</div>';
+    } else {
+        // Show changes section
+        html += '<div class="preview-section">';
+        html += '<div class="preview-section-title">🔴 Changes to be applied</div>';
+        for (var i = 0; i < previewData.changes.length; i++) {
+            var change = previewData.changes[i];
+            html += '<div class="preview-row mismatch">';
+            html += '<span class="status-icon">🔴</span>';
+            html += '<span class="label">' + escapeHtml(change.field) + '</span>';
+            html += '<span class="value-current">' + escapeHtml(formatValue(change.current)) + '</span>';
+            html += '<span class="arrow">→</span>';
+            html += '<span class="value-new">' + escapeHtml(formatValue(change.new)) + '</span>';
+            html += '</div>';
+        }
+        html += '</div>';
+        
+        // Show unchanged section
+        html += '<div class="preview-section">';
+        html += '<div class="preview-section-title">🟢 Already match (no change)</div>';
+        for (var i = 0; i < previewData.unchanged.length; i++) {
+            html += '<div class="preview-row match">';
+            html += '<span class="status-icon">🟢</span>';
+            html += '<span class="label">' + escapeHtml(previewData.unchanged[i]) + '</span>';
+            html += '<span class="unchanged-label">✅ match</span>';
+            html += '</div>';
+        }
+        html += '</div>';
+        
+        // Show not touched section
+        html += '<div class="preview-section">';
+        html += '<div class="preview-section-title">🔵 NOT TOUCHED (preserved)</div>';
+        for (var i = 0; i < previewData.notTouched.length; i++) {
+            html += '<div class="preview-row not-touched">';
+            html += '<span class="status-icon">🔵</span>';
+            html += '<span class="label">' + escapeHtml(previewData.notTouched[i]) + '</span>';
+            html += '<span class="not-touched-label">🔒 preserved</span>';
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+    
+    // Buttons
+    html += '<div class="preview-buttons">';
+    if (hasChanges) {
+        html += '<button class="preview-btn preview-btn-confirm" id="previewConfirmBtn">✅ CONFIRM & WRITE</button>';
+    } else {
+        html += '<button class="preview-btn preview-btn-confirm" id="previewConfirmBtn" disabled>✅ Already Correct</button>';
+    }
+    html += '<button class="preview-btn preview-btn-cancel" id="previewCancelBtn">✖ CANCEL</button>';
+    html += '</div>';
+    html += '</div>';
+    
+    overlay.innerHTML = html;
+    document.body.appendChild(overlay);
+    
+    document.getElementById('previewCancelBtn').addEventListener('click', function() {
+        document.getElementById('previewOverlay').remove();
+    });
+    
+    if (hasChanges) {
+        document.getElementById('previewConfirmBtn').addEventListener('click', function() {
+            document.getElementById('previewOverlay').remove();
+            executeFixWithBackup(record, recalculated, backupId);
+        });
+    }
+}
+
+function formatValue(val) {
+    if (val === null || val === undefined) return 'null';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number') return val.toString();
+    if (Array.isArray(val)) {
+        if (val.length <= 18) {
+            return '[' + val.map(function(v) { return (v !== null && v !== undefined) ? v.toFixed(1) : 'null'; }).join(', ') + ']';
+        }
+        return '[array length ' + val.length + ']';
+    }
+    if (typeof val === 'object') {
+        try { return JSON.stringify(val).substring(0, 100) + '...'; } catch(e) { return '[object]'; }
+    }
+    return String(val);
+}
+
+// ============================================================
+// V2.01: executeFixWithBackup — creates backup then writes
+// ============================================================
+function executeFixWithBackup(record, recalculated, backupId) {
+    var docId = record.id;
+    var fixBtn = document.getElementById('fixBtn');
+    var backupBtn = document.getElementById('backupOnlyBtn');
+    var progressEl = document.getElementById('fixProgress');
+    
+    fixBtn.disabled = true;
+    backupBtn.disabled = true;
+    fixBtn.className = 'fix-btn fix-btn-fixing';
+    fixBtn.textContent = '⏳ Writing...';
+    progressEl.className = 'fix-progress active';
+    progressEl.innerHTML = '<div class="step">📦 Backup already created: ' + backupId + '</div>';
+    progressEl.innerHTML += '<div class="step">📝 Building update payload...</div>';
+    
+    // Build selective update payload (only changed fields)
+    var updatePayload = {};
+    
+    var recTrA = record.results?.tr?.teamA || [];
+    var recTrB = record.results?.tr?.teamB || [];
+    var newTrA = recalculated.tr.teamA || [];
+    var newTrB = recalculated.tr.teamB || [];
+    
+    if (!compareArrays(recTrA, newTrA) || !compareArrays(recTrB, newTrB)) {
+        updatePayload['results.tr.teamA'] = newTrA;
+        updatePayload['results.tr.teamB'] = newTrB;
+        updatePayload['results.tr.teamAGreen'] = recalculated.tr.teamAGreen || [];
+        updatePayload['results.tr.teamBGreen'] = recalculated.tr.teamBGreen || [];
+    }
+    
+    var recT1 = record.results?.game2?.displayT1 || [];
+    var newT1 = recalculated.game2.displayT1 || [];
+    if (!compareArrays(recT1, newT1, 0)) {
+        updatePayload['results.game2.displayT1'] = newT1;
+    }
+    
+    var recT2 = record.results?.game2?.displayT2 || [];
+    var newT2 = recalculated.game2.displayT2 || [];
+    if (!compareArrays(recT2, newT2, 0)) {
+        updatePayload['results.game2.displayT2'] = newT2;
+    }
+    
+    var recStrk = record.results?.game3?.displayStrk || [];
+    var newStrk = recalculated.game3.displayStrk || [];
+    if (!compareArrays(recStrk, newStrk, 0)) {
+        updatePayload['results.game3.displayStrk'] = newStrk;
+    }
+    
+    var recG1A = record.results?.game1?.pointsA || [];
+    var newG1A = recalculated.game1.pointsA || [];
+    var recG1B = record.results?.game1?.pointsB || [];
+    var newG1B = recalculated.game1.pointsB || [];
+    if (!compareArrays(recG1A, newG1A) || !compareArrays(recG1B, newG1B)) {
+        updatePayload['results.game1.pointsA'] = newG1A;
+        updatePayload['results.game1.pointsB'] = newG1B;
+    }
+    
+    var recG2A = record.results?.game2?.pointsA || [];
+    var newG2A = recalculated.game2.pointsA || [];
+    var recG2B = record.results?.game2?.pointsB || [];
+    var newG2B = recalculated.game2.pointsB || [];
+    if (!compareArrays(recG2A, newG2A) || !compareArrays(recG2B, newG2B)) {
+        updatePayload['results.game2.pointsA'] = newG2A;
+        updatePayload['results.game2.pointsB'] = newG2B;
+    }
+    
+    var recG3A = record.results?.game3?.pointsA || [];
+    var newG3A = recalculated.game3.pointsA || [];
+    var recG3B = record.results?.game3?.pointsB || [];
+    var newG3B = recalculated.game3.pointsB || [];
+    if (!compareArrays(recG3A, newG3A) || !compareArrays(recG3B, newG3B)) {
+        updatePayload['results.game3.pointsA'] = newG3A;
+        updatePayload['results.game3.pointsB'] = newG3B;
+    }
+    
+    // Player totals
+    if (!deepEqual(record.results?.playerTotals || {}, recalculated.playerTotals || {})) {
+        updatePayload['results.playerTotals'] = recalculated.playerTotals;
+    }
+    
+    // ClinchedAt
+    if (!deepEqual(record.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
+        updatePayload['results.clinchedAt'] = recalculated.clinchedAt;
+    }
+    
+    // Adjusted handicaps
+    var recAdj = record.adjustedHandicaps || {};
+    var newAdj = calculateAdjustedHandicaps(
+        parseDataString(record.f1DataString),
+        parseDataString(record.f2DataString),
+        record.players || [],
+        record.gameInfo?.course?.par || []
+    );
+    if (!deepEqual(recAdj, newAdj)) {
+        updatePayload['adjustedHandicaps'] = newAdj;
+    }
+    
+    // Status
+    if (record.status !== 'completed') {
+        updatePayload['status'] = 'completed';
+    }
+    
+    // Final results
+    var finalTrA = newTrA[17] || 9.5;
+    var finalTrB = newTrB[17] || 9.5;
+    var winner = finalTrA > finalTrB ? 'A' : (finalTrB > finalTrA ? 'B' : 'Tie');
+    updatePayload['finalResults'] = {
+        teamAScore: finalTrA,
+        teamBScore: finalTrB,
+        winner: winner,
+        winnerText: winner === 'A' ? 'Team A Wins!' : winner === 'B' ? 'Team B Wins!' : 'Match Tied!'
+    };
+    
+    updatePayload['updatedAt'] = firebase.firestore.FieldValue.serverTimestamp();
+    updatePayload['results.computedUpToHole'] = 18;
+    updatePayload['results.lastComputedAt'] = new Date().toISOString();
+    
+    progressEl.innerHTML += '<div class="step info">📝 ' + Object.keys(updatePayload).length + ' fields will be updated</div>';
+    progressEl.innerHTML += '<div class="step">💾 Writing to Firestore...</div>';
+    
+    db.collection('historyGames').doc(docId).update(updatePayload)
+        .then(function() {
+            progressEl.innerHTML += '<div class="step done">✅ Firestore updated successfully!</div>';
+            progressEl.innerHTML += '<div class="step done">✅ Record is now perfect with correct derived data.</div>';
+            fixBtn.className = 'fix-btn fix-btn-done';
+            fixBtn.textContent = '✅ Fixed!';
+            fixBtn.disabled = false;
+            backupBtn.className = 'fix-btn fix-btn-backup';
+            backupBtn.textContent = '💾 Backup Only';
+            backupBtn.disabled = false;
+            setStatus('✅ Record fixed successfully! Only changed fields were updated.', 'success');
+            setTimeout(function() { loadAndValidate(); }, 1500);
+        })
+        .catch(function(err) {
+            progressEl.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
+            fixBtn.className = 'fix-btn fix-btn-error';
+            fixBtn.textContent = '❌ Error';
+            fixBtn.disabled = false;
+            backupBtn.className = 'fix-btn fix-btn-backup';
+            backupBtn.textContent = '💾 Backup Only';
+            backupBtn.disabled = false;
+            setStatus('❌ Error fixing record: ' + err.message, 'error');
+            console.error(err);
+        });
+}
+
+// ============================================================
+// V2.01: FIX RECORD — Main entry point with preview
+// ============================================================
+function fixRecord() {
+    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) {
+        setStatus('No record selected', 'error');
+        return;
+    }
+    
+    var record = records[currentRecordIndex];
+    var data = record.rawData;
+    var docId = record.id;
+    
+    if (!confirm('⚠️ This will recalculate ALL derived data from raw data and update the Firestore record.\n\nID: ' + docId + '\nGame: ' + record.originalGameId + '\n\nA backup will be created first.\nYou will see a preview before writing.\nThis action cannot be undone.\n\nContinue?')) {
+        return;
+    }
+    
+    var fixBtn = document.getElementById('fixBtn');
+    var backupBtn = document.getElementById('backupOnlyBtn');
+    var progressEl = document.getElementById('fixProgress');
+    
+    fixBtn.disabled = true;
+    backupBtn.disabled = true;
+    fixBtn.className = 'fix-btn fix-btn-fixing';
+    fixBtn.textContent = '⏳ Calculating...';
+    progressEl.className = 'fix-progress active';
+    progressEl.innerHTML = '<div class="step">📊 Step 1: Parsing raw data...</div>';
+    
+    var f1Scores = parseDataString(data.f1DataString);
+    var f2Scores = parseDataString(data.f2DataString);
+    var players = data.players || [];
+    var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
+    var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
+    
+    if (!f1Scores || !f2Scores) {
+        setStatus('Invalid data strings', 'error');
+        fixBtn.disabled = false;
+        backupBtn.disabled = false;
+        fixBtn.className = 'fix-btn fix-btn-fix';
+        fixBtn.textContent = '🔧 Fix Record';
+        return;
+    }
+    if (players.length === 0) {
+        setStatus('No players found', 'error');
+        fixBtn.disabled = false;
+        backupBtn.disabled = false;
+        fixBtn.className = 'fix-btn fix-btn-fix';
+        fixBtn.textContent = '🔧 Fix Record';
+        return;
+    }
+    
+    progressEl.innerHTML += '<div class="step done">✅ Data parsed</div>';
+    progressEl.innerHTML += '<div class="step">📊 Step 2: Recalculating derived data...</div>';
+    
+    var recalculated = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar);
+    
+    progressEl.innerHTML += '<div class="step done">✅ Recalculated</div>';
+    progressEl.innerHTML += '<div class="step">📊 Step 3: Creating backup...</div>';
+    
+    // Create backup first
+    createBackup(record, progressEl)
+        .then(function(backupId) {
+            progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
+            progressEl.innerHTML += '<div class="step">📊 Step 4: Comparing changes...</div>';
+            
+            var previewData = buildFixPreview(record, recalculated);
+            
+            progressEl.innerHTML += '<div class="step info">Changes: ' + previewData.changes.length + ', Unchanged: ' + previewData.unchanged.length + ', Not Touched: ' + previewData.notTouched.length + '</div>';
+            
+            // Close progress and show preview
+            progressEl.className = 'fix-progress';
+            fixBtn.disabled = false;
+            backupBtn.disabled = false;
+            fixBtn.className = 'fix-btn fix-btn-fix';
+            fixBtn.textContent = '🔧 Fix Record';
+            
+            // Show the preview modal
+            showFixPreview(record, recalculated, previewData, backupId);
+        })
+        .catch(function(err) {
+            progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
+            fixBtn.className = 'fix-btn fix-btn-error';
+            fixBtn.textContent = '❌ Error';
+            fixBtn.disabled = false;
+            backupBtn.className = 'fix-btn fix-btn-backup';
+            backupBtn.textContent = '💾 Backup Only';
+            backupBtn.disabled = false;
+            setStatus('❌ Backup failed: ' + err.message, 'error');
+        });
+}
+
+// ============================================================
+// CREATE BACKUP (shared)
 // ============================================================
 function createBackup(record, progressEl) {
     return new Promise(function(resolve, reject) {
@@ -1397,106 +2028,55 @@ function createBackup(record, progressEl) {
         backupData._backupOriginalId = docId;
         backupData._backupOriginalCollection = 'historyGames';
         backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v2.00';
+        backupData._backupReason = 'Pre-fix backup from validator v2.01';
         db.collection('backupFolder').doc(backupId).set(backupData)
-            .then(function() { progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>'; resolve(backupId); })
-            .catch(function(err) { progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>'; reject(err); });
+            .then(function() {
+                progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
+                resolve(backupId);
+            })
+            .catch(function(err) {
+                progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
+                reject(err);
+            });
     });
 }
 
-function fixRecord() {
-    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) { setStatus('No record selected', 'error'); return; }
-    var record = records[currentRecordIndex];
-    var data = record.rawData;
-    var docId = record.id;
-    if (!confirm('⚠️ This will RECALCULATE ALL derived data from raw data and update the Firestore record.\n\nID: ' + docId + '\nGame: ' + record.originalGameId + '\nStatus: ' + data.status + ' → completed\n\nPRESERVES: raw scores, players, course, gameInfo\nRECALCULATES: game1, game2, game3, matchResults, f1IntraMatches, f2IntraMatches, TR, clinchedAt, adjustedHandicaps\n\nUses v2.00 calculation logic (proven correct from v1.20).\n\nA backup will be created before updating.\nThis action cannot be undone. Continue?')) { return; }
-    var fixBtn = document.getElementById('fixBtn');
-    var backupBtn = document.getElementById('backupOnlyBtn');
-    var progressEl = document.getElementById('fixProgress');
-    fixBtn.disabled = true; backupBtn.disabled = true;
-    fixBtn.className = 'fix-btn fix-btn-fixing'; fixBtn.textContent = '⏳ Fixing...';
-    backupBtn.className = 'fix-btn fix-btn-fixing'; backupBtn.textContent = '⏳ ...';
-    progressEl.className = 'fix-progress active'; progressEl.innerHTML = '';
-    
-    createBackup(record, progressEl)
-        .then(function(backupId) {
-            progressEl.innerHTML += '<div class="step">📊 Step 2: Parsing raw data...</div>';
-            var f1Scores = parseDataString(data.f1DataString);
-            var f2Scores = parseDataString(data.f2DataString);
-            var players = data.players || [];
-            var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
-            var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
-            if (!f1Scores || !f2Scores) { throw new Error('Invalid data strings'); }
-            if (players.length === 0) { throw new Error('No players found'); }
-            progressEl.innerHTML += '<div class="step done">✅ Data parsed</div>';
-            
-            progressEl.innerHTML += '<div class="step">📊 Step 3: Recalculating ALL derived data using v2.00 logic...</div>';
-            var results = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar);
-            var adjustedHandicaps = calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar);
-            progressEl.innerHTML += '<div class="step done">✅ All derived data recalculated</div>';
-            
-            progressEl.innerHTML += '<div class="step">📝 Step 4: Building update payload...</div>';
-            var updatePayload = {
-                results: results,
-                adjustedHandicaps: adjustedHandicaps,
-                status: 'completed',
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            };
-            
-            // Add finalResults if available
-            var finalTrA = results.tr.teamA[17] || 9.5;
-            var finalTrB = results.tr.teamB[17] || 9.5;
-            var winner = finalTrA > finalTrB ? 'A' : (finalTrB > finalTrA ? 'B' : 'Tie');
-            updatePayload.finalResults = {
-                teamAScore: finalTrA,
-                teamBScore: finalTrB,
-                winner: winner,
-                winnerText: winner === 'A' ? 'Team A Wins!' : winner === 'B' ? 'Team B Wins!' : 'Match Tied!'
-            };
-            
-            progressEl.innerHTML += '<div class="step done">✅ Update payload built</div>';
-            progressEl.innerHTML += '<div class="step">💾 Step 5: Writing to Firestore...</div>';
-            
-            return db.collection('historyGames').doc(docId).update(updatePayload);
-        })
-        .then(function() {
-            progressEl.innerHTML += '<div class="step done">✅ Firestore updated successfully!</div>';
-            progressEl.innerHTML += '<div class="step done">✅ Record is now perfect with correct derived data.</div>';
-            fixBtn.className = 'fix-btn fix-btn-done'; fixBtn.textContent = '✅ Fixed!'; fixBtn.disabled = false;
-            backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
-            setStatus('✅ Record fixed successfully! All derived data recalculated.', 'success');
-            setTimeout(function() { loadAndValidate(); }, 1500);
-        })
-        .catch(function(err) {
-            progressEl.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
-            fixBtn.className = 'fix-btn fix-btn-error'; fixBtn.textContent = '❌ Error'; fixBtn.disabled = false;
-            backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
-            setStatus('❌ Error fixing record: ' + err.message, 'error');
-            console.error(err);
-        });
-}
-
+// ============================================================
+// BACKUP ONLY
+// ============================================================
 function backupOnly() {
-    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) { setStatus('No record selected', 'error'); return; }
+    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) {
+        setStatus('No record selected', 'error');
+        return;
+    }
     var record = records[currentRecordIndex];
-    if (!confirm('💾 Create a backup of this record?\n\nID: ' + record.id + '\nGame: ' + record.originalGameId + '\n\nThe backup will be saved to the "backupFolder" collection.')) { return; }
+    if (!confirm('💾 Create a backup of this record?\n\nID: ' + record.id + '\nGame: ' + record.originalGameId + '\n\nThe backup will be saved to the "backupFolder" collection.')) {
+        return;
+    }
     var fixBtn = document.getElementById('fixBtn');
     var backupBtn = document.getElementById('backupOnlyBtn');
     var progressEl = document.getElementById('fixProgress');
-    fixBtn.disabled = true; backupBtn.disabled = true;
-    backupBtn.className = 'fix-btn fix-btn-fixing'; backupBtn.textContent = '⏳ Creating backup...';
-    progressEl.className = 'fix-progress active'; progressEl.innerHTML = '';
+    fixBtn.disabled = true;
+    backupBtn.disabled = true;
+    backupBtn.className = 'fix-btn fix-btn-fixing';
+    backupBtn.textContent = '⏳ Creating backup...';
+    progressEl.className = 'fix-progress active';
+    progressEl.innerHTML = '';
     createBackup(record, progressEl)
         .then(function(backupId) {
             progressEl.innerHTML += '<div class="step done">✅ Backup complete!</div>';
-            backupBtn.className = 'fix-btn fix-btn-done'; backupBtn.textContent = '✅ Backup: ' + backupId;
-            fixBtn.disabled = false; backupBtn.disabled = false;
+            backupBtn.className = 'fix-btn fix-btn-done';
+            backupBtn.textContent = '✅ Backup: ' + backupId;
+            fixBtn.disabled = false;
+            backupBtn.disabled = false;
             setStatus('✅ Backup created: ' + backupId, 'success');
         })
         .catch(function(err) {
             progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
-            backupBtn.className = 'fix-btn fix-btn-error'; backupBtn.textContent = '❌ Error';
-            fixBtn.disabled = false; backupBtn.disabled = false;
+            backupBtn.className = 'fix-btn fix-btn-error';
+            backupBtn.textContent = '❌ Error';
+            fixBtn.disabled = false;
+            backupBtn.disabled = false;
             setStatus('❌ Backup failed: ' + err.message, 'error');
         });
 }
@@ -1507,29 +2087,52 @@ function backupOnly() {
 function loadAndValidate() {
     var select = document.getElementById('recordSelect');
     var index = parseInt(select.value);
-    if (isNaN(index) || index < 0 || index >= records.length) { setStatus('Please select a game', 'warning'); return; }
+    if (isNaN(index) || index < 0 || index >= records.length) {
+        setStatus('Please select a game', 'warning');
+        return;
+    }
     currentRecordIndex = index;
     var data = records[index].rawData;
-    if (!data) { setStatus('No data found', 'error'); return; }
+    if (!data) {
+        setStatus('No data found', 'error');
+        return;
+    }
     gameData = data;
     gameData.id = records[index].id;
     setStatus('Loading: ' + records[index].originalGameId + '... <span class="loader"></span>', 'info');
     document.getElementById('results').style.display = 'none';
     document.getElementById('fixCard').style.display = 'none';
-    try { processGameData(gameData); }
-    catch (err) { setStatus('Error: ' + err.message, 'error'); console.error(err); }
+    try {
+        processGameData(gameData);
+    }
+    catch (err) {
+        setStatus('Error: ' + err.message, 'error');
+        console.error(err);
+    }
 }
 
 function processGameData(data) {
     var f1Scores = parseDataString(data.f1DataString);
     var f2Scores = parseDataString(data.f2DataString);
-    if (!f1Scores || !f2Scores) { setStatus('Invalid data strings', 'error'); return; }
+    if (!f1Scores || !f2Scores) {
+        setStatus('Invalid data strings', 'error');
+        return;
+    }
     var players = data.players || [];
-    if (players.length === 0) { setStatus('No players found', 'error'); return; }
+    if (players.length === 0) {
+        setStatus('No players found', 'error');
+        return;
+    }
     var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
-    if (courseSi.length === 0) { for (var i = 0; i < 18; i++) courseSi[i] = i + 1; setStatus('Warning: No SI data, using 1-18', 'warning'); }
+    if (courseSi.length === 0) {
+        for (var i = 0; i < 18; i++) courseSi[i] = i + 1;
+        setStatus('Warning: No SI data, using 1-18', 'warning');
+    }
     var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
-    if (coursePar.length === 0) { for (var i = 0; i < 18; i++) coursePar[i] = 4; setStatus('Warning: No Par data, using 4 for all holes', 'warning'); }
+    if (coursePar.length === 0) {
+        for (var i = 0; i < 18; i++) coursePar[i] = 4;
+        setStatus('Warning: No Par data, using 4 for all holes', 'warning');
+    }
     
     renderGameInfo(data);
     renderFlightTable(f1Scores, players, 1, 'flight1Table');
@@ -1583,13 +2186,18 @@ function processGameData(data) {
         document.getElementById('fixCard').style.display = 'block';
         var fixBtn = document.getElementById('fixBtn');
         var backupBtn = document.getElementById('backupOnlyBtn');
-        fixBtn.className = 'fix-btn fix-btn-fix'; fixBtn.textContent = '🔧 Fix Record (Recalculate All)'; fixBtn.disabled = false;
-        backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
-        document.getElementById('fixProgress').className = 'fix-progress'; document.getElementById('fixProgress').innerHTML = '';
-        setStatus('⚠️ Record needs fixing. Click "Fix Record" to recalculate all derived data from raw data.', 'warning');
+        fixBtn.className = 'fix-btn fix-btn-fix';
+        fixBtn.textContent = '🔧 Fix Record';
+        fixBtn.disabled = false;
+        backupBtn.className = 'fix-btn fix-btn-backup';
+        backupBtn.textContent = '💾 Backup Only';
+        backupBtn.disabled = false;
+        document.getElementById('fixProgress').className = 'fix-progress';
+        document.getElementById('fixProgress').innerHTML = '';
+        setStatus('⚠️ Record needs fixing. Click "Fix Record" to preview changes before writing.', 'warning');
     } else {
         document.getElementById('fixCard').style.display = 'none';
-        setStatus('✅ Record is valid.', 'success');
+        setStatus('✅ Record is valid. No changes needed.', 'success');
     }
     document.getElementById('fixBtn').onclick = fixRecord;
     document.getElementById('backupOnlyBtn').onclick = backupOnly;
@@ -1787,7 +2395,6 @@ function executeRestore() {
             progressEl.innerHTML = '<div class="step restore">↩️ Copying from backup: ' + selectedBackupId + '...</div>';
             progressEl.innerHTML += '<div class="step restore">📦 Destination: ' + destination + ' → ' + restoredDocId + '</div>';
             
-            // SIMPLE COPY — NO RECALCULATION
             var backupData = JSON.parse(JSON.stringify(selectedBackup.data));
             
             delete backupData._backupTimestamp;
@@ -1903,24 +2510,25 @@ document.querySelectorAll('input[name="restoreDestination"]').forEach(function(r
 fetchRecords();
 loadBackupList();
 updateDestPreviews();
-console.log('🔬 Game Data Validator v2.00 loaded.');
+console.log('🔬 Game Data Validator v2.01 loaded.');
 console.log('📌 Restore: SIMPLE COPY — NO recalculation.');
-console.log('📌 Fix: Recalculates derived data using v1.20 logic (proven correct).');
+console.log('📌 Fix: Preview before writing, only updates changed fields.');
+console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched.');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 2.00
-KEY CHANGES from v1.20:
-   - ADDED: Restore from backup functionality (simple copy, no recalculation)
-   - ADDED: Fix Record functionality using v1.20's self-contained calculations
-   - ADDED: buildCompleteResultsFromRawData() - builds complete results object
-   - ADDED: Backup Only functionality
-   - PRESERVED: All v1.20 calculation logic (T-1, T-2, Strk, Match Game, TR, Clinch)
-   - PRESERVED: v1.34 restore logic (simple copy, no modification)
-   - COMBINED: Best of v1.20 (calculations) + v1.34 (restore) + fix functionality
+VERSION: 2.01
+KEY CHANGES from v2.00:
+   - ADDED: Preview screen before fixing — shows all values to be written
+   - ADDED: Compare function — only updates fields that are different
+   - ADDED: Safety check — if record is already correct, show message and do nothing
+   - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
+   - PRESERVED: All v2.00 calculation logic and restore functionality
+   - IMPROVED: Selective update — only writes changed fields (not full document)
+   - IMPROVED: Clear visual comparison with color coding (red=mismatch, green=match, blue=not touched)
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
