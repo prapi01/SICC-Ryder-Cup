@@ -1,12 +1,15 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.38
-KEY CHANGES from v1.37:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.37
+VERSION: 1.40
+KEY CHANGES from v1.38:
+   - REDESIGNED: Ultra-minimalist, professional look
+   - REMOVED: All icons (emoji) from buttons, headers, and form elements
+   - CHANGED: Clean typography, subtle borders, refined spacing
+   - CHANGED: Form elements use clean, minimal styling
+   - CHANGED: Buttons use text-only labels (Cancel / Commit)
+   - CHANGED: Player rows use cleaner layout with subtle dividers
+   - CHANGED: Format options use clean pill-style selection
+   - PRESERVED: All functionality from v1.38
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -28,177 +31,284 @@ STATUS: Ready for integration
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-            background: #000000; 
-            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; 
-            color: #ffffff; 
+            background: #0a0a0a; 
+            font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif; 
+            color: #e0e0e0; 
             padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 20px) 20px env(safe-area-inset-left, 20px);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .container { max-width: 500px; margin: 0 auto; }
+        .container { max-width: 420px; width: 100%; margin: 0 auto; }
         
         .version-tag { 
             position: fixed; 
-            top: max(8px, env(safe-area-inset-top, 8px)); 
-            right: max(8px, env(safe-area-inset-right, 8px)); 
-            font-size: 0.65rem; 
+            top: max(12px, env(safe-area-inset-top, 12px)); 
+            right: max(12px, env(safe-area-inset-right, 12px)); 
+            font-size: 0.6rem; 
             color: #4caf50; 
-            background: rgba(0,0,0,0.6); 
+            background: rgba(0,0,0,0.5); 
             padding: 2px 10px; 
-            border-radius: 16px;
+            border-radius: 12px;
             font-family: monospace;
             z-index: 1000;
-            opacity: 0.8;
+            letter-spacing: 0.3px;
         }
         
         .device-tag {
             position: fixed;
-            top: max(8px, env(safe-area-inset-top, 8px));
-            left: max(8px, env(safe-area-inset-left, 8px));
-            font-size: 0.55rem;
+            top: max(12px, env(safe-area-inset-top, 12px));
+            left: max(12px, env(safe-area-inset-left, 12px));
+            font-size: 0.5rem;
             color: #4caf50;
-            background: rgba(0,0,0,0.4);
+            background: rgba(0,0,0,0.3);
             padding: 2px 8px;
-            border-radius: 12px;
+            border-radius: 10px;
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
-            letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 24px; margin-top: 20px; }
-        .title { font-size: 1.5rem; font-weight: 700; color: #4caf50; }
-        .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        .header { text-align: center; margin-bottom: 24px; margin-top: 4px; }
+        .title { font-size: 1.2rem; font-weight: 600; color: #e0e0e0; letter-spacing: -0.3px; }
+        .subtitle { font-size: 0.6rem; color: #444; margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
         
-        .card { background: #111; border-radius: 20px; padding: 20px; margin-bottom: 16px; border: 1px solid #333; }
-        .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: #4caf50; border-left: 2px solid #4caf50; padding-left: 10px; }
+        .card { 
+            background: transparent; 
+            border: 1px solid #1a1a1a; 
+            border-radius: 10px; 
+            padding: 16px; 
+            margin-bottom: 12px; 
+        }
         
-        .date-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-        .date-label { font-size: 0.9rem; color: #888; }
-        .date-input { background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 10px 16px; color: #fff; font-size: 1rem; }
-        .error-msg { color: #ff6b6b; font-size: 0.75rem; margin-top: 8px; }
+        .card-title { 
+            font-size: 0.7rem; 
+            font-weight: 500; 
+            color: #666; 
+            margin-bottom: 12px; 
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
         
-        .course-select { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 30px; padding: 12px 16px; color: #fff; font-size: 1rem; }
+        .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+        .form-row label { font-size: 0.7rem; color: #666; min-width: 60px; }
+        .form-row input,
+        .form-row select {
+            background: #0a0a0a;
+            border: 1px solid #1a1a1a;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            flex: 1;
+            min-width: 80px;
+            transition: border-color 0.2s ease;
+        }
+        .form-row input:focus,
+        .form-row select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .form-row input.date-input { flex: 0 0 140px; }
+        .form-row .error-msg { color: #ff6b6b; font-size: 0.65rem; margin-top: 4px; width: 100%; }
         
-        .starting-hole-toggle {
+        /* Starting Hole Toggle */
+        .hole-toggle-group {
             display: flex;
-            gap: 12px;
+            gap: 6px;
             flex-wrap: wrap;
-            margin-bottom: 12px;
+            margin-bottom: 4px;
         }
         .hole-toggle-btn {
             flex: 1;
-            padding: 12px 16px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 40px;
+            min-width: 60px;
+            padding: 8px 12px;
+            background: transparent;
+            border: 1px solid #1a1a1a;
+            border-radius: 6px;
             cursor: pointer;
             text-align: center;
-            font-weight: 600;
-            font-size: 0.9rem;
-            color: #ccc;
-            transition: all 0.2s;
+            font-weight: 400;
+            font-size: 0.75rem;
+            color: #666;
+            transition: all 0.15s ease;
+        }
+        .hole-toggle-btn:hover { border-color: #2a2a2a; color: #888; }
+        .hole-toggle-btn.active {
+            border-color: #4caf50;
+            color: #4caf50;
+            background: rgba(76,175,80,0.05);
+        }
+        .hole-toggle-btn.shotgun-btn {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 4px;
         }
-        .hole-toggle-btn.active {
-            background: #1a3a1a;
-            border-color: #4caf50;
-            color: #4caf50;
-        }
-        .hole-toggle-btn.shotgun-btn {
-            flex: 1.2;
-            gap: 2px;
-        }
         .inline-shotgun-select {
             background: transparent;
             border: none;
             color: inherit;
-            font-weight: 600;
-            font-size: 0.9rem;
+            font-weight: 400;
+            font-size: 0.75rem;
             cursor: pointer;
-            width: 50px;
+            width: 40px;
             text-align: center;
+            padding: 2px;
         }
-        .inline-shotgun-select:focus {
-            outline: none;
-        }
-        .inline-shotgun-select option {
-            background: #1a1a1a;
-            color: #fff;
-        }
+        .inline-shotgun-select:focus { outline: none; }
+        .inline-shotgun-select option { background: #0a0a0a; color: #e0e0e0; }
         
-        .format-group {
-            margin: 16px 0 8px 0;
-        }
+        .info-note { font-size: 0.6rem; color: #333; margin-top: 6px; text-align: center; letter-spacing: 0.2px; }
+        
+        /* Format Options */
+        .format-group { margin: 4px 0; }
         .format-option {
             display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            padding: 12px;
-            background: #0a0a0a;
-            border-radius: 12px;
-            margin-bottom: 10px;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: transparent;
+            border-radius: 6px;
+            margin-bottom: 4px;
             cursor: pointer;
-            border: 1px solid #333;
-            transition: all 0.2s;
+            border: 1px solid #1a1a1a;
+            transition: all 0.15s ease;
         }
-        .format-option.selected {
-            border-color: #4caf50;
-            background: #1a3a1a;
-        }
-        .format-option input {
-            margin-top: 2px;
-            width: 18px;
-            height: 18px;
+        .format-option:hover { border-color: #2a2a2a; }
+        .format-option.selected { border-color: #4caf50; background: rgba(76,175,80,0.04); }
+        .format-option input[type="radio"] {
+            accent-color: #4caf50;
+            width: 14px;
+            height: 14px;
             cursor: pointer;
+            flex-shrink: 0;
         }
         .format-option label {
             flex: 1;
             cursor: pointer;
-            font-weight: 500;
+            font-size: 0.75rem;
         }
-        .format-title {
-            font-weight: 700;
-            margin-bottom: 4px;
+        .format-title { font-weight: 500; color: #e0e0e0; display: block; }
+        .format-desc { font-size: 0.6rem; color: #555; display: block; margin-top: 1px; }
+        
+        /* Player Rows */
+        .player-row { 
+            background: transparent; 
+            border-bottom: 1px solid #141414; 
+            padding: 10px 0; 
         }
-        .format-desc {
-            font-size: 0.7rem;
-            color: #888;
+        .player-row:last-child { border-bottom: none; }
+        .player-line1 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+        .player-line1 .name-group { display: flex; align-items: center; gap: 6px; flex: 2; }
+        .player-line1 input { 
+            background: #0a0a0a; 
+            border: 1px solid #1a1a1a; 
+            border-radius: 6px; 
+            padding: 6px 10px; 
+            color: #e0e0e0; 
+            font-size: 0.8rem; 
+            width: 100px; 
+            transition: border-color 0.2s ease;
+        }
+        .player-line1 input:focus { outline: none; border-color: #4caf50; }
+        .player-line1 .label-display { 
+            background: #1a1a1a; 
+            color: #666; 
+            padding: 2px 8px; 
+            border-radius: 4px; 
+            font-size: 0.6rem; 
+            font-weight: 500; 
+        }
+        .player-line1 .hcp-group { 
+            display: flex; 
+            align-items: center; 
+            gap: 4px; 
+            background: #0a0a0a; 
+            padding: 2px 10px; 
+            border-radius: 6px; 
+            border: 1px solid #1a1a1a;
+        }
+        .player-line1 .hcp-group label { font-size: 0.6rem; color: #555; }
+        .player-line1 .hcp-group input { 
+            width: 40px; 
+            background: transparent; 
+            border: none; 
+            color: #e0e0e0; 
+            font-size: 0.8rem; 
+            text-align: center; 
+            padding: 2px 0;
+        }
+        .player-line1 .hcp-group input:focus { outline: none; }
+        .player-line2 { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+        .player-line2 select { 
+            background: #0a0a0a; 
+            border: 1px solid #1a1a1a; 
+            border-radius: 6px; 
+            padding: 4px 10px; 
+            color: #e0e0e0; 
+            font-size: 0.7rem; 
+            cursor: pointer;
+            transition: border-color 0.2s ease;
+        }
+        .player-line2 select:focus { outline: none; border-color: #4caf50; }
+        
+        .btn { 
+            padding: 10px 20px; 
+            border-radius: 6px; 
+            font-weight: 400; 
+            font-size: 0.85rem; 
+            text-align: center; 
+            cursor: pointer; 
+            border: 1px solid; 
+            transition: all 0.15s ease;
+            background: transparent;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { border-color: #4caf50; color: #4caf50; }
+        .btn-primary:hover { background: rgba(76,175,80,0.04); }
+        .btn-secondary { border-color: #2a2a2a; color: #666; }
+        .btn-secondary:hover { border-color: #444; color: #888; }
+        
+        .button-group { display: flex; gap: 10px; margin-top: 16px; }
+        .button-group .btn { flex: 1; }
+        
+        .back-link { 
+            text-align: center; 
+            margin-top: 16px; 
+            padding: 12px; 
+            color: #444; 
+            cursor: pointer; 
+            border-top: 1px solid #141414; 
+            font-size: 0.75rem; 
+            transition: color 0.15s ease;
+            letter-spacing: 0.2px;
+        }
+        .back-link:hover { color: #666; }
+        
+        .success-msg { color: #4caf50; font-size: 0.75rem; text-align: center; margin-top: 8px; display: none; }
+        .edit-badge { 
+            background: #1a1a1a; 
+            color: #888; 
+            padding: 1px 10px; 
+            border-radius: 4px; 
+            font-size: 0.55rem; 
+            margin-left: 6px; 
+            display: inline-block; 
+            font-weight: 400; 
         }
         
-        .player-row { background: #0a0a0a; border-radius: 12px; padding: 10px; margin-bottom: 8px; }
-        .player-line1 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
-        .player-name-group { display: flex; align-items: center; gap: 6px; flex: 2; }
-        .player-name-input { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 8px 10px; color: #fff; font-size: 0.85rem; width: 110px; }
-        .player-label-display { background: #1a3a1a; color: #4caf50; padding: 4px 8px; border-radius: 14px; font-size: 0.7rem; font-weight: 600; }
-        .player-hcp-group { display: flex; align-items: center; gap: 4px; background: #1a1a1a; padding: 4px 10px; border-radius: 20px; }
-        .hcp-label { font-size: 0.65rem; color: #888; }
-        .player-hcp-input { width: 45px; background: transparent; border: none; color: #fff; font-size: 0.85rem; text-align: center; }
-        .player-line2 { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
-        .team-select, .flight-select { background: #1a1a1a; border: 1px solid #333; border-radius: 20px; padding: 6px 12px; color: #fff; font-size: 0.8rem; cursor: pointer; }
+        .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
-        .btn { padding: 14px 20px; border-radius: 40px; font-weight: 600; font-size: 1rem; text-align: center; cursor: pointer; border: none; margin: 5px; }
-        .btn-primary { background: #1a3a1a; color: #4caf50; border: 1px solid #4caf50; }
-        .btn-secondary { background: #1a1a1a; color: #ccc; border: 1px solid #333; }
-        
-        .button-group { display: flex; gap: 12px; margin-top: 16px; }
-        .back-link { text-align: center; margin-top: 20px; padding: 16px; color: #888; cursor: pointer; border-top: 1px solid #333; }
-        .loading { text-align: center; padding: 40px; color: #888; }
-        .success-msg { color: #4caf50; font-size: 0.8rem; text-align: center; margin-top: 10px; }
-        
-        .edit-badge { background: #ffaa44; color: #1a1a1a; padding: 2px 10px; border-radius: 20px; font-size: 0.7rem; margin-left: 10px; display: inline-block; }
-        
-        .info-note { font-size: 0.7rem; color: #ffaa44; margin-top: 8px; text-align: center; }
-        
-        /* Anchor Selection Modal - cannot be bypassed */
+        /* Anchor Modal */
         .modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0,0,0,0.95);
+            background: rgba(0,0,0,0.92);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -206,84 +316,81 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         .anchor-modal {
-            background: #1a1a1a;
-            border-radius: 28px;
+            background: #111;
+            border-radius: 16px;
             padding: 28px;
-            max-width: 360px;
+            max-width: 340px;
             width: 90%;
             text-align: center;
-            border: 2px solid #ffaa44;
+            border: 1px solid #2a2a2a;
         }
         .anchor-modal-title {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #ffaa44;
-            margin-bottom: 16px;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #e0e0e0;
+            margin-bottom: 4px;
+            letter-spacing: -0.2px;
         }
         .anchor-modal-message {
-            font-size: 0.85rem;
-            color: #ccc;
-            margin-bottom: 20px;
+            font-size: 0.7rem;
+            color: #666;
+            margin-bottom: 16px;
             line-height: 1.4;
         }
         .anchor-select {
             width: 100%;
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-            padding: 12px;
-            border-radius: 30px;
-            font-size: 1rem;
-            margin-bottom: 20px;
+            background: #0a0a0a;
+            border: 1px solid #2a2a2a;
+            color: #e0e0e0;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-bottom: 16px;
             cursor: pointer;
         }
-        .anchor-select option {
-            background: #1a1a1a;
-            color: #fff;
-        }
+        .anchor-select:focus { outline: none; border-color: #4caf50; }
+        .anchor-select option { background: #0a0a0a; color: #e0e0e0; }
         .anchor-confirm-btn {
-            background: #1a3a1a;
+            background: transparent;
             border: 1px solid #4caf50;
             color: #4caf50;
-            padding: 12px 24px;
-            border-radius: 40px;
-            font-size: 1rem;
-            font-weight: 700;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 400;
             cursor: pointer;
             width: 100%;
+            transition: all 0.15s ease;
         }
-        .anchor-confirm-btn:hover {
-            background: #2a4a2a;
-        }
+        .anchor-confirm-btn:hover { background: rgba(76,175,80,0.04); }
+        .anchor-confirm-btn:active { transform: scale(0.98); }
+        
+        .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a1a1a; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
 <div class="container" id="app">
-    <div class="loading">Loading...</div>
+    <div class="loading">Loading</div>
 </div>
-<div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.38</div>
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.40</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.38
+// FILE: setup-game.html - VERSION 1.40
 
-// ============================================================
-// Apply user settings IMMEDIATELY before anything else
-// ============================================================
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
 } else {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.38";
-var CACHE_KEY = "setup_game_version_v138";
+var VERSION = "1.40";
+var CACHE_KEY = "setup_game_version_v140";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
-
-// v1.37: Preserve ALL existing URL parameters
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
+    
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
@@ -292,22 +399,13 @@ if (storedVersion !== VERSION) {
     window.location.href = newUrl;
 }
 
-// Firebase already initialized in firebase-config.js
 var db = firebase.firestore();
 var firestoreReady = true;
 var deviceSession = null;
 
-// ============================================================
-// v1.27: Dirty state tracking for edit mode
-// ============================================================
 var isDirty = false;
 var initialFormState = null;
 var beforeUnloadHandlerAttached = false;
-
-// ============================================================
-// Generate Short Game ID
-// Format: GM_YYMMDD_HHMM_XX
-// ============================================================
 
 function generateGameId() {
     var now = new Date();
@@ -322,50 +420,32 @@ function generateGameId() {
     return 'GM_' + yymmdd + '_' + hhmm + '_' + random;
 }
 
-// ============================================================
-// v1.29: AUTO-ARCHIVE OLD GAMES
-// - 90+ days old: Move to trashGames collection, delete from scheduledGames
-// - 180+ days old: Permanently delete from trashGames
-// ============================================================
-
 function archiveOldGames() {
     if (!firestoreReady) return;
     
     var today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // 90 days ago
     var ninetyDaysAgo = new Date(today);
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     var ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
     
-    // 180 days ago
     var oneEightyDaysAgo = new Date(today);
     oneEightyDaysAgo.setDate(oneEightyDaysAgo.getDate() - 180);
     var oneEightyDaysAgoStr = oneEightyDaysAgo.toISOString().split('T')[0];
     
-    // Step 1: Permanently delete games older than 180 days from trashGames
-    console.log("Checking trashGames for games older than 180 days (date < " + oneEightyDaysAgoStr + ")");
     db.collection("trashGames")
         .where("date", "<", oneEightyDaysAgoStr)
         .get()
         .then(function(snapshot) {
             var deletePromises = [];
             snapshot.forEach(function(doc) {
-                console.log("Permanently deleting from trash:", doc.id, "date:", doc.data().date);
                 deletePromises.push(db.collection("trashGames").doc(doc.id).delete());
             });
             return Promise.all(deletePromises);
         })
-        .then(function() {
-            console.log("Permanent deletion from trash complete");
-        })
-        .catch(function(e) {
-            console.warn("Error deleting from trash:", e);
-        });
+        .catch(function(e) { console.warn(e); });
     
-    // Step 2: Move games older than 90 days from scheduledGames to trashGames
-    console.log("Checking scheduledGames for games older than 90 days (date < " + ninetyDaysAgoStr + ")");
     db.collection("scheduledGames")
         .where("date", "<", ninetyDaysAgoStr)
         .get()
@@ -374,34 +454,20 @@ function archiveOldGames() {
             snapshot.forEach(function(doc) {
                 var data = doc.data();
                 var gameId = doc.id;
-                console.log("Moving to trash:", gameId, "date:", data.date);
-                
-                // Add trash metadata
                 data._trashedAt = firebase.firestore.FieldValue.serverTimestamp();
                 data._originalCollection = "scheduledGames";
                 data._originalId = gameId;
                 
-                // Write to trashGames
                 var movePromise = db.collection("trashGames").doc(gameId).set(data)
                     .then(function() {
-                        // Delete from scheduledGames
                         return db.collection("scheduledGames").doc(gameId).delete();
                     });
                 movePromises.push(movePromise);
             });
             return Promise.all(movePromises);
         })
-        .then(function() {
-            console.log("Old games moved to trash complete");
-        })
-        .catch(function(e) {
-            console.warn("Error moving games to trash:", e);
-        });
+        .catch(function(e) { console.warn(e); });
 }
-
-// ============================================================
-// DEFAULT PLAYERS
-// ============================================================
 
 var HARDCODED_FALLBACK_PLAYERS = [
     { name: "Ang C H", handicap: 1, team: "A", flight: 1 },
@@ -415,7 +481,7 @@ var HARDCODED_FALLBACK_PLAYERS = [
 ];
 
 function generateLabel(name) {
-    if (!name) return "???";
+    if (!name) return "?";
     var parts = name.trim().split(/\s+/);
     if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
     if (parts.length === 2) return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
@@ -447,42 +513,19 @@ function rotateDataString(naturalData, startingHole) {
 }
 
 function initializeEmptyResults() {
-    var emptyResults = {
+    return {
         version: 1,
-        game1: {
-            matches: {},
-            pointsA: new Array(18).fill(8),
-            pointsB: new Array(18).fill(8)
-        },
+        game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
         game2: {
-            flight1: {
-                leader: new Array(18).fill("AS"),
-                cumulativePoints: new Array(18).fill(0)
-            },
-            flight2: {
-                leader: new Array(18).fill("AS"),
-                cumulativePoints: new Array(18).fill(0)
-            },
-            pointsA: new Array(18).fill(1),
-            pointsB: new Array(18).fill(1)
+            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
+            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
+            pointsA: new Array(18).fill(1), pointsB: new Array(18).fill(1)
         },
-        game3: {
-            leader: new Array(18).fill("AS"),
-            nettA: new Array(18).fill(0),
-            nettB: new Array(18).fill(0),
-            pointsA: new Array(18).fill(0.5),
-            pointsB: new Array(18).fill(0.5)
-        },
-        tr: {
-            teamA: new Array(18).fill(null),
-            teamB: new Array(18).fill(null),
-            teamAGreen: new Array(18).fill(false),
-            teamBGreen: new Array(18).fill(false)
-        },
+        game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
+        tr: { teamA: new Array(18).fill(null), teamB: new Array(18).fill(null), teamAGreen: new Array(18).fill(false), teamBGreen: new Array(18).fill(false) },
         computedUpToHole: 0,
         lastComputedAt: null
     };
-    return emptyResults;
 }
 
 function displayDeviceId() {
@@ -505,10 +548,6 @@ var state = {
     teamGameFormat: "tournament"
 };
 
-// ============================================================
-// v1.27: Dirty state tracking functions
-// ============================================================
-
 function captureInitialFormState() {
     var datePicker = document.getElementById("datePicker");
     var courseSelect = document.getElementById("courseSelect");
@@ -528,14 +567,12 @@ function captureInitialFormState() {
     };
     
     isDirty = false;
-    console.log("[DIRTY] Initial state captured");
 }
 
 function checkForChanges() {
     if (!state.isEditMode) return false;
     
     var datePicker = document.getElementById("datePicker");
-    var courseSelect = document.getElementById("courseSelect");
     
     var currentDate = datePicker ? datePicker.value : "";
     var currentCourseId = state.selectedCourseId;
@@ -562,17 +599,12 @@ function checkForChanges() {
         }
     }
     
-    var wasDirty = isDirty;
     isDirty = (currentDate !== initialFormState?.date ||
                currentCourseId !== initialFormState?.courseId ||
                currentStartingHole !== initialFormState?.startingHole ||
                currentStartingHoleType !== initialFormState?.startingHoleType ||
                currentTeamGameFormat !== initialFormState?.teamGameFormat ||
                playersChanged);
-    
-    if (wasDirty !== isDirty) {
-        console.log("[DIRTY] Changed:", isDirty);
-    }
     
     return isDirty;
 }
@@ -590,33 +622,17 @@ function attachBeforeUnloadHandler() {
     beforeUnloadHandlerAttached = true;
 }
 
-// ============================================================
-// Modified goBack function with dirty check - v1.28: Uses Modal.confirmWithThreeButtons
-// ============================================================
-
 function goBack() {
     if (state.isEditMode && checkForChanges()) {
-        // v1.28: Use standard Modal.confirmWithThreeButtons
         Modal.confirmWithThreeButtons(
             "You have unsaved changes.",
-            function() {
-                // UPDATE & SAVE - save and exit
-                commitGame();
-            },
-            function() {
-                // DISCARD - discard changes and exit
-                isDirty = false;
-                window.location.href = "manage-games.html";
-            },
-            function() {
-                // CANCEL - stay on page
-                console.log("Cancel - staying on edit page");
-            },
-            "UPDATE & SAVE",
-            "DISCARD"
+            function() { commitGame(); },
+            function() { isDirty = false; window.location.href = "manage-games.html"; },
+            function() { console.log("Cancel - staying on edit page"); },
+            "Update & Save",
+            "Discard"
         );
     } else {
-        // No changes, exit directly
         if (state.isEditMode) {
             window.location.href = "manage-games.html";
         } else {
@@ -627,15 +643,8 @@ function goBack() {
 
 function loadDefaultPlayers(callback) {
     if (!firestoreReady) {
-        console.warn("Firebase not ready, using fallback");
         state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
-            return {
-                name: p.name,
-                handicap: p.handicap,
-                team: p.team,
-                flight: p.flight,
-                label: generateLabel(p.name)
-            };
+            return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: generateLabel(p.name) };
         });
         if (callback) callback();
         return;
@@ -646,49 +655,26 @@ function loadDefaultPlayers(callback) {
             if (doc.exists && doc.data().players && doc.data().players.length === 8) {
                 var savedPlayers = doc.data().players;
                 state.players = savedPlayers.map(function(p) {
-                    return {
-                        name: p.name,
-                        handicap: p.handicap,
-                        team: p.team,
-                        flight: p.flight,
-                        label: generateLabel(p.name)
-                    };
+                    return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: generateLabel(p.name) };
                 });
-                console.log("Loaded default players from Firebase");
             } else {
-                console.log("No default players found, using fallback");
                 state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
-                    return {
-                        name: p.name,
-                        handicap: p.handicap,
-                        team: p.team,
-                        flight: p.flight,
-                        label: generateLabel(p.name)
-                    };
+                    return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: generateLabel(p.name) };
                 });
             }
             if (callback) callback();
         })
         .catch(function(e) {
-            console.warn("Error loading default players:", e);
+            console.warn(e);
             state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
-                return {
-                    name: p.name,
-                    handicap: p.handicap,
-                    team: p.team,
-                    flight: p.flight,
-                    label: generateLabel(p.name)
-                };
+                return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: generateLabel(p.name) };
             });
             if (callback) callback();
         });
 }
 
 function saveAsDefaultPlayers(players, callback) {
-    if (!firestoreReady) {
-        if (callback) callback(false);
-        return;
-    }
+    if (!firestoreReady) { if (callback) callback(false); return; }
     
     var playersToSave = [...players];
     playersToSave.sort(function(a, b) {
@@ -698,22 +684,16 @@ function saveAsDefaultPlayers(players, callback) {
     });
     
     var playersForStorage = playersToSave.map(function(p) {
-        return {
-            name: p.name,
-            handicap: p.handicap,
-            team: p.team,
-            flight: p.flight
-        };
+        return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight };
     });
     
     db.collection("playerInformation").doc("defaultPlayers").set({
         players: playersForStorage,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(function() {
-        console.log("Default players saved to Firebase");
         if (callback) callback(true);
     }).catch(function(e) {
-        console.error("Error saving default players:", e);
+        console.error(e);
         if (callback) callback(false);
     });
 }
@@ -737,30 +717,17 @@ function loadEditMode(callback) {
             
             if (gameData.startingHole) {
                 state.startingHole = gameData.startingHole;
-                if (state.startingHole === 1) {
-                    state.startingHoleType = "hole1";
-                } else if (state.startingHole === 10) {
-                    state.startingHoleType = "hole10";
-                } else {
-                    state.startingHoleType = "shotgun";
-                }
+                if (state.startingHole === 1) state.startingHoleType = "hole1";
+                else if (state.startingHole === 10) state.startingHoleType = "hole10";
+                else state.startingHoleType = "shotgun";
             }
             
-            if (gameData.teamGameFormat) {
-                state.teamGameFormat = gameData.teamGameFormat;
-            } else {
-                state.teamGameFormat = "tournament";
-            }
+            if (gameData.teamGameFormat) state.teamGameFormat = gameData.teamGameFormat;
+            else state.teamGameFormat = "tournament";
             
             if (gameData.players && gameData.players.length === 8) {
                 state.players = gameData.players.map(function(p) {
-                    return {
-                        name: p.name,
-                        handicap: p.handicap,
-                        team: p.team,
-                        flight: p.flight,
-                        label: generateLabel(p.name)
-                    };
+                    return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: generateLabel(p.name) };
                 });
             } else {
                 loadDefaultPlayers(callback);
@@ -779,7 +746,7 @@ function loadEditMode(callback) {
 
 function loadCourses(callback) {
     if (!firestoreReady) {
-        document.getElementById("app").innerHTML = '<div class="loading">Firebase connection failed. Please check internet.</div>';
+        document.getElementById("app").innerHTML = '<div class="loading">Connection failed</div>';
         return;
     }
     
@@ -789,11 +756,7 @@ function loadCourses(callback) {
             courses.push({ id: doc.id, name: doc.data().name, par: doc.data().par, si: doc.data().si });
         });
         courses.sort(function(a, b) {
-            var nameA = a.name.toLowerCase();
-            var nameB = b.name.toLowerCase();
-            if (nameA < nameB) return -1;
-            if (nameA > nameB) return 1;
-            return 0;
+            return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
         });
         state.courses = courses;
         
@@ -860,31 +823,19 @@ function validateDate(dateStr) {
     maxDate.setMonth(maxDate.getMonth() + 12);
     maxDate.setHours(0, 0, 0, 0);
     
-    if (selectedDate < today) {
-        return "Date must be today or in the future";
-    }
-    if (selectedDate > maxDate) {
-        return "Date cannot be more than 12 months in the future";
-    }
+    if (selectedDate < today) return "Date must be today or in the future";
+    if (selectedDate > maxDate) return "Date cannot be more than 12 months in the future";
     return null;
 }
 
 function setStartingHole(type, value) {
     state.startingHoleType = type;
-    if (type === "hole1") {
-        state.startingHole = 1;
-    } else if (type === "hole10") {
-        state.startingHole = 10;
-    } else if (type === "shotgun") {
-        state.startingHole = value || 1;
-    }
+    if (type === "hole1") state.startingHole = 1;
+    else if (type === "hole10") state.startingHole = 10;
+    else if (type === "shotgun") state.startingHole = value || 1;
     if (state.isEditMode) checkForChanges();
     render();
 }
-
-// ============================================================
-// Anchor Selection Modal (from v1.23)
-// ============================================================
 
 function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
     var optionsHtml = '';
@@ -895,12 +846,12 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
     var modalHtml = `
         <div class="modal-overlay" id="anchorSelectModal" style="z-index: 10001;">
             <div class="anchor-modal">
-                <div class="anchor-modal-title">🏌️ SELECT ANCHOR</div>
-                <div class="anchor-modal-message">We have ${zeroHcpPlayers.length} players with 0 handicap.<br>Please select the Anchor for today's game.</div>
+                <div class="anchor-modal-title">Select Anchor</div>
+                <div class="anchor-modal-message">${zeroHcpPlayers.length} players with 0 handicap. Select the Anchor for today's game.</div>
                 <select id="anchorSelect" class="anchor-select">
                     ${optionsHtml}
                 </select>
-                <button id="anchorConfirmBtn" class="anchor-confirm-btn">✓ CONFIRM ANCHOR</button>
+                <button id="anchorConfirmBtn" class="anchor-confirm-btn">Confirm Anchor</button>
             </div>
         </div>
     `;
@@ -920,15 +871,9 @@ function showAnchorSelectionModal(zeroHcpPlayers, onConfirm) {
     });
 }
 
-// ============================================================
-// v1.36: SINGLE Firestore write function - waiting screen stays until redirect
-// ============================================================
-
 function performFirestoreWrite(collectionName, docId, data, successMessage, redirectUrl) {
-    // Show waiting screen IMMEDIATELY before the write
     WaitingScreen.show("Updating game...");
     
-    // FORCE browser to render the waiting screen before starting the write
     return new Promise(function(resolve) {
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
@@ -938,27 +883,21 @@ function performFirestoreWrite(collectionName, docId, data, successMessage, redi
     }).then(function() {
         return db.collection(collectionName).doc(docId).set(data);
     }).then(function() {
-        // v1.36: DO NOT hide waiting screen - keep it visible until redirect
-        // This prevents the edit screen from flashing between write and navigation
-        if (successMessage) {
-            document.getElementById("successMsg").style.display = "block";
-            document.getElementById("successMsg").innerHTML = successMessage;
-        }
+        document.getElementById("successMsg").style.display = "block";
+        document.getElementById("successMsg").innerHTML = successMessage;
         setTimeout(function() {
             window.location.href = redirectUrl;
         }, 1500);
     }).catch(function(e) {
-        WaitingScreen.hide();  // Only hide on error
+        WaitingScreen.hide();
         Modal.alert("Error saving game: " + e.message);
         return Promise.reject(e);
     });
 }
 
 function performFirestoreUpdate(collectionName, docId, data, successMessage, redirectUrl) {
-    // Show waiting screen IMMEDIATELY before the update
     WaitingScreen.show("Updating game...");
     
-    // FORCE browser to render the waiting screen before starting the write
     return new Promise(function(resolve) {
         requestAnimationFrame(function() {
             requestAnimationFrame(function() {
@@ -968,28 +907,19 @@ function performFirestoreUpdate(collectionName, docId, data, successMessage, red
     }).then(function() {
         return db.collection(collectionName).doc(docId).update(data);
     }).then(function() {
-        // v1.36: DO NOT hide waiting screen - keep it visible until redirect
-        // This prevents the edit screen from flashing between write and navigation
-        if (successMessage) {
-            document.getElementById("successMsg").style.display = "block";
-            document.getElementById("successMsg").innerHTML = successMessage;
-        }
+        document.getElementById("successMsg").style.display = "block";
+        document.getElementById("successMsg").innerHTML = successMessage;
         setTimeout(function() {
             window.location.href = redirectUrl;
         }, 1500);
     }).catch(function(e) {
-        WaitingScreen.hide();  // Only hide on error
+        WaitingScreen.hide();
         Modal.alert("Error updating game: " + e.message);
         return Promise.reject(e);
     });
 }
 
-// ============================================================
-// v1.34: commitGame() - PIN for UPDATE only, NO PIN for CREATE
-// ============================================================
-
 function commitGame() {
-    // Validate form first
     var dateInput = document.getElementById("datePicker");
     var selectedDate = dateInput ? dateInput.value : "";
     
@@ -1010,29 +940,19 @@ function commitGame() {
         return;
     }
     
-    // ✅ For EDIT (UPDATE) - require PIN before saving
     if (state.isEditMode) {
         AuthPin.requireAuth('update', state.editingGameId, null, function() {
-            // This callback runs after successful PIN authentication
-            // NO waiting screen here - proceed to anchor/validation first
             proceedWithCommit();
         });
     } else {
-        // ✅ For CREATE (new game) - NO PIN needed
         proceedWithCommit();
     }
 }
-
-// ============================================================
-// v1.34: proceedWithCommit() - anchor selection ONLY, NO waiting screen
-// ============================================================
 
 function proceedWithCommit() {
     var zeroHandicapPlayers = state.players.filter(function(p) { return p.handicap === 0; });
     
     var anchorCallback = function(selectedAnchor) {
-        // All user input complete (PIN done, anchor selected if needed)
-        // Now proceed to save - waiting screen will be shown INSIDE the save function
         if (state.editingGameId) {
             updateExistingGame(selectedAnchor);
         } else {
@@ -1041,10 +961,8 @@ function proceedWithCommit() {
     };
     
     if (zeroHandicapPlayers.length > 1) {
-        // Multiple zero handicap players - need anchor selection FIRST
         showAnchorSelectionModal(zeroHandicapPlayers, anchorCallback);
     } else {
-        // 0 or 1 zero handicap player - no anchor selection needed
         var sortedByHcp = [...state.players].sort(function(a, b) { return a.handicap - b.handicap; });
         var defaultAnchor = sortedByHcp[0];
         anchorCallback(defaultAnchor);
@@ -1060,13 +978,7 @@ function createNewGame(anchorPlayer) {
         date: document.getElementById("datePicker").value,
         course: state.selectedCourseData,
         players: state.players.map(function(p) {
-            return {
-                name: p.name,
-                handicap: p.handicap,
-                team: p.team,
-                flight: p.flight,
-                label: p.label
-            };
+            return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: p.label };
         }),
         status: "scheduled",
         gameType: "real",
@@ -1074,20 +986,9 @@ function createNewGame(anchorPlayer) {
         teamGameFormat: state.teamGameFormat,
         anchor: anchorPlayer.name,
         updatedAt: new Date().toISOString(),
-        f1: {
-            d: rotatedData,
-            se: false,
-            x: false
-        },
-        f2: {
-            d: rotatedData,
-            se: false,
-            x: false
-        },
-        locks: {
-            f1: null,
-            f2: null
-        },
+        f1: { d: rotatedData, se: false, x: false },
+        f2: { d: rotatedData, se: false, x: false },
+        locks: { f1: null, f2: null },
         currentHoleF1: 1,
         currentHoleF2: 1,
         results: emptyResults,
@@ -1096,22 +997,15 @@ function createNewGame(anchorPlayer) {
     
     var newGameId = generateGameId();
     
-    // v1.36: Single Firestore write - waiting screen stays until redirect
-    performFirestoreWrite("scheduledGames", newGameId, gameData, "✓ Game scheduled successfully! Redirecting...", "admin.html")
+    performFirestoreWrite("scheduledGames", newGameId, gameData, "Game scheduled successfully", "admin.html")
         .then(function() {
-            // Save default players in background (don't block redirect)
             saveAsDefaultPlayers(state.players, function(saveSuccess) {
-                if (saveSuccess) {
-                    console.log("Default players updated successfully");
-                } else {
-                    console.warn("Failed to save default players, but game was created");
-                }
+                if (saveSuccess) console.log("Default players updated");
+                else console.warn("Failed to save default players");
             });
             SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
         })
-        .catch(function(e) {
-            // Error already handled in performFirestoreWrite
-        });
+        .catch(function(e) {});
 }
 
 function updateExistingGame(anchorPlayer) {
@@ -1128,19 +1022,12 @@ function updateExistingGame(anchorPlayer) {
                 date: document.getElementById("datePicker").value,
                 course: state.selectedCourseData,
                 players: state.players.map(function(p) {
-                    return {
-                        name: p.name,
-                        handicap: p.handicap,
-                        team: p.team,
-                        flight: p.flight,
-                        label: p.label
-                    };
+                    return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: p.label };
                 }),
                 startingHole: state.startingHole,
                 teamGameFormat: state.teamGameFormat,
                 anchor: anchorPlayer.name,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                
                 f1: existingData.f1 || { d: "", se: false, x: false },
                 f2: existingData.f2 || { d: "", se: false, x: false },
                 results: existingData.results || null,
@@ -1165,11 +1052,9 @@ function updateExistingGame(anchorPlayer) {
             
             var startingHoleChanged = (existingData.startingHole !== state.startingHole);
             if (startingHoleChanged && !courseChanged && existingData.f1 && existingData.f1.d) {
-                // Show confirmation modal FIRST (no waiting screen)
                 Modal.confirm(
                     "Changing starting hole will reset all scores to par. Continue?",
                     function() {
-                        // User confirmed - prepare the update with reset data
                         var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
                         var rotatedData = rotateDataString(naturalData, state.startingHole);
                         updatePayload.f1 = { d: rotatedData, se: false, x: false };
@@ -1178,19 +1063,16 @@ function updateExistingGame(anchorPlayer) {
                         updatePayload.currentHoleF1 = 1;
                         updatePayload.currentHoleF2 = 1;
                         
-                        // v1.36: Single Firestore update - waiting screen stays until redirect
                         performFirestoreUpdate(
                             "scheduledGames",
                             state.editingGameId,
                             updatePayload,
-                            "✓ Game updated successfully! Redirecting...",
+                            "Game updated successfully",
                             "manage-games.html"
                         ).then(function() {
                             SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
                             isDirty = false;
-                        }).catch(function(e) {
-                            // Error already handled in performFirestoreUpdate
-                        });
+                        }).catch(function(e) {});
                     },
                     function() {
                         console.log("Starting hole change cancelled");
@@ -1200,19 +1082,16 @@ function updateExistingGame(anchorPlayer) {
                 return;
             }
             
-            // v1.36: Single Firestore update - waiting screen stays until redirect
             performFirestoreUpdate(
                 "scheduledGames",
                 state.editingGameId,
                 updatePayload,
-                "✓ Game updated successfully! Redirecting...",
+                "Game updated successfully",
                 "manage-games.html"
             ).then(function() {
                 SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
                 isDirty = false;
-            }).catch(function(e) {
-                // Error already handled in performFirestoreUpdate
-            });
+            }).catch(function(e) {});
         })
         .catch(function(e) {
             WaitingScreen.hide();
@@ -1234,14 +1113,6 @@ function onCourseChange(courseId) {
     }
     if (state.isEditMode) checkForChanges();
     render();
-}
-
-function onStartingHoleChange() {
-    if (state.isEditMode) checkForChanges();
-}
-
-function onTeamGameFormatChange(format) {
-    setTeamGameFormat(format);
 }
 
 function render() {
@@ -1270,13 +1141,13 @@ function render() {
         playersHtml += `
             <div class="player-row">
                 <div class="player-line1">
-                    <div class="player-name-group">
-                        <input type="text" class="player-name-input" value="${escapeHtml(p.name)}" data-idx="${originalIdx}" placeholder="Name">
-                        <span class="player-label-display">${escapeHtml(p.label)}</span>
+                    <div class="name-group">
+                        <input type="text" value="${escapeHtml(p.name)}" data-idx="${originalIdx}" placeholder="Name">
+                        <span class="label-display">${escapeHtml(p.label)}</span>
                     </div>
-                    <div class="player-hcp-group">
-                        <span class="hcp-label">Hcp</span>
-                        <input type="number" class="player-hcp-input" value="${p.handicap}" data-idx="${originalIdx}" step="1" min="0" max="54">
+                    <div class="hcp-group">
+                        <label>Hcp</label>
+                        <input type="number" value="${p.handicap}" data-idx="${originalIdx}" step="1" min="0" max="54">
                     </div>
                 </div>
                 <div class="player-line2">
@@ -1300,16 +1171,12 @@ function render() {
     var maxDateStr = maxDate.toISOString().split('T')[0];
     
     var defaultDate;
-    if (state.userSelectedDate) {
-        defaultDate = state.userSelectedDate;
-    } else if (state.isEditMode && state.editDate) {
-        defaultDate = state.editDate;
-    } else {
-        defaultDate = today;
-    }
+    if (state.userSelectedDate) defaultDate = state.userSelectedDate;
+    else if (state.isEditMode && state.editDate) defaultDate = state.editDate;
+    else defaultDate = today;
     
-    var modeTitle = state.isEditMode ? 'EDIT SCHEDULED GAME' : 'SET UP NEW GAME';
-    var modeBadge = state.isEditMode ? '<span class="edit-badge">EDIT MODE</span>' : '';
+    var modeTitle = state.isEditMode ? 'Edit Scheduled Game' : 'Set Up New Game';
+    var modeBadge = state.isEditMode ? '<span class="edit-badge">Edit Mode</span>' : '';
     
     var hole1Class = "hole-toggle-btn" + (state.startingHoleType === "hole1" ? " active" : "");
     var hole10Class = "hole-toggle-btn" + (state.startingHoleType === "hole10" ? " active" : "");
@@ -1322,92 +1189,79 @@ function render() {
     
     var html = `
         <div class="header">
-            <div class="title">📅 ${modeTitle} ${modeBadge}</div>
-            <div class="version">Version ${VERSION}</div>
+            <div class="title">${modeTitle} ${modeBadge}</div>
+            <div class="subtitle">Schedule</div>
         </div>
         
         <div class="card">
-            <div class="card-title">🎯 GAME DATE</div>
-            <div class="date-row">
-                <span class="date-label">Date of Game:</span>
+            <div class="card-title">Game Date</div>
+            <div class="form-row">
+                <label>Date</label>
                 <input type="date" id="datePicker" class="date-input" value="${defaultDate}" min="${today}" max="${maxDateStr}">
             </div>
-            ${state.dateError ? '<div class="error-msg">⚠️ ' + state.dateError + '</div>' : ''}
+            ${state.dateError ? '<div class="form-row"><div class="error-msg">' + state.dateError + '</div></div>' : ''}
         </div>
         
         <div class="card">
-            <div class="card-title">🏟️ COURSE SELECTION</div>
-            <select id="courseSelect" class="course-select">
-                ${courseOptions}
-            </select>
+            <div class="card-title">Course</div>
+            <div class="form-row">
+                <select id="courseSelect" style="width:100%;">
+                    ${courseOptions}
+                </select>
+            </div>
         </div>
         
         <div class="card">
-            <div class="card-title">⛳ STARTING HOLE (SHOTGUN START)</div>
-            <div class="starting-hole-toggle">
+            <div class="card-title">Starting Hole</div>
+            <div class="hole-toggle-group">
                 <div class="${hole1Class}" data-type="hole1">Hole 1</div>
                 <div class="${hole10Class}" data-type="hole10">Hole 10</div>
                 <div class="${shotgunClass}" data-type="shotgun">
                     Shotgun 
                     <select id="shotgunHoleSelect" class="inline-shotgun-select">
-                        <option value="1" ${shotgunSelectValue === 1 ? 'selected' : ''}>1</option>
-                        <option value="2" ${shotgunSelectValue === 2 ? 'selected' : ''}>2</option>
-                        <option value="3" ${shotgunSelectValue === 3 ? 'selected' : ''}>3</option>
-                        <option value="4" ${shotgunSelectValue === 4 ? 'selected' : ''}>4</option>
-                        <option value="5" ${shotgunSelectValue === 5 ? 'selected' : ''}>5</option>
-                        <option value="6" ${shotgunSelectValue === 6 ? 'selected' : ''}>6</option>
-                        <option value="7" ${shotgunSelectValue === 7 ? 'selected' : ''}>7</option>
-                        <option value="8" ${shotgunSelectValue === 8 ? 'selected' : ''}>8</option>
-                        <option value="9" ${shotgunSelectValue === 9 ? 'selected' : ''}>9</option>
-                        <option value="10" ${shotgunSelectValue === 10 ? 'selected' : ''}>10</option>
-                        <option value="11" ${shotgunSelectValue === 11 ? 'selected' : ''}>11</option>
-                        <option value="12" ${shotgunSelectValue === 12 ? 'selected' : ''}>12</option>
-                        <option value="13" ${shotgunSelectValue === 13 ? 'selected' : ''}>13</option>
-                        <option value="14" ${shotgunSelectValue === 14 ? 'selected' : ''}>14</option>
-                        <option value="15" ${shotgunSelectValue === 15 ? 'selected' : ''}>15</option>
-                        <option value="16" ${shotgunSelectValue === 16 ? 'selected' : ''}>16</option>
-                        <option value="17" ${shotgunSelectValue === 17 ? 'selected' : ''}>17</option>
-                        <option value="18" ${shotgunSelectValue === 18 ? 'selected' : ''}>18</option>
+                        ${[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(function(h) {
+                            return '<option value="' + h + '" ' + (shotgunSelectValue === h ? 'selected' : '') + '>' + h + '</option>';
+                        }).join('')}
                     </select>
                 </div>
             </div>
-            <div class="info-note">💡 Play will begin at selected hole. Scorecard will show holes in play order.</div>
+            <div class="info-note">Play begins at selected hole. Scorecard shows holes in play order.</div>
         </div>
         
         <div class="card">
-            <div class="card-title">👥 TEAM GAME FORMAT</div>
+            <div class="card-title">Team Game Format</div>
             <div class="format-group">
                 <div class="format-option ${tournamentSelected ? 'selected' : ''}" data-format="tournament">
                     <input type="radio" name="teamGameFormat" value="tournament" id="formatTournament" ${tournamentSelected ? 'checked' : ''}>
                     <label for="formatTournament">
-                        <div class="format-title">🏆 Tournament Handicap (Recommended)</div>
-                        <div class="format-desc">Use raw handicaps. Higher handicap players receive more strokes.</div>
+                        <span class="format-title">Tournament Handicap</span>
+                        <span class="format-desc">Raw handicaps. Higher handicap players receive more strokes.</span>
                     </label>
                 </div>
                 <div class="format-option ${relativeSelected ? 'selected' : ''}" data-format="relative">
                     <input type="radio" name="teamGameFormat" value="relative" id="formatRelative" ${relativeSelected ? 'checked' : ''}>
                     <label for="formatRelative">
-                        <div class="format-title">📊 Relative Handicap (Zero-Rise)</div>
-                        <div class="format-desc">Lowest handicap becomes zero. All others adjust accordingly.</div>
+                        <span class="format-title">Relative Handicap</span>
+                        <span class="format-desc">Lowest handicap becomes zero. All others adjust accordingly.</span>
                     </label>
                 </div>
             </div>
         </div>
         
         <div class="card">
-            <div class="card-title">👥 PLAYER SETUP (8 Players)</div>
+            <div class="card-title">Players (8)</div>
             ${playersHtml}
-            ${!isValid ? '<div class="error-msg">⚠️ Each flight needs exactly 2 Team A and 2 Team B players</div>' : ''}
+            ${!isValid ? '<div class="form-row"><div class="error-msg">Each flight needs exactly 2 Team A and 2 Team B players</div></div>' : ''}
         </div>
         
         <div class="button-group">
-            <button class="btn btn-secondary" id="cancelBtn">← Cancel</button>
-            <button class="btn btn-primary" id="commitBtn">✓ ${state.isEditMode ? 'UPDATE GAME' : 'COMMIT GAME'}</button>
+            <button class="btn btn-secondary" id="cancelBtn">Cancel</button>
+            <button class="btn btn-primary" id="commitBtn">${state.isEditMode ? 'Update' : 'Commit'}</button>
         </div>
         
-        <div id="successMsg" style="display:none;" class="success-msg"></div>
+        <div id="successMsg" class="success-msg"></div>
         
-        <div class="back-link" id="backLink">← Back to Game Settings</div>
+        <div class="back-link" id="backLink">Back to Game Settings</div>
     `;
     
     document.getElementById("app").innerHTML = html;
@@ -1478,14 +1332,14 @@ function render() {
         });
     });
     
-    document.querySelectorAll(".player-name-input").forEach(function(el) {
+    document.querySelectorAll(".player-line1 input[type='text']").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
             updatePlayerName(idx, this.value);
         });
     });
     
-    document.querySelectorAll(".player-hcp-input").forEach(function(el) {
+    document.querySelectorAll(".player-line1 input[type='number']").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
             updatePlayerHandicap(idx, this.value);
@@ -1508,24 +1362,26 @@ function render() {
     
     var commitBtn = document.getElementById("commitBtn");
     if (commitBtn) {
-        commitBtn.onclick = function() {
-            commitGame();
-        };
+        commitBtn.onclick = function() { commitGame(); };
     }
     
     var cancelBtn = document.getElementById("cancelBtn");
     if (cancelBtn) {
-        cancelBtn.onclick = function() {
-            goBack();
-        };
+        cancelBtn.onclick = function() { goBack(); };
     }
     
     var backLink = document.getElementById("backLink");
     if (backLink) {
-        backLink.onclick = function() {
-            goBack();
-        };
+        backLink.onclick = function() { goBack(); };
     }
+}
+
+function onStartingHoleChange() {
+    if (state.isEditMode) checkForChanges();
+}
+
+function onTeamGameFormatChange(format) {
+    setTeamGameFormat(format);
 }
 
 window.changeCourse = onCourseChange;
@@ -1535,23 +1391,18 @@ window.commitGame = commitGame;
 function escapeHtml(str) {
     if (!str) return "";
     return str.replace(/[&<>]/g, function(m) {
-        if (m === "&") return "&amp;";
-        if (m === "<") return "&lt;";
-        if (m === ">") return "&gt;";
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
         return m;
     });
 }
-
-// ============================================================
-// v1.38: Initialize - waiting screen stays visible until redirect
-// ============================================================
 
 SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
     deviceSession = session;
     displayDeviceId();
     
-    // Archive old games (90+ days to trash, 180+ days permanently deleted)
     archiveOldGames();
     
     loadEditMode(function() {
@@ -1566,13 +1417,16 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.38
-KEY CHANGES from v1.37:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.37
+VERSION: 1.40
+KEY CHANGES from v1.38:
+   - REDESIGNED: Ultra-minimalist, professional look
+   - REMOVED: All icons (emoji) from buttons, headers, and form elements
+   - CHANGED: Clean typography, subtle borders, refined spacing
+   - CHANGED: Form elements use clean, minimal styling
+   - CHANGED: Buttons use text-only labels (Cancel / Commit)
+   - CHANGED: Player rows use cleaner layout with subtle dividers
+   - CHANGED: Format options use clean pill-style selection
+   - PRESERVED: All functionality from v1.38
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
