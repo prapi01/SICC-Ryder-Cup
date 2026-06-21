@@ -323,7 +323,7 @@ STATUS: Ready for integration
 
 <!-- GAME LIST VIEW (Landing Page) -->
 <div class="container game-list-view" id="gameListView">
-    <div class="game-list-title">📜 COMPLETED GAMES</div>
+    <div class="game-list-title">📜 HISTORY GAMES</div>
     <div class="game-list" id="gameListContainer">
         <div class="grey-icon-container">
             <div class="grey-icon-loading">⛳</div>
@@ -1001,6 +1001,13 @@ function renderGameList(games) {
         return;
     }
     
+    // v8.31: FIXED SORT - handles both string and Firestore Timestamp
+    games.sort(function(a, b) {
+        var dateA = parseCompletedAt(a.completedAt);
+        var dateB = parseCompletedAt(b.completedAt);
+        return dateB - dateA; // Newest first
+    });
+    
     var html = '';
     for (var i = 0; i < games.length; i++) {
         var game = games[i];
@@ -1090,10 +1097,11 @@ function loadGameListAndModules() {
                 });
             });
             
+            // v8.31: Sort uses parseCompletedAt helper
             games.sort(function(a, b) {
-                var dateA = a.completedAt ? (a.completedAt.toDate ? a.completedAt.toDate() : new Date(a.completedAt)) : new Date(0);
-                var dateB = b.completedAt ? (b.completedAt.toDate ? b.completedAt.toDate() : new Date(b.completedAt)) : new Date(0);
-                return dateB - dateA;
+                var dateA = parseCompletedAt(a.completedAt);
+                var dateB = parseCompletedAt(b.completedAt);
+                return dateB - dateA; // Newest first
             });
             
             renderGameList(games);
