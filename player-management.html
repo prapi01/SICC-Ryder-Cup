@@ -1,13 +1,13 @@
 <!--
 FILE: player-management.html
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: System-generated label field (read-only)
-   - ADDED: generateLabel() function - first letter of each word, up to 3 chars, uppercase
-   - ADDED: Label display in form (read-only input)
-   - CHANGED: Player list now shows label alongside name
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - CLEANER: Form layout redesigned with 2x2 grid
+   - CLEANER: Name + Hcp on first row, Label + Team on second row
+   - CHANGED: Label is read-only, system-generated
+   - CHANGED: Player list shows: Name | Label | HCP | Team
    - PRESERVED: All baseline UI styling from v1.01
-   - PRESERVED: All functionality from v1.01
+   - PRESERVED: All functionality from v1.02
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -85,21 +85,9 @@ STATUS: Ready for integration
         }
         
         /* ===== BASELINE UI ===== */
-        .header { text-align: center; margin-bottom: 24px; margin-top: 4px; }
-        .title { 
-            font-size: 1.2rem; 
-            font-weight: 600; 
-            color: #4caf50; 
-            letter-spacing: -0.3px;
-        }
-        .subtitle { 
-            font-size: 0.6rem; 
-            color: #4caf50; 
-            opacity: 0.7;
-            margin-top: 2px; 
-            letter-spacing: 0.5px; 
-            text-transform: uppercase;
-        }
+        .header { text-align: center; margin-bottom: 20px; margin-top: 4px; }
+        .title { font-size: 1.2rem; font-weight: 600; color: #4caf50; }
+        .subtitle { font-size: 0.6rem; color: #4caf50; opacity: 0.7; margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
         
         .card { 
             background: rgba(20, 20, 20, 0.5);
@@ -118,57 +106,53 @@ STATUS: Ready for integration
             text-transform: uppercase;
         }
         
-        .form-row {
+        /* v1.03: 2x2 grid form */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 12px;
+        }
+        .form-grid .field {
             display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: center;
-            margin-bottom: 8px;
+            flex-direction: column;
+            gap: 2px;
         }
-        .form-row label {
-            font-size: 0.7rem;
+        .form-grid .field label {
+            font-size: 0.6rem;
             color: #4caf50;
-            min-width: 40px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
-        .form-row input,
-        .form-row select {
+        .form-grid .field input,
+        .form-grid .field select {
             background: #0a0a0a;
             border: 1px solid #2a5a2a;
-            border-radius: 8px;
-            padding: 8px 12px;
+            border-radius: 6px;
+            padding: 8px 10px;
             color: #e0e0e0;
             font-size: 0.85rem;
-            flex: 1;
-            min-width: 60px;
+            width: 100%;
             transition: border-color 0.2s ease;
         }
-        .form-row input:focus,
-        .form-row select:focus {
+        .form-grid .field input:focus,
+        .form-grid .field select:focus {
             outline: none;
             border-color: #4caf50;
         }
-        .form-row input.hcp-input {
-            flex: 0 0 50px;
-            text-align: center;
-        }
-        .form-row select.team-select {
-            flex: 0 0 90px;
-        }
-        
-        /* v1.02: Label input - read-only, system generated */
-        .form-row input.label-input {
-            flex: 0 0 60px;
-            text-align: center;
-            font-weight: 600;
+        .form-grid .field input:read-only {
             color: #4caf50;
             background: #1a3a1a;
             border-color: #4caf50;
+            opacity: 0.8;
             cursor: default;
-            opacity: 0.7;
         }
-        .form-row input.label-input:focus {
-            outline: none;
-            border-color: #4caf50;
+        .form-grid .field .hint {
+            font-size: 0.5rem;
+            color: #555;
+            margin-top: 1px;
+        }
+        .form-grid .field.full-width {
+            grid-column: 1 / -1;
         }
         
         .btn {
@@ -189,80 +173,45 @@ STATUS: Ready for integration
         .btn-secondary:hover { border-color: #4caf50; color: #888; }
         .btn-danger { border-color: #3a1a1a; color: #ff6b6b; }
         .btn-danger:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.04); }
-        .btn-small { padding: 6px 12px; font-size: 0.7rem; }
+        .btn-small { padding: 4px 10px; font-size: 0.65rem; }
         .btn-save { border-color: #4caf50; color: #4caf50; }
         .btn-save:hover { background: rgba(76, 175, 80, 0.04); }
         .btn-cancel { border-color: #2a5a2a; color: #666; }
         .btn-cancel:hover { border-color: #4caf50; color: #888; }
         
+        .btn-group { display: flex; gap: 10px; margin-top: 12px; }
+        .btn-group .btn { flex: 1; }
+        
         .player-list { margin-top: 4px; }
         .player-item {
-            display: flex;
+            display: grid;
+            grid-template-columns: 1fr auto auto auto auto;
             align-items: center;
-            justify-content: space-between;
-            padding: 10px 12px;
+            gap: 8px;
+            padding: 8px 12px;
             background: rgba(10, 10, 10, 0.5);
-            border-radius: 8px;
-            margin-bottom: 6px;
+            border-radius: 6px;
+            margin-bottom: 4px;
             border: 1px solid #2a5a2a;
-            gap: 8px;
         }
-        .player-item .info {
-            flex: 2;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        .player-item .p-name { font-size: 0.8rem; font-weight: 500; color: #e0e0e0; }
+        .player-item .p-label { 
+            font-size: 0.6rem; 
+            font-weight: 600; 
+            color: #4caf50; 
+            background: #1a3a1a; 
+            padding: 1px 8px; 
+            border-radius: 4px; 
+            text-align: center; 
+            min-width: 28px;
         }
-        .player-item .info .name {
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: #e0e0e0;
-        }
-        /* v1.02: Label display in player list */
-        .player-item .info .label-display {
-            font-size: 0.65rem;
-            font-weight: 600;
-            color: #4caf50;
-            background: #1a3a1a;
-            padding: 1px 8px;
-            border-radius: 4px;
-            min-width: 32px;
-            text-align: center;
-            letter-spacing: 0.5px;
-        }
-        .player-item .info .hcp {
-            font-size: 0.65rem;
-            color: #4caf50;
-            background: #1a3a1a;
-            padding: 1px 10px;
-            border-radius: 4px;
-        }
-        .player-item .info .team {
-            font-size: 0.65rem;
-            color: #ffaa44;
-            background: #2a2a1a;
-            padding: 1px 10px;
-            border-radius: 4px;
-        }
-        .player-item .actions {
-            display: flex;
-            gap: 4px;
-            flex-shrink: 0;
-        }
+        .player-item .p-hcp { font-size: 0.6rem; color: #4caf50; }
+        .player-item .p-team { font-size: 0.6rem; color: #ffaa44; }
+        .player-item .p-actions { display: flex; gap: 4px; }
         
-        .player-item.editing {
-            border-color: #4caf50;
-            background: #1a2a1a;
-        }
+        .player-item.editing { border-color: #4caf50; background: #1a2a1a; }
         
-        .empty-state {
-            text-align: center;
-            padding: 30px 20px;
-            color: #444;
-            font-size: 0.8rem;
-            font-weight: 300;
-            letter-spacing: 0.3px;
-        }
+        .empty-state { text-align: center; padding: 30px 20px; color: #444; font-size: 0.8rem; }
         
         .back-btn {
             background: rgba(20, 20, 20, 0.5);
@@ -276,20 +225,16 @@ STATUS: Ready for integration
         }
         .back-btn:hover { border-color: #4caf50; background: rgba(20, 20, 20, 0.8); }
         .back-btn:active { transform: scale(0.98); }
-        .back-btn .label { 
-            font-size: 0.8rem; 
-            font-weight: 500; 
-            color: #4caf50; 
-            letter-spacing: 0.2px;
-        }
+        .back-btn .label { font-size: 0.8rem; font-weight: 500; color: #4caf50; }
         
         .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
         @media (max-width: 400px) {
-            .player-item { flex-wrap: wrap; }
-            .player-item .actions { width: 100%; justify-content: flex-end; }
-            .form-row { flex-wrap: wrap; }
+            .player-item { grid-template-columns: 1fr auto auto; grid-template-rows: auto auto; }
+            .player-item .p-actions { grid-column: 1 / -1; justify-self: end; }
+            .form-grid { grid-template-columns: 1fr; }
+            .form-grid .field.full-width { grid-column: 1; }
         }
     </style>
 </head>
@@ -300,12 +245,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.02</div>
+<div class="version-tag">v1.03</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.02
+// VERSION: 1.03
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -314,8 +259,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.02";
-var CACHE_KEY = "player_management_v102";
+var APP_VERSION = "1.03";
+var CACHE_KEY = "player_management_v103";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -327,8 +272,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.02";
-console.log("[PLAYER-MGMT] Initializing v1.02 - System-generated labels");
+window.PLAYER_MGMT_VERSION = "1.03";
+console.log("[PLAYER-MGMT] Initializing v1.03 - Clean 2x2 form layout");
 
 // ============================================================
 // Firebase
@@ -345,7 +290,7 @@ var editingIndex = -1;
 var isLoading = false;
 
 // ============================================================
-// v1.02: generateLabel - system-generated, user cannot change
+// generateLabel - system-generated, user cannot change
 // Rule: First letter of each word, up to 3 chars, uppercase
 // ============================================================
 function generateLabel(name) {
@@ -404,7 +349,7 @@ function loadPlayers(callback) {
                     { name: "Piti", handicap: 8, defaultTeam: "B", label: "P" },
                     { name: "James Ong", handicap: 11, defaultTeam: "B", label: "JO" }
                 ];
-                console.log("[PLAYER-MGMT] Using default players with labels");
+                console.log("[PLAYER-MGMT] Using default players");
                 savePlayers(function() {
                     if (callback) callback();
                 });
@@ -444,14 +389,13 @@ function savePlayers(callback) {
 }
 
 // ============================================================
-// v1.02: updateLabelPreview - updates the label input field when name changes
+// updateLabelPreview
 // ============================================================
 function updateLabelPreview() {
-    var nameInput = document.getElementById('playerNameInput');
-    var labelInput = document.getElementById('playerLabelInput');
+    var nameInput = document.getElementById('playerName');
+    var labelInput = document.getElementById('playerLabel');
     if (nameInput && labelInput) {
-        var label = generateLabel(nameInput.value);
-        labelInput.value = label;
+        labelInput.value = generateLabel(nameInput.value);
     }
 }
 
@@ -462,8 +406,15 @@ function render() {
     var container = document.getElementById('app');
     
     var currentLabel = '';
+    var currentName = '';
+    var currentHcp = 0;
+    var currentTeam = 'A';
     if (editingIndex >= 0 && players[editingIndex]) {
-        currentLabel = players[editingIndex].label || generateLabel(players[editingIndex].name);
+        var p = players[editingIndex];
+        currentName = p.name;
+        currentLabel = p.label || generateLabel(p.name);
+        currentHcp = p.handicap;
+        currentTeam = p.defaultTeam;
     }
     
     var html = `
@@ -474,32 +425,36 @@ function render() {
         
         <div class="card">
             <div class="card-title">${editingIndex >= 0 ? 'Edit Player' : 'Add New Player'}</div>
-            <div class="form-row">
-                <label>Name</label>
-                <input type="text" id="playerNameInput" placeholder="Player name" value="${editingIndex >= 0 ? escapeHtml(players[editingIndex].name) : ''}" oninput="updateLabelPreview()">
+            <div class="form-grid">
+                <div class="field">
+                    <label>Name</label>
+                    <input type="text" id="playerName" placeholder="Player name" value="${escapeHtml(currentName)}" oninput="updateLabelPreview()">
+                </div>
+                <div class="field">
+                    <label>Hcp</label>
+                    <input type="number" id="playerHcp" min="0" max="54" value="${currentHcp}">
+                </div>
+                <div class="field">
+                    <label>Label</label>
+                    <input type="text" id="playerLabel" value="${currentLabel}" readonly>
+                    <span class="hint">system generated</span>
+                </div>
+                <div class="field">
+                    <label>Team</label>
+                    <select id="playerTeam">
+                        <option value="A" ${currentTeam === 'A' ? 'selected' : ''}>Team A</option>
+                        <option value="B" ${currentTeam === 'B' ? 'selected' : ''}>Team B</option>
+                    </select>
+                </div>
             </div>
-            <div class="form-row">
-                <label>Label</label>
-                <input type="text" id="playerLabelInput" class="label-input" value="${currentLabel}" readonly disabled>
-                <span style="font-size:0.55rem; color:#555;">system generated</span>
-            </div>
-            <div class="form-row">
-                <label>Hcp</label>
-                <input type="number" id="playerHcpInput" class="hcp-input" min="0" max="54" value="${editingIndex >= 0 ? players[editingIndex].handicap : 0}">
-                <label>Team</label>
-                <select id="playerTeamSelect" class="team-select">
-                    <option value="A" ${editingIndex >= 0 && players[editingIndex].defaultTeam === 'A' ? 'selected' : ''}>Team A</option>
-                    <option value="B" ${editingIndex >= 0 && players[editingIndex].defaultTeam === 'B' ? 'selected' : ''}>Team B</option>
-                </select>
-            </div>
-            <div style="display:flex; gap:10px; margin-top:8px;">
-                <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? 'Update Player' : 'Add Player'}</button>
+            <div class="btn-group">
+                <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? 'Update' : 'Add'}</button>
                 ${editingIndex >= 0 ? '<button class="btn btn-cancel" id="cancelEditBtn">Cancel</button>' : ''}
             </div>
         </div>
         
         <div class="card">
-            <div class="card-title">Existing Players (${players.length})</div>
+            <div class="card-title">Players (${players.length})</div>
             <div class="player-list" id="playerList">
                 ${renderPlayerList()}
             </div>
@@ -514,9 +469,7 @@ function render() {
     
     container.innerHTML = html;
     
-    document.getElementById('savePlayerBtn').addEventListener('click', function() {
-        savePlayer();
-    });
+    document.getElementById('savePlayerBtn').addEventListener('click', savePlayer);
     
     var cancelBtn = document.getElementById('cancelEditBtn');
     if (cancelBtn) {
@@ -526,14 +479,13 @@ function render() {
         });
     }
     
-    document.getElementById('playerNameInput').addEventListener('keydown', function(e) {
+    document.getElementById('playerName').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') savePlayer();
     });
-    document.getElementById('playerHcpInput').addEventListener('keydown', function(e) {
+    document.getElementById('playerHcp').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') savePlayer();
     });
     
-    // Initial label preview
     updateLabelPreview();
 }
 
@@ -542,7 +494,7 @@ function render() {
 // ============================================================
 function renderPlayerList() {
     if (players.length === 0) {
-        return '<div class="empty-state">No players found. Add your first player above.</div>';
+        return '<div class="empty-state">No players found.</div>';
     }
     
     var html = '';
@@ -552,15 +504,13 @@ function renderPlayerList() {
         var label = p.label || generateLabel(p.name);
         html += `
             <div class="player-item ${isEditing ? 'editing' : ''}">
-                <div class="info">
-                    <span class="name">${escapeHtml(p.name)}</span>
-                    <span class="label-display">${escapeHtml(label)}</span>
-                    <span class="hcp">HCP ${p.handicap}</span>
-                    <span class="team">Team ${p.defaultTeam}</span>
-                </div>
-                <div class="actions">
+                <span class="p-name">${escapeHtml(p.name)}</span>
+                <span class="p-label">${escapeHtml(label)}</span>
+                <span class="p-hcp">HCP ${p.handicap}</span>
+                <span class="p-team">Team ${p.defaultTeam}</span>
+                <div class="p-actions">
                     <button class="btn btn-small btn-primary edit-btn" data-index="${i}">Edit</button>
-                    <button class="btn btn-small btn-danger delete-btn" data-index="${i}">Delete</button>
+                    <button class="btn btn-small btn-danger delete-btn" data-index="${i}">Del</button>
                 </div>
             </div>
         `;
@@ -569,25 +519,22 @@ function renderPlayerList() {
 }
 
 function attachPlayerActions() {
-    var editBtns = document.querySelectorAll('.edit-btn');
-    for (var i = 0; i < editBtns.length; i++) {
-        (function(btn) {
-            btn.addEventListener('click', function() {
-                var index = parseInt(this.dataset.index);
-                startEdit(index);
-            });
-        })(editBtns[i]);
-    }
+    document.querySelectorAll('.edit-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            editingIndex = parseInt(this.dataset.index);
+            render();
+            setTimeout(function() {
+                var nameInput = document.getElementById('playerName');
+                if (nameInput) { nameInput.focus(); nameInput.select(); updateLabelPreview(); }
+            }, 100);
+        });
+    });
     
-    var deleteBtns = document.querySelectorAll('.delete-btn');
-    for (var i = 0; i < deleteBtns.length; i++) {
-        (function(btn) {
-            btn.addEventListener('click', function() {
-                var index = parseInt(this.dataset.index);
-                deletePlayer(index);
-            });
-        })(deleteBtns[i]);
-    }
+    document.querySelectorAll('.delete-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            deletePlayer(parseInt(this.dataset.index));
+        });
+    });
 }
 
 var originalRender = render;
@@ -599,25 +546,11 @@ render = function() {
 // ============================================================
 // Player CRUD Operations
 // ============================================================
-
-function startEdit(index) {
-    editingIndex = index;
-    render();
-    setTimeout(function() {
-        var nameInput = document.getElementById('playerNameInput');
-        if (nameInput) {
-            nameInput.focus();
-            nameInput.select();
-            updateLabelPreview();
-        }
-    }, 100);
-}
-
 function savePlayer() {
-    var nameInput = document.getElementById('playerNameInput');
-    var labelInput = document.getElementById('playerLabelInput');
-    var hcpInput = document.getElementById('playerHcpInput');
-    var teamSelect = document.getElementById('playerTeamSelect');
+    var nameInput = document.getElementById('playerName');
+    var labelInput = document.getElementById('playerLabel');
+    var hcpInput = document.getElementById('playerHcp');
+    var teamSelect = document.getElementById('playerTeam');
     
     var name = nameInput.value.trim();
     var label = labelInput ? labelInput.value.trim() : generateLabel(name);
@@ -636,20 +569,14 @@ function savePlayer() {
         return;
     }
     
-    var duplicate = false;
     for (var i = 0; i < players.length; i++) {
         if (i !== editingIndex && players[i].name.toLowerCase() === name.toLowerCase()) {
-            duplicate = true;
-            break;
+            Modal.alert("A player with this name already exists.");
+            nameInput.focus();
+            return;
         }
     }
-    if (duplicate) {
-        Modal.alert("A player with this name already exists.");
-        nameInput.focus();
-        return;
-    }
     
-    // v1.02: Label is system-generated, not user-editable
     var playerData = {
         name: name,
         label: generateLabel(name),
@@ -669,7 +596,7 @@ function savePlayer() {
     savePlayers(function(success) {
         if (success) {
             render();
-            Modal.alert("Player saved successfully.");
+            Modal.alert("Player saved.");
         } else {
             loadPlayers(function() {
                 render();
@@ -682,29 +609,17 @@ function savePlayer() {
 function deletePlayer(index) {
     var player = players[index];
     Modal.confirm(
-        "Delete player '" + player.name + "'? This action cannot be undone.",
+        "Delete '" + player.name + "'?",
         function() {
             players.splice(index, 1);
-            if (editingIndex === index) {
-                editingIndex = -1;
-            } else if (editingIndex > index) {
-                editingIndex--;
-            }
+            if (editingIndex === index) editingIndex = -1;
+            else if (editingIndex > index) editingIndex--;
             savePlayers(function(success) {
-                if (success) {
-                    render();
-                    Modal.alert("Player deleted.");
-                } else {
-                    loadPlayers(function() {
-                        render();
-                        Modal.alert("Failed to delete player. Changes reverted.");
-                    });
-                }
+                if (success) { render(); Modal.alert("Player deleted."); }
+                else { loadPlayers(function() { render(); Modal.alert("Failed to delete."); }); }
             });
         },
-        function() {
-            console.log("[PLAYER-MGMT] Deletion cancelled");
-        }
+        function() { console.log("Cancelled"); }
     );
 }
 
@@ -723,16 +638,12 @@ SessionManager.initSession("player-management.html", "admin.html", function(sess
     console.log("Session initialized:", session);
     deviceSession = session;
     displayDeviceId();
-    
-    loadPlayers(function() {
-        render();
-    });
+    loadPlayers(function() { render(); });
 });
 
 window.goBackToSettings = goBackToSettings;
-window.startEdit = startEdit;
-window.deletePlayer = deletePlayer;
 window.savePlayer = savePlayer;
+window.deletePlayer = deletePlayer;
 window.generateLabel = generateLabel;
 window.updateLabelPreview = updateLabelPreview;
 </script>
@@ -741,14 +652,14 @@ window.updateLabelPreview = updateLabelPreview;
 
 <!--
 FILE: player-management.html
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: System-generated label field (read-only)
-   - ADDED: generateLabel() function - first letter of each word, up to 3 chars, uppercase
-   - ADDED: Label display in form (read-only input)
-   - CHANGED: Player list now shows label alongside name
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - CLEANER: Form layout redesigned with 2x2 grid
+   - CLEANER: Name + Hcp on first row, Label + Team on second row
+   - CHANGED: Label is read-only, system-generated
+   - CHANGED: Player list shows: Name | Label | HCP | Team
    - PRESERVED: All baseline UI styling from v1.01
-   - PRESERVED: All functionality from v1.01
+   - PRESERVED: All functionality from v1.02
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
