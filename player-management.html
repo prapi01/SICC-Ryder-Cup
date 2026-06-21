@@ -1,13 +1,16 @@
 <!--
 FILE: player-management.html
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Player management screen
-   - ADD: Create new players with name, handicap, default team
-   - EDIT: Update player name, handicap, default team
-   - DELETE: Remove players with confirmation
-   - AUTO-SAVE: Changes saved to Firestore playerInformation/players
-   - INTEGRATION: Players can be used as dropdown in setup-game.html
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - APPLIED: Baseline UI design with visible green borders
+   - CHANGED: Card borders to #2a5a2a with rounded corners
+   - CHANGED: Button borders to #3a7a3a
+   - CHANGED: All headers, labels to #4caf50
+   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
+   - CHANGED: Back link divider to #2a5a2a
+   - CHANGED: Form inputs to have subtle green border
+   - CHANGED: Player items to have subtle green border
+   - PRESERVED: All functionality from v1.00
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -31,7 +34,7 @@ STATUS: Ready for integration
         
         html, body {
             min-height: 100vh;
-            background: #000000;
+            background: #0a0a0a;
             -webkit-user-select: none;
             user-select: none;
             -webkit-touch-callout: none;
@@ -39,9 +42,9 @@ STATUS: Ready for integration
         }
         
         body {
-            background: #000000;
-            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif;
-            color: #ffffff;
+            background: #0a0a0a;
+            font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif;
+            color: #e0e0e0;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -50,7 +53,7 @@ STATUS: Ready for integration
         }
         
         .container {
-            max-width: 500px;
+            max-width: 420px;
             width: 100%;
             margin: 0 auto;
             padding: 20px 16px;
@@ -58,213 +61,167 @@ STATUS: Ready for integration
         
         .version-tag {
             position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            right: max(8px, env(safe-area-inset-right));
-            font-size: 0.65rem;
+            top: max(12px, env(safe-area-inset-top));
+            right: max(12px, env(safe-area-inset-right));
+            font-size: 0.6rem;
             color: #4caf50;
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.5);
             padding: 2px 10px;
-            border-radius: 16px;
+            border-radius: 12px;
             font-family: monospace;
             z-index: 1000;
-            opacity: 0.8;
+            letter-spacing: 0.3px;
         }
         
         .device-tag {
             position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            left: max(8px, env(safe-area-inset-left));
-            font-size: 0.55rem;
+            top: max(12px, env(safe-area-inset-top));
+            left: max(12px, env(safe-area-inset-left));
+            font-size: 0.5rem;
             color: #4caf50;
-            background: rgba(0,0,0,0.4);
+            background: rgba(0,0,0,0.3);
             padding: 2px 8px;
-            border-radius: 12px;
+            border-radius: 10px;
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
+        }
+        
+        /* ===== BASELINE UI ===== */
+        .header { text-align: center; margin-bottom: 24px; margin-top: 4px; }
+        .title { 
+            font-size: 1.2rem; 
+            font-weight: 600; 
+            color: #4caf50; 
+            letter-spacing: -0.3px;
+        }
+        .subtitle { 
+            font-size: 0.6rem; 
+            color: #4caf50; 
+            opacity: 0.7;
+            margin-top: 2px; 
+            letter-spacing: 0.5px; 
+            text-transform: uppercase;
+        }
+        
+        .card { 
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a; 
+            border-radius: 10px; 
+            padding: 16px; 
+            margin-bottom: 12px; 
+        }
+        
+        .card-title { 
+            font-size: 0.7rem; 
+            font-weight: 500; 
+            color: #4caf50; 
+            margin-bottom: 12px; 
             letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
         
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-            margin-top: 20px;
-        }
-        .title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #4caf50;
-        }
-        .subtitle {
-            font-size: 0.7rem;
-            color: #666;
-            margin-top: 4px;
-        }
-        
-        .card {
-            background: #111;
-            border-radius: 20px;
-            padding: 16px 20px;
-            margin-bottom: 16px;
-            border: 1px solid #333;
-        }
-        .card-title {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #4caf50;
-            margin-bottom: 12px;
-            border-left: 2px solid #4caf50;
-            padding-left: 10px;
-        }
-        
-        .input-group {
+        .form-row {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             flex-wrap: wrap;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
-        .input-group label {
-            font-size: 0.75rem;
-            color: #888;
+        .form-row label {
+            font-size: 0.7rem;
+            color: #4caf50;
             min-width: 40px;
         }
-        .input-group input,
-        .input-group select {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 30px;
-            padding: 10px 14px;
-            color: #fff;
+        .form-row input,
+        .form-row select {
+            background: #0a0a0a;
+            border: 1px solid #2a5a2a;
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: #e0e0e0;
             font-size: 0.85rem;
             flex: 1;
-            min-width: 80px;
+            min-width: 60px;
+            transition: border-color 0.2s ease;
         }
-        .input-group input:focus,
-        .input-group select:focus {
+        .form-row input:focus,
+        .form-row select:focus {
             outline: none;
             border-color: #4caf50;
         }
-        .input-group input.hcp-input {
+        .form-row input.hcp-input {
             flex: 0 0 50px;
             text-align: center;
         }
-        .input-group select.team-select {
+        .form-row select.team-select {
             flex: 0 0 90px;
         }
         
         .btn {
             padding: 10px 20px;
-            border-radius: 40px;
-            font-weight: 600;
+            border-radius: 8px;
+            font-weight: 400;
             font-size: 0.85rem;
             cursor: pointer;
-            border: none;
-            transition: all 0.2s ease;
-        }
-        .btn:active {
-            transform: scale(0.97);
-        }
-        .btn-primary {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
+            border: 1px solid #3a7a3a;
+            transition: all 0.15s ease;
+            background: rgba(20, 20, 20, 0.5);
             color: #4caf50;
         }
-        .btn-primary:hover {
-            background: #2a4a2a;
-        }
-        .btn-secondary {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #ccc;
-        }
-        .btn-secondary:hover {
-            background: #2a2a2a;
-        }
-        .btn-danger {
-            background: #3a1a1a;
-            border: 1px solid #ff6b6b;
-            color: #ff6b6b;
-        }
-        .btn-danger:hover {
-            background: #4a2a2a;
-        }
-        .btn-small {
-            padding: 6px 14px;
-            font-size: 0.7rem;
-        }
-        .btn-save {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
-            color: #4caf50;
-        }
-        .btn-cancel {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #888;
-        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { border-color: #4caf50; border-width: 2px; }
+        .btn-primary:hover { background: rgba(76, 175, 80, 0.04); }
+        .btn-secondary { border-color: #2a5a2a; color: #666; }
+        .btn-secondary:hover { border-color: #4caf50; color: #888; }
+        .btn-danger { border-color: #3a1a1a; color: #ff6b6b; }
+        .btn-danger:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.04); }
+        .btn-small { padding: 6px 12px; font-size: 0.7rem; }
+        .btn-save { border-color: #4caf50; color: #4caf50; }
+        .btn-save:hover { background: rgba(76, 175, 80, 0.04); }
+        .btn-cancel { border-color: #2a5a2a; color: #666; }
+        .btn-cancel:hover { border-color: #4caf50; color: #888; }
         
-        .form-row {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .form-row .field-group {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            flex: 1;
-        }
-        .form-row .field-group label {
-            font-size: 0.7rem;
-            color: #888;
-            white-space: nowrap;
-        }
-        
-        .player-list {
-            margin-top: 4px;
-        }
+        .player-list { margin-top: 4px; }
         .player-item {
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 10px 12px;
-            background: #0a0a0a;
-            border-radius: 12px;
+            background: rgba(10, 10, 10, 0.5);
+            border-radius: 8px;
             margin-bottom: 6px;
-            border: 1px solid #2a2a2a;
+            border: 1px solid #2a5a2a;
             gap: 8px;
         }
         .player-item .info {
             flex: 2;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
         .player-item .info .name {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #fff;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #e0e0e0;
         }
         .player-item .info .hcp {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             color: #4caf50;
             background: #1a3a1a;
             padding: 1px 10px;
-            border-radius: 12px;
+            border-radius: 4px;
         }
         .player-item .info .team {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             color: #ffaa44;
             background: #2a2a1a;
             padding: 1px 10px;
-            border-radius: 12px;
+            border-radius: 4px;
         }
         .player-item .actions {
             display: flex;
-            gap: 6px;
+            gap: 4px;
             flex-shrink: 0;
         }
         
@@ -276,54 +233,38 @@ STATUS: Ready for integration
         .empty-state {
             text-align: center;
             padding: 30px 20px;
-            color: #666;
-            font-size: 0.85rem;
+            color: #444;
+            font-size: 0.8rem;
+            font-weight: 300;
+            letter-spacing: 0.3px;
         }
         
         .back-btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 40px;
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a;
+            border-radius: 10px;
             padding: 14px;
             text-align: center;
             cursor: pointer;
-            margin-top: 20px;
-            transition: all 0.2s ease;
+            margin-top: 12px;
+            transition: all 0.15s ease;
         }
-        .back-btn:active {
-            transform: scale(0.98);
-            background: #2a2a2a;
-        }
-        .back-btn .label {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #ccc;
-        }
-        
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 0.55rem;
-            color: #444;
+        .back-btn:hover { border-color: #4caf50; background: rgba(20, 20, 20, 0.8); }
+        .back-btn:active { transform: scale(0.98); }
+        .back-btn .label { 
+            font-size: 0.8rem; 
+            font-weight: 500; 
+            color: #4caf50; 
+            letter-spacing: 0.2px;
         }
         
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #888;
-        }
+        .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
+        .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
         @media (max-width: 400px) {
-            .player-item {
-                flex-wrap: wrap;
-            }
-            .player-item .actions {
-                width: 100%;
-                justify-content: flex-end;
-            }
-            .input-group {
-                flex-wrap: wrap;
-            }
+            .player-item { flex-wrap: wrap; }
+            .player-item .actions { width: 100%; justify-content: flex-end; }
+            .form-row { flex-wrap: wrap; }
         }
     </style>
 </head>
@@ -333,24 +274,23 @@ STATUS: Ready for integration
     <div class="loading">Loading players...</div>
 </div>
 
-<div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.00</div>
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.01</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.00
+// VERSION: 1.01
 // ============================================================
 
-// Apply user settings
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
 } else {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.00";
-var CACHE_KEY = "player_management_v100";
+var APP_VERSION = "1.01";
+var CACHE_KEY = "player_management_v101";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -362,8 +302,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.00";
-console.log("[PLAYER-MGMT] Initializing v1.00");
+window.PLAYER_MGMT_VERSION = "1.01";
+console.log("[PLAYER-MGMT] Initializing v1.01");
 
 // ============================================================
 // Firebase
@@ -376,7 +316,7 @@ var deviceSession = null;
 // State
 // ============================================================
 var players = [];
-var editingIndex = -1; // -1 = not editing, >=0 = editing player at this index
+var editingIndex = -1;
 var isLoading = false;
 
 // ============================================================
@@ -408,13 +348,11 @@ function loadPlayers(callback) {
         .then(function(doc) {
             if (doc.exists && doc.data().players) {
                 players = doc.data().players;
-                // Sort by name
                 players.sort(function(a, b) {
                     return a.name.localeCompare(b.name);
                 });
                 console.log("[PLAYER-MGMT] Loaded", players.length, "players");
             } else {
-                // No players found, initialize with default set
                 players = [
                     { name: "Ang C H", handicap: 1, defaultTeam: "A" },
                     { name: "Chenh Hoe", handicap: 10, defaultTeam: "A" },
@@ -426,7 +364,6 @@ function loadPlayers(callback) {
                     { name: "James Ong", handicap: 11, defaultTeam: "B" }
                 ];
                 console.log("[PLAYER-MGMT] Using default players");
-                // Save defaults
                 savePlayers(function() {
                     if (callback) callback();
                 });
@@ -473,46 +410,40 @@ function render() {
     
     var html = `
         <div class="header">
-            <div class="title">👥 PLAYER MANAGEMENT</div>
+            <div class="title">Player Management</div>
             <div class="subtitle">Add, edit, or remove players</div>
         </div>
         
-        <!-- Add / Edit Form -->
         <div class="card">
-            <div class="card-title">${editingIndex >= 0 ? '✏️ Edit Player' : '➕ Add New Player'}</div>
+            <div class="card-title">${editingIndex >= 0 ? 'Edit Player' : 'Add New Player'}</div>
             <div class="form-row">
-                <div class="field-group" style="flex:2;">
-                    <label>Name</label>
-                    <input type="text" id="playerNameInput" class="player-name-input" placeholder="Player name" value="${editingIndex >= 0 ? escapeHtml(players[editingIndex].name) : ''}">
-                </div>
-                <div class="field-group" style="flex:0.8;">
-                    <label>Hcp</label>
-                    <input type="number" id="playerHcpInput" class="hcp-input" min="0" max="54" value="${editingIndex >= 0 ? players[editingIndex].handicap : 0}">
-                </div>
-                <div class="field-group" style="flex:0.8;">
-                    <label>Team</label>
-                    <select id="playerTeamSelect" class="team-select">
-                        <option value="A" ${editingIndex >= 0 && players[editingIndex].defaultTeam === 'A' ? 'selected' : ''}>Team A</option>
-                        <option value="B" ${editingIndex >= 0 && players[editingIndex].defaultTeam === 'B' ? 'selected' : ''}>Team B</option>
-                    </select>
-                </div>
+                <label>Name</label>
+                <input type="text" id="playerNameInput" placeholder="Player name" value="${editingIndex >= 0 ? escapeHtml(players[editingIndex].name) : ''}">
+            </div>
+            <div class="form-row">
+                <label>Hcp</label>
+                <input type="number" id="playerHcpInput" class="hcp-input" min="0" max="54" value="${editingIndex >= 0 ? players[editingIndex].handicap : 0}">
+                <label>Team</label>
+                <select id="playerTeamSelect" class="team-select">
+                    <option value="A" ${editingIndex >= 0 && players[editingIndex].defaultTeam === 'A' ? 'selected' : ''}>Team A</option>
+                    <option value="B" ${editingIndex >= 0 && players[editingIndex].defaultTeam === 'B' ? 'selected' : ''}>Team B</option>
+                </select>
             </div>
             <div style="display:flex; gap:10px; margin-top:8px;">
-                <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? '💾 Update Player' : '➕ Add Player'}</button>
-                ${editingIndex >= 0 ? '<button class="btn btn-cancel" id="cancelEditBtn">✖ Cancel</button>' : ''}
+                <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? 'Update Player' : 'Add Player'}</button>
+                ${editingIndex >= 0 ? '<button class="btn btn-cancel" id="cancelEditBtn">Cancel</button>' : ''}
             </div>
         </div>
         
-        <!-- Player List -->
         <div class="card">
-            <div class="card-title">📋 Existing Players (${players.length})</div>
+            <div class="card-title">Existing Players (${players.length})</div>
             <div class="player-list" id="playerList">
                 ${renderPlayerList()}
             </div>
         </div>
         
         <div class="back-btn" onclick="goBackToSettings()">
-            <div class="label">← Back to Game Settings</div>
+            <span class="label">Back to Game Settings</span>
         </div>
         
         <div class="footer">SICC Ryder Cup v${APP_VERSION}</div>
@@ -520,7 +451,6 @@ function render() {
     
     container.innerHTML = html;
     
-    // Attach event listeners
     document.getElementById('savePlayerBtn').addEventListener('click', function() {
         savePlayer();
     });
@@ -533,16 +463,11 @@ function render() {
         });
     }
     
-    // Enter key support
     document.getElementById('playerNameInput').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            savePlayer();
-        }
+        if (e.key === 'Enter') savePlayer();
     });
     document.getElementById('playerHcpInput').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            savePlayer();
-        }
+        if (e.key === 'Enter') savePlayer();
     });
 }
 
@@ -566,8 +491,8 @@ function renderPlayerList() {
                     <span class="team">Team ${p.defaultTeam}</span>
                 </div>
                 <div class="actions">
-                    <button class="btn btn-primary btn-small edit-btn" data-index="${i}">✏️</button>
-                    <button class="btn btn-danger btn-small delete-btn" data-index="${i}">🗑️</button>
+                    <button class="btn btn-small btn-primary edit-btn" data-index="${i}">Edit</button>
+                    <button class="btn btn-small btn-danger delete-btn" data-index="${i}">Delete</button>
                 </div>
             </div>
         `;
@@ -575,9 +500,7 @@ function renderPlayerList() {
     return html;
 }
 
-// Attach edit/delete handlers after render
 function attachPlayerActions() {
-    // Edit buttons
     var editBtns = document.querySelectorAll('.edit-btn');
     for (var i = 0; i < editBtns.length; i++) {
         (function(btn) {
@@ -588,7 +511,6 @@ function attachPlayerActions() {
         })(editBtns[i]);
     }
     
-    // Delete buttons
     var deleteBtns = document.querySelectorAll('.delete-btn');
     for (var i = 0; i < deleteBtns.length; i++) {
         (function(btn) {
@@ -600,7 +522,6 @@ function attachPlayerActions() {
     }
 }
 
-// Override render to attach actions after rendering
 var originalRender = render;
 render = function() {
     originalRender();
@@ -611,11 +532,9 @@ render = function() {
 // Player CRUD Operations
 // ============================================================
 
-// Start editing a player
 function startEdit(index) {
     editingIndex = index;
     render();
-    // Focus the name input
     setTimeout(function() {
         var nameInput = document.getElementById('playerNameInput');
         if (nameInput) {
@@ -625,7 +544,6 @@ function startEdit(index) {
     }, 100);
 }
 
-// Save player (add or update)
 function savePlayer() {
     var nameInput = document.getElementById('playerNameInput');
     var hcpInput = document.getElementById('playerHcpInput');
@@ -635,7 +553,6 @@ function savePlayer() {
     var handicap = parseInt(hcpInput.value);
     var defaultTeam = teamSelect.value;
     
-    // Validation
     if (!name) {
         Modal.alert("Please enter a player name.");
         nameInput.focus();
@@ -648,7 +565,6 @@ function savePlayer() {
         return;
     }
     
-    // Check for duplicate name (if editing, allow same name)
     var duplicate = false;
     for (var i = 0; i < players.length; i++) {
         if (i !== editingIndex && players[i].name.toLowerCase() === name.toLowerCase()) {
@@ -669,40 +585,32 @@ function savePlayer() {
     };
     
     if (editingIndex >= 0) {
-        // Update existing player
         players[editingIndex] = playerData;
-        // Resort
         players.sort(function(a, b) { return a.name.localeCompare(b.name); });
         editingIndex = -1;
     } else {
-        // Add new player
         players.push(playerData);
         players.sort(function(a, b) { return a.name.localeCompare(b.name); });
     }
     
-    // Save to Firestore
     savePlayers(function(success) {
         if (success) {
             render();
-            Modal.alert("✅ Player saved successfully.");
+            Modal.alert("Player saved successfully.");
         } else {
-            // Revert changes on error?
-            // We already modified the array, but the save failed. Reload from Firestore.
             loadPlayers(function() {
                 render();
-                Modal.alert("❌ Failed to save player. Changes reverted.");
+                Modal.alert("Failed to save player. Changes reverted.");
             });
         }
     });
 }
 
-// Delete player with confirmation
 function deletePlayer(index) {
     var player = players[index];
     Modal.confirm(
         "Delete player '" + player.name + "'? This action cannot be undone.",
         function() {
-            // On confirm
             players.splice(index, 1);
             if (editingIndex === index) {
                 editingIndex = -1;
@@ -712,17 +620,16 @@ function deletePlayer(index) {
             savePlayers(function(success) {
                 if (success) {
                     render();
-                    Modal.alert("✅ Player deleted.");
+                    Modal.alert("Player deleted.");
                 } else {
                     loadPlayers(function() {
                         render();
-                        Modal.alert("❌ Failed to delete player. Changes reverted.");
+                        Modal.alert("Failed to delete player. Changes reverted.");
                     });
                 }
             });
         },
         function() {
-            // On cancel
             console.log("[PLAYER-MGMT] Deletion cancelled");
         }
     );
@@ -749,7 +656,6 @@ SessionManager.initSession("player-management.html", "admin.html", function(sess
     });
 });
 
-// Expose functions globally
 window.goBackToSettings = goBackToSettings;
 window.startEdit = startEdit;
 window.deletePlayer = deletePlayer;
@@ -760,14 +666,17 @@ window.savePlayer = savePlayer;
 
 <!--
 FILE: player-management.html
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Player management screen
-   - ADD: Create new players with name, handicap, default team
-   - EDIT: Update player name, handicap, default team
-   - DELETE: Remove players with confirmation
-   - AUTO-SAVE: Changes saved to Firestore playerInformation/players
-   - INTEGRATION: Players can be used as dropdown in setup-game.html
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - APPLIED: Baseline UI design with visible green borders
+   - CHANGED: Card borders to #2a5a2a with rounded corners
+   - CHANGED: Button borders to #3a7a3a
+   - CHANGED: All headers, labels to #4caf50
+   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
+   - CHANGED: Back link divider to #2a5a2a
+   - CHANGED: Form inputs to have subtle green border
+   - CHANGED: Player items to have subtle green border
+   - PRESERVED: All functionality from v1.00
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
