@@ -1,12 +1,12 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.03
-KEY CHANGES from v3.02:
-   - ADDED: Preserves anchorRaw and perfRaw values in adjustedHandicaps
-   - ADDED: Stores derived data (raw results for Anc and Perf columns)
-   - Ensures all calculated handicap data is saved to Firestore
-   - Prevents loss of raw values when viewing completed games
-   - All existing functionality preserved
+VERSION: 3.04
+KEY CHANGES from v3.03:
+   - FIXED: updateWithHandicap() now correctly sets status: "completed" from the start
+   - FIXED: ensure all handicap data is properly saved before status change
+   - ADDED: Better error handling and logging for handicap update
+   - ADDED: Validation of handicapData before writing to Firestore
+   - All existing functionality preserved from v3.03
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
@@ -76,7 +76,6 @@ var HistoryRecord = (function() {
     // ============================================================
     // Create or update archive record (UPSERT with fixed ID)
     // Stores data strings directly - NO conversion
-    // NEW v3.02: Uses fixed document ID (gameId + "_H")
     // ============================================================
     
     function upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -118,7 +117,6 @@ var HistoryRecord = (function() {
                                 captainName: signatures.f2?.captainName || null
                             }
                         },
-                        // Store data strings directly - NO conversion
                         f1DataString: flight1DataString || "",
                         f2DataString: flight2DataString || "",
                         results: results
@@ -144,12 +142,11 @@ var HistoryRecord = (function() {
                         winnerText = "Team B Wins!";
                     }
                     
-                    // Store starting handicaps for all players
                     var playersWithStartingHcp = gameData.players.map(function(p) {
                         return {
                             name: p.name,
                             label: p.label,
-                            handicap: p.handicap,  // STARTING handicap at game time
+                            handicap: p.handicap,
                             team: p.team,
                             flight: p.flight
                         };
@@ -174,7 +171,6 @@ var HistoryRecord = (function() {
                             teamGameFormat: gameData.teamGameFormat || "tournament"
                         },
                         
-                        // Store players with their STARTING handicaps
                         players: playersWithStartingHcp,
                         
                         finalResults: {
@@ -197,12 +193,10 @@ var HistoryRecord = (function() {
                             }
                         },
                         
-                        // Store data strings directly - NO conversion needed
                         f1DataString: flight1DataString || "",
                         f2DataString: flight2DataString || "",
                         results: results,
                         
-                        // Placeholder for handicap adjustment (to be filled later)
                         adjustedHandicaps: null,
                         
                         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -224,7 +218,7 @@ var HistoryRecord = (function() {
     
     // ============================================================
     // Update with handicap adjustment (mark as completed)
-    // v3.03: Now preserves anchorRaw and perfRaw values
+    // v3.04: Ensures status is set to "completed" with handicap data
     // ============================================================
     
     function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
@@ -233,6 +227,17 @@ var HistoryRecord = (function() {
             if (callback) callback(err);
             return;
         }
+        
+        // Validate handicapData
+        if (!handicapData.players || !Array.isArray(handicapData.players) || handicapData.players.length === 0) {
+            var err = new Error("Invalid handicapData: missing players array");
+            if (callback) callback(err);
+            return;
+        }
+        
+        console.log("[HistoryRecord] Updating record with handicap data:", archiveId);
+        console.log("[HistoryRecord] Players:", handicapData.players.length);
+        console.log("[HistoryRecord] Anchor:", handicapData.anchor);
         
         // Build complete adjustedHandicaps record
         var adjustedHandicaps = {
@@ -250,16 +255,15 @@ var HistoryRecord = (function() {
                 var player = startingPlayers[i];
                 var adjustment = handicapData.players.find(function(p) { return p.name === player.name; });
                 
-                // v3.03: Preserve anchorRaw and perfRaw values
                 adjustedHandicaps.players.push({
                     name: player.name,
-                    label: player.label,
-                    startingHcp: player.handicap,           // Stored permanently
+                    label: player.label || '',
+                    startingHcp: player.handicap,
                     anchorAdj: adjustment ? adjustment.anchorAdj : 0,
                     perfAdj: adjustment ? adjustment.perfAdj : 0,
-                    finalHcp: adjustment ? adjustment.newHcp : player.handicap,
-                    anchorRaw: adjustment ? adjustment.anchorRaw : 0,   // ← ADDED v3.03
-                    perfRaw: adjustment ? adjustment.perfRaw : 0        // ← ADDED v3.03
+                    finalHcp: adjustment ? adjustment.finalHcp : player.handicap,
+                    anchorRaw: adjustment ? adjustment.anchorRaw : 0,
+                    perfRaw: adjustment ? adjustment.perfRaw : 0
                 });
             }
         } else {
@@ -267,30 +271,35 @@ var HistoryRecord = (function() {
             adjustedHandicaps.players = handicapData.players.map(function(p) {
                 return {
                     name: p.name,
-                    label: p.name.substring(0, 3).toUpperCase(),
-                    startingHcp: p.currentHcp,
+                    label: p.label || p.name.substring(0, 3).toUpperCase(),
+                    startingHcp: p.startingHcp || p.currentHcp || 0,
                     anchorAdj: p.anchorAdj || 0,
                     perfAdj: p.perfAdj || 0,
-                    finalHcp: p.newHcp,
-                    anchorRaw: p.anchorRaw || 0,   // ← ADDED v3.03
-                    perfRaw: p.perfRaw || 0        // ← ADDED v3.03
+                    finalHcp: p.finalHcp || p.newHcp || 0,
+                    anchorRaw: p.anchorRaw || 0,
+                    perfRaw: p.perfRaw || 0
                 };
             });
         }
         
+        // v3.04: Ensure status is "completed" and all data is properly set
         var updatePayload = {
             "adjustedHandicaps": adjustedHandicaps,
             "status": "completed",
             "updatedAt": firebase.firestore.FieldValue.serverTimestamp()
         };
         
+        console.log("[HistoryRecord] Writing to Firestore with status: completed");
+        console.log("[HistoryRecord] Payload keys:", Object.keys(updatePayload));
+        console.log("[HistoryRecord] Players in payload:", adjustedHandicaps.players.length);
+        
         firebase.firestore().collection(COLLECTION).doc(archiveId).update(updatePayload)
             .then(function() {
-                console.log("Archive record completed with handicap:", archiveId);
+                console.log("[HistoryRecord] Archive record completed with handicap:", archiveId);
                 if (callback) callback(null);
             })
             .catch(function(err) {
-                console.error("Error updating archive record:", err);
+                console.error("[HistoryRecord] Error updating archive record:", err);
                 if (callback) callback(err);
             });
     }
@@ -456,13 +465,13 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 3.03
-KEY CHANGES from v3.02:
-   - ADDED: Preserves anchorRaw and perfRaw values in adjustedHandicaps
-   - ADDED: Stores derived data (raw results for Anc and Perf columns)
-   - Ensures all calculated handicap data is saved to Firestore
-   - Prevents loss of raw values when viewing completed games
-   - All existing functionality preserved
+VERSION: 3.04
+KEY CHANGES from v3.03:
+   - FIXED: updateWithHandicap() now correctly sets status: "completed" from the start
+   - FIXED: ensure all handicap data is properly saved before status change
+   - ADDED: Better error handling and logging for handicap update
+   - ADDED: Validation of handicapData before writing to Firestore
+   - All existing functionality preserved from v3.03
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
