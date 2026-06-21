@@ -1,14 +1,13 @@
 <!--
 FILE: admin.html
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - REDESIGNED: Cleaner, more compact layout
-   - REMOVED: Large icons from buttons
-   - CHANGED: Buttons now 2 lines only (label + description)
-   - CHANGED: Zoom toggle moved to bottom as simple switch
-   - CHANGED: Button width to 100% (full width)
-   - CHANGED: Reduced spacing between buttons
-   - PRESERVED: All functionality from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - REDESIGNED: Ultra-minimalist, professional look
+   - REMOVED: All icons (emoji) from buttons and headers
+   - CHANGED: Clean typography, subtle borders, refined spacing
+   - CHANGED: Smooth hover/active states with subtle effects
+   - CHANGED: Zoom toggle redesigned as clean switch
+   - PRESERVED: All functionality from v1.14
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -29,177 +28,191 @@ STATUS: Ready for integration
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
-            background: #000000; 
-            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif; 
-            color: #ffffff; 
+            background: #0a0a0a; 
+            font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif; 
+            color: #e0e0e0; 
             padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 20px) 20px env(safe-area-inset-left, 20px);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .container { max-width: 500px; margin: 0 auto; }
+        .container { max-width: 420px; width: 100%; margin: 0 auto; }
         
         .version-tag { 
             position: fixed; 
-            top: max(8px, env(safe-area-inset-top, 8px)); 
-            right: max(8px, env(safe-area-inset-right, 8px)); 
-            font-size: 0.65rem; 
+            top: max(12px, env(safe-area-inset-top, 12px)); 
+            right: max(12px, env(safe-area-inset-right, 12px)); 
+            font-size: 0.6rem; 
             color: #4caf50; 
-            background: rgba(0,0,0,0.6); 
+            background: rgba(0,0,0,0.5); 
             padding: 2px 10px; 
-            border-radius: 16px;
+            border-radius: 12px;
             font-family: monospace;
             z-index: 1000;
-            opacity: 0.8;
+            letter-spacing: 0.3px;
         }
         
         .device-tag {
             position: fixed;
-            top: max(8px, env(safe-area-inset-top, 8px));
-            left: max(8px, env(safe-area-inset-left, 8px));
-            font-size: 0.55rem;
+            top: max(12px, env(safe-area-inset-top, 12px));
+            left: max(12px, env(safe-area-inset-left, 12px));
+            font-size: 0.5rem;
             color: #4caf50;
-            background: rgba(0,0,0,0.4);
+            background: rgba(0,0,0,0.3);
             padding: 2px 8px;
-            border-radius: 12px;
+            border-radius: 10px;
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
-            letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 20px; margin-top: 12px; }
-        .title { font-size: 1.4rem; font-weight: 700; color: #4caf50; }
-        .version { font-size: 0.6rem; color: #666; margin-top: 2px; }
+        .header { text-align: center; margin-bottom: 32px; margin-top: 8px; }
+        .title { font-size: 1.3rem; font-weight: 600; color: #e0e0e0; letter-spacing: -0.3px; }
+        .subtitle { font-size: 0.6rem; color: #444; margin-top: 4px; letter-spacing: 0.5px; text-transform: uppercase; }
         
         .menu {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
         }
         
         .admin-btn {
-            background: #111;
-            border: 1px solid #333;
-            border-radius: 12px;
-            padding: 12px 16px;
+            background: transparent;
+            border: 1px solid #1e1e1e;
+            border-radius: 8px;
+            padding: 14px 16px;
             width: 100%;
             text-align: left;
             cursor: pointer;
-            transition: all 0.2s ease;
-            box-sizing: border-box;
+            transition: all 0.15s ease;
         }
-        .admin-btn:active { transform: scale(0.98); background: #1a1a1a; }
+        .admin-btn:hover { border-color: #333; background: #111; }
+        .admin-btn:active { transform: scale(0.98); background: #0a0a0a; }
         .admin-btn .label { 
-            font-size: 0.95rem; 
-            font-weight: 600; 
-            color: #4caf50; 
+            font-size: 0.85rem; 
+            font-weight: 500; 
+            color: #e0e0e0; 
             display: block;
+            letter-spacing: -0.2px;
         }
         .admin-btn .desc { 
-            font-size: 0.65rem; 
-            color: #666; 
+            font-size: 0.6rem; 
+            color: #555; 
             display: block;
-            margin-top: 1px;
+            margin-top: 2px;
+            letter-spacing: 0.2px;
         }
         
-        /* Zoom toggle - compact switch style */
+        .divider {
+            border: none;
+            border-top: 1px solid #1a1a1a;
+            margin: 8px 0;
+        }
+        
         .zoom-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: #111;
-            border: 1px solid #333;
-            border-radius: 12px;
-            padding: 10px 16px;
+            background: transparent;
+            border: 1px solid #1e1e1e;
+            border-radius: 8px;
+            padding: 12px 16px;
             width: 100%;
         }
         .zoom-row .label {
-            font-size: 0.9rem;
-            font-weight: 500;
-            color: #ccc;
+            font-size: 0.8rem;
+            font-weight: 400;
+            color: #888;
+            letter-spacing: -0.1px;
+        }
+        .zoom-row .toggle-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         .zoom-row .toggle-track {
-            width: 50px;
-            height: 28px;
-            background: #2a2a2a;
-            border-radius: 14px;
+            width: 42px;
+            height: 24px;
+            background: #1a1a1a;
+            border-radius: 12px;
             cursor: pointer;
             position: relative;
-            transition: background 0.3s ease;
+            transition: background 0.25s ease;
+            border: 1px solid #2a2a2a;
             flex-shrink: 0;
         }
         .zoom-row .toggle-track.on {
             background: #1a3a1a;
-            border: 1px solid #4caf50;
+            border-color: #4caf50;
         }
         .zoom-row .toggle-track.off {
-            background: #2a2a2a;
-            border: 1px solid #555;
+            background: #1a1a1a;
+            border-color: #2a2a2a;
         }
         .zoom-row .toggle-thumb {
-            width: 22px;
-            height: 22px;
-            background: #888;
+            width: 18px;
+            height: 18px;
+            background: #555;
             border-radius: 50%;
             position: absolute;
             top: 2px;
             left: 2px;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
         }
         .zoom-row .toggle-track.on .toggle-thumb {
-            left: 24px;
+            left: 20px;
             background: #4caf50;
         }
         .zoom-row .toggle-track.off .toggle-thumb {
             left: 2px;
-            background: #888;
+            background: #444;
         }
         .zoom-row .status-text {
             font-size: 0.6rem;
-            color: #666;
-            margin-left: 8px;
-            min-width: 30px;
+            color: #555;
+            min-width: 28px;
+            text-align: right;
+            font-weight: 500;
         }
         .zoom-row .status-text.on { color: #4caf50; }
-        .zoom-row .status-text.off { color: #888; }
+        .zoom-row .status-text.off { color: #444; }
         
         .back-btn {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 12px;
-            padding: 12px;
+            background: transparent;
+            border: 1px solid #1a1a1a;
+            border-radius: 8px;
+            padding: 14px;
             text-align: center;
             cursor: pointer;
             margin-top: 12px;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
         }
-        .back-btn:active { transform: scale(0.98); background: #2a2a2a; }
+        .back-btn:hover { border-color: #333; background: #111; }
+        .back-btn:active { transform: scale(0.98); }
         .back-btn .label { 
-            font-size: 0.85rem; 
-            font-weight: 500; 
-            color: #888; 
+            font-size: 0.8rem; 
+            font-weight: 400; 
+            color: #555; 
+            letter-spacing: 0.2px;
         }
         
-        .footer { text-align: center; margin-top: 20px; font-size: 0.5rem; color: #333; }
-        .loading { text-align: center; padding: 40px; color: #888; }
-        
-        .divider {
-            border: none;
-            border-top: 1px solid #2a2a2a;
-            margin: 4px 0;
-        }
+        .footer { text-align: center; margin-top: 24px; font-size: 0.5rem; color: #222; letter-spacing: 0.5px; }
+        .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
     </style>
 </head>
 <body>
 <div class="container" id="app">
-    <div class="loading">Loading...</div>
+    <div class="loading">Loading</div>
 </div>
-<div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.14</div>
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.15</div>
 
 <script>
-// FILE: admin.html - VERSION 1.14
+// FILE: admin.html - VERSION 1.15
 
-var VERSION = "1.14";
-var CACHE_KEY = "admin_version_v114";
+var VERSION = "1.15";
+var CACHE_KEY = "admin_version_v115";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -279,8 +292,8 @@ function render() {
     
     var html = `
         <div class="header">
-            <div class="title">⚙️ GAME SETTINGS</div>
-            <div class="version">Administration</div>
+            <div class="title">Game Settings</div>
+            <div class="subtitle">Administration</div>
         </div>
         
         <div class="menu">
@@ -307,8 +320,8 @@ function render() {
             <hr class="divider">
             
             <div class="zoom-row">
-                <span class="label">🔍 Pinch Zoom</span>
-                <div style="display:flex; align-items:center; gap:6px;">
+                <span class="label">Pinch Zoom</span>
+                <div class="toggle-group">
                     <span class="status-text ${statusClass}">${statusText}</span>
                     <div class="toggle-track ${toggleClass}" onclick="toggleZoom()">
                         <div class="toggle-thumb"></div>
@@ -318,7 +331,7 @@ function render() {
         </div>
         
         <div class="back-btn" onclick="goBackToMenu()">
-            <span class="label">← Back to Main Menu</span>
+            <span class="label">Back to Main Menu</span>
         </div>
         
         <div class="footer">SICC Ryder Cup</div>
@@ -338,7 +351,7 @@ window.duplicateMasterRecord = function() {
     
     masterRef.get().then(function(doc) {
         if (!doc.exists) {
-            Modal.alert("❌ MASTER_RECORD not found in Firestore.\n\nPlease ensure the Master Record has been created.");
+            Modal.alert("MASTER_RECORD not found in Firestore. Please ensure the Master Record has been created.");
             return;
         }
         
@@ -367,14 +380,14 @@ window.duplicateMasterRecord = function() {
         
         return db.collection("scheduledGames").doc(newId).set(duplicate);
     }).then(function() {
-        console.log("✅ Game created with today's date. ID:", newId);
-        Modal.alert("✅ Game created from MASTER_RECORD!\n\nGame ID: " + newId + "\n\nRefresh the page and click GAME DAY.");
+        console.log("Game created with today's date. ID:", newId);
+        Modal.alert("Game created from MASTER_RECORD!\n\nGame ID: " + newId + "\n\nRefresh the page and click GAME DAY.");
         setTimeout(function() {
             window.location.reload();
         }, 1000);
     }).catch(function(err) {
         console.error("Error creating duplicate:", err);
-        Modal.alert("❌ Error creating game: " + err.message);
+        Modal.alert("Error creating game: " + err.message);
     });
 };
 
@@ -415,15 +428,14 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.14
-KEY CHANGES from v1.13:
-   - REDESIGNED: Cleaner, more compact layout
-   - REMOVED: Large icons from buttons
-   - CHANGED: Buttons now 2 lines only (label + description)
-   - CHANGED: Zoom toggle moved to bottom as simple switch
-   - CHANGED: Button width to 100% (full width)
-   - CHANGED: Reduced spacing between buttons
-   - PRESERVED: All functionality from v1.13
+VERSION: 1.15
+KEY CHANGES from v1.14:
+   - REDESIGNED: Ultra-minimalist, professional look
+   - REMOVED: All icons (emoji) from buttons and headers
+   - CHANGED: Clean typography, subtle borders, refined spacing
+   - CHANGED: Smooth hover/active states with subtle effects
+   - CHANGED: Zoom toggle redesigned as clean switch
+   - PRESERVED: All functionality from v1.14
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
