@@ -1,12 +1,13 @@
 <!--
 FILE: validate.html
-VERSION: 2.03
-KEY CHANGES from v2.02:
-   - FIXED: buildFixPreview() now reads from record.rawData (was reading from record wrapper)
-   - FIXED: Compares ALL 18 holes for TR mismatches (was only checking H18)
-   - FIXED: Preview now shows which holes need fixing (H11, H16, H17) not just H18
-   - FIXED: Selective update only updates mismatched holes, preserves correct ones
-   - IMPROVED: Human-readable preview with clear hole-by-hole comparison
+VERSION: 2.04
+KEY CHANGES from v2.03:
+   - FIXED: buildFixPreview() now checks ALL 18 holes for T-1 Display mismatches
+   - FIXED: buildFixPreview() now checks ALL 18 holes for T-2 Display mismatches
+   - FIXED: buildFixPreview() now checks ALL 18 holes for Strk Display mismatches
+   - FIXED: executeFixWithBackup() now updates ALL 18 holes for T-1, T-2, Strk if mismatched
+   - IMPROVED: Preview now shows exact hole-by-hole display mismatches (H16 AS→B4, H17 AS→B5)
+   - IMPROVED: Preview summary shows count of display mismatches
    - PRESERVED: All calculation logic, restore functionality
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
@@ -191,7 +192,7 @@ STATUS: Ready for integration
         .backup-item .bselect { color: #4caf50; font-size: 0.7rem; font-weight: 600; }
         .backup-item .bselect.empty { color: #666; }
         
-        /* Preview Modal Styles - v2.03 */
+        /* Preview Modal Styles - v2.04 */
         .preview-overlay {
             position: fixed;
             top: 0;
@@ -210,7 +211,7 @@ STATUS: Ready for integration
             background: #1a1a1a;
             border-radius: 28px;
             padding: 28px;
-            max-width: 600px;
+            max-width: 650px;
             width: 95%;
             max-height: 90vh;
             overflow-y: auto;
@@ -362,8 +363,12 @@ STATUS: Ready for integration
         }
         .preview-hole-item.ok { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
         .preview-hole-item.fix { background: #2a0a0a; color: #ff6b6b; border: 1px solid #5a2a2a; }
-        .preview-hole-item.ok-small { background: #1a2a1a; color: #4caf50; font-size: 0.6rem; padding: 2px 4px; border-radius: 2px; }
-        .preview-hole-item.fix-small { background: #2a1a1a; color: #ff6b6b; font-size: 0.6rem; padding: 2px 4px; border-radius: 2px; }
+        
+        .preview-change-count {
+            font-size: 0.7rem;
+            color: #888;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -371,7 +376,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v2.03</span>
+        <span class="version-tag">v2.04</span>
     </h1>
     
     <!-- Tab Navigation -->
@@ -504,8 +509,8 @@ STATUS: Ready for integration
                         <br><strong style="color:#4a8af4;">NOT TOUCHED: f1IntraMatches, f2IntraMatches, matchResults (already correct)</strong>
                         <br><strong style="color:#ffaa44;">This action cannot be undone.</strong>
                         <br><span style="color:#4a8af4; font-size:0.75rem;">A backup will be created before updating.</span>
-                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.03 calculation logic (proven correct).</span>
-                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Compares ALL 18 holes, only updates mismatched holes.</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.04 calculation logic (proven correct).</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Compares ALL 18 holes for TR, T-1, T-2, and Strk.</span>
                     </div>
                     <div id="fixProgress" class="fix-progress"></div>
                     <div class="fix-btn-container">
@@ -518,7 +523,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v2.03 — Compares ALL 18 holes. Only updates mismatched holes.
+        Validator v2.04 — Compares ALL 18 holes for TR, T-1, T-2, and Strk.
     </div>
 </div>
 
@@ -526,8 +531,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "2.03";
-console.log("[Validator] v2.03 - Compares ALL 18 holes, only updates mismatched holes");
+window.VALIDATOR_VERSION = "2.04";
+console.log("[Validator] v2.04 - Compares ALL 18 holes for TR, T-1, T-2, Strk");
 
 // ============================================================
 // FIREBASE
@@ -978,7 +983,7 @@ function calculateStrokeGame(f1Scores, f2Scores, players) {
 }
 
 // ============================================================
-// V2.03: buildCompleteResultsFromRawData — uses v1.20 logic
+// V2.04: buildCompleteResultsFromRawData — uses v1.20 logic
 // ============================================================
 function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar) {
     console.log('[VALIDATOR] buildCompleteResultsFromRawData starting...');
@@ -1188,7 +1193,8 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
             teamA: trTeamA,
             teamB: trTeamB,
             teamAGreen: trTeamAGreen,
-            teamBGreen: trTeamBGreen        },
+            teamBGreen: trTeamBGreen
+        },
         clinchedAt: clinchedAt,
         playerTotals: playerTotals,
         computedUpToHole: 18,
@@ -1545,7 +1551,7 @@ function fetchRecords() {
 }
 
 // ============================================================
-// V2.03: FIX PREVIEW — Compares ALL 18 holes
+// V2.04: FIX PREVIEW — Compares ALL 18 holes for TR, T-1, T-2, Strk
 // ============================================================
 
 // Helper: Deep compare two values
@@ -1581,8 +1587,18 @@ function compareArrays(arr1, arr2, tolerance) {
     return true;
 }
 
+// Helper: Compare two string arrays
+function compareStringArrays(arr1, arr2) {
+    if (!arr1 || !arr2) return false;
+    if (arr1.length !== arr2.length) return false;
+    for (var i = 0; i < arr1.length; i++) {
+        if (arr1[i] !== arr2[i]) return false;
+    }
+    return true;
+}
+
 // ============================================================
-// V2.03: buildFixPreview — Compares ALL 18 holes
+// V2.04: buildFixPreview — Compares ALL 18 holes
 // ============================================================
 function buildFixPreview(record, recalculated) {
     var changes = [];
@@ -1591,14 +1607,14 @@ function buildFixPreview(record, recalculated) {
     var mismatchedHoles = [];
     var matchingHoles = [];
     
-    // Get data from rawData (FIXED in v2.03)
+    // Get data from rawData
     var data = record.rawData;
     var recTrA = data.results?.tr?.teamA || [];
     var recTrB = data.results?.tr?.teamB || [];
     var newTrA = recalculated.tr.teamA || [];
     var newTrB = recalculated.tr.teamB || [];
     
-    // ---- COMPARE ALL 18 HOLES ----
+    // ---- COMPARE ALL 18 HOLES FOR TR ----
     for (var i = 0; i < 18; i++) {
         var recA = recTrA[i];
         var recB = recTrB[i];
@@ -1620,6 +1636,57 @@ function buildFixPreview(record, recalculated) {
         }
     }
     
+    // ---- COMPARE ALL 18 HOLES FOR T-1 Display ----
+    var recT1 = data.results?.game2?.displayT1 || [];
+    var newT1 = recalculated.game2.displayT1 || [];
+    for (var i = 0; i < 18; i++) {
+        var rec = recT1[i] || '?';
+        var newVal = newT1[i] || '?';
+        if (rec !== newVal) {
+            changes.push({
+                field: 'H' + (i+1) + ' T-1 Display',
+                current: rec,
+                new: newVal,
+                type: 'team',
+                hole: i + 1
+            });
+        }
+    }
+    
+    // ---- COMPARE ALL 18 HOLES FOR T-2 Display ----
+    var recT2 = data.results?.game2?.displayT2 || [];
+    var newT2 = recalculated.game2.displayT2 || [];
+    for (var i = 0; i < 18; i++) {
+        var rec = recT2[i] || '?';
+        var newVal = newT2[i] || '?';
+        if (rec !== newVal) {
+            changes.push({
+                field: 'H' + (i+1) + ' T-2 Display',
+                current: rec,
+                new: newVal,
+                type: 'team',
+                hole: i + 1
+            });
+        }
+    }
+    
+    // ---- COMPARE ALL 18 HOLES FOR Strk Display ----
+    var recStrk = data.results?.game3?.displayStrk || [];
+    var newStrk = recalculated.game3.displayStrk || [];
+    for (var i = 0; i < 18; i++) {
+        var rec = recStrk[i] || '?';
+        var newVal = newStrk[i] || '?';
+        if (rec !== newVal) {
+            changes.push({
+                field: 'H' + (i+1) + ' Strk Display',
+                current: rec,
+                new: newVal,
+                type: 'strk',
+                hole: i + 1
+            });
+        }
+    }
+    
     // ---- Status ----
     if (record.status !== 'completed') {
         changes.push({
@@ -1630,48 +1697,6 @@ function buildFixPreview(record, recalculated) {
         });
     } else {
         unchanged.push('Status already completed');
-    }
-    
-    // ---- T-1 Display at H18 ----
-    var recT1 = data.results?.game2?.displayT1?.[17] || '?';
-    var newT1 = recalculated.game2.displayT1[17] || '?';
-    if (recT1 !== newT1) {
-        changes.push({
-            field: 'T-1 Final (H18)',
-            current: recT1,
-            new: newT1,
-            type: 'team'
-        });
-    } else {
-        unchanged.push('T-1 Display at H18 matches');
-    }
-    
-    // ---- T-2 Display at H18 ----
-    var recT2 = data.results?.game2?.displayT2?.[17] || '?';
-    var newT2 = recalculated.game2.displayT2[17] || '?';
-    if (recT2 !== newT2) {
-        changes.push({
-            field: 'T-2 Final (H18)',
-            current: recT2,
-            new: newT2,
-            type: 'team'
-        });
-    } else {
-        unchanged.push('T-2 Display at H18 matches');
-    }
-    
-    // ---- Strk Display at H18 ----
-    var recStrk = data.results?.game3?.displayStrk?.[17] || '?';
-    var newStrk = recalculated.game3.displayStrk[17] || '?';
-    if (recStrk !== newStrk) {
-        changes.push({
-            field: 'Strk Final (H18)',
-            current: recStrk,
-            new: newStrk,
-            type: 'strk'
-        });
-    } else {
-        unchanged.push('Strk Display at H18 matches');
     }
     
     // ---- Player totals ----
@@ -1709,7 +1734,7 @@ function buildFixPreview(record, recalculated) {
 }
 
 // ============================================================
-// V2.03: showFixPreview — Human-readable with hole list
+// V2.04: showFixPreview — Human-readable with hole list
 // ============================================================
 function showFixPreview(record, recalculated, previewData, backupId) {
     var overlay = document.createElement('div');
@@ -1786,7 +1811,7 @@ function showFixPreview(record, recalculated, previewData, backupId) {
     } else {
         // Show changes section - human readable
         html += '<div class="preview-section">';
-        html += '<div class="preview-section-title">🔴 Changes to be applied</div>';
+        html += '<div class="preview-section-title">🔴 Changes to be applied (' + changeCount + ' items)</div>';
         for (var i = 0; i < previewData.changes.length; i++) {
             var change = previewData.changes[i];
             var changeIcon = '';
@@ -1857,7 +1882,7 @@ function showFixPreview(record, recalculated, previewData, backupId) {
 }
 
 // ============================================================
-// V2.03: executeFixWithBackup — Only updates mismatched holes
+// V2.04: executeFixWithBackup — Only updates mismatched holes
 // ============================================================
 function executeFixWithBackup(record, recalculated, backupId) {
     var docId = record.id;
@@ -1874,9 +1899,9 @@ function executeFixWithBackup(record, recalculated, backupId) {
     progressEl.innerHTML += '<div class="step">📝 Building update payload...</div>';
     
     var updatePayload = {};
-    
-    // ---- Check ALL 18 holes, only update mismatched ones ----
     var data = record.rawData;
+    
+    // ---- CHECK ALL 18 HOLES FOR TR ----
     var recTrA = data.results?.tr?.teamA || [];
     var recTrB = data.results?.tr?.teamB || [];
     var newTrA = recalculated.tr.teamA || [];
@@ -1894,7 +1919,6 @@ function executeFixWithBackup(record, recalculated, backupId) {
     }
     
     if (holesToFix.length > 0) {
-        // Create updated arrays (copy from recalculated only for mismatched holes)
         var updatedTrA = recTrA.slice();
         var updatedTrB = recTrB.slice();
         var updatedGreenA = data.results?.tr?.teamAGreen || [];
@@ -1913,30 +1937,51 @@ function executeFixWithBackup(record, recalculated, backupId) {
         updatePayload['results.tr.teamAGreen'] = updatedGreenA;
         updatePayload['results.tr.teamBGreen'] = updatedGreenB;
         
-        progressEl.innerHTML += '<div class="step info">🔴 Fixing holes: ' + holesToFix.map(function(h) { return h+1; }).join(', ') + '</div>';
+        progressEl.innerHTML += '<div class="step info">🔴 Fixing TR holes: ' + holesToFix.map(function(h) { return h+1; }).join(', ') + '</div>';
     } else {
         progressEl.innerHTML += '<div class="step info">✅ All TR holes already correct</div>';
     }
     
-    // ---- T-1 Display at H18 ----
-    var recT1 = data.results?.game2?.displayT1?.[17] || '?';
-    var newT1 = recalculated.game2.displayT1[17] || '?';
-    if (recT1 !== newT1) {
-        updatePayload['results.game2.displayT1'] = recalculated.game2.displayT1;
-    }
+    // ---- CHECK ALL 18 HOLES FOR T-1, T-2, Strk Display ----
+    var displayFields = [
+        { key: 'displayT1', path: 'results.game2.displayT1', label: 'T-1' },
+        { key: 'displayT2', path: 'results.game2.displayT2', label: 'T-2' },
+        { key: 'displayStrk', path: 'results.game3.displayStrk', label: 'Strk' }
+    ];
     
-    // ---- T-2 Display at H18 ----
-    var recT2 = data.results?.game2?.displayT2?.[17] || '?';
-    var newT2 = recalculated.game2.displayT2[17] || '?';
-    if (recT2 !== newT2) {
-        updatePayload['results.game2.displayT2'] = recalculated.game2.displayT2;
-    }
-    
-    // ---- Strk Display at H18 ----
-    var recStrk = data.results?.game3?.displayStrk?.[17] || '?';
-    var newStrk = recalculated.game3.displayStrk[17] || '?';
-    if (recStrk !== newStrk) {
-        updatePayload['results.game3.displayStrk'] = recalculated.game3.displayStrk;
+    for (var f = 0; f < displayFields.length; f++) {
+        var field = displayFields[f];
+        var recArr = data.results?.game2?.[field.key] || data.results?.game3?.[field.key] || [];
+        var newArr = recalculated.game2?.[field.key] || recalculated.game3?.[field.key] || [];
+        var mismatchCount = 0;
+        var mismatchHoles = [];
+        for (var i = 0; i < 18; i++) {
+            var rec = recArr[i] || '?';
+            var newVal = newArr[i] || '?';
+            if (rec !== newVal) {
+                mismatchCount++;
+                mismatchHoles.push(i+1);
+            }
+        }
+        if (mismatchCount > 0) {
+            // Only update if there are mismatches
+            var updatePath = field.path;
+            var parts = updatePath.split('.');
+            var updateObj = {};
+            var current = updateObj;
+            for (var j = 0; j < parts.length - 1; j++) {
+                current[parts[j]] = {};
+                current = current[parts[j]];
+            }
+            current[parts[parts.length - 1]] = newArr;
+            // Merge into updatePayload
+            for (var key in updateObj) {
+                updatePayload[updatePath] = newArr;
+            }
+            progressEl.innerHTML += '<div class="step info">🔴 Fixing ' + field.label + ' display mismatches at holes: ' + mismatchHoles.join(', ') + '</div>';
+        } else {
+            progressEl.innerHTML += '<div class="step info">✅ ' + field.label + ' display already correct</div>';
+        }
     }
     
     // ---- Game1 points ----
@@ -2032,7 +2077,7 @@ function executeFixWithBackup(record, recalculated, backupId) {
 }
 
 // ============================================================
-// V2.03: FIX RECORD — Main entry point with preview
+// V2.04: FIX RECORD — Main entry point with preview
 // ============================================================
 function fixRecord() {
     if (currentRecordIndex < 0 || currentRecordIndex >= records.length) {
@@ -2094,7 +2139,7 @@ function fixRecord() {
     createBackup(record, progressEl)
         .then(function(backupId) {
             progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
-            progressEl.innerHTML += '<div class="step">📊 Step 4: Comparing ALL 18 holes...</div>';
+            progressEl.innerHTML += '<div class="step">📊 Step 4: Comparing ALL 18 holes for TR, T-1, T-2, Strk...</div>';
             
             var previewData = buildFixPreview(record, recalculated);
             
@@ -2140,7 +2185,7 @@ function createBackup(record, progressEl) {
         backupData._backupOriginalId = docId;
         backupData._backupOriginalCollection = 'historyGames';
         backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v2.03';
+        backupData._backupReason = 'Pre-fix backup from validator v2.04';
         db.collection('backupFolder').doc(backupId).set(backupData)
             .then(function() {
                 progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
@@ -2269,10 +2314,10 @@ function processGameData(data) {
     
     document.getElementById('results').style.display = 'block';
     
-    // Check if record needs fixing - look at ALL holes
+    // Check if record needs fixing - look at ALL holes for TR
     var recTrA = data.results?.tr?.teamA || [];
     var recTrB = data.results?.tr?.teamB || [];
-    var newTrA = []; // We'll calculate these
+    var newTrA = [];
     var newTrB = [];
     
     // Quick recalc to check
@@ -2312,8 +2357,19 @@ function processGameData(data) {
         }
     }
     
+    // Also check T-2 display at all holes
+    var recT2 = data.results?.game2?.displayT2 || [];
+    var quickT2Result = calculateTeamGame(f2Scores, players, 2, courseSi);
+    var newT2 = quickT2Result.map(function(r) { return r.display || 'AS'; });
+    var t2Mismatches = [];
+    for (var i = 0; i < 18; i++) {
+        if (recT2[i] !== newT2[i]) {
+            t2Mismatches.push(i + 1);
+        }
+    }
+    
     var isPending = data.status === 'pending_handicap';
-    var hasMismatch = mismatches.length > 0;
+    var hasMismatch = mismatches.length > 0 || t2Mismatches.length > 0;
     
     if (isPending || hasMismatch) {
         document.getElementById('fixCard').style.display = 'block';
@@ -2327,11 +2383,11 @@ function processGameData(data) {
         backupBtn.disabled = false;
         document.getElementById('fixProgress').className = 'fix-progress';
         document.getElementById('fixProgress').innerHTML = '';
-        if (hasMismatch) {
-            setStatus('⚠️ Record needs fixing. Mismatched holes: ' + mismatches.join(', '), 'warning');
-        } else {
-            setStatus('⚠️ Record needs fixing. Status: pending_handicap → completed', 'warning');
-        }
+        var msg = '';
+        if (mismatches.length > 0) msg += 'TR mismatches at holes: ' + mismatches.join(', ');
+        if (t2Mismatches.length > 0) msg += ' T-2 mismatches at holes: ' + t2Mismatches.join(', ');
+        if (isPending) msg += ' Status: pending_handicap → completed';
+        setStatus('⚠️ Record needs fixing. ' + msg, 'warning');
     } else {
         document.getElementById('fixCard').style.display = 'none';
         setStatus('✅ Record is valid. No changes needed.', 'success');
@@ -2647,8 +2703,8 @@ document.querySelectorAll('input[name="restoreDestination"]').forEach(function(r
 fetchRecords();
 loadBackupList();
 updateDestPreviews();
-console.log('🔬 Game Data Validator v2.03 loaded.');
-console.log('📌 Compares ALL 18 holes. Only updates mismatched holes.');
+console.log('🔬 Game Data Validator v2.04 loaded.');
+console.log('📌 Compares ALL 18 holes for TR, T-1, T-2, Strk.');
 console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched.');
 </script>
 </body>
@@ -2656,13 +2712,14 @@ console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 
 <!--
 FILE: validate.html
-VERSION: 2.03
-KEY CHANGES from v2.02:
-   - FIXED: buildFixPreview() now reads from record.rawData (was reading from record wrapper)
-   - FIXED: Compares ALL 18 holes for TR mismatches (was only checking H18)
-   - FIXED: Preview now shows which holes need fixing (H11, H16, H17) not just H18
-   - FIXED: Selective update only updates mismatched holes, preserves correct ones
-   - IMPROVED: Human-readable preview with clear hole-by-hole comparison
+VERSION: 2.04
+KEY CHANGES from v2.03:
+   - FIXED: buildFixPreview() now checks ALL 18 holes for T-1 Display mismatches
+   - FIXED: buildFixPreview() now checks ALL 18 holes for T-2 Display mismatches
+   - FIXED: buildFixPreview() now checks ALL 18 holes for Strk Display mismatches
+   - FIXED: executeFixWithBackup() now updates ALL 18 holes for T-1, T-2, Strk if mismatched
+   - IMPROVED: Preview now shows exact hole-by-hole display mismatches (H16 AS→B4, H17 AS→B5)
+   - IMPROVED: Preview summary shows count of display mismatches
    - PRESERVED: All calculation logic, restore functionality
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
