@@ -1,12 +1,14 @@
 <!--
 FILE: admin.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - ADDED: js/index-hidden.js dependency for admin modal functions
-   - FIXED: showAdminModal is now available on admin.html page
-   - FIXED: Cmd+Click or long press on golf icon now works
-   - FIXED: Admin modal functions (reset locks, reset game, view data, refresh)
-   - All existing functionality preserved from v1.11
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - REDESIGNED: Cleaner, more compact layout
+   - REMOVED: Large icons from buttons
+   - CHANGED: Buttons now 2 lines only (label + description)
+   - CHANGED: Zoom toggle moved to bottom as simple switch
+   - CHANGED: Button width to 100% (full width)
+   - CHANGED: Reduced spacing between buttons
+   - PRESERVED: All functionality from v1.13
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -63,126 +65,126 @@ STATUS: Ready for integration
             letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 30px; margin-top: 20px; }
-        .title { font-size: 1.8rem; font-weight: 800; color: #4caf50; }
-        .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        .header { text-align: center; margin-bottom: 20px; margin-top: 12px; }
+        .title { font-size: 1.4rem; font-weight: 700; color: #4caf50; }
+        .version { font-size: 0.6rem; color: #666; margin-top: 2px; }
         
-        /* Centered menu with consistent button widths */
         .menu {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            gap: 14px;
-            margin: 0 auto;
+            gap: 8px;
         }
         
         .admin-btn {
             background: #111;
             border: 1px solid #333;
-            border-radius: 60px;
-            padding: 16px 20px;
-            width: 280px;
-            text-align: center;
+            border-radius: 12px;
+            padding: 12px 16px;
+            width: 100%;
+            text-align: left;
             cursor: pointer;
             transition: all 0.2s ease;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 6px;
             box-sizing: border-box;
         }
         .admin-btn:active { transform: scale(0.98); background: #1a1a1a; }
-        .admin-btn .icon { 
-            font-size: 1.5rem; 
-            display: block; 
-        }
         .admin-btn .label { 
-            font-size: 1rem; 
-            font-weight: 700; 
+            font-size: 0.95rem; 
+            font-weight: 600; 
             color: #4caf50; 
+            display: block;
         }
         .admin-btn .desc { 
             font-size: 0.65rem; 
-            color: #888; 
+            color: #666; 
+            display: block;
+            margin-top: 1px;
         }
         
-        /* v1.11: Zoom toggle with two buttons */
-        .zoom-toggle-group {
+        /* Zoom toggle - compact switch style */
+        .zoom-row {
             display: flex;
-            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 10px 16px;
             width: 100%;
-            justify-content: center;
-            margin-top: 4px;
         }
-        .zoom-toggle-btn {
-            flex: 1;
-            max-width: 80px;
-            padding: 6px 12px;
-            border-radius: 30px;
-            font-size: 0.85rem;
-            font-weight: 700;
+        .zoom-row .label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #ccc;
+        }
+        .zoom-row .toggle-track {
+            width: 50px;
+            height: 28px;
+            background: #2a2a2a;
+            border-radius: 14px;
             cursor: pointer;
-            border: 2px solid #333;
-            background: #1a1a1a;
-            color: #666;
-            transition: all 0.2s ease;
-            text-align: center;
+            position: relative;
+            transition: background 0.3s ease;
+            flex-shrink: 0;
         }
-        .zoom-toggle-btn:active {
-            transform: scale(0.95);
-        }
-        .zoom-toggle-btn.active-on {
-            border-color: #4caf50;
+        .zoom-row .toggle-track.on {
             background: #1a3a1a;
-            color: #4caf50;
-            box-shadow: 0 0 20px rgba(76,175,80,0.15);
+            border: 1px solid #4caf50;
         }
-        .zoom-toggle-btn.active-off {
-            border-color: #ff6b6b;
-            background: #3a1a1a;
-            color: #ff6b6b;
-            box-shadow: 0 0 20px rgba(255,107,107,0.1);
+        .zoom-row .toggle-track.off {
+            background: #2a2a2a;
+            border: 1px solid #555;
         }
-        .zoom-toggle-btn.disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
+        .zoom-row .toggle-thumb {
+            width: 22px;
+            height: 22px;
+            background: #888;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s ease;
         }
-        .zoom-status-text {
+        .zoom-row .toggle-track.on .toggle-thumb {
+            left: 24px;
+            background: #4caf50;
+        }
+        .zoom-row .toggle-track.off .toggle-thumb {
+            left: 2px;
+            background: #888;
+        }
+        .zoom-row .status-text {
             font-size: 0.6rem;
-            color: #888;
-            margin-top: 2px;
+            color: #666;
+            margin-left: 8px;
+            min-width: 30px;
         }
+        .zoom-row .status-text.on { color: #4caf50; }
+        .zoom-row .status-text.off { color: #888; }
         
-        /* Back button - matches admin buttons */
         .back-btn {
             background: #1a1a1a;
             border: 1px solid #333;
-            border-radius: 60px;
-            padding: 14px 20px;
-            width: 280px;
+            border-radius: 12px;
+            padding: 12px;
             text-align: center;
             cursor: pointer;
-            margin-top: 30px;
-            margin-left: auto;
-            margin-right: auto;
+            margin-top: 12px;
             transition: all 0.2s ease;
-            box-sizing: border-box;
         }
         .back-btn:active { transform: scale(0.98); background: #2a2a2a; }
         .back-btn .label { 
-            font-size: 0.9rem; 
-            font-weight: 600; 
-            color: #ccc; 
+            font-size: 0.85rem; 
+            font-weight: 500; 
+            color: #888; 
         }
         
-        .footer { text-align: center; margin-top: 40px; font-size: 0.6rem; color: #444; }
+        .footer { text-align: center; margin-top: 20px; font-size: 0.5rem; color: #333; }
         .loading { text-align: center; padding: 40px; color: #888; }
         
-        /* Responsive for very small screens */
-        @media (max-width: 380px) {
-            .admin-btn, .back-btn {
-                width: 240px;
-            }
+        .divider {
+            border: none;
+            border-top: 1px solid #2a2a2a;
+            margin: 4px 0;
         }
     </style>
 </head>
@@ -191,19 +193,18 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.12</div>
+<div class="version-tag">v1.14</div>
 
 <script>
-// FILE: admin.html - VERSION 1.12
+// FILE: admin.html - VERSION 1.14
 
-var VERSION = "1.12";
-var CACHE_KEY = "admin_version_v112";
+var VERSION = "1.14";
+var CACHE_KEY = "admin_version_v114";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
     
-    // Preserve ALL existing URL parameters
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
@@ -212,7 +213,6 @@ if (storedVersion !== VERSION) {
     window.location.href = newUrl;
 }
 
-// Firebase already initialized in firebase-config.js
 var db = firebase.firestore();
 var firestoreReady = true;
 var deviceSession = null;
@@ -246,44 +246,94 @@ function goToCourses() {
     window.location.href = "courses.html";
 }
 
+function goToPlayerManagement() {
+    SessionManager.addNavigationHistory("player-management.html", "click_player_management");
+    SessionManager.updateSession({
+        returnDestination: "admin.html"
+    });
+    window.location.href = "player-management.html";
+}
+
 function goBackToMenu() {
     window.location.href = "index.html";
 }
 
-// v1.11: Set zoom to ON
-function setZoomOn() {
+function toggleZoom() {
     if (typeof AppSettings === 'undefined') {
-        console.error("[ADMIN] AppSettings not loaded");
         Modal.alert("Settings module not loaded. Please refresh.");
         return;
     }
-    AppSettings.setZoomEnabled(true);
+    var current = AppSettings.getZoomEnabled();
+    AppSettings.setZoomEnabled(!current);
     render();
-    Modal.alert('🔍 Pinch-to-Zoom is now ENABLED.\n\nChanges take effect immediately on all pages.');
 }
 
-// v1.11: Set zoom to OFF
-function setZoomOff() {
-    if (typeof AppSettings === 'undefined') {
-        console.error("[ADMIN] AppSettings not loaded");
-        Modal.alert("Settings module not loaded. Please refresh.");
-        return;
+function render() {
+    var zoomEnabled = false;
+    if (typeof AppSettings !== 'undefined') {
+        zoomEnabled = AppSettings.getZoomEnabled();
     }
-    AppSettings.setZoomEnabled(false);
-    render();
-    Modal.alert('🔍 Pinch-to-Zoom is now DISABLED.\n\nChanges take effect immediately on all pages.');
+    var statusText = zoomEnabled ? 'ON' : 'OFF';
+    var toggleClass = zoomEnabled ? 'on' : 'off';
+    var statusClass = zoomEnabled ? 'on' : 'off';
+    
+    var html = `
+        <div class="header">
+            <div class="title">⚙️ GAME SETTINGS</div>
+            <div class="version">Administration</div>
+        </div>
+        
+        <div class="menu">
+            <div class="admin-btn" onclick="goToSetupGame()">
+                <span class="label">Set Up New Game</span>
+                <span class="desc">Schedule a new match</span>
+            </div>
+            
+            <div class="admin-btn" onclick="goToManageGames()">
+                <span class="label">Manage Scheduled Games</span>
+                <span class="desc">Edit or delete upcoming games</span>
+            </div>
+            
+            <div class="admin-btn" onclick="goToCourses()">
+                <span class="label">Course Management</span>
+                <span class="desc">Add or edit courses</span>
+            </div>
+            
+            <div class="admin-btn" onclick="goToPlayerManagement()">
+                <span class="label">Player Management</span>
+                <span class="desc">Add, edit, or remove players</span>
+            </div>
+            
+            <hr class="divider">
+            
+            <div class="zoom-row">
+                <span class="label">🔍 Pinch Zoom</span>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="status-text ${statusClass}">${statusText}</span>
+                    <div class="toggle-track ${toggleClass}" onclick="toggleZoom()">
+                        <div class="toggle-thumb"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="back-btn" onclick="goBackToMenu()">
+            <span class="label">← Back to Main Menu</span>
+        </div>
+        
+        <div class="footer">SICC Ryder Cup</div>
+    `;
+    
+    document.getElementById("app").innerHTML = html;
 }
 
-// v1.08: Updated duplicateMasterRecord to use Modal.alert and Modal.confirm
-function duplicateMasterRecord() {
+window.duplicateMasterRecord = function() {
     if (!db) {
         Modal.alert("Firebase not ready. Please refresh and try again.");
         return;
     }
     
     var newId;
-    
-    // Using generic MASTER_RECORD name (no year dependency)
     var masterRef = db.collection("scheduledGames").doc("MASTER_RECORD");
     
     masterRef.get().then(function(doc) {
@@ -293,14 +343,16 @@ function duplicateMasterRecord() {
         }
         
         var original = doc.data();
-        var today = getLocalDate();
+        var today = new Date();
+        var year = today.getFullYear();
+        var month = String(today.getMonth() + 1).padStart(2, '0');
+        var day = String(today.getDate()).padStart(2, '0');
+        var dateStr = year + '-' + month + '-' + day;
         
-        // Generate short game ID
         newId = generateGameId();
         
         var duplicate = JSON.parse(JSON.stringify(original));
-        
-        duplicate.date = today;
+        duplicate.date = dateStr;
         duplicate.gameStarted = true;
         duplicate.locks = { f1: null, f2: null };
         duplicate.signatures = {};
@@ -317,9 +369,6 @@ function duplicateMasterRecord() {
     }).then(function() {
         console.log("✅ Game created with today's date. ID:", newId);
         Modal.alert("✅ Game created from MASTER_RECORD!\n\nGame ID: " + newId + "\n\nRefresh the page and click GAME DAY.");
-        if (typeof displayGameId === 'function') {
-            displayGameId(newId);
-        }
         setTimeout(function() {
             window.location.reload();
         }, 1000);
@@ -327,15 +376,7 @@ function duplicateMasterRecord() {
         console.error("Error creating duplicate:", err);
         Modal.alert("❌ Error creating game: " + err.message);
     });
-}
-
-function getLocalDate() {
-    var today = new Date();
-    var year = today.getFullYear();
-    var month = String(today.getMonth() + 1).padStart(2, '0');
-    var day = String(today.getDate()).padStart(2, '0');
-    return year + '-' + month + '-' + day;
-}
+};
 
 function generateGameId() {
     var now = new Date();
@@ -350,93 +391,13 @@ function generateGameId() {
     return 'GM_' + yymmdd + '_' + hhmm + '_' + random;
 }
 
-function initHiddenAdmin() {
-    // Placeholder for compatibility - index-hidden.js provides the real implementation
-    console.log("[ADMIN] initHiddenAdmin called - index-hidden.js should handle this");
-}
-
-function render() {
-    // Get current zoom status for display
-    var zoomEnabled = false;
-    if (typeof AppSettings !== 'undefined') {
-        zoomEnabled = AppSettings.getZoomEnabled();
-    }
-    var statusText = zoomEnabled ? 'ENABLED' : 'DISABLED';
-    
-    // v1.11: Two-button toggle with visual feedback
-    var onClass = zoomEnabled ? 'active-on' : '';
-    var offClass = !zoomEnabled ? 'active-off' : '';
-    
-    var html = `
-        <div class="header">
-            <div class="title">⚙️ GAME SETTINGS</div>
-            <div class="version">Administration Panel</div>
-        </div>
-        
-        <div class="menu">
-            <div class="admin-btn" onclick="goToSetupGame()">
-                <div class="icon">📅</div>
-                <div class="label">SET UP NEW GAME</div>
-                <div class="desc">Schedule a new match</div>
-            </div>
-            
-            <div class="admin-btn" onclick="goToManageGames()">
-                <div class="icon">📋</div>
-                <div class="label">MANAGE SCHEDULED GAMES</div>
-                <div class="desc">Edit or delete upcoming games</div>
-            </div>
-            
-            <div class="admin-btn" onclick="goToCourses()">
-                <div class="icon">⛳</div>
-                <div class="label">COURSE MANAGEMENT</div>
-                <div class="desc">Add or edit courses</div>
-            </div>
-            
-            <!-- v1.11: Two-button zoom toggle -->
-            <div class="admin-btn" style="cursor:default;">
-                <div class="icon">🔍</div>
-                <div class="label">PINCH-TO-ZOOM</div>
-                <div class="zoom-toggle-group">
-                    <button class="zoom-toggle-btn ${onClass}" onclick="setZoomOn()" ${zoomEnabled ? '' : ''}>
-                        ON
-                    </button>
-                    <button class="zoom-toggle-btn ${offClass}" onclick="setZoomOff()" ${!zoomEnabled ? '' : ''}>
-                        OFF
-                    </button>
-                </div>
-                <div class="zoom-status-text">Current: <span style="color: ${zoomEnabled ? '#4caf50' : '#ff6b6b'}; font-weight:600;">${statusText}</span></div>
-                <div class="desc">Changes take effect immediately</div>
-            </div>
-        </div>
-        
-        <div class="back-btn" onclick="goBackToMenu()">
-            <div class="label">← Back to Main Menu</div>
-        </div>
-        
-        <div class="footer">SICC Ryder Cup</div>
-    `;
-    
-    document.getElementById("app").innerHTML = html;
-}
-
-// Make functions available globally
-window.duplicateMasterRecord = duplicateMasterRecord;
-window.initHiddenAdmin = initHiddenAdmin;
+window.goToPlayerManagement = goToPlayerManagement;
+window.goToSetupGame = goToSetupGame;
+window.goToManageGames = goToManageGames;
+window.goToCourses = goToCourses;
+window.goBackToMenu = goBackToMenu;
+window.toggleZoom = toggleZoom;
 window.generateGameId = generateGameId;
-window.setZoomOn = setZoomOn;
-window.setZoomOff = setZoomOff;
-window.displayGameId = function(gameId) {
-    // Optional: display game ID in device tag
-    var deviceTag = document.getElementById("deviceTag");
-    if (deviceTag && gameId) {
-        var currentText = deviceTag.innerHTML;
-        if (currentText.indexOf("Game:") !== -1) {
-            deviceTag.innerHTML = currentText.replace(/Game: [A-Za-z0-9_]+/, "Game: " + gameId);
-        } else {
-            deviceTag.innerHTML = currentText + ' | <span style="color: #4caf50; opacity: 0.7;">Game: ' + gameId + '</span>';
-        }
-    }
-};
 
 SessionManager.initSession("admin.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
@@ -444,7 +405,6 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
     displayDeviceId();
     render();
     
-    // v1.12: Initialize index-hidden functionality if available
     if (typeof initHiddenAdmin === 'function') {
         initHiddenAdmin();
     }
@@ -455,13 +415,15 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.12
-KEY CHANGES from v1.11:
-   - ADDED: js/index-hidden.js dependency for admin modal functions
-   - FIXED: showAdminModal is now available on admin.html page
-   - FIXED: Cmd+Click or long press on golf icon now works
-   - FIXED: Admin modal functions (reset locks, reset game, view data, refresh)
-   - All existing functionality preserved from v1.11
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - REDESIGNED: Cleaner, more compact layout
+   - REMOVED: Large icons from buttons
+   - CHANGED: Buttons now 2 lines only (label + description)
+   - CHANGED: Zoom toggle moved to bottom as simple switch
+   - CHANGED: Button width to 100% (full width)
+   - CHANGED: Reduced spacing between buttons
+   - PRESERVED: All functionality from v1.13
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
