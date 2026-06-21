@@ -1,15 +1,15 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.40
-KEY CHANGES from v1.38:
-   - REDESIGNED: Ultra-minimalist, professional look
-   - REMOVED: All icons (emoji) from buttons, headers, and form elements
-   - CHANGED: Clean typography, subtle borders, refined spacing
-   - CHANGED: Form elements use clean, minimal styling
-   - CHANGED: Buttons use text-only labels (Cancel / Commit)
-   - CHANGED: Player rows use cleaner layout with subtle dividers
-   - CHANGED: Format options use clean pill-style selection
-   - PRESERVED: All functionality from v1.38
+VERSION: 1.41
+KEY CHANGES from v1.40:
+   - APPLIED: Baseline UI design with visible green borders
+   - CHANGED: Card borders to #2a5a2a with rounded corners
+   - CHANGED: Button borders to #3a7a3a, Commit button to #4caf50 (2px)
+   - CHANGED: All headers, labels to #4caf50
+   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
+   - CHANGED: Back link divider to #2a5a2a
+   - CHANGED: Form inputs to have subtle green border
+   - PRESERVED: All functionality from v1.40
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -70,13 +70,26 @@ STATUS: Ready for integration
             opacity: 0.4;
         }
         
+        /* ===== BASELINE UI ===== */
         .header { text-align: center; margin-bottom: 24px; margin-top: 4px; }
-        .title { font-size: 1.2rem; font-weight: 600; color: #e0e0e0; letter-spacing: -0.3px; }
-        .subtitle { font-size: 0.6rem; color: #444; margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
+        .title { 
+            font-size: 1.2rem; 
+            font-weight: 600; 
+            color: #4caf50; 
+            letter-spacing: -0.3px;
+        }
+        .subtitle { 
+            font-size: 0.6rem; 
+            color: #4caf50; 
+            opacity: 0.7;
+            margin-top: 2px; 
+            letter-spacing: 0.5px; 
+            text-transform: uppercase;
+        }
         
         .card { 
-            background: transparent; 
-            border: 1px solid #1a1a1a; 
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a; 
             border-radius: 10px; 
             padding: 16px; 
             margin-bottom: 12px; 
@@ -85,19 +98,23 @@ STATUS: Ready for integration
         .card-title { 
             font-size: 0.7rem; 
             font-weight: 500; 
-            color: #666; 
+            color: #4caf50; 
             margin-bottom: 12px; 
             letter-spacing: 0.5px;
             text-transform: uppercase;
         }
         
         .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
-        .form-row label { font-size: 0.7rem; color: #666; min-width: 60px; }
+        .form-row label { 
+            font-size: 0.7rem; 
+            color: #4caf50; 
+            min-width: 60px; 
+        }
         .form-row input,
         .form-row select {
             background: #0a0a0a;
-            border: 1px solid #1a1a1a;
-            border-radius: 6px;
+            border: 1px solid #2a5a2a;
+            border-radius: 8px;
             padding: 8px 12px;
             color: #e0e0e0;
             font-size: 0.85rem;
@@ -124,9 +141,9 @@ STATUS: Ready for integration
             flex: 1;
             min-width: 60px;
             padding: 8px 12px;
-            background: transparent;
-            border: 1px solid #1a1a1a;
-            border-radius: 6px;
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a;
+            border-radius: 8px;
             cursor: pointer;
             text-align: center;
             font-weight: 400;
@@ -134,11 +151,11 @@ STATUS: Ready for integration
             color: #666;
             transition: all 0.15s ease;
         }
-        .hole-toggle-btn:hover { border-color: #2a2a2a; color: #888; }
+        .hole-toggle-btn:hover { border-color: #4caf50; color: #888; }
         .hole-toggle-btn.active {
             border-color: #4caf50;
             color: #4caf50;
-            background: rgba(76,175,80,0.05);
+            background: rgba(76, 175, 80, 0.05);
         }
         .hole-toggle-btn.shotgun-btn {
             display: flex;
@@ -160,7 +177,7 @@ STATUS: Ready for integration
         .inline-shotgun-select:focus { outline: none; }
         .inline-shotgun-select option { background: #0a0a0a; color: #e0e0e0; }
         
-        .info-note { font-size: 0.6rem; color: #333; margin-top: 6px; text-align: center; letter-spacing: 0.2px; }
+        .info-note { font-size: 0.6rem; color: #2a5a2a; margin-top: 6px; text-align: center; letter-spacing: 0.2px; }
         
         /* Format Options */
         .format-group { margin: 4px 0; }
@@ -169,15 +186,15 @@ STATUS: Ready for integration
             align-items: center;
             gap: 10px;
             padding: 8px 12px;
-            background: transparent;
-            border-radius: 6px;
+            background: rgba(20, 20, 20, 0.5);
+            border-radius: 8px;
             margin-bottom: 4px;
             cursor: pointer;
-            border: 1px solid #1a1a1a;
+            border: 1px solid #2a5a2a;
             transition: all 0.15s ease;
         }
-        .format-option:hover { border-color: #2a2a2a; }
-        .format-option.selected { border-color: #4caf50; background: rgba(76,175,80,0.04); }
+        .format-option:hover { border-color: #4caf50; }
+        .format-option.selected { border-color: #4caf50; background: rgba(76, 175, 80, 0.04); }
         .format-option input[type="radio"] {
             accent-color: #4caf50;
             width: 14px;
@@ -196,7 +213,7 @@ STATUS: Ready for integration
         /* Player Rows */
         .player-row { 
             background: transparent; 
-            border-bottom: 1px solid #141414; 
+            border-bottom: 1px solid #1a3a1a; 
             padding: 10px 0; 
         }
         .player-row:last-child { border-bottom: none; }
@@ -204,8 +221,8 @@ STATUS: Ready for integration
         .player-line1 .name-group { display: flex; align-items: center; gap: 6px; flex: 2; }
         .player-line1 input { 
             background: #0a0a0a; 
-            border: 1px solid #1a1a1a; 
-            border-radius: 6px; 
+            border: 1px solid #2a5a2a; 
+            border-radius: 8px; 
             padding: 6px 10px; 
             color: #e0e0e0; 
             font-size: 0.8rem; 
@@ -214,8 +231,8 @@ STATUS: Ready for integration
         }
         .player-line1 input:focus { outline: none; border-color: #4caf50; }
         .player-line1 .label-display { 
-            background: #1a1a1a; 
-            color: #666; 
+            background: #1a3a1a; 
+            color: #4caf50; 
             padding: 2px 8px; 
             border-radius: 4px; 
             font-size: 0.6rem; 
@@ -227,10 +244,10 @@ STATUS: Ready for integration
             gap: 4px; 
             background: #0a0a0a; 
             padding: 2px 10px; 
-            border-radius: 6px; 
-            border: 1px solid #1a1a1a;
+            border-radius: 8px; 
+            border: 1px solid #2a5a2a;
         }
-        .player-line1 .hcp-group label { font-size: 0.6rem; color: #555; }
+        .player-line1 .hcp-group label { font-size: 0.6rem; color: #4caf50; }
         .player-line1 .hcp-group input { 
             width: 40px; 
             background: transparent; 
@@ -244,8 +261,8 @@ STATUS: Ready for integration
         .player-line2 { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
         .player-line2 select { 
             background: #0a0a0a; 
-            border: 1px solid #1a1a1a; 
-            border-radius: 6px; 
+            border: 1px solid #2a5a2a; 
+            border-radius: 8px; 
             padding: 4px 10px; 
             color: #e0e0e0; 
             font-size: 0.7rem; 
@@ -256,41 +273,42 @@ STATUS: Ready for integration
         
         .btn { 
             padding: 10px 20px; 
-            border-radius: 6px; 
+            border-radius: 8px; 
             font-weight: 400; 
             font-size: 0.85rem; 
             text-align: center; 
             cursor: pointer; 
-            border: 1px solid; 
+            border: 1px solid #3a7a3a; 
             transition: all 0.15s ease;
-            background: transparent;
+            background: rgba(20, 20, 20, 0.5);
+            color: #4caf50;
         }
         .btn:active { transform: scale(0.98); }
-        .btn-primary { border-color: #4caf50; color: #4caf50; }
-        .btn-primary:hover { background: rgba(76,175,80,0.04); }
-        .btn-secondary { border-color: #2a2a2a; color: #666; }
-        .btn-secondary:hover { border-color: #444; color: #888; }
+        .btn-primary { border-color: #4caf50; border-width: 2px; color: #4caf50; }
+        .btn-primary:hover { background: rgba(76, 175, 80, 0.04); }
+        .btn-secondary { border-color: #2a5a2a; color: #666; }
+        .btn-secondary:hover { border-color: #4caf50; color: #888; }
         
         .button-group { display: flex; gap: 10px; margin-top: 16px; }
         .button-group .btn { flex: 1; }
         
         .back-link { 
+            border-top: 1px solid #2a5a2a;
             text-align: center; 
             margin-top: 16px; 
             padding: 12px; 
-            color: #444; 
+            color: #666; 
             cursor: pointer; 
-            border-top: 1px solid #141414; 
             font-size: 0.75rem; 
             transition: color 0.15s ease;
             letter-spacing: 0.2px;
         }
-        .back-link:hover { color: #666; }
+        .back-link:hover { color: #888; }
         
         .success-msg { color: #4caf50; font-size: 0.75rem; text-align: center; margin-top: 8px; display: none; }
         .edit-badge { 
-            background: #1a1a1a; 
-            color: #888; 
+            background: #1a3a1a; 
+            color: #4caf50; 
             padding: 1px 10px; 
             border-radius: 4px; 
             font-size: 0.55rem; 
@@ -301,7 +319,7 @@ STATUS: Ready for integration
         
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
-        /* Anchor Modal */
+        /* Anchor Modal - baseline UI */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -316,18 +334,18 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         .anchor-modal {
-            background: #111;
+            background: rgba(20, 20, 20, 0.95);
             border-radius: 16px;
             padding: 28px;
             max-width: 340px;
             width: 90%;
             text-align: center;
-            border: 1px solid #2a2a2a;
+            border: 1px solid #2a5a2a;
         }
         .anchor-modal-title {
             font-size: 1rem;
             font-weight: 500;
-            color: #e0e0e0;
+            color: #4caf50;
             margin-bottom: 4px;
             letter-spacing: -0.2px;
         }
@@ -340,10 +358,10 @@ STATUS: Ready for integration
         .anchor-select {
             width: 100%;
             background: #0a0a0a;
-            border: 1px solid #2a2a2a;
+            border: 1px solid #2a5a2a;
             color: #e0e0e0;
             padding: 10px;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 0.85rem;
             margin-bottom: 16px;
             cursor: pointer;
@@ -351,21 +369,21 @@ STATUS: Ready for integration
         .anchor-select:focus { outline: none; border-color: #4caf50; }
         .anchor-select option { background: #0a0a0a; color: #e0e0e0; }
         .anchor-confirm-btn {
-            background: transparent;
+            background: rgba(20, 20, 20, 0.5);
             border: 1px solid #4caf50;
             color: #4caf50;
             padding: 10px 24px;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 0.85rem;
             font-weight: 400;
             cursor: pointer;
             width: 100%;
             transition: all 0.15s ease;
         }
-        .anchor-confirm-btn:hover { background: rgba(76,175,80,0.04); }
+        .anchor-confirm-btn:hover { background: rgba(76, 175, 80, 0.04); }
         .anchor-confirm-btn:active { transform: scale(0.98); }
         
-        .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a1a1a; letter-spacing: 0.5px; }
+        .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
@@ -373,10 +391,10 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.40</div>
+<div class="version-tag">v1.41</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.40
+// FILE: setup-game.html - VERSION 1.41
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -384,8 +402,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.40";
-var CACHE_KEY = "setup_game_version_v140";
+var VERSION = "1.41";
+var CACHE_KEY = "setup_game_version_v141";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1417,16 +1435,16 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.40
-KEY CHANGES from v1.38:
-   - REDESIGNED: Ultra-minimalist, professional look
-   - REMOVED: All icons (emoji) from buttons, headers, and form elements
-   - CHANGED: Clean typography, subtle borders, refined spacing
-   - CHANGED: Form elements use clean, minimal styling
-   - CHANGED: Buttons use text-only labels (Cancel / Commit)
-   - CHANGED: Player rows use cleaner layout with subtle dividers
-   - CHANGED: Format options use clean pill-style selection
-   - PRESERVED: All functionality from v1.38
+VERSION: 1.41
+KEY CHANGES from v1.40:
+   - APPLIED: Baseline UI design with visible green borders
+   - CHANGED: Card borders to #2a5a2a with rounded corners
+   - CHANGED: Button borders to #3a7a3a, Commit button to #4caf50 (2px)
+   - CHANGED: All headers, labels to #4caf50
+   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
+   - CHANGED: Back link divider to #2a5a2a
+   - CHANGED: Form inputs to have subtle green border
+   - PRESERVED: All functionality from v1.40
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
