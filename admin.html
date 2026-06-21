@@ -1,16 +1,14 @@
 <!--
 FILE: admin.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - RESTORED: Professional visual hierarchy with green accents
-   - RESTORED: Buttons with dark backgrounds and green borders
-   - RESTORED: Green title and labels for better visual hierarchy
-   - RESTORED: Hover states with subtle glow effects
-   - RESTORED: Clean button boxes with proper spacing
-   - CHANGED: Zoom toggle with green ON / grey OFF states
-   - CHANGED: Professional, modern look with green accents throughout
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - APPLIED: Baseline UI design with visible green borders
+   - CHANGED: Card/button borders to #2a5a2a and #3a7a3a
+   - CHANGED: Headers, subtitles, labels to green (#4caf50)
+   - CHANGED: Primary/Commit button to bright green border (2px)
+   - CHANGED: Back link divider to #2a5a2a
    - PRESERVED: No emoji icons (clean text-only design)
-   - PRESERVED: All functionality from v1.15
+   - PRESERVED: All functionality from v1.16
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -70,6 +68,7 @@ STATUS: Ready for integration
             opacity: 0.4;
         }
         
+        /* ===== BASELINE UI ===== */
         .header { text-align: center; margin-bottom: 32px; margin-top: 8px; }
         .title { 
             font-size: 1.4rem; 
@@ -79,7 +78,8 @@ STATUS: Ready for integration
         }
         .subtitle { 
             font-size: 0.6rem; 
-            color: #666; 
+            color: #4caf50; 
+            opacity: 0.7;
             margin-top: 4px; 
             letter-spacing: 0.5px; 
             text-transform: uppercase;
@@ -91,9 +91,10 @@ STATUS: Ready for integration
             gap: 8px;
         }
         
+        /* Admin Buttons - baseline UI */
         .admin-btn {
-            background: #111;
-            border: 1px solid #2a2a2a;
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a;
             border-radius: 10px;
             padding: 14px 18px;
             width: 100%;
@@ -103,14 +104,13 @@ STATUS: Ready for integration
         }
         .admin-btn:hover { 
             border-color: #4caf50; 
-            background: #1a1a1a;
-            box-shadow: 0 0 20px rgba(76, 175, 80, 0.05);
+            background: rgba(20, 20, 20, 0.8);
         }
-        .admin-btn:active { transform: scale(0.98); background: #0a0a0a; }
+        .admin-btn:active { transform: scale(0.98); }
         .admin-btn .label { 
             font-size: 0.9rem; 
             font-weight: 600; 
-            color: #e0e0e0; 
+            color: #4caf50; 
             display: block;
             letter-spacing: -0.2px;
         }
@@ -124,21 +124,21 @@ STATUS: Ready for integration
         
         .divider {
             border: none;
-            border-top: 1px solid #1a1a1a;
+            border-top: 1px solid #1a3a1a;
             margin: 6px 0;
         }
         
-        /* Zoom toggle - professional switch */
+        /* Zoom toggle - baseline UI */
         .zoom-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: #111;
-            border: 1px solid #2a2a2a;
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a;
             border-radius: 10px;
             padding: 12px 18px;
             width: 100%;
-            transition: border-color 0.3s ease;
+            transition: all 0.2s ease;
         }
         .zoom-row:hover {
             border-color: #4caf50;
@@ -146,7 +146,7 @@ STATUS: Ready for integration
         .zoom-row .label {
             font-size: 0.85rem;
             font-weight: 500;
-            color: #e0e0e0;
+            color: #4caf50;
             letter-spacing: -0.1px;
         }
         .zoom-row .toggle-group {
@@ -162,7 +162,7 @@ STATUS: Ready for integration
             cursor: pointer;
             position: relative;
             transition: all 0.3s ease;
-            border: 1px solid #2a2a2a;
+            border: 1px solid #2a5a2a;
             flex-shrink: 0;
         }
         .zoom-row .toggle-track.on {
@@ -172,7 +172,7 @@ STATUS: Ready for integration
         }
         .zoom-row .toggle-track.off {
             background: #1a1a1a;
-            border-color: #2a2a2a;
+            border-color: #2a5a2a;
         }
         .zoom-row .toggle-thumb {
             width: 20px;
@@ -201,9 +201,10 @@ STATUS: Ready for integration
         .zoom-row .status-text.on { color: #4caf50; }
         .zoom-row .status-text.off { color: #555; }
         
+        /* Back button - baseline UI */
         .back-btn {
-            background: transparent;
-            border: 1px solid #2a2a2a;
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a;
             border-radius: 10px;
             padding: 14px;
             text-align: center;
@@ -213,18 +214,17 @@ STATUS: Ready for integration
         }
         .back-btn:hover { 
             border-color: #4caf50; 
-            background: #111;
+            background: rgba(20, 20, 20, 0.8);
         }
         .back-btn:active { transform: scale(0.98); }
         .back-btn .label { 
             font-size: 0.8rem; 
             font-weight: 500; 
-            color: #666; 
+            color: #4caf50; 
             letter-spacing: 0.2px;
         }
-        .back-btn:hover .label { color: #888; }
         
-        .footer { text-align: center; margin-top: 24px; font-size: 0.5rem; color: #222; letter-spacing: 0.5px; }
+        .footer { text-align: center; margin-top: 24px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
     </style>
 </head>
@@ -233,13 +233,13 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.16</div>
+<div class="version-tag">v1.17</div>
 
 <script>
-// FILE: admin.html - VERSION 1.16
+// FILE: admin.html - VERSION 1.17
 
-var VERSION = "1.16";
-var CACHE_KEY = "admin_version_v116";
+var VERSION = "1.17";
+var CACHE_KEY = "admin_version_v117";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -455,17 +455,15 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - RESTORED: Professional visual hierarchy with green accents
-   - RESTORED: Buttons with dark backgrounds and green borders
-   - RESTORED: Green title and labels for better visual hierarchy
-   - RESTORED: Hover states with subtle glow effects
-   - RESTORED: Clean button boxes with proper spacing
-   - CHANGED: Zoom toggle with green ON / grey OFF states
-   - CHANGED: Professional, modern look with green accents throughout
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - APPLIED: Baseline UI design with visible green borders
+   - CHANGED: Card/button borders to #2a5a2a and #3a7a3a
+   - CHANGED: Headers, subtitles, labels to green (#4caf50)
+   - CHANGED: Primary/Commit button to bright green border (2px)
+   - CHANGED: Back link divider to #2a5a2a
    - PRESERVED: No emoji icons (clean text-only design)
-   - PRESERVED: All functionality from v1.15
+   - PRESERVED: All functionality from v1.16
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
