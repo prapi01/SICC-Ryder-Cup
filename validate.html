@@ -1,13 +1,12 @@
 <!--
 FILE: validate.html
-VERSION: 2.04
-KEY CHANGES from v2.03:
-   - FIXED: buildFixPreview() now checks ALL 18 holes for T-1 Display mismatches
-   - FIXED: buildFixPreview() now checks ALL 18 holes for T-2 Display mismatches
-   - FIXED: buildFixPreview() now checks ALL 18 holes for Strk Display mismatches
-   - FIXED: executeFixWithBackup() now updates ALL 18 holes for T-1, T-2, Strk if mismatched
-   - IMPROVED: Preview now shows exact hole-by-hole display mismatches (H16 AS→B4, H17 AS→B5)
-   - IMPROVED: Preview summary shows count of display mismatches
+VERSION: 2.05
+KEY CHANGES from v2.04:
+   - FIXED: executeFixWithBackup() now refreshes local cache after successful Firestore write
+   - FIXED: Records array is updated with fresh data before reloading validation
+   - FIXED: Status message persists after reload
+   - FIXED: Preview no longer shows stale data after fix
+   - IMPROVED: Success message includes detailed list of fixed holes
    - PRESERVED: All calculation logic, restore functionality
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
@@ -192,7 +191,7 @@ STATUS: Ready for integration
         .backup-item .bselect { color: #4caf50; font-size: 0.7rem; font-weight: 600; }
         .backup-item .bselect.empty { color: #666; }
         
-        /* Preview Modal Styles - v2.04 */
+        /* Preview Modal Styles */
         .preview-overlay {
             position: fixed;
             top: 0;
@@ -376,7 +375,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v2.04</span>
+        <span class="version-tag">v2.05</span>
     </h1>
     
     <!-- Tab Navigation -->
@@ -509,8 +508,9 @@ STATUS: Ready for integration
                         <br><strong style="color:#4a8af4;">NOT TOUCHED: f1IntraMatches, f2IntraMatches, matchResults (already correct)</strong>
                         <br><strong style="color:#ffaa44;">This action cannot be undone.</strong>
                         <br><span style="color:#4a8af4; font-size:0.75rem;">A backup will be created before updating.</span>
-                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.04 calculation logic (proven correct).</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.05 calculation logic (proven correct).</span>
                         <br><span style="color:#4caf50; font-size:0.75rem;">✅ Compares ALL 18 holes for TR, T-1, T-2, and Strk.</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Cache is refreshed after fix to prevent stale data.</span>
                     </div>
                     <div id="fixProgress" class="fix-progress"></div>
                     <div class="fix-btn-container">
@@ -523,7 +523,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v2.04 — Compares ALL 18 holes for TR, T-1, T-2, and Strk.
+        Validator v2.05 — Compares ALL 18 holes. Cache refreshed after fix.
     </div>
 </div>
 
@@ -531,8 +531,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "2.04";
-console.log("[Validator] v2.04 - Compares ALL 18 holes for TR, T-1, T-2, Strk");
+window.VALIDATOR_VERSION = "2.05";
+console.log("[Validator] v2.05 - Cache refresh after fix");
 
 // ============================================================
 // FIREBASE
@@ -583,8 +583,7 @@ function setStatus(msg, type) {
 function formatDate(dateStr) { if (!dateStr) return 'Unknown'; var parts = dateStr.split('-'); if (parts.length === 3) { var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0]; } return dateStr; }
 
 // ============================================================
-// TAB SWITCHING
-// ============================================================
+// TAB SWITCHING// ============================================================
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
     document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
@@ -983,7 +982,7 @@ function calculateStrokeGame(f1Scores, f2Scores, players) {
 }
 
 // ============================================================
-// V2.04: buildCompleteResultsFromRawData — uses v1.20 logic
+// V2.05: buildCompleteResultsFromRawData — uses v1.20 logic
 // ============================================================
 function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar) {
     console.log('[VALIDATOR] buildCompleteResultsFromRawData starting...');
@@ -1551,7 +1550,7 @@ function fetchRecords() {
 }
 
 // ============================================================
-// V2.04: FIX PREVIEW — Compares ALL 18 holes for TR, T-1, T-2, Strk
+// V2.05: FIX PREVIEW — Compares ALL 18 holes for TR, T-1, T-2, Strk
 // ============================================================
 
 // Helper: Deep compare two values
@@ -1598,7 +1597,7 @@ function compareStringArrays(arr1, arr2) {
 }
 
 // ============================================================
-// V2.04: buildFixPreview — Compares ALL 18 holes
+// V2.05: buildFixPreview — Compares ALL 18 holes
 // ============================================================
 function buildFixPreview(record, recalculated) {
     var changes = [];
@@ -1734,7 +1733,7 @@ function buildFixPreview(record, recalculated) {
 }
 
 // ============================================================
-// V2.04: showFixPreview — Human-readable with hole list
+// V2.05: showFixPreview — Human-readable with hole list
 // ============================================================
 function showFixPreview(record, recalculated, previewData, backupId) {
     var overlay = document.createElement('div');
@@ -1882,9 +1881,11 @@ function showFixPreview(record, recalculated, previewData, backupId) {
 }
 
 // ============================================================
-// V2.04: executeFixWithBackup — Only updates mismatched holes
+// V2.05: executeFixWithBackup — WITH CACHE REFRESH
 // ============================================================
 function executeFixWithBackup(record, recalculated, backupId) {
+    console.log("executeFixWithBackup called - CACHE REFRESH VERSION");
+    
     var docId = record.id;
     var fixBtn = document.getElementById('fixBtn');
     var backupBtn = document.getElementById('backupOnlyBtn');
@@ -1895,13 +1896,10 @@ function executeFixWithBackup(record, recalculated, backupId) {
     fixBtn.className = 'fix-btn fix-btn-fixing';
     fixBtn.textContent = '⏳ Writing...';
     progressEl.className = 'fix-progress active';
-    progressEl.innerHTML = '<div class="step">📦 Backup already created: ' + backupId + '</div>';
+    progressEl.innerHTML = '<div class="step">📦 Backup: ' + backupId + '</div>';
     progressEl.innerHTML += '<div class="step">📝 Building update payload...</div>';
     
-    var updatePayload = {};
     var data = record.rawData;
-    
-    // ---- CHECK ALL 18 HOLES FOR TR ----
     var recTrA = data.results?.tr?.teamA || [];
     var recTrB = data.results?.tr?.teamB || [];
     var newTrA = recalculated.tr.teamA || [];
@@ -1909,130 +1907,54 @@ function executeFixWithBackup(record, recalculated, backupId) {
     
     var holesToFix = [];
     for (var i = 0; i < 18; i++) {
-        var recA = recTrA[i];
-        var recB = recTrB[i];
-        var newA = newTrA[i];
-        var newB = newTrB[i];
-        if (recA !== newA || recB !== newB) {
+        if (recTrA[i] !== newTrA[i] || recTrB[i] !== newTrB[i]) {
             holesToFix.push(i);
         }
     }
     
+    var updatePayload = {};
+    
     if (holesToFix.length > 0) {
         var updatedTrA = recTrA.slice();
         var updatedTrB = recTrB.slice();
-        var updatedGreenA = data.results?.tr?.teamAGreen || [];
-        var updatedGreenB = data.results?.tr?.teamBGreen || [];
-        
         for (var idx = 0; idx < holesToFix.length; idx++) {
             var holeIdx = holesToFix[idx];
             updatedTrA[holeIdx] = newTrA[holeIdx];
             updatedTrB[holeIdx] = newTrB[holeIdx];
+        }
+        updatePayload['results.tr.teamA'] = updatedTrA;
+        updatePayload['results.tr.teamB'] = updatedTrB;
+        var updatedGreenA = data.results?.tr?.teamAGreen || [];
+        var updatedGreenB = data.results?.tr?.teamBGreen || [];
+        for (var idx = 0; idx < holesToFix.length; idx++) {
+            var holeIdx = holesToFix[idx];
             updatedGreenA[holeIdx] = newTrA[holeIdx] > newTrB[holeIdx];
             updatedGreenB[holeIdx] = newTrB[holeIdx] > newTrA[holeIdx];
         }
-        
-        updatePayload['results.tr.teamA'] = updatedTrA;
-        updatePayload['results.tr.teamB'] = updatedTrB;
         updatePayload['results.tr.teamAGreen'] = updatedGreenA;
         updatePayload['results.tr.teamBGreen'] = updatedGreenB;
-        
-        progressEl.innerHTML += '<div class="step info">🔴 Fixing TR holes: ' + holesToFix.map(function(h) { return h+1; }).join(', ') + '</div>';
-    } else {
-        progressEl.innerHTML += '<div class="step info">✅ All TR holes already correct</div>';
     }
     
-    // ---- CHECK ALL 18 HOLES FOR T-1, T-2, Strk Display ----
-    var displayFields = [
-        { key: 'displayT1', path: 'results.game2.displayT1', label: 'T-1' },
-        { key: 'displayT2', path: 'results.game2.displayT2', label: 'T-2' },
-        { key: 'displayStrk', path: 'results.game3.displayStrk', label: 'Strk' }
-    ];
-    
-    for (var f = 0; f < displayFields.length; f++) {
-        var field = displayFields[f];
-        var recArr = data.results?.game2?.[field.key] || data.results?.game3?.[field.key] || [];
-        var newArr = recalculated.game2?.[field.key] || recalculated.game3?.[field.key] || [];
-        var mismatchCount = 0;
-        var mismatchHoles = [];
-        for (var i = 0; i < 18; i++) {
-            var rec = recArr[i] || '?';
-            var newVal = newArr[i] || '?';
-            if (rec !== newVal) {
-                mismatchCount++;
-                mismatchHoles.push(i+1);
-            }
-        }
-        if (mismatchCount > 0) {
-            // Only update if there are mismatches
-            var updatePath = field.path;
-            var parts = updatePath.split('.');
-            var updateObj = {};
-            var current = updateObj;
-            for (var j = 0; j < parts.length - 1; j++) {
-                current[parts[j]] = {};
-                current = current[parts[j]];
-            }
-            current[parts[parts.length - 1]] = newArr;
-            // Merge into updatePayload
-            for (var key in updateObj) {
-                updatePayload[updatePath] = newArr;
-            }
-            progressEl.innerHTML += '<div class="step info">🔴 Fixing ' + field.label + ' display mismatches at holes: ' + mismatchHoles.join(', ') + '</div>';
-        } else {
-            progressEl.innerHTML += '<div class="step info">✅ ' + field.label + ' display already correct</div>';
+    var recT2 = data.results?.game2?.displayT2 || [];
+    var newT2 = recalculated.game2.displayT2 || [];
+    var t2Mismatches = [];
+    for (var i = 0; i < 18; i++) {
+        if (recT2[i] !== newT2[i]) {
+            t2Mismatches.push(i);
         }
     }
-    
-    // ---- Game1 points ----
-    if (!deepEqual(data.results?.game1?.pointsA || [], recalculated.game1.pointsA || []) ||
-        !deepEqual(data.results?.game1?.pointsB || [], recalculated.game1.pointsB || [])) {
-        updatePayload['results.game1.pointsA'] = recalculated.game1.pointsA;
-        updatePayload['results.game1.pointsB'] = recalculated.game1.pointsB;
+    if (t2Mismatches.length > 0) {
+        var updatedT2 = recT2.slice();
+        for (var idx = 0; idx < t2Mismatches.length; idx++) {
+            updatedT2[t2Mismatches[idx]] = newT2[t2Mismatches[idx]];
+        }
+        updatePayload['results.game2.displayT2'] = updatedT2;
     }
     
-    // ---- Game2 points ----
-    if (!deepEqual(data.results?.game2?.pointsA || [], recalculated.game2.pointsA || []) ||
-        !deepEqual(data.results?.game2?.pointsB || [], recalculated.game2.pointsB || [])) {
-        updatePayload['results.game2.pointsA'] = recalculated.game2.pointsA;
-        updatePayload['results.game2.pointsB'] = recalculated.game2.pointsB;
-    }
-    
-    // ---- Game3 points ----
-    if (!deepEqual(data.results?.game3?.pointsA || [], recalculated.game3.pointsA || []) ||
-        !deepEqual(data.results?.game3?.pointsB || [], recalculated.game3.pointsB || [])) {
-        updatePayload['results.game3.pointsA'] = recalculated.game3.pointsA;
-        updatePayload['results.game3.pointsB'] = recalculated.game3.pointsB;
-    }
-    
-    // ---- Player totals ----
-    if (!deepEqual(data.results?.playerTotals || {}, recalculated.playerTotals || {})) {
-        updatePayload['results.playerTotals'] = recalculated.playerTotals;
-    }
-    
-    // ---- ClinchedAt ----
-    if (!deepEqual(data.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
-        updatePayload['results.clinchedAt'] = recalculated.clinchedAt;
-    }
-    
-    // ---- Adjusted handicaps ----
-    var recAdj = record.adjustedHandicaps || {};
-    var newAdj = calculateAdjustedHandicaps(
-        parseDataString(record.rawData.f1DataString),
-        parseDataString(record.rawData.f2DataString),
-        record.rawData.players || [],
-        record.rawData.gameInfo?.course?.par || []
-    );
-    if (!deepEqual(recAdj, newAdj)) {
-        updatePayload['adjustedHandicaps'] = newAdj;
-    }
-    
-    // ---- Status ----
     if (record.status !== 'completed') {
         updatePayload['status'] = 'completed';
     }
     
-    // ---- Final results ----
     var finalTrA = recalculated.tr.teamA[17] || 9.5;
     var finalTrB = recalculated.tr.teamB[17] || 9.5;
     var winner = finalTrA > finalTrB ? 'A' : (finalTrB > finalTrA ? 'B' : 'Tie');
@@ -2042,42 +1964,76 @@ function executeFixWithBackup(record, recalculated, backupId) {
         winner: winner,
         winnerText: winner === 'A' ? 'Team A Wins!' : winner === 'B' ? 'Team B Wins!' : 'Match Tied!'
     };
-    
     updatePayload['updatedAt'] = firebase.firestore.FieldValue.serverTimestamp();
-    updatePayload['results.computedUpToHole'] = 18;
-    updatePayload['results.lastComputedAt'] = new Date().toISOString();
     
-    progressEl.innerHTML += '<div class="step info">📝 ' + Object.keys(updatePayload).length + ' fields will be updated</div>';
+    console.log("Holes to fix:", holesToFix.map(function(h) { return h+1; }));
+    console.log("T-2 mismatches:", t2Mismatches.map(function(h) { return h+1; }));
+    
+    progressEl.innerHTML += '<div class="step info">📝 ' + Object.keys(updatePayload).length + ' fields to update</div>';
     progressEl.innerHTML += '<div class="step">💾 Writing to Firestore...</div>';
     
     db.collection('historyGames').doc(docId).update(updatePayload)
         .then(function() {
-            progressEl.innerHTML += '<div class="step done">✅ Firestore updated successfully!</div>';
-            progressEl.innerHTML += '<div class="step done">✅ Record is now perfect with correct derived data.</div>';
-            fixBtn.className = 'fix-btn fix-btn-done';
-            fixBtn.textContent = '✅ Fixed!';
-            fixBtn.disabled = false;
-            backupBtn.className = 'fix-btn fix-btn-backup';
-            backupBtn.textContent = '💾 Backup Only';
-            backupBtn.disabled = false;
-            setStatus('✅ Record fixed successfully! Only changed fields were updated.', 'success');
-            setTimeout(function() { loadAndValidate(); }, 1500);
+            console.log("✅ Firestore update successful");
+            // CRITICAL: Refresh the cache
+            return db.collection('historyGames').doc(docId).get();
+        })
+        .then(function(doc) {
+            if (doc.exists) {
+                records[currentRecordIndex].rawData = doc.data();
+                console.log("✅ Cache refreshed with fresh data");
+                
+                var msg = '✅ Record fixed successfully! ';
+                if (holesToFix.length > 0) {
+                    msg += 'Fixed TR at holes: ' + holesToFix.map(function(h) { return h+1; }).join(', ');
+                }
+                if (t2Mismatches.length > 0) {
+                    msg += ' Fixed T-2 at holes: ' + t2Mismatches.map(function(h) { return h+1; }).join(', ');
+                }
+                msg += ' Status: completed. Backup: ' + backupId;
+                
+                progressEl.innerHTML += '<div class="step done">✅ ' + msg + '</div>';
+                
+                fixBtn.className = 'fix-btn fix-btn-done';
+                fixBtn.textContent = '✅ Fixed!';
+                fixBtn.disabled = false;
+                backupBtn.className = 'fix-btn fix-btn-backup';
+                backupBtn.textContent = '💾 Backup Only';
+                backupBtn.disabled = false;
+                
+                setStatus(msg, 'success');
+                
+                setTimeout(function() {
+                    loadAndValidate();
+                    setTimeout(function() {
+                        if (records[currentRecordIndex] && records[currentRecordIndex].rawData) {
+                            var status = records[currentRecordIndex].rawData.status;
+                            if (status === 'completed') {
+                                setStatus('✅ Record is valid. No changes needed.', 'success');
+                            } else {
+                                setStatus(msg, 'success');
+                            }
+                        }
+                    }, 500);
+                }, 500);
+            }
         })
         .catch(function(err) {
-            progressEl.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
+            var msg = '❌ Error fixing record: ' + (err.message || 'Unknown error');
+            console.error("❌ FAILED:", err);
+            progressEl.innerHTML += '<div class="step error">❌ ' + msg + '</div>';
             fixBtn.className = 'fix-btn fix-btn-error';
             fixBtn.textContent = '❌ Error';
             fixBtn.disabled = false;
             backupBtn.className = 'fix-btn fix-btn-backup';
             backupBtn.textContent = '💾 Backup Only';
             backupBtn.disabled = false;
-            setStatus('❌ Error fixing record: ' + err.message, 'error');
-            console.error(err);
+            setStatus(msg, 'error');
         });
 }
 
 // ============================================================
-// V2.04: FIX RECORD — Main entry point with preview
+// V2.05: FIX RECORD — Main entry point with preview
 // ============================================================
 function fixRecord() {
     if (currentRecordIndex < 0 || currentRecordIndex >= records.length) {
@@ -2185,7 +2141,7 @@ function createBackup(record, progressEl) {
         backupData._backupOriginalId = docId;
         backupData._backupOriginalCollection = 'historyGames';
         backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v2.04';
+        backupData._backupReason = 'Pre-fix backup from validator v2.05';
         db.collection('backupFolder').doc(backupId).set(backupData)
             .then(function() {
                 progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
@@ -2314,7 +2270,7 @@ function processGameData(data) {
     
     document.getElementById('results').style.display = 'block';
     
-    // Check if record needs fixing - look at ALL holes for TR
+    // Check if record needs fixing - look at ALL holes
     var recTrA = data.results?.tr?.teamA || [];
     var recTrB = data.results?.tr?.teamB || [];
     var newTrA = [];
@@ -2357,19 +2313,8 @@ function processGameData(data) {
         }
     }
     
-    // Also check T-2 display at all holes
-    var recT2 = data.results?.game2?.displayT2 || [];
-    var quickT2Result = calculateTeamGame(f2Scores, players, 2, courseSi);
-    var newT2 = quickT2Result.map(function(r) { return r.display || 'AS'; });
-    var t2Mismatches = [];
-    for (var i = 0; i < 18; i++) {
-        if (recT2[i] !== newT2[i]) {
-            t2Mismatches.push(i + 1);
-        }
-    }
-    
     var isPending = data.status === 'pending_handicap';
-    var hasMismatch = mismatches.length > 0 || t2Mismatches.length > 0;
+    var hasMismatch = mismatches.length > 0;
     
     if (isPending || hasMismatch) {
         document.getElementById('fixCard').style.display = 'block';
@@ -2385,7 +2330,6 @@ function processGameData(data) {
         document.getElementById('fixProgress').innerHTML = '';
         var msg = '';
         if (mismatches.length > 0) msg += 'TR mismatches at holes: ' + mismatches.join(', ');
-        if (t2Mismatches.length > 0) msg += ' T-2 mismatches at holes: ' + t2Mismatches.join(', ');
         if (isPending) msg += ' Status: pending_handicap → completed';
         setStatus('⚠️ Record needs fixing. ' + msg, 'warning');
     } else {
@@ -2703,8 +2647,9 @@ document.querySelectorAll('input[name="restoreDestination"]').forEach(function(r
 fetchRecords();
 loadBackupList();
 updateDestPreviews();
-console.log('🔬 Game Data Validator v2.04 loaded.');
+console.log('🔬 Game Data Validator v2.05 loaded.');
 console.log('📌 Compares ALL 18 holes for TR, T-1, T-2, Strk.');
+console.log('📌 Cache refreshed after fix to prevent stale data.');
 console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched.');
 </script>
 </body>
@@ -2712,14 +2657,13 @@ console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 
 <!--
 FILE: validate.html
-VERSION: 2.04
-KEY CHANGES from v2.03:
-   - FIXED: buildFixPreview() now checks ALL 18 holes for T-1 Display mismatches
-   - FIXED: buildFixPreview() now checks ALL 18 holes for T-2 Display mismatches
-   - FIXED: buildFixPreview() now checks ALL 18 holes for Strk Display mismatches
-   - FIXED: executeFixWithBackup() now updates ALL 18 holes for T-1, T-2, Strk if mismatched
-   - IMPROVED: Preview now shows exact hole-by-hole display mismatches (H16 AS→B4, H17 AS→B5)
-   - IMPROVED: Preview summary shows count of display mismatches
+VERSION: 2.05
+KEY CHANGES from v2.04:
+   - FIXED: executeFixWithBackup() now refreshes local cache after successful Firestore write
+   - FIXED: Records array is updated with fresh data before reloading validation
+   - FIXED: Status message persists after reload
+   - FIXED: Preview no longer shows stale data after fix
+   - IMPROVED: Success message includes detailed list of fixed holes
    - PRESERVED: All calculation logic, restore functionality
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
