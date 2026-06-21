@@ -1,13 +1,12 @@
 <!--
 FILE: validate.html
-VERSION: 2.05
-KEY CHANGES from v2.04:
-   - FIXED: executeFixWithBackup() now refreshes local cache after successful Firestore write
-   - FIXED: Records array is updated with fresh data before reloading validation
-   - FIXED: Status message persists after reload
-   - FIXED: Preview no longer shows stale data after fix
-   - IMPROVED: Success message includes detailed list of fixed holes
-   - PRESERVED: All calculation logic, restore functionality
+VERSION: 2.06
+KEY CHANGES from v2.05:
+   - FIXED: calculateAdjustedHandicaps() now returns array format instead of object format
+   - FIXED: adjustedHandicaps now matches the format expected by hcp-adjust.js display function
+   - FIXED: Format now includes { players: [{ name, label, startingHcp, finalHcp, perfAdj, anchorAdj }], anchor, needsZeroRise, zeroRiseAmount, calculatedAt, newAnchor }
+   - PRESERVED: All calculation logic from v2.05
+   - PRESERVED: Restore functionality
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
@@ -375,7 +374,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v2.05</span>
+        <span class="version-tag">v2.06</span>
     </h1>
     
     <!-- Tab Navigation -->
@@ -508,9 +507,10 @@ STATUS: Ready for integration
                         <br><strong style="color:#4a8af4;">NOT TOUCHED: f1IntraMatches, f2IntraMatches, matchResults (already correct)</strong>
                         <br><strong style="color:#ffaa44;">This action cannot be undone.</strong>
                         <br><span style="color:#4a8af4; font-size:0.75rem;">A backup will be created before updating.</span>
-                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.05 calculation logic (proven correct).</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.06 calculation logic (proven correct).</span>
                         <br><span style="color:#4caf50; font-size:0.75rem;">✅ Compares ALL 18 holes for TR, T-1, T-2, and Strk.</span>
                         <br><span style="color:#4caf50; font-size:0.75rem;">✅ Cache is refreshed after fix to prevent stale data.</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ adjustedHandicaps written in correct array format (compatible with hcp-adjust.js).</span>
                     </div>
                     <div id="fixProgress" class="fix-progress"></div>
                     <div class="fix-btn-container">
@@ -523,7 +523,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v2.05 — Compares ALL 18 holes. Cache refreshed after fix.
+        Validator v2.06 — Compares ALL 18 holes. Cache refreshed after fix. adjustedHandicaps in array format.
     </div>
 </div>
 
@@ -531,8 +531,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "2.05";
-console.log("[Validator] v2.05 - Cache refresh after fix");
+window.VALIDATOR_VERSION = "2.06";
+console.log("[Validator] v2.06 - adjustedHandicaps array format fix");
 
 // ============================================================
 // FIREBASE
@@ -583,7 +583,8 @@ function setStatus(msg, type) {
 function formatDate(dateStr) { if (!dateStr) return 'Unknown'; var parts = dateStr.split('-'); if (parts.length === 3) { var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0]; } return dateStr; }
 
 // ============================================================
-// TAB SWITCHING// ============================================================
+// TAB SWITCHING
+// ============================================================
 function switchTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
     document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
@@ -982,7 +983,7 @@ function calculateStrokeGame(f1Scores, f2Scores, players) {
 }
 
 // ============================================================
-// V2.05: buildCompleteResultsFromRawData — uses v1.20 logic
+// V2.06: buildCompleteResultsFromRawData — uses v1.20 logic
 // ============================================================
 function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar) {
     console.log('[VALIDATOR] buildCompleteResultsFromRawData starting...');
@@ -1224,15 +1225,18 @@ function getPlayerGrossFromScores(player, holeNumber, f1Scores, f2Scores) {
 }
 
 // ============================================================
-// Helper: calculateAdjustedHandicaps
+// V2.06: calculateAdjustedHandicaps - RETURNS ARRAY FORMAT
 // ============================================================
-function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar) {
-    var adjusted = {};
+function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar, anchorName) {
+    var playerList = [];
+    var finalAnchor = anchorName || 'Anchor';
+    
     for (var i = 0; i < players.length; i++) {
         var player = players[i];
         var totalGross = 0;
         var holesPlayed = 0;
         var totalPar = 0;
+        
         for (var h = 0; h < 18; h++) {
             var score = getPlayerGrossFromScores(player, h + 1, f1Scores, f2Scores);
             if (score !== null) {
@@ -1241,22 +1245,42 @@ function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar) {
             }
             totalPar += coursePar[h] || 4;
         }
+        
         if (holesPlayed > 0) {
             var relativeToPar = totalGross - totalPar;
-            adjusted[player.name] = {
+            var finalHcp = Math.round(relativeToPar / holesPlayed * 10) / 10;
+            
+            // v2.06: Use the SAME format as history-record.js
+            playerList.push({
                 name: player.name,
-                label: player.label,
-                team: player.team,
-                flight: player.flight,
-                totalGross: totalGross,
-                holesPlayed: holesPlayed,
-                totalPar: totalPar,
-                relativeToPar: relativeToPar,
-                adjustedHandicap: Math.round(relativeToPar / holesPlayed * 10) / 10
-            };
+                label: player.label || '',
+                startingHcp: player.handicap || 0,
+                finalHcp: finalHcp,
+                perfAdj: 0,
+                anchorAdj: 0
+            });
         }
     }
-    return adjusted;
+    
+    // v2.06: Return array format (matches history-record.js)
+    return {
+        players: playerList,
+        anchor: finalAnchor,
+        newAnchor: finalAnchor,
+        needsZeroRise: false,
+        zeroRiseAmount: 0,
+        calculatedAt: new Date().toISOString()
+    };
+}
+
+// ============================================================
+// Helper: getAdjustedHandicapsAnchor
+// ============================================================
+function getAdjustedHandicapsAnchor(players) {
+    // Find the player with lowest handicap
+    if (!players || players.length === 0) return 'Anchor';
+    var sorted = players.slice().sort(function(a, b) { return a.handicap - b.handicap; });
+    return sorted[0] ? sorted[0].name : 'Anchor';
 }
 
 // ============================================================
@@ -1550,7 +1574,7 @@ function fetchRecords() {
 }
 
 // ============================================================
-// V2.05: FIX PREVIEW — Compares ALL 18 holes for TR, T-1, T-2, Strk
+// V2.06: FIX PREVIEW — Compares ALL 18 holes for TR, T-1, T-2, Strk
 // ============================================================
 
 // Helper: Deep compare two values
@@ -1597,7 +1621,7 @@ function compareStringArrays(arr1, arr2) {
 }
 
 // ============================================================
-// V2.05: buildFixPreview — Compares ALL 18 holes
+// V2.06: buildFixPreview — Compares ALL 18 holes
 // ============================================================
 function buildFixPreview(record, recalculated) {
     var changes = [];
@@ -1733,7 +1757,7 @@ function buildFixPreview(record, recalculated) {
 }
 
 // ============================================================
-// V2.05: showFixPreview — Human-readable with hole list
+// V2.06: showFixPreview — Human-readable with hole list
 // ============================================================
 function showFixPreview(record, recalculated, previewData, backupId) {
     var overlay = document.createElement('div');
@@ -1881,7 +1905,7 @@ function showFixPreview(record, recalculated, previewData, backupId) {
 }
 
 // ============================================================
-// V2.05: executeFixWithBackup — WITH CACHE REFRESH
+// V2.06: executeFixWithBackup — WITH CACHE REFRESH
 // ============================================================
 function executeFixWithBackup(record, recalculated, backupId) {
     console.log("executeFixWithBackup called - CACHE REFRESH VERSION");
@@ -1966,6 +1990,23 @@ function executeFixWithBackup(record, recalculated, backupId) {
     };
     updatePayload['updatedAt'] = firebase.firestore.FieldValue.serverTimestamp();
     
+    // ---- V2.06: adjustedHandicaps in ARRAY FORMAT ----
+    var anchorName = getAdjustedHandicapsAnchor(record.rawData.players || []);
+    var adjustedHandicaps = calculateAdjustedHandicaps(
+        parseDataString(record.rawData.f1DataString),
+        parseDataString(record.rawData.f2DataString),
+        record.rawData.players || [],
+        record.rawData.gameInfo?.course?.par || [],
+        anchorName
+    );
+    
+    // Check if we need to update adjustedHandicaps
+    var recAdj = record.adjustedHandicaps || {};
+    if (!deepEqual(recAdj, adjustedHandicaps)) {
+        updatePayload['adjustedHandicaps'] = adjustedHandicaps;
+        console.log("Adjusted handicaps updated to array format");
+    }
+    
     console.log("Holes to fix:", holesToFix.map(function(h) { return h+1; }));
     console.log("T-2 mismatches:", t2Mismatches.map(function(h) { return h+1; }));
     
@@ -1991,6 +2032,7 @@ function executeFixWithBackup(record, recalculated, backupId) {
                     msg += ' Fixed T-2 at holes: ' + t2Mismatches.map(function(h) { return h+1; }).join(', ');
                 }
                 msg += ' Status: completed. Backup: ' + backupId;
+                msg += ' adjustedHandicaps: array format (compatible with hcp-adjust.js)';
                 
                 progressEl.innerHTML += '<div class="step done">✅ ' + msg + '</div>';
                 
@@ -2033,7 +2075,7 @@ function executeFixWithBackup(record, recalculated, backupId) {
 }
 
 // ============================================================
-// V2.05: FIX RECORD — Main entry point with preview
+// V2.06: FIX RECORD — Main entry point with preview
 // ============================================================
 function fixRecord() {
     if (currentRecordIndex < 0 || currentRecordIndex >= records.length) {
@@ -2141,7 +2183,7 @@ function createBackup(record, progressEl) {
         backupData._backupOriginalId = docId;
         backupData._backupOriginalCollection = 'historyGames';
         backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v2.05';
+        backupData._backupReason = 'Pre-fix backup from validator v2.06';
         db.collection('backupFolder').doc(backupId).set(backupData)
             .then(function() {
                 progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
@@ -2647,9 +2689,10 @@ document.querySelectorAll('input[name="restoreDestination"]').forEach(function(r
 fetchRecords();
 loadBackupList();
 updateDestPreviews();
-console.log('🔬 Game Data Validator v2.05 loaded.');
+console.log('🔬 Game Data Validator v2.06 loaded.');
 console.log('📌 Compares ALL 18 holes for TR, T-1, T-2, Strk.');
 console.log('📌 Cache refreshed after fix to prevent stale data.');
+console.log('📌 adjustedHandicaps written in array format (compatible with hcp-adjust.js).');
 console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched.');
 </script>
 </body>
@@ -2657,14 +2700,13 @@ console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 
 <!--
 FILE: validate.html
-VERSION: 2.05
-KEY CHANGES from v2.04:
-   - FIXED: executeFixWithBackup() now refreshes local cache after successful Firestore write
-   - FIXED: Records array is updated with fresh data before reloading validation
-   - FIXED: Status message persists after reload
-   - FIXED: Preview no longer shows stale data after fix
-   - IMPROVED: Success message includes detailed list of fixed holes
-   - PRESERVED: All calculation logic, restore functionality
+VERSION: 2.06
+KEY CHANGES from v2.05:
+   - FIXED: calculateAdjustedHandicaps() now returns array format instead of object format
+   - FIXED: adjustedHandicaps now matches the format expected by hcp-adjust.js display function
+   - FIXED: Format now includes { players: [{ name, label, startingHcp, finalHcp, perfAdj, anchorAdj }], anchor, needsZeroRise, zeroRiseAmount, calculatedAt, newAnchor }
+   - PRESERVED: All calculation logic from v2.05
+   - PRESERVED: Restore functionality
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
