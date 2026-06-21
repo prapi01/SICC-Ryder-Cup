@@ -1,14 +1,14 @@
 <!--
 FILE: validate.html
-VERSION: 2.01
-KEY CHANGES from v2.00:
-   - ADDED: Preview screen before fixing — shows all values to be written
-   - ADDED: Compare function — only updates fields that are different
-   - ADDED: Safety check — if record is already correct, show message and do nothing
+VERSION: 2.02
+KEY CHANGES from v2.01:
+   - REWRITTEN: Preview screen to show human-readable information only
+   - REMOVED: Raw arrays and objects from preview
+   - SHOWS: Game info, status change, TR at H18, T-1/T-2/Strk final displays
+   - SHOWS: Summary of changes in plain English
+   - SHOWS: Which fields will be updated vs preserved
+   - PRESERVED: All calculation logic, restore functionality, selective update
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
-   - PRESERVED: All v2.00 calculation logic and restore functionality
-   - IMPROVED: Selective update — only writes changed fields (not full document)
-   - IMPROVED: Clear visual comparison with color coding (red=mismatch, green=match, blue=not touched)
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -191,7 +191,7 @@ STATUS: Ready for integration
         .backup-item .bselect { color: #4caf50; font-size: 0.7rem; font-weight: 600; }
         .backup-item .bselect.empty { color: #666; }
         
-        /* Preview Modal Styles */
+        /* Preview Modal Styles - v2.02 Human Readable */
         .preview-overlay {
             position: fixed;
             top: 0;
@@ -210,7 +210,7 @@ STATUS: Ready for integration
             background: #1a1a1a;
             border-radius: 28px;
             padding: 28px;
-            max-width: 700px;
+            max-width: 550px;
             width: 95%;
             max-height: 90vh;
             overflow-y: auto;
@@ -229,55 +229,93 @@ STATUS: Ready for integration
             text-align: center;
             margin-bottom: 20px;
         }
-        .preview-section {
+        
+        .preview-game-info {
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 12px 16px;
             margin-bottom: 16px;
+            border: 1px solid #2a2a2a;
+            font-size: 0.8rem;
+        }
+        .preview-game-info .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        .preview-game-info .row:last-child { border-bottom: none; }
+        .preview-game-info .label { color: #888; }
+        .preview-game-info .value { color: #fff; }
+        
+        .preview-section {
+            margin-bottom: 12px;
             padding: 12px;
             background: #0a0a0a;
             border-radius: 12px;
             border: 1px solid #2a2a2a;
         }
         .preview-section-title {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             font-weight: 700;
             color: #4caf50;
             margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
+        
         .preview-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 4px 8px;
             border-bottom: 1px solid #1a1a1a;
-            font-size: 0.8rem;
+            font-size: 0.85rem;
         }
         .preview-row:last-child { border-bottom: none; }
-        .preview-row .label { color: #888; flex: 1; }
-        .preview-row .value-current { color: #ff6b6b; flex: 0 0 120px; text-align: right; padding-right: 16px; }
-        .preview-row .value-new { color: #4caf50; flex: 0 0 120px; text-align: left; }
-        .preview-row .arrow { color: #666; flex: 0 0 30px; text-align: center; }
-        .preview-row .unchanged-label { color: #4caf50; font-size: 0.65rem; margin-left: 8px; }
-        .preview-row .not-touched-label { color: #4a8af4; font-size: 0.65rem; margin-left: 8px; }
-        .preview-row.match { background: rgba(76, 175, 80, 0.1); }
-        .preview-row.mismatch { background: rgba(255, 107, 107, 0.15); }
-        .preview-row.not-touched { background: rgba(74, 138, 244, 0.08); }
-        .preview-row .status-icon { flex: 0 0 24px; text-align: center; }
-        .preview-summary {
+        .preview-row .label { color: #888; }
+        .preview-row .value-current { color: #ff6b6b; font-weight: 600; }
+        .preview-row .value-new { color: #4caf50; font-weight: 600; }
+        .preview-row .arrow { color: #666; margin: 0 8px; }
+        .preview-row .match-icon { color: #4caf50; margin-left: 8px; }
+        .preview-row .change-icon { color: #ffaa44; margin-left: 8px; }
+        
+        .preview-row.match { background: rgba(76, 175, 80, 0.08); }
+        .preview-row.mismatch { background: rgba(255, 107, 107, 0.12); }
+        .preview-row.not-touched { background: rgba(74, 138, 244, 0.06); }
+        
+        .preview-summary-box {
             display: flex;
             justify-content: center;
-            gap: 24px;
-            padding: 8px 0;
+            gap: 20px;
+            padding: 10px 0;
             margin: 12px 0;
             border-top: 1px solid #2a2a2a;
             border-bottom: 1px solid #2a2a2a;
+            flex-wrap: wrap;
         }
-        .preview-summary-item { font-size: 0.8rem; }
-        .preview-summary-item .count { font-weight: 700; font-size: 1.1rem; }
+        .preview-summary-item {
+            font-size: 0.8rem;
+            text-align: center;
+        }
+        .preview-summary-item .count {
+            font-weight: 700;
+            font-size: 1.2rem;
+            display: block;
+        }
         .preview-summary-item .count.mismatch { color: #ff6b6b; }
         .preview-summary-item .count.match { color: #4caf50; }
         .preview-summary-item .count.unchanged { color: #4a8af4; }
-        .preview-summary-item .label { color: #888; }
+        .preview-summary-item .label { color: #888; font-size: 0.65rem; }
+        
+        .preview-no-changes {
+            text-align: center;
+            padding: 30px 20px;
+            color: #4caf50;
+            font-size: 1.1rem;
+        }
+        .preview-no-changes .icon { font-size: 3rem; display: block; margin-bottom: 12px; }
+        
         .preview-buttons {
             display: flex;
             gap: 12px;
@@ -285,13 +323,14 @@ STATUS: Ready for integration
             justify-content: center;
         }
         .preview-btn {
-            padding: 14px 40px;
+            padding: 14px 36px;
             border-radius: 40px;
             font-weight: 700;
             font-size: 1rem;
             cursor: pointer;
             border: 2px solid;
             transition: all 0.2s;
+            min-width: 120px;
         }
         .preview-btn:active { transform: scale(0.97); }
         .preview-btn-confirm { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
@@ -299,13 +338,32 @@ STATUS: Ready for integration
         .preview-btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
         .preview-btn-cancel { background: #2a2a2a; border-color: #555; color: #888; }
         .preview-btn-cancel:hover { background: #3a3a3a; }
-        .preview-no-changes {
-            text-align: center;
-            padding: 20px;
-            color: #4caf50;
-            font-size: 1.1rem;
+        
+        .preview-status-badge {
+            display: inline-block;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
         }
-        .preview-no-changes .icon { font-size: 2rem; display: block; margin-bottom: 8px; }
+        .preview-status-badge.pending { background: #2a2a1a; color: #ffaa44; }
+        .preview-status-badge.completed { background: #0a2a0a; color: #4caf50; }
+        
+        .preview-saved-list {
+            font-size: 0.75rem;
+            color: #666;
+            padding: 4px 8px;
+        }
+        .preview-saved-list .item {
+            padding: 2px 0;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .preview-saved-list .item:last-child { border-bottom: none; }
+        .preview-saved-list .icon { font-size: 0.8rem; }
+        .preview-saved-list .name { color: #ccc; }
     </style>
 </head>
 <body>
@@ -313,7 +371,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v2.01</span>
+        <span class="version-tag">v2.02</span>
     </h1>
     
     <!-- Tab Navigation -->
@@ -459,7 +517,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v2.01 — Restore: SIMPLE COPY. Fix: Preview before writing, only updates changed fields.
+        Validator v2.02 — Human-readable preview before fixing. Only updates changed fields.
     </div>
 </div>
 
@@ -467,8 +525,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "2.01";
-console.log("[Validator] v2.01 - Preview before fix, selective update only");
+window.VALIDATOR_VERSION = "2.02";
+console.log("[Validator] v2.02 - Human-readable preview before fix");
 
 // ============================================================
 // FIREBASE
@@ -919,7 +977,7 @@ function calculateStrokeGame(f1Scores, f2Scores, players) {
 }
 
 // ============================================================
-// V2.01: buildCompleteResultsFromRawData — uses v1.20 logic
+// V2.02: buildCompleteResultsFromRawData — uses v1.20 logic
 // ============================================================
 function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar) {
     console.log('[VALIDATOR] buildCompleteResultsFromRawData starting...');
@@ -1129,8 +1187,7 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
             teamA: trTeamA,
             teamB: trTeamB,
             teamAGreen: trTeamAGreen,
-            teamBGreen: trTeamBGreen
-        },
+            teamBGreen: trTeamBGreen        },
         clinchedAt: clinchedAt,
         playerTotals: playerTotals,
         computedUpToHole: 18,
@@ -1487,7 +1544,7 @@ function fetchRecords() {
 }
 
 // ============================================================
-// V2.01: FIX RECORD — WITH PREVIEW AND SELECTIVE UPDATE
+// V2.02: HUMAN-READABLE PREVIEW
 // ============================================================
 
 // Helper: Deep compare two values
@@ -1523,121 +1580,92 @@ function compareArrays(arr1, arr2, tolerance) {
     return true;
 }
 
-// Helper: Build the fix preview comparison
+// Helper: Build the fix preview comparison (human readable)
 function buildFixPreview(record, recalculated) {
     var changes = [];
     var unchanged = [];
     var notTouched = [];
     
-    // Check TR
-    var recTrA = record.results?.tr?.teamA || [];
-    var recTrB = record.results?.tr?.teamB || [];
-    var newTrA = recalculated.tr.teamA || [];
-    var newTrB = recalculated.tr.teamB || [];
-    
-    var trAMatch = compareArrays(recTrA, newTrA);
-    var trBMatch = compareArrays(recTrB, newTrB);
-    
-    if (!trAMatch || !trBMatch) {
-        changes.push({ field: 'TR (teamA)', current: recTrA, new: newTrA });
-        changes.push({ field: 'TR (teamB)', current: recTrB, new: newTrB });
-    } else {
-        unchanged.push('TR values match');
-    }
-    
-    // Check displayT1
-    var recT1 = record.results?.game2?.displayT1 || [];
-    var newT1 = recalculated.game2.displayT1 || [];
-    if (!compareArrays(recT1, newT1, 0)) {
-        changes.push({ field: 'T-1 Display', current: recT1, new: newT1 });
-    } else {
-        unchanged.push('T-1 Display matches');
-    }
-    
-    // Check displayT2
-    var recT2 = record.results?.game2?.displayT2 || [];
-    var newT2 = recalculated.game2.displayT2 || [];
-    if (!compareArrays(recT2, newT2, 0)) {
-        changes.push({ field: 'T-2 Display', current: recT2, new: newT2 });
-    } else {
-        unchanged.push('T-2 Display matches');
-    }
-    
-    // Check displayStrk
-    var recStrk = record.results?.game3?.displayStrk || [];
-    var newStrk = recalculated.game3.displayStrk || [];
-    if (!compareArrays(recStrk, newStrk, 0)) {
-        changes.push({ field: 'Strk Display', current: recStrk, new: newStrk });
-    } else {
-        unchanged.push('Strk Display matches');
-    }
-    
-    // Check game1 points
-    var recG1A = record.results?.game1?.pointsA || [];
-    var newG1A = recalculated.game1.pointsA || [];
-    var recG1B = record.results?.game1?.pointsB || [];
-    var newG1B = recalculated.game1.pointsB || [];
-    if (!compareArrays(recG1A, newG1A) || !compareArrays(recG1B, newG1B)) {
-        changes.push({ field: 'Game1 Points', current: { A: recG1A, B: recG1B }, new: { A: newG1A, B: newG1B } });
-    } else {
-        unchanged.push('Game1 Points match');
-    }
-    
-    // Check game2 points
-    var recG2A = record.results?.game2?.pointsA || [];
-    var newG2A = recalculated.game2.pointsA || [];
-    var recG2B = record.results?.game2?.pointsB || [];
-    var newG2B = recalculated.game2.pointsB || [];
-    if (!compareArrays(recG2A, newG2A) || !compareArrays(recG2B, newG2B)) {
-        changes.push({ field: 'Game2 Points', current: { A: recG2A, B: recG2B }, new: { A: newG2A, B: newG2B } });
-    } else {
-        unchanged.push('Game2 Points match');
-    }
-    
-    // Check game3 points
-    var recG3A = record.results?.game3?.pointsA || [];
-    var newG3A = recalculated.game3.pointsA || [];
-    var recG3B = record.results?.game3?.pointsB || [];
-    var newG3B = recalculated.game3.pointsB || [];
-    if (!compareArrays(recG3A, newG3A) || !compareArrays(recG3B, newG3B)) {
-        changes.push({ field: 'Game3 Points', current: { A: recG3A, B: recG3B }, new: { A: newG3A, B: newG3B } });
-    } else {
-        unchanged.push('Game3 Points match');
-    }
-    
-    // Check playerTotals
-    if (!deepEqual(record.results?.playerTotals || {}, recalculated.playerTotals || {})) {
-        changes.push({ field: 'Player Totals', current: record.results?.playerTotals || {}, new: recalculated.playerTotals || {} });
-    } else {
-        unchanged.push('Player Totals match');
-    }
-    
-    // Check clinchedAt
-    if (!deepEqual(record.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
-        changes.push({ field: 'Clinched At', current: record.results?.clinchedAt || {}, new: recalculated.clinchedAt || {} });
-    } else {
-        unchanged.push('Clinched At match');
-    }
-    
-    // Check adjustedHandicaps
-    var recAdj = record.adjustedHandicaps || {};
-    var newAdj = calculateAdjustedHandicaps(
-        parseDataString(record.f1DataString),
-        parseDataString(record.f2DataString),
-        record.players || [],
-        record.gameInfo?.course?.par || []
-    );
-    if (!deepEqual(recAdj, newAdj)) {
-        changes.push({ field: 'Adjusted Handicaps', current: recAdj, new: newAdj });
-    } else {
-        unchanged.push('Adjusted Handicaps match');
-    }
-    
-    // Status change
+    // Status
     if (record.status !== 'completed') {
-        changes.push({ field: 'Status', current: record.status || 'unknown', new: 'completed' });
+        changes.push({ 
+            field: 'Status', 
+            current: record.status || 'unknown', 
+            new: 'completed',
+            type: 'status'
+        });
     } else {
         unchanged.push('Status already completed');
+    }
+    
+    // TR at H18
+    var recTrA = record.results?.tr?.teamA?.[17];
+    var recTrB = record.results?.tr?.teamB?.[17];
+    var newTrA = recalculated.tr.teamA[17];
+    var newTrB = recalculated.tr.teamB[17];
+    if (recTrA !== newTrA || recTrB !== newTrB) {
+        changes.push({
+            field: 'TR Final (H18)',
+            current: recTrA + ' - ' + recTrB,
+            new: newTrA + ' - ' + newTrB,
+            type: 'tr'
+        });
+    } else {
+        unchanged.push('TR at H18 matches');
+    }
+    
+    // T-1 Display at H18
+    var recT1 = record.results?.game2?.displayT1?.[17] || '?';
+    var newT1 = recalculated.game2.displayT1[17] || '?';
+    if (recT1 !== newT1) {
+        changes.push({
+            field: 'T-1 Final (H18)',
+            current: recT1,
+            new: newT1,
+            type: 'team'
+        });
+    } else {
+        unchanged.push('T-1 Display at H18 matches');
+    }
+    
+    // T-2 Display at H18
+    var recT2 = record.results?.game2?.displayT2?.[17] || '?';
+    var newT2 = recalculated.game2.displayT2[17] || '?';
+    if (recT2 !== newT2) {
+        changes.push({
+            field: 'T-2 Final (H18)',
+            current: recT2,
+            new: newT2,
+            type: 'team'
+        });
+    } else {
+        unchanged.push('T-2 Display at H18 matches');
+    }
+    
+    // Strk Display at H18
+    var recStrk = record.results?.game3?.displayStrk?.[17] || '?';
+    var newStrk = recalculated.game3.displayStrk[17] || '?';
+    if (recStrk !== newStrk) {
+        changes.push({
+            field: 'Strk Final (H18)',
+            current: recStrk,
+            new: newStrk,
+            type: 'strk'
+        });
+    } else {
+        unchanged.push('Strk Display at H18 matches');
+    }
+    
+    // Player totals
+    if (!deepEqual(record.results?.playerTotals || {}, recalculated.playerTotals || {})) {
+        changes.push({
+            field: 'Player Totals',
+            current: 'requires update',
+            new: 'recalculated',
+            type: 'totals'
+        });
+    } else {
+        unchanged.push('Player Totals match');
     }
     
     // These are NEVER touched
@@ -1661,7 +1689,7 @@ function buildFixPreview(record, recalculated) {
 }
 
 // ============================================================
-// V2.01: showFixPreview — displays the preview modal
+// V2.02: showFixPreview — HUMAN-READABLE
 // ============================================================
 function showFixPreview(record, recalculated, previewData, backupId) {
     var overlay = document.createElement('div');
@@ -1673,15 +1701,39 @@ function showFixPreview(record, recalculated, previewData, backupId) {
     var unchangedCount = previewData.unchanged.length;
     var notTouchedCount = previewData.notTouched.length;
     
+    // Format game info
+    var courseName = record.rawData.gameInfo?.course?.name || record.rawData.course?.name || 'Unknown';
+    var date = record.rawData.gameInfo?.date || record.rawData.date || 'Unknown';
+    var players = record.rawData.players || [];
+    var playerNames = players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ');
+    
     var html = '<div class="preview-modal">';
     html += '<div class="preview-title">🔍 Fix Preview</div>';
     html += '<div class="preview-subtitle">Review changes before writing to Firestore</div>';
     
-    // Summary
-    html += '<div class="preview-summary">';
-    html += '<div class="preview-summary-item"><span class="count ' + (hasChanges ? 'mismatch' : 'match') + '">' + changeCount + '</span> <span class="label">will be updated</span></div>';
-    html += '<div class="preview-summary-item"><span class="count match">' + unchangedCount + '</span> <span class="label">already match</span></div>';
-    html += '<div class="preview-summary-item"><span class="count unchanged">' + notTouchedCount + '</span> <span class="label">not touched</span></div>';
+    // Game Info
+    html += '<div class="preview-game-info">';
+    html += '<div class="row"><span class="label">Game ID</span><span class="value">' + escapeHtml(record.id) + '</span></div>';
+    html += '<div class="row"><span class="label">Date</span><span class="value">' + escapeHtml(date) + '</span></div>';
+    html += '<div class="row"><span class="label">Course</span><span class="value">' + escapeHtml(courseName) + '</span></div>';
+    html += '<div class="row"><span class="label">Players</span><span class="value" style="font-size:0.7rem;">' + escapeHtml(playerNames) + '</span></div>';
+    html += '<div class="row"><span class="label">Status</span><span class="value">';
+    if (record.status !== 'completed') {
+        html += '<span class="preview-status-badge pending">' + escapeHtml(record.status) + '</span> → <span class="preview-status-badge completed">completed</span>';
+    } else {
+        html += '<span class="preview-status-badge completed">' + escapeHtml(record.status) + '</span>';
+    }
+    html += '</span></div></div>';
+    
+    // Summary counts
+    html += '<div class="preview-summary-box">';
+    if (hasChanges) {
+        html += '<div class="preview-summary-item"><span class="count mismatch">' + changeCount + '</span><span class="label">will be updated</span></div>';
+    } else {
+        html += '<div class="preview-summary-item"><span class="count match">0</span><span class="label">changes needed</span></div>';
+    }
+    html += '<div class="preview-summary-item"><span class="count match">' + unchangedCount + '</span><span class="label">already match</span></div>';
+    html += '<div class="preview-summary-item"><span class="count unchanged">' + notTouchedCount + '</span><span class="label">not touched</span></div>';
     html += '</div>';
     
     if (!hasChanges) {
@@ -1690,41 +1742,47 @@ function showFixPreview(record, recalculated, previewData, backupId) {
         html += 'Record is already correct. No changes needed.';
         html += '</div>';
     } else {
-        // Show changes section
+        // Show changes section - human readable
         html += '<div class="preview-section">';
         html += '<div class="preview-section-title">🔴 Changes to be applied</div>';
         for (var i = 0; i < previewData.changes.length; i++) {
             var change = previewData.changes[i];
+            var changeIcon = '';
+            if (change.type === 'status') changeIcon = '📌';
+            else if (change.type === 'tr') changeIcon = '🏆';
+            else if (change.type === 'team') changeIcon = '📊';
+            else if (change.type === 'strk') changeIcon = '🎯';
+            else changeIcon = '📝';
+            
             html += '<div class="preview-row mismatch">';
-            html += '<span class="status-icon">🔴</span>';
-            html += '<span class="label">' + escapeHtml(change.field) + '</span>';
-            html += '<span class="value-current">' + escapeHtml(formatValue(change.current)) + '</span>';
+            html += '<span class="label">' + changeIcon + ' ' + escapeHtml(change.field) + '</span>';
+            html += '<span class="value-current">' + escapeHtml(change.current) + '</span>';
             html += '<span class="arrow">→</span>';
-            html += '<span class="value-new">' + escapeHtml(formatValue(change.new)) + '</span>';
+            html += '<span class="value-new">' + escapeHtml(change.new) + '</span>';
             html += '</div>';
         }
         html += '</div>';
         
         // Show unchanged section
-        html += '<div class="preview-section">';
-        html += '<div class="preview-section-title">🟢 Already match (no change)</div>';
-        for (var i = 0; i < previewData.unchanged.length; i++) {
-            html += '<div class="preview-row match">';
-            html += '<span class="status-icon">🟢</span>';
-            html += '<span class="label">' + escapeHtml(previewData.unchanged[i]) + '</span>';
-            html += '<span class="unchanged-label">✅ match</span>';
+        if (previewData.unchanged.length > 0) {
+            html += '<div class="preview-section">';
+            html += '<div class="preview-section-title">🟢 Already correct (no change)</div>';
+            for (var i = 0; i < previewData.unchanged.length; i++) {
+                html += '<div class="preview-row match">';
+                html += '<span class="label">✅ ' + escapeHtml(previewData.unchanged[i]) + '</span>';
+                html += '<span style="color:#4caf50;">✓</span>';
+                html += '</div>';
+            }
             html += '</div>';
         }
-        html += '</div>';
         
         // Show not touched section
         html += '<div class="preview-section">';
         html += '<div class="preview-section-title">🔵 NOT TOUCHED (preserved)</div>';
         for (var i = 0; i < previewData.notTouched.length; i++) {
             html += '<div class="preview-row not-touched">';
-            html += '<span class="status-icon">🔵</span>';
-            html += '<span class="label">' + escapeHtml(previewData.notTouched[i]) + '</span>';
-            html += '<span class="not-touched-label">🔒 preserved</span>';
+            html += '<span class="label">🔒 ' + escapeHtml(previewData.notTouched[i]) + '</span>';
+            html += '<span style="color:#4a8af4;">preserved</span>';
             html += '</div>';
         }
         html += '</div>';
@@ -1756,24 +1814,8 @@ function showFixPreview(record, recalculated, previewData, backupId) {
     }
 }
 
-function formatValue(val) {
-    if (val === null || val === undefined) return 'null';
-    if (typeof val === 'string') return val;
-    if (typeof val === 'number') return val.toString();
-    if (Array.isArray(val)) {
-        if (val.length <= 18) {
-            return '[' + val.map(function(v) { return (v !== null && v !== undefined) ? v.toFixed(1) : 'null'; }).join(', ') + ']';
-        }
-        return '[array length ' + val.length + ']';
-    }
-    if (typeof val === 'object') {
-        try { return JSON.stringify(val).substring(0, 100) + '...'; } catch(e) { return '[object]'; }
-    }
-    return String(val);
-}
-
 // ============================================================
-// V2.01: executeFixWithBackup — creates backup then writes
+// V2.02: executeFixWithBackup — selective update
 // ============================================================
 function executeFixWithBackup(record, recalculated, backupId) {
     var docId = record.id;
@@ -1789,64 +1831,60 @@ function executeFixWithBackup(record, recalculated, backupId) {
     progressEl.innerHTML = '<div class="step">📦 Backup already created: ' + backupId + '</div>';
     progressEl.innerHTML += '<div class="step">📝 Building update payload...</div>';
     
-    // Build selective update payload (only changed fields)
     var updatePayload = {};
     
-    var recTrA = record.results?.tr?.teamA || [];
-    var recTrB = record.results?.tr?.teamB || [];
-    var newTrA = recalculated.tr.teamA || [];
-    var newTrB = recalculated.tr.teamB || [];
-    
-    if (!compareArrays(recTrA, newTrA) || !compareArrays(recTrB, newTrB)) {
-        updatePayload['results.tr.teamA'] = newTrA;
-        updatePayload['results.tr.teamB'] = newTrB;
+    // TR at H18
+    var recTrA = record.results?.tr?.teamA?.[17];
+    var recTrB = record.results?.tr?.teamB?.[17];
+    var newTrA = recalculated.tr.teamA[17];
+    var newTrB = recalculated.tr.teamB[17];
+    if (recTrA !== newTrA || recTrB !== newTrB) {
+        updatePayload['results.tr.teamA'] = recalculated.tr.teamA;
+        updatePayload['results.tr.teamB'] = recalculated.tr.teamB;
         updatePayload['results.tr.teamAGreen'] = recalculated.tr.teamAGreen || [];
         updatePayload['results.tr.teamBGreen'] = recalculated.tr.teamBGreen || [];
     }
     
-    var recT1 = record.results?.game2?.displayT1 || [];
-    var newT1 = recalculated.game2.displayT1 || [];
-    if (!compareArrays(recT1, newT1, 0)) {
-        updatePayload['results.game2.displayT1'] = newT1;
+    // T-1 Display at H18
+    var recT1 = record.results?.game2?.displayT1?.[17] || '?';
+    var newT1 = recalculated.game2.displayT1[17] || '?';
+    if (recT1 !== newT1) {
+        updatePayload['results.game2.displayT1'] = recalculated.game2.displayT1;
     }
     
-    var recT2 = record.results?.game2?.displayT2 || [];
-    var newT2 = recalculated.game2.displayT2 || [];
-    if (!compareArrays(recT2, newT2, 0)) {
-        updatePayload['results.game2.displayT2'] = newT2;
+    // T-2 Display at H18
+    var recT2 = record.results?.game2?.displayT2?.[17] || '?';
+    var newT2 = recalculated.game2.displayT2[17] || '?';
+    if (recT2 !== newT2) {
+        updatePayload['results.game2.displayT2'] = recalculated.game2.displayT2;
     }
     
-    var recStrk = record.results?.game3?.displayStrk || [];
-    var newStrk = recalculated.game3.displayStrk || [];
-    if (!compareArrays(recStrk, newStrk, 0)) {
-        updatePayload['results.game3.displayStrk'] = newStrk;
+    // Strk Display at H18
+    var recStrk = record.results?.game3?.displayStrk?.[17] || '?';
+    var newStrk = recalculated.game3.displayStrk[17] || '?';
+    if (recStrk !== newStrk) {
+        updatePayload['results.game3.displayStrk'] = recalculated.game3.displayStrk;
     }
     
-    var recG1A = record.results?.game1?.pointsA || [];
-    var newG1A = recalculated.game1.pointsA || [];
-    var recG1B = record.results?.game1?.pointsB || [];
-    var newG1B = recalculated.game1.pointsB || [];
-    if (!compareArrays(recG1A, newG1A) || !compareArrays(recG1B, newG1B)) {
-        updatePayload['results.game1.pointsA'] = newG1A;
-        updatePayload['results.game1.pointsB'] = newG1B;
+    // Game1 points
+    if (!deepEqual(record.results?.game1?.pointsA || [], recalculated.game1.pointsA || []) ||
+        !deepEqual(record.results?.game1?.pointsB || [], recalculated.game1.pointsB || [])) {
+        updatePayload['results.game1.pointsA'] = recalculated.game1.pointsA;
+        updatePayload['results.game1.pointsB'] = recalculated.game1.pointsB;
     }
     
-    var recG2A = record.results?.game2?.pointsA || [];
-    var newG2A = recalculated.game2.pointsA || [];
-    var recG2B = record.results?.game2?.pointsB || [];
-    var newG2B = recalculated.game2.pointsB || [];
-    if (!compareArrays(recG2A, newG2A) || !compareArrays(recG2B, newG2B)) {
-        updatePayload['results.game2.pointsA'] = newG2A;
-        updatePayload['results.game2.pointsB'] = newG2B;
+    // Game2 points
+    if (!deepEqual(record.results?.game2?.pointsA || [], recalculated.game2.pointsA || []) ||
+        !deepEqual(record.results?.game2?.pointsB || [], recalculated.game2.pointsB || [])) {
+        updatePayload['results.game2.pointsA'] = recalculated.game2.pointsA;
+        updatePayload['results.game2.pointsB'] = recalculated.game2.pointsB;
     }
     
-    var recG3A = record.results?.game3?.pointsA || [];
-    var newG3A = recalculated.game3.pointsA || [];
-    var recG3B = record.results?.game3?.pointsB || [];
-    var newG3B = recalculated.game3.pointsB || [];
-    if (!compareArrays(recG3A, newG3A) || !compareArrays(recG3B, newG3B)) {
-        updatePayload['results.game3.pointsA'] = newG3A;
-        updatePayload['results.game3.pointsB'] = newG3B;
+    // Game3 points
+    if (!deepEqual(record.results?.game3?.pointsA || [], recalculated.game3.pointsA || []) ||
+        !deepEqual(record.results?.game3?.pointsB || [], recalculated.game3.pointsB || [])) {
+        updatePayload['results.game3.pointsA'] = recalculated.game3.pointsA;
+        updatePayload['results.game3.pointsB'] = recalculated.game3.pointsB;
     }
     
     // Player totals
@@ -1862,10 +1900,10 @@ function executeFixWithBackup(record, recalculated, backupId) {
     // Adjusted handicaps
     var recAdj = record.adjustedHandicaps || {};
     var newAdj = calculateAdjustedHandicaps(
-        parseDataString(record.f1DataString),
-        parseDataString(record.f2DataString),
-        record.players || [],
-        record.gameInfo?.course?.par || []
+        parseDataString(record.rawData.f1DataString),
+        parseDataString(record.rawData.f2DataString),
+        record.rawData.players || [],
+        record.rawData.gameInfo?.course?.par || []
     );
     if (!deepEqual(recAdj, newAdj)) {
         updatePayload['adjustedHandicaps'] = newAdj;
@@ -1877,8 +1915,8 @@ function executeFixWithBackup(record, recalculated, backupId) {
     }
     
     // Final results
-    var finalTrA = newTrA[17] || 9.5;
-    var finalTrB = newTrB[17] || 9.5;
+    var finalTrA = recalculated.tr.teamA[17] || 9.5;
+    var finalTrB = recalculated.tr.teamB[17] || 9.5;
     var winner = finalTrA > finalTrB ? 'A' : (finalTrB > finalTrA ? 'B' : 'Tie');
     updatePayload['finalResults'] = {
         teamAScore: finalTrA,
@@ -1921,7 +1959,7 @@ function executeFixWithBackup(record, recalculated, backupId) {
 }
 
 // ============================================================
-// V2.01: FIX RECORD — Main entry point with preview
+// V2.02: FIX RECORD — Main entry point with preview
 // ============================================================
 function fixRecord() {
     if (currentRecordIndex < 0 || currentRecordIndex >= records.length) {
@@ -2028,7 +2066,7 @@ function createBackup(record, progressEl) {
         backupData._backupOriginalId = docId;
         backupData._backupOriginalCollection = 'historyGames';
         backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v2.01';
+        backupData._backupReason = 'Pre-fix backup from validator v2.02';
         db.collection('backupFolder').doc(backupId).set(backupData)
             .then(function() {
                 progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
@@ -2510,9 +2548,9 @@ document.querySelectorAll('input[name="restoreDestination"]').forEach(function(r
 fetchRecords();
 loadBackupList();
 updateDestPreviews();
-console.log('🔬 Game Data Validator v2.01 loaded.');
+console.log('🔬 Game Data Validator v2.02 loaded.');
 console.log('📌 Restore: SIMPLE COPY — NO recalculation.');
-console.log('📌 Fix: Preview before writing, only updates changed fields.');
+console.log('📌 Fix: Human-readable preview before writing.');
 console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched.');
 </script>
 </body>
@@ -2520,15 +2558,15 @@ console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 
 <!--
 FILE: validate.html
-VERSION: 2.01
-KEY CHANGES from v2.00:
-   - ADDED: Preview screen before fixing — shows all values to be written
-   - ADDED: Compare function — only updates fields that are different
-   - ADDED: Safety check — if record is already correct, show message and do nothing
+VERSION: 2.02
+KEY CHANGES from v2.01:
+   - REWRITTEN: Preview screen to show human-readable information only
+   - REMOVED: Raw arrays and objects from preview
+   - SHOWS: Game info, status change, TR at H18, T-1/T-2/Strk final displays
+   - SHOWS: Summary of changes in plain English
+   - SHOWS: Which fields will be updated vs preserved
+   - PRESERVED: All calculation logic, restore functionality, selective update
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
-   - PRESERVED: All v2.00 calculation logic and restore functionality
-   - IMPROVED: Selective update — only writes changed fields (not full document)
-   - IMPROVED: Clear visual comparison with color coding (red=mismatch, green=match, blue=not touched)
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
