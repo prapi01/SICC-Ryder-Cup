@@ -1,11 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.31
-KEY CHANGES from v8.30:
-   - FIXED: Sort function now correctly handles Firestore Timestamp objects
-   - FIXED: Records are now sorted newest first (GM_260619_1148_78_H_R appears before GM_260606_1010_13_H)
-   - FIXED: Added proper timestamp parsing for both string and Firestore Timestamp formats
-   - All existing functionality preserved from v8.30
+VERSION: 8.32
+KEY CHANGES from v8.31:
+   - FIXED: Scorecard now uses displayT2 instead of flight2.leader for T-2 display row
+   - FIXED: T-2 values at H16 and H17 now correctly show B4 and B5 instead of AS/empty
+   - CHANGED: renderDetailView() now uses displayT2 for T-2 row
+   - CHANGED: renderScorecardView() now uses displayT2 for T-2 row
+   - All existing functionality preserved from v8.31
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -340,7 +341,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.31</div>
+<div class="version-tag">v8.32</div>
 
 <script>
 // ============================================================
@@ -353,16 +354,16 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.31: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v8.32: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "8.31";
-var CACHE_KEY = "view_history_version_v831";
+var APP_VERSION = "8.32";
+var CACHE_KEY = "view_history_version_v832";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
     
-    // v8.27: Preserve ALL existing URL parameters
+    // Preserve ALL existing URL parameters
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', APP_VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
@@ -374,8 +375,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.31";
-console.log("[VIEW-HISTORY] Initializing v8.31 - Fixed sort for Firestore Timestamps");
+window.VIEW_HISTORY_VERSION = "8.32";
+console.log("[VIEW-HISTORY] Initializing v8.32 - Fixed T-2 display using displayT2");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -826,8 +827,9 @@ function renderScorecardView(game) {
         
         GameUI.updateFlightBadge(currentFlight);
         
+        // v8.32: FIXED - Use displayT2 instead of flight2.leader for T-2 display row
         var t1Row = resultsCache?.game2?.flight1?.leader || new Array(18).fill('_');
-        var t2Row = resultsCache?.game2?.flight2?.leader || new Array(18).fill('_');
+        var t2Row = resultsCache?.game2?.displayT2 || new Array(18).fill('_');
         var strkRow = resultsCache?.game3?.leader || new Array(18).fill('_');
         var t1ClinchedHole = resultsCache?.game2?.flight1?.clinchedHole;
         var t2ClinchedHole = resultsCache?.game2?.flight2?.clinchedHole;
@@ -1210,12 +1212,13 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.31
-KEY CHANGES from v8.30:
-   - FIXED: Sort function now correctly handles Firestore Timestamp objects
-   - FIXED: Records are now sorted newest first (GM_260619_1148_78_H_R appears before GM_260606_1010_13_H)
-   - FIXED: Added proper timestamp parsing for both string and Firestore Timestamp formats
-   - All existing functionality preserved from v8.30
+VERSION: 8.32
+KEY CHANGES from v8.31:
+   - FIXED: Scorecard now uses displayT2 instead of flight2.leader for T-2 display row
+   - FIXED: T-2 values at H16 and H17 now correctly show B4 and B5 instead of AS/empty
+   - CHANGED: renderDetailView() now uses displayT2 for T-2 row
+   - CHANGED: renderScorecardView() now uses displayT2 for T-2 row
+   - All existing functionality preserved from v8.31
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
