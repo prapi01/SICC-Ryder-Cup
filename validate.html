@@ -1,15 +1,16 @@
 <!--
 FILE: validate.html
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - ADDED: Clinch detection in Match Game table
-   - Each player's cell shows their points AND 🏆 if they clinched on that hole
-   - For matches already clinched, the cell shows points with ⭐ indicator
-   - Uses clinchedAt data from the record to detect clinch holes
-   - Match Game table now shows: Hole | Player1 | Player2 | ... | Player8 | Total
-   - Each cell format: "X.X 🏆" if clinched on that hole, "X.X" if not
-   - For holes after clinch: "X.X ⭐" (match already won)
-   - All other functionality preserved from v1.12
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - FIXED: Restore now does a SIMPLE COPY from backupFolder to destination
+   - NO recalculations during restore — preserves ALL data exactly as in backup
+   - Preserves matchResults, f1IntraMatches, f2IntraMatches exactly
+   - Preserves game1, game2, game3, tr, clinchedAt, adjustedHandicaps exactly
+   - Only changes: document ID (naming convention), status flags for scheduledGames
+   - For scheduledGames: sets H18 to F00000000, resets locks/signatures/submitted
+   - For historyGames: no changes to data, only document ID
+   - Validate & Fix module still available to fix records after restore
+   - All other functionality preserved from v1.33
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -34,14 +35,54 @@ STATUS: Ready for integration
         .card { background: #141414; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 20px; overflow-x: auto; }
         .card-title { color: #4caf50; font-weight: 600; font-size: 0.9rem; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
         
+        .tab-nav {
+            display: flex;
+            gap: 0;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #2a2a2a;
+            background: #0a0a0a;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 14px 20px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #666;
+            transition: all 0.3s ease;
+            border-right: 1px solid #1a1a1a;
+        }
+        .tab-btn:last-child { border-right: none; }
+        .tab-btn:hover { color: #aaa; background: #111; }
+        .tab-btn.active { background: #1a3a1a; color: #4caf50; box-shadow: inset 0 -2px 0 #4caf50; }
+        .tab-btn .tab-icon { margin-right: 8px; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
         .input-group { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
         .input-group label { font-size: 0.85rem; color: #aaa; }
         .input-group select { background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; flex: 1; min-width: 200px; cursor: pointer; }
         .input-group select:focus { outline: none; border-color: #4caf50; }
+        
         .btn { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
         .btn:hover { background: #2a4a2a; }
         .btn-secondary { background: #1a1a1a; border-color: #555; color: #aaa; }
         .btn-secondary:hover { background: #2a2a2a; }
+        .btn-backup { background: #1a2a3a; border: 1px solid #4a8af4; color: #4a8af4; }
+        .btn-backup:hover { background: #2a3a4a; }
+        .btn-restore { background: #2a1a1a; border: 1px solid #ff6b6b; color: #ff6b6b; }
+        .btn-restore:hover { background: #3a2a2a; }
+        .btn-restore-confirm { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .btn-restore-confirm:hover { background: #2a4a2a; }
+        .btn-fix { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
+        .btn-fix:hover { background: #2a4a2a; }
+        .btn-danger { background: #3a1a1a; border: 1px solid #ff6b6b; color: #ff6b6b; }
+        .btn-danger:hover { background: #4a2a2a; }
         
         .status { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.85rem; }
         .status-success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #8bc34a; }
@@ -64,10 +105,8 @@ STATUS: Ready for integration
         .breakdown { font-size: 0.6rem; color: #888; font-weight: 400; }
         .team-a-col { color: #4caf50; }
         .team-b-col { color: #ff6b6b; }
-        .team-a-bg { background: rgba(76, 175, 80, 0.05); }
-        .team-b-bg { background: rgba(255, 107, 107, 0.05); }
         .clinch-cell { background: rgba(255, 170, 68, 0.25) !important; border-radius: 4px; }
-        .clinch-icon { color: #ffaa44; font-size: 0.7rem; margin-left: 2px; }
+        .clinch-trophy { color: #ffaa44; font-size: 0.7rem; margin-left: 2px; }
         .clinch-star { color: #4caf50; font-size: 0.6rem; margin-left: 2px; }
         
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -84,6 +123,8 @@ STATUS: Ready for integration
         .summary-item .label { font-size: 0.65rem; color: #888; }
         .summary-item .value { font-size: 1rem; font-weight: 700; color: #fff; }
         .summary-item .value.mismatch { color: #ef5350; }
+        .summary-item .value.gold { color: #ffaa44; }
+        .summary-item .value.final { font-size: 1.2rem; }
         
         .loader { display: inline-block; width: 16px; height: 16px; border: 2px solid #333; border-top-color: #4caf50; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 8px; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -97,6 +138,79 @@ STATUS: Ready for integration
         .team-b-header { color: #ff6b6b; }
         .player-cell { font-weight: 600; }
         .total-cell { font-weight: 700; color: #ffaa44; }
+        .highlight-row { background: rgba(76, 175, 80, 0.1); }
+        .final-row { background: rgba(255, 170, 68, 0.15); font-weight: 700; }
+        
+        .backup-list { margin-top: 12px; }
+        .backup-item {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr auto;
+            gap: 8px;
+            padding: 10px 12px;
+            background: #0a0a0a;
+            border-radius: 8px;
+            margin-bottom: 6px;
+            border: 1px solid #2a2a2a;
+            cursor: pointer;
+            transition: all 0.2s;
+            align-items: center;
+            font-size: 0.75rem;
+        }
+        .backup-item:hover { border-color: #4a8af4; background: #111; }
+        .backup-item.selected { border-color: #4caf50; background: #1a2a1a; }
+        .backup-item .bid { font-family: monospace; color: #4a8af4; font-size: 0.7rem; }
+        .backup-item .oid { font-family: monospace; color: #888; font-size: 0.65rem; }
+        .backup-item .bdate { color: #aaa; font-size: 0.65rem; }
+        .backup-item .bcourse { color: #ccc; font-size: 0.65rem; }
+        .backup-item .bstatus { font-size: 0.6rem; padding: 2px 8px; border-radius: 10px; }
+        .backup-item .bstatus.pending { background: #2a2a1a; color: #ffaa44; }
+        .backup-item .bstatus.completed { background: #0a2a0a; color: #4caf50; }
+        .backup-item .bselect { color: #4caf50; font-size: 0.7rem; font-weight: 600; }
+        .backup-item .bselect.empty { color: #666; }
+        
+        .fix-btn-container { margin-top: 16px; text-align: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+        .fix-btn { padding: 14px 32px; font-size: 1rem; border-radius: 40px; font-weight: 700; cursor: pointer; border: 2px solid; transition: all 0.2s; margin: 4px; }
+        .fix-btn:active { transform: scale(0.97); }
+        .fix-btn-fix { background: #1a3a1a; border-color: #4caf50; color: #4caf50; }
+        .fix-btn-fix:hover { background: #2a4a2a; }
+        .fix-btn-backup { background: #1a2a3a; border-color: #4a8af4; color: #4a8af4; }
+        .fix-btn-backup:hover { background: #2a3a4a; }
+        .fix-btn-restore { background: #2a1a1a; border-color: #ff6b6b; color: #ff6b6b; }
+        .fix-btn-restore:hover { background: #3a2a2a; }
+        .fix-btn-fixing { background: #2a2a1a; border-color: #ffaa44; color: #ffaa44; cursor: wait; opacity: 0.7; }
+        .fix-btn-done { background: #0a2a0a; border-color: #4caf50; color: #4caf50; cursor: default; }
+        .fix-btn-error { background: #2a0a0a; border-color: #ff6b6b; color: #ff6b6b; cursor: default; }
+        
+        .fix-progress { margin-top: 12px; padding: 12px; border-radius: 8px; background: #0a0a0a; font-size: 0.8rem; color: #888; display: none; max-height: 400px; overflow-y: auto; }
+        .fix-progress.active { display: block; }
+        .fix-progress .step { color: #4caf50; padding: 2px 0; }
+        .fix-progress .step.done { color: #4caf50; }
+        .fix-progress .step.error { color: #ff6b6b; }
+        .fix-progress .step.info { color: #64b5f6; }
+        .fix-progress .step.backup { color: #4a8af4; }
+        .fix-progress .step.warning { color: #ffa726; }
+        .fix-progress .step.restore { color: #ff6b6b; }
+        
+        .destination-select { display: flex; gap: 12px; margin: 12px 0; align-items: center; flex-wrap: wrap; }
+        .destination-select label { font-size: 0.85rem; color: #aaa; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+        .destination-select input[type="radio"] { accent-color: #4caf50; width: 16px; height: 16px; cursor: pointer; }
+        .dest-preview { color: #4caf50; font-weight: 600; font-size: 0.8rem; font-family: monospace; background: #0a0a0a; padding: 2px 8px; border-radius: 4px; }
+        
+        .validation-summary-modal {
+            background: #1a1a1a;
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 12px;
+            border: 1px solid #4caf50;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .validation-summary-modal .title { color: #ffaa44; font-weight: 700; margin-bottom: 8px; }
+        .validation-summary-modal .item { padding: 4px 0; font-size: 0.8rem; border-bottom: 1px solid #1a1a1a; }
+        .validation-summary-modal .item .label { color: #888; }
+        .validation-summary-modal .item .value { color: #fff; }
+        .validation-summary-modal .item .mismatch { color: #ff6b6b; font-weight: 700; }
+        .validation-summary-modal .item .match { color: #4caf50; }
     </style>
 </head>
 <body>
@@ -104,73 +218,151 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.13</span>
+        <span class="version-tag">v1.34</span>
     </h1>
     
-    <!-- Input -->
-    <div class="card">
-        <div class="card-title">📥 Select Game Record</div>
-        <div class="input-group">
-            <label for="recordSelect">Game:</label>
-            <select id="recordSelect"><option value="">— Loading records... —</option></select>
-            <button class="btn" id="loadBtn">Load & Validate</button>
-            <button class="btn btn-secondary" id="refreshBtn">↻ Refresh</button>
-            <button class="btn btn-secondary" id="clearBtn">Clear</button>
-        </div>
-        <div id="statusMessage"></div>
+    <!-- Tab Navigation -->
+    <div class="tab-nav" id="tabNav">
+        <button class="tab-btn active" data-tab="tabRestore">
+            <span class="tab-icon">↩️</span> Restore from Backup
+        </button>
+        <button class="tab-btn" data-tab="tabValidate">
+            <span class="tab-icon">🔬</span> Validate & Fix
+        </button>
     </div>
     
-    <!-- Results -->
-    <div id="results" style="display:none;">
-        <div class="card" id="gameInfoCard">
-            <div class="card-title">📋 Game Info</div>
-            <div id="gameInfoContent"></div>
-        </div>
-        
-        <div class="two-col">
-            <div class="card">
-                <div class="card-title">✈️ Flight 1 — Raw Scores</div>
-                <div id="flight1Table"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">✈️ Flight 2 — Raw Scores</div>
-                <div id="flight2Table"></div>
-            </div>
-        </div>
-        
-        <div class="three-col">
-            <div class="card">
-                <div class="card-title">📊 T-1</div>
-                <div id="t1Table"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">📊 T-2</div>
-                <div id="t2Table"></div>
-            </div>
-            <div class="card">
-                <div class="card-title">📊 Strk</div>
-                <div id="strkTable"></div>
-            </div>
-        </div>
-        
+    <!-- ============================================================ -->
+    <!-- TAB 1: RESTORE FROM BACKUP — SIMPLE COPY -->
+    <!-- ============================================================ -->
+    <div class="tab-content active" id="tabRestore">
         <div class="card">
-            <div class="card-title">🏅 Match Game — Per Hole (16 matches per hole) — 🏆 = clinched on this hole, ⭐ = already clinched</div>
-            <div id="matchTable"></div>
+            <div class="card-title">📦 Restore from Backup</div>
+            <div style="font-size:0.85rem; color:#ccc; margin-bottom:12px;">
+                Select a backup from the <strong>backupFolder</strong> collection and restore it.
+                <br><span style="color:#4caf50;">✅ This does a SIMPLE COPY — NO recalculation, NO modification.</span>
+                <br><span style="color:#ffaa44;">⚠️ Backups are NEVER deleted or overwritten.</span>
+            </div>
+            
+            <div class="input-group">
+                <button class="btn btn-backup" id="refreshBackupBtn">🔄 Refresh Backup List</button>
+                <span style="font-size:0.7rem; color:#666; margin-left:8px;" id="backupCount"></span>
+            </div>
+            
+            <div id="restoreStatus" class="status" style="display:none;"></div>
+            
+            <!-- Destination Selector -->
+            <div class="destination-select">
+                <span style="color:#888; font-size:0.85rem; font-weight:600;">Restore to:</span>
+                <label>
+                    <input type="radio" name="restoreDestination" value="historyGames" checked>
+                    historyGames → <span class="dest-preview" id="destPreviewHistory">_H_R</span>
+                </label>
+                <label>
+                    <input type="radio" name="restoreDestination" value="scheduledGames">
+                    scheduledGames → <span class="dest-preview" id="destPreviewScheduled">_R</span>
+                </label>
+            </div>
+            
+            <!-- Backup List -->
+            <div id="backupListContainer">
+                <div class="empty-state">Click "Refresh Backup List" to load backups.</div>
+            </div>
+            
+            <!-- Restore Button -->
+            <div class="fix-btn-container">
+                <button class="fix-btn fix-btn-restore" id="restoreSelectedBtn" disabled>↩️ Restore Selected</button>
+            </div>
+            
+            <div id="restoreProgress" class="fix-progress"></div>
         </div>
-        
+    </div>
+    
+    <!-- ============================================================ -->
+    <!-- TAB 2: VALIDATE & FIX -->
+    <!-- ============================================================ -->
+    <div class="tab-content" id="tabValidate">
         <div class="card">
-            <div class="card-title">🏆 TR — Per Hole Breakdown [Match + T-1 + T-2 + Strk] (19 points per hole)</div>
-            <div id="trTable"></div>
+            <div class="card-title">📥 Select Game Record</div>
+            <div class="input-group">
+                <label for="recordSelect">Game:</label>
+                <select id="recordSelect"><option value="">— Loading records... —</option></select>
+                <button class="btn" id="loadBtn">Load & Validate</button>
+                <button class="btn btn-secondary" id="refreshBtn">↻ Refresh</button>
+                <button class="btn btn-secondary" id="clearBtn">Clear</button>
+            </div>
+            <div id="statusMessage"></div>
         </div>
         
-        <div class="card" style="border-color: #4caf50;">
-            <div class="card-title">✅ Summary</div>
-            <div id="validationSummary"></div>
+        <!-- Results -->
+        <div id="results" style="display:none;">
+            <div class="card" id="gameInfoCard">
+                <div class="card-title">📋 Game Info</div>
+                <div id="gameInfoContent"></div>
+            </div>
+            
+            <div class="two-col">
+                <div class="card">
+                    <div class="card-title">✈️ Flight 1 — Raw Scores</div>
+                    <div id="flight1Table"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">✈️ Flight 2 — Raw Scores</div>
+                    <div id="flight2Table"></div>
+                </div>
+            </div>
+            
+            <div class="three-col">
+                <div class="card">
+                    <div class="card-title">📊 T-1</div>
+                    <div id="t1Table"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">📊 T-2</div>
+                    <div id="t2Table"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">📊 Strk</div>
+                    <div id="strkTable"></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">🏅 Match Game — Per Hole TR Points (16 matches, each worth 1 point per hole)</div>
+                <div id="matchTable"></div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">🏆 TR — Per Hole (19 points per hole: Match + T-1 + T-2 + Strk) — FINAL RESULT AT H18</div>
+                <div id="trTable"></div>
+            </div>
+            
+            <div class="card" style="border-color: #4caf50;">
+                <div class="card-title">✅ Summary</div>
+                <div id="validationSummary"></div>
+            </div>
+            
+            <!-- Fix Card -->
+            <div class="card" style="border-color: #ffaa44; display: none;" id="fixCard">
+                <div class="card-title">🔧 Fix Corrupted Record</div>
+                <div id="fixContent">
+                    <div style="font-size:0.85rem; color:#ccc; margin-bottom:12px;">
+                        This will recalculate all derived data from raw data and update the Firestore record.
+                        <br><strong style="color:#4caf50;">Preserves: raw scores (f1DataString, f2DataString), players, course, gameInfo</strong>
+                        <br><strong style="color:#ffaa44;">This action cannot be undone.</strong>
+                        <br><span style="color:#4a8af4; font-size:0.75rem;">A backup will be created before updating.</span>
+                    </div>
+                    <div id="fixProgress" class="fix-progress"></div>
+                    <div class="fix-btn-container">
+                        <button class="fix-btn fix-btn-backup" id="backupOnlyBtn">💾 Backup Only</button>
+                        <button class="fix-btn fix-btn-fix" id="fixBtn">🔧 Fix Record</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
     <div class="footnote">
-        Validator v1.13 — Match Game: Clinch detection with 🏆 (clinch hole) and ⭐ (already clinched).
+        Validator v1.34 — Restore: SIMPLE COPY from backupFolder to destination. NO recalculation.
     </div>
 </div>
 
@@ -178,8 +370,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "1.13";
-console.log("[Validator] v1.13 - Match Game with clinch detection");
+window.VALIDATOR_VERSION = "1.34";
+console.log("[Validator] v1.34 - Restore: SIMPLE COPY from backupFolder to destination");
 
 // ============================================================
 // FIREBASE
@@ -211,6 +403,12 @@ var db = firebase.firestore();
 // ============================================================
 var records = [];
 var gameData = null;
+var currentRecordIndex = -1;
+var allBackups = [];
+var selectedBackupId = null;
+var restoreDestination = 'historyGames';
+var restoredDocId = null;
+var restoredData = null;
 
 // ============================================================
 // UTILITY
@@ -225,7 +423,33 @@ function setStatus(msg, type) {
 function formatDate(dateStr) { if (!dateStr) return 'Unknown'; var parts = dateStr.split('-'); if (parts.length === 3) { var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0]; } return dateStr; }
 
 // ============================================================
-// EXACT: parseDataString from game-data.js
+// TAB SWITCHING
+// ============================================================
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
+    document.getElementById(tabId).classList.add('active');
+    document.querySelector('.tab-btn[data-tab="' + tabId + '"]').classList.add('active');
+}
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() { switchTab(this.dataset.tab); });
+});
+
+// ============================================================
+// SANITIZE
+// ============================================================
+function sanitizeArray(arr, defaultVal) {
+    if (!arr || !Array.isArray(arr)) { return new Array(18).fill(defaultVal); }
+    var result = [];
+    for (var i = 0; i < 18; i++) {
+        var val = (i < arr.length) ? arr[i] : undefined;
+        if (val === undefined || val === null) { result.push(defaultVal); } else { result.push(val); }
+    }
+    return result;
+}
+
+// ============================================================
+// PARSE DATA STRING
 // ============================================================
 function parseDataString(dataStr) {
     if (!dataStr || dataStr.length !== 162) return null;
@@ -244,7 +468,7 @@ function parseDataString(dataStr) {
 }
 
 // ============================================================
-// EXACT: getStrokeHoles from game-match.js
+// getStrokeHoles
 // ============================================================
 function getStrokeHoles(handicapDiff, courseSi) {
     if (handicapDiff <= 0) return [];
@@ -268,7 +492,7 @@ function getNetScoreMatchGame(gross, handicapDiff, holeNumber, courseSi, isRecei
 }
 
 // ============================================================
-// v1.08: FIXED — getIntraMatchResultForHole (single hole, not cumulative)
+// getIntraMatchResultForHole
 // ============================================================
 function getIntraMatchResultForHole(playerA, playerB, flightData, allPlayers, courseSi, holeNumber, coursePar) {
     var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
@@ -307,7 +531,7 @@ function getIntraMatchResultForHole(playerA, playerB, flightData, allPlayers, co
 }
 
 // ============================================================
-// v1.08: FIXED — getCrossMatchResultForHole (single hole, not cumulative)
+// getCrossMatchResultForHole
 // ============================================================
 function getCrossMatchResultForHole(playerA, playerB, flight1Data, flight2Data, allPlayers, courseSi, holeNumber, coursePar) {
     var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
@@ -336,7 +560,7 @@ function getCrossMatchResultForHole(playerA, playerB, flight1Data, flight2Data, 
 }
 
 // ============================================================
-// EXACT: getPlayerScore from game-match.js
+// getPlayerScore
 // ============================================================
 function getPlayerScore(player, flightData, holeNumber, allPlayers, coursePar) {
     var holeData = parseHoleData(flightData, holeNumber);
@@ -361,9 +585,9 @@ function parseHoleData(dataStr, holeNumber) {
 }
 
 // ============================================================
-// v1.13: calculateMatchGamePerHoleWithClinch — returns per-hole results with clinch detection
+// calculateMatchGamePerHole — for validation display only
 // ============================================================
-function calculateMatchGamePerHoleWithClinch(f1Scores, f2Scores, allPlayers, courseSi, coursePar, clinchedAt) {
+function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, coursePar) {
     var flight1Data = f1Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
     var flight2Data = f2Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
     
@@ -372,7 +596,6 @@ function calculateMatchGamePerHoleWithClinch(f1Scores, f2Scores, allPlayers, cou
     teamAPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
     teamBPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
     
-    // Order: Team A players first (Flight 1, then Flight 2), then Team B players (Flight 1, then Flight 2)
     var orderedPlayers = [];
     for (var i = 0; i < teamAPlayers.length; i++) orderedPlayers.push(teamAPlayers[i]);
     for (var i = 0; i < teamBPlayers.length; i++) orderedPlayers.push(teamBPlayers[i]);
@@ -384,44 +607,37 @@ function calculateMatchGamePerHoleWithClinch(f1Scores, f2Scores, allPlayers, cou
         }
     }
     
-    // Build clinch lookup: map of "Winner_vs_Loser" -> clinchHole
-    var clinchLookup = {};
-    if (clinchedAt) {
-        for (var key in clinchedAt) {
-            var entry = clinchedAt[key];
-            var clinchHole = (typeof entry === 'number') ? entry : entry.clinchedAtHole;
-            if (clinchHole) {
-                clinchLookup[key] = clinchHole;
-            }
-        }
-    }
-    
-    // results[holeIndex][playerIndex] = points for that player on that hole
-    // with clinch info
     var results = [];
+    var matchPointsPerHole = [];
     var cumulativeLeads = {};
+    var matchClinched = {};
+    var clinchedAt = {};
     
-    // Initialize cumulative leads for all matches
     for (var m = 0; m < allMatches.length; m++) {
         var match = allMatches[m];
         var keyA = match.playerA.name + "_vs_" + match.playerB.name;
         var keyB = match.playerB.name + "_vs_" + match.playerA.name;
         cumulativeLeads[keyA] = 0;
         cumulativeLeads[keyB] = 0;
+        matchClinched[keyA] = false;
+        matchClinched[keyB] = false;
     }
     
     for (var hole = 1; hole <= 18; hole++) {
-        var holeResults = {};
+        var holePoints = {};
         var holeClinchInfo = {};
+        var holeMatchPoints = {};
         
-        // Initialize all players to 0
         for (var p = 0; p < orderedPlayers.length; p++) {
-            holeResults[orderedPlayers[p].name] = 0;
-            holeClinchInfo[orderedPlayers[p].name] = { clinched: false, alreadyClinched: false };
+            holePoints[orderedPlayers[p].name] = 0;
+            holeClinchInfo[orderedPlayers[p].name] = { clinched: false, asAtH18: false };
         }
+        
+        var remainingHoles = 18 - hole;
         
         for (var m = 0; m < allMatches.length; m++) {
             var match = allMatches[m];
+            
             var margin;
             if (match.playerA.flight === match.playerB.flight) {
                 var flightData = match.playerA.flight === 1 ? flight1Data : flight2Data;
@@ -433,162 +649,659 @@ function calculateMatchGamePerHoleWithClinch(f1Scores, f2Scores, allPlayers, cou
             var keyA = match.playerA.name + "_vs_" + match.playerB.name;
             var keyB = match.playerB.name + "_vs_" + match.playerA.name;
             
-            // Check if this match is already clinched (from earlier holes)
-            var clinchHole = clinchLookup[keyA] || clinchLookup[keyB];
-            var isClinched = (clinchHole !== undefined && clinchHole < hole);
-            var isClinchHole = (clinchHole !== undefined && clinchHole === hole);
-            
-            // Award points for this hole
-            var pointsA = 0, pointsB = 0;
             if (margin > 0) {
-                pointsA = 1;
-                pointsB = 0;
+                cumulativeLeads[keyA] += 1;
+                cumulativeLeads[keyB] -= 1;
             } else if (margin < 0) {
-                pointsA = 0;
-                pointsB = 1;
-            } else {
-                pointsA = 0.5;
-                pointsB = 0.5;
+                cumulativeLeads[keyA] -= 1;
+                cumulativeLeads[keyB] += 1;
             }
             
-            // Update cumulative leads
-            cumulativeLeads[keyA] += (pointsA - pointsB);
-            cumulativeLeads[keyB] += (pointsB - pointsA);
+            var leadA = cumulativeLeads[keyA];
+            var leadB = cumulativeLeads[keyB];
             
-            // Store points with clinch info
+            var pointsA, pointsB;
+            if (leadA > 0) { pointsA = 1; } 
+            else if (leadA < 0) { pointsA = 0; } 
+            else { pointsA = 0.5; }
+            
+            if (leadB > 0) { pointsB = 1; } 
+            else if (leadB < 0) { pointsB = 0; } 
+            else { pointsB = 0.5; }
+            
+            var matchKey = match.playerA.name + "_vs_" + match.playerB.name;
+            holeMatchPoints[matchKey] = { pointsA: pointsA, pointsB: pointsB };
+            
+            var isClinchHole = false;
+            var clinchWinner = null;
+            var clinchLoser = null;
+            var alreadyClinched = matchClinched[keyA] || matchClinched[keyB];
+            
+            if (!alreadyClinched) {
+                if (leadA > remainingHoles && leadA !== 0) {
+                    isClinchHole = true;
+                    clinchWinner = match.playerA.name;
+                    clinchLoser = match.playerB.name;
+                    matchClinched[keyA] = true;
+                    matchClinched[keyB] = true;
+                    clinchedAt[clinchWinner + "_vs_" + clinchLoser] = {
+                        clinchedAtHole: hole,
+                        winner: clinchWinner,
+                        loser: clinchLoser,
+                        leadAtClinch: leadA,
+                        remainingHolesAtClinch: remainingHoles
+                    };
+                } else if (leadB > remainingHoles && leadB !== 0) {
+                    isClinchHole = true;
+                    clinchWinner = match.playerB.name;
+                    clinchLoser = match.playerA.name;
+                    matchClinched[keyA] = true;
+                    matchClinched[keyB] = true;
+                    clinchedAt[clinchWinner + "_vs_" + clinchLoser] = {
+                        clinchedAtHole: hole,
+                        winner: clinchWinner,
+                        loser: clinchLoser,
+                        leadAtClinch: leadB,
+                        remainingHolesAtClinch: remainingHoles
+                    };
+                }
+            }
+            
+            var isASAtH18 = (hole === 18 && leadA === 0 && leadB === 0);
+            
             if (isClinchHole) {
-                holeResults[match.playerA.name] += pointsA;
-                holeClinchInfo[match.playerA.name].clinched = true;
-                holeClinchInfo[match.playerA.name].clinchOpponent = match.playerB.name;
-                holeResults[match.playerB.name] += pointsB;
-            } else if (isClinched) {
-                // Already clinched - points still count, mark as alreadyClinched
-                holeResults[match.playerA.name] += pointsA;
-                holeClinchInfo[match.playerA.name].alreadyClinched = true;
-                holeResults[match.playerB.name] += pointsB;
-                holeClinchInfo[match.playerB.name].alreadyClinched = true;
+                holePoints[match.playerA.name] += pointsA;
+                if (clinchWinner === match.playerA.name) {
+                    holeClinchInfo[match.playerA.name].clinched = true;
+                    holeClinchInfo[match.playerA.name].clinchOpponent = match.playerB.name;
+                    holeClinchInfo[match.playerA.name].clinchHole = hole;
+                }
+                if (clinchWinner === match.playerB.name) {
+                    holeClinchInfo[match.playerB.name].clinched = true;
+                    holeClinchInfo[match.playerB.name].clinchOpponent = match.playerA.name;
+                    holeClinchInfo[match.playerB.name].clinchHole = hole;
+                }
+                holePoints[match.playerB.name] += pointsB;
+            } else if (isASAtH18) {
+                holePoints[match.playerA.name] += pointsA;
+                holePoints[match.playerB.name] += pointsB;
+                holeClinchInfo[match.playerA.name].asAtH18 = true;
+                holeClinchInfo[match.playerB.name].asAtH18 = true;
             } else {
-                holeResults[match.playerA.name] += pointsA;
-                holeResults[match.playerB.name] += pointsB;
+                holePoints[match.playerA.name] += pointsA;
+                holePoints[match.playerB.name] += pointsB;
             }
         }
         
         results.push({
             hole: hole,
-            points: holeResults,
+            points: holePoints,
             clinchInfo: holeClinchInfo
         });
+        
+        matchPointsPerHole.push(holeMatchPoints);
     }
     
     return {
         orderedPlayers: orderedPlayers,
-        results: results
+        results: results,
+        matchPointsPerHole: matchPointsPerHole,
+        clinchedAt: clinchedAt
     };
 }
 
 // ============================================================
-// EXACT: Team Game from game-team.js
+// Team Game — for validation
 // ============================================================
 function getNetScoreTeamGame(gross, handicap, si) {
     var strokes = 0;
     if (handicap > 0 && si <= handicap) strokes = 1;
     return gross - strokes;
 }
-function calculateTeamGame(flightScores, players, flightNum, courseSi) {
+
+function calculateTeamGame(f1Scores, f2Scores, players, flightNum, courseSi) {
     var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
     var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
     var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
-    var results = [], running = 0;
+    
+    var flightScores = flightNum === 1 ? f1Scores : f2Scores;
+    
+    var cumulative = [];
+    var leaders = [];
+    var displayArr = [];
+    var pointsA = [];
+    var pointsB = [];
+    var results = [];
+    var running = 0;
+    
     for (var idx = 0; idx < 18; idx++) {
         var hole = flightScores[idx];
+        var trA, trB;
+        
         if (!hole || !hole.saved) {
-            results.push({ hole: idx+1, match1: null, match2: null, holeResult: null, running: null, display: '-', trPointsA: 0.5, trPointsB: 0.5, teamGameTR: { A: 0.5, B: 0.5 } });
+            trA = 0.5;
+            trB = 0.5;
+            results.push({ 
+                hole: idx+1, 
+                match1: null, 
+                match2: null, 
+                holeResult: null, 
+                running: null, 
+                display: '-', 
+                trPointsA: trA, 
+                trPointsB: trB
+            });
+            cumulative.push(0);
+            leaders.push("AS");
+            displayArr.push("AS");
+            pointsA.push(0.5);
+            pointsB.push(0.5);
             continue;
         }
+        
         var si = courseSi[idx] || 1;
         var teamAGross = [hole.a1, hole.a2];
         var teamBGross = [hole.b1, hole.b2];
-        var teamANets = [], teamBNets = [];
-        for (var i = 0; i < teamA.length; i++) { teamANets.push({ player: teamA[i], net: getNetScoreTeamGame(teamAGross[i], teamA[i].handicap, si) }); }
-        for (var i = 0; i < teamB.length; i++) { teamBNets.push({ player: teamB[i], net: getNetScoreTeamGame(teamBGross[i], teamB[i].handicap, si) }); }
-        teamANets.sort(function(a,b) { return a.net - b.net; });
-        teamBNets.sort(function(a,b) { return a.net - b.net; });
+        
+        var teamANets = [];
+        var teamBNets = [];
+        for (var i = 0; i < teamA.length; i++) {
+            teamANets.push({ player: teamA[i], net: getNetScoreTeamGame(teamAGross[i], teamA[i].handicap, si) });
+        }
+        for (var i = 0; i < teamB.length; i++) {
+            teamBNets.push({ player: teamB[i], net: getNetScoreTeamGame(teamBGross[i], teamB[i].handicap, si) });
+        }
+        
+        teamANets.sort(function(a, b) { return a.net - b.net; });
+        teamBNets.sort(function(a, b) { return a.net - b.net; });
+        
         var match1 = 0, match2 = 0;
-        if (teamANets[0].net < teamBNets[0].net) match1 = 1;
-        else if (teamANets[0].net > teamBNets[0].net) match1 = -1;
-        if (teamANets[1].net < teamBNets[1].net) match2 = 1;
-        else if (teamANets[1].net > teamBNets[1].net) match2 = -1;
+        if (teamANets[0].net < teamBNets[0].net) { match1 = 1; }
+        else if (teamANets[0].net > teamBNets[0].net) { match1 = -1; }
+        if (teamANets[1].net < teamBNets[1].net) { match2 = 1; }
+        else if (teamANets[1].net > teamBNets[1].net) { match2 = -1; }
+        
         var holeResult = match1 + match2;
         running += holeResult;
+        
         var display = 'AS';
         if (running > 0) display = 'A' + running;
         else if (running < 0) display = 'B' + Math.abs(running);
-        var trPointsA, trPointsB;
-        if (running > 0) { trPointsA = 1; trPointsB = 0; }
-        else if (running < 0) { trPointsA = 0; trPointsB = 1; }
-        else { trPointsA = 0.5; trPointsB = 0.5; }
-        results.push({ 
-            hole: idx+1, 
-            match1: match1, 
-            match2: match2, 
-            holeResult: holeResult, 
-            running: running, 
-            display: display, 
-            trPointsA: trPointsA, 
-            trPointsB: trPointsB,
-            teamGameTR: { A: trPointsA, B: trPointsB }
+        
+        if (running > 0) { trA = 1; trB = 0; }
+        else if (running < 0) { trA = 0; trB = 1; }
+        else { trA = 0.5; trB = 0.5; }
+        
+        results.push({
+            hole: idx+1,
+            match1: match1 === 1 ? 'A' : (match1 === -1 ? 'B' : 'AS'),
+            match2: match2 === 1 ? 'A' : (match2 === -1 ? 'B' : 'AS'),
+            holeResult: holeResult,
+            running: running,
+            display: display,
+            trPointsA: trA,
+            trPointsB: trB
         });
+        cumulative.push(running);
+        leaders.push(running > 0 ? "A" : (running < 0 ? "B" : "AS"));
+        displayArr.push(display);
+        pointsA.push(trA);
+        pointsB.push(trB);
     }
-    return results;
+    
+    return {
+        cumulative: sanitizeArray(cumulative, 0),
+        leaders: sanitizeArray(leaders, "AS"),
+        display: sanitizeArray(displayArr, "AS"),
+        pointsA: sanitizeArray(pointsA, 0.5),
+        pointsB: sanitizeArray(pointsB, 0.5),
+        results: results
+    };
 }
 
 // ============================================================
-// EXACT: Stroke Game from game-stroke.js
+// Stroke Game — for validation
 // ============================================================
-function calculateStrokeGame(f1Scores, f2Scores, players) {
+function calculateStrokeGame(f1Scores, f2Scores, players, courseSi, coursePar) {
     var teamA = players.filter(function(p) { return p.team === 'A'; });
     var teamB = players.filter(function(p) { return p.team === 'B'; });
     var totalHcpA = teamA.reduce(function(sum, p) { return sum + p.handicap; }, 0);
     var totalHcpB = teamB.reduce(function(sum, p) { return sum + p.handicap; }, 0);
-    var results = [], cumA = 0, cumB = 0;
+    
+    var leaders = [];
+    var displays = [];
+    var pointsA = [];
+    var pointsB = [];
+    var results = [];
+    var nettA = [];
+    var nettB = [];
+    var cumA = 0, cumB = 0;
+    
     for (var pos = 0; pos < 18; pos++) {
         var f1 = f1Scores[pos], f2 = f2Scores[pos];
+        var trA, trB;
+        
         if (!f1 || !f1.saved || !f2 || !f2.saved) {
-            results.push({ hole: pos+1, display: '-', grossA: null, grossB: null, netA: null, netB: null, diff: null, trPointsA: 0.5, trPointsB: 0.5, strokeTR: { A: 0.5, B: 0.5 } });
+            trA = 0.5;
+            trB = 0.5;
+            var netA = cumA - totalHcpA;
+            var netB = cumB - totalHcpB;
+            results.push({ 
+                hole: pos+1, 
+                display: '-', 
+                grossA: null, 
+                grossB: null, 
+                netA: netA, 
+                netB: netB, 
+                diff: null, 
+                trPointsA: trA, 
+                trPointsB: trB 
+            });
+            leaders.push("AS");
+            displays.push("AS");
+            pointsA.push(0.5);
+            pointsB.push(0.5);
+            nettA.push(netA);
+            nettB.push(netB);
             continue;
         }
+        
         var grossA = f1.a1 + f1.a2 + f2.a1 + f2.a2;
         var grossB = f1.b1 + f1.b2 + f2.b1 + f2.b2;
-        cumA += grossA; cumB += grossB;
+        cumA += grossA;
+        cumB += grossB;
         var netA = cumA - totalHcpA;
         var netB = cumB - totalHcpB;
         var diff = netB - netA;
+        
         var display = 'AS';
         if (Math.abs(diff) < 0.01) display = 'AS';
         else if (diff > 0) display = 'A' + Math.round(diff);
         else display = 'B' + Math.round(Math.abs(diff));
-        var trPointsA, trPointsB;
-        if (Math.abs(diff) < 0.01) { trPointsA = 0.5; trPointsB = 0.5; }
-        else if (diff > 0) { trPointsA = 1; trPointsB = 0; }
-        else { trPointsA = 0; trPointsB = 1; }
-        results.push({ 
-            hole: pos+1, 
-            grossA: grossA, 
-            grossB: grossB, 
-            netA: netA, 
-            netB: netB, 
-            diff: diff, 
-            display: display, 
-            trPointsA: trPointsA, 
-            trPointsB: trPointsB,
-            strokeTR: { A: trPointsA, B: trPointsB }
+        
+        if (Math.abs(diff) < 0.01) { trA = 0.5; trB = 0.5; }
+        else if (diff > 0) { trA = 1; trB = 0; }
+        else { trA = 0; trB = 1; }
+        
+        results.push({
+            hole: pos+1,
+            grossA: grossA,
+            grossB: grossB,
+            netA: netA,
+            netB: netB,
+            diff: diff,
+            display: display,
+            trPointsA: trA,
+            trPointsB: trB
         });
+        leaders.push(diff > 0 ? "A" : (diff < 0 ? "B" : "AS"));
+        displays.push(display);
+        pointsA.push(trA);
+        pointsB.push(trB);
+        nettA.push(netA);
+        nettB.push(netB);
     }
-    return results;
+    
+    return {
+        leader: sanitizeArray(leaders, "AS"),
+        displayStrk: sanitizeArray(displays, "AS"),
+        pointsA: sanitizeArray(pointsA, 0.5),
+        pointsB: sanitizeArray(pointsB, 0.5),
+        nettA: nettA,
+        nettB: nettB,
+        results: results
+    };
 }
 
 // ============================================================
-// FETCH RECORDS
+// calculateAdjustedHandicaps — for validation
+// ============================================================
+function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar) {
+    var adjusted = {};
+    for (var i = 0; i < players.length; i++) {
+        var player = players[i];
+        var totalGross = 0;
+        var holesPlayed = 0;
+        var totalPar = 0;
+        
+        for (var h = 0; h < 18; h++) {
+            var score = getPlayerGrossForHole(player, h + 1, f1Scores, f2Scores, coursePar, players);
+            if (score !== null) {
+                totalGross += score;
+                holesPlayed++;
+            }
+            totalPar += coursePar[h] || 4;
+        }
+        
+        if (holesPlayed > 0) {
+            var relativeToPar = totalGross - totalPar;
+            adjusted[player.name] = {
+                name: player.name,
+                label: player.label,
+                team: player.team,
+                flight: player.flight,
+                totalGross: totalGross,
+                holesPlayed: holesPlayed,
+                totalPar: totalPar,
+                relativeToPar: relativeToPar,
+                adjustedHandicap: Math.round(relativeToPar / holesPlayed * 10) / 10
+            };
+        }
+    }
+    return adjusted;
+}
+
+function getPlayerGrossForHole(player, holeNumber, f1Scores, f2Scores, coursePar, players) {
+    var flightData = player.flight === 1 ? f1Scores : f2Scores;
+    var holeData = flightData[holeNumber - 1];
+    if (!holeData || !holeData.saved) return null;
+    
+    var flightPlayers = players.filter(function(p) { return p.flight === player.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    if (player.team === 'A') {
+        if (teamA[0] && teamA[0].name === player.name) return holeData.a1;
+        if (teamA[1] && teamA[1].name === player.name) return holeData.a2;
+    } else {
+        if (teamB[0] && teamB[0].name === player.name) return holeData.b1;
+        if (teamB[1] && teamB[1].name === player.name) return holeData.b2;
+    }
+    return null;
+}
+
+// ============================================================
+// FIND BACKUPS
+// ============================================================
+function loadBackupList() {
+    var container = document.getElementById('backupListContainer');
+    var statusEl = document.getElementById('restoreStatus');
+    var countEl = document.getElementById('backupCount');
+    var restoreBtn = document.getElementById('restoreSelectedBtn');
+    
+    container.innerHTML = '<div class="empty-state">⏳ Loading backups...</div>';
+    statusEl.style.display = 'none';
+    selectedBackupId = null;
+    restoreBtn.disabled = true;
+    
+    db.collection('backupFolder').orderBy('_backupTimestamp', 'desc').limit(200).get()
+        .then(function(snapshot) {
+            allBackups = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                allBackups.push({
+                    id: doc.id,
+                    data: data,
+                    timestamp: data._backupTimestamp || data._backupCreatedAt || null,
+                    reason: data._backupReason || 'Unknown',
+                    createdAt: data._backupCreatedAt || null,
+                    originalGameId: data._backupOriginalId || data.originalGameId || 'Unknown',
+                    gameDate: data.gameInfo?.date || 'Unknown',
+                    courseName: data.gameInfo?.course?.name || 'Unknown Course',
+                    status: data.status || 'unknown'
+                });
+            });
+            
+            countEl.textContent = allBackups.length + ' backup(s)';
+            if (allBackups.length === 0) {
+                container.innerHTML = '<div class="empty-state">No backups found in backupFolder.</div>';
+                return;
+            }
+            renderBackupList(allBackups);
+        })
+        .catch(function(err) {
+            container.innerHTML = '<div class="empty-state" style="color:#ff6b6b;">Error loading backups: ' + err.message + '</div>';
+        });
+}
+
+function renderBackupList(backups) {
+    var container = document.getElementById('backupListContainer');
+    var html = '<div class="backup-list">';
+    html += '<div style="display:grid; grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr auto; gap:8px; padding:6px 12px; font-size:0.6rem; color:#666; font-weight:600; border-bottom:1px solid #2a2a2a;">';
+    html += '<span>Backup ID / Original ID</span><span>Date</span><span>Course</span><span>Status</span><span>Created</span><span>Select</span>';
+    html += '</div>';
+    
+    for (var i = 0; i < backups.length; i++) {
+        var b = backups[i];
+        var isSelected = (selectedBackupId === b.id);
+        var dateDisplay = 'Unknown';
+        if (b.createdAt) { var d = new Date(b.createdAt); dateDisplay = d.toLocaleString(); }
+        else if (b.timestamp) { var d = new Date(b.timestamp); dateDisplay = d.toLocaleString(); }
+        var statusClass = b.status === 'completed' ? 'completed' : 'pending';
+        var statusDisplay = b.status === 'completed' ? '✅ Completed' : '⏳ Pending';
+        var selectText = isSelected ? '✓ SELECTED' : 'Select';
+        var selectClass = isSelected ? 'bselect' : 'bselect empty';
+        
+        html += '<div class="backup-item ' + (isSelected ? 'selected' : '') + '" data-backup-id="' + b.id + '">';
+        html += '<div><div class="bid">' + escapeHtml(b.id) + '</div><div class="oid">' + escapeHtml(b.originalGameId) + '</div></div>';
+        html += '<div class="bdate">' + escapeHtml(b.gameDate) + '</div>';
+        html += '<div class="bcourse">' + escapeHtml(b.courseName) + '</div>';
+        html += '<div><span class="bstatus ' + statusClass + '">' + statusDisplay + '</span></div>';
+        html += '<div class="bdate">' + dateDisplay + '</div>';
+        html += '<div class="' + selectClass + '">' + selectText + '</div>';
+        html += '</div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+    
+    var items = container.querySelectorAll('.backup-item');
+    for (var i = 0; i < items.length; i++) {
+        (function(item) {
+            item.addEventListener('click', function() {
+                selectedBackupId = this.dataset.backupId;
+                var restoreBtn = document.getElementById('restoreSelectedBtn');
+                restoreBtn.disabled = false;
+                var allItems = container.querySelectorAll('.backup-item');
+                for (var j = 0; j < allItems.length; j++) {
+                    allItems[j].classList.remove('selected');
+                    var selectSpan = allItems[j].querySelector('.bselect');
+                    if (selectSpan) { selectSpan.textContent = 'Select'; selectSpan.className = 'bselect empty'; }
+                }
+                this.classList.add('selected');
+                var selectSpan = this.querySelector('.bselect');
+                if (selectSpan) { selectSpan.textContent = '✓ SELECTED'; selectSpan.className = 'bselect'; }
+                var statusEl = document.getElementById('restoreStatus');
+                statusEl.style.display = 'block';
+                statusEl.className = 'status status-info';
+                statusEl.textContent = 'Selected: ' + selectedBackupId;
+                updateDestPreviews();
+            });
+        })(items[i]);
+    }
+}
+
+// ============================================================
+// UPDATE DESTINATION PREVIEWS
+// ============================================================
+function updateDestPreviews() {
+    var selectedBackup = null;
+    for (var i = 0; i < allBackups.length; i++) {
+        if (allBackups[i].id === selectedBackupId) {
+            selectedBackup = allBackups[i];
+            break;
+        }
+    }
+    
+    var historyPreview = document.getElementById('destPreviewHistory');
+    var scheduledPreview = document.getElementById('destPreviewScheduled');
+    
+    if (selectedBackup) {
+        var originalId = selectedBackup.originalGameId || selectedBackup.data._backupOriginalId || 'RESTORE';
+        var baseId = originalId.replace(/_H$/, '');
+        historyPreview.textContent = baseId + '_H_R';
+        scheduledPreview.textContent = baseId + '_R';
+        historyPreview.style.color = '#4caf50';
+        scheduledPreview.style.color = '#ffaa44';
+    } else {
+        historyPreview.textContent = '_H_R';
+        scheduledPreview.textContent = '_R';
+        historyPreview.style.color = '#4caf50';
+        scheduledPreview.style.color = '#ffaa44';
+    }
+}
+
+// ============================================================
+// v1.34: RESTORE — SIMPLE COPY, NO RECALCULATION
+// ============================================================
+function executeRestore() {
+    if (!selectedBackupId) {
+        var statusEl = document.getElementById('restoreStatus');
+        statusEl.style.display = 'block';
+        statusEl.className = 'status status-error';
+        statusEl.textContent = '⚠️ Please select a backup first.';
+        return;
+    }
+    
+    var destRadio = document.querySelector('input[name="restoreDestination"]:checked');
+    var destination = destRadio ? destRadio.value : 'historyGames';
+    restoreDestination = destination;
+    
+    var selectedBackup = null;
+    for (var i = 0; i < allBackups.length; i++) {
+        if (allBackups[i].id === selectedBackupId) {
+            selectedBackup = allBackups[i];
+            break;
+        }
+    }
+    if (!selectedBackup) {
+        var statusEl = document.getElementById('restoreStatus');
+        statusEl.style.display = 'block';
+        statusEl.className = 'status status-error';
+        statusEl.textContent = '⚠️ Backup not found.';
+        return;
+    }
+    
+    var originalId = selectedBackup.originalGameId || selectedBackup.data._backupOriginalId || 'RESTORE';
+    var baseId = originalId.replace(/_H$/, '');
+    if (destination === 'historyGames') {
+        restoredDocId = baseId + '_H_R';
+    } else {
+        restoredDocId = baseId + '_R';
+    }
+    
+    var statusEl = document.getElementById('restoreStatus');
+    var progressEl = document.getElementById('restoreProgress');
+    var restoreBtn = document.getElementById('restoreSelectedBtn');
+    
+    db.collection(destination).doc(restoredDocId).get()
+        .then(function(doc) {
+            if (doc.exists) {
+                return new Promise(function(resolve, reject) {
+                    if (confirm('⚠️ Record already exists in ' + destination + '!\n\n' +
+                                'Document ID: ' + restoredDocId + '\n\n' +
+                                'Do you want to REPLACE it?')) {
+                        resolve();
+                    } else {
+                        reject(new Error('User cancelled'));
+                    }
+                });
+            }
+            return Promise.resolve();
+        })
+        .then(function() {
+            statusEl.style.display = 'block';
+            statusEl.className = 'status status-info';
+            statusEl.textContent = '⏳ Copying backup...';
+            restoreBtn.disabled = true;
+            restoreBtn.textContent = '⏳ Copying...';
+            progressEl.className = 'fix-progress active';
+            progressEl.innerHTML = '<div class="step restore">↩️ Copying from backup: ' + selectedBackupId + '...</div>';
+            progressEl.innerHTML += '<div class="step restore">📦 Destination: ' + destination + ' → ' + restoredDocId + '</div>';
+            
+            // SIMPLE COPY — NO RECALCULATION
+            var backupData = JSON.parse(JSON.stringify(selectedBackup.data));
+            
+            // Remove backup metadata fields
+            delete backupData._backupTimestamp;
+            delete backupData._backupOriginalId;
+            delete backupData._backupOriginalCollection;
+            delete backupData._backupCreatedAt;
+            delete backupData._backupReason;
+            delete backupData.id;
+            
+            // For scheduledGames: set H18 to F00000000, reset locks/signatures/submitted
+            if (destination === 'scheduledGames') {
+                backupData.status = 'scheduled';
+                backupData.gameStarted = true;
+                backupData.locks = { f1: null, f2: null };
+                backupData.signatures = { f1: { signed: false }, f2: { signed: false } };
+                backupData.submitted = { f1: false, f2: false };
+                backupData.currentHoleF1 = 18;
+                backupData.currentHoleF2 = 18;
+                if (backupData.f1DataString) {
+                    backupData.f1DataString = backupData.f1DataString.substring(0, 153) + 'F00000000';
+                }
+                if (backupData.f2DataString) {
+                    backupData.f2DataString = backupData.f2DataString.substring(0, 153) + 'F00000000';
+                }
+                // Set TR H18 to null if it exists
+                if (backupData.results && backupData.results.tr) {
+                    if (backupData.results.tr.teamA && backupData.results.tr.teamA.length > 17) {
+                        backupData.results.tr.teamA[17] = null;
+                    }
+                    if (backupData.results.tr.teamB && backupData.results.tr.teamB.length > 17) {
+                        backupData.results.tr.teamB[17] = null;
+                    }
+                }
+            } else {
+                // historyGames: keep status as-is from backup
+                backupData.status = backupData.status || 'completed';
+            }
+            
+            // Add restore metadata
+            backupData._restoredFrom = selectedBackupId;
+            backupData._restoredAt = new Date().toISOString();
+            backupData._restoredTo = destination;
+            backupData.updatedAt = new Date().toISOString();
+            
+            if (destination === 'historyGames' && !backupData.completedAt) {
+                backupData.completedAt = new Date().toISOString();
+            }
+            
+            progressEl.innerHTML += '<div class="step restore">📝 Writing to ' + destination + '/' + restoredDocId + '...</div>';
+            
+            return db.collection(destination).doc(restoredDocId).set(backupData);
+        })
+        .then(function() {
+            progressEl.innerHTML += '<div class="step done">✅ Restore complete!</div>';
+            statusEl.className = 'status status-success';
+            statusEl.textContent = '✅ Restored to ' + destination + '/' + restoredDocId;
+            restoreBtn.textContent = '✅ Restored';
+            restoreBtn.disabled = false;
+            
+            // Show a summary of what was restored
+            progressEl.innerHTML += '<div class="step info">📊 Restore Summary:</div>';
+            progressEl.innerHTML += '<div class="step done">✅ All data preserved exactly as in backup</div>';
+            progressEl.innerHTML += '<div class="step done">✅ matchResults, f1IntraMatches, f2IntraMatches preserved</div>';
+            progressEl.innerHTML += '<div class="step done">✅ game1, game2, game3, tr, clinchedAt preserved</div>';
+            if (destination === 'scheduledGames') {
+                progressEl.innerHTML += '<div class="step info">📌 H18 set to OPEN (F00000000) for resuming play</div>';
+            }
+            progressEl.innerHTML += '<div class="step info">💡 Use "Validate & Fix" tab to verify and fix if needed</div>';
+            
+            setTimeout(function() {
+                restoreBtn.textContent = '↩️ Restore Selected';
+                restoreBtn.disabled = false;
+            }, 2000);
+        })
+        .catch(function(err) {
+            if (err.message === 'User cancelled') {
+                statusEl.className = 'status status-info';
+                statusEl.textContent = '⏹️ Restore cancelled.';
+            } else {
+                statusEl.className = 'status status-error';
+                statusEl.textContent = '❌ Restore failed: ' + err.message;
+            }
+            restoreBtn.disabled = false;
+            restoreBtn.textContent = '↩️ Restore Selected';
+            var progressEl = document.getElementById('restoreProgress');
+            progressEl.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
+            console.error('Restore error:', err);
+        });
+}
+
+// ============================================================
+// VALIDATE & FIX MODULE — from previous versions
 // ============================================================
 function fetchRecords() {
     var select = document.getElementById('recordSelect');
@@ -629,7 +1342,7 @@ function fetchRecords() {
 }
 
 // ============================================================
-// RENDER FUNCTIONS
+// RENDER FUNCTIONS (abbreviated from previous versions)
 // ============================================================
 function renderGameInfo(data) {
     var container = document.getElementById('gameInfoContent');
@@ -677,10 +1390,10 @@ function renderTeamGameTable(results, containerId, label) {
     for (var i = 0; i < results.length; i++) {
         var r = results[i];
         var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
-        var m1 = (r.match1 !== null) ? (r.match1 > 0 ? 'A' : r.match1 < 0 ? 'B' : 'AS') : '-';
-        var m2 = (r.match2 !== null) ? (r.match2 > 0 ? 'A' : r.match2 < 0 ? 'B' : 'AS') : '-';
-        var result = (r.holeResult !== null) ? r.holeResult : '-';
-        var running = (r.running !== null) ? r.running : '-';
+        var m1 = r.match1 || '-';
+        var m2 = r.match2 || '-';
+        var result = r.holeResult !== null ? r.holeResult : '-';
+        var running = r.running !== null ? r.running : '-';
         var display = r.display || '-';
         html += '<tr><td style="color:#888;">' + r.hole + '</td><td>' + m1 + '</td><td>' + m2 + '</td><td>' + result + '</td><td class="' + cls + '">' + running + '</td><td class="' + cls + '">' + display + '</td></tr>';
     }
@@ -706,125 +1419,78 @@ function renderStrkTable(results) {
     container.innerHTML = html;
 }
 
-// ============================================================
-// v1.13: renderMatchTable — per-hole results with clinch detection
-// ============================================================
 function renderMatchTable(orderedPlayers, matchResults) {
     var container = document.getElementById('matchTable');
-    
     if (!orderedPlayers || orderedPlayers.length === 0) {
         container.innerHTML = '<div class="empty-state">No players found</div>';
         return;
     }
-    
-    var html = '<div class="scroll-x"><table>';
-    
-    // Header row
-    html += '<tr><th>Hole</th>';
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th>';
     for (var p = 0; p < orderedPlayers.length; p++) {
         var player = orderedPlayers[p];
         var teamClass = player.team === 'A' ? 'team-a-header' : 'team-b-header';
         html += '<th class="' + teamClass + '">' + escapeHtml(player.label) + '</th>';
     }
     html += '<th style="color:#ffaa44;">Total</th></tr>';
-    
-    // Data rows
     for (var h = 0; h < matchResults.length; h++) {
         var holeData = matchResults[h];
         var holePoints = holeData.points;
         var holeClinch = holeData.clinchInfo;
         var total = 0;
         var isClinchRow = false;
-        
-        // Check if any clinch on this hole
         for (var p = 0; p < orderedPlayers.length; p++) {
             var player = orderedPlayers[p];
-            if (holeClinch[player.name] && holeClinch[player.name].clinched) {
-                isClinchRow = true;
-                break;
-            }
+            if (holeClinch[player.name] && holeClinch[player.name].clinched) { isClinchRow = true; break; }
         }
-        
         html += '<tr><td style="color:#888;font-weight:600;">' + (h+1) + '</td>';
-        
         for (var p = 0; p < orderedPlayers.length; p++) {
             var player = orderedPlayers[p];
             var score = holePoints[player.name] || 0;
             total += score;
-            
             var clinchInfo = holeClinch[player.name] || {};
             var isClinched = clinchInfo.clinched;
-            var alreadyClinched = clinchInfo.alreadyClinched;
-            
+            var isASAtH18 = clinchInfo.asAtH18 || false;
             var displayText = score.toFixed(1);
             var cellClass = '';
             var extraClass = '';
-            
             if (score > 0) cellClass = 'col-green';
             else if (score === 0) cellClass = 'col-red';
             else cellClass = 'col-gold';
-            
             if (isClinched) {
                 extraClass = ' clinch-cell';
-                displayText += ' <span class="clinch-icon">🏆</span>';
-            } else if (alreadyClinched) {
+                displayText += ' <span class="clinch-trophy">🏆</span>';
+            } else if (isASAtH18 && h === 17) {
                 displayText += ' <span class="clinch-star">⭐</span>';
             }
-            
             html += '<td class="' + cellClass + extraClass + '">' + displayText + '</td>';
         }
-        
-        // Highlight the total row if any clinch occurred
         var totalClass = isClinchRow ? 'total-cell clinch-cell' : 'total-cell';
         html += '<td class="' + totalClass + '">' + total.toFixed(1) + '</td></tr>';
     }
-    
     html += '</table></div>';
     container.innerHTML = html;
 }
 
-// ============================================================
-// v1.12: renderTRTable — Two-column breakdown format
-// ============================================================
-function renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, gameData) {
+function renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, gameData) {
     var container = document.getElementById('trTable');
-    
-    var html = '<div class="scroll-x"><table>';
-    html += '<tr><th>Hole</th>';
-    html += '<th style="color:#4caf50;">Team A</th>';
-    html += '<th style="color:#ff6b6b;">Team B</th>';
-    html += '<th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
-    
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th style="color:#4caf50;">Team A</th><th style="color:#ff6b6b;">Team B</th><th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
     for (var i = 0; i < 18; i++) {
-        var t1 = t1Results[i] || {};
-        var t2 = t2Results[i] || {};
-        var strk = strkResults[i] || {};
-        
-        // PER-HOLE Match Game points
-        var mA = matchCumA[i] - (i > 0 ? matchCumA[i-1] : 0);
-        var mB = matchCumB[i] - (i > 0 ? matchCumB[i-1] : 0);
-        
-        // T-1 points from teamGameTR (0, 0.5, or 1)
-        var t1A = t1.teamGameTR ? t1.teamGameTR.A : 0.5;
-        var t1B = t1.teamGameTR ? t1.teamGameTR.B : 0.5;
-        
-        // T-2 points from teamGameTR (0, 0.5, or 1)
-        var t2A = t2.teamGameTR ? t2.teamGameTR.A : 0.5;
-        var t2B = t2.teamGameTR ? t2.teamGameTR.B : 0.5;
-        
-        // Strk points from strokeTR (0, 0.5, or 1)
-        var sA = strk.strokeTR ? strk.strokeTR.A : 0.5;
-        var sB = strk.strokeTR ? strk.strokeTR.B : 0.5;
-        
-        // TR per hole = Match + T-1 + T-2 + Strk
+        var t1 = t1Results.results[i] || { trPointsA: 0.5, trPointsB: 0.5 };
+        var t2 = t2Results.results[i] || { trPointsA: 0.5, trPointsB: 0.5 };
+        var strk = strkResults.results[i] || { trPointsA: 0.5, trPointsB: 0.5 };
+        var holeMatchData = matchPointsPerHole[i] || {};
+        var mA = 0, mB = 0;
+        for (var matchKey in holeMatchData) { var match = holeMatchData[matchKey]; mA += match.pointsA || 0; mB += match.pointsB || 0; }
+        var t1A = t1.trPointsA !== undefined ? t1.trPointsA : 0.5;
+        var t1B = t1.trPointsB !== undefined ? t1.trPointsB : 0.5;
+        var t2A = t2.trPointsA !== undefined ? t2.trPointsA : 0.5;
+        var t2B = t2.trPointsB !== undefined ? t2.trPointsB : 0.5;
+        var sA = strk.trPointsA !== undefined ? strk.trPointsA : 0.5;
+        var sB = strk.trPointsB !== undefined ? strk.trPointsB : 0.5;
         var trA = mA + t1A + t2A + sA;
         var trB = mB + t1B + t2B + sB;
-        
-        // Build breakdown strings: [Match + T-1 + T-2 + Strk]
         var teamABreakdown = '[' + mA.toFixed(1) + ' + ' + t1A.toFixed(1) + ' + ' + t2A.toFixed(1) + ' + ' + sA.toFixed(1) + ']';
         var teamBBreakdown = '[' + mB.toFixed(1) + ' + ' + t1B.toFixed(1) + ' + ' + t2B.toFixed(1) + ' + ' + sB.toFixed(1) + ']';
-        
-        // Get record values for comparison
         var recA = gameData.results?.tr?.teamA?.[i];
         var recB = gameData.results?.tr?.teamB?.[i];
         var recMatch = (recA !== undefined && recA !== null && recB !== undefined && recB !== null);
@@ -832,24 +1498,26 @@ function renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, 
         var matchClass = match ? 'col-match' : 'col-mismatch';
         var recADisplay = (recA !== undefined && recA !== null) ? recA : '-';
         var recBDisplay = (recB !== undefined && recB !== null) ? recB : '-';
-        
-        html += '<tr><td style="color:#888;font-weight:600;">' + (i+1) + '</td>';
+        var rowClass = (i === 17) ? ' final-row' : '';
+        html += '<tr class="' + rowClass + '"><td style="color:#888;font-weight:600;">' + (i+1) + '</td>';
         html += '<td class="team-a-col">' + teamABreakdown + ' = <strong>' + trA.toFixed(1) + '</strong></td>';
         html += '<td class="team-b-col">' + teamBBreakdown + ' = <strong>' + trB.toFixed(1) + '</strong></td>';
         html += '<td class="' + matchClass + '">' + recADisplay + '</td>';
         html += '<td class="' + matchClass + '">' + recBDisplay + '</td>';
         html += '<td>' + (match ? '✅' : '❌') + '</td></tr>';
+        if (i === 17) {
+            html += '<tr class="final-row"><td colspan="6" style="color:#ffaa44; font-weight:700; text-align:center; padding:8px;">🏆 FINAL RESULT: ' + trA.toFixed(1) + ' - ' + trB.toFixed(1) + ' 🏆</td></tr>';
+        }
     }
-    
     html += '</table></div>';
     container.innerHTML = html;
 }
 
-function renderSummary(t1Results, t2Results, strkResults, matchCumA, matchCumB, gameData) {
+function renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, gameData) {
     var container = document.getElementById('validationSummary');
-    var t1Final = t1Results[t1Results.length-1] || {};
-    var t2Final = t2Results[t2Results.length-1] || {};
-    var strkFinal = strkResults[strkResults.length-1] || {};
+    var t1Final = t1Results.results && t1Results.results[17] ? t1Results.results[17] : { display: '-', trPointsA: 0.5, trPointsB: 0.5 };
+    var t2Final = t2Results.results && t2Results.results[17] ? t2Results.results[17] : { display: '-', trPointsA: 0.5, trPointsB: 0.5 };
+    var strkFinal = strkResults.results && strkResults.results[17] ? strkResults.results[17] : { display: '-', trPointsA: 0.5, trPointsB: 0.5 };
     var t1Display = t1Final.display || '-';
     var t2Display = t2Final.display || '-';
     var strkDisplay = strkFinal.display || '-';
@@ -859,40 +1527,166 @@ function renderSummary(t1Results, t2Results, strkResults, matchCumA, matchCumB, 
     var t1Match = (t1Display === recT1) || (t1Display === '-' && recT1 === '-');
     var t2Match = (t2Display === recT2) || (t2Display === '-' && recT2 === '-');
     var strkMatch = (strkDisplay === recStrk) || (strkDisplay === '-' && recStrk === '-');
-    var allMatch = t1Match && t2Match && strkMatch;
-    var matchA_final = matchCumA[17] || 0;
-    var matchB_final = matchCumB[17] || 0;
-    var trA = matchA_final + (t1Final.trPointsA || 0.5) + (t2Final.trPointsA || 0.5) + (strkFinal.trPointsA || 0.5);
-    var trB = matchB_final + (t1Final.trPointsB || 0.5) + (t2Final.trPointsB || 0.5) + (strkFinal.trPointsB || 0.5);
+    var h18MatchData = matchPointsPerHole[17] || {};
+    var h18mA = 0, h18mB = 0;
+    for (var matchKey in h18MatchData) { var match = h18MatchData[matchKey]; h18mA += match.pointsA || 0; h18mB += match.pointsB || 0; }
+    var t1A = t1Final.trPointsA !== undefined ? t1Final.trPointsA : 0.5;
+    var t1B = t1Final.trPointsB !== undefined ? t1Final.trPointsB : 0.5;
+    var t2A = t2Final.trPointsA !== undefined ? t2Final.trPointsA : 0.5;
+    var t2B = t2Final.trPointsB !== undefined ? t2Final.trPointsB : 0.5;
+    var sA = strkFinal.trPointsA !== undefined ? strkFinal.trPointsA : 0.5;
+    var sB = strkFinal.trPointsB !== undefined ? strkFinal.trPointsB : 0.5;
+    var trA_h18 = h18mA + t1A + t2A + sA;
+    var trB_h18 = h18mB + t1B + t2B + sB;
     var recA = gameData.finalResults?.teamAScore || gameData.results?.tr?.teamA?.[17] || '-';
     var recB = gameData.finalResults?.teamBScore || gameData.results?.tr?.teamB?.[17] || '-';
-    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && Math.abs(trA - recA) < 0.01 && Math.abs(trB - recB) < 0.01);
+    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
     var html = '<div class="summary-box">';
     html += '<div class="summary-item"><div class="label">T-1</div><div class="value ' + (t1Match ? '' : 'mismatch') + '">' + t1Display + ' | Record: ' + recT1 + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
     html += '<div class="summary-item"><div class="label">T-2</div><div class="value ' + (t2Match ? '' : 'mismatch') + '">' + t2Display + ' | Record: ' + recT2 + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
     html += '<div class="summary-item"><div class="label">Strk</div><div class="value ' + (strkMatch ? '' : 'mismatch') + '">' + strkDisplay + ' | Record: ' + recStrk + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
-    html += '<div class="summary-item" style="border-left-color:#ffaa44;"><div class="label">Match Game</div><div class="value">' + matchA_final.toFixed(1) + ' - ' + matchB_final.toFixed(1) + '</div></div>';
-    html += '<div class="summary-item" style="border-left-color:#ffaa44;"><div class="label">TR</div><div class="value ' + (trMatch ? '' : 'mismatch') + '">' + trA.toFixed(1) + ' - ' + trB.toFixed(1) + ' | Record: ' + recA + ' - ' + recB + ' ' + (trMatch ? '✅' : '❌') + '</div></div>';
+    var trClass = trMatch ? '' : 'mismatch';
+    var trDisplayText = trA_h18.toFixed(1) + ' - ' + trB_h18.toFixed(1);
+    var recordDisplayText = recA + ' - ' + recB;
+    var matchIcon = trMatch ? '✅' : '❌';
+    html += '<div class="summary-item" style="border-left-color: #ffaa44; border-left-width: 4px; background: #1a1a1a; flex: 1 1 100%;">';
+    html += '<div class="label" style="color: #ffaa44; font-weight: 700; font-size: 0.8rem;">🏆 TR at H18 (FINAL RESULT)</div>';
+    html += '<div class="value final ' + trClass + '" style="font-size: 1.5rem;">' + trDisplayText + ' | Record: ' + recordDisplayText + ' ' + matchIcon + '</div></div>';
     html += '</div>';
-    html += '<div style="margin-top:12px;">' + (allMatch && trMatch ? '✅ All values match the record.' : '❌ Mismatch detected. The record contains stale data.') + '</div>';
+    var allMatch = t1Match && t2Match && strkMatch;
+    var verdict = (allMatch && trMatch) ? '✅ All values match the record.' : '❌ Mismatch detected. The record contains stale data.';
+    html += '<div style="margin-top:12px; padding:8px 12px; border-radius:6px; background: ' + (allMatch && trMatch ? '#0a2a0a' : '#2a0a0a') + '; border: 1px solid ' + (allMatch && trMatch ? '#2a5a2a' : '#5a2a2a') + ';">' + verdict + '</div>';
+    html += '<div style="margin-top:12px; font-size:0.7rem; color:#666; border-top:1px solid #2a2a2a; padding-top:8px;">';
+    html += 'H18 Breakdown: Match (' + h18mA.toFixed(1) + ' - ' + h18mB.toFixed(1) + ') + T-1 (' + t1A.toFixed(1) + ' - ' + t1B.toFixed(1) + ') + T-2 (' + t2A.toFixed(1) + ' - ' + t2B.toFixed(1) + ') + Strk (' + sA.toFixed(1) + ' - ' + sB.toFixed(1) + ') = ' + trA_h18.toFixed(1) + ' - ' + trB_h18.toFixed(1);
+    html += '</div>';
     container.innerHTML = html;
 }
 
 // ============================================================
-// MAIN LOAD
+// FIX RECORD FUNCTION (Validate tab)
 // ============================================================
+function createBackup(record, progressEl) {
+    return new Promise(function(resolve, reject) {
+        var docId = record.id;
+        var data = record.rawData;
+        var originalGameId = record.originalGameId || docId;
+        var now = new Date();
+        var dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '_' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+        var backupId = 'Backup_' + dateStr + '_' + originalGameId;
+        progressEl.innerHTML += '<div class="step backup">💾 Creating backup: ' + backupId + '...</div>';
+        var backupData = JSON.parse(JSON.stringify(data));
+        backupData._backupTimestamp = firebase.firestore.FieldValue.serverTimestamp();
+        backupData._backupOriginalId = docId;
+        backupData._backupOriginalCollection = 'historyGames';
+        backupData._backupCreatedAt = new Date().toISOString();
+        backupData._backupReason = 'Pre-fix backup from validator v1.34';
+        db.collection('backupFolder').doc(backupId).set(backupData)
+            .then(function() { progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>'; resolve(backupId); })
+            .catch(function(err) { progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>'; reject(err); });
+    });
+}
+
+function fixRecord() {
+    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) { setStatus('No record selected', 'error'); return; }
+    var record = records[currentRecordIndex];
+    var data = record.rawData;
+    var docId = record.id;
+    if (!confirm('⚠️ This will RECALCULATE ALL derived data from raw data and update the Firestore record.\n\nID: ' + docId + '\nGame: ' + record.originalGameId + '\nStatus: ' + data.status + ' → completed\n\nPRESERVES: raw scores, players, course, gameInfo\nRECALCULATES: game1, game2, game3, matchResults, f1IntraMatches, f2IntraMatches, TR, clinchedAt, adjustedHandicaps\n\nA backup will be created before updating.\nThis action cannot be undone. Continue?')) { return; }
+    var fixBtn = document.getElementById('fixBtn');
+    var backupBtn = document.getElementById('backupOnlyBtn');
+    var progressEl = document.getElementById('fixProgress');
+    fixBtn.disabled = true; backupBtn.disabled = true;
+    fixBtn.className = 'fix-btn fix-btn-fixing'; fixBtn.textContent = '⏳ Fixing...';
+    backupBtn.className = 'fix-btn fix-btn-fixing'; backupBtn.textContent = '⏳ ...';
+    progressEl.className = 'fix-progress active'; progressEl.innerHTML = '';
+    createBackup(record, progressEl)
+        .then(function(backupId) {
+            progressEl.innerHTML += '<div class="step">📊 Step 2: Parsing raw data...</div>';
+            var f1Scores = parseDataString(data.f1DataString);
+            var f2Scores = parseDataString(data.f2DataString);
+            var players = data.players || [];
+            var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
+            var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
+            if (!f1Scores || !f2Scores) { throw new Error('Invalid data strings'); }
+            if (players.length === 0) { throw new Error('No players found'); }
+            progressEl.innerHTML += '<div class="step done">✅ Data parsed</div>';
+            
+            progressEl.innerHTML += '<div class="step">📊 Step 3: Recalculating ALL derived data from raw data...</div>';
+            var results = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar);
+            var adjustedHandicaps = calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar);
+            progressEl.innerHTML += '<div class="step done">✅ All derived data recalculated</div>';
+            
+            progressEl.innerHTML += '<div class="step">📝 Step 4: Building update payload...</div>';
+            var sanitizedResults = JSON.parse(JSON.stringify(results));
+            var updatePayload = {
+                results: sanitizedResults,
+                adjustedHandicaps: adjustedHandicaps,
+                status: 'completed',
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            progressEl.innerHTML += '<div class="step done">✅ Update payload built</div>';
+            
+            progressEl.innerHTML += '<div class="step">📤 Step 5: Preparing update...</div>';
+            progressEl.innerHTML += '<div class="step done">✅ Update prepared</div>';
+            
+            progressEl.innerHTML += '<div class="step">💾 Step 6: Writing to Firestore...</div>';
+            return db.collection('historyGames').doc(docId).update(updatePayload)
+                .then(function() {
+                    progressEl.innerHTML += '<div class="step done">✅ Firestore updated successfully!</div>';
+                    progressEl.innerHTML += '<div class="step done">📦 Backup ID: ' + backupId + '</div>';
+                    progressEl.innerHTML += '<div class="step done">✅ ALL derived data recalculated from raw data</div>';
+                    fixBtn.className = 'fix-btn fix-btn-done'; fixBtn.textContent = '✅ Fixed!'; fixBtn.disabled = false;
+                    backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
+                    setStatus('✅ Record fixed successfully! All derived data recalculated. Backup: ' + backupId, 'success');
+                    setTimeout(function() { loadAndValidate(); }, 1500);
+                });
+        })
+        .catch(function(err) {
+            progressEl.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
+            fixBtn.className = 'fix-btn fix-btn-error'; fixBtn.textContent = '❌ Error'; fixBtn.disabled = false;
+            backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
+            setStatus('❌ Error fixing record: ' + err.message, 'error');
+            console.error(err);
+        });
+}
+
+function backupOnly() {
+    if (currentRecordIndex < 0 || currentRecordIndex >= records.length) { setStatus('No record selected', 'error'); return; }
+    var record = records[currentRecordIndex];
+    if (!confirm('💾 Create a backup of this record?\n\nID: ' + record.id + '\nGame: ' + record.originalGameId + '\n\nThe backup will be saved to the "backupFolder" collection.')) { return; }
+    var fixBtn = document.getElementById('fixBtn');
+    var backupBtn = document.getElementById('backupOnlyBtn');
+    var progressEl = document.getElementById('fixProgress');
+    fixBtn.disabled = true; backupBtn.disabled = true;
+    backupBtn.className = 'fix-btn fix-btn-fixing'; backupBtn.textContent = '⏳ Creating backup...';
+    progressEl.className = 'fix-progress active'; progressEl.innerHTML = '';
+    createBackup(record, progressEl)
+        .then(function(backupId) {
+            progressEl.innerHTML += '<div class="step done">✅ Backup complete!</div>';
+            backupBtn.className = 'fix-btn fix-btn-done'; backupBtn.textContent = '✅ Backup: ' + backupId;
+            fixBtn.disabled = false; backupBtn.disabled = false;
+            setStatus('✅ Backup created: ' + backupId, 'success');
+        })
+        .catch(function(err) {
+            progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
+            backupBtn.className = 'fix-btn fix-btn-error'; backupBtn.textContent = '❌ Error';
+            fixBtn.disabled = false; backupBtn.disabled = false;
+            setStatus('❌ Backup failed: ' + err.message, 'error');
+        });
+}
+
 function loadAndValidate() {
     var select = document.getElementById('recordSelect');
     var index = parseInt(select.value);
     if (isNaN(index) || index < 0 || index >= records.length) { setStatus('Please select a game', 'warning'); return; }
+    currentRecordIndex = index;
     var data = records[index].rawData;
     if (!data) { setStatus('No data found', 'error'); return; }
-    gameData = data;
-    gameData.id = records[index].id;
+    gameData = data; gameData.id = records[index].id;
     setStatus('Loading: ' + records[index].originalGameId + '... <span class="loader"></span>', 'info');
     document.getElementById('results').style.display = 'none';
-    try { processGameData(gameData); }
-    catch (err) { setStatus('Error: ' + err.message, 'error'); console.error(err); }
+    document.getElementById('fixCard').style.display = 'none';
+    try { processGameData(gameData); } catch (err) { setStatus('Error: ' + err.message, 'error'); console.error(err); }
 }
 
 function processGameData(data) {
@@ -908,44 +1702,70 @@ function processGameData(data) {
     renderGameInfo(data);
     renderFlightTable(f1Scores, players, 1, 'flight1Table');
     renderFlightTable(f2Scores, players, 2, 'flight2Table');
-    var t1Results = calculateTeamGame(f1Scores, players, 1, courseSi);
-    var t2Results = calculateTeamGame(f2Scores, players, 2, courseSi);
-    var strkResults = calculateStrokeGame(f1Scores, f2Scores, players);
-    renderTeamGameTable(t1Results, 't1Table', 'T-1');
-    renderTeamGameTable(t2Results, 't2Table', 'T-2');
-    renderStrkTable(strkResults);
     
-    // v1.13: Match Game per-hole with clinch detection
-    var clinchedAt = data.results?.clinchedAt || {};
-    var matchData = calculateMatchGamePerHoleWithClinch(f1Scores, f2Scores, players, courseSi, coursePar, clinchedAt);
-    var orderedPlayers = matchData.orderedPlayers;
-    var matchResults = matchData.results;
-    renderMatchTable(orderedPlayers, matchResults);
-    
-    // Calculate cumulative MatchA/MatchB for TR and Summary
-    var matchCumA = new Array(18).fill(0);
-    var matchCumB = new Array(18).fill(0);
-    var teamAplayers = players.filter(function(p) { return p.team === 'A'; });
-    var teamBplayers = players.filter(function(p) { return p.team === 'B'; });
+    var t1Results = calculateTeamGame(f1Scores, f2Scores, players, 1, courseSi);
+    var t2Results = calculateTeamGame(f1Scores, f2Scores, players, 2, courseSi);
+    var strkResults = calculateStrokeGame(f1Scores, f2Scores, players, courseSi, coursePar);
+    var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
+    var orderedPlayers = [];
+    var teamAPlayers = players.filter(function(p) { return p.team === 'A'; });
+    var teamBPlayers = players.filter(function(p) { return p.team === 'B'; });
+    teamAPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
+    teamBPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
+    for (var i = 0; i < teamAPlayers.length; i++) orderedPlayers.push(teamAPlayers[i]);
+    for (var i = 0; i < teamBPlayers.length; i++) orderedPlayers.push(teamBPlayers[i]);
+    var matchResults = [];
+    var matchPointsPerHole = matchData.matchPointsPerHole;
     for (var h = 0; h < 18; h++) {
-        var holeData = matchResults[h];
-        var holePoints = holeData.points;
-        var holeA = 0, holeB = 0;
-        for (var p = 0; p < teamAplayers.length; p++) {
-            holeA += holePoints[teamAplayers[p].name] || 0;
+        var holePoints = {};
+        var holeClinchInfo = {};
+        var holeMatchData = matchPointsPerHole[h] || {};
+        for (var p = 0; p < orderedPlayers.length; p++) {
+            var player = orderedPlayers[p];
+            holePoints[player.name] = 0;
+            holeClinchInfo[player.name] = { clinched: false, asAtH18: false };
         }
-        for (var p = 0; p < teamBplayers.length; p++) {
-            holeB += holePoints[teamBplayers[p].name] || 0;
+        for (var matchKey in holeMatchData) {
+            var match = holeMatchData[matchKey];
+            var parts = matchKey.split('_vs_');
+            if (parts.length === 2) {
+                var playerA = parts[0];
+                var playerB = parts[1];
+                holePoints[playerA] += match.pointsA || 0;
+                holePoints[playerB] += match.pointsB || 0;
+            }
         }
-        matchCumA[h] = (h > 0 ? matchCumA[h-1] : 0) + holeA;
-        matchCumB[h] = (h > 0 ? matchCumB[h-1] : 0) + holeB;
+        matchResults.push({
+            hole: h+1,
+            points: holePoints,
+            clinchInfo: holeClinchInfo
+        });
     }
     
-    // v1.12: TR table with two-column breakdown format
-    renderTRTable(t1Results, t2Results, strkResults, matchCumA, matchCumB, data);
-    renderSummary(t1Results, t2Results, strkResults, matchCumA, matchCumB, data);
+    renderTeamGameTable(t1Results.results, 't1Table', 'T-1');
+    renderTeamGameTable(t2Results.results, 't2Table', 'T-2');
+    renderStrkTable(strkResults.results);
+    renderMatchTable(orderedPlayers, matchResults);
+    renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, data);
+    renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, data);
     document.getElementById('results').style.display = 'block';
-    setStatus('✅ Loaded: ' + data.id, 'success');
+    
+    var hasMismatch = document.querySelector('.col-mismatch') !== null;
+    var isPending = data.status === 'pending_handicap';
+    if (isPending || hasMismatch) {
+        document.getElementById('fixCard').style.display = 'block';
+        var fixBtn = document.getElementById('fixBtn');
+        var backupBtn = document.getElementById('backupOnlyBtn');
+        fixBtn.className = 'fix-btn fix-btn-fix'; fixBtn.textContent = '🔧 Fix Record (Recalculate All)'; fixBtn.disabled = false;
+        backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
+        document.getElementById('fixProgress').className = 'fix-progress'; document.getElementById('fixProgress').innerHTML = '';
+        setStatus('⚠️ Record needs fixing. Click "Fix Record" to recalculate all derived data from raw data.', 'warning');
+    } else {
+        document.getElementById('fixCard').style.display = 'none';
+        setStatus('✅ Record is valid.', 'success');
+    }
+    document.getElementById('fixBtn').onclick = fixRecord;
+    document.getElementById('backupOnlyBtn').onclick = backupOnly;
 }
 
 // ============================================================
@@ -955,31 +1775,48 @@ document.getElementById('loadBtn').addEventListener('click', loadAndValidate);
 document.getElementById('refreshBtn').addEventListener('click', function() { fetchRecords(); });
 document.getElementById('clearBtn').addEventListener('click', function() {
     document.getElementById('results').style.display = 'none';
+    document.getElementById('fixCard').style.display = 'none';
     document.getElementById('statusMessage').innerHTML = '';
     document.getElementById('recordSelect').value = '';
+    currentRecordIndex = -1;
+});
+document.getElementById('refreshBackupBtn').addEventListener('click', loadBackupList);
+document.getElementById('restoreSelectedBtn').addEventListener('click', executeRestore);
+
+// ============================================================
+// DESTINATION RADIO CHANGE
+// ============================================================
+document.querySelectorAll('input[name="restoreDestination"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        updateDestPreviews();
+    });
 });
 
 // ============================================================
 // INIT
 // ============================================================
 fetchRecords();
-console.log('🔬 Game Data Validator v1.13 loaded.');
+loadBackupList();
+updateDestPreviews();
+console.log('🔬 Game Data Validator v1.34 loaded.');
+console.log('📌 Restore: SIMPLE COPY from backupFolder to destination. NO recalculation.');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - ADDED: Clinch detection in Match Game table
-   - Each player's cell shows their points AND 🏆 if they clinched on that hole
-   - For matches already clinched, the cell shows points with ⭐ indicator
-   - Uses clinchedAt data from the record to detect clinch holes
-   - Match Game table now shows: Hole | Player1 | Player2 | ... | Player8 | Total
-   - Each cell format: "X.X 🏆" if clinched on that hole, "X.X" if not
-   - For holes after clinch: "X.X ⭐" (match already won)
-   - All other functionality preserved from v1.12
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - FIXED: Restore now does a SIMPLE COPY from backupFolder to destination
+   - NO recalculations during restore — preserves ALL data exactly as in backup
+   - Preserves matchResults, f1IntraMatches, f2IntraMatches exactly
+   - Preserves game1, game2, game3, tr, clinchedAt, adjustedHandicaps exactly
+   - Only changes: document ID (naming convention), status flags for scheduledGames
+   - For scheduledGames: sets H18 to F00000000, resets locks/signatures/submitted
+   - For historyGames: no changes to data, only document ID
+   - Validate & Fix module still available to fix records after restore
+   - All other functionality preserved from v1.33
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
