@@ -1,14 +1,15 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - REDESIGNED: Ultra-minimalist, professional look
-   - REMOVED: All icons (emoji) from buttons and headers
-   - CHANGED: Clean typography, subtle borders, refined spacing
-   - CHANGED: Buttons now use text-only labels (Edit / Delete)
-   - CHANGED: Game items use cleaner layout with subtle dividers
-   - CHANGED: View toggle uses clean pill-style indicator
-   - PRESERVED: All functionality from v1.26
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - APPLIED: Baseline UI design with visible green borders
+   - CHANGED: Card borders to #2a5a2a with rounded corners
+   - CHANGED: Button borders to #3a7a3a
+   - CHANGED: All headers, labels to #4caf50
+   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
+   - CHANGED: Back link divider to #2a5a2a
+   - CHANGED: Edit/Delete buttons to match baseline UI
+   - PRESERVED: All functionality from v1.27
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -80,22 +81,35 @@ STATUS: Ready for integration
             opacity: 0.4;
         }
         
+        /* ===== BASELINE UI ===== */
         .header { text-align: center; margin-bottom: 24px; margin-top: 4px; }
-        .title { font-size: 1.2rem; font-weight: 600; color: #e0e0e0; letter-spacing: -0.3px; }
-        .subtitle { font-size: 0.6rem; color: #444; margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
+        .title { 
+            font-size: 1.2rem; 
+            font-weight: 600; 
+            color: #4caf50; 
+            letter-spacing: -0.3px;
+        }
+        .subtitle { 
+            font-size: 0.6rem; 
+            color: #4caf50; 
+            opacity: 0.7;
+            margin-top: 2px; 
+            letter-spacing: 0.5px; 
+            text-transform: uppercase;
+        }
         
         .card { 
-            background: transparent; 
-            border: 1px solid #1a1a1a; 
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a; 
             border-radius: 10px; 
             padding: 16px; 
             margin-bottom: 12px; 
         }
         
         .card-title { 
-            font-size: 0.75rem; 
+            font-size: 0.7rem; 
             font-weight: 500; 
-            color: #888; 
+            color: #4caf50; 
             margin-bottom: 14px; 
             letter-spacing: 0.5px;
             text-transform: uppercase;
@@ -111,28 +125,28 @@ STATUS: Ready for integration
             font-weight: 400;
             padding: 1px 8px;
             border-radius: 10px;
-            background: #1a1a1a;
-            color: #555;
+            background: #1a3a1a;
+            color: #4caf50;
             text-transform: none;
             letter-spacing: 0.3px;
         }
         .card-title .badge-all {
-            background: #1a1a1a;
-            color: #888;
+            background: #1a3a1a;
+            color: #4caf50;
         }
         .card-title .hint {
-            color: #333;
+            color: #2a5a2a;
             font-size: 0.45rem;
             font-weight: 400;
             margin-left: 6px;
             text-transform: none;
         }
-        .card-title:hover .hint { color: #555; }
+        .card-title:hover .hint { color: #4caf50; }
         
         .game-list { margin-top: 2px; }
         .game-item { 
             background: transparent; 
-            border-bottom: 1px solid #141414; 
+            border-bottom: 1px solid #1a3a1a; 
             padding: 14px 0; 
         }
         .game-item:last-child { border-bottom: none; }
@@ -154,38 +168,38 @@ STATUS: Ready for integration
             margin-bottom: 6px;
         }
         .btn-edit { 
-            background: transparent; 
-            border: 1px solid #2a2a2a; 
-            border-radius: 6px; 
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a; 
+            border-radius: 8px; 
             padding: 6px 16px; 
-            color: #888; 
+            color: #4caf50; 
             font-size: 0.7rem; 
             font-weight: 400; 
             cursor: pointer; 
             transition: all 0.15s ease;
             letter-spacing: 0.2px;
         }
-        .btn-edit:hover { border-color: #4caf50; color: #4caf50; background: rgba(76,175,80,0.05); }
+        .btn-edit:hover { border-color: #4caf50; background: rgba(76, 175, 80, 0.05); }
         .btn-edit:active { transform: scale(0.97); }
         
         .btn-delete { 
-            background: transparent; 
-            border: 1px solid #2a1a1a; 
-            border-radius: 6px; 
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #3a1a1a; 
+            border-radius: 8px; 
             padding: 6px 16px; 
-            color: #553333; 
+            color: #ff6b6b; 
             font-size: 0.7rem; 
             font-weight: 400; 
             cursor: pointer; 
             transition: all 0.15s ease;
             letter-spacing: 0.2px;
         }
-        .btn-delete:hover { border-color: #ff6b6b; color: #ff6b6b; background: rgba(255,107,107,0.05); }
+        .btn-delete:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.05); }
         .btn-delete:active { transform: scale(0.97); }
         
         .doc-id-display {
             font-size: 0.5rem;
-            color: #333;
+            color: #2a5a2a;
             font-family: monospace;
             letter-spacing: 0.3px;
             padding: 2px 0;
@@ -195,7 +209,7 @@ STATUS: Ready for integration
         }
         .doc-id-display:hover { opacity: 0.7; }
         .doc-id-display .copy-hint {
-            color: #222;
+            color: #1a3a1a;
             font-size: 0.4rem;
             margin-left: 4px;
             opacity: 0;
@@ -206,22 +220,27 @@ STATUS: Ready for integration
         .empty-msg { text-align: center; padding: 30px 20px; color: #444; font-size: 0.8rem; font-weight: 300; letter-spacing: 0.3px; }
         
         .back-btn { 
-            background: transparent; 
-            border: 1px solid #1a1a1a; 
-            border-radius: 8px; 
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a; 
+            border-radius: 10px; 
             padding: 14px; 
             text-align: center; 
             cursor: pointer; 
             margin-top: 8px; 
             transition: all 0.15s ease; 
         }
-        .back-btn:hover { border-color: #333; background: #111; }
+        .back-btn:hover { border-color: #4caf50; background: rgba(20, 20, 20, 0.8); }
         .back-btn:active { transform: scale(0.98); }
-        .back-btn .label { font-size: 0.8rem; font-weight: 400; color: #555; letter-spacing: 0.2px; }
+        .back-btn .label { 
+            font-size: 0.8rem; 
+            font-weight: 500; 
+            color: #4caf50; 
+            letter-spacing: 0.2px;
+        }
         
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
-        /* Copy Modal - Minimal */
+        /* Copy Modal - baseline UI */
         .copy-modal-overlay {
             position: fixed;
             top: 0;
@@ -236,18 +255,18 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         .copy-modal {
-            background: #111;
+            background: rgba(20, 20, 20, 0.95);
             border-radius: 16px;
             padding: 28px;
             max-width: 340px;
             width: 90%;
             text-align: center;
-            border: 1px solid #2a2a2a;
+            border: 1px solid #2a5a2a;
         }
         .copy-modal-title {
             font-size: 1rem;
             font-weight: 500;
-            color: #e0e0e0;
+            color: #4caf50;
             margin-bottom: 4px;
             letter-spacing: -0.2px;
         }
@@ -258,7 +277,7 @@ STATUS: Ready for integration
         }
         .copy-modal-label {
             font-size: 0.7rem;
-            color: #888;
+            color: #4caf50;
             display: block;
             text-align: left;
             margin-bottom: 4px;
@@ -266,7 +285,7 @@ STATUS: Ready for integration
         .copy-modal-input {
             width: 100%;
             background: #0a0a0a;
-            border: 1px solid #2a2a2a;
+            border: 1px solid #2a5a2a;
             border-radius: 8px;
             padding: 10px 14px;
             color: #e0e0e0;
@@ -284,31 +303,31 @@ STATUS: Ready for integration
         .copy-modal-btn {
             flex: 1;
             padding: 10px;
-            border-radius: 6px;
+            border-radius: 8px;
             font-weight: 400;
             font-size: 0.8rem;
             cursor: pointer;
             border: 1px solid;
-            background: transparent;
+            background: rgba(20, 20, 20, 0.5);
             transition: all 0.15s ease;
         }
         .copy-modal-btn-cancel {
-            border-color: #2a2a2a;
-            color: #555;
+            border-color: #2a5a2a;
+            color: #666;
         }
-        .copy-modal-btn-cancel:hover { border-color: #444; color: #888; }
+        .copy-modal-btn-cancel:hover { border-color: #4caf50; color: #888; }
         .copy-modal-btn-confirm {
             border-color: #4caf50;
             color: #4caf50;
         }
-        .copy-modal-btn-confirm:hover { background: rgba(76,175,80,0.05); }
+        .copy-modal-btn-confirm:hover { background: rgba(76, 175, 80, 0.04); }
         .copy-modal-btn:active { transform: scale(0.97); }
         
-        /* Admin Bubble - Minimal */
+        /* Admin Bubble - baseline UI */
         .admin-bubble {
             position: fixed;
-            background: #111;
-            border: 1px solid #2a2a2a;
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid #2a5a2a;
             color: #4caf50;
             border-radius: 12px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.8);
@@ -345,7 +364,7 @@ STATUS: Ready for integration
             100% { transform: scale(1); opacity: 1; }
         }
         
-        .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a1a1a; letter-spacing: 0.5px; }
+        .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
@@ -353,10 +372,10 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.27</div>
+<div class="version-tag">v1.28</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.27
+// FILE: manage-games.html - VERSION 1.28
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -364,8 +383,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[MANAGE-GAMES] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.27";
-var CACHE_KEY = "manage_games_version_v127";
+var VERSION = "1.28";
+var CACHE_KEY = "manage_games_version_v128";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -848,15 +867,16 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.27
-KEY CHANGES from v1.26:
-   - REDESIGNED: Ultra-minimalist, professional look
-   - REMOVED: All icons (emoji) from buttons and headers
-   - CHANGED: Clean typography, subtle borders, refined spacing
-   - CHANGED: Buttons now use text-only labels (Edit / Delete)
-   - CHANGED: Game items use cleaner layout with subtle dividers
-   - CHANGED: View toggle uses clean pill-style indicator
-   - PRESERVED: All functionality from v1.26
+VERSION: 1.28
+KEY CHANGES from v1.27:
+   - APPLIED: Baseline UI design with visible green borders
+   - CHANGED: Card borders to #2a5a2a with rounded corners
+   - CHANGED: Button borders to #3a7a3a
+   - CHANGED: All headers, labels to #4caf50
+   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
+   - CHANGED: Back link divider to #2a5a2a
+   - CHANGED: Edit/Delete buttons to match baseline UI
+   - PRESERVED: All functionality from v1.27
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
