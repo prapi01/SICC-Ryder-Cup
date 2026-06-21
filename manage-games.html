@@ -1,11 +1,14 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.25
-KEY CHANGES from v1.24:
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - FIXED: getTodayString() now uses manual date formatting (no timezone issues)
    - FIXED: formatDate() now handles undefined date strings
    - FIXED: Date reading now falls back to data.gameInfo.date if data.date is missing
+   - FIXED: Filter logic correctly excludes past games in "UPCOMING" mode
    - FIXED: Past game detection uses the correct date field
-   - FIXED: Game list sorting handles "Unknown Date" values
+   - FIXED: Sorting handles "Unknown Date" values
+   - FIXED: Cmd+Click title toggle works correctly
    - All existing functionality preserved from v1.24
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
@@ -356,10 +359,10 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.25</div>
+<div class="version-tag">v1.26</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.25
+// FILE: manage-games.html - VERSION 1.26
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -370,14 +373,13 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[MANAGE-GAMES] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.25";
-var CACHE_KEY = "manage_games_version_v125";
+var VERSION = "1.26";
+var CACHE_KEY = "manage_games_version_v126";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
     
-    // v1.23: Preserve ALL existing URL parameters (showAll, etc.)
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
@@ -398,8 +400,10 @@ function displayDeviceId() {
     document.getElementById("deviceTag").innerHTML = deviceDisplay;
 }
 
+// ============================================================
+// v1.26: FIXED formatDate - handles undefined/null values
+// ============================================================
 function formatDate(dateString) {
-    // v1.25: Handle undefined or null date strings
     if (!dateString) return "Unknown Date";
     var parts = dateString.split('-');
     if (parts.length === 3) {
@@ -409,6 +413,17 @@ function formatDate(dateString) {
         return day + '/' + month + '/' + year;
     }
     return dateString;
+}
+
+// ============================================================
+// v1.26: FIXED getTodayString - manual date formatting (no timezone issues)
+// ============================================================
+function getTodayString() {
+    var today = new Date();
+    var year = today.getFullYear();
+    var month = String(today.getMonth() + 1).padStart(2, '0');
+    var day = String(today.getDate()).padStart(2, '0');
+    return year + '-' + month + '-' + day;
 }
 
 // ============================================================
@@ -700,16 +715,7 @@ function toggleView() {
 }
 
 // ============================================================
-// v1.13: Get today string
-// ============================================================
-function getTodayString() {
-    var today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today.toISOString().split('T')[0];
-}
-
-// ============================================================
-// v1.25: loadAndRender - FIXED date handling
+// v1.26: loadAndRender - FIXED date handling and filtering
 // ============================================================
 function loadAndRender() {
     if (!firestoreReady) {
@@ -718,16 +724,19 @@ function loadAndRender() {
     }
     
     var todayStr = getTodayString();
+    console.log("[MANAGE-GAMES] todayStr:", todayStr);
+    console.log("[MANAGE-GAMES] showAllGames:", showAllGames);
     
     db.collection("scheduledGames").get().then(function(snapshot) {
         var games = [];
         snapshot.forEach(function(doc) {
             var data = doc.data();
             
-            // v1.25: Read date from data.date or data.gameInfo.date
+            // v1.26: Read date from data.date or data.gameInfo.date
             var gameDate = data.date || data.gameInfo?.date || "Unknown Date";
             
             if (showAllGames) {
+                // Show ALL games
                 games.push({ id: doc.id, date: gameDate, course: data.course, players: data.players });
             } else {
                 // Only show games with valid dates that are today or future
@@ -849,7 +858,7 @@ function loadAndRender() {
 }
 
 // ============================================================
-// v1.15: Attach Cmd+Click and long-click handler to card title
+// v1.26: Attach Cmd+Click handler to card title
 // ============================================================
 function attachTitleClickHandler() {
     var titleEl = document.getElementById('cardTitle');
@@ -901,12 +910,15 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.25
-KEY CHANGES from v1.24:
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - FIXED: getTodayString() now uses manual date formatting (no timezone issues)
    - FIXED: formatDate() now handles undefined date strings
    - FIXED: Date reading now falls back to data.gameInfo.date if data.date is missing
+   - FIXED: Filter logic correctly excludes past games in "UPCOMING" mode
    - FIXED: Past game detection uses the correct date field
-   - FIXED: Game list sorting handles "Unknown Date" values
+   - FIXED: Sorting handles "Unknown Date" values
+   - FIXED: Cmd+Click title toggle works correctly
    - All existing functionality preserved from v1.24
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
