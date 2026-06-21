@@ -1,13 +1,13 @@
 <!--
 FILE: player-management.html
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - CLEANER: Form layout redesigned with 2x2 grid
-   - CLEANER: Name + Hcp on first row, Label + Team on second row
-   - CHANGED: Label is read-only, system-generated
-   - CHANGED: Player list shows: Name | Label | HCP | Team
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - MOVED: Add/Edit form to the bottom (below player list)
+   - CONSISTENT: Layout now matches courses.html (list first, form second)
+   - CHANGED: Card order: Player List first, Add/Edit form second
+   - PRESERVED: All 2x2 grid form layout from v1.03
+   - PRESERVED: System-generated label field (read-only)
    - PRESERVED: All baseline UI styling from v1.01
-   - PRESERVED: All functionality from v1.02
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -106,7 +106,7 @@ STATUS: Ready for integration
             text-transform: uppercase;
         }
         
-        /* v1.03: 2x2 grid form */
+        /* 2x2 grid form */
         .form-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -245,12 +245,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.03</div>
+<div class="version-tag">v1.04</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.03
+// VERSION: 1.04
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -259,8 +259,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.03";
-var CACHE_KEY = "player_management_v103";
+var APP_VERSION = "1.04";
+var CACHE_KEY = "player_management_v104";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -272,8 +272,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.03";
-console.log("[PLAYER-MGMT] Initializing v1.03 - Clean 2x2 form layout");
+window.PLAYER_MGMT_VERSION = "1.04";
+console.log("[PLAYER-MGMT] Initializing v1.04 - Form moved to bottom");
 
 // ============================================================
 // Firebase
@@ -417,12 +417,22 @@ function render() {
         currentTeam = p.defaultTeam;
     }
     
+    // v1.04: Player List FIRST, Add/Edit Form SECOND (consistent with courses.html)
     var html = `
         <div class="header">
             <div class="title">Player Management</div>
             <div class="subtitle">Add, edit, or remove players</div>
         </div>
         
+        <!-- Player List (FIRST) -->
+        <div class="card">
+            <div class="card-title">Players (${players.length})</div>
+            <div class="player-list" id="playerList">
+                ${renderPlayerList()}
+            </div>
+        </div>
+        
+        <!-- Add/Edit Form (SECOND) -->
         <div class="card">
             <div class="card-title">${editingIndex >= 0 ? 'Edit Player' : 'Add New Player'}</div>
             <div class="form-grid">
@@ -450,13 +460,6 @@ function render() {
             <div class="btn-group">
                 <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? 'Update' : 'Add'}</button>
                 ${editingIndex >= 0 ? '<button class="btn btn-cancel" id="cancelEditBtn">Cancel</button>' : ''}
-            </div>
-        </div>
-        
-        <div class="card">
-            <div class="card-title">Players (${players.length})</div>
-            <div class="player-list" id="playerList">
-                ${renderPlayerList()}
             </div>
         </div>
         
@@ -652,14 +655,14 @@ window.updateLabelPreview = updateLabelPreview;
 
 <!--
 FILE: player-management.html
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - CLEANER: Form layout redesigned with 2x2 grid
-   - CLEANER: Name + Hcp on first row, Label + Team on second row
-   - CHANGED: Label is read-only, system-generated
-   - CHANGED: Player list shows: Name | Label | HCP | Team
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - MOVED: Add/Edit form to the bottom (below player list)
+   - CONSISTENT: Layout now matches courses.html (list first, form second)
+   - CHANGED: Card order: Player List first, Add/Edit form second
+   - PRESERVED: All 2x2 grid form layout from v1.03
+   - PRESERVED: System-generated label field (read-only)
    - PRESERVED: All baseline UI styling from v1.01
-   - PRESERVED: All functionality from v1.02
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
