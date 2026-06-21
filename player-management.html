@@ -1,0 +1,773 @@
+<!--
+FILE: player-management.html
+VERSION: 1.00
+KEY CHANGES:
+   - NEW: Player management screen
+   - ADD: Create new players with name, handicap, default team
+   - EDIT: Update player name, handicap, default team
+   - DELETE: Remove players with confirmation
+   - AUTO-SAVE: Changes saved to Firestore playerInformation/players
+   - INTEGRATION: Players can be used as dropdown in setup-game.html
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
+STATUS: Ready for integration
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Player Management - SICC Ryder Cup</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/modal.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html, body {
+            min-height: 100vh;
+            background: #000000;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            background: #000000;
+            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+        .container {
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 16px;
+        }
+        
+        .version-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.8;
+        }
+        
+        .device-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            left: max(8px, env(safe-area-inset-left));
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            letter-spacing: 0.5px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            margin-top: 20px;
+        }
+        .title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        .subtitle {
+            font-size: 0.7rem;
+            color: #666;
+            margin-top: 4px;
+        }
+        
+        .card {
+            background: #111;
+            border-radius: 20px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            border: 1px solid #333;
+        }
+        .card-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #4caf50;
+            margin-bottom: 12px;
+            border-left: 2px solid #4caf50;
+            padding-left: 10px;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            font-size: 0.75rem;
+            color: #888;
+            min-width: 40px;
+        }
+        .input-group input,
+        .input-group select {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 30px;
+            padding: 10px 14px;
+            color: #fff;
+            font-size: 0.85rem;
+            flex: 1;
+            min-width: 80px;
+        }
+        .input-group input:focus,
+        .input-group select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .input-group input.hcp-input {
+            flex: 0 0 50px;
+            text-align: center;
+        }
+        .input-group select.team-select {
+            flex: 0 0 90px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+        }
+        .btn:active {
+            transform: scale(0.97);
+        }
+        .btn-primary {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        .btn-primary:hover {
+            background: #2a4a2a;
+        }
+        .btn-secondary {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #ccc;
+        }
+        .btn-secondary:hover {
+            background: #2a2a2a;
+        }
+        .btn-danger {
+            background: #3a1a1a;
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+        }
+        .btn-danger:hover {
+            background: #4a2a2a;
+        }
+        .btn-small {
+            padding: 6px 14px;
+            font-size: 0.7rem;
+        }
+        .btn-save {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        .btn-cancel {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #888;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .form-row .field-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+        }
+        .form-row .field-group label {
+            font-size: 0.7rem;
+            color: #888;
+            white-space: nowrap;
+        }
+        
+        .player-list {
+            margin-top: 4px;
+        }
+        .player-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: #0a0a0a;
+            border-radius: 12px;
+            margin-bottom: 6px;
+            border: 1px solid #2a2a2a;
+            gap: 8px;
+        }
+        .player-item .info {
+            flex: 2;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .player-item .info .name {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #fff;
+        }
+        .player-item .info .hcp {
+            font-size: 0.7rem;
+            color: #4caf50;
+            background: #1a3a1a;
+            padding: 1px 10px;
+            border-radius: 12px;
+        }
+        .player-item .info .team {
+            font-size: 0.7rem;
+            color: #ffaa44;
+            background: #2a2a1a;
+            padding: 1px 10px;
+            border-radius: 12px;
+        }
+        .player-item .actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        
+        .player-item.editing {
+            border-color: #4caf50;
+            background: #1a2a1a;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 30px 20px;
+            color: #666;
+            font-size: 0.85rem;
+        }
+        
+        .back-btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 40px;
+            padding: 14px;
+            text-align: center;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.2s ease;
+        }
+        .back-btn:active {
+            transform: scale(0.98);
+            background: #2a2a2a;
+        }
+        .back-btn .label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #ccc;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.55rem;
+            color: #444;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+        
+        @media (max-width: 400px) {
+            .player-item {
+                flex-wrap: wrap;
+            }
+            .player-item .actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+            .input-group {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="app">
+    <div class="loading">Loading players...</div>
+</div>
+
+<div class="device-tag" id="deviceTag">🖥️ ---</div>
+<div class="version-tag">v1.00</div>
+
+<script>
+// ============================================================
+// FILE: player-management.html
+// VERSION: 1.00
+// ============================================================
+
+// Apply user settings
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
+}
+
+var APP_VERSION = "1.00";
+var CACHE_KEY = "player_management_v100";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
+    console.log("[PLAYER-MGMT] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
+}
+
+window.PLAYER_MGMT_VERSION = "1.00";
+console.log("[PLAYER-MGMT] Initializing v1.00");
+
+// ============================================================
+// Firebase
+// ============================================================
+var db = firebase.firestore();
+var firestoreReady = true;
+var deviceSession = null;
+
+// ============================================================
+// State
+// ============================================================
+var players = [];
+var editingIndex = -1; // -1 = not editing, >=0 = editing player at this index
+var isLoading = false;
+
+// ============================================================
+// DOM Helpers
+// ============================================================
+function displayDeviceId() {
+    var deviceDisplay = SessionManager.getDeviceIdDisplay();
+    document.getElementById("deviceTag").innerHTML = deviceDisplay;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+// ============================================================
+// Load Players from Firestore
+// ============================================================
+function loadPlayers(callback) {
+    if (isLoading) return;
+    isLoading = true;
+    
+    db.collection("playerInformation").doc("players").get()
+        .then(function(doc) {
+            if (doc.exists && doc.data().players) {
+                players = doc.data().players;
+                // Sort by name
+                players.sort(function(a, b) {
+                    return a.name.localeCompare(b.name);
+                });
+                console.log("[PLAYER-MGMT] Loaded", players.length, "players");
+            } else {
+                // No players found, initialize with default set
+                players = [
+                    { name: "Ang C H", handicap: 1, defaultTeam: "A" },
+                    { name: "Chenh Hoe", handicap: 10, defaultTeam: "A" },
+                    { name: "C K", handicap: 8, defaultTeam: "A" },
+                    { name: "Yip H M", handicap: 12, defaultTeam: "A" },
+                    { name: "Jeff Goh", handicap: 0, defaultTeam: "B" },
+                    { name: "Ong C B", handicap: 1, defaultTeam: "B" },
+                    { name: "Piti", handicap: 8, defaultTeam: "B" },
+                    { name: "James Ong", handicap: 11, defaultTeam: "B" }
+                ];
+                console.log("[PLAYER-MGMT] Using default players");
+                // Save defaults
+                savePlayers(function() {
+                    if (callback) callback();
+                });
+                return;
+            }
+            if (callback) callback();
+        })
+        .catch(function(err) {
+            console.error("[PLAYER-MGMT] Error loading players:", err);
+            Modal.alert("Error loading players: " + err.message);
+            if (callback) callback();
+        })
+        .finally(function() {
+            isLoading = false;
+        });
+}
+
+// ============================================================
+// Save Players to Firestore
+// ============================================================
+function savePlayers(callback) {
+    var data = {
+        players: players,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    
+    db.collection("playerInformation").doc("players").set(data)
+        .then(function() {
+            console.log("[PLAYER-MGMT] Saved", players.length, "players");
+            if (callback) callback(true);
+        })
+        .catch(function(err) {
+            console.error("[PLAYER-MGMT] Error saving players:", err);
+            Modal.alert("Error saving players: " + err.message);
+            if (callback) callback(false);
+        });
+}
+
+// ============================================================
+// Render
+// ============================================================
+function render() {
+    var container = document.getElementById('app');
+    
+    var html = `
+        <div class="header">
+            <div class="title">👥 PLAYER MANAGEMENT</div>
+            <div class="subtitle">Add, edit, or remove players</div>
+        </div>
+        
+        <!-- Add / Edit Form -->
+        <div class="card">
+            <div class="card-title">${editingIndex >= 0 ? '✏️ Edit Player' : '➕ Add New Player'}</div>
+            <div class="form-row">
+                <div class="field-group" style="flex:2;">
+                    <label>Name</label>
+                    <input type="text" id="playerNameInput" class="player-name-input" placeholder="Player name" value="${editingIndex >= 0 ? escapeHtml(players[editingIndex].name) : ''}">
+                </div>
+                <div class="field-group" style="flex:0.8;">
+                    <label>Hcp</label>
+                    <input type="number" id="playerHcpInput" class="hcp-input" min="0" max="54" value="${editingIndex >= 0 ? players[editingIndex].handicap : 0}">
+                </div>
+                <div class="field-group" style="flex:0.8;">
+                    <label>Team</label>
+                    <select id="playerTeamSelect" class="team-select">
+                        <option value="A" ${editingIndex >= 0 && players[editingIndex].defaultTeam === 'A' ? 'selected' : ''}>Team A</option>
+                        <option value="B" ${editingIndex >= 0 && players[editingIndex].defaultTeam === 'B' ? 'selected' : ''}>Team B</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:8px;">
+                <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? '💾 Update Player' : '➕ Add Player'}</button>
+                ${editingIndex >= 0 ? '<button class="btn btn-cancel" id="cancelEditBtn">✖ Cancel</button>' : ''}
+            </div>
+        </div>
+        
+        <!-- Player List -->
+        <div class="card">
+            <div class="card-title">📋 Existing Players (${players.length})</div>
+            <div class="player-list" id="playerList">
+                ${renderPlayerList()}
+            </div>
+        </div>
+        
+        <div class="back-btn" onclick="goBackToSettings()">
+            <div class="label">← Back to Game Settings</div>
+        </div>
+        
+        <div class="footer">SICC Ryder Cup v${APP_VERSION}</div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Attach event listeners
+    document.getElementById('savePlayerBtn').addEventListener('click', function() {
+        savePlayer();
+    });
+    
+    var cancelBtn = document.getElementById('cancelEditBtn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', function() {
+            editingIndex = -1;
+            render();
+        });
+    }
+    
+    // Enter key support
+    document.getElementById('playerNameInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            savePlayer();
+        }
+    });
+    document.getElementById('playerHcpInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            savePlayer();
+        }
+    });
+}
+
+// ============================================================
+// Render Player List
+// ============================================================
+function renderPlayerList() {
+    if (players.length === 0) {
+        return '<div class="empty-state">No players found. Add your first player above.</div>';
+    }
+    
+    var html = '';
+    for (var i = 0; i < players.length; i++) {
+        var p = players[i];
+        var isEditing = (i === editingIndex);
+        html += `
+            <div class="player-item ${isEditing ? 'editing' : ''}">
+                <div class="info">
+                    <span class="name">${escapeHtml(p.name)}</span>
+                    <span class="hcp">HCP ${p.handicap}</span>
+                    <span class="team">Team ${p.defaultTeam}</span>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-primary btn-small edit-btn" data-index="${i}">✏️</button>
+                    <button class="btn btn-danger btn-small delete-btn" data-index="${i}">🗑️</button>
+                </div>
+            </div>
+        `;
+    }
+    return html;
+}
+
+// Attach edit/delete handlers after render
+function attachPlayerActions() {
+    // Edit buttons
+    var editBtns = document.querySelectorAll('.edit-btn');
+    for (var i = 0; i < editBtns.length; i++) {
+        (function(btn) {
+            btn.addEventListener('click', function() {
+                var index = parseInt(this.dataset.index);
+                startEdit(index);
+            });
+        })(editBtns[i]);
+    }
+    
+    // Delete buttons
+    var deleteBtns = document.querySelectorAll('.delete-btn');
+    for (var i = 0; i < deleteBtns.length; i++) {
+        (function(btn) {
+            btn.addEventListener('click', function() {
+                var index = parseInt(this.dataset.index);
+                deletePlayer(index);
+            });
+        })(deleteBtns[i]);
+    }
+}
+
+// Override render to attach actions after rendering
+var originalRender = render;
+render = function() {
+    originalRender();
+    attachPlayerActions();
+};
+
+// ============================================================
+// Player CRUD Operations
+// ============================================================
+
+// Start editing a player
+function startEdit(index) {
+    editingIndex = index;
+    render();
+    // Focus the name input
+    setTimeout(function() {
+        var nameInput = document.getElementById('playerNameInput');
+        if (nameInput) {
+            nameInput.focus();
+            nameInput.select();
+        }
+    }, 100);
+}
+
+// Save player (add or update)
+function savePlayer() {
+    var nameInput = document.getElementById('playerNameInput');
+    var hcpInput = document.getElementById('playerHcpInput');
+    var teamSelect = document.getElementById('playerTeamSelect');
+    
+    var name = nameInput.value.trim();
+    var handicap = parseInt(hcpInput.value);
+    var defaultTeam = teamSelect.value;
+    
+    // Validation
+    if (!name) {
+        Modal.alert("Please enter a player name.");
+        nameInput.focus();
+        return;
+    }
+    
+    if (isNaN(handicap) || handicap < 0 || handicap > 54) {
+        Modal.alert("Please enter a valid handicap (0-54).");
+        hcpInput.focus();
+        return;
+    }
+    
+    // Check for duplicate name (if editing, allow same name)
+    var duplicate = false;
+    for (var i = 0; i < players.length; i++) {
+        if (i !== editingIndex && players[i].name.toLowerCase() === name.toLowerCase()) {
+            duplicate = true;
+            break;
+        }
+    }
+    if (duplicate) {
+        Modal.alert("A player with this name already exists.");
+        nameInput.focus();
+        return;
+    }
+    
+    var playerData = {
+        name: name,
+        handicap: handicap,
+        defaultTeam: defaultTeam
+    };
+    
+    if (editingIndex >= 0) {
+        // Update existing player
+        players[editingIndex] = playerData;
+        // Resort
+        players.sort(function(a, b) { return a.name.localeCompare(b.name); });
+        editingIndex = -1;
+    } else {
+        // Add new player
+        players.push(playerData);
+        players.sort(function(a, b) { return a.name.localeCompare(b.name); });
+    }
+    
+    // Save to Firestore
+    savePlayers(function(success) {
+        if (success) {
+            render();
+            Modal.alert("✅ Player saved successfully.");
+        } else {
+            // Revert changes on error?
+            // We already modified the array, but the save failed. Reload from Firestore.
+            loadPlayers(function() {
+                render();
+                Modal.alert("❌ Failed to save player. Changes reverted.");
+            });
+        }
+    });
+}
+
+// Delete player with confirmation
+function deletePlayer(index) {
+    var player = players[index];
+    Modal.confirm(
+        "Delete player '" + player.name + "'? This action cannot be undone.",
+        function() {
+            // On confirm
+            players.splice(index, 1);
+            if (editingIndex === index) {
+                editingIndex = -1;
+            } else if (editingIndex > index) {
+                editingIndex--;
+            }
+            savePlayers(function(success) {
+                if (success) {
+                    render();
+                    Modal.alert("✅ Player deleted.");
+                } else {
+                    loadPlayers(function() {
+                        render();
+                        Modal.alert("❌ Failed to delete player. Changes reverted.");
+                    });
+                }
+            });
+        },
+        function() {
+            // On cancel
+            console.log("[PLAYER-MGMT] Deletion cancelled");
+        }
+    );
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+function goBackToSettings() {
+    var returnDest = SessionManager.getReturnDestination();
+    window.location.href = returnDest || "admin.html";
+}
+
+// ============================================================
+// INIT
+// ============================================================
+SessionManager.initSession("player-management.html", "admin.html", function(session) {
+    console.log("Session initialized:", session);
+    deviceSession = session;
+    displayDeviceId();
+    
+    loadPlayers(function() {
+        render();
+    });
+});
+
+// Expose functions globally
+window.goBackToSettings = goBackToSettings;
+window.startEdit = startEdit;
+window.deletePlayer = deletePlayer;
+window.savePlayer = savePlayer;
+</script>
+</body>
+</html>
+
+<!--
+FILE: player-management.html
+VERSION: 1.00
+KEY CHANGES:
+   - NEW: Player management screen
+   - ADD: Create new players with name, handicap, default team
+   - EDIT: Update player name, handicap, default team
+   - DELETE: Remove players with confirmation
+   - AUTO-SAVE: Changes saved to Firestore playerInformation/players
+   - INTEGRATION: Players can be used as dropdown in setup-game.html
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
+STATUS: Ready for integration
+-->
