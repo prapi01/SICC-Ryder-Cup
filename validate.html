@@ -1,13 +1,13 @@
 <!--
 FILE: validate.html
-VERSION: 2.02
-KEY CHANGES from v2.01:
-   - REWRITTEN: Preview screen to show human-readable information only
-   - REMOVED: Raw arrays and objects from preview
-   - SHOWS: Game info, status change, TR at H18, T-1/T-2/Strk final displays
-   - SHOWS: Summary of changes in plain English
-   - SHOWS: Which fields will be updated vs preserved
-   - PRESERVED: All calculation logic, restore functionality, selective update
+VERSION: 2.03
+KEY CHANGES from v2.02:
+   - FIXED: buildFixPreview() now reads from record.rawData (was reading from record wrapper)
+   - FIXED: Compares ALL 18 holes for TR mismatches (was only checking H18)
+   - FIXED: Preview now shows which holes need fixing (H11, H16, H17) not just H18
+   - FIXED: Selective update only updates mismatched holes, preserves correct ones
+   - IMPROVED: Human-readable preview with clear hole-by-hole comparison
+   - PRESERVED: All calculation logic, restore functionality
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
@@ -191,7 +191,7 @@ STATUS: Ready for integration
         .backup-item .bselect { color: #4caf50; font-size: 0.7rem; font-weight: 600; }
         .backup-item .bselect.empty { color: #666; }
         
-        /* Preview Modal Styles - v2.02 Human Readable */
+        /* Preview Modal Styles - v2.03 */
         .preview-overlay {
             position: fixed;
             top: 0;
@@ -210,7 +210,7 @@ STATUS: Ready for integration
             background: #1a1a1a;
             border-radius: 28px;
             padding: 28px;
-            max-width: 550px;
+            max-width: 600px;
             width: 95%;
             max-height: 90vh;
             overflow-y: auto;
@@ -227,7 +227,7 @@ STATUS: Ready for integration
             font-size: 0.75rem;
             color: #888;
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
         
         .preview-game-info {
@@ -270,15 +270,13 @@ STATUS: Ready for integration
             align-items: center;
             padding: 4px 8px;
             border-bottom: 1px solid #1a1a1a;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
         }
         .preview-row:last-child { border-bottom: none; }
-        .preview-row .label { color: #888; }
+        .preview-row .label { color: #888; flex: 1; }
         .preview-row .value-current { color: #ff6b6b; font-weight: 600; }
         .preview-row .value-new { color: #4caf50; font-weight: 600; }
         .preview-row .arrow { color: #666; margin: 0 8px; }
-        .preview-row .match-icon { color: #4caf50; margin-left: 8px; }
-        .preview-row .change-icon { color: #ffaa44; margin-left: 8px; }
         
         .preview-row.match { background: rgba(76, 175, 80, 0.08); }
         .preview-row.mismatch { background: rgba(255, 107, 107, 0.12); }
@@ -349,21 +347,23 @@ STATUS: Ready for integration
         .preview-status-badge.pending { background: #2a2a1a; color: #ffaa44; }
         .preview-status-badge.completed { background: #0a2a0a; color: #4caf50; }
         
-        .preview-saved-list {
-            font-size: 0.75rem;
-            color: #666;
-            padding: 4px 8px;
+        .preview-hole-list {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+            margin-top: 4px;
         }
-        .preview-saved-list .item {
-            padding: 2px 0;
-            border-bottom: 1px solid #1a1a1a;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        .preview-hole-item {
+            padding: 4px 6px;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 0.7rem;
+            font-weight: 600;
         }
-        .preview-saved-list .item:last-child { border-bottom: none; }
-        .preview-saved-list .icon { font-size: 0.8rem; }
-        .preview-saved-list .name { color: #ccc; }
+        .preview-hole-item.ok { background: #0a2a0a; color: #4caf50; border: 1px solid #2a5a2a; }
+        .preview-hole-item.fix { background: #2a0a0a; color: #ff6b6b; border: 1px solid #5a2a2a; }
+        .preview-hole-item.ok-small { background: #1a2a1a; color: #4caf50; font-size: 0.6rem; padding: 2px 4px; border-radius: 2px; }
+        .preview-hole-item.fix-small { background: #2a1a1a; color: #ff6b6b; font-size: 0.6rem; padding: 2px 4px; border-radius: 2px; }
     </style>
 </head>
 <body>
@@ -371,7 +371,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v2.02</span>
+        <span class="version-tag">v2.03</span>
     </h1>
     
     <!-- Tab Navigation -->
@@ -504,7 +504,8 @@ STATUS: Ready for integration
                         <br><strong style="color:#4a8af4;">NOT TOUCHED: f1IntraMatches, f2IntraMatches, matchResults (already correct)</strong>
                         <br><strong style="color:#ffaa44;">This action cannot be undone.</strong>
                         <br><span style="color:#4a8af4; font-size:0.75rem;">A backup will be created before updating.</span>
-                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.00 self-contained calculation logic (proven correct from v1.20).</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.03 calculation logic (proven correct).</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Compares ALL 18 holes, only updates mismatched holes.</span>
                     </div>
                     <div id="fixProgress" class="fix-progress"></div>
                     <div class="fix-btn-container">
@@ -517,7 +518,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v2.02 — Human-readable preview before fixing. Only updates changed fields.
+        Validator v2.03 — Compares ALL 18 holes. Only updates mismatched holes.
     </div>
 </div>
 
@@ -525,8 +526,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "2.02";
-console.log("[Validator] v2.02 - Human-readable preview before fix");
+window.VALIDATOR_VERSION = "2.03";
+console.log("[Validator] v2.03 - Compares ALL 18 holes, only updates mismatched holes");
 
 // ============================================================
 // FIREBASE
@@ -977,7 +978,7 @@ function calculateStrokeGame(f1Scores, f2Scores, players) {
 }
 
 // ============================================================
-// V2.02: buildCompleteResultsFromRawData — uses v1.20 logic
+// V2.03: buildCompleteResultsFromRawData — uses v1.20 logic
 // ============================================================
 function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar) {
     console.log('[VALIDATOR] buildCompleteResultsFromRawData starting...');
@@ -1544,7 +1545,7 @@ function fetchRecords() {
 }
 
 // ============================================================
-// V2.02: HUMAN-READABLE PREVIEW
+// V2.03: FIX PREVIEW — Compares ALL 18 holes
 // ============================================================
 
 // Helper: Deep compare two values
@@ -1580,17 +1581,50 @@ function compareArrays(arr1, arr2, tolerance) {
     return true;
 }
 
-// Helper: Build the fix preview comparison (human readable)
+// ============================================================
+// V2.03: buildFixPreview — Compares ALL 18 holes
+// ============================================================
 function buildFixPreview(record, recalculated) {
     var changes = [];
     var unchanged = [];
     var notTouched = [];
+    var mismatchedHoles = [];
+    var matchingHoles = [];
     
-    // Status
+    // Get data from rawData (FIXED in v2.03)
+    var data = record.rawData;
+    var recTrA = data.results?.tr?.teamA || [];
+    var recTrB = data.results?.tr?.teamB || [];
+    var newTrA = recalculated.tr.teamA || [];
+    var newTrB = recalculated.tr.teamB || [];
+    
+    // ---- COMPARE ALL 18 HOLES ----
+    for (var i = 0; i < 18; i++) {
+        var recA = recTrA[i];
+        var recB = recTrB[i];
+        var newA = newTrA[i];
+        var newB = newTrB[i];
+        
+        var match = (recA === newA && recB === newB);
+        if (match) {
+            matchingHoles.push(i + 1);
+        } else {
+            mismatchedHoles.push(i + 1);
+            changes.push({
+                field: 'H' + (i+1) + ' TR',
+                current: (recA !== undefined && recA !== null ? recA : 'null') + ' - ' + (recB !== undefined && recB !== null ? recB : 'null'),
+                new: (newA !== undefined && newA !== null ? newA : 'null') + ' - ' + (newB !== undefined && newB !== null ? newB : 'null'),
+                type: 'tr',
+                hole: i + 1
+            });
+        }
+    }
+    
+    // ---- Status ----
     if (record.status !== 'completed') {
-        changes.push({ 
-            field: 'Status', 
-            current: record.status || 'unknown', 
+        changes.push({
+            field: 'Status',
+            current: record.status || 'unknown',
             new: 'completed',
             type: 'status'
         });
@@ -1598,24 +1632,8 @@ function buildFixPreview(record, recalculated) {
         unchanged.push('Status already completed');
     }
     
-    // TR at H18
-    var recTrA = record.results?.tr?.teamA?.[17];
-    var recTrB = record.results?.tr?.teamB?.[17];
-    var newTrA = recalculated.tr.teamA[17];
-    var newTrB = recalculated.tr.teamB[17];
-    if (recTrA !== newTrA || recTrB !== newTrB) {
-        changes.push({
-            field: 'TR Final (H18)',
-            current: recTrA + ' - ' + recTrB,
-            new: newTrA + ' - ' + newTrB,
-            type: 'tr'
-        });
-    } else {
-        unchanged.push('TR at H18 matches');
-    }
-    
-    // T-1 Display at H18
-    var recT1 = record.results?.game2?.displayT1?.[17] || '?';
+    // ---- T-1 Display at H18 ----
+    var recT1 = data.results?.game2?.displayT1?.[17] || '?';
     var newT1 = recalculated.game2.displayT1[17] || '?';
     if (recT1 !== newT1) {
         changes.push({
@@ -1628,8 +1646,8 @@ function buildFixPreview(record, recalculated) {
         unchanged.push('T-1 Display at H18 matches');
     }
     
-    // T-2 Display at H18
-    var recT2 = record.results?.game2?.displayT2?.[17] || '?';
+    // ---- T-2 Display at H18 ----
+    var recT2 = data.results?.game2?.displayT2?.[17] || '?';
     var newT2 = recalculated.game2.displayT2[17] || '?';
     if (recT2 !== newT2) {
         changes.push({
@@ -1642,8 +1660,8 @@ function buildFixPreview(record, recalculated) {
         unchanged.push('T-2 Display at H18 matches');
     }
     
-    // Strk Display at H18
-    var recStrk = record.results?.game3?.displayStrk?.[17] || '?';
+    // ---- Strk Display at H18 ----
+    var recStrk = data.results?.game3?.displayStrk?.[17] || '?';
     var newStrk = recalculated.game3.displayStrk[17] || '?';
     if (recStrk !== newStrk) {
         changes.push({
@@ -1656,8 +1674,8 @@ function buildFixPreview(record, recalculated) {
         unchanged.push('Strk Display at H18 matches');
     }
     
-    // Player totals
-    if (!deepEqual(record.results?.playerTotals || {}, recalculated.playerTotals || {})) {
+    // ---- Player totals ----
+    if (!deepEqual(data.results?.playerTotals || {}, recalculated.playerTotals || {})) {
         changes.push({
             field: 'Player Totals',
             current: 'requires update',
@@ -1668,7 +1686,7 @@ function buildFixPreview(record, recalculated) {
         unchanged.push('Player Totals match');
     }
     
-    // These are NEVER touched
+    // ---- NOT TOUCHED ----
     notTouched.push('f1DataString (raw scores)');
     notTouched.push('f2DataString (raw scores)');
     notTouched.push('players');
@@ -1684,12 +1702,14 @@ function buildFixPreview(record, recalculated) {
         changes: changes,
         unchanged: unchanged,
         notTouched: notTouched,
-        hasChanges: changes.length > 0
+        hasChanges: changes.length > 0,
+        mismatchedHoles: mismatchedHoles,
+        matchingHoles: matchingHoles
     };
 }
 
 // ============================================================
-// V2.02: showFixPreview — HUMAN-READABLE
+// V2.03: showFixPreview — Human-readable with hole list
 // ============================================================
 function showFixPreview(record, recalculated, previewData, backupId) {
     var overlay = document.createElement('div');
@@ -1700,11 +1720,14 @@ function showFixPreview(record, recalculated, previewData, backupId) {
     var changeCount = previewData.changes.length;
     var unchangedCount = previewData.unchanged.length;
     var notTouchedCount = previewData.notTouched.length;
+    var mismatchedHoles = previewData.mismatchedHoles || [];
+    var matchingHoles = previewData.matchingHoles || [];
     
     // Format game info
-    var courseName = record.rawData.gameInfo?.course?.name || record.rawData.course?.name || 'Unknown';
-    var date = record.rawData.gameInfo?.date || record.rawData.date || 'Unknown';
-    var players = record.rawData.players || [];
+    var data = record.rawData;
+    var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown';
+    var date = data.gameInfo?.date || data.date || 'Unknown';
+    var players = data.players || [];
     var playerNames = players.map(function(p) { return p.label + ' (' + p.handicap + ')'; }).join(', ');
     
     var html = '<div class="preview-modal">';
@@ -1724,6 +1747,25 @@ function showFixPreview(record, recalculated, previewData, backupId) {
         html += '<span class="preview-status-badge completed">' + escapeHtml(record.status) + '</span>';
     }
     html += '</span></div></div>';
+    
+    // Hole Status Summary
+    html += '<div class="preview-section">';
+    html += '<div class="preview-section-title">🏌️ Hole Status (TR Values)</div>';
+    html += '<div style="font-size:0.7rem; color:#888; margin-bottom:6px;">✅ = Already correct &nbsp;|&nbsp; 🔴 = Needs fixing</div>';
+    html += '<div class="preview-hole-list">';
+    for (var i = 1; i <= 18; i++) {
+        var isMismatch = mismatchedHoles.indexOf(i) !== -1;
+        var cls = isMismatch ? 'fix' : 'ok';
+        var label = isMismatch ? '🔴 H' + i : '✅ H' + i;
+        html += '<div class="preview-hole-item ' + cls + '">' + label + '</div>';
+    }
+    html += '</div>';
+    if (mismatchedHoles.length > 0) {
+        html += '<div style="margin-top:6px; font-size:0.7rem; color:#ff6b6b;">Holes needing fix: ' + mismatchedHoles.join(', ') + '</div>';
+    } else {
+        html += '<div style="margin-top:6px; font-size:0.7rem; color:#4caf50;">All holes correct!</div>';
+    }
+    html += '</div>';
     
     // Summary counts
     html += '<div class="preview-summary-box">';
@@ -1815,7 +1857,7 @@ function showFixPreview(record, recalculated, previewData, backupId) {
 }
 
 // ============================================================
-// V2.02: executeFixWithBackup — selective update
+// V2.03: executeFixWithBackup — Only updates mismatched holes
 // ============================================================
 function executeFixWithBackup(record, recalculated, backupId) {
     var docId = record.id;
@@ -1833,71 +1875,102 @@ function executeFixWithBackup(record, recalculated, backupId) {
     
     var updatePayload = {};
     
-    // TR at H18
-    var recTrA = record.results?.tr?.teamA?.[17];
-    var recTrB = record.results?.tr?.teamB?.[17];
-    var newTrA = recalculated.tr.teamA[17];
-    var newTrB = recalculated.tr.teamB[17];
-    if (recTrA !== newTrA || recTrB !== newTrB) {
-        updatePayload['results.tr.teamA'] = recalculated.tr.teamA;
-        updatePayload['results.tr.teamB'] = recalculated.tr.teamB;
-        updatePayload['results.tr.teamAGreen'] = recalculated.tr.teamAGreen || [];
-        updatePayload['results.tr.teamBGreen'] = recalculated.tr.teamBGreen || [];
+    // ---- Check ALL 18 holes, only update mismatched ones ----
+    var data = record.rawData;
+    var recTrA = data.results?.tr?.teamA || [];
+    var recTrB = data.results?.tr?.teamB || [];
+    var newTrA = recalculated.tr.teamA || [];
+    var newTrB = recalculated.tr.teamB || [];
+    
+    var holesToFix = [];
+    for (var i = 0; i < 18; i++) {
+        var recA = recTrA[i];
+        var recB = recTrB[i];
+        var newA = newTrA[i];
+        var newB = newTrB[i];
+        if (recA !== newA || recB !== newB) {
+            holesToFix.push(i);
+        }
     }
     
-    // T-1 Display at H18
-    var recT1 = record.results?.game2?.displayT1?.[17] || '?';
+    if (holesToFix.length > 0) {
+        // Create updated arrays (copy from recalculated only for mismatched holes)
+        var updatedTrA = recTrA.slice();
+        var updatedTrB = recTrB.slice();
+        var updatedGreenA = data.results?.tr?.teamAGreen || [];
+        var updatedGreenB = data.results?.tr?.teamBGreen || [];
+        
+        for (var idx = 0; idx < holesToFix.length; idx++) {
+            var holeIdx = holesToFix[idx];
+            updatedTrA[holeIdx] = newTrA[holeIdx];
+            updatedTrB[holeIdx] = newTrB[holeIdx];
+            updatedGreenA[holeIdx] = newTrA[holeIdx] > newTrB[holeIdx];
+            updatedGreenB[holeIdx] = newTrB[holeIdx] > newTrA[holeIdx];
+        }
+        
+        updatePayload['results.tr.teamA'] = updatedTrA;
+        updatePayload['results.tr.teamB'] = updatedTrB;
+        updatePayload['results.tr.teamAGreen'] = updatedGreenA;
+        updatePayload['results.tr.teamBGreen'] = updatedGreenB;
+        
+        progressEl.innerHTML += '<div class="step info">🔴 Fixing holes: ' + holesToFix.map(function(h) { return h+1; }).join(', ') + '</div>';
+    } else {
+        progressEl.innerHTML += '<div class="step info">✅ All TR holes already correct</div>';
+    }
+    
+    // ---- T-1 Display at H18 ----
+    var recT1 = data.results?.game2?.displayT1?.[17] || '?';
     var newT1 = recalculated.game2.displayT1[17] || '?';
     if (recT1 !== newT1) {
         updatePayload['results.game2.displayT1'] = recalculated.game2.displayT1;
     }
     
-    // T-2 Display at H18
-    var recT2 = record.results?.game2?.displayT2?.[17] || '?';
+    // ---- T-2 Display at H18 ----
+    var recT2 = data.results?.game2?.displayT2?.[17] || '?';
     var newT2 = recalculated.game2.displayT2[17] || '?';
     if (recT2 !== newT2) {
         updatePayload['results.game2.displayT2'] = recalculated.game2.displayT2;
     }
     
-    // Strk Display at H18
-    var recStrk = record.results?.game3?.displayStrk?.[17] || '?';
+    // ---- Strk Display at H18 ----
+    var recStrk = data.results?.game3?.displayStrk?.[17] || '?';
     var newStrk = recalculated.game3.displayStrk[17] || '?';
     if (recStrk !== newStrk) {
         updatePayload['results.game3.displayStrk'] = recalculated.game3.displayStrk;
     }
     
-    // Game1 points
-    if (!deepEqual(record.results?.game1?.pointsA || [], recalculated.game1.pointsA || []) ||
-        !deepEqual(record.results?.game1?.pointsB || [], recalculated.game1.pointsB || [])) {
+    // ---- Game1 points ----
+    if (!deepEqual(data.results?.game1?.pointsA || [], recalculated.game1.pointsA || []) ||
+        !deepEqual(data.results?.game1?.pointsB || [], recalculated.game1.pointsB || [])) {
         updatePayload['results.game1.pointsA'] = recalculated.game1.pointsA;
         updatePayload['results.game1.pointsB'] = recalculated.game1.pointsB;
     }
     
-    // Game2 points
-    if (!deepEqual(record.results?.game2?.pointsA || [], recalculated.game2.pointsA || []) ||
-        !deepEqual(record.results?.game2?.pointsB || [], recalculated.game2.pointsB || [])) {
+    // ---- Game2 points ----
+    if (!deepEqual(data.results?.game2?.pointsA || [], recalculated.game2.pointsA || []) ||
+        !deepEqual(data.results?.game2?.pointsB || [], recalculated.game2.pointsB || [])) {
         updatePayload['results.game2.pointsA'] = recalculated.game2.pointsA;
         updatePayload['results.game2.pointsB'] = recalculated.game2.pointsB;
     }
     
-    // Game3 points
-    if (!deepEqual(record.results?.game3?.pointsA || [], recalculated.game3.pointsA || []) ||
-        !deepEqual(record.results?.game3?.pointsB || [], recalculated.game3.pointsB || [])) {
+    // ---- Game3 points ----
+    if (!deepEqual(data.results?.game3?.pointsA || [], recalculated.game3.pointsA || []) ||
+        !deepEqual(data.results?.game3?.pointsB || [], recalculated.game3.pointsB || [])) {
         updatePayload['results.game3.pointsA'] = recalculated.game3.pointsA;
         updatePayload['results.game3.pointsB'] = recalculated.game3.pointsB;
     }
     
-    // Player totals
-    if (!deepEqual(record.results?.playerTotals || {}, recalculated.playerTotals || {})) {
+    // ---- Player totals ----
+    if (!deepEqual(data.results?.playerTotals || {}, recalculated.playerTotals || {})) {
         updatePayload['results.playerTotals'] = recalculated.playerTotals;
     }
     
-    // ClinchedAt
-    if (!deepEqual(record.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
+    // ---- ClinchedAt ----
+    if (!deepEqual(data.results?.clinchedAt || {}, recalculated.clinchedAt || {})) {
         updatePayload['results.clinchedAt'] = recalculated.clinchedAt;
     }
     
-    // Adjusted handicaps
+    // ---- Adjusted handicaps ----
     var recAdj = record.adjustedHandicaps || {};
     var newAdj = calculateAdjustedHandicaps(
         parseDataString(record.rawData.f1DataString),
@@ -1909,12 +1982,12 @@ function executeFixWithBackup(record, recalculated, backupId) {
         updatePayload['adjustedHandicaps'] = newAdj;
     }
     
-    // Status
+    // ---- Status ----
     if (record.status !== 'completed') {
         updatePayload['status'] = 'completed';
     }
     
-    // Final results
+    // ---- Final results ----
     var finalTrA = recalculated.tr.teamA[17] || 9.5;
     var finalTrB = recalculated.tr.teamB[17] || 9.5;
     var winner = finalTrA > finalTrB ? 'A' : (finalTrB > finalTrA ? 'B' : 'Tie');
@@ -1959,7 +2032,7 @@ function executeFixWithBackup(record, recalculated, backupId) {
 }
 
 // ============================================================
-// V2.02: FIX RECORD — Main entry point with preview
+// V2.03: FIX RECORD — Main entry point with preview
 // ============================================================
 function fixRecord() {
     if (currentRecordIndex < 0 || currentRecordIndex >= records.length) {
@@ -2021,10 +2094,11 @@ function fixRecord() {
     createBackup(record, progressEl)
         .then(function(backupId) {
             progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
-            progressEl.innerHTML += '<div class="step">📊 Step 4: Comparing changes...</div>';
+            progressEl.innerHTML += '<div class="step">📊 Step 4: Comparing ALL 18 holes...</div>';
             
             var previewData = buildFixPreview(record, recalculated);
             
+            progressEl.innerHTML += '<div class="step info">Mismatched holes: ' + (previewData.mismatchedHoles.length > 0 ? previewData.mismatchedHoles.join(', ') : 'None') + '</div>';
             progressEl.innerHTML += '<div class="step info">Changes: ' + previewData.changes.length + ', Unchanged: ' + previewData.unchanged.length + ', Not Touched: ' + previewData.notTouched.length + '</div>';
             
             // Close progress and show preview
@@ -2066,7 +2140,7 @@ function createBackup(record, progressEl) {
         backupData._backupOriginalId = docId;
         backupData._backupOriginalCollection = 'historyGames';
         backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v2.02';
+        backupData._backupReason = 'Pre-fix backup from validator v2.03';
         db.collection('backupFolder').doc(backupId).set(backupData)
             .then(function() {
                 progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
@@ -2195,30 +2269,51 @@ function processGameData(data) {
     
     document.getElementById('results').style.display = 'block';
     
-    // Check if record needs fixing
-    var recA = data.results?.tr?.teamA?.[17];
-    var recB = data.results?.tr?.teamB?.[17];
-    var t1Final = t1Results[17] || {};
-    var t2Final = t2Results[17] || {};
-    var strkFinal = strkResults[17] || {};
-    var h18MatchData = matchPointsPerHole[17] || {};
-    var h18mA = 0, h18mB = 0;
-    for (var matchKey in h18MatchData) {
-        h18mA += h18MatchData[matchKey].pointsA || 0;
-        h18mB += h18MatchData[matchKey].pointsB || 0;
+    // Check if record needs fixing - look at ALL holes
+    var recTrA = data.results?.tr?.teamA || [];
+    var recTrB = data.results?.tr?.teamB || [];
+    var newTrA = []; // We'll calculate these
+    var newTrB = [];
+    
+    // Quick recalc to check
+    var quickT1 = calculateTeamGame(f1Scores, players, 1, courseSi);
+    var quickT2 = calculateTeamGame(f2Scores, players, 2, courseSi);
+    var quickStrk = calculateStrokeGame(f1Scores, f2Scores, players);
+    var quickMatch = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
+    var quickMP = quickMatch.matchPointsPerHole;
+    for (var i = 0; i < 18; i++) {
+        var t1 = quickT1[i] || {};
+        var t2 = quickT2[i] || {};
+        var strk = quickStrk[i] || {};
+        var holeMatchData = quickMP[i] || {};
+        var mA = 0, mB = 0;
+        for (var key in holeMatchData) {
+            mA += holeMatchData[key].pointsA || 0;
+            mB += holeMatchData[key].pointsB || 0;
+        }
+        var t1A = t1.teamGameTR ? t1.teamGameTR.A : 0.5;
+        var t1B = t1.teamGameTR ? t1.teamGameTR.B : 0.5;
+        var t2A = t2.teamGameTR ? t2.teamGameTR.A : 0.5;
+        var t2B = t2.teamGameTR ? t2.teamGameTR.B : 0.5;
+        var sA = strk.strokeTR ? strk.strokeTR.A : 0.5;
+        var sB = strk.strokeTR ? strk.strokeTR.B : 0.5;
+        newTrA.push(mA + t1A + t2A + sA);
+        newTrB.push(mB + t1B + t2B + sB);
     }
-    var t1A = t1Final.teamGameTR ? t1Final.teamGameTR.A : 0.5;
-    var t1B = t1Final.teamGameTR ? t1Final.teamGameTR.B : 0.5;
-    var t2A = t2Final.teamGameTR ? t2Final.teamGameTR.A : 0.5;
-    var t2B = t2Final.teamGameTR ? t2Final.teamGameTR.B : 0.5;
-    var sA = strkFinal.strokeTR ? strkFinal.strokeTR.A : 0.5;
-    var sB = strkFinal.strokeTR ? strkFinal.strokeTR.B : 0.5;
-    var trA_h18 = h18mA + t1A + t2A + sA;
-    var trB_h18 = h18mB + t1B + t2B + sB;
-    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && 
-                   Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
-    var hasMismatch = !trMatch;
+    
+    var mismatches = [];
+    for (var i = 0; i < 18; i++) {
+        var recA = recTrA[i];
+        var recB = recTrB[i];
+        var newA = newTrA[i];
+        var newB = newTrB[i];
+        if (recA !== newA || recB !== newB) {
+            mismatches.push(i + 1);
+        }
+    }
+    
     var isPending = data.status === 'pending_handicap';
+    var hasMismatch = mismatches.length > 0;
     
     if (isPending || hasMismatch) {
         document.getElementById('fixCard').style.display = 'block';
@@ -2232,7 +2327,11 @@ function processGameData(data) {
         backupBtn.disabled = false;
         document.getElementById('fixProgress').className = 'fix-progress';
         document.getElementById('fixProgress').innerHTML = '';
-        setStatus('⚠️ Record needs fixing. Click "Fix Record" to preview changes before writing.', 'warning');
+        if (hasMismatch) {
+            setStatus('⚠️ Record needs fixing. Mismatched holes: ' + mismatches.join(', '), 'warning');
+        } else {
+            setStatus('⚠️ Record needs fixing. Status: pending_handicap → completed', 'warning');
+        }
     } else {
         document.getElementById('fixCard').style.display = 'none';
         setStatus('✅ Record is valid. No changes needed.', 'success');
@@ -2548,9 +2647,8 @@ document.querySelectorAll('input[name="restoreDestination"]').forEach(function(r
 fetchRecords();
 loadBackupList();
 updateDestPreviews();
-console.log('🔬 Game Data Validator v2.02 loaded.');
-console.log('📌 Restore: SIMPLE COPY — NO recalculation.');
-console.log('📌 Fix: Human-readable preview before writing.');
+console.log('🔬 Game Data Validator v2.03 loaded.');
+console.log('📌 Compares ALL 18 holes. Only updates mismatched holes.');
 console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched.');
 </script>
 </body>
@@ -2558,14 +2656,14 @@ console.log('📌 f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 
 <!--
 FILE: validate.html
-VERSION: 2.02
-KEY CHANGES from v2.01:
-   - REWRITTEN: Preview screen to show human-readable information only
-   - REMOVED: Raw arrays and objects from preview
-   - SHOWS: Game info, status change, TR at H18, T-1/T-2/Strk final displays
-   - SHOWS: Summary of changes in plain English
-   - SHOWS: Which fields will be updated vs preserved
-   - PRESERVED: All calculation logic, restore functionality, selective update
+VERSION: 2.03
+KEY CHANGES from v2.02:
+   - FIXED: buildFixPreview() now reads from record.rawData (was reading from record wrapper)
+   - FIXED: Compares ALL 18 holes for TR mismatches (was only checking H18)
+   - FIXED: Preview now shows which holes need fixing (H11, H16, H17) not just H18
+   - FIXED: Selective update only updates mismatched holes, preserves correct ones
+   - IMPROVED: Human-readable preview with clear hole-by-hole comparison
+   - PRESERVED: All calculation logic, restore functionality
    - PRESERVED: f1IntraMatches, f2IntraMatches, matchResults are NEVER touched
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
