@@ -1,12 +1,12 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.23
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - FIXED: formatDate() now handles undefined date strings
+   - FIXED: Date reading now falls back to data.gameInfo.date if data.date is missing
+   - FIXED: Past game detection uses the correct date field
+   - FIXED: Game list sorting handles "Unknown Date" values
+   - All existing functionality preserved from v1.24
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -356,10 +356,10 @@ STATUS: Ready for integration
     <div class="loading">Loading scheduled games...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.24</div>
+<div class="version-tag">v1.25</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.24
+// FILE: manage-games.html - VERSION 1.25
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -370,8 +370,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[MANAGE-GAMES] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.24";
-var CACHE_KEY = "manage_games_version_v124";
+var VERSION = "1.25";
+var CACHE_KEY = "manage_games_version_v125";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -399,6 +399,8 @@ function displayDeviceId() {
 }
 
 function formatDate(dateString) {
+    // v1.25: Handle undefined or null date strings
+    if (!dateString) return "Unknown Date";
     var parts = dateString.split('-');
     if (parts.length === 3) {
         var day = parts[2];
@@ -514,8 +516,6 @@ function generateGameId() {
 
 // ============================================================
 // v1.22: Copy Game with new date - PRESERVES ALL source data
-// Only changes: date, id, updatedAt, lastActive
-// createdAt is KEPT from source
 // ============================================================
 function copyGameWithNewDate(sourceGameId, newDate) {
     var sourceRef = db.collection("scheduledGames").doc(sourceGameId);
@@ -530,22 +530,12 @@ function copyGameWithNewDate(sourceGameId, newDate) {
         var sourceData = doc.data();
         var newData = JSON.parse(JSON.stringify(sourceData));
         
-        // ✅ ONLY change these:
         newData.date = newDate;
-        delete newData.id;  // Will use new generated ID
-        delete newData.updatedAt;  // Will set new timestamp
-        delete newData.lastActive;  // Remove stale activity
+        delete newData.id;
+        delete newData.updatedAt;
+        delete newData.lastActive;
         
-        // ✅ KEEP original createdAt - DO NOT change
-        // createdAt remains as-is from source
-        
-        // ✅ Set new updatedAt
         newData.updatedAt = new Date().toISOString();
-        
-        // ✅ EVERYTHING ELSE stays exactly as copied from source:
-        // gameStarted, currentHoleF1, currentHoleF2, signatures,
-        // submitted, locks, f1.d, f2.d, results, players, course,
-        // startingHole, teamGameFormat, anchor, status, gameType, etc.
         
         return db.collection("scheduledGames").doc(newGameId).set(newData);
     }).then(function() {
@@ -651,7 +641,7 @@ function editGameConfirmed(gameId) {
 }
 
 // ============================================================
-// v1.21: DELETE - PIN REQUIRED - Same pattern as EDIT
+// v1.21: DELETE - PIN REQUIRED
 // ============================================================
 
 function performFirestoreDelete(collectionName, docId, redirectUrl) {
@@ -718,6 +708,9 @@ function getTodayString() {
     return today.toISOString().split('T')[0];
 }
 
+// ============================================================
+// v1.25: loadAndRender - FIXED date handling
+// ============================================================
 function loadAndRender() {
     if (!firestoreReady) {
         document.getElementById("app").innerHTML = '<div class="loading">Connecting to server...</div>';
@@ -730,16 +723,24 @@ function loadAndRender() {
         var games = [];
         snapshot.forEach(function(doc) {
             var data = doc.data();
+            
+            // v1.25: Read date from data.date or data.gameInfo.date
+            var gameDate = data.date || data.gameInfo?.date || "Unknown Date";
+            
             if (showAllGames) {
-                games.push({ id: doc.id, date: data.date, course: data.course, players: data.players });
+                games.push({ id: doc.id, date: gameDate, course: data.course, players: data.players });
             } else {
-                if (data.date >= todayStr) {
-                    games.push({ id: doc.id, date: data.date, course: data.course, players: data.players });
+                // Only show games with valid dates that are today or future
+                if (gameDate !== "Unknown Date" && gameDate >= todayStr) {
+                    games.push({ id: doc.id, date: gameDate, course: data.course, players: data.players });
                 }
             }
         });
         
+        // Sort games by date
         games.sort(function(a, b) {
+            if (a.date === "Unknown Date") return 1;
+            if (b.date === "Unknown Date") return -1;
             if (a.date < b.date) return -1;
             if (a.date > b.date) return 1;
             return 0;
@@ -780,7 +781,7 @@ function loadAndRender() {
             var courseName = game.course ? game.course.name : 'Unknown Course';
             var playerCount = game.players ? game.players.length : 0;
             
-            var isPastGame = (game.date < todayStr);
+            var isPastGame = (game.date !== "Unknown Date" && game.date < todayStr);
             var pastClass = isPastGame ? 'game-item-past' : '';
             
             var docIdHtml = '<div class="doc-id-display doc-copy-target" data-gameid="' + escapeHtml(game.id) + '" data-gamedate="' + escapeHtml(game.date) + '">📄 ' + escapeHtml(game.id) + '<span class="copy-hint"> ⌘+click or long press to copy</span></div>';
@@ -822,7 +823,6 @@ function loadAndRender() {
         `;
         
         document.getElementById("app").innerHTML = html;
-        
         attachTitleClickHandler();
         
         var docElements = document.querySelectorAll('.doc-copy-target');
@@ -901,13 +901,13 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.23
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - FIXED: formatDate() now handles undefined date strings
+   - FIXED: Date reading now falls back to data.gameInfo.date if data.date is missing
+   - FIXED: Past game detection uses the correct date field
+   - FIXED: Game list sorting handles "Unknown Date" values
+   - All existing functionality preserved from v1.24
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
