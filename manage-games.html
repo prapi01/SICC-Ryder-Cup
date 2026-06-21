@@ -1,15 +1,14 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - FIXED: getTodayString() now uses manual date formatting (no timezone issues)
-   - FIXED: formatDate() now handles undefined date strings
-   - FIXED: Date reading now falls back to data.gameInfo.date if data.date is missing
-   - FIXED: Filter logic correctly excludes past games in "UPCOMING" mode
-   - FIXED: Past game detection uses the correct date field
-   - FIXED: Sorting handles "Unknown Date" values
-   - FIXED: Cmd+Click title toggle works correctly
-   - All existing functionality preserved from v1.24
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - REDESIGNED: Ultra-minimalist, professional look
+   - REMOVED: All icons (emoji) from buttons and headers
+   - CHANGED: Clean typography, subtle borders, refined spacing
+   - CHANGED: Buttons now use text-only labels (Edit / Delete)
+   - CHANGED: Game items use cleaner layout with subtle dividers
+   - CHANGED: View toggle uses clean pill-style indicator
+   - PRESERVED: All functionality from v1.26
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -33,8 +32,8 @@ STATUS: Ready for integration
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         html, body {
-            background: #000000;
             min-height: 100vh;
+            background: #0a0a0a;
             -webkit-user-select: none;
             user-select: none;
             -webkit-touch-callout: none;
@@ -42,175 +41,194 @@ STATUS: Ready for integration
         }
         
         body {
-            background: #000000;
-            font-family: system-ui, -apple-system, 'SF Pro Text', sans-serif;
-            color: #ffffff;
+            background: #0a0a0a;
+            font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif;
+            color: #e0e0e0;
             display: flex;
             align-items: center;
             justify-content: center;
             min-height: 100vh;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
-        .container { max-width: 500px; width: 100%; margin: 0 auto; padding: 20px 16px; }
+        .container { max-width: 420px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
         .version-tag { 
             position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            right: max(8px, env(safe-area-inset-right));
-            font-size: 0.65rem; 
+            top: max(12px, env(safe-area-inset-top));
+            right: max(12px, env(safe-area-inset-right));
+            font-size: 0.6rem; 
             color: #4caf50; 
-            background: rgba(0,0,0,0.6); 
+            background: rgba(0,0,0,0.5); 
             padding: 2px 10px; 
-            border-radius: 16px;
+            border-radius: 12px;
             font-family: monospace;
             z-index: 1000;
-            opacity: 0.8;
+            letter-spacing: 0.3px;
         }
         
         .device-tag {
             position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            left: max(8px, env(safe-area-inset-left));
-            font-size: 0.55rem;
+            top: max(12px, env(safe-area-inset-top));
+            left: max(12px, env(safe-area-inset-left));
+            font-size: 0.5rem;
             color: #4caf50;
-            background: rgba(0,0,0,0.4);
+            background: rgba(0,0,0,0.3);
             padding: 2px 8px;
-            border-radius: 12px;
+            border-radius: 10px;
             font-family: monospace;
             z-index: 1000;
             opacity: 0.4;
-            letter-spacing: 0.5px;
         }
         
-        .header { text-align: center; margin-bottom: 24px; }
-        .title { font-size: 1.5rem; font-weight: 700; color: #4caf50; }
-        .version { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        .header { text-align: center; margin-bottom: 24px; margin-top: 4px; }
+        .title { font-size: 1.2rem; font-weight: 600; color: #e0e0e0; letter-spacing: -0.3px; }
+        .subtitle { font-size: 0.6rem; color: #444; margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
         
-        .card { background: #111; border-radius: 20px; padding: 20px; margin-bottom: 16px; border: 1px solid #333; }
+        .card { 
+            background: transparent; 
+            border: 1px solid #1a1a1a; 
+            border-radius: 10px; 
+            padding: 16px; 
+            margin-bottom: 12px; 
+        }
         
         .card-title { 
-            font-size: 1rem; 
-            font-weight: 600; 
-            margin-bottom: 16px; 
-            color: #4caf50; 
-            border-left: 2px solid #4caf50; 
-            padding-left: 10px;
+            font-size: 0.75rem; 
+            font-weight: 500; 
+            color: #888; 
+            margin-bottom: 14px; 
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
             cursor: default;
             transition: opacity 0.2s;
-            -webkit-user-select: none;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
-        .card-title:hover {
-            opacity: 0.8;
-        }
-        .card-title .view-hint {
-            color: #666;
-            font-size: 0.55rem;
+        .card-title:hover { opacity: 0.7; }
+        .card-title .badge {
+            font-size: 0.5rem;
             font-weight: 400;
-            margin-left: 8px;
-            opacity: 0;
-            transition: opacity 0.3s;
+            padding: 1px 8px;
+            border-radius: 10px;
+            background: #1a1a1a;
+            color: #555;
+            text-transform: none;
+            letter-spacing: 0.3px;
         }
-        .card-title:hover .view-hint {
-            opacity: 1;
+        .card-title .badge-all {
+            background: #1a1a1a;
+            color: #888;
         }
-        .card-title .view-badge {
-            font-size: 0.55rem;
-            font-weight: 400;
-            margin-left: 8px;
-            padding: 2px 8px;
-            border-radius: 12px;
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-            opacity: 0.7;
-        }
-        .card-title .view-badge-all {
-            background: #2a2a1a;
-            color: #ffaa44;
-            border-color: #ffaa44;
-        }
-        
-        .game-list { margin-top: 16px; }
-        .game-item { background: #0a0a0a; border-radius: 16px; padding: 16px; margin-bottom: 12px; border: 1px solid #333; }
-        
-        .game-item-past {
-            opacity: 0.5;
-            border-color: #222;
-        }
-        .game-item-past .game-date {
-            color: #666;
-        }
-        .game-item-past .game-course {
-            color: #444;
-        }
-        .game-item-past .game-players {
+        .card-title .hint {
             color: #333;
+            font-size: 0.45rem;
+            font-weight: 400;
+            margin-left: 6px;
+            text-transform: none;
         }
-        .game-item-past .doc-id-display {
-            opacity: 0.2;
-        }
+        .card-title:hover .hint { color: #555; }
         
-        .game-info { margin-bottom: 12px; }
-        .game-date { font-size: 1rem; font-weight: 700; color: #4caf50; }
-        .game-course { font-size: 0.85rem; color: #888; margin-top: 4px; }
-        .game-players { font-size: 0.7rem; color: #666; margin-top: 4px; }
+        .game-list { margin-top: 2px; }
+        .game-item { 
+            background: transparent; 
+            border-bottom: 1px solid #141414; 
+            padding: 14px 0; 
+        }
+        .game-item:last-child { border-bottom: none; }
+        
+        .game-item-past { opacity: 0.35; }
+        .game-item-past .game-date { color: #444; }
+        .game-item-past .game-course { color: #333; }
+        .game-item-past .game-players { color: #222; }
+        .game-item-past .doc-id-display { opacity: 0.15; }
+        
+        .game-info { margin-bottom: 10px; }
+        .game-date { font-size: 0.9rem; font-weight: 500; color: #e0e0e0; }
+        .game-course { font-size: 0.7rem; color: #666; margin-top: 2px; }
+        .game-players { font-size: 0.6rem; color: #444; margin-top: 2px; }
         
         .game-actions { 
             display: flex; 
             gap: 12px; 
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
-        .btn-edit { background: #1a3a1a; border: 1px solid #4caf50; border-radius: 30px; padding: 8px 20px; color: #4caf50; font-weight: 600; cursor: pointer; }
-        .btn-delete { background: #3a1a1a; border: 1px solid #ff6b6b; border-radius: 30px; padding: 8px 20px; color: #ff6b6b; font-weight: 600; cursor: pointer; }
-        .btn-edit:active, .btn-delete:active { transform: scale(0.97); }
+        .btn-edit { 
+            background: transparent; 
+            border: 1px solid #2a2a2a; 
+            border-radius: 6px; 
+            padding: 6px 16px; 
+            color: #888; 
+            font-size: 0.7rem; 
+            font-weight: 400; 
+            cursor: pointer; 
+            transition: all 0.15s ease;
+            letter-spacing: 0.2px;
+        }
+        .btn-edit:hover { border-color: #4caf50; color: #4caf50; background: rgba(76,175,80,0.05); }
+        .btn-edit:active { transform: scale(0.97); }
+        
+        .btn-delete { 
+            background: transparent; 
+            border: 1px solid #2a1a1a; 
+            border-radius: 6px; 
+            padding: 6px 16px; 
+            color: #553333; 
+            font-size: 0.7rem; 
+            font-weight: 400; 
+            cursor: pointer; 
+            transition: all 0.15s ease;
+            letter-spacing: 0.2px;
+        }
+        .btn-delete:hover { border-color: #ff6b6b; color: #ff6b6b; background: rgba(255,107,107,0.05); }
+        .btn-delete:active { transform: scale(0.97); }
         
         .doc-id-display {
-            font-size: 0.55rem;
-            color: #4caf50;
-            opacity: 0.4;
+            font-size: 0.5rem;
+            color: #333;
             font-family: monospace;
             letter-spacing: 0.3px;
-            padding: 2px 8px;
-            margin-top: 2px;
-            border-radius: 12px;
+            padding: 2px 0;
             display: inline-block;
             cursor: default;
             transition: opacity 0.2s;
-            -webkit-user-select: none;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
         }
-        .doc-id-display:hover {
-            opacity: 0.7;
-        }
+        .doc-id-display:hover { opacity: 0.7; }
         .doc-id-display .copy-hint {
-            color: #666;
-            font-size: 0.5rem;
-            margin-left: 6px;
+            color: #222;
+            font-size: 0.4rem;
+            margin-left: 4px;
             opacity: 0;
             transition: opacity 0.3s;
         }
-        .doc-id-display:hover .copy-hint {
-            opacity: 1;
+        .doc-id-display:hover .copy-hint { opacity: 1; }
+        
+        .empty-msg { text-align: center; padding: 30px 20px; color: #444; font-size: 0.8rem; font-weight: 300; letter-spacing: 0.3px; }
+        
+        .back-btn { 
+            background: transparent; 
+            border: 1px solid #1a1a1a; 
+            border-radius: 8px; 
+            padding: 14px; 
+            text-align: center; 
+            cursor: pointer; 
+            margin-top: 8px; 
+            transition: all 0.15s ease; 
         }
+        .back-btn:hover { border-color: #333; background: #111; }
+        .back-btn:active { transform: scale(0.98); }
+        .back-btn .label { font-size: 0.8rem; font-weight: 400; color: #555; letter-spacing: 0.2px; }
         
-        .empty-msg { text-align: center; padding: 40px; color: #888; }
+        .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
-        .back-btn { background: #1a1a1a; border: 1px solid #333; border-radius: 40px; padding: 14px; text-align: center; cursor: pointer; margin-top: 20px; transition: all 0.2s ease; }
-        .back-btn:active { transform: scale(0.98); background: #2a2a2a; }
-        .back-btn .label { font-size: 0.9rem; font-weight: 600; color: #ccc; }
-        
-        .loading { text-align: center; padding: 40px; color: #888; }
-        
+        /* Copy Modal - Minimal */
         .copy-modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0,0,0,0.95);
+            background: rgba(0,0,0,0.92);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -218,94 +236,82 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         .copy-modal {
-            background: #1a1a1a;
-            border-radius: 28px;
+            background: #111;
+            border-radius: 16px;
             padding: 28px;
-            max-width: 360px;
+            max-width: 340px;
             width: 90%;
             text-align: center;
-            border: 2px solid #4caf50;
+            border: 1px solid #2a2a2a;
         }
         .copy-modal-title {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: #4caf50;
-            margin-bottom: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #e0e0e0;
+            margin-bottom: 4px;
+            letter-spacing: -0.2px;
         }
         .copy-modal-subtitle {
-            font-size: 0.75rem;
-            color: #888;
+            font-size: 0.65rem;
+            color: #555;
             margin-bottom: 20px;
         }
         .copy-modal-label {
-            font-size: 0.8rem;
-            color: #ccc;
+            font-size: 0.7rem;
+            color: #888;
             display: block;
             text-align: left;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
         .copy-modal-input {
             width: 100%;
             background: #0a0a0a;
-            border: 1px solid #4caf50;
-            border-radius: 30px;
-            padding: 12px 16px;
-            color: #fff;
-            font-size: 1rem;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #e0e0e0;
+            font-size: 0.9rem;
             margin-bottom: 20px;
         }
         .copy-modal-input:focus {
             outline: none;
-            border-color: #ffaa44;
+            border-color: #4caf50;
         }
         .copy-modal-buttons {
             display: flex;
-            gap: 12px;
+            gap: 10px;
         }
         .copy-modal-btn {
             flex: 1;
-            padding: 12px;
-            border-radius: 40px;
-            font-weight: 600;
-            font-size: 0.9rem;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: 400;
+            font-size: 0.8rem;
             cursor: pointer;
-            border: none;
+            border: 1px solid;
+            background: transparent;
+            transition: all 0.15s ease;
         }
         .copy-modal-btn-cancel {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #888;
+            border-color: #2a2a2a;
+            color: #555;
         }
+        .copy-modal-btn-cancel:hover { border-color: #444; color: #888; }
         .copy-modal-btn-confirm {
-            background: #1a3a1a;
-            border: 1px solid #4caf50;
+            border-color: #4caf50;
             color: #4caf50;
         }
-        .copy-modal-btn:active {
-            transform: scale(0.98);
-        }
-        .copy-modal-spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid #333;
-            border-top-color: #4caf50;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            vertical-align: middle;
-            margin-right: 8px;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        .copy-modal-btn-confirm:hover { background: rgba(76,175,80,0.05); }
+        .copy-modal-btn:active { transform: scale(0.97); }
         
+        /* Admin Bubble - Minimal */
         .admin-bubble {
             position: fixed;
-            background: #1a3a1a;
-            border: 2px solid #4caf50;
+            background: #111;
+            border: 1px solid #2a2a2a;
             color: #4caf50;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 20px rgba(76,175,80,0.2);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
             z-index: 15000;
             cursor: pointer;
             transition: opacity 0.2s, transform 0.1s;
@@ -314,67 +320,52 @@ STATUS: Ready for integration
             user-select: none;
             -webkit-tap-highlight-color: transparent;
             animation: bubblePop 0.2s ease-out;
-            min-width: 80px;
-            min-height: 80px;
-            width: 80px;
-            height: 80px;
+            min-width: 72px;
+            min-height: 72px;
+            width: 72px;
+            height: 72px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             padding: 12px;
             text-align: center;
-            line-height: 1.2;
-            font-weight: 700;
-            font-size: 0.7rem;
-            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.3;
+            font-weight: 500;
+            font-size: 0.65rem;
+            font-family: -apple-system, 'Helvetica Neue', system-ui, sans-serif;
         }
-        .admin-bubble:active {
-            transform: scale(0.95);
-        }
-        .admin-bubble .bubble-icon {
-            font-size: 1.2rem;
-            margin-bottom: 2px;
-        }
-        .admin-bubble .bubble-line1 {
-            font-size: 0.75rem;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-        }
-        .admin-bubble .bubble-line2 {
-            font-size: 0.6rem;
-            font-weight: 600;
-            opacity: 0.8;
-            letter-spacing: 0.3px;
-        }
+        .admin-bubble:active { transform: scale(0.95); }
+        .admin-bubble .bubble-icon { font-size: 1.2rem; margin-bottom: 2px; }
+        .admin-bubble .bubble-line1 { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.5px; color: #e0e0e0; }
+        .admin-bubble .bubble-line2 { font-size: 0.5rem; font-weight: 400; opacity: 0.6; color: #888; letter-spacing: 0.3px; }
         
         @keyframes bubblePop {
-            0% { transform: scale(0.5); opacity: 0; }
+            0% { transform: scale(0.6); opacity: 0; }
             100% { transform: scale(1); opacity: 1; }
         }
+        
+        .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a1a1a; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
 <div class="container" id="app">
-    <div class="loading">Loading scheduled games...</div>
+    <div class="loading">Loading</div>
 </div>
-<div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.26</div>
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.27</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.26
+// FILE: manage-games.html - VERSION 1.27
 
-// ============================================================
-// Apply user settings IMMEDIATELY before anything else
-// ============================================================
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
 } else {
     console.warn("[MANAGE-GAMES] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.26";
-var CACHE_KEY = "manage_games_version_v126";
+var VERSION = "1.27";
+var CACHE_KEY = "manage_games_version_v127";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -388,7 +379,6 @@ if (storedVersion !== VERSION) {
     window.location.href = newUrl;
 }
 
-// Firebase already initialized in firebase-config.js
 var db = firebase.firestore();
 var firestoreReady = true;
 var deviceSession = null;
@@ -400,24 +390,15 @@ function displayDeviceId() {
     document.getElementById("deviceTag").innerHTML = deviceDisplay;
 }
 
-// ============================================================
-// v1.26: FIXED formatDate - handles undefined/null values
-// ============================================================
 function formatDate(dateString) {
-    if (!dateString) return "Unknown Date";
+    if (!dateString) return "Unknown";
     var parts = dateString.split('-');
     if (parts.length === 3) {
-        var day = parts[2];
-        var month = parts[1];
-        var year = parts[0];
-        return day + '/' + month + '/' + year;
+        return parts[2] + '/' + parts[1] + '/' + parts[0];
     }
     return dateString;
 }
 
-// ============================================================
-// v1.26: FIXED getTodayString - manual date formatting (no timezone issues)
-// ============================================================
 function getTodayString() {
     var today = new Date();
     var year = today.getFullYear();
@@ -426,11 +407,7 @@ function getTodayString() {
     return year + '-' + month + '-' + day;
 }
 
-// ============================================================
-// v1.15: Long-click + Bubble Helper
-// ============================================================
-
-var adminBubbleTimeout = null;
+// Admin Bubble
 var adminBubbleElement = null;
 var isAdminBubbleActive = false;
 
@@ -445,7 +422,7 @@ function showAdminBubble(x, y, icon, line1, line2, onAction) {
         <span class="bubble-line2">${line2}</span>
     `;
     
-    var bubbleSize = 80;
+    var bubbleSize = 72;
     bubble.style.left = Math.max(10, Math.min(window.innerWidth - bubbleSize - 10, x - bubbleSize / 2)) + 'px';
     bubble.style.top = Math.max(10, Math.min(window.innerHeight - bubbleSize - 10, y - bubbleSize / 2)) + 'px';
     
@@ -513,9 +490,6 @@ function setupLongClick(element, icon, line1, line2, onAction) {
     });
 }
 
-// ============================================================
-// v1.12: Generate short game ID (GM_YYMMDD_HHMM_XX)
-// ============================================================
 function generateGameId() {
     var now = new Date();
     var yy = String(now.getFullYear()).slice(-2);
@@ -529,9 +503,6 @@ function generateGameId() {
     return 'GM_' + yymmdd + '_' + hhmm + '_' + random;
 }
 
-// ============================================================
-// v1.22: Copy Game with new date - PRESERVES ALL source data
-// ============================================================
 function copyGameWithNewDate(sourceGameId, newDate) {
     var sourceRef = db.collection("scheduledGames").doc(sourceGameId);
     var newGameId = generateGameId();
@@ -554,17 +525,14 @@ function copyGameWithNewDate(sourceGameId, newDate) {
         
         return db.collection("scheduledGames").doc(newGameId).set(newData);
     }).then(function() {
-        Modal.alert("✅ Game copied successfully!\n\nNew Game ID: " + newGameId + "\nDate: " + newDate);
+        Modal.alert("Game copied successfully!\n\nNew Game ID: " + newGameId + "\nDate: " + newDate);
         loadAndRender();
     }).catch(function(err) {
-        Modal.alert("❌ Error copying game: " + err.message);
+        Modal.alert("Error copying game: " + err.message);
         console.error(err);
     });
 }
 
-// ============================================================
-// v1.12: Show Copy Modal with date picker
-// ============================================================
 function showCopyModal(gameId, currentDate) {
     var existing = document.querySelector('.copy-modal-overlay');
     if (existing) existing.remove();
@@ -578,13 +546,13 @@ function showCopyModal(gameId, currentDate) {
     var modalHtml = `
         <div class="copy-modal-overlay" id="copyModal">
             <div class="copy-modal">
-                <div class="copy-modal-title">📋 COPY GAME</div>
+                <div class="copy-modal-title">Copy Game</div>
                 <div class="copy-modal-subtitle">Create an exact copy with a new date</div>
                 <label class="copy-modal-label">New Game Date</label>
                 <input type="date" class="copy-modal-input" id="copyDateInput" value="${defaultDate}">
                 <div class="copy-modal-buttons">
                     <button class="copy-modal-btn copy-modal-btn-cancel" id="copyCancelBtn">Cancel</button>
-                    <button class="copy-modal-btn copy-modal-btn-confirm" id="copyConfirmBtn">📝 Copy Game</button>
+                    <button class="copy-modal-btn copy-modal-btn-confirm" id="copyConfirmBtn">Copy</button>
                 </div>
             </div>
         </div>
@@ -599,15 +567,8 @@ function showCopyModal(gameId, currentDate) {
     
     setTimeout(function() { dateInput.focus(); }, 100);
     
-    cancelBtn.onclick = function() {
-        modal.remove();
-    };
-    
-    modal.onclick = function(e) {
-        if (e.target === modal) {
-            modal.remove();
-        }
-    };
+    cancelBtn.onclick = function() { modal.remove(); };
+    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
     
     confirmBtn.onclick = function() {
         var newDate = dateInput.value;
@@ -617,7 +578,7 @@ function showCopyModal(gameId, currentDate) {
         }
         var today = new Date().toISOString().split('T')[0];
         if (newDate < today) {
-            if (!confirm("⚠️ This date is in the past. Continue anyway?")) {
+            if (!confirm("This date is in the past. Continue anyway?")) {
                 return;
             }
         }
@@ -632,9 +593,6 @@ function showCopyModal(gameId, currentDate) {
     };
 }
 
-// ============================================================
-// v1.17: EDIT - NO PIN REQUIRED - navigate directly
-// ============================================================
 function editGameDirect(gameId) {
     editGameConfirmed(gameId);
 }
@@ -654,10 +612,6 @@ function editGameConfirmed(gameId) {
         Modal.alert("Error loading game: " + e.message);
     });
 }
-
-// ============================================================
-// v1.21: DELETE - PIN REQUIRED
-// ============================================================
 
 function performFirestoreDelete(collectionName, docId, redirectUrl) {
     WaitingScreen.show("Deleting game...");
@@ -706,77 +660,64 @@ function goBackToSettings() {
     window.location.href = returnDest;
 }
 
-// ============================================================
-// v1.13: Toggle view between upcoming and all games
-// ============================================================
 function toggleView() {
     showAllGames = !showAllGames;
     loadAndRender();
 }
 
-// ============================================================
-// v1.26: loadAndRender - FIXED date handling and filtering
-// ============================================================
 function loadAndRender() {
     if (!firestoreReady) {
-        document.getElementById("app").innerHTML = '<div class="loading">Connecting to server...</div>';
+        document.getElementById("app").innerHTML = '<div class="loading">Connecting</div>';
         return;
     }
     
     var todayStr = getTodayString();
-    console.log("[MANAGE-GAMES] todayStr:", todayStr);
-    console.log("[MANAGE-GAMES] showAllGames:", showAllGames);
     
     db.collection("scheduledGames").get().then(function(snapshot) {
         var games = [];
         snapshot.forEach(function(doc) {
             var data = doc.data();
-            
-            // v1.26: Read date from data.date or data.gameInfo.date
-            var gameDate = data.date || data.gameInfo?.date || "Unknown Date";
+            var gameDate = data.date || data.gameInfo?.date || "Unknown";
             
             if (showAllGames) {
-                // Show ALL games
                 games.push({ id: doc.id, date: gameDate, course: data.course, players: data.players });
             } else {
-                // Only show games with valid dates that are today or future
-                if (gameDate !== "Unknown Date" && gameDate >= todayStr) {
+                if (gameDate !== "Unknown" && gameDate >= todayStr) {
                     games.push({ id: doc.id, date: gameDate, course: data.course, players: data.players });
                 }
             }
         });
         
-        // Sort games by date
         games.sort(function(a, b) {
-            if (a.date === "Unknown Date") return 1;
-            if (b.date === "Unknown Date") return -1;
+            if (a.date === "Unknown") return 1;
+            if (b.date === "Unknown") return -1;
             if (a.date < b.date) return -1;
             if (a.date > b.date) return 1;
             return 0;
         });
         
-        var titleText = showAllGames ? '📋 ALL SCHEDULED GAMES' : '📋 UPCOMING GAMES';
-        var badgeText = showAllGames ? 'ALL' : 'UPCOMING';
-        var badgeClass = showAllGames ? 'view-badge view-badge-all' : 'view-badge';
-        var viewHint = showAllGames ? '⌘+click or long press to show upcoming' : '⌘+click or long press to show all (including past)';
+        var titleText = showAllGames ? 'All Scheduled Games' : 'Upcoming Games';
+        var badgeText = showAllGames ? 'All' : 'Upcoming';
+        var badgeClass = showAllGames ? 'badge-all' : '';
+        var viewHint = showAllGames ? 'cmd+click to show upcoming' : 'cmd+click to show all';
         
         if (games.length === 0) {
-            var emptyMsg = showAllGames ? 'No scheduled games found in Firestore.' : 'No upcoming games found.';
+            var emptyMsg = showAllGames ? 'No scheduled games found.' : 'No upcoming games found.';
             document.getElementById("app").innerHTML = `
                 <div class="header">
-                    <div class="title">📋 MANAGE SCHEDULED GAMES</div>
-                    <div class="version">Version ${VERSION}</div>
+                    <div class="title">Scheduled Games</div>
+                    <div class="subtitle">Manage</div>
                 </div>
                 <div class="card">
-                    <div class="card-title" id="cardTitle">
+                    <div class="card-title">
                         ${titleText}
-                        <span class="${badgeClass}">${badgeText}</span>
-                        <span class="view-hint">${viewHint}</span>
+                        <span class="badge ${badgeClass}">${badgeText}</span>
+                        <span class="hint">${viewHint}</span>
                     </div>
                     <div class="empty-msg">${emptyMsg}</div>
                 </div>
                 <div class="back-btn" onclick="goBackToSettings()">
-                    <div class="label">← Back to Game Settings</div>
+                    <span class="label">Back to Settings</span>
                 </div>
             `;
             attachTitleClickHandler();
@@ -790,21 +731,21 @@ function loadAndRender() {
             var courseName = game.course ? game.course.name : 'Unknown Course';
             var playerCount = game.players ? game.players.length : 0;
             
-            var isPastGame = (game.date !== "Unknown Date" && game.date < todayStr);
+            var isPastGame = (game.date !== "Unknown" && game.date < todayStr);
             var pastClass = isPastGame ? 'game-item-past' : '';
             
-            var docIdHtml = '<div class="doc-id-display doc-copy-target" data-gameid="' + escapeHtml(game.id) + '" data-gamedate="' + escapeHtml(game.date) + '">📄 ' + escapeHtml(game.id) + '<span class="copy-hint"> ⌘+click or long press to copy</span></div>';
+            var docIdHtml = '<div class="doc-id-display doc-copy-target" data-gameid="' + escapeHtml(game.id) + '" data-gamedate="' + escapeHtml(game.date) + '">' + escapeHtml(game.id) + '<span class="copy-hint">cmd+click to copy</span></div>';
             
             gamesHtml += `
                 <div class="game-item ${pastClass}">
                     <div class="game-info">
-                        <div class="game-date">📅 ${formattedDate}${isPastGame ? ' (past)' : ''}</div>
-                        <div class="game-course">⛳ ${escapeHtml(courseName)}</div>
-                        <div class="game-players">👥 ${playerCount} players</div>
+                        <div class="game-date">${formattedDate}${isPastGame ? ' (past)' : ''}</div>
+                        <div class="game-course">${escapeHtml(courseName)}</div>
+                        <div class="game-players">${playerCount} players</div>
                     </div>
                     <div class="game-actions">
-                        <button class="btn-edit" onclick="editGameDirect('${game.id}')">✏️ EDIT</button>
-                        <button class="btn-delete" onclick="deleteGameProtected('${game.id}', '${formattedDate}')">🗑️ DELETE</button>
+                        <button class="btn-edit" onclick="editGameDirect('${game.id}')">Edit</button>
+                        <button class="btn-delete" onclick="deleteGameProtected('${game.id}', '${formattedDate}')">Delete</button>
                     </div>
                     ${docIdHtml}
                 </div>
@@ -813,21 +754,21 @@ function loadAndRender() {
         
         var html = `
             <div class="header">
-                <div class="title">📋 MANAGE SCHEDULED GAMES</div>
-                <div class="version">Version ${VERSION}</div>
+                <div class="title">Scheduled Games</div>
+                <div class="subtitle">Manage</div>
             </div>
             <div class="card">
-                <div class="card-title" id="cardTitle">
+                <div class="card-title">
                     ${titleText}
-                    <span class="${badgeClass}">${badgeText}</span>
-                    <span class="view-hint">${viewHint}</span>
+                    <span class="badge ${badgeClass}">${badgeText}</span>
+                    <span class="hint">${viewHint}</span>
                 </div>
                 <div class="game-list">
                     ${gamesHtml}
                 </div>
             </div>
             <div class="back-btn" onclick="goBackToSettings()">
-                <div class="label">← Back to Game Settings</div>
+                <span class="label">Back to Settings</span>
             </div>
         `;
         
@@ -842,8 +783,8 @@ function loadAndRender() {
                 setupLongClick(
                     el,
                     '📋',
-                    'COPY',
-                    'GAME',
+                    'Copy',
+                    'Game',
                     function() {
                         showCopyModal(gameId, gameDate);
                     }
@@ -857,9 +798,6 @@ function loadAndRender() {
     });
 }
 
-// ============================================================
-// v1.26: Attach Cmd+Click handler to card title
-// ============================================================
 function attachTitleClickHandler() {
     var titleEl = document.getElementById('cardTitle');
     if (titleEl) {
@@ -872,12 +810,22 @@ function attachTitleClickHandler() {
         
         setupLongClick(
             newTitle,
-            showAllGames ? '📋' : '📋',
-            showAllGames ? 'UPCOMING' : 'ALL',
-            'GAMES',
+            '📋',
+            showAllGames ? 'Upcoming' : 'All',
+            'Games',
             titleAction
         );
     }
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
 }
 
 window.deleteGame = deleteGameProtected;
@@ -887,16 +835,6 @@ window.showCopyModal = showCopyModal;
 window.copyGameWithNewDate = copyGameWithNewDate;
 window.generateGameId = generateGameId;
 window.toggleView = toggleView;
-
-function escapeHtml(str) {
-    if (!str) return "";
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === "&") return "&amp;";
-        if (m === "<") return "&lt;";
-        if (m === ">") return "&gt;";
-        return m;
-    });
-}
 
 SessionManager.initSession("manage-games.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
@@ -910,16 +848,15 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - FIXED: getTodayString() now uses manual date formatting (no timezone issues)
-   - FIXED: formatDate() now handles undefined date strings
-   - FIXED: Date reading now falls back to data.gameInfo.date if data.date is missing
-   - FIXED: Filter logic correctly excludes past games in "UPCOMING" mode
-   - FIXED: Past game detection uses the correct date field
-   - FIXED: Sorting handles "Unknown Date" values
-   - FIXED: Cmd+Click title toggle works correctly
-   - All existing functionality preserved from v1.24
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - REDESIGNED: Ultra-minimalist, professional look
+   - REMOVED: All icons (emoji) from buttons and headers
+   - CHANGED: Clean typography, subtle borders, refined spacing
+   - CHANGED: Buttons now use text-only labels (Edit / Delete)
+   - CHANGED: Game items use cleaner layout with subtle dividers
+   - CHANGED: View toggle uses clean pill-style indicator
+   - PRESERVED: All functionality from v1.26
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
