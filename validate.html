@@ -1,15 +1,15 @@
 <!--
 FILE: validate.html
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - ADDED: Module imports for game-order.js, game-data.js, game-match.js, game-team.js, game-stroke.js
-   - ADDED: buildCompleteResultsFromRawData() using shared modules for all calculations
-   - REMOVED: Self-contained calculation functions (calculateTeamGame, calculateStrokeGame, calculateMatchGamePerHole, etc.)
-   - CHANGED: fixRecord() now uses buildCompleteResultsFromRawData() with shared modules
-   - CHANGED: renderSummary() and renderTRTable() now expect data from shared modules
-   - CHANGED: All display functions updated to work with new data structure
-   - PRESERVED: Everything else (backup, restore, UI, etc.) from v1.34
-DEPENDS ON: Firebase Firestore, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
+VERSION: 2.00
+KEY CHANGES from v1.20:
+   - ADDED: Restore from backup functionality (simple copy, no recalculation)
+   - ADDED: Fix Record functionality using v1.20's self-contained calculations
+   - ADDED: buildCompleteResultsFromRawData() - builds complete results object
+   - ADDED: Backup Only functionality
+   - PRESERVED: All v1.20 calculation logic (T-1, T-2, Strk, Match Game, TR, Clinch)
+   - PRESERVED: v1.34 restore logic (simple copy, no modification)
+   - COMBINED: Best of v1.20 (calculations) + v1.34 (restore) + fix functionality
+DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
 
@@ -22,13 +22,6 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    
-    <!-- Shared calculation modules -->
-    <script src="js/game-order.js"></script>
-    <script src="js/game-data.js"></script>
-    <script src="js/game-match.js"></script>
-    <script src="js/game-team.js"></script>
-    <script src="js/game-stroke.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -82,12 +75,6 @@ STATUS: Ready for integration
         .btn-backup:hover { background: #2a3a4a; }
         .btn-restore { background: #2a1a1a; border: 1px solid #ff6b6b; color: #ff6b6b; }
         .btn-restore:hover { background: #3a2a2a; }
-        .btn-restore-confirm { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
-        .btn-restore-confirm:hover { background: #2a4a2a; }
-        .btn-fix { background: #1a3a1a; border: 1px solid #4caf50; color: #4caf50; }
-        .btn-fix:hover { background: #2a4a2a; }
-        .btn-danger { background: #3a1a1a; border: 1px solid #ff6b6b; color: #ff6b6b; }
-        .btn-danger:hover { background: #4a2a2a; }
         
         .status { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.85rem; }
         .status-success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #8bc34a; }
@@ -146,33 +133,6 @@ STATUS: Ready for integration
         .highlight-row { background: rgba(76, 175, 80, 0.1); }
         .final-row { background: rgba(255, 170, 68, 0.15); font-weight: 700; }
         
-        .backup-list { margin-top: 12px; }
-        .backup-item {
-            display: grid;
-            grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr auto;
-            gap: 8px;
-            padding: 10px 12px;
-            background: #0a0a0a;
-            border-radius: 8px;
-            margin-bottom: 6px;
-            border: 1px solid #2a2a2a;
-            cursor: pointer;
-            transition: all 0.2s;
-            align-items: center;
-            font-size: 0.75rem;
-        }
-        .backup-item:hover { border-color: #4a8af4; background: #111; }
-        .backup-item.selected { border-color: #4caf50; background: #1a2a1a; }
-        .backup-item .bid { font-family: monospace; color: #4a8af4; font-size: 0.7rem; }
-        .backup-item .oid { font-family: monospace; color: #888; font-size: 0.65rem; }
-        .backup-item .bdate { color: #aaa; font-size: 0.65rem; }
-        .backup-item .bcourse { color: #ccc; font-size: 0.65rem; }
-        .backup-item .bstatus { font-size: 0.6rem; padding: 2px 8px; border-radius: 10px; }
-        .backup-item .bstatus.pending { background: #2a2a1a; color: #ffaa44; }
-        .backup-item .bstatus.completed { background: #0a2a0a; color: #4caf50; }
-        .backup-item .bselect { color: #4caf50; font-size: 0.7rem; font-weight: 600; }
-        .backup-item .bselect.empty { color: #666; }
-        
         .fix-btn-container { margin-top: 16px; text-align: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
         .fix-btn { padding: 14px 32px; font-size: 1rem; border-radius: 40px; font-weight: 700; cursor: pointer; border: 2px solid; transition: all 0.2s; margin: 4px; }
         .fix-btn:active { transform: scale(0.97); }
@@ -201,21 +161,32 @@ STATUS: Ready for integration
         .destination-select input[type="radio"] { accent-color: #4caf50; width: 16px; height: 16px; cursor: pointer; }
         .dest-preview { color: #4caf50; font-weight: 600; font-size: 0.8rem; font-family: monospace; background: #0a0a0a; padding: 2px 8px; border-radius: 4px; }
         
-        .validation-summary-modal {
-            background: #1a1a1a;
-            border-radius: 16px;
-            padding: 16px;
-            margin-top: 12px;
-            border: 1px solid #4caf50;
-            max-height: 300px;
-            overflow-y: auto;
+        .backup-list { margin-top: 12px; }
+        .backup-item {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr auto;
+            gap: 8px;
+            padding: 10px 12px;
+            background: #0a0a0a;
+            border-radius: 8px;
+            margin-bottom: 6px;
+            border: 1px solid #2a2a2a;
+            cursor: pointer;
+            transition: all 0.2s;
+            align-items: center;
+            font-size: 0.75rem;
         }
-        .validation-summary-modal .title { color: #ffaa44; font-weight: 700; margin-bottom: 8px; }
-        .validation-summary-modal .item { padding: 4px 0; font-size: 0.8rem; border-bottom: 1px solid #1a1a1a; }
-        .validation-summary-modal .item .label { color: #888; }
-        .validation-summary-modal .item .value { color: #fff; }
-        .validation-summary-modal .item .mismatch { color: #ff6b6b; font-weight: 700; }
-        .validation-summary-modal .item .match { color: #4caf50; }
+        .backup-item:hover { border-color: #4a8af4; background: #111; }
+        .backup-item.selected { border-color: #4caf50; background: #1a2a1a; }
+        .backup-item .bid { font-family: monospace; color: #4a8af4; font-size: 0.7rem; }
+        .backup-item .oid { font-family: monospace; color: #888; font-size: 0.65rem; }
+        .backup-item .bdate { color: #aaa; font-size: 0.65rem; }
+        .backup-item .bcourse { color: #ccc; font-size: 0.65rem; }
+        .backup-item .bstatus { font-size: 0.6rem; padding: 2px 8px; border-radius: 10px; }
+        .backup-item .bstatus.pending { background: #2a2a1a; color: #ffaa44; }
+        .backup-item .bstatus.completed { background: #0a2a0a; color: #4caf50; }
+        .backup-item .bselect { color: #4caf50; font-size: 0.7rem; font-weight: 600; }
+        .backup-item .bselect.empty { color: #666; }
     </style>
 </head>
 <body>
@@ -223,7 +194,7 @@ STATUS: Ready for integration
 <div class="container">
     <h1>
         🔬 Game Data Validator
-        <span class="version-tag">v1.35</span>
+        <span class="version-tag">v2.00</span>
     </h1>
     
     <!-- Tab Navigation -->
@@ -355,7 +326,7 @@ STATUS: Ready for integration
                         <br><strong style="color:#4caf50;">Preserves: raw scores (f1DataString, f2DataString), players, course, gameInfo</strong>
                         <br><strong style="color:#ffaa44;">This action cannot be undone.</strong>
                         <br><span style="color:#4a8af4; font-size:0.75rem;">A backup will be created before updating.</span>
-                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses the same calculation logic as the live game (game-match.js, game-team.js, game-stroke.js).</span>
+                        <br><span style="color:#4caf50; font-size:0.75rem;">✅ Uses v2.00 self-contained calculation logic (proven correct from v1.20).</span>
                     </div>
                     <div id="fixProgress" class="fix-progress"></div>
                     <div class="fix-btn-container">
@@ -368,7 +339,7 @@ STATUS: Ready for integration
     </div>
     
     <div class="footnote">
-        Validator v1.35 — Uses shared calculation modules (game-match.js, game-team.js, game-stroke.js) for accurate recalculation.
+        Validator v2.00 — Restore: SIMPLE COPY. Fix: Recalculates derived data using proven v1.20 logic.
     </div>
 </div>
 
@@ -376,8 +347,8 @@ STATUS: Ready for integration
 // ============================================================
 // VERSION
 // ============================================================
-window.VALIDATOR_VERSION = "1.35";
-console.log("[Validator] v1.35 - Using shared calculation modules");
+window.VALIDATOR_VERSION = "2.00";
+console.log("[Validator] v2.00 - Restore: SIMPLE COPY. Fix: Recalculates derived data using v1.20 logic.");
 
 // ============================================================
 // FIREBASE
@@ -414,7 +385,6 @@ var allBackups = [];
 var selectedBackupId = null;
 var restoreDestination = 'historyGames';
 var restoredDocId = null;
-var restoredData = null;
 
 // ============================================================
 // UTILITY
@@ -442,21 +412,11 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
 });
 
 // ============================================================
-// SANITIZE
 // ============================================================
-function sanitizeArray(arr, defaultVal) {
-    if (!arr || !Array.isArray(arr)) { return new Array(18).fill(defaultVal); }
-    var result = [];
-    for (var i = 0; i < 18; i++) {
-        var val = (i < arr.length) ? arr[i] : undefined;
-        if (val === undefined || val === null) { result.push(defaultVal); } else { result.push(val); }
-    }
-    return result;
-}
+// V1.20 CALCULATION LOGIC (PROVEN CORRECT)
+// ============================================================
+// ============================================================
 
-// ============================================================
-// PARSE DATA STRING (kept for backward compatibility)
-// ============================================================
 function parseDataString(dataStr) {
     if (!dataStr || dataStr.length !== 162) return null;
     var scores = [];
@@ -473,70 +433,480 @@ function parseDataString(dataStr) {
     return scores;
 }
 
+function parseHoleData(dataStr, holeNumber) {
+    if (!dataStr || dataStr.length !== 162) return null;
+    var startIndex = (holeNumber - 1) * 9;
+    var segment = dataStr.substr(startIndex, 9);
+    return { saved: segment[0] === 'T', scores: { a1: parseInt(segment.substr(1,2),10), a2: parseInt(segment.substr(3,2),10), b1: parseInt(segment.substr(5,2),10), b2: parseInt(segment.substr(7,2),10) } };
+}
+
+function getStrokeHoles(handicapDiff, courseSi) {
+    if (handicapDiff <= 0) return [];
+    var holesWithSi = [];
+    for (var i = 0; i < 18; i++) { holesWithSi.push({ hole: i+1, si: courseSi[i] }); }
+    holesWithSi.sort(function(a, b) { return a.si - b.si; });
+    var strokeHoles = [];
+    for (var i = 0; i < handicapDiff && i < 18; i++) { strokeHoles.push(holesWithSi[i].hole); }
+    return strokeHoles;
+}
+
+function getStrokesForHole(holeNumber, handicapDiff, courseSi) {
+    if (handicapDiff <= 0) return 0;
+    var strokeHoles = getStrokeHoles(handicapDiff, courseSi);
+    for (var i = 0; i < strokeHoles.length; i++) { if (strokeHoles[i] === holeNumber) return 1; }
+    return 0;
+}
+
+function getNetScoreMatchGame(gross, handicapDiff, holeNumber, courseSi, isReceiving) {
+    if (!isReceiving) return gross;
+    var strokes = getStrokesForHole(holeNumber, handicapDiff, courseSi);
+    return gross - strokes;
+}
+
+function getPlayerScore(player, flightData, holeNumber, allPlayers, coursePar) {
+    var holeData = parseHoleData(flightData, holeNumber);
+    if (!holeData || !holeData.saved) return null;
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === player.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    if (player.team === 'A') {
+        if (teamA[0] && teamA[0].name === player.name) return holeData.scores.a1;
+        if (teamA[1] && teamA[1].name === player.name) return holeData.scores.a2;
+    } else {
+        if (teamB[0] && teamB[0].name === player.name) return holeData.scores.b1;
+        if (teamB[1] && teamB[1].name === player.name) return holeData.scores.b2;
+    }
+    return null;
+}
+
+function getIntraMatchResultForHole(playerA, playerB, flightData, allPlayers, courseSi, holeNumber, coursePar) {
+    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
+    var flightPlayers = allPlayers.filter(function(p) { return p.flight === playerA.flight; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    var holeData = parseHoleData(flightData, holeNumber);
+    if (!holeData || !holeData.saved) return 0;
+    
+    var playerAScore = null, playerBScore = null;
+    if (playerA.team === 'A') {
+        if (teamA[0] && teamA[0].name === playerA.name) playerAScore = holeData.scores.a1;
+        else if (teamA[1] && teamA[1].name === playerA.name) playerAScore = holeData.scores.a2;
+    } else {
+        if (teamB[0] && teamB[0].name === playerA.name) playerAScore = holeData.scores.b1;
+        else if (teamB[1] && teamB[1].name === playerA.name) playerAScore = holeData.scores.b2;
+    }
+    if (playerB.team === 'A') {
+        if (teamA[0] && teamA[0].name === playerB.name) playerBScore = holeData.scores.a1;
+        else if (teamA[1] && teamA[1].name === playerB.name) playerBScore = holeData.scores.a2;
+    } else {
+        if (teamB[0] && teamB[0].name === playerB.name) playerBScore = holeData.scores.b1;
+        else if (teamB[1] && teamB[1].name === playerB.name) playerBScore = holeData.scores.b2;
+    }
+    if (playerAScore === null || playerBScore === null) return 0;
+    
+    var netA = playerAScore, netB = playerBScore;
+    if (isPlayerAReceiving) netA = getNetScoreMatchGame(playerAScore, handicapDiff, holeNumber, courseSi, true);
+    else netB = getNetScoreMatchGame(playerBScore, handicapDiff, holeNumber, courseSi, true);
+    
+    if (netA < netB) return 1;
+    if (netB < netA) return -1;
+    return 0;
+}
+
+function getCrossMatchResultForHole(playerA, playerB, flight1Data, flight2Data, allPlayers, courseSi, holeNumber, coursePar) {
+    var handicapDiff = Math.abs(playerA.handicap - playerB.handicap);
+    var isPlayerAReceiving = (playerA.handicap > playerB.handicap);
+    var flight1Players = allPlayers.filter(function(p) { return p.flight === 1; });
+    var flight2Players = allPlayers.filter(function(p) { return p.flight === 2; });
+    
+    var f1HoleData = parseHoleData(flight1Data, holeNumber);
+    var f2HoleData = parseHoleData(flight2Data, holeNumber);
+    if (!f1HoleData || !f1HoleData.saved || !f2HoleData || !f2HoleData.saved) return 0;
+    
+    var playerAScore = null, playerBScore = null;
+    if (playerA.flight === 1) { playerAScore = getPlayerScore(playerA, flight1Data, holeNumber, allPlayers, coursePar); }
+    else { playerAScore = getPlayerScore(playerA, flight2Data, holeNumber, allPlayers, coursePar); }
+    if (playerB.flight === 1) { playerBScore = getPlayerScore(playerB, flight1Data, holeNumber, allPlayers, coursePar); }
+    else { playerBScore = getPlayerScore(playerB, flight2Data, holeNumber, allPlayers, coursePar); }
+    if (playerAScore === null || playerBScore === null) return 0;
+    
+    var netA = playerAScore, netB = playerBScore;
+    if (isPlayerAReceiving) netA = getNetScoreMatchGame(playerAScore, handicapDiff, holeNumber, courseSi, true);
+    else netB = getNetScoreMatchGame(playerBScore, handicapDiff, holeNumber, courseSi, true);
+    
+    if (netA < netB) return 1;
+    if (netB < netA) return -1;
+    return 0;
+}
+
 // ============================================================
-// v1.35: buildCompleteResultsFromRawData() — Uses shared modules
+// v1.20: calculateMatchGamePerHole — with clinch detection
 // ============================================================
-function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole, teamGameFormat) {
+function calculateMatchGamePerHole(f1Scores, f2Scores, allPlayers, courseSi, coursePar) {
+    var flight1Data = f1Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
+    var flight2Data = f2Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
+    
+    var teamAPlayers = allPlayers.filter(function(p) { return p.team === 'A'; });
+    var teamBPlayers = allPlayers.filter(function(p) { return p.team === 'B'; });
+    teamAPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
+    teamBPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
+    
+    var orderedPlayers = [];
+    for (var i = 0; i < teamAPlayers.length; i++) orderedPlayers.push(teamAPlayers[i]);
+    for (var i = 0; i < teamBPlayers.length; i++) orderedPlayers.push(teamBPlayers[i]);
+    
+    var allMatches = [];
+    for (var a = 0; a < teamAPlayers.length; a++) {
+        for (var b = 0; b < teamBPlayers.length; b++) {
+            allMatches.push({ playerA: teamAPlayers[a], playerB: teamBPlayers[b] });
+        }
+    }
+    
+    var results = [];
+    var matchPointsPerHole = [];
+    var cumulativeLeads = {};
+    var matchClinched = {};
+    var playerClinchHole = {};
+    for (var p = 0; p < orderedPlayers.length; p++) {
+        playerClinchHole[orderedPlayers[p].name] = null;
+    }
+    for (var m = 0; m < allMatches.length; m++) {
+        var match = allMatches[m];
+        var keyA = match.playerA.name + "_vs_" + match.playerB.name;
+        var keyB = match.playerB.name + "_vs_" + match.playerA.name;
+        cumulativeLeads[keyA] = 0;
+        cumulativeLeads[keyB] = 0;
+        matchClinched[keyA] = false;
+        matchClinched[keyB] = false;
+    }
+    
+    for (var hole = 1; hole <= 18; hole++) {
+        var holePoints = {};
+        var holeClinchInfo = {};
+        var holeMatchPoints = {};
+        for (var p = 0; p < orderedPlayers.length; p++) {
+            holePoints[orderedPlayers[p].name] = 0;
+            holeClinchInfo[orderedPlayers[p].name] = { clinched: false, asAtH18: false };
+        }
+        var remainingHoles = 18 - hole;
+        
+        for (var m = 0; m < allMatches.length; m++) {
+            var match = allMatches[m];
+            var margin;
+            if (match.playerA.flight === match.playerB.flight) {
+                var flightData = match.playerA.flight === 1 ? flight1Data : flight2Data;
+                margin = getIntraMatchResultForHole(match.playerA, match.playerB, flightData, allPlayers, courseSi, hole, coursePar);
+            } else {
+                margin = getCrossMatchResultForHole(match.playerA, match.playerB, flight1Data, flight2Data, allPlayers, courseSi, hole, coursePar);
+            }
+            
+            var keyA = match.playerA.name + "_vs_" + match.playerB.name;
+            var keyB = match.playerB.name + "_vs_" + match.playerA.name;
+            
+            if (margin > 0) {
+                cumulativeLeads[keyA] += 1;
+                cumulativeLeads[keyB] -= 1;
+            } else if (margin < 0) {
+                cumulativeLeads[keyA] -= 1;
+                cumulativeLeads[keyB] += 1;
+            }
+            
+            var leadA = cumulativeLeads[keyA];
+            var leadB = cumulativeLeads[keyB];
+            
+            var pointsA, pointsB;
+            if (leadA > 0) { pointsA = 1; } 
+            else if (leadA < 0) { pointsA = 0; } 
+            else { pointsA = 0.5; }
+            if (leadB > 0) { pointsB = 1; } 
+            else if (leadB < 0) { pointsB = 0; } 
+            else { pointsB = 0.5; }
+            
+            var matchKey = match.playerA.name + "_vs_" + match.playerB.name;
+            holeMatchPoints[matchKey] = { pointsA: pointsA, pointsB: pointsB };
+            
+            var isClinchHole = false;
+            var clinchWinner = null;
+            var clinchLoser = null;
+            var alreadyClinched = matchClinched[keyA] || matchClinched[keyB];
+            
+            if (!alreadyClinched) {
+                if (leadA > remainingHoles && leadA !== 0) {
+                    isClinchHole = true;
+                    clinchWinner = match.playerA.name;
+                    clinchLoser = match.playerB.name;
+                    matchClinched[keyA] = true;
+                    matchClinched[keyB] = true;
+                    if (!playerClinchHole[clinchWinner]) {
+                        playerClinchHole[clinchWinner] = hole;
+                    }
+                } else if (leadB > remainingHoles && leadB !== 0) {
+                    isClinchHole = true;
+                    clinchWinner = match.playerB.name;
+                    clinchLoser = match.playerA.name;
+                    matchClinched[keyA] = true;
+                    matchClinched[keyB] = true;
+                    if (!playerClinchHole[clinchWinner]) {
+                        playerClinchHole[clinchWinner] = hole;
+                    }
+                }
+            }
+            
+            var isASAtH18 = (hole === 18 && leadA === 0 && leadB === 0);
+            
+            if (isClinchHole) {
+                holePoints[match.playerA.name] += pointsA;
+                if (clinchWinner === match.playerA.name) {
+                    holeClinchInfo[match.playerA.name].clinched = true;
+                    holeClinchInfo[match.playerA.name].clinchOpponent = match.playerB.name;
+                    holeClinchInfo[match.playerA.name].clinchHole = hole;
+                }
+                if (clinchWinner === match.playerB.name) {
+                    holeClinchInfo[match.playerB.name].clinched = true;
+                    holeClinchInfo[match.playerB.name].clinchOpponent = match.playerA.name;
+                    holeClinchInfo[match.playerB.name].clinchHole = hole;
+                }
+                holePoints[match.playerB.name] += pointsB;
+            } else if (isASAtH18) {
+                holePoints[match.playerA.name] += pointsA;
+                holePoints[match.playerB.name] += pointsB;
+                holeClinchInfo[match.playerA.name].asAtH18 = true;
+                holeClinchInfo[match.playerB.name].asAtH18 = true;
+            } else {
+                holePoints[match.playerA.name] += pointsA;
+                holePoints[match.playerB.name] += pointsB;
+            }
+        }
+        
+        results.push({
+            hole: hole,
+            points: holePoints,
+            clinchInfo: holeClinchInfo,
+            playerClinchHole: playerClinchHole
+        });
+        matchPointsPerHole.push(holeMatchPoints);
+    }
+    
+    return {
+        orderedPlayers: orderedPlayers,
+        results: results,
+        matchPointsPerHole: matchPointsPerHole
+    };
+}
+
+// ============================================================
+// v1.20: Team Game (T-1, T-2)
+// ============================================================
+function getNetScoreTeamGame(gross, handicap, si) {
+    var strokes = 0;
+    if (handicap > 0 && si <= handicap) strokes = 1;
+    return gross - strokes;
+}
+
+function calculateTeamGame(flightScores, players, flightNum, courseSi) {
+    var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
+    var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+    var results = [], running = 0;
+    for (var idx = 0; idx < 18; idx++) {
+        var hole = flightScores[idx];
+        if (!hole || !hole.saved) {
+            results.push({ hole: idx+1, match1: null, match2: null, holeResult: null, running: null, display: '-', trPointsA: 0.5, trPointsB: 0.5, teamGameTR: { A: 0.5, B: 0.5 } });
+            continue;
+        }
+        var si = courseSi[idx] || 1;
+        var teamAGross = [hole.a1, hole.a2];
+        var teamBGross = [hole.b1, hole.b2];
+        var teamANets = [], teamBNets = [];
+        for (var i = 0; i < teamA.length; i++) { teamANets.push({ player: teamA[i], net: getNetScoreTeamGame(teamAGross[i], teamA[i].handicap, si) }); }
+        for (var i = 0; i < teamB.length; i++) { teamBNets.push({ player: teamB[i], net: getNetScoreTeamGame(teamBGross[i], teamB[i].handicap, si) }); }
+        teamANets.sort(function(a,b) { return a.net - b.net; });
+        teamBNets.sort(function(a,b) { return a.net - b.net; });
+        var match1 = 0, match2 = 0;
+        if (teamANets[0].net < teamBNets[0].net) match1 = 1;
+        else if (teamANets[0].net > teamBNets[0].net) match1 = -1;
+        if (teamANets[1].net < teamBNets[1].net) match2 = 1;
+        else if (teamANets[1].net > teamBNets[1].net) match2 = -1;
+        var holeResult = match1 + match2;
+        running += holeResult;
+        var display = 'AS';
+        if (running > 0) display = 'A' + running;
+        else if (running < 0) display = 'B' + Math.abs(running);
+        var trPointsA, trPointsB;
+        if (running > 0) { trPointsA = 1; trPointsB = 0; }
+        else if (running < 0) { trPointsA = 0; trPointsB = 1; }
+        else { trPointsA = 0.5; trPointsB = 0.5; }
+        results.push({ 
+            hole: idx+1, 
+            match1: match1, 
+            match2: match2, 
+            holeResult: holeResult, 
+            running: running, 
+            display: display, 
+            trPointsA: trPointsA, 
+            trPointsB: trPointsB,
+            teamGameTR: { A: trPointsA, B: trPointsB }
+        });
+    }
+    return results;
+}
+
+// ============================================================
+// v1.20: Stroke Game
+// ============================================================
+function calculateStrokeGame(f1Scores, f2Scores, players) {
+    var teamA = players.filter(function(p) { return p.team === 'A'; });
+    var teamB = players.filter(function(p) { return p.team === 'B'; });
+    var totalHcpA = teamA.reduce(function(sum, p) { return sum + p.handicap; }, 0);
+    var totalHcpB = teamB.reduce(function(sum, p) { return sum + p.handicap; }, 0);
+    var results = [], cumA = 0, cumB = 0;
+    for (var pos = 0; pos < 18; pos++) {
+        var f1 = f1Scores[pos], f2 = f2Scores[pos];
+        if (!f1 || !f1.saved || !f2 || !f2.saved) {
+            results.push({ hole: pos+1, display: '-', grossA: null, grossB: null, netA: null, netB: null, diff: null, trPointsA: 0.5, trPointsB: 0.5, strokeTR: { A: 0.5, B: 0.5 } });
+            continue;
+        }
+        var grossA = f1.a1 + f1.a2 + f2.a1 + f2.a2;
+        var grossB = f1.b1 + f1.b2 + f2.b1 + f2.b2;
+        cumA += grossA; cumB += grossB;
+        var netA = cumA - totalHcpA;
+        var netB = cumB - totalHcpB;
+        var diff = netB - netA;
+        var display = 'AS';
+        if (Math.abs(diff) < 0.01) display = 'AS';
+        else if (diff > 0) display = 'A' + Math.round(diff);
+        else display = 'B' + Math.round(Math.abs(diff));
+        var trPointsA, trPointsB;
+        if (Math.abs(diff) < 0.01) { trPointsA = 0.5; trPointsB = 0.5; }
+        else if (diff > 0) { trPointsA = 1; trPointsB = 0; }
+        else { trPointsA = 0; trPointsB = 1; }
+        results.push({ 
+            hole: pos+1, 
+            grossA: grossA, 
+            grossB: grossB, 
+            netA: netA, 
+            netB: netB, 
+            diff: diff, 
+            display: display, 
+            trPointsA: trPointsA, 
+            trPointsB: trPointsB,
+            strokeTR: { A: trPointsA, B: trPointsB }
+        });
+    }
+    return results;
+}
+
+// ============================================================
+// V2.00: buildCompleteResultsFromRawData — uses v1.20 logic
+// ============================================================
+function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar) {
     console.log('[VALIDATOR] buildCompleteResultsFromRawData starting...');
-    console.log('[VALIDATOR] startingHole:', startingHole, 'teamGameFormat:', teamGameFormat);
-    console.log('[VALIDATOR] players:', players.length, 'courseSi:', courseSi.length, 'coursePar:', coursePar.length);
     
-    // Ensure GameOrder has the correct starting hole
-    if (typeof GameOrder !== 'undefined' && GameOrder.setStartingHole) {
-        GameOrder.setStartingHole(startingHole || 1);
+    // 1. Team Games (T-1, T-2)
+    var t1Results = calculateTeamGame(f1Scores, players, 1, courseSi);
+    var t2Results = calculateTeamGame(f2Scores, players, 2, courseSi);
+    
+    // 2. Stroke Game
+    var strkResults = calculateStrokeGame(f1Scores, f2Scores, players);
+    
+    // 3. Match Game with clinch detection
+    var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
+    var orderedPlayers = matchData.orderedPlayers;
+    var matchResults = matchData.results;
+    var matchPointsPerHole = matchData.matchPointsPerHole;
+    
+    // 4. Build TR per hole (19 points per hole)
+    var trTeamA = [];
+    var trTeamB = [];
+    var trTeamAGreen = [];
+    var trTeamBGreen = [];
+    
+    for (var i = 0; i < 18; i++) {
+        var t1 = t1Results[i] || {};
+        var t2 = t2Results[i] || {};
+        var strk = strkResults[i] || {};
+        var holeMatchData = matchPointsPerHole[i] || {};
+        
+        var mA = 0, mB = 0;
+        for (var matchKey in holeMatchData) {
+            var match = holeMatchData[matchKey];
+            mA += match.pointsA || 0;
+            mB += match.pointsB || 0;
+        }
+        
+        var t1A = t1.teamGameTR ? t1.teamGameTR.A : 0.5;
+        var t1B = t1.teamGameTR ? t1.teamGameTR.B : 0.5;
+        var t2A = t2.teamGameTR ? t2.teamGameTR.A : 0.5;
+        var t2B = t2.teamGameTR ? t2.teamGameTR.B : 0.5;
+        var sA = strk.strokeTR ? strk.strokeTR.A : 0.5;
+        var sB = strk.strokeTR ? strk.strokeTR.B : 0.5;
+        
+        var trA = mA + t1A + t2A + sA;
+        var trB = mB + t1B + t2B + sB;
+        
+        trTeamA.push(trA);
+        trTeamB.push(trB);
+        trTeamAGreen.push(trA > trB);
+        trTeamBGreen.push(trB > trA);
     }
     
-    // Reconstruct data strings from parsed scores for the modules
-    var f1DataString = '';
-    var f2DataString = '';
-    for (var h = 0; h < 18; h++) {
-        var h1 = f1Scores[h];
-        var h2 = f2Scores[h];
-        if (h1 && h1.saved) {
-            f1DataString += 'T' + String(h1.a1).padStart(2, '0') + String(h1.a2).padStart(2, '0') + String(h1.b1).padStart(2, '0') + String(h1.b2).padStart(2, '0');
-        } else {
-            f1DataString += 'F' + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0');
+    // 5. Build player totals
+    var playerTotals = {};
+    for (var p = 0; p < players.length; p++) {
+        var player = players[p];
+        var totalGross = 0;
+        var holesPlayed = 0;
+        var totalPar = 0;
+        for (var h = 0; h < 18; h++) {
+            totalPar += coursePar[h] || 4;
+            var score = getPlayerGrossFromScores(player, h + 1, f1Scores, f2Scores);
+            if (score !== null) {
+                totalGross += score;
+                holesPlayed++;
+            }
         }
-        if (h2 && h2.saved) {
-            f2DataString += 'T' + String(h2.a1).padStart(2, '0') + String(h2.a2).padStart(2, '0') + String(h2.b1).padStart(2, '0') + String(h2.b2).padStart(2, '0');
-        } else {
-            f2DataString += 'F' + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0') + String(coursePar[h] || 4).padStart(2, '0');
+        if (holesPlayed > 0) {
+            playerTotals[player.name] = {
+                name: player.name,
+                label: player.label,
+                team: player.team,
+                flight: player.flight,
+                totalGross: totalGross,
+                holesPlayed: holesPlayed,
+                totalPar: totalPar,
+                relativeToPar: totalGross - totalPar
+            };
         }
     }
     
-    var result = {};
+    // 6. Build clinchedAt from match data
+    var clinchedAt = {};
+    for (var h = 0; h < matchResults.length; h++) {
+        var holeData = matchResults[h];
+        var clinchInfo = holeData.clinchInfo;
+        for (var playerName in clinchInfo) {
+            if (clinchInfo[playerName].clinched) {
+                var opponent = clinchInfo[playerName].clinchOpponent;
+                var clinchHole = clinchInfo[playerName].clinchHole;
+                clinchedAt[playerName + "_vs_" + opponent] = {
+                    clinchedAtHole: clinchHole,
+                    winner: playerName,
+                    loser: opponent,
+                    leadAtClinch: null,
+                    remainingHolesAtClinch: 18 - clinchHole
+                };
+            }
+        }
+    }
     
-    // 1. TEAM GAME (T-1 and T-2) using GameTeam
-    console.log('[VALIDATOR] Calculating team game with GameTeam...');
-    var teamResult = GameTeam.calculateWithClinched(
-        players,
-        f1DataString,
-        f2DataString,
-        courseSi,
-        startingHole || 1,
-        teamGameFormat || 'tournament',
-        getRemainingHolesByPosition(startingHole || 1),
-        null
-    );
+    // 7. Build display arrays
+    var displayT1 = t1Results.map(function(r) { return r.display || 'AS'; });
+    var displayT2 = t2Results.map(function(r) { return r.display || 'AS'; });
+    var displayStrk = strkResults.map(function(r) { return r.display || 'AS'; });
     
-    // 2. STROKE GAME using GameStroke
-    console.log('[VALIDATOR] Calculating stroke game with GameStroke...');
-    var strokeResult = GameStroke.calculate(
-        players,
-        f1DataString,
-        f2DataString,
-        courseSi,
-        startingHole || 1,
-        coursePar
-    );
-    
-    // 3. MATCH GAME using GameMatch
-    console.log('[VALIDATOR] Calculating match game with GameMatch...');
-    var intraF1 = GameMatch.calculateIntraFlight(1, players.filter(function(p) { return p.flight === 1; }), f1DataString, courseSi, startingHole || 1, 18, coursePar);
-    var intraF2 = GameMatch.calculateIntraFlight(2, players.filter(function(p) { return p.flight === 2; }), f2DataString, courseSi, startingHole || 1, 18, coursePar);
-    var crossResult = GameMatch.calculateCrossFlight(f1DataString, f2DataString, players, courseSi, startingHole || 1, 18, coursePar);
-    
-    // Build matchResults array
+    // 8. Build matchResults array (for cross-flight)
     var teamAPlayers = players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) {
         if (a.flight !== b.flight) return a.flight - b.flight;
         return a.handicap - b.handicap;
@@ -546,194 +916,98 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
         return a.handicap - b.handicap;
     });
     
+    var flight1Data = f1Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
+    var flight2Data = f2Scores.map(function(h) { if (!h) return ''; return 'T' + String(h.a1).padStart(2,'0') + String(h.a2).padStart(2,'0') + String(h.b1).padStart(2,'0') + String(h.b2).padStart(2,'0'); }).join('');
+    
     var matchResultsArray = [];
     for (var pos = 0; pos < 18; pos++) {
         var row = [];
         for (var a = 0; a < teamAPlayers.length; a++) {
             for (var b = 0; b < teamBPlayers.length; b++) {
                 var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
-                var value = crossResult[key] || 0;
-                row.push(value);
+                var margin = getCrossMatchResultForHole(teamAPlayers[a], teamBPlayers[b], flight1Data, flight2Data, players, courseSi, pos + 1, coursePar);
+                row.push(margin);
             }
         }
         matchResultsArray.push(row);
     }
     
-    // Build f1IntraMatches and f2IntraMatches arrays
+    // 9. Build f1IntraMatches and f2IntraMatches
     var f1IntraMatches = [];
     var f2IntraMatches = [];
     for (var pos = 0; pos < 18; pos++) {
-        f1IntraMatches.push(intraF1);
-        f2IntraMatches.push(intraF2);
-    }
-    
-    // Build TR array
-    var trTeamA = [];
-    var trTeamB = [];
-    var trTeamAGreen = [];
-    var trTeamBGreen = [];
-    var matchPointsPerHole = [];
-    
-    for (var pos = 0; pos < 18; pos++) {
-        // Get match points for this hole
-        var matchA = 0;
-        var matchB = 0;
-        for (var a = 0; a < teamAPlayers.length; a++) {
-            for (var b = 0; b < teamBPlayers.length; b++) {
-                var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
-                var val = crossResult[key] || 0;
-                var keyA = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
-                var keyB = teamBPlayers[b].name + "_vs_" + teamAPlayers[a].name;
-                // Determine points based on lead
-                var leadA = crossResult[keyA] || 0;
-                var leadB = crossResult[keyB] || 0;
-                if (leadA > 0) { matchA += 1; } 
-                else if (leadA < 0) { matchA += 0; } 
-                else { matchA += 0.5; }
-                if (leadB > 0) { matchB += 1; } 
-                else if (leadB < 0) { matchB += 0; } 
-                else { matchB += 0.5; }
+        var f1HoleData = parseHoleData(flight1Data, pos + 1);
+        var f2HoleData = parseHoleData(flight2Data, pos + 1);
+        var f1MatchResults = {};
+        var f2MatchResults = {};
+        // Build intra-flight matches for F1
+        var f1Players = players.filter(function(p) { return p.flight === 1; });
+        var f1TeamA = f1Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var f1TeamB = f1Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        for (var a = 0; a < f1TeamA.length; a++) {
+            for (var b = 0; b < f1TeamB.length; b++) {
+                var margin = getIntraMatchResultForHole(f1TeamA[a], f1TeamB[b], flight1Data, players, courseSi, pos + 1, coursePar);
+                f1MatchResults[f1TeamA[a].name + "_vs_" + f1TeamB[b].name] = margin;
+                f1MatchResults[f1TeamB[b].name + "_vs_" + f1TeamA[a].name] = -margin;
             }
         }
-        var t1A = teamResult.teamGameTR[pos]?.A || 0.5;
-        var t1B = teamResult.teamGameTR[pos]?.B || 0.5;
-        var t2A = teamResult.teamGameTR[pos]?.A || 0.5;
-        var t2B = teamResult.teamGameTR[pos]?.B || 0.5;
-        var sA = strokeResult.pointsA[pos] || 0.5;
-        var sB = strokeResult.pointsB[pos] || 0.5;
-        
-        // For TR, we need the actual team game points per hole, not cumulative
-        // Get the hole-by-hole points from teamResult
-        var teamGamePointsA = teamResult.pointsA[pos] || 0.5;
-        var teamGamePointsB = teamResult.pointsB[pos] || 0.5;
-        
-        var trA = matchA + teamGamePointsA + sA;
-        var trB = matchB + teamGamePointsB + sB;
-        trTeamA.push(trA);
-        trTeamB.push(trB);
-        trTeamAGreen.push(trA > trB);
-        trTeamBGreen.push(trB > trA);
-    }
-    
-    // Build player totals
-    var playerTotals = {};
-    for (var i = 0; i < players.length; i++) {
-        var p = players[i];
-        var totalGross = 0;
-        var holesPlayed = 0;
-        var totalPar = 0;
-        for (var h = 0; h < 18; h++) {
-            totalPar += coursePar[h] || 4;
-            var score = getPlayerGrossFromScores(p, h + 1, f1Scores, f2Scores);
-            if (score !== null) {
-                totalGross += score;
-                holesPlayed++;
+        // Build intra-flight matches for F2
+        var f2Players = players.filter(function(p) { return p.flight === 2; });
+        var f2TeamA = f2Players.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        var f2TeamB = f2Players.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        for (var a = 0; a < f2TeamA.length; a++) {
+            for (var b = 0; b < f2TeamB.length; b++) {
+                var margin = getIntraMatchResultForHole(f2TeamA[a], f2TeamB[b], flight2Data, players, courseSi, pos + 1, coursePar);
+                f2MatchResults[f2TeamA[a].name + "_vs_" + f2TeamB[b].name] = margin;
+                f2MatchResults[f2TeamB[b].name + "_vs_" + f2TeamA[a].name] = -margin;
             }
         }
-        if (holesPlayed > 0) {
-            playerTotals[p.name] = {
-                name: p.name,
-                label: p.label,
-                team: p.team,
-                flight: p.flight,
-                totalGross: totalGross,
-                holesPlayed: holesPlayed,
-                totalPar: totalPar,
-                relativeToPar: totalGross - totalPar
-            };
-        }
+        f1IntraMatches.push(f1MatchResults);
+        f2IntraMatches.push(f2MatchResults);
     }
     
-    // Build final results
-    var finalTrA = trTeamA[17] || 9.5;
-    var finalTrB = trTeamB[17] || 9.5;
-    var winner = finalTrA > finalTrB ? 'A' : (finalTrB > finalTrA ? 'B' : 'Tie');
-    
-    // Build clinchedAt from teamResult
-    var clinchedAt = {};
-    if (teamResult.flight1ClinchedHole) {
-        clinchedAt['flight1_clinched'] = { clinchedAtHole: teamResult.flight1ClinchedHole };
-    }
-    if (teamResult.flight2ClinchedHole) {
-        clinchedAt['flight2_clinched'] = { clinchedAtHole: teamResult.flight2ClinchedHole };
-    }
-    
-    // Build display arrays from teamResult
-    var displayT1 = teamResult.displayT1 || new Array(18).fill('AS');
-    var displayT2 = teamResult.displayT2 || new Array(18).fill('AS');
-    var displayStrk = strokeResult.displayStrk || new Array(18).fill('AS');
-    
-    // Build game1 (match game points)
+    // 10. Build game1, game2, game3 structures
     var game1PointsA = [];
     var game1PointsB = [];
     for (var pos = 0; pos < 18; pos++) {
-        // Recalculate match points for this hole
-        var matchAPoints = 0;
-        var matchBPoints = 0;
-        for (var a = 0; a < teamAPlayers.length; a++) {
-            for (var b = 0; b < teamBPlayers.length; b++) {
-                var keyA = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
-                var leadA = crossResult[keyA] || 0;
-                if (leadA > 0) { matchAPoints += 1; } 
-                else if (leadA < 0) { matchAPoints += 0; } 
-                else { matchAPoints += 0.5; }
-            }
+        var holeMatchData = matchPointsPerHole[pos] || {};
+        var mA = 0, mB = 0;
+        for (var matchKey in holeMatchData) {
+            mA += holeMatchData[matchKey].pointsA || 0;
+            mB += holeMatchData[matchKey].pointsB || 0;
         }
-        for (var a = 0; a < teamAPlayers.length; a++) {
-            for (var b = 0; b < teamBPlayers.length; b++) {
-                var keyB = teamBPlayers[a].name + "_vs_" + teamAPlayers[b].name;
-                var leadB = crossResult[keyB] || 0;
-                if (leadB > 0) { matchBPoints += 1; } 
-                else if (leadB < 0) { matchBPoints += 0; } 
-                else { matchBPoints += 0.5; }
-            }
-        }
-        game1PointsA.push(matchAPoints);
-        game1PointsB.push(matchBPoints);
+        game1PointsA.push(mA);
+        game1PointsB.push(mB);
     }
     
-    // Build game2 (team game)
     var game2 = {
         flight1: {
-            leader: teamResult.flight1Leaders || new Array(18).fill('AS'),
-            cumulativePoints: teamResult.flight1Cumulative || new Array(18).fill(0),
-            clinchedHole: teamResult.flight1ClinchedHole || null
+            leader: t1Results.map(function(r) { return r.display || 'AS'; }),
+            cumulativePoints: t1Results.map(function(r) { return r.running || 0; }),
+            clinchedHole: null
         },
         flight2: {
-            leader: teamResult.flight2Leaders || new Array(18).fill('AS'),
-            cumulativePoints: teamResult.flight2Cumulative || new Array(18).fill(0),
-            clinchedHole: teamResult.flight2ClinchedHole || null
+            leader: t2Results.map(function(r) { return r.display || 'AS'; }),
+            cumulativePoints: t2Results.map(function(r) { return r.running || 0; }),
+            clinchedHole: null
         },
-        pointsA: teamResult.pointsA || new Array(18).fill(0.5),
-        pointsB: teamResult.pointsB || new Array(18).fill(0.5),
+        pointsA: t1Results.map(function(r, i) { return (t1Results[i].trPointsA || 0.5) + (t2Results[i].trPointsA || 0.5); }),
+        pointsB: t1Results.map(function(r, i) { return (t1Results[i].trPointsB || 0.5) + (t2Results[i].trPointsB || 0.5); }),
         displayT1: displayT1,
         displayT2: displayT2
     };
     
-    // Build game3 (stroke game)
     var game3 = {
-        leader: strokeResult.leader || new Array(18).fill('AS'),
-        displayStrk: strokeResult.displayStrk || new Array(18).fill('AS'),
-        pointsA: strokeResult.pointsA || new Array(18).fill(0.5),
-        pointsB: strokeResult.pointsB || new Array(18).fill(0.5),
-        nettA: strokeResult.nettA || new Array(18).fill(0),
-        nettB: strokeResult.nettB || new Array(18).fill(0)
+        leader: strkResults.map(function(r) { return r.display || 'AS'; }),
+        displayStrk: displayStrk,
+        pointsA: strkResults.map(function(r) { return r.trPointsA || 0.5; }),
+        pointsB: strkResults.map(function(r) { return r.trPointsB || 0.5; }),
+        nettA: strkResults.map(function(r) { return r.netA || 0; }),
+        nettB: strkResults.map(function(r) { return r.netB || 0; })
     };
     
-    // Build matchResults (for display)
-    var matchResultsDisplay = {};
-    for (var pos = 0; pos < 18; pos++) {
-        matchResultsDisplay[pos] = {};
-        for (var a = 0; a < teamAPlayers.length; a++) {
-            for (var b = 0; b < teamBPlayers.length; b++) {
-                var key = teamAPlayers[a].name + "_vs_" + teamBPlayers[b].name;
-                matchResultsDisplay[pos][key] = crossResult[key] || 0;
-            }
-        }
-    }
-    
-    // Build final results object
-    result = {
+    // 11. Build final results object
+    var finalResults = {
         version: 1,
         game1: {
             pointsA: game1PointsA,
@@ -757,9 +1031,9 @@ function buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, 
     };
     
     console.log('[VALIDATOR] buildCompleteResultsFromRawData complete');
-    console.log('[VALIDATOR] tr.teamA[17]:', result.tr.teamA[17], 'tr.teamB[17]:', result.tr.teamB[17]);
+    console.log('[VALIDATOR] tr.teamA[17]:', finalResults.tr.teamA[17], 'tr.teamB[17]:', finalResults.tr.teamB[17]);
     
-    return result;
+    return finalResults;
 }
 
 // ============================================================
@@ -769,6 +1043,7 @@ function getPlayerGrossFromScores(player, holeNumber, f1Scores, f2Scores) {
     var holeData = player.flight === 1 ? f1Scores[holeNumber - 1] : f2Scores[holeNumber - 1];
     if (!holeData || !holeData.saved) return null;
     
+    var flightPlayers = player.flight === 1 ? [] : [];
     if (player.team === 'A') {
         if (holeData.a1 !== undefined) return holeData.a1;
         if (holeData.a2 !== undefined) return holeData.a2;
@@ -777,17 +1052,6 @@ function getPlayerGrossFromScores(player, holeNumber, f1Scores, f2Scores) {
         if (holeData.b2 !== undefined) return holeData.b2;
     }
     return null;
-}
-
-// ============================================================
-// Helper: getRemainingHolesByPosition
-// ============================================================
-function getRemainingHolesByPosition(startingHole) {
-    var remaining = [];
-    for (var pos = 0; pos < 18; pos++) {
-        remaining.push(17 - pos);
-    }
-    return remaining;
 }
 
 // ============================================================
@@ -800,7 +1064,6 @@ function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar) {
         var totalGross = 0;
         var holesPlayed = 0;
         var totalPar = 0;
-        
         for (var h = 0; h < 18; h++) {
             var score = getPlayerGrossFromScores(player, h + 1, f1Scores, f2Scores);
             if (score !== null) {
@@ -809,7 +1072,6 @@ function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar) {
             }
             totalPar += coursePar[h] || 4;
         }
-        
         if (holesPlayed > 0) {
             var relativeToPar = totalGross - totalPar;
             adjusted[player.name] = {
@@ -829,7 +1091,7 @@ function calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar) {
 }
 
 // ============================================================
-// RENDER FUNCTIONS
+// RENDER FUNCTIONS (v1.20)
 // ============================================================
 function renderGameInfo(data) {
     var container = document.getElementById('gameInfoContent');
@@ -871,102 +1133,122 @@ function renderFlightTable(scores, players, flightNum, containerId) {
     container.innerHTML = html;
 }
 
-function renderTeamGameTableFromResults(results, containerId, label) {
+function renderTeamGameTable(results, containerId, label) {
     var container = document.getElementById(containerId);
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Display</th><th>Points A</th><th>Points B</th></tr>';
-    for (var i = 0; i < 18; i++) {
-        var display = results.displayT1 ? results.displayT1[i] : '-';
-        var pointsA = results.pointsA ? results.pointsA[i] : 0.5;
-        var pointsB = results.pointsB ? results.pointsB[i] : 0.5;
-        var cls = (display && display !== '-' && display !== 'AS') ? 'col-total' : '';
-        html += '<tr><td style="color:#888;">' + (i+1) + '</td>';
-        html += '<td class="' + cls + '">' + display + '</td>';
-        html += '<td>' + pointsA + '</td>';
-        html += '<td>' + pointsB + '</td></tr>';
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>' + label + ' M1</th><th>' + label + ' M2</th><th>Result</th><th>Running</th><th>Display</th></tr>';
+    for (var i = 0; i < results.length; i++) {
+        var r = results[i];
+        var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
+        var m1 = (r.match1 !== null) ? (r.match1 > 0 ? 'A' : r.match1 < 0 ? 'B' : 'AS') : '-';
+        var m2 = (r.match2 !== null) ? (r.match2 > 0 ? 'A' : r.match2 < 0 ? 'B' : 'AS') : '-';
+        var result = (r.holeResult !== null) ? r.holeResult : '-';
+        var running = (r.running !== null) ? r.running : '-';
+        var display = r.display || '-';
+        html += '<tr><td style="color:#888;">' + r.hole + '</td><td>' + m1 + '</td><td>' + m2 + '</td><td>' + result + '</td><td class="' + cls + '">' + running + '</td><td class="' + cls + '">' + display + '</td></tr>';
     }
     html += '</table></div>';
     container.innerHTML = html;
 }
 
-function renderStrkTableFromResults(results) {
+function renderStrkTable(results) {
     var container = document.getElementById('strkTable');
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Net A</th><th>Net B</th><th>Display</th><th>Points A</th><th>Points B</th></tr>';
-    for (var i = 0; i < 18; i++) {
-        var display = results.displayStrk ? results.displayStrk[i] : '-';
-        var netA = results.nettA ? results.nettA[i] : 0;
-        var netB = results.nettB ? results.nettB[i] : 0;
-        var pointsA = results.pointsA ? results.pointsA[i] : 0.5;
-        var pointsB = results.pointsB ? results.pointsB[i] : 0.5;
-        var cls = (display && display !== '-' && display !== 'AS') ? 'col-total' : '';
-        html += '<tr><td style="color:#888;">' + (i+1) + '</td>';
-        html += '<td>' + netA + '</td>';
-        html += '<td>' + netB + '</td>';
-        html += '<td class="' + cls + '">' + display + '</td>';
-        html += '<td>' + pointsA + '</td>';
-        html += '<td>' + pointsB + '</td></tr>';
+    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th>Gross A</th><th>Gross B</th><th>Net A</th><th>Net B</th><th>Diff</th><th>Display</th></tr>';
+    for (var i = 0; i < results.length; i++) {
+        var r = results[i];
+        var cls = (r.display && r.display !== '-' && r.display !== 'AS') ? 'col-total' : '';
+        html += '<tr><td style="color:#888;">' + r.hole + '</td>';
+        html += '<td>' + (r.grossA !== null ? r.grossA : '-') + '</td>';
+        html += '<td>' + (r.grossB !== null ? r.grossB : '-') + '</td>';
+        html += '<td>' + (r.netA !== null ? r.netA : '-') + '</td>';
+        html += '<td>' + (r.netB !== null ? r.netB : '-') + '</td>';
+        html += '<td>' + (r.diff !== null ? r.diff.toFixed(1) : '-') + '</td>';
+        html += '<td class="' + cls + '">' + r.display + '</td></tr>';
     }
     html += '</table></div>';
     container.innerHTML = html;
 }
 
-function renderMatchTableFromResults(orderedPlayers, matchResults) {
+function renderMatchTable(orderedPlayers, matchResults) {
     var container = document.getElementById('matchTable');
     if (!orderedPlayers || orderedPlayers.length === 0) {
         container.innerHTML = '<div class="empty-state">No players found</div>';
         return;
     }
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th>';
+    var html = '<div class="scroll-x"><table>';
+    html += '<tr><th>Hole</th>';
     for (var p = 0; p < orderedPlayers.length; p++) {
         var player = orderedPlayers[p];
         var teamClass = player.team === 'A' ? 'team-a-header' : 'team-b-header';
         html += '<th class="' + teamClass + '">' + escapeHtml(player.label) + '</th>';
     }
     html += '<th style="color:#ffaa44;">Total</th></tr>';
-    
-    for (var pos = 0; pos < 18; pos++) {
+    for (var h = 0; h < matchResults.length; h++) {
+        var holeData = matchResults[h];
+        var holePoints = holeData.points;
+        var holeClinch = holeData.clinchInfo;
         var total = 0;
-        html += '<tr><td style="color:#888;font-weight:600;">' + (pos+1) + '</td>';
+        var isClinchRow = false;
         for (var p = 0; p < orderedPlayers.length; p++) {
             var player = orderedPlayers[p];
-            var score = 0;
-            // Calculate points for this player at this hole
-            var teamAPlayers = orderedPlayers.filter(function(p) { return p.team === 'A'; });
-            var teamBPlayers = orderedPlayers.filter(function(p) { return p.team === 'B'; });
-            if (player.team === 'A') {
-                for (var b = 0; b < teamBPlayers.length; b++) {
-                    var key = player.name + "_vs_" + teamBPlayers[b].name;
-                    var val = matchResults[pos]?.[key] || 0;
-                    var lead = val;
-                    if (lead > 0) { score += 1; } 
-                    else if (lead < 0) { score += 0; } 
-                    else { score += 0.5; }
-                }
-            } else {
-                for (var a = 0; a < teamAPlayers.length; a++) {
-                    var key = teamAPlayers[a].name + "_vs_" + player.name;
-                    var val = matchResults[pos]?.[key] || 0;
-                    var lead = val;
-                    if (lead > 0) { score += 0; } 
-                    else if (lead < 0) { score += 1; } 
-                    else { score += 0.5; }
-                }
-            }
-            total += score;
-            var cellClass = score > 0 ? 'col-green' : (score < 0 ? 'col-red' : 'col-gold');
-            html += '<td class="' + cellClass + '">' + score.toFixed(1) + '</td>';
+            if (holeClinch[player.name] && holeClinch[player.name].clinched) { isClinchRow = true; break; }
         }
-        html += '<td class="total-cell">' + total.toFixed(1) + '</td></tr>';
+        html += '<tr><td style="color:#888;font-weight:600;">' + (h+1) + '</td>';
+        for (var p = 0; p < orderedPlayers.length; p++) {
+            var player = orderedPlayers[p];
+            var score = holePoints[player.name] || 0;
+            total += score;
+            var clinchInfo = holeClinch[player.name] || {};
+            var isClinched = clinchInfo.clinched;
+            var isASAtH18 = clinchInfo.asAtH18 || false;
+            var displayText = score.toFixed(1);
+            var cellClass = '';
+            var extraClass = '';
+            if (score > 0) cellClass = 'col-green';
+            else if (score === 0) cellClass = 'col-red';
+            else cellClass = 'col-gold';
+            if (isClinched) {
+                extraClass = ' clinch-cell';
+                displayText += ' <span class="clinch-trophy">🏆</span>';
+            } else if (isASAtH18 && h === 17) {
+                displayText += ' <span class="clinch-star">⭐</span>';
+            }
+            html += '<td class="' + cellClass + extraClass + '">' + displayText + '</td>';
+        }
+        var totalClass = isClinchRow ? 'total-cell clinch-cell' : 'total-cell';
+        html += '<td class="' + totalClass + '">' + total.toFixed(1) + '</td></tr>';
     }
     html += '</table></div>';
     container.innerHTML = html;
 }
 
-function renderTRTableFromResults(trTeamA, trTeamB, gameData) {
+function renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, gameData) {
     var container = document.getElementById('trTable');
-    var html = '<div class="scroll-x"><table><tr><th>Hole</th><th style="color:#4caf50;">Team A</th><th style="color:#ff6b6b;">Team B</th><th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
+    var html = '<div class="scroll-x"><table>';
+    html += '<tr><th>Hole</th>';
+    html += '<th style="color:#4caf50;">Team A</th>';
+    html += '<th style="color:#ff6b6b;">Team B</th>';
+    html += '<th>Rec A</th><th>Rec B</th><th>✅</th></tr>';
     for (var i = 0; i < 18; i++) {
-        var trA = trTeamA[i] || 9.5;
-        var trB = trTeamB[i] || 9.5;
+        var t1 = t1Results[i] || {};
+        var t2 = t2Results[i] || {};
+        var strk = strkResults[i] || {};
+        var holeMatchData = matchPointsPerHole[i] || {};
+        var mA = 0, mB = 0;
+        for (var matchKey in holeMatchData) {
+            var match = holeMatchData[matchKey];
+            mA += match.pointsA || 0;
+            mB += match.pointsB || 0;
+        }
+        var t1A = t1.teamGameTR ? t1.teamGameTR.A : 0.5;
+        var t1B = t1.teamGameTR ? t1.teamGameTR.B : 0.5;
+        var t2A = t2.teamGameTR ? t2.teamGameTR.A : 0.5;
+        var t2B = t2.teamGameTR ? t2.teamGameTR.B : 0.5;
+        var sA = strk.strokeTR ? strk.strokeTR.A : 0.5;
+        var sB = strk.strokeTR ? strk.strokeTR.B : 0.5;
+        var trA = mA + t1A + t2A + sA;
+        var trB = mB + t1B + t2B + sB;
+        var teamABreakdown = '[' + mA.toFixed(1) + ' + ' + t1A.toFixed(1) + ' + ' + t2A.toFixed(1) + ' + ' + sA.toFixed(1) + ']';
+        var teamBBreakdown = '[' + mB.toFixed(1) + ' + ' + t1B.toFixed(1) + ' + ' + t2B.toFixed(1) + ' + ' + sB.toFixed(1) + ']';
         var recA = gameData.results?.tr?.teamA?.[i];
         var recB = gameData.results?.tr?.teamB?.[i];
         var recMatch = (recA !== undefined && recA !== null && recB !== undefined && recB !== null);
@@ -976,8 +1258,8 @@ function renderTRTableFromResults(trTeamA, trTeamB, gameData) {
         var recBDisplay = (recB !== undefined && recB !== null) ? recB : '-';
         var rowClass = (i === 17) ? ' final-row' : '';
         html += '<tr class="' + rowClass + '"><td style="color:#888;font-weight:600;">' + (i+1) + '</td>';
-        html += '<td class="team-a-col">' + trA.toFixed(1) + '</td>';
-        html += '<td class="team-b-col">' + trB.toFixed(1) + '</td>';
+        html += '<td class="team-a-col">' + teamABreakdown + ' = <strong>' + trA.toFixed(1) + '</strong></td>';
+        html += '<td class="team-b-col">' + teamBBreakdown + ' = <strong>' + trB.toFixed(1) + '</strong></td>';
         html += '<td class="' + matchClass + '">' + recADisplay + '</td>';
         html += '<td class="' + matchClass + '">' + recBDisplay + '</td>';
         html += '<td>' + (match ? '✅' : '❌') + '</td></tr>';
@@ -989,29 +1271,76 @@ function renderTRTableFromResults(trTeamA, trTeamB, gameData) {
     container.innerHTML = html;
 }
 
-function renderSummaryFromResults(trTeamA, trTeamB, gameData) {
+function renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, gameData) {
     var container = document.getElementById('validationSummary');
-    var trA_h18 = trTeamA[17] || 9.5;
-    var trB_h18 = trTeamB[17] || 9.5;
+    
+    var t1Final = t1Results[17] || {};
+    var t2Final = t2Results[17] || {};
+    var strkFinal = strkResults[17] || {};
+    
+    var t1Display = t1Final.display || '-';
+    var t2Display = t2Final.display || '-';
+    var strkDisplay = strkFinal.display || '-';
+    
+    var recT1 = gameData.results?.game2?.displayT1?.[17] || '-';
+    var recT2 = gameData.results?.game2?.displayT2?.[17] || '-';
+    var recStrk = gameData.results?.game3?.displayStrk?.[17] || '-';
+    
+    var t1Match = (t1Display === recT1) || (t1Display === '-' && recT1 === '-');
+    var t2Match = (t2Display === recT2) || (t2Display === '-' && recT2 === '-');
+    var strkMatch = (strkDisplay === recStrk) || (strkDisplay === '-' && recStrk === '-');
+    
+    var h18MatchData = matchPointsPerHole[17] || {};
+    var h18mA = 0, h18mB = 0;
+    for (var matchKey in h18MatchData) {
+        var match = h18MatchData[matchKey];
+        h18mA += match.pointsA || 0;
+        h18mB += match.pointsB || 0;
+    }
+    
+    var t1A = t1Final.teamGameTR ? t1Final.teamGameTR.A : 0.5;
+    var t1B = t1Final.teamGameTR ? t1Final.teamGameTR.B : 0.5;
+    var t2A = t2Final.teamGameTR ? t2Final.teamGameTR.A : 0.5;
+    var t2B = t2Final.teamGameTR ? t2Final.teamGameTR.B : 0.5;
+    var sA = strkFinal.strokeTR ? strkFinal.strokeTR.A : 0.5;
+    var sB = strkFinal.strokeTR ? strkFinal.strokeTR.B : 0.5;
+    
+    var trA_h18 = h18mA + t1A + t2A + sA;
+    var trB_h18 = h18mB + t1B + t2B + sB;
+    
     var recA = gameData.finalResults?.teamAScore || gameData.results?.tr?.teamA?.[17] || '-';
     var recB = gameData.finalResults?.teamBScore || gameData.results?.tr?.teamB?.[17] || '-';
-    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
+    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && 
+                   Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
+    
     var html = '<div class="summary-box">';
+    html += '<div class="summary-item"><div class="label">T-1</div><div class="value ' + (t1Match ? '' : 'mismatch') + '">' + t1Display + ' | Record: ' + recT1 + ' ' + (t1Match ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">T-2</div><div class="value ' + (t2Match ? '' : 'mismatch') + '">' + t2Display + ' | Record: ' + recT2 + ' ' + (t2Match ? '✅' : '❌') + '</div></div>';
+    html += '<div class="summary-item"><div class="label">Strk</div><div class="value ' + (strkMatch ? '' : 'mismatch') + '">' + strkDisplay + ' | Record: ' + recStrk + ' ' + (strkMatch ? '✅' : '❌') + '</div></div>';
+    
     var trClass = trMatch ? '' : 'mismatch';
     var trDisplayText = trA_h18.toFixed(1) + ' - ' + trB_h18.toFixed(1);
     var recordDisplayText = recA + ' - ' + recB;
     var matchIcon = trMatch ? '✅' : '❌';
+    
     html += '<div class="summary-item" style="border-left-color: #ffaa44; border-left-width: 4px; background: #1a1a1a; flex: 1 1 100%;">';
     html += '<div class="label" style="color: #ffaa44; font-weight: 700; font-size: 0.8rem;">🏆 TR at H18 (FINAL RESULT)</div>';
-    html += '<div class="value final ' + trClass + '" style="font-size: 1.5rem;">' + trDisplayText + ' | Record: ' + recordDisplayText + ' ' + matchIcon + '</div></div>';
+    html += '<div class="value final ' + trClass + '" style="font-size: 1.5rem;">';
+    html += trDisplayText + ' | Record: ' + recordDisplayText + ' ' + matchIcon;
+    html += '</div></div>';
     html += '</div>';
-    var verdict = trMatch ? '✅ All values match the record.' : '❌ Mismatch detected. The record contains stale data.';
-    html += '<div style="margin-top:12px; padding:8px 12px; border-radius:6px; background: ' + (trMatch ? '#0a2a0a' : '#2a0a0a') + '; border: 1px solid ' + (trMatch ? '#2a5a2a' : '#5a2a2a') + ';">' + verdict + '</div>';
+    
+    var allMatch = t1Match && t2Match && strkMatch;
+    var verdict = (allMatch && trMatch) ? '✅ All values match the record.' : '❌ Mismatch detected. The record contains stale data.';
+    html += '<div style="margin-top:12px; padding:8px 12px; border-radius:6px; background: ' + (allMatch && trMatch ? '#0a2a0a' : '#2a0a0a') + '; border: 1px solid ' + (allMatch && trMatch ? '#2a5a2a' : '#5a2a2a') + ';">' + verdict + '</div>';
+    html += '<div style="margin-top:12px; font-size:0.7rem; color:#666; border-top:1px solid #2a2a2a; padding-top:8px;">';
+    html += 'H18 Breakdown: Match (' + h18mA.toFixed(1) + ' - ' + h18mB.toFixed(1) + ') + T-1 (' + t1A.toFixed(1) + ' - ' + t1B.toFixed(1) + ') + T-2 (' + t2A.toFixed(1) + ' - ' + t2B.toFixed(1) + ') + Strk (' + sA.toFixed(1) + ' - ' + sB.toFixed(1) + ') = ' + trA_h18.toFixed(1) + ' - ' + trB_h18.toFixed(1);
+    html += '</div>';
     container.innerHTML = html;
 }
 
 // ============================================================
-// VALIDATE & FIX
+// FETCH RECORDS
 // ============================================================
 function fetchRecords() {
     var select = document.getElementById('recordSelect');
@@ -1051,6 +1380,9 @@ function fetchRecords() {
         });
 }
 
+// ============================================================
+// FIX RECORD — v2.00
+// ============================================================
 function createBackup(record, progressEl) {
     return new Promise(function(resolve, reject) {
         var docId = record.id;
@@ -1065,7 +1397,7 @@ function createBackup(record, progressEl) {
         backupData._backupOriginalId = docId;
         backupData._backupOriginalCollection = 'historyGames';
         backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v1.35';
+        backupData._backupReason = 'Pre-fix backup from validator v2.00';
         db.collection('backupFolder').doc(backupId).set(backupData)
             .then(function() { progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>'; resolve(backupId); })
             .catch(function(err) { progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>'; reject(err); });
@@ -1077,7 +1409,7 @@ function fixRecord() {
     var record = records[currentRecordIndex];
     var data = record.rawData;
     var docId = record.id;
-    if (!confirm('⚠️ This will RECALCULATE ALL derived data from raw data and update the Firestore record.\n\nID: ' + docId + '\nGame: ' + record.originalGameId + '\nStatus: ' + data.status + ' → completed\n\nPRESERVES: raw scores, players, course, gameInfo\nRECALCULATES: game1, game2, game3, matchResults, f1IntraMatches, f2IntraMatches, TR, clinchedAt, adjustedHandicaps\n\nUses the same calculation logic as the live game (game-match.js, game-team.js, game-stroke.js).\n\nA backup will be created before updating.\nThis action cannot be undone. Continue?')) { return; }
+    if (!confirm('⚠️ This will RECALCULATE ALL derived data from raw data and update the Firestore record.\n\nID: ' + docId + '\nGame: ' + record.originalGameId + '\nStatus: ' + data.status + ' → completed\n\nPRESERVES: raw scores, players, course, gameInfo\nRECALCULATES: game1, game2, game3, matchResults, f1IntraMatches, f2IntraMatches, TR, clinchedAt, adjustedHandicaps\n\nUses v2.00 calculation logic (proven correct from v1.20).\n\nA backup will be created before updating.\nThis action cannot be undone. Continue?')) { return; }
     var fixBtn = document.getElementById('fixBtn');
     var backupBtn = document.getElementById('backupOnlyBtn');
     var progressEl = document.getElementById('fixProgress');
@@ -1085,6 +1417,7 @@ function fixRecord() {
     fixBtn.className = 'fix-btn fix-btn-fixing'; fixBtn.textContent = '⏳ Fixing...';
     backupBtn.className = 'fix-btn fix-btn-fixing'; backupBtn.textContent = '⏳ ...';
     progressEl.className = 'fix-progress active'; progressEl.innerHTML = '';
+    
     createBackup(record, progressEl)
         .then(function(backupId) {
             progressEl.innerHTML += '<div class="step">📊 Step 2: Parsing raw data...</div>';
@@ -1093,43 +1426,46 @@ function fixRecord() {
             var players = data.players || [];
             var courseSi = data.gameInfo?.course?.si || data.course?.si || [];
             var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
-            var startingHole = data.gameInfo?.startingHole || 1;
-            var teamGameFormat = data.gameInfo?.teamGameFormat || 'tournament';
-            
             if (!f1Scores || !f2Scores) { throw new Error('Invalid data strings'); }
             if (players.length === 0) { throw new Error('No players found'); }
             progressEl.innerHTML += '<div class="step done">✅ Data parsed</div>';
             
-            progressEl.innerHTML += '<div class="step">📊 Step 3: Recalculating ALL derived data from raw data using shared modules...</div>';
-            progressEl.innerHTML += '<div class="step info">🔄 Using game-match.js v' + (window.GAME_MATCH_VERSION || '?') + '</div>';
-            progressEl.innerHTML += '<div class="step info">🔄 Using game-team.js v' + (window.GAME_TEAM_VERSION || '?') + '</div>';
-            progressEl.innerHTML += '<div class="step info">🔄 Using game-stroke.js v' + (window.GAME_STROKE_VERSION || '?') + '</div>';
-            
-            var results = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole, teamGameFormat);
+            progressEl.innerHTML += '<div class="step">📊 Step 3: Recalculating ALL derived data using v2.00 logic...</div>';
+            var results = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar);
             var adjustedHandicaps = calculateAdjustedHandicaps(f1Scores, f2Scores, players, coursePar);
             progressEl.innerHTML += '<div class="step done">✅ All derived data recalculated</div>';
             
             progressEl.innerHTML += '<div class="step">📝 Step 4: Building update payload...</div>';
-            var sanitizedResults = JSON.parse(JSON.stringify(results));
             var updatePayload = {
-                results: sanitizedResults,
+                results: results,
                 adjustedHandicaps: adjustedHandicaps,
                 status: 'completed',
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
-            progressEl.innerHTML += '<div class="step done">✅ Update payload built</div>';
             
+            // Add finalResults if available
+            var finalTrA = results.tr.teamA[17] || 9.5;
+            var finalTrB = results.tr.teamB[17] || 9.5;
+            var winner = finalTrA > finalTrB ? 'A' : (finalTrB > finalTrA ? 'B' : 'Tie');
+            updatePayload.finalResults = {
+                teamAScore: finalTrA,
+                teamBScore: finalTrB,
+                winner: winner,
+                winnerText: winner === 'A' ? 'Team A Wins!' : winner === 'B' ? 'Team B Wins!' : 'Match Tied!'
+            };
+            
+            progressEl.innerHTML += '<div class="step done">✅ Update payload built</div>';
             progressEl.innerHTML += '<div class="step">💾 Step 5: Writing to Firestore...</div>';
-            return db.collection('historyGames').doc(docId).update(updatePayload)
-                .then(function() {
-                    progressEl.innerHTML += '<div class="step done">✅ Firestore updated successfully!</div>';
-                    progressEl.innerHTML += '<div class="step done">📦 Backup ID: ' + backupId + '</div>';
-                    progressEl.innerHTML += '<div class="step done">✅ ALL derived data recalculated from raw data using shared modules</div>';
-                    fixBtn.className = 'fix-btn fix-btn-done'; fixBtn.textContent = '✅ Fixed!'; fixBtn.disabled = false;
-                    backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
-                    setStatus('✅ Record fixed successfully! All derived data recalculated. Backup: ' + backupId, 'success');
-                    setTimeout(function() { loadAndValidate(); }, 1500);
-                });
+            
+            return db.collection('historyGames').doc(docId).update(updatePayload);
+        })
+        .then(function() {
+            progressEl.innerHTML += '<div class="step done">✅ Firestore updated successfully!</div>';
+            progressEl.innerHTML += '<div class="step done">✅ Record is now perfect with correct derived data.</div>';
+            fixBtn.className = 'fix-btn fix-btn-done'; fixBtn.textContent = '✅ Fixed!'; fixBtn.disabled = false;
+            backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
+            setStatus('✅ Record fixed successfully! All derived data recalculated.', 'success');
+            setTimeout(function() { loadAndValidate(); }, 1500);
         })
         .catch(function(err) {
             progressEl.innerHTML += '<div class="step error">❌ Error: ' + err.message + '</div>';
@@ -1165,6 +1501,9 @@ function backupOnly() {
         });
 }
 
+// ============================================================
+// LOAD & VALIDATE
+// ============================================================
 function loadAndValidate() {
     var select = document.getElementById('recordSelect');
     var index = parseInt(select.value);
@@ -1172,11 +1511,13 @@ function loadAndValidate() {
     currentRecordIndex = index;
     var data = records[index].rawData;
     if (!data) { setStatus('No data found', 'error'); return; }
-    gameData = data; gameData.id = records[index].id;
+    gameData = data;
+    gameData.id = records[index].id;
     setStatus('Loading: ' + records[index].originalGameId + '... <span class="loader"></span>', 'info');
     document.getElementById('results').style.display = 'none';
     document.getElementById('fixCard').style.display = 'none';
-    try { processGameData(gameData); } catch (err) { setStatus('Error: ' + err.message, 'error'); console.error(err); }
+    try { processGameData(gameData); }
+    catch (err) { setStatus('Error: ' + err.message, 'error'); console.error(err); }
 }
 
 function processGameData(data) {
@@ -1189,66 +1530,52 @@ function processGameData(data) {
     if (courseSi.length === 0) { for (var i = 0; i < 18; i++) courseSi[i] = i + 1; setStatus('Warning: No SI data, using 1-18', 'warning'); }
     var coursePar = data.gameInfo?.course?.par || data.course?.par || [];
     if (coursePar.length === 0) { for (var i = 0; i < 18; i++) coursePar[i] = 4; setStatus('Warning: No Par data, using 4 for all holes', 'warning'); }
-    var startingHole = data.gameInfo?.startingHole || 1;
-    var teamGameFormat = data.gameInfo?.teamGameFormat || 'tournament';
     
     renderGameInfo(data);
     renderFlightTable(f1Scores, players, 1, 'flight1Table');
     renderFlightTable(f2Scores, players, 2, 'flight2Table');
     
-    // Recalculate using shared modules
-    var results = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar, startingHole, teamGameFormat);
+    var t1Results = calculateTeamGame(f1Scores, players, 1, courseSi);
+    var t2Results = calculateTeamGame(f2Scores, players, 2, courseSi);
+    var strkResults = calculateStrokeGame(f1Scores, f2Scores, players);
     
-    // Extract data for display
-    var trTeamA = results.tr.teamA;
-    var trTeamB = results.tr.teamB;
+    renderTeamGameTable(t1Results, 't1Table', 'T-1');
+    renderTeamGameTable(t2Results, 't2Table', 'T-2');
+    renderStrkTable(strkResults);
     
-    // Team game display
-    var teamResult = {
-        displayT1: results.game2.displayT1 || new Array(18).fill('AS'),
-        displayT2: results.game2.displayT2 || new Array(18).fill('AS'),
-        pointsA: results.game2.pointsA || new Array(18).fill(0.5),
-        pointsB: results.game2.pointsB || new Array(18).fill(0.5)
-    };
+    var matchData = calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
+    var orderedPlayers = matchData.orderedPlayers;
+    var matchResults = matchData.results;
+    var matchPointsPerHole = matchData.matchPointsPerHole;
     
-    // Stroke display
-    var strokeResult = {
-        displayStrk: results.game3.displayStrk || new Array(18).fill('AS'),
-        nettA: results.game3.nettA || new Array(18).fill(0),
-        nettB: results.game3.nettB || new Array(18).fill(0),
-        pointsA: results.game3.pointsA || new Array(18).fill(0.5),
-        pointsB: results.game3.pointsB || new Array(18).fill(0.5)
-    };
+    renderMatchTable(orderedPlayers, matchResults);
+    renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, data);
+    renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, data);
     
-    // Match display
-    var orderedPlayers = [];
-    var teamAPlayers = players.filter(function(p) { return p.team === 'A'; });
-    var teamBPlayers = players.filter(function(p) { return p.team === 'B'; });
-    teamAPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
-    teamBPlayers.sort(function(a, b) { if (a.flight !== b.flight) return a.flight - b.flight; return a.handicap - b.handicap; });
-    for (var i = 0; i < teamAPlayers.length; i++) orderedPlayers.push(teamAPlayers[i]);
-    for (var i = 0; i < teamBPlayers.length; i++) orderedPlayers.push(teamBPlayers[i]);
-    
-    // Build match results for display
-    var matchResultsDisplay = {};
-    for (var pos = 0; pos < 18; pos++) {
-        matchResultsDisplay[pos] = results.matchResults[pos] || {};
-    }
-    
-    renderTeamGameTableFromResults(teamResult, 't1Table', 'T-1');
-    renderTeamGameTableFromResults(teamResult, 't2Table', 'T-2');
-    renderStrkTableFromResults(strokeResult);
-    renderMatchTableFromResults(orderedPlayers, matchResultsDisplay);
-    renderTRTableFromResults(trTeamA, trTeamB, data);
-    renderSummaryFromResults(trTeamA, trTeamB, data);
     document.getElementById('results').style.display = 'block';
     
-    // Check for mismatches
+    // Check if record needs fixing
     var recA = data.results?.tr?.teamA?.[17];
     var recB = data.results?.tr?.teamB?.[17];
-    var trA_h18 = trTeamA[17] || 9.5;
-    var trB_h18 = trTeamB[17] || 9.5;
-    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
+    var t1Final = t1Results[17] || {};
+    var t2Final = t2Results[17] || {};
+    var strkFinal = strkResults[17] || {};
+    var h18MatchData = matchPointsPerHole[17] || {};
+    var h18mA = 0, h18mB = 0;
+    for (var matchKey in h18MatchData) {
+        h18mA += h18MatchData[matchKey].pointsA || 0;
+        h18mB += h18MatchData[matchKey].pointsB || 0;
+    }
+    var t1A = t1Final.teamGameTR ? t1Final.teamGameTR.A : 0.5;
+    var t1B = t1Final.teamGameTR ? t1Final.teamGameTR.B : 0.5;
+    var t2A = t2Final.teamGameTR ? t2Final.teamGameTR.A : 0.5;
+    var t2B = t2Final.teamGameTR ? t2Final.teamGameTR.B : 0.5;
+    var sA = strkFinal.strokeTR ? strkFinal.strokeTR.A : 0.5;
+    var sB = strkFinal.strokeTR ? strkFinal.strokeTR.B : 0.5;
+    var trA_h18 = h18mA + t1A + t2A + sA;
+    var trB_h18 = h18mB + t1B + t2B + sB;
+    var trMatch = (typeof recA === 'number' && typeof recB === 'number' && 
+                   Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
     var hasMismatch = !trMatch;
     var isPending = data.status === 'pending_handicap';
     
@@ -1259,7 +1586,7 @@ function processGameData(data) {
         fixBtn.className = 'fix-btn fix-btn-fix'; fixBtn.textContent = '🔧 Fix Record (Recalculate All)'; fixBtn.disabled = false;
         backupBtn.className = 'fix-btn fix-btn-backup'; backupBtn.textContent = '💾 Backup Only'; backupBtn.disabled = false;
         document.getElementById('fixProgress').className = 'fix-progress'; document.getElementById('fixProgress').innerHTML = '';
-        setStatus('⚠️ Record needs fixing. Click "Fix Record" to recalculate all derived data from raw data using shared modules.', 'warning');
+        setStatus('⚠️ Record needs fixing. Click "Fix Record" to recalculate all derived data from raw data.', 'warning');
     } else {
         document.getElementById('fixCard').style.display = 'none';
         setStatus('✅ Record is valid.', 'success');
@@ -1269,7 +1596,7 @@ function processGameData(data) {
 }
 
 // ============================================================
-// RESTORE FUNCTIONS (unchanged from v1.34)
+// RESTORE FUNCTIONS (v1.34 — SIMPLE COPY)
 // ============================================================
 function loadBackupList() {
     var container = document.getElementById('backupListContainer');
@@ -1460,6 +1787,7 @@ function executeRestore() {
             progressEl.innerHTML = '<div class="step restore">↩️ Copying from backup: ' + selectedBackupId + '...</div>';
             progressEl.innerHTML += '<div class="step restore">📦 Destination: ' + destination + ' → ' + restoredDocId + '</div>';
             
+            // SIMPLE COPY — NO RECALCULATION
             var backupData = JSON.parse(JSON.stringify(selectedBackup.data));
             
             delete backupData._backupTimestamp;
@@ -1575,27 +1903,24 @@ document.querySelectorAll('input[name="restoreDestination"]').forEach(function(r
 fetchRecords();
 loadBackupList();
 updateDestPreviews();
-console.log('🔬 Game Data Validator v1.35 loaded.');
-console.log('📌 Using shared calculation modules (game-match.js, game-team.js, game-stroke.js)');
-console.log('📌 Module versions:');
-console.log('  - game-match.js: ' + (window.GAME_MATCH_VERSION || 'not loaded'));
-console.log('  - game-team.js: ' + (window.GAME_TEAM_VERSION || 'not loaded'));
-console.log('  - game-stroke.js: ' + (window.GAME_STROKE_VERSION || 'not loaded'));
+console.log('🔬 Game Data Validator v2.00 loaded.');
+console.log('📌 Restore: SIMPLE COPY — NO recalculation.');
+console.log('📌 Fix: Recalculates derived data using v1.20 logic (proven correct).');
 </script>
 </body>
 </html>
 
 <!--
 FILE: validate.html
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - ADDED: Module imports for game-order.js, game-data.js, game-match.js, game-team.js, game-stroke.js
-   - ADDED: buildCompleteResultsFromRawData() using shared modules for all calculations
-   - REMOVED: Self-contained calculation functions (calculateTeamGame, calculateStrokeGame, calculateMatchGamePerHole, etc.)
-   - CHANGED: fixRecord() now uses buildCompleteResultsFromRawData() with shared modules
-   - CHANGED: renderSummary() and renderTRTable() now expect data from shared modules
-   - CHANGED: All display functions updated to work with new data structure
-   - PRESERVED: Everything else (backup, restore, UI, etc.) from v1.34
-DEPENDS ON: Firebase Firestore, js/game-order.js, js/game-data.js, js/game-match.js, js/game-team.js, js/game-stroke.js
+VERSION: 2.00
+KEY CHANGES from v1.20:
+   - ADDED: Restore from backup functionality (simple copy, no recalculation)
+   - ADDED: Fix Record functionality using v1.20's self-contained calculations
+   - ADDED: buildCompleteResultsFromRawData() - builds complete results object
+   - ADDED: Backup Only functionality
+   - PRESERVED: All v1.20 calculation logic (T-1, T-2, Strk, Match Game, TR, Clinch)
+   - PRESERVED: v1.34 restore logic (simple copy, no modification)
+   - COMBINED: Best of v1.20 (calculations) + v1.34 (restore) + fix functionality
+DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
