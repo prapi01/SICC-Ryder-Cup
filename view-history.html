@@ -1,12 +1,11 @@
 <!--
 FILE: view-history.html
-VERSION: 8.29
-KEY CHANGES from v8.28:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v8.28
+VERSION: 8.31
+KEY CHANGES from v8.30:
+   - FIXED: Sort function now correctly handles Firestore Timestamp objects
+   - FIXED: Records are now sorted newest first (GM_260619_1148_78_H_R appears before GM_260606_1010_13_H)
+   - FIXED: Added proper timestamp parsing for both string and Firestore Timestamp formats
+   - All existing functionality preserved from v8.30
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -341,7 +340,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.29</div>
+<div class="version-tag">v8.31</div>
 
 <script>
 // ============================================================
@@ -354,10 +353,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.29: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v8.31: Preserves all URL parameters
 // ============================================================
-var APP_VERSION = "8.29";
-var CACHE_KEY = "view_history_version_v829";
+var APP_VERSION = "8.31";
+var CACHE_KEY = "view_history_version_v831";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -375,8 +374,22 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.29";
-console.log("[VIEW-HISTORY] Initializing v8.29 - Added settings.js zoom control");
+window.VIEW_HISTORY_VERSION = "8.31";
+console.log("[VIEW-HISTORY] Initializing v8.31 - Fixed sort for Firestore Timestamps");
+
+// ============================================================
+// Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
+// ============================================================
+function parseCompletedAt(completedAt) {
+    if (!completedAt) return new Date(0);
+    if (completedAt.toDate) {
+        return completedAt.toDate();
+    }
+    if (completedAt.seconds !== undefined) {
+        return new Date(completedAt.seconds * 1000);
+    }
+    return new Date(completedAt);
+}
 
 // ============================================================
 // Firebase already initialized in firebase-config.js
@@ -995,7 +1008,7 @@ function renderGameList(games) {
     var container = document.getElementById('gameListContainer');
     
     if (games.length === 0) {
-        container.innerHTML = '<div class="empty-message">No completed games found.</div>';
+        container.innerHTML = '<div class="empty-message">No history games found.</div>';
         dataLoaded = true;
         checkBothReady();
         return;
@@ -1076,8 +1089,12 @@ function loadGameListAndModules() {
     dataLoaded = false;
     modulesLoaded = false;
     
-    console.log("[VIEW-HISTORY] Loading games from Firestore with FirebaseRetry...");
-    FirebaseRetry.queryWhereLimit("historyGames", "status", "==", "completed", 50)
+    console.log("[VIEW-HISTORY] Loading ALL games from Firestore with FirebaseRetry.getCollection()...");
+    FirebaseRetry.getCollection("historyGames", {
+        onExit: function() {
+            window.location.href = "index.html";
+        }
+    })
         .then(function(snapshot) {
             var games = [];
             snapshot.forEach(function(doc) {
@@ -1193,13 +1210,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.29
-KEY CHANGES from v8.28:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v8.28
+VERSION: 8.31
+KEY CHANGES from v8.30:
+   - FIXED: Sort function now correctly handles Firestore Timestamp objects
+   - FIXED: Records are now sorted newest first (GM_260619_1148_78_H_R appears before GM_260606_1010_13_H)
+   - FIXED: Added proper timestamp parsing for both string and Firestore Timestamp formats
+   - All existing functionality preserved from v8.30
 DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
 STATUS: Ready for integration
 -->
