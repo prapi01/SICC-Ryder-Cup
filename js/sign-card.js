@@ -1,10 +1,15 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - CHANGED: Celebration title "MATCH COMPLETE!" → "GAME COMPLETED!"
-   - Updated celebration screen title text
-   - All existing functionality preserved from v1.17
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: Celebration flow now calculates adjustedHandicaps immediately
+   - FIXED: Now calls HistoryRecord.updateWithHandicap() instead of just upsertPendingRecord()
+   - FIXED: Record is written with status: "completed" and adjustedHandicaps populated
+   - ADDED: calculateAdjustedHandicapsFromGameData() - calculates all handicap adjustment values
+   - ADDED: Proper anchor detection (lowest handicap player)
+   - ADDED: Player totals from results for performance adjustment
+   - ADDED: ensureArchiveRecordComplete() - creates pending record then immediately completes it
+   - All existing functionality preserved from v1.18
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -16,6 +21,176 @@ var SignCard = (function() {
     // ============================================================
     function getDb() {
         return firebase.firestore();
+    }
+    
+    // ============================================================
+    // Calculate Adjusted Handicaps from game data
+    // ============================================================
+    
+    function calculateAdjustedHandicapsFromGameData(gameData) {
+        if (!gameData || !gameData.players || !gameData.results) {
+            console.warn("[SignCard] Cannot calculate adjusted handicaps - missing data");
+            return null;
+        }
+        
+        var players = gameData.players || [];
+        var playerTotals = gameData.results?.playerTotals || {};
+        var tr = gameData.results?.tr || {};
+        var finalTeamA = tr.teamA?.[17] || 9.5;
+        var finalTeamB = tr.teamB?.[17] || 9.5;
+        var winner = finalTeamA > finalTeamB ? 'A' : (finalTeamB > finalTeamA ? 'B' : 'Tie');
+        
+        // Find anchor (player with lowest handicap)
+        var minHcp = Infinity;
+        var anchorName = 'Anchor';
+        for (var i = 0; i < players.length; i++) {
+            if (players[i].handicap < minHcp) {
+                minHcp = players[i].handicap;
+                anchorName = players[i].name;
+            }
+        }
+        
+        var playerList = [];
+        for (var i = 0; i < players.length; i++) {
+            var p = players[i];
+            var total = playerTotals[p.name];
+            
+            // Calculate performance adjustment (relativeToPar / holesPlayed)
+            var perfAdj = 0;
+            var perfRaw = 0;
+            if (total && total.holesPlayed > 0) {
+                perfRaw = total.relativeToPar;
+                perfAdj = Math.round((total.relativeToPar / total.holesPlayed) * 10) / 10;
+            }
+            
+            // Calculate anchor adjustment (player handicap - anchor handicap)
+            var anchorAdj = p.handicap - minHcp;
+            var anchorRaw = anchorAdj;
+            
+            // Calculate final handicap (startingHcp + anchorAdj + perfAdj)
+            var finalHcp = Math.round((p.handicap + anchorAdj + perfAdj) * 10) / 10;
+            
+            playerList.push({
+                name: p.name,
+                label: p.label || '',
+                startingHcp: p.handicap,
+                finalHcp: finalHcp,
+                perfAdj: perfAdj,
+                anchorAdj: anchorAdj,
+                perfRaw: perfRaw,
+                anchorRaw: anchorRaw
+            });
+        }
+        
+        return {
+            players: playerList,
+            anchor: anchorName,
+            newAnchor: anchorName,
+            needsZeroRise: false,
+            zeroRiseAmount: 0,
+            calculatedAt: new Date().toISOString(),
+            winner: winner,
+            finalTeamA: finalTeamA,
+            finalTeamB: finalTeamB
+        };
+    }
+    
+    // ============================================================
+    // Helper: Get or create archive record, then complete it
+    // ============================================================
+    
+    function ensureArchiveRecordComplete(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
+        // First, create the pending record if it doesn't exist
+        if (typeof HistoryRecord === 'undefined') {
+            if (callback) callback(new Error("HistoryRecord not available"), null);
+            return;
+        }
+        
+        // Check if record exists
+        var docId = HistoryRecord.getHistoryDocId(gameId);
+        var db = getDb();
+        
+        db.collection('historyGames').doc(docId).get()
+            .then(function(doc) {
+                var isUpdate = doc.exists;
+                
+                if (isUpdate) {
+                    // Record exists - update it with handicap data
+                    console.log("[SignCard] Record exists, updating with handicap:", docId);
+                    
+                    // Calculate handicap data from game data
+                    var handicapData = calculateAdjustedHandicapsFromGameData(gameData);
+                    if (!handicapData) {
+                        if (callback) callback(new Error("Failed to calculate handicap data"), null);
+                        return;
+                    }
+                    
+                    // Get starting players from game data
+                    var startingPlayers = gameData.players.map(function(p) {
+                        return {
+                            name: p.name,
+                            label: p.label || '',
+                            handicap: p.handicap,
+                            team: p.team,
+                            flight: p.flight
+                        };
+                    });
+                    
+                    // Call updateWithHandicap
+                    HistoryRecord.updateWithHandicap(docId, handicapData, startingPlayers, function(err) {
+                        if (err) {
+                            console.error("[SignCard] Failed to update with handicap:", err);
+                            if (callback) callback(err, null);
+                        } else {
+                            console.log("[SignCard] Record completed with handicap data:", docId);
+                            if (callback) callback(null, docId);
+                        }
+                    });
+                    
+                } else {
+                    // Record doesn't exist - create pending record first, then complete it
+                    console.log("[SignCard] Record doesn't exist, creating and completing:", docId);
+                    
+                    HistoryRecord.upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, function(err, newDocId) {
+                        if (err) {
+                            console.error("[SignCard] Failed to create pending record:", err);
+                            if (callback) callback(err, null);
+                            return;
+                        }
+                        
+                        // Now calculate handicap data and update
+                        var handicapData = calculateAdjustedHandicapsFromGameData(gameData);
+                        if (!handicapData) {
+                            if (callback) callback(new Error("Failed to calculate handicap data"), null);
+                            return;
+                        }
+                        
+                        var startingPlayers = gameData.players.map(function(p) {
+                            return {
+                                name: p.name,
+                                label: p.label || '',
+                                handicap: p.handicap,
+                                team: p.team,
+                                flight: p.flight
+                            };
+                        });
+                        
+                        HistoryRecord.updateWithHandicap(newDocId, handicapData, startingPlayers, function(err2) {
+                            if (err2) {
+                                console.error("[SignCard] Failed to update with handicap:", err2);
+                                if (callback) callback(err2, null);
+                            } else {
+                                console.log("[SignCard] Record created and completed with handicap data:", newDocId);
+                                if (callback) callback(null, newDocId);
+                            }
+                        });
+                    });
+                }
+            })
+            .catch(function(err) {
+                console.error("[SignCard] Error in ensureArchiveRecordComplete:", err);
+                if (callback) callback(err, null);
+            });
     }
     
     // ============================================================
@@ -133,7 +308,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Helper: Get or create archive record for handicap adjustment
+    // Helper: Get or create archive record for handicap adjustment (LEGACY - kept for compatibility)
     // ============================================================
     
     function ensureArchiveRecord(gameId, callback) {
@@ -195,7 +370,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.18: Updated to "GAME COMPLETED!"
+    // Celebration Screen - v1.19: Auto-completes record with handicap
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -230,6 +405,55 @@ var SignCard = (function() {
             onClose: onClose
         };
         
+        // ---- v1.19: COMPLETE THE RECORD WITH HANDICAP DATA ----
+        // Fetch the game data from Firestore to calculate handicaps
+        var db = getDb();
+        db.collection('scheduledGames').doc(gameId).get()
+            .then(function(doc) {
+                if (doc.exists) {
+                    var gameData = doc.data();
+                    // Calculate handicap data
+                    var handicapData = calculateAdjustedHandicapsFromGameData(gameData);
+                    if (handicapData) {
+                        // Save the handicap data to the archive record
+                        var finalScores = {
+                            teamA: teamAScore,
+                            teamB: teamBScore
+                        };
+                        var signatures = gameData.signatures || {};
+                        var results = gameData.results || {};
+                        var flight1DataString = gameData.f1?.d || "";
+                        var flight2DataString = gameData.f2?.d || "";
+                        
+                        ensureArchiveRecordComplete(
+                            gameId,
+                            gameData,
+                            results,
+                            finalScores,
+                            signatures,
+                            flight1DataString,
+                            flight2DataString,
+                            {},
+                            function(err, archiveId) {
+                                if (err) {
+                                    console.warn("[SignCard] Failed to complete record with handicap:", err);
+                                } else {
+                                    console.log("[SignCard] Record completed with handicap data:", archiveId);
+                                }
+                            }
+                        );
+                    } else {
+                        console.warn("[SignCard] Could not calculate handicap data - record may remain pending");
+                    }
+                } else {
+                    console.warn("[SignCard] Game data not found - record may remain pending");
+                }
+            })
+            .catch(function(err) {
+                console.warn("[SignCard] Error fetching game data for handicap:", err);
+            });
+        
+        // ---- RENDER CELEBRATION MODAL ----
         getCelebrationImage(function(imageSrc) {
             var imageHtml = '';
             if (imageSrc) {
@@ -242,7 +466,6 @@ var SignCard = (function() {
                 imageHtml = '<div class="celebration-image-container" style="font-size:4rem;">🏆</div>';
             }
             
-            // v1.18: Changed "MATCH COMPLETE!" to "GAME COMPLETED!"
             var modalHtml = `
                 <div class="modal-overlay celebration-overlay" id="celebrationModal" style="z-index: 3000;">
                     <div class="celebration-modal">
@@ -268,7 +491,6 @@ var SignCard = (function() {
             addCelebrationStyles();
             launchConfetti();
             
-            // Call onClose callback after modal is rendered
             setTimeout(function() {
                 console.log("[SignCard] Celebration modal fully rendered - calling onClose callback");
                 if (typeof onClose === 'function') {
@@ -276,7 +498,6 @@ var SignCard = (function() {
                 }
             }, 500);
             
-            // v1.16: Button handler with proper gameId closure
             var btn = document.getElementById("handicapAdjustBtn");
             if (btn) {
                 var newBtn = btn.cloneNode(true);
@@ -298,7 +519,6 @@ var SignCard = (function() {
                         return;
                     }
                     
-                    // Save celebration data to sessionStorage for HCP page
                     try {
                         sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
                         console.log("[SignCard] Celebration data saved to sessionStorage");
@@ -493,7 +713,6 @@ var SignCard = (function() {
                     border: 1px solid #ffaa44;
                 }
                 
-                /* v1.17: Score styles updated for new format */
                 .celebration-score {
                     display: flex;
                     justify-content: center;
@@ -683,7 +902,9 @@ var SignCard = (function() {
         getWinner: getWinner,
         launchConfetti: launchConfetti,
         clearConfetti: clearConfetti,
-        ensureArchiveRecord: ensureArchiveRecord
+        ensureArchiveRecord: ensureArchiveRecord,
+        ensureArchiveRecordComplete: ensureArchiveRecordComplete,
+        calculateAdjustedHandicapsFromGameData: calculateAdjustedHandicapsFromGameData
     };
     
 })();
@@ -693,11 +914,16 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - CHANGED: Celebration title "MATCH COMPLETE!" → "GAME COMPLETED!"
-   - Updated celebration screen title text
-   - All existing functionality preserved from v1.17
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: Celebration flow now calculates adjustedHandicaps immediately
+   - FIXED: Now calls HistoryRecord.updateWithHandicap() instead of just upsertPendingRecord()
+   - FIXED: Record is written with status: "completed" and adjustedHandicaps populated
+   - ADDED: calculateAdjustedHandicapsFromGameData() - calculates all handicap adjustment values
+   - ADDED: Proper anchor detection (lowest handicap player)
+   - ADDED: Player totals from results for performance adjustment
+   - ADDED: ensureArchiveRecordComplete() - creates pending record then immediately completes it
+   - All existing functionality preserved from v1.18
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
