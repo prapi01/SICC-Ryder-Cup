@@ -1,14 +1,13 @@
 <!--
 FILE: admin.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - CHANGED: Zoom toggle from single button to two-button (ON/OFF) design
-   - Added visual feedback showing active state with highlighted button
-   - Active state: ON = green/gold, OFF = grey
-   - Inactive state: grey with lower opacity
-   - Added status text for clarity
-   - All existing functionality preserved from v1.10
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - ADDED: js/index-hidden.js dependency for admin modal functions
+   - FIXED: showAdminModal is now available on admin.html page
+   - FIXED: Cmd+Click or long press on golf icon now works
+   - FIXED: Admin modal functions (reset locks, reset game, view data, refresh)
+   - All existing functionality preserved from v1.11
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
 
@@ -24,6 +23,7 @@ STATUS: Ready for integration
     <script src="js/session.js"></script>
     <script src="js/modal.js"></script>
     <script src="js/settings.js"></script>
+    <script src="js/index-hidden.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -191,19 +191,19 @@ STATUS: Ready for integration
     <div class="loading">Loading...</div>
 </div>
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v1.11</div>
+<div class="version-tag">v1.12</div>
 
 <script>
-// FILE: admin.html - VERSION 1.11
+// FILE: admin.html - VERSION 1.12
 
-var VERSION = "1.11";
-var CACHE_KEY = "admin_version_v111";
+var VERSION = "1.12";
+var CACHE_KEY = "admin_version_v112";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
     localStorage.setItem(CACHE_KEY, VERSION);
     
-    // v1.09: Preserve ALL existing URL parameters
+    // Preserve ALL existing URL parameters
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
@@ -351,7 +351,8 @@ function generateGameId() {
 }
 
 function initHiddenAdmin() {
-    // Placeholder for compatibility
+    // Placeholder for compatibility - index-hidden.js provides the real implementation
+    console.log("[ADMIN] initHiddenAdmin called - index-hidden.js should handle this");
 }
 
 function render() {
@@ -442,6 +443,11 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
     deviceSession = session;
     displayDeviceId();
     render();
+    
+    // v1.12: Initialize index-hidden functionality if available
+    if (typeof initHiddenAdmin === 'function') {
+        initHiddenAdmin();
+    }
 });
 </script>
 </body>
@@ -449,14 +455,13 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - CHANGED: Zoom toggle from single button to two-button (ON/OFF) design
-   - Added visual feedback showing active state with highlighted button
-   - Active state: ON = green/gold, OFF = grey
-   - Inactive state: grey with lower opacity
-   - Added status text for clarity
-   - All existing functionality preserved from v1.10
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - ADDED: js/index-hidden.js dependency for admin modal functions
+   - FIXED: showAdminModal is now available on admin.html page
+   - FIXED: Cmd+Click or long press on golf icon now works
+   - FIXED: Admin modal functions (reset locks, reset game, view data, refresh)
+   - All existing functionality preserved from v1.11
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
