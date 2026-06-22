@@ -1,13 +1,14 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.48
-KEY CHANGES from v1.47:
-   - CHANGED: Name field now truncates long names (14 chars max) with ellipsis
-   - CHANGED: HCP field reduced width and left-aligned
-   - CHANGED: HCP group padding reduced for tighter layout
-   - FIXED: Layout now stays in single line on 393px screens
-   - PRESERVED: All font sizes remain at 0.85rem
-   - PRESERVED: All functionality from v1.47
+VERSION: 1.49
+KEY CHANGES from v1.48:
+   - FIXED: Fixed column widths for table layout: Name(132px), Label(40px), HCP(30px), Team(40px), Flight(44px)
+   - FIXED: HCP spinner arrows removed, numbers right-aligned
+   - FIXED: All row content font size 14px
+   - ADDED: Horizontal scroll for screens smaller than table width
+   - FIXED: Header alignment with invisible Label column
+   - CHANGED: Player rows now use fixed-width columns for orderly alignment
+   - PRESERVED: All functionality from v1.48
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -175,19 +176,41 @@ STATUS: Ready for integration
         
         .error-msg { color: #ff6b6b; font-size: 0.7rem; margin-top: 4px; }
         
-        /* Player rows - single line, optimized for 393px */
+        /* ===== TABLE LAYOUT - FIXED COLUMN WIDTHS ===== */
+        .table-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 4px;
+        }
+        .table-scroll::-webkit-scrollbar {
+            height: 3px;
+        }
+        .table-scroll::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+        .table-scroll::-webkit-scrollbar-thumb {
+            background: #2a5a2a;
+            border-radius: 3px;
+        }
+        
+        .table-container {
+            min-width: 300px;
+            width: 100%;
+        }
+        
+        /* Player rows - fixed column widths */
         .player-row { 
             display: flex;
             align-items: center;
-            gap: 4px;
-            background: rgba(20, 20, 20, 0.08);
-            border-radius: 4px;
-            padding: 4px 6px;
+            gap: 3px;
+            padding: 2px 4px;
             margin-bottom: 2px;
+            background: rgba(20, 20, 20, 0.06);
+            border-radius: 3px;
             border: none;
             border-bottom: 1px solid #1a3a1a;
-            flex-wrap: nowrap;
-            overflow: hidden;
+            min-height: 28px;
+            width: 100%;
         }
         .player-row:first-child {
             border-top: 1px solid #1a3a1a;
@@ -199,26 +222,32 @@ STATUS: Ready for integration
         .player-line1 {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 3px;
             margin-bottom: 0;
             flex: 1;
             flex-wrap: nowrap;
-            overflow: hidden;
+            width: 100%;
         }
         .player-line2 {
             display: none;
         }
         
+        /* Column 1: Name - 132px */
         .player-name-select {
-            flex: 1;
-            min-width: 60px;
-            max-width: 140px;
-            font-size: 0.85rem;
-            padding: 3px 4px;
+            flex: 0 0 132px;
+            width: 132px;
+            min-width: 132px;
+            max-width: 132px;
+            font-size: 14px;
+            padding: 2px 4px;
             border: 1px solid #2a5a2a;
-            border-radius: 4px;
+            border-radius: 3px;
             background: #0a0a0a;
             color: #e0e0e0;
+            height: 24px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
             cursor: pointer;
             transition: border-color 0.2s ease;
         }
@@ -229,110 +258,192 @@ STATUS: Ready for integration
         .player-name-select option {
             background: #0a0a0a;
             color: #e0e0e0;
-            font-size: 0.85rem;
+            font-size: 14px;
         }
         
+        /* Column 2: Label - 40px, center */
         .label-display {
-            display: inline-block;
-            font-size: 0.85rem;
-            padding: 2px 6px;
-            min-width: 22px;
-            background: #1a3a1a;
-            border: 1px solid #2a5a2a;
-            border-radius: 4px;
+            flex: 0 0 40px;
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
+            font-size: 14px;
             text-align: center;
+            padding: 1px 4px;
             font-weight: 600;
             color: #4caf50;
-            flex-shrink: 0;
+            background: #1a3a1a;
+            border: 1px solid #2a5a2a;
+            border-radius: 3px;
+            height: 24px;
+            line-height: 24px;
+            overflow: visible;
+            white-space: nowrap;
         }
         
-        /* HCP group - tighter, left-aligned */
+        /* Column 3: HCP - 30px, right-aligned, no arrows */
         .hcp-group {
+            flex: 0 0 30px;
+            width: 30px;
+            min-width: 30px;
+            max-width: 30px;
             display: flex;
             align-items: center;
-            gap: 2px;
-            padding: 2px 4px;
+            justify-content: flex-end;
+            padding: 1px 4px;
             border: 1px solid #2a5a2a;
-            border-radius: 4px;
+            border-radius: 3px;
             background: #0a0a0a;
-            flex-shrink: 0;
-            min-width: 36px;
-            justify-content: flex-start;
+            height: 24px;
         }
         .hcp-group label {
             display: none;
         }
-        .hcp-group input {
-            width: 26px;
-            font-size: 0.85rem;
-            padding: 2px 0 2px 4px;
-            background: transparent;
-            border: none;
-            color: #e0e0e0;
-            text-align: left;
+        .hcp-group input[type="number"] {
+            width: 20px;
+            font-size: 14px;
+            text-align: right;
             font-weight: 600;
-        }
-        .hcp-group input:focus {
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: #e0e0e0;
+            height: 22px;
             outline: none;
+            -webkit-appearance: none;
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+        .hcp-group input[type="number"]::-webkit-outer-spin-button,
+        .hcp-group input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
         }
         
-        .team-display, .flight-display {
-            font-size: 0.85rem;
-            padding: 2px 4px;
-            border: 1px solid #2a5a2a;
-            border-radius: 4px;
-            background: #0a0a0a;
-            flex-shrink: 0;
-            min-width: 28px;
-            cursor: pointer;
-            font-weight: 600;
+        /* Column 4: Team - 40px, center */
+        .team-display {
+            flex: 0 0 40px;
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
+            font-size: 14px;
             text-align: center;
-            transition: border-color 0.2s ease;
+            padding: 1px 4px;
+            font-weight: 600;
+            color: #ffaa44;
+            border: 1px solid #2a5a2a;
+            border-radius: 3px;
+            background: #0a0a0a;
+            height: 24px;
+            cursor: pointer;
         }
-        .team-display:focus, .flight-display:focus {
+        .team-display:focus {
             outline: none;
             border-color: #4caf50;
         }
-        .team-display { color: #ffaa44; }
-        .flight-display { color: #4caf50; }
-        .team-display option, .flight-display option {
+        .team-display option {
             background: #0a0a0a;
             color: #e0e0e0;
         }
         
-        /* Player header row */
+        /* Column 5: Flight - 44px, center */
+        .flight-display {
+            flex: 0 0 44px;
+            width: 44px;
+            min-width: 44px;
+            max-width: 44px;
+            font-size: 14px;
+            text-align: center;
+            padding: 1px 4px;
+            font-weight: 600;
+            color: #4caf50;
+            border: 1px solid #2a5a2a;
+            border-radius: 3px;
+            background: #0a0a0a;
+            height: 24px;
+            cursor: pointer;
+        }
+        .flight-display:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .flight-display option {
+            background: #0a0a0a;
+            color: #e0e0e0;
+        }
+        
+        /* Player header row - fixed column widths */
         .player-header-row {
             display: flex;
             align-items: center;
-            gap: 4px;
-            padding: 4px 6px;
-            margin-bottom: 6px;
+            gap: 3px;
+            padding: 2px 4px;
+            margin-bottom: 4px;
             border-bottom: 1px solid #2a5a2a;
-            font-size: 0.6rem;
+            font-size: 10px;
             color: #4caf50;
             font-weight: 600;
             letter-spacing: 0.5px;
             text-transform: uppercase;
+            height: 24px;
         }
-        .player-header-row span {
-            flex-shrink: 0;
-        }
-        .player-header-row .header-name {
-            flex: 1;
-            min-width: 60px;
+        .player-header-row .header-player {
+            flex: 0 0 132px;
+            width: 132px;
+            min-width: 132px;
+            max-width: 132px;
             text-align: left;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            height: 24px;
+        }
+        .player-header-row .header-label {
+            flex: 0 0 40px;
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 24px;
+            color: transparent;
+            font-size: 1px;
+            overflow: hidden;
         }
         .player-header-row .header-hcp {
-            min-width: 36px;
-            text-align: center;
+            flex: 0 0 30px;
+            width: 30px;
+            min-width: 30px;
+            max-width: 30px;
+            text-align: right;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            height: 24px;
         }
         .player-header-row .header-team {
-            min-width: 28px;
+            flex: 0 0 40px;
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
             text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 24px;
         }
         .player-header-row .header-flight {
-            min-width: 28px;
+            flex: 0 0 44px;
+            width: 44px;
+            min-width: 44px;
+            max-width: 44px;
             text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 24px;
         }
         
         .btn { 
@@ -454,11 +565,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.48</div>
+<div class="version-tag">v1.49</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.48
+// VERSION: 1.49
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -466,8 +577,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.48";
-var CACHE_KEY = "setup_game_version_v148";
+var VERSION = "1.49";
+var CACHE_KEY = "setup_game_version_v149";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1432,19 +1543,17 @@ function render() {
     
     var playersHtml = '';
     
-    // Build header
+    // Build header with fixed columns
     var headerHtml = `
         <div class="player-header-row">
-            <span class="header-name">Player</span>
+            <span class="header-player">Player</span>
+            <span class="header-label">Label</span>
             <span class="header-hcp">Hcp</span>
             <span class="header-team">Team</span>
             <span class="header-flight">Flight</span>
         </div>
     `;
     playersHtml += headerHtml;
-    
-    // v1.48: Max display length for name in dropdown (closed state)
-    var maxDisplayLength = 14;
     
     for (var idx = 0; idx < displayPlayers.length; idx++) {
         var p = displayPlayers[idx];
@@ -1453,17 +1562,12 @@ function render() {
         });
         if (originalIdx === -1) originalIdx = idx;
         
-        // Player options - name only, truncated for display
+        // Player options - full name in dropdown
         var playerOptions = '<option value="">— Select player —</option>';
         for (var i = 0; i < playerList.length; i++) {
             var pl = playerList[i];
-            var displayName = pl.name;
-            // v1.48: Truncate long names for display in the closed dropdown
-            if (displayName.length > maxDisplayLength) {
-                displayName = displayName.substring(0, maxDisplayLength) + '…';
-            }
             var isSelected = (pl.name === p.name) ? ' selected' : '';
-            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(displayName) + '</option>';
+            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
         }
         
         playersHtml += `
@@ -1549,11 +1653,15 @@ function render() {
             </div>
         </div>
         
-        <!-- Players Card -->
+        <!-- Players Card with horizontal scroll -->
         <div class="card">
             <div class="card-title">Players (8)</div>
-            ${playersHtml}
-            ${!isValid ? '<div class="error-msg">Each flight needs exactly 2 Team A and 2 Team B players</div>' : ''}
+            <div class="table-scroll">
+                <div class="table-container">
+                    ${playersHtml}
+                    ${!isValid ? '<div class="error-msg">Each flight needs exactly 2 Team A and 2 Team B players</div>' : ''}
+                </div>
+            </div>
         </div>
         
         <div class="button-group">
@@ -1695,14 +1803,15 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.48
-KEY CHANGES from v1.47:
-   - CHANGED: Name field now truncates long names (14 chars max) with ellipsis
-   - CHANGED: HCP field reduced width and left-aligned
-   - CHANGED: HCP group padding reduced for tighter layout
-   - FIXED: Layout now stays in single line on 393px screens
-   - PRESERVED: All font sizes remain at 0.85rem
-   - PRESERVED: All functionality from v1.47
+VERSION: 1.49
+KEY CHANGES from v1.48:
+   - FIXED: Fixed column widths for table layout: Name(132px), Label(40px), HCP(30px), Team(40px), Flight(44px)
+   - FIXED: HCP spinner arrows removed, numbers right-aligned
+   - FIXED: All row content font size 14px
+   - ADDED: Horizontal scroll for screens smaller than table width
+   - FIXED: Header alignment with invisible Label column
+   - CHANGED: Player rows now use fixed-width columns for orderly alignment
+   - PRESERVED: All functionality from v1.48
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
