@@ -1,12 +1,16 @@
 <!--
 FILE: player-management.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - REMOVED: "Default" label from player list display
-   - REMOVED: "Default" toggle button from player actions
-   - REMOVED: Default badge styling and related code
-   - REMOVED: toggleDefault() function
-   - PRESERVED: All other functionality from v1.07 (editable labels, etc.)
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Player items now single line flex layout (no grid wrapping)
+   - FIXED: 2x2 grid form restored with proper column sizing
+   - CHANGED: Label field narrowed to max-width: 80px (max 3 chars)
+   - CHANGED: HCP field text centered
+   - CHANGED: Name field placeholder removed (label provides context)
+   - CHANGED: Label field "system generated" hint removed (auto-populates)
+   - ADDED: Cancel button to form (clears fields, resets editing state)
+   - FIXED: Back link now goes to admin.html (Game Settings)
+   - PRESERVED: All functionality from v1.08
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -108,10 +112,12 @@ STATUS: Ready for integration
         /* 2x2 grid form */
         .form-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 0.6fr;
             gap: 8px 12px;
+            width: 100%;
         }
         .form-grid .field {
+            width: 100%;
             display: flex;
             flex-direction: column;
             gap: 2px;
@@ -124,32 +130,44 @@ STATUS: Ready for integration
         }
         .form-grid .field input,
         .form-grid .field select {
+            width: 100%;
             background: #0a0a0a;
             border: 1px solid #2a5a2a;
             border-radius: 6px;
             padding: 8px 10px;
             color: #e0e0e0;
             font-size: 0.85rem;
-            width: 100%;
             transition: border-color 0.2s ease;
+            box-sizing: border-box;
         }
         .form-grid .field input:focus,
         .form-grid .field select:focus {
             outline: none;
             border-color: #4caf50;
         }
+        /* Label field - narrow, centered */
+        .form-grid .field.label-field input {
+            max-width: 80px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+        /* Hcp field - centered */
+        .form-grid .field.hcp-field input {
+            text-align: center;
+            font-weight: 600;
+        }
         .form-grid .field .hint {
             font-size: 0.5rem;
             color: #555;
             margin-top: 1px;
         }
+        .form-grid .field.label-field .hint {
+            display: none;
+        }
         .form-grid .field.full-width {
             grid-column: 1 / -1;
-        }
-        .form-grid .field input.label-input {
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
         }
         
         .btn {
@@ -162,6 +180,7 @@ STATUS: Ready for integration
             transition: all 0.15s ease;
             background: rgba(20, 20, 20, 0.5);
             color: #4caf50;
+            text-align: center;
         }
         .btn:active { transform: scale(0.97); }
         .btn-primary { border-color: #4caf50; border-width: 2px; }
@@ -171,40 +190,84 @@ STATUS: Ready for integration
         .btn-danger { border-color: #3a1a1a; color: #ff6b6b; }
         .btn-danger:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.04); }
         .btn-small { padding: 4px 10px; font-size: 0.65rem; }
-        .btn-save { border-color: #4caf50; color: #4caf50; }
+        .btn-save { border-color: #4caf50; color: #4caf50; border-width: 2px; }
         .btn-save:hover { background: rgba(76, 175, 80, 0.04); }
         .btn-cancel { border-color: #2a5a2a; color: #666; }
         .btn-cancel:hover { border-color: #4caf50; color: #888; }
         
-        .btn-group { display: flex; gap: 10px; margin-top: 12px; }
-        .btn-group .btn { flex: 1; }
+        .btn-group { 
+            display: flex; 
+            gap: 10px; 
+            margin-top: 12px; 
+            width: 100%;
+            justify-content: flex-end;
+        }
+        .btn-group .btn { 
+            flex: 0 1 auto; 
+            padding: 10px 20px;
+        }
         
+        /* Player list - single line flex */
         .player-list { margin-top: 4px; }
         .player-item {
-            display: grid;
-            grid-template-columns: 1fr auto auto auto auto;
+            display: flex;
             align-items: center;
             gap: 6px;
-            padding: 8px 12px;
+            padding: 6px 10px;
             background: rgba(10, 10, 10, 0.5);
             border-radius: 6px;
             margin-bottom: 4px;
             border: 1px solid #2a5a2a;
+            flex-wrap: nowrap;
+            width: 100%;
+            box-sizing: border-box;
         }
-        .player-item .p-name { font-size: 0.8rem; font-weight: 500; color: #e0e0e0; }
+        .player-item .p-name { 
+            flex: 1;
+            min-width: 0;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #e0e0e0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .player-item .p-label { 
-            font-size: 0.6rem; 
-            font-weight: 600; 
-            color: #4caf50; 
-            background: #1a3a1a; 
-            padding: 1px 8px; 
-            border-radius: 4px; 
-            text-align: center; 
-            min-width: 28px;
+            flex: 0 0 auto;
+            font-size: 0.55rem;
+            font-weight: 600;
+            color: #4caf50;
+            background: #1a3a1a;
+            padding: 1px 6px;
+            border-radius: 4px;
+            text-align: center;
+            min-width: 20px;
         }
-        .player-item .p-hcp { font-size: 0.6rem; color: #4caf50; }
-        .player-item .p-team { font-size: 0.6rem; color: #ffaa44; }
-        .player-item .p-actions { display: flex; gap: 4px; align-items: center; }
+        .player-item .p-hcp { 
+            flex: 0 0 auto;
+            font-size: 0.55rem;
+            color: #4caf50;
+            min-width: 28px;
+            text-align: center;
+        }
+        .player-item .p-team { 
+            flex: 0 0 auto;
+            font-size: 0.55rem;
+            color: #ffaa44;
+            min-width: 22px;
+            text-align: center;
+        }
+        .player-item .p-actions { 
+            display: flex;
+            flex: 0 0 auto;
+            gap: 4px;
+            flex-wrap: nowrap;
+        }
+        .player-item .p-actions .btn-small {
+            font-size: 0.55rem;
+            padding: 2px 6px;
+            white-space: nowrap;
+        }
         
         .player-item.editing { border-color: #4caf50; background: #1a2a1a; }
         
@@ -227,11 +290,37 @@ STATUS: Ready for integration
         .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
+        /* Mobile adjustments */
         @media (max-width: 400px) {
-            .player-item { grid-template-columns: 1fr auto auto; grid-template-rows: auto auto; }
-            .player-item .p-actions { grid-column: 1 / -1; justify-self: end; }
-            .form-grid { grid-template-columns: 1fr; }
-            .form-grid .field.full-width { grid-column: 1; }
+            .player-item {
+                gap: 4px;
+                padding: 4px 8px;
+            }
+            .player-item .p-name {
+                font-size: 0.7rem;
+            }
+            .player-item .p-label,
+            .player-item .p-hcp,
+            .player-item .p-team {
+                font-size: 0.5rem;
+            }
+            .player-item .p-actions .btn-small {
+                font-size: 0.5rem;
+                padding: 1px 4px;
+            }
+            .form-grid {
+                grid-template-columns: 1fr 0.6fr;
+                gap: 6px 8px;
+            }
+            .form-grid .field input,
+            .form-grid .field select {
+                padding: 6px 8px;
+                font-size: 0.8rem;
+            }
+            .btn-group .btn {
+                padding: 8px 14px;
+                font-size: 0.8rem;
+            }
         }
     </style>
 </head>
@@ -242,12 +331,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.08</div>
+<div class="version-tag">v1.09</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.08
+// VERSION: 1.09
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -256,8 +345,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.08";
-var CACHE_KEY = "player_management_v108";
+var APP_VERSION = "1.09";
+var CACHE_KEY = "player_management_v109";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -269,8 +358,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.08";
-console.log("[PLAYER-MGMT] Initializing v1.08 - Removed Default label");
+window.PLAYER_MGMT_VERSION = "1.09";
+console.log("[PLAYER-MGMT] Initializing v1.09 - Fixed layout, Cancel button, Back to admin");
 
 // ============================================================
 // Firebase
@@ -386,13 +475,13 @@ function savePlayers(callback) {
 }
 
 // ============================================================
-// updateLabelPreview
+// updateLabelPreview - auto-generate label from name
 // ============================================================
 function updateLabelPreview() {
     var nameInput = document.getElementById('playerName');
     var labelInput = document.getElementById('playerLabel');
     if (nameInput && labelInput) {
-        // Only auto-generate if label is empty or user hasn't manually changed it
+        // Only auto-generate if user hasn't manually edited the label
         if (!labelInput.dataset.userEdited || labelInput.dataset.userEdited === 'false') {
             labelInput.value = generateLabel(nameInput.value);
         }
@@ -402,15 +491,31 @@ function updateLabelPreview() {
 function onLabelInput() {
     var labelInput = document.getElementById('playerLabel');
     if (labelInput) {
-        // Mark that user has manually edited the label
         labelInput.dataset.userEdited = 'true';
-        // Enforce max 3 characters
         if (labelInput.value.length > 3) {
             labelInput.value = labelInput.value.substring(0, 3);
         }
-        // Convert to uppercase
         labelInput.value = labelInput.value.toUpperCase();
     }
+}
+
+function onNameInput() {
+    var nameInput = document.getElementById('playerName');
+    var labelInput = document.getElementById('playerLabel');
+    if (nameInput && labelInput) {
+        // Only auto-generate if user hasn't manually edited the label
+        if (!labelInput.dataset.userEdited || labelInput.dataset.userEdited === 'false') {
+            labelInput.value = generateLabel(nameInput.value);
+        }
+    }
+}
+
+// ============================================================
+// Cancel Edit / Add
+// ============================================================
+function cancelForm() {
+    editingIndex = -1;
+    render();
 }
 
 // ============================================================
@@ -451,16 +556,16 @@ function render() {
             <div class="form-grid">
                 <div class="field">
                     <label>Name</label>
-                    <input type="text" id="playerName" placeholder="Player name" value="${escapeHtml(currentName)}" oninput="updateLabelPreview()">
+                    <input type="text" id="playerName" placeholder="" value="${escapeHtml(currentName)}" oninput="onNameInput()">
                 </div>
-                <div class="field">
+                <div class="field hcp-field">
                     <label>Hcp</label>
                     <input type="number" id="playerHcp" min="0" max="54" value="${currentHcp}">
                 </div>
-                <div class="field">
-                    <label>Label (max 3 chars)</label>
-                    <input type="text" id="playerLabel" class="label-input" value="${escapeHtml(currentLabel)}" maxlength="3" placeholder="e.g. ACH" oninput="onLabelInput()">
-                    <span class="hint">system generated, editable</span>
+                <div class="field label-field">
+                    <label>Label (max 3)</label>
+                    <input type="text" id="playerLabel" class="label-input" value="${escapeHtml(currentLabel)}" maxlength="3" placeholder="" oninput="onLabelInput()">
+                    <span class="hint">system generated</span>
                 </div>
                 <div class="field">
                     <label>Team</label>
@@ -471,8 +576,8 @@ function render() {
                 </div>
             </div>
             <div class="btn-group">
+                <button class="btn btn-cancel" id="cancelBtn">Cancel</button>
                 <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? 'Update' : 'Add'}</button>
-                ${editingIndex >= 0 ? '<button class="btn btn-cancel" id="cancelEditBtn">Cancel</button>' : ''}
             </div>
         </div>
         
@@ -483,16 +588,13 @@ function render() {
     
     container.innerHTML = html;
     
+    // Save button
     document.getElementById('savePlayerBtn').addEventListener('click', savePlayer);
     
-    var cancelBtn = document.getElementById('cancelEditBtn');
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', function() {
-            editingIndex = -1;
-            render();
-        });
-    }
+    // Cancel button
+    document.getElementById('cancelBtn').addEventListener('click', cancelForm);
     
+    // Enter key handlers
     document.getElementById('playerName').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') savePlayer();
     });
@@ -502,20 +604,28 @@ function render() {
     document.getElementById('playerLabel').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') savePlayer();
     });
+    document.getElementById('playerTeam').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') savePlayer();
+    });
     
-    // Reset the userEdited flag when name changes (auto-generate label)
+    // Label field - auto-generate when name changes
     var nameInput = document.getElementById('playerName');
     var labelInput = document.getElementById('playerLabel');
     if (nameInput && labelInput) {
+        // Reset userEdited flag if label is empty when name changes
         nameInput.addEventListener('input', function() {
-            // Only auto-generate if user hasn't manually edited the label
-            if (labelInput.dataset.userEdited !== 'true') {
+            // If label is empty, auto-generate
+            if (!labelInput.value || labelInput.dataset.userEdited === 'false') {
                 labelInput.value = generateLabel(nameInput.value);
+                labelInput.dataset.userEdited = 'false';
             }
         });
     }
     
-    updateLabelPreview();
+    // If editing, mark label as user-edited so it doesn't get overwritten
+    if (editingIndex >= 0 && labelInput) {
+        labelInput.dataset.userEdited = 'true';
+    }
 }
 
 // ============================================================
@@ -534,10 +644,10 @@ function renderPlayerList() {
         
         html += `
             <div class="player-item ${isEditing ? 'editing' : ''}">
-                <span class="p-name">${escapeHtml(p.name)}</span>
+                <span class="p-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
                 <span class="p-label">${escapeHtml(label)}</span>
-                <span class="p-hcp">HCP ${p.handicap}</span>
-                <span class="p-team">Team ${p.defaultTeam || 'A'}</span>
+                <span class="p-hcp">${p.handicap}</span>
+                <span class="p-team">${p.defaultTeam || 'A'}</span>
                 <div class="p-actions">
                     <button class="btn btn-small btn-primary edit-btn" data-index="${i}">Edit</button>
                     <button class="btn btn-small btn-danger delete-btn" data-index="${i}">Del</button>
@@ -560,7 +670,6 @@ function attachPlayerActions() {
                 if (labelInput) {
                     labelInput.dataset.userEdited = 'true';
                 }
-                updateLabelPreview();
             }, 100);
         });
     });
@@ -604,7 +713,6 @@ function savePlayer() {
         return;
     }
     
-    // Validate label - max 3 chars
     if (label.length > 3) {
         Modal.alert("Label must be 3 characters or less.");
         labelInput.focus();
@@ -666,11 +774,10 @@ function deletePlayer(index) {
 }
 
 // ============================================================
-// Navigation
+// Navigation - Back to Game Settings (admin.html)
 // ============================================================
 function goBackToSettings() {
-    var returnDest = SessionManager.getReturnDestination();
-    window.location.href = returnDest || "admin.html";
+    window.location.href = "admin.html";
 }
 
 // ============================================================
@@ -689,19 +796,25 @@ window.deletePlayer = deletePlayer;
 window.generateLabel = generateLabel;
 window.updateLabelPreview = updateLabelPreview;
 window.onLabelInput = onLabelInput;
+window.onNameInput = onNameInput;
+window.cancelForm = cancelForm;
 </script>
 </body>
 </html>
 
 <!--
 FILE: player-management.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - REMOVED: "Default" label from player list display
-   - REMOVED: "Default" toggle button from player actions
-   - REMOVED: Default badge styling and related code
-   - REMOVED: toggleDefault() function
-   - PRESERVED: All other functionality from v1.07 (editable labels, etc.)
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - FIXED: Player items now single line flex layout (no grid wrapping)
+   - FIXED: 2x2 grid form restored with proper column sizing
+   - CHANGED: Label field narrowed to max-width: 80px (max 3 chars)
+   - CHANGED: HCP field text centered
+   - CHANGED: Name field placeholder removed (label provides context)
+   - CHANGED: Label field "system generated" hint removed (auto-populates)
+   - ADDED: Cancel button to form (clears fields, resets editing state)
+   - FIXED: Back link now goes to admin.html (Game Settings)
+   - PRESERVED: All functionality from v1.08
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
