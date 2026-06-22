@@ -1,12 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.58
-KEY CHANGES from v3.57:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v3.57
+VERSION: 3.59
+KEY CHANGES from v3.58:
+   - CHANGED: All buttons now rounded rectangle style (consistent with admin.html)
+   - REMOVED: Icons from "VIEW PREVIOUS GAMES" and "DEMO & TUTORIAL" buttons
+   - CHANGED: NGB button border-radius to 12px
+   - CHANGED: Menu button border-radius to 10px
+   - CHANGED: GSB button border-radius to 10px
+   - PRESERVED: All functionality from v3.58
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -334,11 +335,11 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* SQUARE NGB BUTTONS - 95% of title width */
+        /* ROUNDED RECTANGLE NGB BUTTONS - consistent with admin.html */
         .ngb {
             background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
             border: 2px solid #4caf50;
-            border-radius: 32px;
+            border-radius: 12px;
             margin: 0 auto 24px auto;
             display: flex;
             flex-direction: column;
@@ -348,6 +349,7 @@ STATUS: Ready for integration
             transition: all 0.3s ease;
             box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
             cursor: pointer;
+            padding: 20px;
         }
         .ngb-inactive {
             background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
@@ -380,41 +382,62 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* VIEW PREVIOUS GAMES and DEMO buttons - same width as NGB */
+        /* MENU BUTTONS - rounded rectangle, no icons */
         .menu-btn {
-            background: linear-gradient(145deg, #1a1a1a, #111);
-            border: 1px solid #4caf50;
-            border-radius: 60px;
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a;
+            border-radius: 10px;
             padding: 14px 20px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
             box-sizing: border-box;
-            white-space: nowrap;
+            width: 100%;
+        }
+        .menu-btn:hover { 
+            border-color: #4caf50; 
+            background: rgba(20, 20, 20, 0.8);
         }
         .menu-btn:active { transform: scale(0.98); }
         .menu-btn .label {
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             font-weight: 600;
             color: #4caf50;
+            letter-spacing: -0.1px;
         }
         
-        /* GAME SETTINGS button - same width as NGB */
+        /* GAME SETTINGS button - rounded rectangle */
         .gsb {
-            background: rgba(17,17,17,0.9);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 60px;
-            padding: 12px 24px;
+            background: rgba(20, 20, 20, 0.5);
+            border: 1px solid #2a5a2a;
+            border-radius: 10px;
+            padding: 14px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s ease;
             margin: 0 auto;
-            backdrop-filter: blur(4px);
             box-sizing: border-box;
+            width: 100%;
         }
-        .gsb:active { transform: scale(0.98); background: rgba(26,26,26,0.9); }
-        .gsb .icon { font-size: 1rem; margin-right: 8px; display: inline-block; vertical-align: middle; }
-        .gsb .label { font-size: 0.85rem; font-weight: 600; color: #ccc; display: inline-block; vertical-align: middle; }
+        .gsb:hover { 
+            border-color: #4caf50; 
+            background: rgba(20, 20, 20, 0.8);
+        }
+        .gsb:active { transform: scale(0.98); }
+        .gsb .icon { 
+            font-size: 1rem; 
+            margin-right: 8px; 
+            display: inline-block; 
+            vertical-align: middle; 
+        }
+        .gsb .label { 
+            font-size: 0.85rem; 
+            font-weight: 600; 
+            color: #4caf50; 
+            display: inline-block; 
+            vertical-align: middle; 
+            letter-spacing: -0.1px;
+        }
         
         .footer {
             text-align: center;
@@ -561,7 +584,9 @@ STATUS: Ready for integration
             var buttonWidth = Math.floor(titleWidth * 1.05);
             
             ngb.style.width = buttonWidth + 'px';
-            ngb.style.height = buttonWidth + 'px';
+            // Remove height constraint to allow flexible sizing
+            ngb.style.height = 'auto';
+            ngb.style.minHeight = buttonWidth * 0.6 + 'px';
             
             menuBtns.forEach(function(btn) {
                 btn.style.width = buttonWidth + 'px';
@@ -601,13 +626,13 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.58</div>
+<div class="version-tag">v3.59</div>
 
 <script>
-// FILE: index.html - VERSION 3.58
+// FILE: index.html - VERSION 3.59
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.58";
+window.INDEX_VERSION = "3.59";
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -618,8 +643,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "3.58";
-var CACHE_KEY = "index_version_v358";
+var APP_VERSION = "3.59";
+var CACHE_KEY = "index_version_v359";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -1326,10 +1351,10 @@ function renderMainUI() {
                 
                 <div class="menu-buttons">
                     <div class="menu-btn" id="previousGamesBtn">
-                        <span class="label">📋 VIEW PREVIOUS GAMES</span>
+                        <span class="label">VIEW PREVIOUS GAMES</span>
                     </div>
                     <div class="menu-btn" id="demoBtn">
-                        <span class="label">🎮 DEMO & TUTORIAL</span>
+                        <span class="label">DEMO & TUTORIAL</span>
                     </div>
                 </div>
                 
@@ -1367,7 +1392,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.58
+// Initialization - v3.59
 // ============================================================
 
 function initApp() {
@@ -1451,7 +1476,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.58
+// Start the app - v3.59
 // ============================================================
 
 if (isFirstLoad) {
@@ -1487,13 +1512,14 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.58
-KEY CHANGES from v3.57:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v3.57
+VERSION: 3.59
+KEY CHANGES from v3.58:
+   - CHANGED: All buttons now rounded rectangle style (consistent with admin.html)
+   - REMOVED: Icons from "VIEW PREVIOUS GAMES" and "DEMO & TUTORIAL" buttons
+   - CHANGED: NGB button border-radius to 12px
+   - CHANGED: Menu button border-radius to 10px
+   - CHANGED: GSB button border-radius to 10px
+   - PRESERVED: All functionality from v3.58
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
