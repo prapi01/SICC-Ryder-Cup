@@ -1,14 +1,13 @@
 <!--
 FILE: index.html
-VERSION: 3.63
-KEY CHANGES from v3.62:
-   - REMOVED: Dynamic button width calculation (setButtonWidths)
-   - REMOVED: Container opacity/visible transition (no more shrink effect)
-   - CHANGED: All buttons now use width: 100% (consistent with admin.html)
-   - CHANGED: Container max-width from 500px to 420px (consistent with admin.html)
-   - SIMPLIFIED: No more setTimeout delays on page load
-   - PRESERVED: All styling, colors, borders, and functionality
-   - PRESERVED: All button styles (rounded rectangles, green/grey borders)
+VERSION: 3.64
+KEY CHANGES from v3.63:
+   - RESTORED: Original design with square GAME DAY button
+   - RESTORED: Dynamic button width matching title width (105%)
+   - FIXED: No shrink effect - container visible from start
+   - CHANGED: GAME DAY button is now square (width = height)
+   - CHANGED: All buttons centered with matching widths
+   - PRESERVED: All styling, colors, borders from v3.62
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -128,9 +127,9 @@ STATUS: Ready for integration
             to { transform: rotate(360deg); }
         }
         
-        /* Main Container - immediately visible, no opacity transition */
+        /* Main Container - immediately visible */
         .container {
-            max-width: 420px;
+            max-width: 500px;
             width: 100%;
             margin: 0 auto;
             padding: 20px 16px;
@@ -330,7 +329,7 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* ROUNDED RECTANGLE NGB BUTTONS - consistent with admin.html */
+        /* ROUNDED RECTANGLE NGB BUTTONS - SQUARE */
         .ngb {
             background: linear-gradient(145deg, #1a3a1a 0%, #0d2a0d 100%);
             border: 2px solid #4caf50;
@@ -345,7 +344,7 @@ STATUS: Ready for integration
             box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
             cursor: pointer;
             padding: 20px;
-            width: 100%;
+            width: auto;
         }
         .ngb-inactive {
             background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
@@ -388,7 +387,8 @@ STATUS: Ready for integration
             cursor: pointer;
             transition: all 0.2s ease;
             box-sizing: border-box;
-            width: 100%;
+            width: auto;
+            margin: 0 auto;
         }
         .menu-btn:hover { 
             border-color: #4caf50; 
@@ -413,7 +413,7 @@ STATUS: Ready for integration
             transition: all 0.2s ease;
             margin: 0 auto;
             box-sizing: border-box;
-            width: 100%;
+            width: auto;
         }
         .gsb:hover { 
             border-color: #4caf50; 
@@ -584,13 +584,13 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.63</div>
+<div class="version-tag">v3.64</div>
 
 <script>
-// FILE: index.html - VERSION 3.63
+// FILE: index.html - VERSION 3.64
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.63";
+window.INDEX_VERSION = "3.64";
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -601,8 +601,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "3.63";
-var CACHE_KEY = "index_version_v363";
+var APP_VERSION = "3.64";
+var CACHE_KEY = "index_version_v364";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -1228,6 +1228,34 @@ function goToAdmin() {
     window.location.href = "admin.html";
 }
 
+// v3.64: Dynamically set button widths based on title width
+function setButtonWidths() {
+    var title = document.querySelector('.title');
+    var ngb = document.querySelector('.ngb');
+    var menuBtns = document.querySelectorAll('.menu-btn');
+    var gsb = document.querySelector('.gsb');
+    
+    if (!title || !ngb) return;
+    
+    var titleWidth = title.offsetWidth;
+    var buttonWidth = Math.floor(titleWidth * 1.05);
+    
+    // GAME DAY button - SQUARE (width = height)
+    ngb.style.width = buttonWidth + 'px';
+    ngb.style.height = buttonWidth + 'px';
+    ngb.style.minHeight = buttonWidth + 'px';
+    
+    // Menu buttons - same width
+    menuBtns.forEach(function(btn) {
+        btn.style.width = buttonWidth + 'px';
+    });
+    
+    // Game Settings button - same width
+    if (gsb) {
+        gsb.style.width = buttonWidth + 'px';
+    }
+}
+
 function renderMainUI() {
     var appDiv = document.getElementById("app");
     if (!appDiv) return;
@@ -1317,6 +1345,9 @@ function renderMainUI() {
         
         appDiv.innerHTML = html;
         
+        // v3.64: Set button widths after DOM render (no shrink effect)
+        setButtonWidths();
+        
         // Admin handler - Cmd+Click OR Long-click on golf icon
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
@@ -1337,7 +1368,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.63
+// Initialization - v3.64
 // ============================================================
 
 function initApp() {
@@ -1421,7 +1452,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.63
+// Start the app - v3.64
 // ============================================================
 
 if (isFirstLoad) {
@@ -1457,15 +1488,14 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.63
-KEY CHANGES from v3.62:
-   - REMOVED: Dynamic button width calculation (setButtonWidths)
-   - REMOVED: Container opacity/visible transition (no more shrink effect)
-   - CHANGED: All buttons now use width: 100% (consistent with admin.html)
-   - CHANGED: Container max-width from 500px to 420px (consistent with admin.html)
-   - SIMPLIFIED: No more setTimeout delays on page load
-   - PRESERVED: All styling, colors, borders, and functionality
-   - PRESERVED: All button styles (rounded rectangles, green/grey borders)
+VERSION: 3.64
+KEY CHANGES from v3.63:
+   - RESTORED: Original design with square GAME DAY button
+   - RESTORED: Dynamic button width matching title width (105%)
+   - FIXED: No shrink effect - container visible from start
+   - CHANGED: GAME DAY button is now square (width = height)
+   - CHANGED: All buttons centered with matching widths
+   - PRESERVED: All styling, colors, borders from v3.62
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
