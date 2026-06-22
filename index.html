@@ -1,9 +1,14 @@
 <!--
 FILE: index.html
-VERSION: 3.62
-KEY CHANGES from v3.61:
-   - CHANGED: Game Settings button border from #2a5a2a to #666 (grey)
-   - PRESERVED: All other functionality and styling from v3.61
+VERSION: 3.63
+KEY CHANGES from v3.62:
+   - REMOVED: Dynamic button width calculation (setButtonWidths)
+   - REMOVED: Container opacity/visible transition (no more shrink effect)
+   - CHANGED: All buttons now use width: 100% (consistent with admin.html)
+   - CHANGED: Container max-width from 500px to 420px (consistent with admin.html)
+   - SIMPLIFIED: No more setTimeout delays on page load
+   - PRESERVED: All styling, colors, borders, and functionality
+   - PRESERVED: All button styles (rounded rectangles, green/grey borders)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -55,10 +60,10 @@ STATUS: Ready for integration
             font-family: system-ui, -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
             color: #ffffff;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-            position: relative;
+            min-height: 100vh;
         }
         
         /* v3.51: Pull-to-refresh container */
@@ -123,18 +128,12 @@ STATUS: Ready for integration
             to { transform: rotate(360deg); }
         }
         
-        /* Main Container - initially hidden, fades in after preload */
+        /* Main Container - immediately visible, no opacity transition */
         .container {
-            max-width: 500px;
+            max-width: 420px;
             width: 100%;
             margin: 0 auto;
             padding: 20px 16px;
-            opacity: 0;
-            transition: opacity 0.4s ease;
-        }
-        
-        .container.visible {
-            opacity: 1;
         }
         
         /* v3.53: Splash Overlay - fixed 4 second display */
@@ -346,6 +345,7 @@ STATUS: Ready for integration
             box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
             cursor: pointer;
             padding: 20px;
+            width: 100%;
         }
         .ngb-inactive {
             background: linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
@@ -378,7 +378,7 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* MENU BUTTONS - now with 2px green border matching GAME DAY */
+        /* MENU BUTTONS - rounded rectangle, no icons */
         .menu-btn {
             background: rgba(20, 20, 20, 0.5);
             border: 2px solid #4caf50;
@@ -559,38 +559,6 @@ STATUS: Ready for integration
             100% { transform: scale(1); opacity: 1; }
         }
     </style>
-    
-    <script>
-        // Dynamically set button widths based on title width
-        function setButtonWidths() {
-            var title = document.querySelector('.title');
-            var ngb = document.querySelector('.ngb');
-            var menuBtns = document.querySelectorAll('.menu-btn');
-            var gsb = document.querySelector('.gsb');
-            
-            if (!title || !ngb) return;
-            
-            var titleWidth = title.offsetWidth;
-            var buttonWidth = Math.floor(titleWidth * 1.05);
-            
-            ngb.style.width = buttonWidth + 'px';
-            // Remove height constraint to allow flexible sizing
-            ngb.style.height = 'auto';
-            ngb.style.minHeight = buttonWidth * 0.6 + 'px';
-            
-            menuBtns.forEach(function(btn) {
-                btn.style.width = buttonWidth + 'px';
-            });
-            
-            if (gsb) {
-                gsb.style.width = buttonWidth + 'px';
-            }
-        }
-        
-        // Run after page loads
-        window.addEventListener('load', setButtonWidths);
-        window.addEventListener('resize', setButtonWidths);
-    </script>
 </head>
 <body>
 
@@ -612,17 +580,17 @@ STATUS: Ready for integration
     <div class="splash-subtitle" id="splashSubtitle">Match Play · Team Game · Net Stroke</div>
 </div>
 
-<!-- Main Container - Hidden Initially, Fades In After Splash -->
+<!-- Main Container - Immediately Visible -->
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.62</div>
+<div class="version-tag">v3.63</div>
 
 <script>
-// FILE: index.html - VERSION 3.62
+// FILE: index.html - VERSION 3.63
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.62";
+window.INDEX_VERSION = "3.63";
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -633,8 +601,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "3.62";
-var CACHE_KEY = "index_version_v362";
+var APP_VERSION = "3.63";
+var CACHE_KEY = "index_version_v363";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -763,11 +731,6 @@ function startSplashAnimation() {
         splashOverlay.style.opacity = '0';
         setTimeout(function() {
             if (splashOverlay) splashOverlay.remove();
-            var appDiv = document.getElementById("app");
-            if (appDiv && !appDiv.classList.contains('visible')) {
-                appDiv.classList.add('visible');
-            }
-            recordSplashShown();
             // Now load the UI (data may already be loaded)
             if (typeof renderMainUI === 'function') {
                 renderMainUI();
@@ -796,10 +759,6 @@ function hideGreyIconScreen() {
 function showIndexDirectly() {
     console.log("[INDEX] Showing index directly (no splash)");
     hideGreyIconScreen();
-    var appDiv = document.getElementById("app");
-    if (appDiv && !appDiv.classList.contains('visible')) {
-        appDiv.classList.add('visible');
-    }
     // Load UI
     if (typeof renderMainUI === 'function') {
         renderMainUI();
@@ -1273,9 +1232,6 @@ function renderMainUI() {
     var appDiv = document.getElementById("app");
     if (!appDiv) return;
     
-    // Keep container hidden during rendering
-    appDiv.classList.remove('visible');
-    
     FirebaseRetry.getCollection("scheduledGames", {
         onExit: function() {
             window.location.href = "index.html";
@@ -1361,12 +1317,6 @@ function renderMainUI() {
         
         appDiv.innerHTML = html;
         
-        // Calculate button widths FIRST, then show container
-        setTimeout(function() {
-            setButtonWidths();
-            appDiv.classList.add('visible');
-        }, 10);
-        
         // Admin handler - Cmd+Click OR Long-click on golf icon
         var golfIcon = document.getElementById("golfIcon");
         if (golfIcon) {
@@ -1383,12 +1333,11 @@ function renderMainUI() {
     }).catch(function(e) {
         console.warn(e);
         appDiv.innerHTML = '<div style="text-align:center; padding:40px; color:#888;">Error loading games. Please refresh.</div>';
-        appDiv.classList.add('visible');
     });
 }
 
 // ============================================================
-// Initialization - v3.62
+// Initialization - v3.63
 // ============================================================
 
 function initApp() {
@@ -1472,7 +1421,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.62
+// Start the app - v3.63
 // ============================================================
 
 if (isFirstLoad) {
@@ -1508,10 +1457,15 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.62
-KEY CHANGES from v3.61:
-   - CHANGED: Game Settings button border from #2a5a2a to #666 (grey)
-   - PRESERVED: All other functionality and styling from v3.61
+VERSION: 3.63
+KEY CHANGES from v3.62:
+   - REMOVED: Dynamic button width calculation (setButtonWidths)
+   - REMOVED: Container opacity/visible transition (no more shrink effect)
+   - CHANGED: All buttons now use width: 100% (consistent with admin.html)
+   - CHANGED: Container max-width from 500px to 420px (consistent with admin.html)
+   - SIMPLIFIED: No more setTimeout delays on page load
+   - PRESERVED: All styling, colors, borders, and functionality
+   - PRESERVED: All button styles (rounded rectangles, green/grey borders)
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
