@@ -1,11 +1,14 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.45
-KEY CHANGES from v1.44:
-   - FIXED: Dropdown menus now correctly display selected player names (not "- Select player -")
-   - CHANGED: playerOptions now built per slot with proper selected attribute
-   - FIXED: Labels, HCP, team, flight now populate correctly when dropdown changes
-   - PRESERVED: All functionality from v1.44
+VERSION: 1.46
+KEY CHANGES from v1.45:
+   - REMOVED: Slot labels (A1, A2, A3, A4, B1, B2, B3, B4) from player rows
+   - REMOVED: Handicap display from dropdown options (now just player name)
+   - CHANGED: Player card now exactly 2 lines (dropdown+label+hcp | team+flight)
+   - CHANGED: All font sizes increased for better readability
+   - CHANGED: Dropdown width reduced (more compact)
+   - CHANGED: Layout optimized to use dead space
+   - PRESERVED: All functionality from v1.45
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -36,7 +39,7 @@ STATUS: Ready for integration
             align-items: flex-start;
             justify-content: center;
         }
-        .container { max-width: 420px; width: 100%; margin: 0 auto; padding: 20px 16px; }
+        .container { max-width: 480px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
         .version-tag { 
             position: fixed; 
@@ -66,16 +69,16 @@ STATUS: Ready for integration
             opacity: 0.4;
         }
         
-        /* ===== BASELINE UI ===== */
-        .header { text-align: center; margin-bottom: 24px; margin-top: 4px; }
+        /* ===== BASELINE UI - LARGER SIZES ===== */
+        .header { text-align: center; margin-bottom: 28px; margin-top: 4px; }
         .title { 
-            font-size: 1.2rem; 
+            font-size: 1.4rem; 
             font-weight: 600; 
             color: #4caf50; 
             letter-spacing: -0.3px;
         }
         .subtitle { 
-            font-size: 0.6rem; 
+            font-size: 0.7rem; 
             color: #4caf50; 
             opacity: 0.7;
             margin-top: 2px; 
@@ -85,35 +88,35 @@ STATUS: Ready for integration
         
         .card { 
             background: rgba(20, 20, 20, 0.5);
-            border: 1px solid #2a5a2a; 
-            border-radius: 10px; 
-            padding: 16px; 
-            margin-bottom: 12px; 
+            border: 2px solid #2a5a2a; 
+            border-radius: 12px; 
+            padding: 18px; 
+            margin-bottom: 14px; 
         }
         
         .card-title { 
-            font-size: 0.7rem; 
+            font-size: 0.8rem; 
             font-weight: 500; 
             color: #4caf50; 
-            margin-bottom: 12px; 
+            margin-bottom: 14px; 
             letter-spacing: 0.5px;
             text-transform: uppercase;
         }
         
-        .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+        .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
         .form-row label { 
-            font-size: 0.7rem; 
+            font-size: 0.8rem; 
             color: #4caf50; 
             min-width: 60px; 
         }
         .form-row input,
         .form-row select {
             background: #0a0a0a;
-            border: 1px solid #2a5a2a;
+            border: 2px solid #2a5a2a;
             border-radius: 8px;
-            padding: 8px 12px;
+            padding: 10px 14px;
             color: #e0e0e0;
-            font-size: 0.85rem;
+            font-size: 0.95rem;
             flex: 1;
             min-width: 80px;
             transition: border-color 0.2s ease;
@@ -123,26 +126,26 @@ STATUS: Ready for integration
             outline: none;
             border-color: #4caf50;
         }
-        .form-row input.date-input { flex: 0 0 140px; }
-        .form-row .error-msg { color: #ff6b6b; font-size: 0.65rem; margin-top: 4px; width: 100%; }
+        .form-row input.date-input { flex: 0 0 150px; }
+        .form-row .error-msg { color: #ff6b6b; font-size: 0.7rem; margin-top: 4px; width: 100%; }
         
         .hole-toggle-group {
             display: flex;
-            gap: 6px;
+            gap: 8px;
             flex-wrap: wrap;
             margin-bottom: 4px;
         }
         .hole-toggle-btn {
             flex: 1;
             min-width: 60px;
-            padding: 8px 12px;
+            padding: 10px 14px;
             background: rgba(20, 20, 20, 0.5);
-            border: 1px solid #2a5a2a;
+            border: 2px solid #2a5a2a;
             border-radius: 8px;
             cursor: pointer;
             text-align: center;
             font-weight: 400;
-            font-size: 0.75rem;
+            font-size: 0.85rem;
             color: #666;
             transition: all 0.15s ease;
         }
@@ -163,131 +166,146 @@ STATUS: Ready for integration
             border: none;
             color: inherit;
             font-weight: 400;
-            font-size: 0.75rem;
+            font-size: 0.85rem;
             cursor: pointer;
-            width: 40px;
+            width: 44px;
             text-align: center;
             padding: 2px;
         }
         .inline-shotgun-select:focus { outline: none; }
         .inline-shotgun-select option { background: #0a0a0a; color: #e0e0e0; }
         
-        .info-note { font-size: 0.6rem; color: #2a5a2a; margin-top: 6px; text-align: center; letter-spacing: 0.2px; }
+        .info-note { font-size: 0.65rem; color: #2a5a2a; margin-top: 6px; text-align: center; letter-spacing: 0.2px; }
         
         .format-group { margin: 4px 0; }
         .format-option {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 8px 12px;
+            gap: 12px;
+            padding: 10px 14px;
             background: rgba(20, 20, 20, 0.5);
             border-radius: 8px;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
             cursor: pointer;
-            border: 1px solid #2a5a2a;
+            border: 2px solid #2a5a2a;
             transition: all 0.15s ease;
         }
         .format-option:hover { border-color: #4caf50; }
         .format-option.selected { border-color: #4caf50; background: rgba(76, 175, 80, 0.04); }
         .format-option input[type="radio"] {
             accent-color: #4caf50;
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
             cursor: pointer;
             flex-shrink: 0;
         }
         .format-option label {
             flex: 1;
             cursor: pointer;
-            font-size: 0.75rem;
+            font-size: 0.85rem;
         }
         .format-title { font-weight: 500; color: #e0e0e0; display: block; }
-        .format-desc { font-size: 0.6rem; color: #555; display: block; margin-top: 1px; }
+        .format-desc { font-size: 0.65rem; color: #555; display: block; margin-top: 1px; }
         
-        /* Player Rows */
+        /* Player Rows - v1.46: 2 lines, larger fonts, no slot labels */
         .player-row { 
             background: transparent; 
             border-bottom: 1px solid #1a3a1a; 
-            padding: 10px 0; 
+            padding: 8px 0; 
         }
         .player-row:last-child { border-bottom: none; }
-        .player-line1 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
-        .player-line1 .name-group { display: flex; align-items: center; gap: 6px; flex: 2; }
+        
+        /* Line 1: Name dropdown + Label + HCP */
+        .player-line1 { 
+            display: flex; 
+            align-items: center; 
+            gap: 8px; 
+            margin-bottom: 6px; 
+        }
+        .player-line1 .name-group { 
+            display: flex; 
+            align-items: center; 
+            gap: 6px; 
+            flex: 1; 
+        }
         .player-line1 .name-group select {
             background: #0a0a0a;
-            border: 1px solid #2a5a2a;
+            border: 2px solid #2a5a2a;
             border-radius: 8px;
-            padding: 6px 10px;
+            padding: 8px 12px;
             color: #e0e0e0;
-            font-size: 0.8rem;
+            font-size: 0.95rem;
             flex: 1;
-            min-width: 100px;
+            min-width: 80px;
             cursor: pointer;
             transition: border-color 0.2s ease;
         }
         .player-line1 .name-group select:focus { outline: none; border-color: #4caf50; }
         .player-line1 .name-group select option { background: #0a0a0a; color: #e0e0e0; }
-        .player-line1 .slot-label { 
-            font-size: 0.6rem; 
-            font-weight: 600; 
-            color: #4caf50; 
-            background: #1a3a1a; 
-            padding: 2px 6px; 
-            border-radius: 4px; 
-            min-width: 28px;
-            text-align: center;
-        }
         .player-line1 .label-display { 
             background: #1a3a1a; 
             color: #4caf50; 
-            padding: 2px 8px; 
+            padding: 4px 10px; 
             border-radius: 4px; 
-            font-size: 0.6rem; 
-            font-weight: 500; 
-            min-width: 30px;
+            font-size: 0.8rem; 
+            font-weight: 600; 
+            min-width: 34px;
             text-align: center;
+            border: 1px solid #2a5a2a;
         }
         .player-line1 .hcp-group { 
             display: flex; 
             align-items: center; 
             gap: 4px; 
             background: #0a0a0a; 
-            padding: 2px 10px; 
+            padding: 4px 12px; 
             border-radius: 8px; 
-            border: 1px solid #2a5a2a;
+            border: 2px solid #2a5a2a;
         }
-        .player-line1 .hcp-group label { font-size: 0.6rem; color: #4caf50; }
+        .player-line1 .hcp-group label { 
+            font-size: 0.7rem; 
+            color: #4caf50; 
+            font-weight: 500;
+        }
         .player-line1 .hcp-group input { 
-            width: 40px; 
+            width: 44px; 
             background: transparent; 
             border: none; 
             color: #e0e0e0; 
-            font-size: 0.8rem; 
+            font-size: 0.95rem; 
             text-align: center; 
             padding: 2px 0;
         }
         .player-line1 .hcp-group input:focus { outline: none; }
-        .player-line2 { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+        
+        /* Line 2: Team dropdown + Flight dropdown */
+        .player-line2 { 
+            display: flex; 
+            gap: 10px; 
+            align-items: center; 
+            padding-left: 0;
+        }
         .player-line2 select { 
             background: #0a0a0a; 
-            border: 1px solid #2a5a2a; 
+            border: 2px solid #2a5a2a; 
             border-radius: 8px; 
-            padding: 4px 10px; 
+            padding: 6px 12px; 
             color: #e0e0e0; 
-            font-size: 0.7rem; 
+            font-size: 0.85rem; 
             cursor: pointer;
+            flex: 1;
             transition: border-color 0.2s ease;
         }
         .player-line2 select:focus { outline: none; border-color: #4caf50; }
         
         .btn { 
-            padding: 10px 20px; 
+            padding: 12px 24px; 
             border-radius: 8px; 
             font-weight: 400; 
-            font-size: 0.85rem; 
+            font-size: 0.95rem; 
             text-align: center; 
             cursor: pointer; 
-            border: 1px solid #3a7a3a; 
+            border: 2px solid #3a7a3a; 
             transition: all 0.15s ease;
             background: rgba(20, 20, 20, 0.5);
             color: #4caf50;
@@ -298,35 +316,35 @@ STATUS: Ready for integration
         .btn-secondary { border-color: #2a5a2a; color: #666; }
         .btn-secondary:hover { border-color: #4caf50; color: #888; }
         
-        .button-group { display: flex; gap: 10px; margin-top: 16px; }
+        .button-group { display: flex; gap: 12px; margin-top: 18px; }
         .button-group .btn { flex: 1; }
         
         .back-link { 
             border-top: 1px solid #2a5a2a;
             text-align: center; 
-            margin-top: 16px; 
-            padding: 12px; 
-            color: #666; 
+            margin-top: 18px; 
+            padding: 14px; 
+            color: #888; 
             cursor: pointer; 
-            font-size: 0.75rem; 
+            font-size: 0.85rem; 
             transition: color 0.15s ease;
             letter-spacing: 0.2px;
         }
-        .back-link:hover { color: #888; }
+        .back-link:hover { color: #aaa; }
         
-        .success-msg { color: #4caf50; font-size: 0.75rem; text-align: center; margin-top: 8px; display: none; }
+        .success-msg { color: #4caf50; font-size: 0.85rem; text-align: center; margin-top: 8px; display: none; }
         .edit-badge { 
             background: #1a3a1a; 
             color: #4caf50; 
-            padding: 1px 10px; 
+            padding: 2px 12px; 
             border-radius: 4px; 
-            font-size: 0.55rem; 
-            margin-left: 6px; 
+            font-size: 0.65rem; 
+            margin-left: 8px; 
             display: inline-block; 
             font-weight: 400; 
         }
         
-        .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
+        .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.9rem; }
         
         .modal-overlay {
             position: fixed;
@@ -358,7 +376,7 @@ STATUS: Ready for integration
             letter-spacing: -0.2px;
         }
         .anchor-modal-message {
-            font-size: 0.7rem;
+            font-size: 0.75rem;
             color: #666;
             margin-bottom: 16px;
             line-height: 1.4;
@@ -391,7 +409,7 @@ STATUS: Ready for integration
         .anchor-confirm-btn:hover { background: rgba(76, 175, 80, 0.04); }
         .anchor-confirm-btn:active { transform: scale(0.98); }
         
-        .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
+        .footer { text-align: center; margin-top: 16px; font-size: 0.55rem; color: #1a3a1a; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
@@ -399,10 +417,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.45</div>
+<div class="version-tag">v1.46</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.45
+// FILE: setup-game.html
+// VERSION: 1.46
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -410,8 +429,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.45";
-var CACHE_KEY = "setup_game_version_v145";
+var VERSION = "1.46";
+var CACHE_KEY = "setup_game_version_v146";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -474,7 +493,6 @@ function updateDefaultPlayers(selectedPlayers, callback) {
         return;
     }
     
-    // First, get the current player list
     db.collection("playerInformation").doc("players").get()
         .then(function(doc) {
             var allPlayers = [];
@@ -482,7 +500,6 @@ function updateDefaultPlayers(selectedPlayers, callback) {
                 allPlayers = doc.data().players;
             }
             
-            // Create a map of selected player names for quick lookup
             var selectedNames = {};
             var selectedMap = {};
             for (var i = 0; i < selectedPlayers.length; i++) {
@@ -497,31 +514,25 @@ function updateDefaultPlayers(selectedPlayers, callback) {
                 };
             }
             
-            // Update all players: set isDefault based on whether they're in the selected list
             var updatedPlayers = [];
             var existingNames = {};
             
-            // First, update existing players
             for (var i = 0; i < allPlayers.length; i++) {
                 var player = allPlayers[i];
                 existingNames[player.name] = true;
                 if (selectedNames[player.name]) {
-                    // This player is selected - mark as default
                     player.isDefault = true;
-                    // Update handicap and team from selected data
                     var selected = selectedMap[player.name];
                     player.handicap = selected.handicap;
                     player.defaultTeam = selected.defaultTeam;
                     player.label = selected.label;
                     updatedPlayers.push(player);
                 } else {
-                    // This player is not selected - remove default status
                     player.isDefault = false;
                     updatedPlayers.push(player);
                 }
             }
             
-            // Add any new players that don't exist in the list
             for (var name in selectedMap) {
                 if (!existingNames[name]) {
                     var newPlayer = selectedMap[name];
@@ -529,12 +540,10 @@ function updateDefaultPlayers(selectedPlayers, callback) {
                 }
             }
             
-            // Sort the updated list
             updatedPlayers.sort(function(a, b) {
                 return a.name.localeCompare(b.name);
             });
             
-            // Save back to Firestore
             return db.collection("playerInformation").doc("players").set({
                 players: updatedPlayers,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -773,13 +782,8 @@ function goBack() {
     }
 }
 
-// ============================================================
-// v1.44: loadDefaultPlayers - filter by isDefault: true
-// ============================================================
 function loadDefaultPlayers(callback) {
-    // If playerList is loaded, filter for default players
     if (playerList.length > 0) {
-        // Find players with isDefault: true
         var defaultPlayers = playerList.filter(function(p) {
             return p.isDefault === true;
         });
@@ -787,7 +791,6 @@ function loadDefaultPlayers(callback) {
         console.log("[SETUP-GAME] Found", defaultPlayers.length, "default players");
         
         if (defaultPlayers.length === 8) {
-            // Sort by team and handicap
             var teamAPlayers = defaultPlayers.filter(function(p) { return p.defaultTeam === "A"; });
             var teamBPlayers = defaultPlayers.filter(function(p) { return p.defaultTeam === "B"; });
             
@@ -795,7 +798,6 @@ function loadDefaultPlayers(callback) {
             teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
             
             var result = [];
-            // Team A: slots 0-3
             for (var i = 0; i < 4; i++) {
                 var p = teamAPlayers[i] || { name: "", handicap: 0, defaultTeam: "A", label: "" };
                 var flight = (i < 2) ? 1 : 2;
@@ -804,11 +806,9 @@ function loadDefaultPlayers(callback) {
                     handicap: p.handicap || 0,
                     team: "A",
                     flight: flight,
-                    label: p.label || generateLabel(p.name),
-                    slot: "A" + (i + 1)
+                    label: p.label || generateLabel(p.name)
                 });
             }
-            // Team B: slots 4-7
             for (var i = 0; i < 4; i++) {
                 var p = teamBPlayers[i] || { name: "", handicap: 0, defaultTeam: "B", label: "" };
                 var flight = (i < 2) ? 1 : 2;
@@ -817,8 +817,7 @@ function loadDefaultPlayers(callback) {
                     handicap: p.handicap || 0,
                     team: "B",
                     flight: flight,
-                    label: p.label || generateLabel(p.name),
-                    slot: "B" + (i + 1)
+                    label: p.label || generateLabel(p.name)
                 });
             }
             
@@ -831,7 +830,6 @@ function loadDefaultPlayers(callback) {
         }
     }
     
-    // Fallback: top 4 per team by handicap from playerList
     if (playerList.length > 0) {
         var teamAPlayers = playerList.filter(function(p) { return p.defaultTeam === "A"; });
         var teamBPlayers = playerList.filter(function(p) { return p.defaultTeam === "B"; });
@@ -858,8 +856,7 @@ function loadDefaultPlayers(callback) {
                 handicap: p.handicap || 0,
                 team: "A",
                 flight: flight,
-                label: p.label || generateLabel(p.name),
-                slot: "A" + (i + 1)
+                label: p.label || generateLabel(p.name)
             });
         }
         for (var i = 0; i < selectedB.length; i++) {
@@ -870,8 +867,7 @@ function loadDefaultPlayers(callback) {
                 handicap: p.handicap || 0,
                 team: "B",
                 flight: flight,
-                label: p.label || generateLabel(p.name),
-                slot: "B" + (i + 1)
+                label: p.label || generateLabel(p.name)
             });
         }
         
@@ -881,16 +877,15 @@ function loadDefaultPlayers(callback) {
         return;
     }
     
-    // Ultimate fallback: hardcoded default players
     var fallback = [
-        { name: "Ang C H", handicap: 1, team: "A", flight: 1, label: "ACH", slot: "A1" },
-        { name: "Chenh Hoe", handicap: 10, team: "A", flight: 1, label: "CH", slot: "A2" },
-        { name: "C K", handicap: 8, team: "A", flight: 2, label: "CK", slot: "A3" },
-        { name: "Yip H M", handicap: 12, team: "A", flight: 2, label: "YHM", slot: "A4" },
-        { name: "Jeff Goh", handicap: 0, team: "B", flight: 1, label: "JG", slot: "B1" },
-        { name: "Ong C B", handicap: 1, team: "B", flight: 1, label: "OCB", slot: "B2" },
-        { name: "Piti", handicap: 8, team: "B", flight: 2, label: "P", slot: "B3" },
-        { name: "James Ong", handicap: 11, team: "B", flight: 2, label: "JO", slot: "B4" }
+        { name: "Ang C H", handicap: 1, team: "A", flight: 1, label: "ACH" },
+        { name: "Chenh Hoe", handicap: 10, team: "A", flight: 1, label: "CH" },
+        { name: "C K", handicap: 8, team: "A", flight: 2, label: "CK" },
+        { name: "Yip H M", handicap: 12, team: "A", flight: 2, label: "YHM" },
+        { name: "Jeff Goh", handicap: 0, team: "B", flight: 1, label: "JG" },
+        { name: "Ong C B", handicap: 1, team: "B", flight: 1, label: "OCB" },
+        { name: "Piti", handicap: 8, team: "B", flight: 2, label: "P" },
+        { name: "James Ong", handicap: 11, team: "B", flight: 2, label: "JO" }
     ];
     state.players = fallback;
     console.log("[SETUP-GAME] Using fallback players");
@@ -1011,7 +1006,6 @@ function populatePlayerFields(idx) {
     }
     
     state.players[idx].name = player.name;
-    state.players[idx].slot = (state.players[idx].team === "A" ? "A" : "B") + (idx % 4 + 1);
     
     if (state.isEditMode) checkForChanges();
 }
@@ -1024,7 +1018,6 @@ function updatePlayerHandicap(idx, value) {
 
 function updatePlayerTeam(idx, value) {
     state.players[idx].team = value;
-    state.players[idx].slot = (value === "A" ? "A" : "B") + (idx % 4 + 1);
     if (state.isEditMode) checkForChanges();
     render();
 }
@@ -1233,7 +1226,6 @@ function createNewGame(anchorPlayer) {
     
     var newGameId = generateGameId();
     
-    // v1.44: Update default players BEFORE saving the game
     updateDefaultPlayers(state.players, function(success) {
         if (success) {
             console.log("[SETUP-GAME] Default players updated successfully");
@@ -1304,7 +1296,6 @@ function updateExistingGame(anchorPlayer) {
                         updatePayload.currentHoleF1 = 1;
                         updatePayload.currentHoleF2 = 1;
                         
-                        // v1.44: Update default players on edit too
                         updateDefaultPlayers(state.players, function(success) {
                             if (success) {
                                 console.log("[SETUP-GAME] Default players updated on edit");
@@ -1332,7 +1323,6 @@ function updateExistingGame(anchorPlayer) {
                 return;
             }
             
-            // v1.44: Update default players on edit
             updateDefaultPlayers(state.players, function(success) {
                 if (success) {
                     console.log("[SETUP-GAME] Default players updated on edit");
@@ -1382,26 +1372,21 @@ function render() {
         courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
     }
     
-    // Display players in slot order (A1, A2, A3, A4, B1, B2, B3, B4)
     var displayPlayers = [];
-    // Team A: slots 0-3
     var teamAPlayers = state.players.filter(function(p) { return p.team === "A"; });
     teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
-    // Team B: slots 4-7
     var teamBPlayers = state.players.filter(function(p) { return p.team === "B"; });
     teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
     
-    // Build final display order
     displayPlayers = [];
     for (var i = 0; i < 4; i++) {
         if (i < teamAPlayers.length) {
             var p = teamAPlayers[i];
             var flight = (i < 2) ? 1 : 2;
             p.flight = flight;
-            p.slot = "A" + (i + 1);
             displayPlayers.push(p);
         } else {
-            displayPlayers.push({ name: "", handicap: 0, team: "A", flight: (i < 2) ? 1 : 2, label: "", slot: "A" + (i + 1) });
+            displayPlayers.push({ name: "", handicap: 0, team: "A", flight: (i < 2) ? 1 : 2, label: "" });
         }
     }
     for (var i = 0; i < 4; i++) {
@@ -1409,36 +1394,33 @@ function render() {
             var p = teamBPlayers[i];
             var flight = (i < 2) ? 1 : 2;
             p.flight = flight;
-            p.slot = "B" + (i + 1);
             displayPlayers.push(p);
         } else {
-            displayPlayers.push({ name: "", handicap: 0, team: "B", flight: (i < 2) ? 1 : 2, label: "", slot: "B" + (i + 1) });
+            displayPlayers.push({ name: "", handicap: 0, team: "B", flight: (i < 2) ? 1 : 2, label: "" });
         }
     }
     
     var playersHtml = '';
     for (var idx = 0; idx < displayPlayers.length; idx++) {
         var p = displayPlayers[idx];
-        // Find original index in state.players for binding
         var originalIdx = state.players.findIndex(function(orig) {
             return orig.name === p.name && orig.team === p.team && orig.flight === p.flight;
         });
         if (originalIdx === -1) originalIdx = idx;
         
-        // Build player options for THIS slot with proper selected attribute
+        // v1.46: Player options - name only (no HCP)
         var playerOptions = '<option value="">— Select player —</option>';
         for (var i = 0; i < playerList.length; i++) {
             var pl = playerList[i];
-            var label = pl.label || generateLabel(pl.name);
             var isSelected = (pl.name === p.name) ? ' selected' : '';
-            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + ' (HCP ' + pl.handicap + ')</option>';
+            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
         }
         
+        // v1.46: 2 lines - no slot labels
         playersHtml += `
             <div class="player-row">
                 <div class="player-line1">
                     <div class="name-group">
-                        <span class="slot-label">${p.slot || (p.team + (idx % 4 + 1))}</span>
                         <select class="player-name-select" data-idx="${originalIdx}" onchange="populatePlayerFields(${originalIdx})">
                             ${playerOptions}
                         </select>
@@ -1631,7 +1613,6 @@ function render() {
         });
     });
     
-    // Dropdown change handlers
     document.querySelectorAll(".player-name-select").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
@@ -1710,7 +1691,6 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     
     archiveOldGames();
     
-    // v1.44: Load player list first, then courses, then edit mode
     loadPlayerList(function() {
         loadEditMode(function() {
             loadCourses(function() {
@@ -1725,12 +1705,15 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.45
-KEY CHANGES from v1.44:
-   - FIXED: Dropdown menus now correctly display selected player names (not "- Select player -")
-   - CHANGED: playerOptions now built per slot with proper selected attribute
-   - FIXED: Labels, HCP, team, flight now populate correctly when dropdown changes
-   - PRESERVED: All functionality from v1.44
+VERSION: 1.46
+KEY CHANGES from v1.45:
+   - REMOVED: Slot labels (A1, A2, A3, A4, B1, B2, B3, B4) from player rows
+   - REMOVED: Handicap display from dropdown options (now just player name)
+   - CHANGED: Player card now exactly 2 lines (dropdown+label+hcp | team+flight)
+   - CHANGED: All font sizes increased for better readability
+   - CHANGED: Dropdown width reduced (more compact)
+   - CHANGED: Layout optimized to use dead space
+   - PRESERVED: All functionality from v1.45
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
