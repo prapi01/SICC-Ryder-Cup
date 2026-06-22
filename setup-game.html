@@ -1,15 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.47
-KEY CHANGES from v1.46:
-   - COMBINED: Game Date + Course into "Game Details" card (2 lines)
-   - COMBINED: Starting Hole + Team Game Format into "Game Format Settings" card
-   - CHANGED: Player rows now single line: Name | Label | Hcp | Team | Flight
-   - ADDED: Column headers above players: Player | Hcp | Team | Flight
-   - CHANGED: Consistent font sizes (0.85rem) across all player elements
-   - REMOVED: Slot labels (A1, B1, etc.)
-   - CHANGED: Dropdown shows only player name (no HCP)
-   - PRESERVED: All functionality from v1.46
+VERSION: 1.48
+KEY CHANGES from v1.47:
+   - CHANGED: Name field now truncates long names (14 chars max) with ellipsis
+   - CHANGED: HCP field reduced width and left-aligned
+   - CHANGED: HCP group padding reduced for tighter layout
+   - FIXED: Layout now stays in single line on 393px screens
+   - PRESERVED: All font sizes remain at 0.85rem
+   - PRESERVED: All functionality from v1.47
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -177,18 +175,19 @@ STATUS: Ready for integration
         
         .error-msg { color: #ff6b6b; font-size: 0.7rem; margin-top: 4px; }
         
-        /* Player rows - single line */
+        /* Player rows - single line, optimized for 393px */
         .player-row { 
             display: flex;
             align-items: center;
             gap: 4px;
             background: rgba(20, 20, 20, 0.08);
             border-radius: 4px;
-            padding: 4px 8px;
+            padding: 4px 6px;
             margin-bottom: 2px;
             border: none;
             border-bottom: 1px solid #1a3a1a;
             flex-wrap: nowrap;
+            overflow: hidden;
         }
         .player-row:first-child {
             border-top: 1px solid #1a3a1a;
@@ -204,6 +203,7 @@ STATUS: Ready for integration
             margin-bottom: 0;
             flex: 1;
             flex-wrap: nowrap;
+            overflow: hidden;
         }
         .player-line2 {
             display: none;
@@ -211,8 +211,8 @@ STATUS: Ready for integration
         
         .player-name-select {
             flex: 1;
-            min-width: 80px;
-            max-width: 170px;
+            min-width: 60px;
+            max-width: 140px;
             font-size: 0.85rem;
             padding: 3px 4px;
             border: 1px solid #2a5a2a;
@@ -229,13 +229,14 @@ STATUS: Ready for integration
         .player-name-select option {
             background: #0a0a0a;
             color: #e0e0e0;
+            font-size: 0.85rem;
         }
         
         .label-display {
             display: inline-block;
             font-size: 0.85rem;
             padding: 2px 6px;
-            min-width: 24px;
+            min-width: 22px;
             background: #1a3a1a;
             border: 1px solid #2a5a2a;
             border-radius: 4px;
@@ -245,29 +246,30 @@ STATUS: Ready for integration
             flex-shrink: 0;
         }
         
+        /* HCP group - tighter, left-aligned */
         .hcp-group {
             display: flex;
             align-items: center;
             gap: 2px;
-            padding: 2px 8px;
+            padding: 2px 4px;
             border: 1px solid #2a5a2a;
             border-radius: 4px;
             background: #0a0a0a;
             flex-shrink: 0;
-            min-width: 52px;
-            justify-content: center;
+            min-width: 36px;
+            justify-content: flex-start;
         }
         .hcp-group label {
             display: none;
         }
         .hcp-group input {
-            width: 40px;
+            width: 26px;
             font-size: 0.85rem;
-            padding: 2px 0;
+            padding: 2px 0 2px 4px;
             background: transparent;
             border: none;
             color: #e0e0e0;
-            text-align: center;
+            text-align: left;
             font-weight: 600;
         }
         .hcp-group input:focus {
@@ -281,7 +283,7 @@ STATUS: Ready for integration
             border-radius: 4px;
             background: #0a0a0a;
             flex-shrink: 0;
-            min-width: 30px;
+            min-width: 28px;
             cursor: pointer;
             font-weight: 600;
             text-align: center;
@@ -303,14 +305,34 @@ STATUS: Ready for integration
             display: flex;
             align-items: center;
             gap: 4px;
-            padding: 4px 8px;
+            padding: 4px 6px;
             margin-bottom: 6px;
             border-bottom: 1px solid #2a5a2a;
-            font-size: 0.7rem;
+            font-size: 0.6rem;
             color: #4caf50;
             font-weight: 600;
             letter-spacing: 0.5px;
             text-transform: uppercase;
+        }
+        .player-header-row span {
+            flex-shrink: 0;
+        }
+        .player-header-row .header-name {
+            flex: 1;
+            min-width: 60px;
+            text-align: left;
+        }
+        .player-header-row .header-hcp {
+            min-width: 36px;
+            text-align: center;
+        }
+        .player-header-row .header-team {
+            min-width: 28px;
+            text-align: center;
+        }
+        .player-header-row .header-flight {
+            min-width: 28px;
+            text-align: center;
         }
         
         .btn { 
@@ -432,11 +454,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.47</div>
+<div class="version-tag">v1.48</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.47
+// VERSION: 1.48
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -444,8 +466,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.47";
-var CACHE_KEY = "setup_game_version_v147";
+var VERSION = "1.48";
+var CACHE_KEY = "setup_game_version_v148";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1413,13 +1435,16 @@ function render() {
     // Build header
     var headerHtml = `
         <div class="player-header-row">
-            <span style="flex:1; min-width:120px; text-align:left;">Player</span>
-            <span style="min-width:52px; text-align:center; flex-shrink:0;">Hcp</span>
-            <span style="min-width:32px; text-align:center; flex-shrink:0;">Team</span>
-            <span style="min-width:32px; text-align:center; flex-shrink:0;">Flight</span>
+            <span class="header-name">Player</span>
+            <span class="header-hcp">Hcp</span>
+            <span class="header-team">Team</span>
+            <span class="header-flight">Flight</span>
         </div>
     `;
     playersHtml += headerHtml;
+    
+    // v1.48: Max display length for name in dropdown (closed state)
+    var maxDisplayLength = 14;
     
     for (var idx = 0; idx < displayPlayers.length; idx++) {
         var p = displayPlayers[idx];
@@ -1428,12 +1453,17 @@ function render() {
         });
         if (originalIdx === -1) originalIdx = idx;
         
-        // Player options - name only
+        // Player options - name only, truncated for display
         var playerOptions = '<option value="">— Select player —</option>';
         for (var i = 0; i < playerList.length; i++) {
             var pl = playerList[i];
+            var displayName = pl.name;
+            // v1.48: Truncate long names for display in the closed dropdown
+            if (displayName.length > maxDisplayLength) {
+                displayName = displayName.substring(0, maxDisplayLength) + '…';
+            }
             var isSelected = (pl.name === p.name) ? ' selected' : '';
-            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
+            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(displayName) + '</option>';
         }
         
         playersHtml += `
@@ -1474,9 +1504,6 @@ function render() {
     
     var modeTitle = state.isEditMode ? 'Edit Scheduled Game' : 'Set Up New Game';
     var modeBadge = state.isEditMode ? '<span class="edit-badge">Edit Mode</span>' : '';
-    
-    var tournamentSelected = (state.teamGameFormat === "tournament");
-    var relativeSelected = (state.teamGameFormat === "relative");
     
     var html = `
         <div class="header">
@@ -1668,16 +1695,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.47
-KEY CHANGES from v1.46:
-   - COMBINED: Game Date + Course into "Game Details" card (2 lines)
-   - COMBINED: Starting Hole + Team Game Format into "Game Format Settings" card
-   - CHANGED: Player rows now single line: Name | Label | Hcp | Team | Flight
-   - ADDED: Column headers above players: Player | Hcp | Team | Flight
-   - CHANGED: Consistent font sizes (0.85rem) across all player elements
-   - REMOVED: Slot labels (A1, B1, etc.)
-   - CHANGED: Dropdown shows only player name (no HCP)
-   - PRESERVED: All functionality from v1.46
+VERSION: 1.48
+KEY CHANGES from v1.47:
+   - CHANGED: Name field now truncates long names (14 chars max) with ellipsis
+   - CHANGED: HCP field reduced width and left-aligned
+   - CHANGED: HCP group padding reduced for tighter layout
+   - FIXED: Layout now stays in single line on 393px screens
+   - PRESERVED: All font sizes remain at 0.85rem
+   - PRESERVED: All functionality from v1.47
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
