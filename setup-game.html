@@ -1,12 +1,12 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.55
-KEY CHANGES from v1.54:
-   - FIXED: Removed real-time validation on flight change (no modal popups)
-   - CHANGED: Validation only runs on Commit/Update
-   - CHANGED: Removed error message from player card (only shows on commit)
-   - CHANGED: Flight change now just updates state without re-render or validation
-   - PRESERVED: All functionality from v1.54
+VERSION: 1.56
+KEY CHANGES from v1.55:
+   - FIXED: initializeEmptyResults() now includes f1IntraMatches, f2IntraMatches, matchResults, clinchedAt
+   - FIXED: createNewGame() now sets lastSyncedPosition: -1, savedHoles: {1: [], 2: []}, gameStarted: false
+   - FIXED: updateExistingGame() preserves lastSyncedPosition and savedHoles
+   - PRESERVED: All UI styling and layout from v1.55 unchanged
+   - PRESERVED: All functionality from v1.55 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -623,11 +623,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.55</div>
+<div class="version-tag">v1.56</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.55
+// VERSION: 1.56
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -635,8 +635,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.55";
-var CACHE_KEY = "setup_game_version_v155";
+var VERSION = "1.56";
+var CACHE_KEY = "setup_game_version_v156";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -859,17 +859,47 @@ function rotateDataString(naturalData, startingHole) {
     return rotated.join('');
 }
 
+// ============================================================
+// v1.56 FIX: initializeEmptyResults with ALL required fields
+// ============================================================
 function initializeEmptyResults() {
     return {
         version: 1,
-        game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
-        game2: {
-            flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
-            flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0) },
-            pointsA: new Array(18).fill(1), pointsB: new Array(18).fill(1)
+        // v1.56: Added cross-flight match tracking fields
+        f1IntraMatches: new Array(18).fill(null),
+        f2IntraMatches: new Array(18).fill(null),
+        matchResults: new Array(18).fill(null),
+        clinchedAt: {},
+        game1: {
+            matches: {},
+            pointsA: new Array(18).fill(8),
+            pointsB: new Array(18).fill(8)
         },
-        game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
-        tr: { teamA: new Array(18).fill(null), teamB: new Array(18).fill(null), teamAGreen: new Array(18).fill(false), teamBGreen: new Array(18).fill(false) },
+        game2: {
+            flight1: {
+                leader: new Array(18).fill("AS"),
+                cumulativePoints: new Array(18).fill(0)
+            },
+            flight2: {
+                leader: new Array(18).fill("AS"),
+                cumulativePoints: new Array(18).fill(0)
+            },
+            pointsA: new Array(18).fill(1),
+            pointsB: new Array(18).fill(1)
+        },
+        game3: {
+            leader: new Array(18).fill("AS"),
+            nettA: new Array(18).fill(0),
+            nettB: new Array(18).fill(0),
+            pointsA: new Array(18).fill(0.5),
+            pointsB: new Array(18).fill(0.5)
+        },
+        tr: {
+            teamA: new Array(18).fill(null),
+            teamB: new Array(18).fill(null),
+            teamAGreen: new Array(18).fill(false),
+            teamBGreen: new Array(18).fill(false)
+        },
         computedUpToHole: 0,
         lastComputedAt: null
     };
@@ -1234,7 +1264,6 @@ function updatePlayerFlight(idx, value) {
     var flightVal = value === '' ? null : parseInt(value);
     state.players[idx].flight = flightVal;
     if (state.isEditMode) checkForChanges();
-    // No render - preserve user selection
 }
 
 function setTeamGameFormat(format) {
@@ -1243,7 +1272,6 @@ function setTeamGameFormat(format) {
     render();
 }
 
-// v1.55: Validation only runs on commit - no real-time checking
 function validateTeamFlight() {
     var unassigned = state.players.filter(function(p) {
         return p.flight === null || p.flight === undefined || p.flight === '';
@@ -1381,7 +1409,6 @@ function commitGame() {
         return;
     }
     
-    // v1.55: Validate at commit time only
     if (!validateTeamFlight()) {
         return;
     }
@@ -1420,6 +1447,9 @@ function proceedWithCommit() {
     }
 }
 
+// ============================================================
+// v1.56 FIX: createNewGame with ALL required fields
+// ============================================================
 function createNewGame(anchorPlayer) {
     var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
     var rotatedData = rotateDataString(naturalData, state.startingHole);
@@ -1443,7 +1473,11 @@ function createNewGame(anchorPlayer) {
         currentHoleF1: 1,
         currentHoleF2: 1,
         results: emptyResults,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        // v1.56 FIX: Added missing fields for cross-flight tracking
+        lastSyncedPosition: -1,
+        savedHoles: { "1": [], "2": [] },
+        gameStarted: false
     };
     
     var newGameId = generateGameId();
@@ -1463,6 +1497,9 @@ function createNewGame(anchorPlayer) {
     });
 }
 
+// ============================================================
+// v1.56 FIX: updateExistingGame preserves lastSyncedPosition and savedHoles
+// ============================================================
 function updateExistingGame(anchorPlayer) {
     db.collection("scheduledGames").doc(state.editingGameId).get()
         .then(function(doc) {
@@ -1491,7 +1528,10 @@ function updateExistingGame(anchorPlayer) {
                 locks: existingData.locks || { f1: null, f2: null },
                 signatures: existingData.signatures || { f1: false, f2: false },
                 submitted: existingData.submitted || { f1: false, f2: false },
-                gameStarted: existingData.gameStarted || false
+                gameStarted: existingData.gameStarted || false,
+                // v1.56 FIX: Preserve these fields if they exist, otherwise set defaults
+                lastSyncedPosition: existingData.lastSyncedPosition !== undefined ? existingData.lastSyncedPosition : -1,
+                savedHoles: existingData.savedHoles || { "1": [], "2": [] }
             };
             
             var courseChanged = (existingData.course && existingData.course.id !== state.selectedCourseData.id);
@@ -1503,6 +1543,10 @@ function updateExistingGame(anchorPlayer) {
                 updatePayload.results = initializeEmptyResults();
                 updatePayload.currentHoleF1 = 1;
                 updatePayload.currentHoleF2 = 1;
+                // v1.56: Reset these on course change
+                updatePayload.lastSyncedPosition = -1;
+                updatePayload.savedHoles = { "1": [], "2": [] };
+                updatePayload.gameStarted = false;
             }
             
             var startingHoleChanged = (existingData.startingHole !== state.startingHole);
@@ -1517,6 +1561,10 @@ function updateExistingGame(anchorPlayer) {
                         updatePayload.results = initializeEmptyResults();
                         updatePayload.currentHoleF1 = 1;
                         updatePayload.currentHoleF2 = 1;
+                        // v1.56: Reset these on starting hole change
+                        updatePayload.lastSyncedPosition = -1;
+                        updatePayload.savedHoles = { "1": [], "2": [] };
+                        updatePayload.gameStarted = false;
                         
                         updateDefaultPlayers(state.players, function(success) {
                             if (success) {
@@ -1594,7 +1642,6 @@ function render() {
         courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
     }
     
-    // v1.55: Display players without re-assigning flights
     var displayPlayers = [];
     var teamAPlayers = state.players.filter(function(p) { return p.team === "A"; });
     teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
@@ -1830,14 +1877,12 @@ function render() {
         });
     });
     
-    // v1.55: Flight change - no validation, no modal, no re-render
     document.querySelectorAll(".flight-display").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
             var val = this.value;
             state.players[idx].flight = val === '' ? null : parseInt(val);
             if (state.isEditMode) checkForChanges();
-            // No validation, no modal, no re-render
         });
     });
     
@@ -1896,13 +1941,13 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.55
-KEY CHANGES from v1.54:
-   - FIXED: Removed real-time validation on flight change (no modal popups)
-   - CHANGED: Validation only runs on Commit/Update
-   - CHANGED: Removed error message from player card (only shows on commit)
-   - CHANGED: Flight change now just updates state without re-render or validation
-   - PRESERVED: All functionality from v1.54
+VERSION: 1.56
+KEY CHANGES from v1.55:
+   - FIXED: initializeEmptyResults() now includes f1IntraMatches, f2IntraMatches, matchResults, clinchedAt
+   - FIXED: createNewGame() now sets lastSyncedPosition: -1, savedHoles: {1: [], 2: []}, gameStarted: false
+   - FIXED: updateExistingGame() preserves lastSyncedPosition and savedHoles
+   - PRESERVED: All UI styling and layout from v1.55 unchanged
+   - PRESERVED: All functionality from v1.55 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
