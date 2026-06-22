@@ -1,24 +1,24 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.26
-KEY CHANGES from v2.25:
-   - ADDED: Detailed debug logging in getMatchBubbleClass() to trace cross-flight logic
-   - Logs: lastSyncedValue, currentHole, startingHole, currentPlayPosition, isCrossFlight, isSynced
-   - Logs: Actual condition evaluation for cross-flight grey AS check
-   - PRESERVED: All functionality from v2.25
+VERSION: 2.27
+KEY CHANGES from v2.26:
+   - FIXED: Cross-flight matches now correctly show grey AS when no data exists
+   - CHANGED: Added check for lastSyncedValue < 0 (no data) before sync evaluation
+   - CHANGED: Cross-flight now requires lastSyncedValue >= 0 AND sync condition
+   - PRESERVED: All debug logging from v2.26
+   - PRESERVED: All functionality from v2.26
 DEPENDS ON: GameData, GameOrder
-STATUS: Debug version - ready for testing
+STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.26";
+window.GAME_MATCH_VERSION = "2.27";
 
 var GameMatch = (function() {
     
-    console.log("[GAME-MATCH] Initializing v2.26 - ADDED DEBUG LOGGING FOR getMatchBubbleClass");
+    console.log("[GAME-MATCH] Initializing v2.27 - FIXED cross-flight grey AS when no data");
     console.log("[GAME-MATCH] ===================================================");
-    console.log("[GAME-MATCH] Debug logs will trace cross-flight bubble color logic");
-    console.log("[GAME-MATCH] Specifically: lastSyncedValue, currentPlayPosition, isSynced evaluation");
+    console.log("[GAME-MATCH] Cross-flight now checks lastSyncedValue < 0 for no data");
     console.log("[GAME-MATCH] ===================================================");
     
     // ============================================================
@@ -460,7 +460,7 @@ var GameMatch = (function() {
                         remainingHolesAtClinch: remainingHoles,
                         recordedAt: new Date().toISOString(),
                         recordedByDevice: deviceId || "unknown",
-                        cascadeVersion: cascadeVersion || "2.26"
+                        cascadeVersion: cascadeVersion || "2.27"
                     };
                     clinchedAtUpdates[actualWinner + "_vs_" + actualLoser] = clinchData;
                     console.log(`[DEBUG-CROSS]   Clinch data: ${actualWinner}_vs_${actualLoser} at hole ${currentHole}`);
@@ -504,7 +504,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.26"
+                    cascadeVersion: cascadeVersion || "2.27"
                 }
             };
         }
@@ -684,7 +684,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.26: getMatchBubbleClass with ADDED DEBUG LOGGING
+    // v2.27: getMatchBubbleClass with FIX for cross-flight grey AS
     // ============================================================
     
     function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedValue, getClinchHoleFunc, startingHole) {
@@ -697,7 +697,7 @@ var GameMatch = (function() {
         var logPrefix = isCrossFlight ? '[DEBUG-BUBBLE-CROSS]' : '[DEBUG-BUBBLE-INTRA]';
         
         // ============================================================
-        // v2.26: ADDED DEBUG LOGGING for cross-flight logic
+        // v2.27: FIXED - Cross-flight with no data should be grey
         // ============================================================
         console.log(`${logPrefix} =========================================`);
         console.log(`${logPrefix} ${player.label} vs ${opponent.label}:`);
@@ -712,6 +712,11 @@ var GameMatch = (function() {
         console.log(`${logPrefix}   clinchPlayPosition=${clinchPlayPosition}`);
         
         if (isCrossFlight) {
+            // v2.27: If lastSyncedValue < 0, no data exists yet
+            if (lastSyncedValue < 0) {
+                console.log(`${logPrefix}   -> GREY (no data - lastSyncedValue=${lastSyncedValue})`);
+                return 'bubble-grey';
+            }
             var isSynced = (lastSyncedValue >= currentPlayPosition);
             console.log(`${logPrefix}   CROSS-FLIGHT: isSynced = ${lastSyncedValue} >= ${currentPlayPosition} = ${isSynced}`);
             if (!isSynced) {
@@ -843,16 +848,17 @@ var GameMatch = (function() {
 })();
 
 // Re-expose version for console debugging
-window.GAME_MATCH_VERSION = "2.26";
+window.GAME_MATCH_VERSION = "2.27";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.26
-KEY CHANGES from v2.25:
-   - ADDED: Detailed debug logging in getMatchBubbleClass() to trace cross-flight logic
-   - Logs: lastSyncedValue, currentHole, startingHole, currentPlayPosition, isCrossFlight, isSynced
-   - Logs: Actual condition evaluation for cross-flight grey AS check
-   - PRESERVED: All functionality from v2.25
+VERSION: 2.27
+KEY CHANGES from v2.26:
+   - FIXED: Cross-flight matches now correctly show grey AS when no data exists
+   - CHANGED: Added check for lastSyncedValue < 0 (no data) before sync evaluation
+   - CHANGED: Cross-flight now requires lastSyncedValue >= 0 AND sync condition
+   - PRESERVED: All debug logging from v2.26
+   - PRESERVED: All functionality from v2.26
 DEPENDS ON: GameData, GameOrder
-STATUS: Debug version - ready for testing
+STATUS: Ready for integration
 */
