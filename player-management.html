@@ -1,11 +1,13 @@
 <!--
 FILE: player-management.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - ADDED: Custom green arrow (▼) for Team dropdown using .select-wrapper
-   - CHANGED: Team select now uses appearance: none with custom arrow
-   - CHANGED: Consistent dropdown styling with setup-game.html
-   - PRESERVED: All functionality from v1.15
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED: 2-line form layout CSS (was completely broken)
+   - CHANGED: Proper flex layout for form lines and groups
+   - CHANGED: Name group flexible, Label group narrow (80px)
+   - CHANGED: Hcp group narrow (60px), Team group flexible
+   - CHANGED: Form actions (buttons) properly aligned
+   - PRESERVED: All functionality from v1.16
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -138,27 +140,34 @@ STATUS: Ready for integration
             opacity: 0.7;
         }
         
-        /* 2x2 grid form */
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 0.6fr;
+        /* ===== 2-LINE FORM LAYOUT ===== */
+        .form-line {
+            display: flex;
+            flex-wrap: wrap;
             gap: 8px 12px;
+            margin-bottom: 8px;
+            align-items: flex-end;
             width: 100%;
         }
-        .form-grid .field {
-            width: 100%;
+        .form-line:last-child {
+            margin-bottom: 0;
+        }
+        
+        .form-group {
             display: flex;
             flex-direction: column;
             gap: 2px;
+            flex: 1;
+            min-width: 0;
         }
-        .form-grid .field label {
+        .form-group label {
             font-size: 0.6rem;
             color: #4caf50;
             letter-spacing: 0.5px;
             text-transform: uppercase;
         }
-        .form-grid .field input,
-        .form-grid .field select {
+        .form-group input,
+        .form-group select {
             width: 100%;
             background: #0a0a0a;
             border: 1px solid #2a5a2a;
@@ -169,34 +178,60 @@ STATUS: Ready for integration
             transition: border-color 0.2s ease;
             box-sizing: border-box;
         }
-        .form-grid .field input:focus,
-        .form-grid .field select:focus {
+        .form-group input:focus,
+        .form-group select:focus {
             outline: none;
             border-color: #4caf50;
         }
-        /* Label field - narrow, centered */
-        .form-grid .field.label-field input {
+        
+        /* Name group - flexible */
+        .form-group.name-group {
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        /* Label group - narrow (3 chars) */
+        .form-group.label-group {
+            flex: 0 0 80px;
+        }
+        .form-group.label-group input {
             max-width: 80px;
             text-align: center;
             font-weight: 600;
             font-size: 0.9rem;
             letter-spacing: 1px;
         }
-        /* Hcp field - centered */
-        .form-grid .field.hcp-field input {
-            text-align: center;
-            font-weight: 600;
-        }
-        .form-grid .field .hint {
-            font-size: 0.5rem;
-            color: #555;
-            margin-top: 1px;
-        }
-        .form-grid .field.label-field .hint {
+        .form-group.label-group .hint {
             display: none;
         }
-        .form-grid .field.full-width {
-            grid-column: 1 / -1;
+        
+        /* Hcp group - narrow, left-aligned */
+        .form-group.hcp-group {
+            flex: 0 0 60px;
+        }
+        .form-group.hcp-group input {
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        /* Team group - flexible */
+        .form-group.team-group {
+            flex: 1;
+            min-width: 100px;
+        }
+        
+        /* Action buttons - inline */
+        .form-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+            align-items: flex-end;
+        }
+        .form-actions .btn {
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            border-radius: 6px;
+            white-space: nowrap;
         }
         
         .btn {
@@ -397,12 +432,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.16</div>
+<div class="version-tag">v1.17</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.16
+// VERSION: 1.17
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -411,8 +446,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.16";
-var CACHE_KEY = "player_management_v116";
+var APP_VERSION = "1.17";
+var CACHE_KEY = "player_management_v117";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -424,8 +459,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.16";
-console.log("[PLAYER-MGMT] Initializing v1.16 - Custom green arrow for Team dropdown");
+window.PLAYER_MGMT_VERSION = "1.17";
+console.log("[PLAYER-MGMT] Initializing v1.17 - Fixed 2-line form layout");
 
 // ============================================================
 // Firebase
@@ -876,12 +911,14 @@ window.cancelForm = cancelForm;
 
 <!--
 FILE: player-management.html
-VERSION: 1.16
-KEY CHANGES from v1.15:
-   - ADDED: Custom green arrow (▼) for Team dropdown using .select-wrapper
-   - CHANGED: Team select now uses appearance: none with custom arrow
-   - CHANGED: Consistent dropdown styling with setup-game.html
-   - PRESERVED: All functionality from v1.15
+VERSION: 1.17
+KEY CHANGES from v1.16:
+   - FIXED: 2-line form layout CSS (was completely broken)
+   - CHANGED: Proper flex layout for form lines and groups
+   - CHANGED: Name group flexible, Label group narrow (80px)
+   - CHANGED: Hcp group narrow (60px), Team group flexible
+   - CHANGED: Form actions (buttons) properly aligned
+   - PRESERVED: All functionality from v1.16
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
