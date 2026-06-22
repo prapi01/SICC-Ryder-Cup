@@ -1,16 +1,11 @@
 <!--
 FILE: player-management.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Player items now single line flex layout (no grid wrapping)
-   - FIXED: 2x2 grid form restored with proper column sizing
-   - CHANGED: Label field narrowed to max-width: 80px (max 3 chars)
-   - CHANGED: HCP field text centered
-   - CHANGED: Name field placeholder removed (label provides context)
-   - CHANGED: Label field "system generated" hint removed (auto-populates)
-   - ADDED: Cancel button to form (clears fields, resets editing state)
-   - FIXED: Back link now goes to admin.html (Game Settings)
-   - PRESERVED: All functionality from v1.08
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - CHANGED: Edit/Del buttons replaced with SVG icons (pencil and trash)
+   - CHANGED: All player list elements now use consistent 0.75rem font size
+   - CHANGED: Mobile adjustments for 400px (0.7rem / 0.65rem)
+   - PRESERVED: All functionality from v1.10
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -189,7 +184,34 @@ STATUS: Ready for integration
         .btn-secondary:hover { border-color: #4caf50; color: #888; }
         .btn-danger { border-color: #3a1a1a; color: #ff6b6b; }
         .btn-danger:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.04); }
-        .btn-small { padding: 4px 10px; font-size: 0.65rem; }
+        .btn-small { 
+            padding: 4px 6px; 
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            background: rgba(20, 20, 20, 0.5);
+        }
+        .btn-small svg {
+            width: 14px;
+            height: 14px;
+        }
+        .btn-small-edit { 
+            border: 1px solid #2a5a2a; 
+            color: #4caf50;
+        }
+        .btn-small-edit:hover { border-color: #4caf50; background: rgba(76, 175, 80, 0.05); }
+        .btn-small-delete { 
+            border: 1px solid #3a1a1a; 
+            color: #ff6b6b;
+        }
+        .btn-small-delete:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.05); }
+        
         .btn-save { border-color: #4caf50; color: #4caf50; border-width: 2px; }
         .btn-save:hover { background: rgba(76, 175, 80, 0.04); }
         .btn-cancel { border-color: #2a5a2a; color: #666; }
@@ -207,7 +229,7 @@ STATUS: Ready for integration
             padding: 10px 20px;
         }
         
-        /* Player list - single line flex */
+        /* Player list - single line flex with consistent 0.75rem font */
         .player-list { margin-top: 4px; }
         .player-item {
             display: flex;
@@ -234,25 +256,25 @@ STATUS: Ready for integration
         }
         .player-item .p-label { 
             flex: 0 0 auto;
-            font-size: 0.55rem;
+            font-size: 0.75rem;
             font-weight: 600;
             color: #4caf50;
             background: #1a3a1a;
-            padding: 1px 6px;
+            padding: 2px 6px;
             border-radius: 4px;
             text-align: center;
-            min-width: 20px;
+            min-width: 22px;
         }
         .player-item .p-hcp { 
             flex: 0 0 auto;
-            font-size: 0.55rem;
+            font-size: 0.75rem;
             color: #4caf50;
             min-width: 28px;
             text-align: center;
         }
         .player-item .p-team { 
             flex: 0 0 auto;
-            font-size: 0.55rem;
+            font-size: 0.75rem;
             color: #ffaa44;
             min-width: 22px;
             text-align: center;
@@ -262,11 +284,6 @@ STATUS: Ready for integration
             flex: 0 0 auto;
             gap: 4px;
             flex-wrap: nowrap;
-        }
-        .player-item .p-actions .btn-small {
-            font-size: 0.55rem;
-            padding: 2px 6px;
-            white-space: nowrap;
         }
         
         .player-item.editing { border-color: #4caf50; background: #1a2a1a; }
@@ -302,11 +319,15 @@ STATUS: Ready for integration
             .player-item .p-label,
             .player-item .p-hcp,
             .player-item .p-team {
-                font-size: 0.5rem;
+                font-size: 0.65rem;
             }
-            .player-item .p-actions .btn-small {
-                font-size: 0.5rem;
-                padding: 1px 4px;
+            .btn-small {
+                min-width: 24px;
+                height: 24px;
+            }
+            .btn-small svg {
+                width: 12px;
+                height: 12px;
             }
             .form-grid {
                 grid-template-columns: 1fr 0.6fr;
@@ -331,12 +352,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.09</div>
+<div class="version-tag">v1.11</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.09
+// VERSION: 1.11
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -345,8 +366,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.09";
-var CACHE_KEY = "player_management_v109";
+var APP_VERSION = "1.11";
+var CACHE_KEY = "player_management_v111";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -358,8 +379,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.09";
-console.log("[PLAYER-MGMT] Initializing v1.09 - Fixed layout, Cancel button, Back to admin");
+window.PLAYER_MGMT_VERSION = "1.11";
+console.log("[PLAYER-MGMT] Initializing v1.11 - SVG icons, consistent 0.75rem fonts");
 
 // ============================================================
 // Firebase
@@ -374,6 +395,17 @@ var deviceSession = null;
 var players = [];
 var editingIndex = -1;
 var isLoading = false;
+
+// ============================================================
+// SVG Icons
+// ============================================================
+function getEditSvg() {
+    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
+}
+
+function getDeleteSvg() {
+    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+}
 
 // ============================================================
 // generateLabel - system-generated, user can override
@@ -481,7 +513,6 @@ function updateLabelPreview() {
     var nameInput = document.getElementById('playerName');
     var labelInput = document.getElementById('playerLabel');
     if (nameInput && labelInput) {
-        // Only auto-generate if user hasn't manually edited the label
         if (!labelInput.dataset.userEdited || labelInput.dataset.userEdited === 'false') {
             labelInput.value = generateLabel(nameInput.value);
         }
@@ -503,7 +534,6 @@ function onNameInput() {
     var nameInput = document.getElementById('playerName');
     var labelInput = document.getElementById('playerLabel');
     if (nameInput && labelInput) {
-        // Only auto-generate if user hasn't manually edited the label
         if (!labelInput.dataset.userEdited || labelInput.dataset.userEdited === 'false') {
             labelInput.value = generateLabel(nameInput.value);
         }
@@ -588,13 +618,9 @@ function render() {
     
     container.innerHTML = html;
     
-    // Save button
     document.getElementById('savePlayerBtn').addEventListener('click', savePlayer);
-    
-    // Cancel button
     document.getElementById('cancelBtn').addEventListener('click', cancelForm);
     
-    // Enter key handlers
     document.getElementById('playerName').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') savePlayer();
     });
@@ -608,13 +634,10 @@ function render() {
         if (e.key === 'Enter') savePlayer();
     });
     
-    // Label field - auto-generate when name changes
     var nameInput = document.getElementById('playerName');
     var labelInput = document.getElementById('playerLabel');
     if (nameInput && labelInput) {
-        // Reset userEdited flag if label is empty when name changes
         nameInput.addEventListener('input', function() {
-            // If label is empty, auto-generate
             if (!labelInput.value || labelInput.dataset.userEdited === 'false') {
                 labelInput.value = generateLabel(nameInput.value);
                 labelInput.dataset.userEdited = 'false';
@@ -622,14 +645,15 @@ function render() {
         });
     }
     
-    // If editing, mark label as user-edited so it doesn't get overwritten
     if (editingIndex >= 0 && labelInput) {
         labelInput.dataset.userEdited = 'true';
     }
+    
+    attachPlayerActions();
 }
 
 // ============================================================
-// Render Player List
+// Render Player List - with SVG icons
 // ============================================================
 function renderPlayerList() {
     if (players.length === 0) {
@@ -649,8 +673,8 @@ function renderPlayerList() {
                 <span class="p-hcp">${p.handicap}</span>
                 <span class="p-team">${p.defaultTeam || 'A'}</span>
                 <div class="p-actions">
-                    <button class="btn btn-small btn-primary edit-btn" data-index="${i}">Edit</button>
-                    <button class="btn btn-small btn-danger delete-btn" data-index="${i}">Del</button>
+                    <button class="btn btn-small btn-small-edit edit-btn" data-index="${i}">${getEditSvg()}</button>
+                    <button class="btn btn-small btn-small-delete delete-btn" data-index="${i}">${getDeleteSvg()}</button>
                 </div>
             </div>
         `;
@@ -680,12 +704,6 @@ function attachPlayerActions() {
         });
     });
 }
-
-var originalRender = render;
-render = function() {
-    originalRender();
-    attachPlayerActions();
-};
 
 // ============================================================
 // Player CRUD Operations
@@ -804,17 +822,12 @@ window.cancelForm = cancelForm;
 
 <!--
 FILE: player-management.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - FIXED: Player items now single line flex layout (no grid wrapping)
-   - FIXED: 2x2 grid form restored with proper column sizing
-   - CHANGED: Label field narrowed to max-width: 80px (max 3 chars)
-   - CHANGED: HCP field text centered
-   - CHANGED: Name field placeholder removed (label provides context)
-   - CHANGED: Label field "system generated" hint removed (auto-populates)
-   - ADDED: Cancel button to form (clears fields, resets editing state)
-   - FIXED: Back link now goes to admin.html (Game Settings)
-   - PRESERVED: All functionality from v1.08
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - CHANGED: Edit/Del buttons replaced with SVG icons (pencil and trash)
+   - CHANGED: All player list elements now use consistent 0.75rem font size
+   - CHANGED: Mobile adjustments for 400px (0.7rem / 0.65rem)
+   - PRESERVED: All functionality from v1.10
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
