@@ -1,12 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.53
-KEY CHANGES from v1.52:
-   - ADDED: Custom green arrow (▼) for all dropdowns using .select-wrapper
-   - CHANGED: All selects now use appearance: none with custom arrow
-   - REMOVED: iOS-specific appearance hacks
-   - CHANGED: Name, Team, Flight, Course, Starting Hole, Team Game all have consistent green arrows
-   - PRESERVED: All functionality from v1.52
+VERSION: 1.54
+KEY CHANGES from v1.53:
+   - CHANGED: Flight field is now user-assigned (no auto-assignment)
+   - CHANGED: Flight dropdown starts empty (—) - user selects F1 or F2
+   - CHANGED: Flight validation at commit ensures 2 players per team per flight
+   - CHANGED: loadDefaultPlayers() no longer assigns flights based on position
+   - CHANGED: loadEditMode() preserves existing flight values
+   - PRESERVED: All functionality from v1.53
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -119,7 +120,6 @@ STATUS: Ready for integration
             min-width: 70px;
         }
         
-        /* Date input - left-aligned */
         .date-input {
             flex: 1;
             background: #0a0a0a;
@@ -141,7 +141,6 @@ STATUS: Ready for integration
             border-color: #4caf50;
         }
         
-        /* ===== SELECT WRAPPER WITH CUSTOM GREEN ARROW ===== */
         .select-wrapper {
             position: relative;
             display: inline-block;
@@ -224,7 +223,6 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* Player rows - fixed column widths */
         .player-row { 
             display: flex;
             align-items: center;
@@ -348,7 +346,6 @@ STATUS: Ready for integration
             -webkit-appearance: none;
             margin: 0;
         }
-        /* Show arrows on focus */
         .hcp-group input[type="number"]:focus {
             -webkit-appearance: menulist;
             -moz-appearance: number-input;
@@ -400,7 +397,7 @@ STATUS: Ready for integration
             color: #e0e0e0;
         }
         
-        /* Column 5: Flight - 48px, right-aligned, with custom arrow */
+        /* Column 5: Flight - 48px, right-aligned, user-assigned */
         .flight-wrapper {
             flex: 0 0 48px;
             width: 48px;
@@ -627,11 +624,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.53</div>
+<div class="version-tag">v1.54</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.53
+// VERSION: 1.54
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -639,8 +636,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.53";
-var CACHE_KEY = "setup_game_version_v153";
+var VERSION = "1.54";
+var CACHE_KEY = "setup_game_version_v154";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1009,7 +1006,8 @@ function loadDefaultPlayers(callback) {
             var result = [];
             for (var i = 0; i < 4; i++) {
                 var p = teamAPlayers[i] || { name: "", handicap: 0, defaultTeam: "A", label: "" };
-                var flight = (i < 2) ? 1 : 2;
+                // v1.54: No auto-flight assignment - leave as null
+                var flight = p.flight !== undefined ? p.flight : null;
                 result.push({
                     name: p.name || "",
                     handicap: p.handicap || 0,
@@ -1020,7 +1018,7 @@ function loadDefaultPlayers(callback) {
             }
             for (var i = 0; i < 4; i++) {
                 var p = teamBPlayers[i] || { name: "", handicap: 0, defaultTeam: "B", label: "" };
-                var flight = (i < 2) ? 1 : 2;
+                var flight = p.flight !== undefined ? p.flight : null;
                 result.push({
                     name: p.name || "",
                     handicap: p.handicap || 0,
@@ -1059,7 +1057,8 @@ function loadDefaultPlayers(callback) {
         var result = [];
         for (var i = 0; i < selectedA.length; i++) {
             var p = selectedA[i];
-            var flight = (i < 2) ? 1 : 2;
+            // v1.54: No auto-flight assignment
+            var flight = p.flight !== undefined ? p.flight : null;
             result.push({
                 name: p.name || "",
                 handicap: p.handicap || 0,
@@ -1070,7 +1069,7 @@ function loadDefaultPlayers(callback) {
         }
         for (var i = 0; i < selectedB.length; i++) {
             var p = selectedB[i];
-            var flight = (i < 2) ? 1 : 2;
+            var flight = p.flight !== undefined ? p.flight : null;
             result.push({
                 name: p.name || "",
                 handicap: p.handicap || 0,
@@ -1087,14 +1086,14 @@ function loadDefaultPlayers(callback) {
     }
     
     var fallback = [
-        { name: "Ang C H", handicap: 1, team: "A", flight: 1, label: "ACH" },
-        { name: "Chenh Hoe", handicap: 10, team: "A", flight: 1, label: "CH" },
-        { name: "C K", handicap: 8, team: "A", flight: 2, label: "CK" },
-        { name: "Yip H M", handicap: 12, team: "A", flight: 2, label: "YHM" },
-        { name: "Jeff Goh", handicap: 0, team: "B", flight: 1, label: "JG" },
-        { name: "Ong C B", handicap: 1, team: "B", flight: 1, label: "OCB" },
-        { name: "Piti", handicap: 8, team: "B", flight: 2, label: "P" },
-        { name: "James Ong", handicap: 11, team: "B", flight: 2, label: "JO" }
+        { name: "Ang C H", handicap: 1, team: "A", flight: null, label: "ACH" },
+        { name: "Chenh Hoe", handicap: 10, team: "A", flight: null, label: "CH" },
+        { name: "C K", handicap: 8, team: "A", flight: null, label: "CK" },
+        { name: "Yip H M", handicap: 12, team: "A", flight: null, label: "YHM" },
+        { name: "Jeff Goh", handicap: 0, team: "B", flight: null, label: "JG" },
+        { name: "Ong C B", handicap: 1, team: "B", flight: null, label: "OCB" },
+        { name: "Piti", handicap: 8, team: "B", flight: null, label: "P" },
+        { name: "James Ong", handicap: 11, team: "B", flight: null, label: "JO" }
     ];
     state.players = fallback;
     console.log("[SETUP-GAME] Using fallback players");
@@ -1127,7 +1126,13 @@ function loadEditMode(callback) {
             
             if (gameData.players && gameData.players.length === 8) {
                 state.players = gameData.players.map(function(p) {
-                    return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: generateLabel(p.name) };
+                    return { 
+                        name: p.name, 
+                        handicap: p.handicap, 
+                        team: p.team, 
+                        flight: p.flight !== undefined ? p.flight : null, 
+                        label: generateLabel(p.name) 
+                    };
                 });
             } else {
                 loadDefaultPlayers(callback);
@@ -1212,6 +1217,8 @@ function populatePlayerFields(idx) {
     }
     
     state.players[idx].name = player.name;
+    // v1.54: Preserve existing flight value when populating
+    // Don't override state.players[idx].flight
     
     if (state.isEditMode) checkForChanges();
 }
@@ -1229,9 +1236,11 @@ function updatePlayerTeam(idx, value) {
 }
 
 function updatePlayerFlight(idx, value) {
-    state.players[idx].flight = parseInt(value);
+    // v1.54: Allow null (empty) selection
+    var flightVal = value === '' ? null : parseInt(value);
+    state.players[idx].flight = flightVal;
     if (state.isEditMode) checkForChanges();
-    render();
+    // No render() call - let the user's selection persist
 }
 
 function setTeamGameFormat(format) {
@@ -1240,12 +1249,28 @@ function setTeamGameFormat(format) {
     render();
 }
 
+// v1.54: Updated validation - checks for unassigned flights
 function validateTeamFlight() {
+    var unassigned = state.players.filter(function(p) {
+        return p.flight === null || p.flight === undefined || p.flight === '';
+    });
+    
+    if (unassigned.length > 0) {
+        Modal.alert("Please assign all players to Flight 1 or Flight 2.");
+        return false;
+    }
+    
     var flight1A = state.players.filter(function(p) { return p.flight === 1 && p.team === "A"; }).length;
     var flight1B = state.players.filter(function(p) { return p.flight === 1 && p.team === "B"; }).length;
     var flight2A = state.players.filter(function(p) { return p.flight === 2 && p.team === "A"; }).length;
     var flight2B = state.players.filter(function(p) { return p.flight === 2 && p.team === "B"; }).length;
-    return flight1A === 2 && flight1B === 2 && flight2A === 2 && flight2B === 2;
+    
+    if (flight1A === 2 && flight1B === 2 && flight2A === 2 && flight2B === 2) {
+        return true;
+    } else {
+        Modal.alert("Each flight needs exactly 2 Team A and 2 Team B players.");
+        return false;
+    }
 }
 
 function validateDate(dateStr) {
@@ -1362,8 +1387,8 @@ function commitGame() {
         return;
     }
     
+    // v1.54: Use updated validation
     if (!validateTeamFlight()) {
-        Modal.alert("Each flight needs exactly 2 Team A and 2 Team B players");
         return;
     }
     
@@ -1575,31 +1600,30 @@ function render() {
         courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
     }
     
+    // v1.54: Display players without re-assigning flights
     var displayPlayers = [];
     var teamAPlayers = state.players.filter(function(p) { return p.team === "A"; });
     teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = state.players.filter(function(p) { return p.team === "B"; });
     teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
     
+    // Build display order - Team A then Team B, preserve existing flight values
     displayPlayers = [];
     for (var i = 0; i < 4; i++) {
         if (i < teamAPlayers.length) {
             var p = teamAPlayers[i];
-            var flight = (i < 2) ? 1 : 2;
-            p.flight = flight;
+            // Keep existing flight value, don't auto-assign
             displayPlayers.push(p);
         } else {
-            displayPlayers.push({ name: "", handicap: 0, team: "A", flight: (i < 2) ? 1 : 2, label: "" });
+            displayPlayers.push({ name: "", handicap: 0, team: "A", flight: null, label: "" });
         }
     }
     for (var i = 0; i < 4; i++) {
         if (i < teamBPlayers.length) {
             var p = teamBPlayers[i];
-            var flight = (i < 2) ? 1 : 2;
-            p.flight = flight;
             displayPlayers.push(p);
         } else {
-            displayPlayers.push({ name: "", handicap: 0, team: "B", flight: (i < 2) ? 1 : 2, label: "" });
+            displayPlayers.push({ name: "", handicap: 0, team: "B", flight: null, label: "" });
         }
     }
     
@@ -1620,11 +1644,10 @@ function render() {
     for (var idx = 0; idx < displayPlayers.length; idx++) {
         var p = displayPlayers[idx];
         var originalIdx = state.players.findIndex(function(orig) {
-            return orig.name === p.name && orig.team === p.team && orig.flight === p.flight;
+            return orig.name === p.name && orig.team === p.team;
         });
         if (originalIdx === -1) originalIdx = idx;
         
-        // Player options - full name in dropdown
         var playerOptions = '<option value="">— Select player —</option>';
         for (var i = 0; i < playerList.length; i++) {
             var pl = playerList[i];
@@ -1632,7 +1655,11 @@ function render() {
             playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
         }
         
-        // v1.53: All dropdowns wrapped with custom green arrow
+        // v1.54: Flight dropdown - show empty option (—) for unassigned
+        var flightVal = p.flight !== null && p.flight !== undefined ? p.flight : '';
+        var f1Selected = (flightVal === 1) ? 'selected' : '';
+        var f2Selected = (flightVal === 2) ? 'selected' : '';
+        
         playersHtml += `
             <div class="player-row">
                 <div class="player-line1">
@@ -1656,8 +1683,9 @@ function render() {
                     </div>
                     <div class="flight-wrapper">
                         <select class="flight-display" data-idx="${originalIdx}" onchange="updatePlayerFlight(${originalIdx}, this.value)">
-                            <option value="1" ${p.flight === 1 ? "selected" : ""}>F1</option>
-                            <option value="2" ${p.flight === 2 ? "selected" : ""}>F2</option>
+                            <option value="">—</option>
+                            <option value="1" ${f1Selected}>F1</option>
+                            <option value="2" ${f2Selected}>F2</option>
                         </select>
                         <span class="arrow">▼</span>
                     </div>
@@ -1808,6 +1836,7 @@ function render() {
             var idx = parseInt(this.dataset.idx);
             state.players[idx].handicap = parseInt(this.value) || 0;
             if (state.isEditMode) checkForChanges();
+            render();
         });
     });
     
@@ -1823,9 +1852,21 @@ function render() {
     document.querySelectorAll(".flight-display").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
-            state.players[idx].flight = parseInt(this.value);
+            var val = this.value;
+            state.players[idx].flight = val === '' ? null : parseInt(val);
             if (state.isEditMode) checkForChanges();
-            render();
+            // v1.54: No render() call - preserve user selection
+            // Just update the error message if validation changes
+            var isValidNow = validateTeamFlight();
+            var errorEl = document.querySelector('.error-msg');
+            if (errorEl) {
+                if (!isValidNow) {
+                    errorEl.textContent = 'Each flight needs exactly 2 Team A and 2 Team B players';
+                    errorEl.style.display = 'block';
+                } else {
+                    errorEl.style.display = 'none';
+                }
+            }
         });
     });
     
@@ -1884,13 +1925,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.53
-KEY CHANGES from v1.52:
-   - ADDED: Custom green arrow (▼) for all dropdowns using .select-wrapper
-   - CHANGED: All selects now use appearance: none with custom arrow
-   - REMOVED: iOS-specific appearance hacks
-   - CHANGED: Name, Team, Flight, Course, Starting Hole, Team Game all have consistent green arrows
-   - PRESERVED: All functionality from v1.52
+VERSION: 1.54
+KEY CHANGES from v1.53:
+   - CHANGED: Flight field is now user-assigned (no auto-assignment)
+   - CHANGED: Flight dropdown starts empty (—) - user selects F1 or F2
+   - CHANGED: Flight validation at commit ensures 2 players per team per flight
+   - CHANGED: loadDefaultPlayers() no longer assigns flights based on position
+   - CHANGED: loadEditMode() preserves existing flight values
+   - PRESERVED: All functionality from v1.53
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
