@@ -1,15 +1,11 @@
 <!--
 FILE: courses.html
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - CHANGED: Course creation from 19-screen flow to single scrollable page
-   - ADDED: All 18 holes displayed as rows with Par and SI dropdowns
-   - CHANGED: Par default is "4" for all holes
-   - CHANGED: SI default is hole number (1-18)
-   - REMOVED: Summary/confirmation page (no longer needed)
-   - REMOVED: Multi-screen navigation (Back/Next buttons)
-   - CHANGED: Cancel and Add buttons at bottom of form
-   - PRESERVED: All functionality from v1.35
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - ADDED: Custom green arrow (▼) for Par and SI dropdowns using .select-wrapper
+   - CHANGED: All selects in hole rows now use appearance: none with custom arrow
+   - CHANGED: Consistent dropdown styling with setup-game.html and player-management.html
+   - PRESERVED: All functionality from v1.36
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -196,7 +192,43 @@ STATUS: Ready for integration
         .space-between { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
         .text-center { text-align: center; }
         
-        /* Hole row styling */
+        /* ===== SELECT WRAPPER WITH CUSTOM GREEN ARROW ===== */
+        .select-wrapper {
+            position: relative;
+            display: inline-block;
+            flex: 1;
+            min-width: 60px;
+        }
+        .select-wrapper select {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid #2a5a2a;
+            border-radius: 6px;
+            padding: 6px 20px 6px 8px;
+            color: #e0e0e0;
+            font-size: 0.8rem;
+            transition: border-color 0.2s ease;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            cursor: pointer;
+            text-align: center;
+        }
+        .select-wrapper select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .select-wrapper .arrow {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 7px;
+            color: #4caf50;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        
+        /* Hole row styling with select-wrapper */
         .hole-row {
             display: flex;
             align-items: center;
@@ -213,42 +245,21 @@ STATUS: Ready for integration
             font-weight: 600;
             min-width: 28px;
             text-align: center;
+            flex-shrink: 0;
         }
         .hole-row .hole-par {
             flex: 1;
             min-width: 60px;
         }
-        .hole-row .hole-par select {
-            width: 100%;
-            background: #0a0a0a;
-            border: 1px solid #2a5a2a;
-            border-radius: 6px;
-            padding: 6px 8px;
-            color: #e0e0e0;
-            font-size: 0.8rem;
-            text-align: center;
-        }
-        .hole-row .hole-par select:focus {
-            outline: none;
-            border-color: #4caf50;
+        .hole-row .hole-par .select-wrapper {
+            min-width: 50px;
         }
         .hole-row .hole-si {
             flex: 1;
             min-width: 60px;
         }
-        .hole-row .hole-si select {
-            width: 100%;
-            background: #0a0a0a;
-            border: 1px solid #2a5a2a;
-            border-radius: 6px;
-            padding: 6px 8px;
-            color: #e0e0e0;
-            font-size: 0.8rem;
-            text-align: center;
-        }
-        .hole-row .hole-si select:focus {
-            outline: none;
-            border-color: #4caf50;
+        .hole-row .hole-si .select-wrapper {
+            min-width: 50px;
         }
         
         .form-actions {
@@ -268,11 +279,11 @@ STATUS: Ready for integration
     <div class="loading">Loading courses...</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.36</div>
+<div class="version-tag">v1.37</div>
 
 <script>
 // FILE: courses.html
-// VERSION: 1.36
+// VERSION: 1.37
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -280,8 +291,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[COURSES] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.36";
-var CACHE_KEY = "courses_version_v136";
+var VERSION = "1.37";
+var CACHE_KEY = "courses_version_v137";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -512,30 +523,21 @@ function renderEdit() {
     var isEditing = state.editingCourseId ? 'Edit Course' : 'Add New Course';
     var totalPar = state.newCourse.par.reduce(function(a,b) { return a + b; }, 0);
     
-    var parOptions = '';
-    for (var i = 3; i <= 6; i++) {
-        parOptions += `<option value="${i}">${i}</option>`;
-    }
-    
-    var siOptions = '';
-    for (var i = 1; i <= 18; i++) {
-        siOptions += `<option value="${i}">${i}</option>`;
-    }
-    
+    // v1.37: Build hole rows with select-wrapper for custom green arrow
     var holesHtml = '';
     for (var h = 0; h < 18; h++) {
         var holeNum = h + 1;
         var parVal = state.newCourse.par[h] || 4;
         var siVal = state.newCourse.si[h] || (h + 1);
         
-        // Build par options with selected
+        // Build par options
         var parOptsHtml = '';
         for (var p = 3; p <= 6; p++) {
             var selected = (parVal === p) ? ' selected' : '';
             parOptsHtml += `<option value="${p}"${selected}>${p}</option>`;
         }
         
-        // Build si options with selected
+        // Build si options
         var siOptsHtml = '';
         for (var s = 1; s <= 18; s++) {
             var selected = (siVal === s) ? ' selected' : '';
@@ -546,14 +548,20 @@ function renderEdit() {
             <div class="hole-row">
                 <span class="hole-number">${holeNum}</span>
                 <div class="hole-par">
-                    <select onchange="updatePar(${h}, this.value)">
-                        ${parOptsHtml}
-                    </select>
+                    <div class="select-wrapper">
+                        <select onchange="updatePar(${h}, this.value)">
+                            ${parOptsHtml}
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
                 </div>
                 <div class="hole-si">
-                    <select onchange="updateSi(${h}, this.value)">
-                        ${siOptsHtml}
-                    </select>
+                    <div class="select-wrapper">
+                        <select onchange="updateSi(${h}, this.value)">
+                            ${siOptsHtml}
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
                 </div>
             </div>
         `;
@@ -641,16 +649,12 @@ SessionManager.initSession("courses.html", "admin.html", function(session) {
 
 <!--
 FILE: courses.html
-VERSION: 1.36
-KEY CHANGES from v1.35:
-   - CHANGED: Course creation from 19-screen flow to single scrollable page
-   - ADDED: All 18 holes displayed as rows with Par and SI dropdowns
-   - CHANGED: Par default is "4" for all holes
-   - CHANGED: SI default is hole number (1-18)
-   - REMOVED: Summary/confirmation page (no longer needed)
-   - REMOVED: Multi-screen navigation (Back/Next buttons)
-   - CHANGED: Cancel and Add buttons at bottom of form
-   - PRESERVED: All functionality from v1.35
+VERSION: 1.37
+KEY CHANGES from v1.36:
+   - ADDED: Custom green arrow (▼) for Par and SI dropdowns using .select-wrapper
+   - CHANGED: All selects in hole rows now use appearance: none with custom arrow
+   - CHANGED: Consistent dropdown styling with setup-game.html and player-management.html
+   - PRESERVED: All functionality from v1.36
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
