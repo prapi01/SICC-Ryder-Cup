@@ -1,13 +1,12 @@
 <!--
 FILE: player-management.html
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - MOVED: Add/Edit form to the bottom (below player list)
-   - CONSISTENT: Layout now matches courses.html (list first, form second)
-   - CHANGED: Card order: Player List first, Add/Edit form second
-   - PRESERVED: All 2x2 grid form layout from v1.03
-   - PRESERVED: System-generated label field (read-only)
-   - PRESERVED: All baseline UI styling from v1.01
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - CHANGED: Back button now sleek text-only style (no button background/border)
+   - ADDED: Green divider line above back link (#2a5a2a)
+   - CHANGED: Back link now uses "Back to Game Settings" text
+   - REMOVED: Button styling from back link (background, padding, border)
+   - PRESERVED: All functionality from v1.04
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -213,19 +212,19 @@ STATUS: Ready for integration
         
         .empty-state { text-align: center; padding: 30px 20px; color: #444; font-size: 0.8rem; }
         
-        .back-btn {
-            background: rgba(20, 20, 20, 0.5);
-            border: 1px solid #2a5a2a;
-            border-radius: 10px;
-            padding: 14px;
+        /* Back link - sleek text-only style with green divider */
+        .back-link {
+            border-top: 1px solid #2a5a2a;
             text-align: center;
+            margin-top: 16px;
+            padding: 12px 0;
+            color: #666;
             cursor: pointer;
-            margin-top: 12px;
-            transition: all 0.15s ease;
+            font-size: 0.75rem;
+            transition: color 0.15s ease;
+            letter-spacing: 0.2px;
         }
-        .back-btn:hover { border-color: #4caf50; background: rgba(20, 20, 20, 0.8); }
-        .back-btn:active { transform: scale(0.98); }
-        .back-btn .label { font-size: 0.8rem; font-weight: 500; color: #4caf50; }
+        .back-link:hover { color: #888; }
         
         .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
@@ -245,12 +244,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.04</div>
+<div class="version-tag">v1.05</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.04
+// VERSION: 1.05
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -259,8 +258,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.04";
-var CACHE_KEY = "player_management_v104";
+var APP_VERSION = "1.05";
+var CACHE_KEY = "player_management_v105";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -272,8 +271,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.04";
-console.log("[PLAYER-MGMT] Initializing v1.04 - Form moved to bottom");
+window.PLAYER_MGMT_VERSION = "1.05";
+console.log("[PLAYER-MGMT] Initializing v1.05 - Sleek back link with divider");
 
 // ============================================================
 // Firebase
@@ -417,7 +416,7 @@ function render() {
         currentTeam = p.defaultTeam;
     }
     
-    // v1.04: Player List FIRST, Add/Edit Form SECOND (consistent with courses.html)
+    // v1.05: Player List FIRST, Add/Edit Form SECOND, sleek back link at bottom
     var html = `
         <div class="header">
             <div class="title">Player Management</div>
@@ -463,9 +462,7 @@ function render() {
             </div>
         </div>
         
-        <div class="back-btn" onclick="goBackToSettings()">
-            <span class="label">Back to Game Settings</span>
-        </div>
+        <div class="back-link" onclick="goBackToSettings()">Back to Game Settings</div>
         
         <div class="footer">SICC Ryder Cup v${APP_VERSION}</div>
     `;
@@ -655,14 +652,13 @@ window.updateLabelPreview = updateLabelPreview;
 
 <!--
 FILE: player-management.html
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - MOVED: Add/Edit form to the bottom (below player list)
-   - CONSISTENT: Layout now matches courses.html (list first, form second)
-   - CHANGED: Card order: Player List first, Add/Edit form second
-   - PRESERVED: All 2x2 grid form layout from v1.03
-   - PRESERVED: System-generated label field (read-only)
-   - PRESERVED: All baseline UI styling from v1.01
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - CHANGED: Back button now sleek text-only style (no button background/border)
+   - ADDED: Green divider line above back link (#2a5a2a)
+   - CHANGED: Back link now uses "Back to Game Settings" text
+   - REMOVED: Button styling from back link (background, padding, border)
+   - PRESERVED: All functionality from v1.04
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
