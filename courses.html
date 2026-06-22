@@ -1,15 +1,15 @@
 <!--
 FILE: courses.html
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - APPLIED: Baseline UI design with visible green borders
-   - CHANGED: Card borders to #2a5a2a with rounded corners
-   - CHANGED: Button borders to #3a7a3a
-   - CHANGED: All headers, labels to #4caf50
-   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
-   - CHANGED: Back link divider to #2a5a2a
-   - CHANGED: Form inputs to have subtle green border
-   - PRESERVED: All functionality from v1.34
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - CHANGED: Course creation from 19-screen flow to single scrollable page
+   - ADDED: All 18 holes displayed as rows with Par and SI dropdowns
+   - CHANGED: Par default is "4" for all holes
+   - CHANGED: SI default is hole number (1-18)
+   - REMOVED: Summary/confirmation page (no longer needed)
+   - REMOVED: Multi-screen navigation (Back/Next buttons)
+   - CHANGED: Cancel and Add buttons at bottom of form
+   - PRESERVED: All functionality from v1.35
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -35,10 +35,10 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 20px) 20px env(safe-area-inset-left, 20px);
             min-height: 100vh;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
         }
-        .container { max-width: 420px; width: 100%; margin: 0 auto; }
+        .container { max-width: 420px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
         .version-tag { 
             position: fixed; 
@@ -125,7 +125,6 @@ STATUS: Ready for integration
             outline: none;
             border-color: #4caf50;
         }
-        .form-row input.date-input { flex: 0 0 140px; }
         
         .btn { 
             padding: 10px 20px; 
@@ -197,141 +196,69 @@ STATUS: Ready for integration
         .space-between { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
         .text-center { text-align: center; }
         
-        .hole-number-large { text-align: center; margin: 16px 0; }
-        .hole-number-large .number { 
-            font-size: 3rem; 
-            font-weight: 700; 
-            color: #4caf50; 
-        }
-        .hole-number-large .label { 
-            font-size: 0.8rem; 
-            color: #666; 
-            letter-spacing: 2px; 
-            text-transform: uppercase; 
-        }
-        
-        .vertical-inputs { 
-            display: flex; 
-            gap: 30px; 
-            justify-content: center; 
-            margin: 16px 0; 
-        }
-        .input-block { text-align: center; }
-        .input-block .label { 
-            font-size: 0.7rem; 
-            color: #4caf50; 
-            margin-bottom: 6px; 
-            text-transform: uppercase; 
-            letter-spacing: 1px; 
-        }
-        .input-block select { 
-            background: #0a0a0a; 
-            border: 1px solid #2a5a2a; 
-            border-radius: 8px; 
-            padding: 10px 16px; 
-            color: #e0e0e0; 
-            font-size: 1.1rem; 
-            text-align: center; 
-            width: 80px; 
-        }
-        .input-block select:focus { outline: none; border-color: #4caf50; }
-        
-        .confirm-table-wrapper { overflow-x: auto; }
-        .confirm-table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            font-size: 0.75rem; 
-        }
-        .confirm-table th, 
-        .confirm-table td { 
-            padding: 8px 4px; 
-            text-align: center; 
-            border: 1px solid #2a5a2a; 
-        }
-        .confirm-table th { 
-            background: #1a3a1a; 
-            color: #4caf50; 
-            font-weight: 500; 
-        }
-        .confirm-table .hole-number { 
-            font-weight: 600; 
-            color: #4caf50; 
-        }
-        .confirm-select { 
-            background: #0a0a0a; 
-            border: 1px solid #2a5a2a; 
-            border-radius: 6px; 
-            padding: 4px 8px; 
-            color: #e0e0e0; 
-            font-size: 0.8rem; 
-            width: 60px; 
-            text-align: center; 
-            cursor: pointer; 
-        }
-        .confirm-select:focus { outline: none; border-color: #4caf50; }
-        
-        /* Modal - baseline UI */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.92);
+        /* Hole row styling */
+        .hole-row {
             display: flex;
             align-items: center;
-            justify-content: center;
-            z-index: 10001;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            gap: 8px;
+            padding: 6px 0;
+            border-bottom: 1px solid #1a3a1a;
         }
-        .modal {
-            background: rgba(20, 20, 20, 0.95);
-            border-radius: 16px;
-            padding: 24px;
-            max-width: 340px;
-            width: 90%;
-            border: 1px solid #2a5a2a;
+        .hole-row:last-child {
+            border-bottom: none;
+        }
+        .hole-row .hole-number {
+            font-size: 0.7rem;
+            color: #4caf50;
+            font-weight: 600;
+            min-width: 28px;
             text-align: center;
         }
-        .modal-title {
-            font-size: 1rem;
-            font-weight: 500;
-            color: #4caf50;
-            margin-bottom: 8px;
-            letter-spacing: -0.2px;
+        .hole-row .hole-par {
+            flex: 1;
+            min-width: 60px;
         }
-        .modal-message {
-            font-size: 0.75rem;
-            color: #888;
-            margin-bottom: 6px;
-            line-height: 1.4;
+        .hole-row .hole-par select {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid #2a5a2a;
+            border-radius: 6px;
+            padding: 6px 8px;
+            color: #e0e0e0;
+            font-size: 0.8rem;
+            text-align: center;
         }
-        .modal-buttons {
+        .hole-row .hole-par select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .hole-row .hole-si {
+            flex: 1;
+            min-width: 60px;
+        }
+        .hole-row .hole-si select {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid #2a5a2a;
+            border-radius: 6px;
+            padding: 6px 8px;
+            color: #e0e0e0;
+            font-size: 0.8rem;
+            text-align: center;
+        }
+        .hole-row .hole-si select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        
+        .form-actions {
             display: flex;
             gap: 10px;
-            justify-content: center;
             margin-top: 16px;
         }
-        .modal-btn {
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-weight: 400;
-            font-size: 0.8rem;
-            cursor: pointer;
-            border: 1px solid;
-            background: rgba(20, 20, 20, 0.5);
-            transition: all 0.15s ease;
+        .form-actions .btn {
+            flex: 1;
         }
-        .modal-btn-confirm {
-            border-color: #4caf50;
-            color: #4caf50;
-        }
-        .modal-btn-confirm:hover { background: rgba(76, 175, 80, 0.04); }
-        .modal-btn-cancel {
-            border-color: #2a5a2a;
-            color: #666;
-        }
-        .modal-btn-cancel:hover { border-color: #4caf50; color: #888; }
         
         .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
     </style>
@@ -341,10 +268,11 @@ STATUS: Ready for integration
     <div class="loading">Loading courses...</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.35</div>
+<div class="version-tag">v1.36</div>
 
 <script>
-// FILE: courses.html - VERSION 1.35
+// FILE: courses.html
+// VERSION: 1.36
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -352,8 +280,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[COURSES] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.35";
-var CACHE_KEY = "courses_version_v135";
+var VERSION = "1.36";
+var CACHE_KEY = "courses_version_v136";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -387,10 +315,9 @@ var state = {
     courses: [],
     newCourse: {
         name: "",
-        par: [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],
+        par: Array(18).fill(4),
         si: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
     },
-    currentHole: 1,
     editingCourseId: null
 };
 
@@ -453,87 +380,14 @@ function deleteCourse(courseId) {
 
 function startAddCourse() {
     SessionManager.addNavigationHistory("courses.html", "add_course_started");
-    state.screen = "addName";
+    state.screen = "edit";
     state.editingCourseId = null;
     state.newCourse = {
         name: "",
-        par: [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4],
+        par: Array(18).fill(4),
         si: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
     };
-    state.currentHole = 1;
     render();
-}
-
-function updateHolePar(value) {
-    state.newCourse.par[state.currentHole - 1] = parseInt(value);
-    render();
-}
-
-function updateHoleSi(value) {
-    state.newCourse.si[state.currentHole - 1] = parseInt(value);
-    render();
-}
-
-function updateConfirmPar(holeIndex, value) {
-    state.newCourse.par[holeIndex] = parseInt(value);
-    render();
-}
-
-function updateConfirmSi(holeIndex, value) {
-    state.newCourse.si[holeIndex] = parseInt(value);
-    render();
-}
-
-function nextHole() {
-    if (state.currentHole < 18) {
-        state.currentHole++;
-        render();
-    } else {
-        state.screen = "confirm";
-        render();
-    }
-}
-
-function prevHole() {
-    if (state.currentHole > 1) {
-        state.currentHole--;
-        render();
-    }
-}
-
-function saveCourse() {
-    if (!firestoreReady) return;
-    if (!state.newCourse.name.trim()) {
-        Modal.alert("Please enter a course name");
-        return;
-    }
-    
-    if (state.editingCourseId) {
-        SessionManager.addNavigationHistory("courses.html", "course_updated", { courseId: state.editingCourseId, courseName: state.newCourse.name });
-        db.collection("courses").doc(state.editingCourseId).update({
-            name: state.newCourse.name,
-            par: state.newCourse.par,
-            si: state.newCourse.si
-        }).then(function() {
-            state.screen = "main";
-            state.editingCourseId = null;
-            loadCourses();
-        }).catch(function(e) { 
-            Modal.alert("Error updating course: " + e.message);
-        });
-    } else {
-        SessionManager.addNavigationHistory("courses.html", "course_created", { courseName: state.newCourse.name });
-        db.collection("courses").add({
-            name: state.newCourse.name,
-            par: state.newCourse.par,
-            si: state.newCourse.si
-        }).then(function() {
-            state.screen = "main";
-            loadCourses();
-        }).catch(function(e) { 
-            Modal.alert("Error creating course: " + e.message);
-        });
-    }
 }
 
 function editCourse(course) {
@@ -544,9 +398,78 @@ function editCourse(course) {
         par: course.par.slice(),
         si: course.si.slice()
     };
-    state.currentHole = 1;
-    state.screen = "addHoles";
+    state.screen = "edit";
     render();
+}
+
+function updatePar(holeIndex, value) {
+    state.newCourse.par[holeIndex] = parseInt(value);
+}
+
+function updateSi(holeIndex, value) {
+    state.newCourse.si[holeIndex] = parseInt(value);
+}
+
+function saveCourse() {
+    if (!firestoreReady) return;
+    if (!state.newCourse.name.trim()) {
+        Modal.alert("Please enter a course name");
+        return;
+    }
+    
+    // Validate SI values are unique 1-18
+    var siValues = state.newCourse.si.slice();
+    siValues.sort(function(a, b) { return a - b; });
+    var isValid = true;
+    for (var i = 0; i < 18; i++) {
+        if (siValues[i] !== i + 1) {
+            isValid = false;
+            break;
+        }
+    }
+    if (!isValid) {
+        Modal.alert("Stroke Index (SI) must be a unique number from 1 to 18 for each hole.");
+        return;
+    }
+    
+    var courseData = {
+        name: state.newCourse.name,
+        par: state.newCourse.par,
+        si: state.newCourse.si
+    };
+    
+    if (state.editingCourseId) {
+        SessionManager.addNavigationHistory("courses.html", "course_updated", { courseId: state.editingCourseId, courseName: state.newCourse.name });
+        db.collection("courses").doc(state.editingCourseId).update(courseData)
+            .then(function() {
+                state.screen = "main";
+                state.editingCourseId = null;
+                loadCourses();
+            })
+            .catch(function(e) { 
+                Modal.alert("Error updating course: " + e.message);
+            });
+    } else {
+        SessionManager.addNavigationHistory("courses.html", "course_created", { courseName: state.newCourse.name });
+        db.collection("courses").add(courseData)
+            .then(function() {
+                state.screen = "main";
+                loadCourses();
+            })
+            .catch(function(e) { 
+                Modal.alert("Error creating course: " + e.message);
+            });
+    }
+}
+
+function goBack() {
+    state.screen = "main";
+    state.editingCourseId = null;
+    render();
+}
+
+function goBackToSettings() {
+    window.location.href = "admin.html";
 }
 
 function renderMain() {
@@ -584,77 +507,11 @@ function renderMain() {
     `;
 }
 
-function renderAddName() {
-    return `
-        <div class="header">
-            <div class="title">Add New Course</div>
-            <div class="subtitle">${VERSION}</div>
-        </div>
-        <div class="card">
-            <div class="card-title">Course Name</div>
-            <div class="form-row">
-                <input type="text" id="courseNameInput" placeholder="e.g., SICC Bukit Course" style="width:100%; background:#0a0a0a; border:1px solid #2a5a2a; border-radius:8px; padding:10px 14px; color:#e0e0e0; font-size:0.9rem;">
-            </div>
-            <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveCourseName()">Next</button>
-            </div>
-        </div>
-    `;
-}
-
-function renderAddHoles() {
-    var holePar = state.newCourse.par[state.currentHole - 1];
-    var holeSi = state.newCourse.si[state.currentHole - 1];
+function renderEdit() {
+    var name = state.newCourse.name || '';
+    var isEditing = state.editingCourseId ? 'Edit Course' : 'Add New Course';
+    var totalPar = state.newCourse.par.reduce(function(a,b) { return a + b; }, 0);
     
-    var parOptions = '';
-    for (var i = 3; i <= 6; i++) {
-        parOptions += `<option value="${i}" ${holePar === i ? 'selected' : ''}>${i}</option>`;
-    }
-    
-    var siOptions = '';
-    for (var i = 1; i <= 18; i++) {
-        siOptions += `<option value="${i}" ${holeSi === i ? 'selected' : ''}>${i}</option>`;
-    }
-    
-    var nameDisplay = state.newCourse.name ? escapeHtml(state.newCourse.name) : 'New Course';
-    var isEditing = state.editingCourseId ? '(Editing)' : '';
-    
-    return `
-        <div class="header">
-            <div class="title">${nameDisplay} ${isEditing}</div>
-            <div class="subtitle">${VERSION}</div>
-        </div>
-        <div class="card">
-            <div class="hole-number-large">
-                <div class="label">Hole</div>
-                <div class="number">${state.currentHole}</div>
-                <div style="font-size:0.7rem; color:#555; margin-top:2px;">of 18</div>
-            </div>
-            <div class="vertical-inputs">
-                <div class="input-block">
-                    <div class="label">Par</div>
-                    <select id="parSelect" onchange="updateHolePar(this.value)">
-                        ${parOptions}
-                    </select>
-                </div>
-                <div class="input-block">
-                    <div class="label">Stroke Index</div>
-                    <select id="siSelect" onchange="updateHoleSi(this.value)">
-                        ${siOptions}
-                    </select>
-                </div>
-            </div>
-            <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="prevHole()" ${state.currentHole === 1 ? 'disabled' : ''}>Back</button>
-                <button class="btn btn-primary" onclick="nextHole()">${state.currentHole === 18 ? 'Review' : 'Next'}</button>
-            </div>
-        </div>
-        <div class="back-link" onclick="goBack()">Cancel</div>
-    `;
-}
-
-function renderConfirm() {
     var parOptions = '';
     for (var i = 3; i <= 6; i++) {
         parOptions += `<option value="${i}">${i}</option>`;
@@ -665,62 +522,64 @@ function renderConfirm() {
         siOptions += `<option value="${i}">${i}</option>`;
     }
     
-    var totalPar = 0;
-    for (var p = 0; p < state.newCourse.par.length; p++) {
-        totalPar += state.newCourse.par[p];
-    }
-    
-    var rowsHtml = '';
-    for (var i = 0; i < 18; i++) {
-        var holeNum = i + 1;
-        var parVal = state.newCourse.par[i];
-        var siVal = state.newCourse.si[i];
+    var holesHtml = '';
+    for (var h = 0; h < 18; h++) {
+        var holeNum = h + 1;
+        var parVal = state.newCourse.par[h] || 4;
+        var siVal = state.newCourse.si[h] || (h + 1);
         
-        rowsHtml += `
-            <tr>
-                <td class="hole-number">${holeNum}</td>
-                <td>
-                    <select class="confirm-select" onchange="updateConfirmPar(${i}, this.value)">
-                        ${parOptions.replace(`value="${parVal}"`, `value="${parVal}" selected`)}
+        // Build par options with selected
+        var parOptsHtml = '';
+        for (var p = 3; p <= 6; p++) {
+            var selected = (parVal === p) ? ' selected' : '';
+            parOptsHtml += `<option value="${p}"${selected}>${p}</option>`;
+        }
+        
+        // Build si options with selected
+        var siOptsHtml = '';
+        for (var s = 1; s <= 18; s++) {
+            var selected = (siVal === s) ? ' selected' : '';
+            siOptsHtml += `<option value="${s}"${selected}>${s}</option>`;
+        }
+        
+        holesHtml += `
+            <div class="hole-row">
+                <span class="hole-number">${holeNum}</span>
+                <div class="hole-par">
+                    <select onchange="updatePar(${h}, this.value)">
+                        ${parOptsHtml}
                     </select>
-                </td>
-                <td>
-                    <select class="confirm-select" onchange="updateConfirmSi(${i}, this.value)">
-                        ${siOptions.replace(`value="${siVal}"`, `value="${siVal}" selected`)}
+                </div>
+                <div class="hole-si">
+                    <select onchange="updateSi(${h}, this.value)">
+                        ${siOptsHtml}
                     </select>
-                </td>
-            </tr>
+                </div>
+            </div>
         `;
     }
     
-    var isEditing = state.editingCourseId ? 'Update' : 'Confirm';
-    
     return `
         <div class="header">
-            <div class="title">Confirm Course</div>
+            <div class="title">${isEditing}</div>
             <div class="subtitle">${VERSION}</div>
-            <div style="font-size:0.9rem; font-weight:500; margin-top:6px; color:#4caf50;">${escapeHtml(state.newCourse.name)}</div>
-            <div style="font-size:0.8rem; color:#666; margin-top:2px;">Total Par: ${totalPar}</div>
         </div>
         <div class="card">
-            <div class="confirm-table-wrapper">
-                <table class="confirm-table">
-                    <thead>
-                        <tr>
-                            <th>Hole</th>
-                            <th>Par</th>
-                            <th>S.I.</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml}
-                    </tbody>
-                </table>
+            <div class="card-title">Course Name</div>
+            <div class="form-row">
+                <input type="text" id="courseNameInput" placeholder="e.g., SICC Bukit Course" value="${escapeHtml(name)}" style="width:100%; background:#0a0a0a; border:1px solid #2a5a2a; border-radius:8px; padding:10px 14px; color:#e0e0e0; font-size:0.9rem;">
             </div>
-            <div class="space-between">
-                <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveCourse()">${isEditing}</button>
+        </div>
+        <div class="card">
+            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Holes (Par / SI)</span>
+                <span style="font-size:0.6rem; color:#4caf50; opacity:0.7;">Total Par: ${totalPar}</span>
             </div>
+            ${holesHtml}
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveCourse()">${state.editingCourseId ? 'Update' : 'Add'}</button>
         </div>
         <div class="back-link" onclick="goBack()">Back</div>
     `;
@@ -730,56 +589,29 @@ function render() {
     var app = document.getElementById("app");
     if (state.screen === "main") {
         app.innerHTML = renderMain();
-    } else if (state.screen === "addName") {
-        app.innerHTML = renderAddName();
-    } else if (state.screen === "addHoles") {
-        app.innerHTML = renderAddHoles();
-    } else if (state.screen === "confirm") {
-        app.innerHTML = renderConfirm();
+    } else if (state.screen === "edit") {
+        app.innerHTML = renderEdit();
     }
-    attachEvents();
 }
 
-function attachEvents() {
-    // No dynamic events needed for course management
-}
-
-window.updateHolePar = function(value) {
-    state.newCourse.par[state.currentHole - 1] = parseInt(value);
-    render();
-};
-
-window.updateHoleSi = function(value) {
-    state.newCourse.si[state.currentHole - 1] = parseInt(value);
-    render();
-};
-
-window.updateConfirmPar = function(holeIndex, value) {
+// Global functions for inline onclick
+window.updatePar = function(holeIndex, value) {
     state.newCourse.par[holeIndex] = parseInt(value);
-    render();
-};
-
-window.updateConfirmSi = function(holeIndex, value) {
-    state.newCourse.si[holeIndex] = parseInt(value);
-    render();
-};
-
-window.nextHole = nextHole;
-window.prevHole = prevHole;
-window.saveCourse = saveCourse;
-
-window.saveCourseName = function() {
-    var nameInput = document.getElementById("courseNameInput");
-    if (nameInput && nameInput.value.trim()) {
-        state.newCourse.name = nameInput.value.trim();
-        state.screen = "addHoles";
-        state.currentHole = 1;
-        render();
-    } else {
-        Modal.alert("Please enter a course name");
+    // Update total par display
+    var totalPar = state.newCourse.par.reduce(function(a,b) { return a + b; }, 0);
+    var totalEl = document.querySelector('.card-title span:last-child');
+    if (totalEl) {
+        totalEl.textContent = 'Total Par: ' + totalPar;
     }
 };
 
+window.updateSi = function(holeIndex, value) {
+    state.newCourse.si[holeIndex] = parseInt(value);
+};
+
+window.saveCourse = saveCourse;
+window.goBack = goBack;
+window.startAddCourse = startAddCourse;
 window.editCourseById = function(courseId) {
     for (var i = 0; i < state.courses.length; i++) {
         if (state.courses[i].id === courseId) {
@@ -788,23 +620,10 @@ window.editCourseById = function(courseId) {
         }
     }
 };
-
 window.deleteCourseById = function(courseId) {
     deleteCourse(courseId);
 };
-
-window.goBack = function() {
-    state.screen = "main";
-    state.editingCourseId = null;
-    render();
-};
-
-window.goBackToSettings = function() {
-    var returnDest = SessionManager.getReturnDestination();
-    window.location.href = returnDest;
-};
-
-window.startAddCourse = startAddCourse;
+window.goBackToSettings = goBackToSettings;
 
 SessionManager.initSession("courses.html", "admin.html", function(session) {
     console.log("Session initialized:", session);
@@ -822,16 +641,16 @@ SessionManager.initSession("courses.html", "admin.html", function(session) {
 
 <!--
 FILE: courses.html
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - APPLIED: Baseline UI design with visible green borders
-   - CHANGED: Card borders to #2a5a2a with rounded corners
-   - CHANGED: Button borders to #3a7a3a
-   - CHANGED: All headers, labels to #4caf50
-   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
-   - CHANGED: Back link divider to #2a5a2a
-   - CHANGED: Form inputs to have subtle green border
-   - PRESERVED: All functionality from v1.34
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - CHANGED: Course creation from 19-screen flow to single scrollable page
+   - ADDED: All 18 holes displayed as rows with Par and SI dropdowns
+   - CHANGED: Par default is "4" for all holes
+   - CHANGED: SI default is hole number (1-18)
+   - REMOVED: Summary/confirmation page (no longer needed)
+   - REMOVED: Multi-screen navigation (Back/Next buttons)
+   - CHANGED: Cancel and Add buttons at bottom of form
+   - PRESERVED: All functionality from v1.35
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
