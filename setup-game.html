@@ -1,14 +1,14 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.50
-KEY CHANGES from v1.49:
-   - FIXED: Custom dropdown arrows for Team and Flight (works on iOS, Android, Desktop)
-   - FIXED: Date picker icon visible on iOS
-   - FIXED: Course dropdown arrow visible on iOS
-   - CHANGED: Added select-wrapper for dropdowns with custom arrows
-   - CHANGED: Team width 44px, Flight width 48px (room for arrow)
-   - FIXED: HCP arrows removed (unchanged)
-   - PRESERVED: All functionality from v1.49
+VERSION: 1.51
+KEY CHANGES from v1.50:
+   - REMOVED: Label column completely
+   - CHANGED: Name width increased to 160px
+   - CHANGED: HCP width set to 40px, center-aligned
+   - CHANGED: HCP arrows now show only on focus (tap/click)
+   - CHANGED: Team width 44px, Flight width 48px with custom arrows
+   - FIXED: Cleaner table layout without Label column
+   - PRESERVED: All functionality from v1.50
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -242,12 +242,12 @@ STATUS: Ready for integration
             display: none;
         }
         
-        /* Column 1: Name - 132px */
+        /* Column 1: Name - 160px */
         .player-name-select {
-            flex: 0 0 132px;
-            width: 132px;
-            min-width: 132px;
-            max-width: 132px;
+            flex: 0 0 160px;
+            width: 160px;
+            min-width: 160px;
+            max-width: 160px;
             font-size: 14px;
             padding: 2px 4px;
             border: 1px solid #2a5a2a;
@@ -273,35 +273,20 @@ STATUS: Ready for integration
             font-size: 14px;
         }
         
-        /* Column 2: Label - 40px, center */
+        /* Column 2: Label - HIDDEN */
         .label-display {
+            display: none !important;
+        }
+        
+        /* Column 3: HCP - 40px, center-aligned, arrows on focus */
+        .hcp-group {
             flex: 0 0 40px;
             width: 40px;
             min-width: 40px;
             max-width: 40px;
-            font-size: 14px;
-            text-align: center;
-            padding: 1px 4px;
-            font-weight: 600;
-            color: #4caf50;
-            background: #1a3a1a;
-            border: 1px solid #2a5a2a;
-            border-radius: 3px;
-            height: 24px;
-            line-height: 24px;
-            overflow: visible;
-            white-space: nowrap;
-        }
-        
-        /* Column 3: HCP - 30px, right-aligned, no arrows */
-        .hcp-group {
-            flex: 0 0 30px;
-            width: 30px;
-            min-width: 30px;
-            max-width: 30px;
             display: flex;
             align-items: center;
-            justify-content: flex-end;
+            justify-content: center;
             padding: 1px 4px;
             border: 1px solid #2a5a2a;
             border-radius: 3px;
@@ -312,9 +297,9 @@ STATUS: Ready for integration
             display: none;
         }
         .hcp-group input[type="number"] {
-            width: 20px;
+            width: 28px;
             font-size: 14px;
-            text-align: right;
+            text-align: center;
             font-weight: 600;
             padding: 0;
             border: none;
@@ -322,13 +307,20 @@ STATUS: Ready for integration
             color: #e0e0e0;
             height: 22px;
             outline: none;
-            -webkit-appearance: none !important;
-            appearance: none !important;
+            -webkit-appearance: none;
+            -moz-appearance: textfield;
+            appearance: textfield;
         }
         .hcp-group input[type="number"]::-webkit-outer-spin-button,
         .hcp-group input[type="number"]::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
+        }
+        /* Show arrows on focus */
+        .hcp-group input[type="number"]:focus {
+            -webkit-appearance: menulist;
+            -moz-appearance: number-input;
+            appearance: auto;
         }
         
         /* Column 4: Team - 44px, center, with custom arrow */
@@ -423,7 +415,7 @@ STATUS: Ready for integration
             color: #e0e0e0;
         }
         
-        /* Player header row - fixed column widths */
+        /* Player header row - fixed column widths (Label hidden) */
         .player-header-row {
             display: flex;
             align-items: center;
@@ -439,10 +431,10 @@ STATUS: Ready for integration
             height: 24px;
         }
         .player-header-row .header-player {
-            flex: 0 0 132px;
-            width: 132px;
-            min-width: 132px;
-            max-width: 132px;
+            flex: 0 0 160px;
+            width: 160px;
+            min-width: 160px;
+            max-width: 160px;
             text-align: left;
             display: flex;
             align-items: center;
@@ -450,6 +442,9 @@ STATUS: Ready for integration
             height: 24px;
         }
         .player-header-row .header-label {
+            display: none !important;
+        }
+        .player-header-row .header-hcp {
             flex: 0 0 40px;
             width: 40px;
             min-width: 40px;
@@ -458,20 +453,6 @@ STATUS: Ready for integration
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 24px;
-            color: transparent;
-            font-size: 1px;
-            overflow: hidden;
-        }
-        .player-header-row .header-hcp {
-            flex: 0 0 30px;
-            width: 30px;
-            min-width: 30px;
-            max-width: 30px;
-            text-align: right;
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
             height: 24px;
         }
         .player-header-row .header-team {
@@ -616,11 +597,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.50</div>
+<div class="version-tag">v1.51</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.50
+// VERSION: 1.51
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -628,8 +609,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.50";
-var CACHE_KEY = "setup_game_version_v150";
+var VERSION = "1.51";
+var CACHE_KEY = "setup_game_version_v151";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1594,7 +1575,7 @@ function render() {
     
     var playersHtml = '';
     
-    // Build header with fixed columns
+    // Build header with fixed columns (Label hidden)
     var headerHtml = `
         <div class="player-header-row">
             <span class="header-player">Player</span>
@@ -1621,7 +1602,7 @@ function render() {
             playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
         }
         
-        // v1.50: Team and Flight with wrapper for custom arrow
+        // v1.51: Label hidden, HCP center-aligned with focus arrows
         playersHtml += `
             <div class="player-row">
                 <div class="player-line1">
@@ -1859,15 +1840,15 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.50
-KEY CHANGES from v1.49:
-   - FIXED: Custom dropdown arrows for Team and Flight (works on iOS, Android, Desktop)
-   - FIXED: Date picker icon visible on iOS
-   - FIXED: Course dropdown arrow visible on iOS
-   - CHANGED: Added select-wrapper for dropdowns with custom arrows
-   - CHANGED: Team width 44px, Flight width 48px (room for arrow)
-   - FIXED: HCP arrows removed (unchanged)
-   - PRESERVED: All functionality from v1.49
+VERSION: 1.51
+KEY CHANGES from v1.50:
+   - REMOVED: Label column completely
+   - CHANGED: Name width increased to 160px
+   - CHANGED: HCP width set to 40px, center-aligned
+   - CHANGED: HCP arrows now show only on focus (tap/click)
+   - CHANGED: Team width 44px, Flight width 48px with custom arrows
+   - FIXED: Cleaner table layout without Label column
+   - PRESERVED: All functionality from v1.50
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
