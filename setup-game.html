@@ -1,14 +1,15 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.46
-KEY CHANGES from v1.45:
-   - REMOVED: Slot labels (A1, A2, A3, A4, B1, B2, B3, B4) from player rows
-   - REMOVED: Handicap display from dropdown options (now just player name)
-   - CHANGED: Player card now exactly 2 lines (dropdown+label+hcp | team+flight)
-   - CHANGED: All font sizes increased for better readability
-   - CHANGED: Dropdown width reduced (more compact)
-   - CHANGED: Layout optimized to use dead space
-   - PRESERVED: All functionality from v1.45
+VERSION: 1.47
+KEY CHANGES from v1.46:
+   - COMBINED: Game Date + Course into "Game Details" card (2 lines)
+   - COMBINED: Starting Hole + Team Game Format into "Game Format Settings" card
+   - CHANGED: Player rows now single line: Name | Label | Hcp | Team | Flight
+   - ADDED: Column headers above players: Player | Hcp | Team | Flight
+   - CHANGED: Consistent font sizes (0.85rem) across all player elements
+   - REMOVED: Slot labels (A1, B1, etc.)
+   - CHANGED: Dropdown shows only player name (no HCP)
+   - PRESERVED: All functionality from v1.46
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -90,7 +91,7 @@ STATUS: Ready for integration
             background: rgba(20, 20, 20, 0.5);
             border: 2px solid #2a5a2a; 
             border-radius: 12px; 
-            padding: 18px; 
+            padding: 16px 18px; 
             margin-bottom: 14px; 
         }
         
@@ -98,205 +99,219 @@ STATUS: Ready for integration
             font-size: 0.8rem; 
             font-weight: 500; 
             color: #4caf50; 
-            margin-bottom: 14px; 
+            margin-bottom: 10px; 
             letter-spacing: 0.5px;
             text-transform: uppercase;
         }
         
-        .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
-        .form-row label { 
-            font-size: 0.8rem; 
-            color: #4caf50; 
-            min-width: 60px; 
+        /* Combined card row styles */
+        .form-row-compact {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
         }
-        .form-row input,
-        .form-row select {
+        .form-row-compact:last-child {
+            margin-bottom: 0;
+        }
+        .form-row-compact label {
+            font-size: 0.75rem;
+            color: #4caf50;
+            white-space: nowrap;
+            font-weight: 500;
+            min-width: 70px;
+        }
+        .form-row-compact input,
+        .form-row-compact select {
+            flex: 1;
             background: #0a0a0a;
             border: 2px solid #2a5a2a;
-            border-radius: 8px;
-            padding: 10px 14px;
+            border-radius: 6px;
+            padding: 6px 8px;
             color: #e0e0e0;
-            font-size: 0.95rem;
-            flex: 1;
-            min-width: 80px;
+            font-size: 0.85rem;
+            min-width: 120px;
             transition: border-color 0.2s ease;
         }
-        .form-row input:focus,
-        .form-row select:focus {
+        .form-row-compact input:focus,
+        .form-row-compact select:focus {
             outline: none;
             border-color: #4caf50;
         }
-        .form-row input.date-input { flex: 0 0 150px; }
-        .form-row .error-msg { color: #ff6b6b; font-size: 0.7rem; margin-top: 4px; width: 100%; }
+        .form-row-compact input.date-input { min-width: 140px; }
         
-        .hole-toggle-group {
+        .form-row-inline {
             display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-bottom: 4px;
-        }
-        .hole-toggle-btn {
-            flex: 1;
-            min-width: 60px;
-            padding: 10px 14px;
-            background: rgba(20, 20, 20, 0.5);
-            border: 2px solid #2a5a2a;
-            border-radius: 8px;
-            cursor: pointer;
-            text-align: center;
-            font-weight: 400;
-            font-size: 0.85rem;
-            color: #666;
-            transition: all 0.15s ease;
-        }
-        .hole-toggle-btn:hover { border-color: #4caf50; color: #888; }
-        .hole-toggle-btn.active {
-            border-color: #4caf50;
-            color: #4caf50;
-            background: rgba(76, 175, 80, 0.05);
-        }
-        .hole-toggle-btn.shotgun-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-        }
-        .inline-shotgun-select {
-            background: transparent;
-            border: none;
-            color: inherit;
-            font-weight: 400;
-            font-size: 0.85rem;
-            cursor: pointer;
-            width: 44px;
-            text-align: center;
-            padding: 2px;
-        }
-        .inline-shotgun-select:focus { outline: none; }
-        .inline-shotgun-select option { background: #0a0a0a; color: #e0e0e0; }
-        
-        .info-note { font-size: 0.65rem; color: #2a5a2a; margin-top: 6px; text-align: center; letter-spacing: 0.2px; }
-        
-        .format-group { margin: 4px 0; }
-        .format-option {
-            display: flex;
-            align-items: center;
             gap: 12px;
-            padding: 10px 14px;
-            background: rgba(20, 20, 20, 0.5);
-            border-radius: 8px;
-            margin-bottom: 6px;
-            cursor: pointer;
-            border: 2px solid #2a5a2a;
-            transition: all 0.15s ease;
+            align-items: center;
+            flex-wrap: wrap;
         }
-        .format-option:hover { border-color: #4caf50; }
-        .format-option.selected { border-color: #4caf50; background: rgba(76, 175, 80, 0.04); }
-        .format-option input[type="radio"] {
-            accent-color: #4caf50;
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
-        .format-option label {
+        .form-row-inline .field-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
             flex: 1;
-            cursor: pointer;
-            font-size: 0.85rem;
+            min-width: 140px;
         }
-        .format-title { font-weight: 500; color: #e0e0e0; display: block; }
-        .format-desc { font-size: 0.65rem; color: #555; display: block; margin-top: 1px; }
-        
-        /* Player Rows - v1.46: 2 lines, larger fonts, no slot labels */
-        .player-row { 
-            background: transparent; 
-            border-bottom: 1px solid #1a3a1a; 
-            padding: 8px 0; 
-        }
-        .player-row:last-child { border-bottom: none; }
-        
-        /* Line 1: Name dropdown + Label + HCP */
-        .player-line1 { 
-            display: flex; 
-            align-items: center; 
-            gap: 8px; 
-            margin-bottom: 6px; 
-        }
-        .player-line1 .name-group { 
-            display: flex; 
-            align-items: center; 
-            gap: 6px; 
-            flex: 1; 
-        }
-        .player-line1 .name-group select {
-            background: #0a0a0a;
-            border: 2px solid #2a5a2a;
-            border-radius: 8px;
-            padding: 8px 12px;
-            color: #e0e0e0;
-            font-size: 0.95rem;
-            flex: 1;
-            min-width: 80px;
-            cursor: pointer;
-            transition: border-color 0.2s ease;
-        }
-        .player-line1 .name-group select:focus { outline: none; border-color: #4caf50; }
-        .player-line1 .name-group select option { background: #0a0a0a; color: #e0e0e0; }
-        .player-line1 .label-display { 
-            background: #1a3a1a; 
-            color: #4caf50; 
-            padding: 4px 10px; 
-            border-radius: 4px; 
-            font-size: 0.8rem; 
-            font-weight: 600; 
-            min-width: 34px;
-            text-align: center;
-            border: 1px solid #2a5a2a;
-        }
-        .player-line1 .hcp-group { 
-            display: flex; 
-            align-items: center; 
-            gap: 4px; 
-            background: #0a0a0a; 
-            padding: 4px 12px; 
-            border-radius: 8px; 
-            border: 2px solid #2a5a2a;
-        }
-        .player-line1 .hcp-group label { 
-            font-size: 0.7rem; 
-            color: #4caf50; 
+        .form-row-inline .field-group label {
+            font-size: 0.75rem;
+            color: #4caf50;
+            white-space: nowrap;
             font-weight: 500;
         }
-        .player-line1 .hcp-group input { 
-            width: 44px; 
-            background: transparent; 
-            border: none; 
-            color: #e0e0e0; 
-            font-size: 0.95rem; 
-            text-align: center; 
-            padding: 2px 0;
-        }
-        .player-line1 .hcp-group input:focus { outline: none; }
-        
-        /* Line 2: Team dropdown + Flight dropdown */
-        .player-line2 { 
-            display: flex; 
-            gap: 10px; 
-            align-items: center; 
-            padding-left: 0;
-        }
-        .player-line2 select { 
-            background: #0a0a0a; 
-            border: 2px solid #2a5a2a; 
-            border-radius: 8px; 
-            padding: 6px 12px; 
-            color: #e0e0e0; 
-            font-size: 0.85rem; 
-            cursor: pointer;
+        .form-row-inline .field-group select {
             flex: 1;
+            background: #0a0a0a;
+            border: 2px solid #2a5a2a;
+            border-radius: 6px;
+            padding: 6px 8px;
+            color: #e0e0e0;
+            font-size: 0.85rem;
+            min-width: 80px;
             transition: border-color 0.2s ease;
         }
-        .player-line2 select:focus { outline: none; border-color: #4caf50; }
+        .form-row-inline .field-group select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        
+        .error-msg { color: #ff6b6b; font-size: 0.7rem; margin-top: 4px; }
+        
+        /* Player rows - single line */
+        .player-row { 
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(20, 20, 20, 0.08);
+            border-radius: 4px;
+            padding: 4px 8px;
+            margin-bottom: 2px;
+            border: none;
+            border-bottom: 1px solid #1a3a1a;
+            flex-wrap: nowrap;
+        }
+        .player-row:first-child {
+            border-top: 1px solid #1a3a1a;
+        }
+        .player-row:last-child {
+            border-bottom: none;
+        }
+        
+        .player-line1 {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 0;
+            flex: 1;
+            flex-wrap: nowrap;
+        }
+        .player-line2 {
+            display: none;
+        }
+        
+        .player-name-select {
+            flex: 1;
+            min-width: 80px;
+            max-width: 170px;
+            font-size: 0.85rem;
+            padding: 3px 4px;
+            border: 1px solid #2a5a2a;
+            border-radius: 4px;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            cursor: pointer;
+            transition: border-color 0.2s ease;
+        }
+        .player-name-select:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .player-name-select option {
+            background: #0a0a0a;
+            color: #e0e0e0;
+        }
+        
+        .label-display {
+            display: inline-block;
+            font-size: 0.85rem;
+            padding: 2px 6px;
+            min-width: 24px;
+            background: #1a3a1a;
+            border: 1px solid #2a5a2a;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: 600;
+            color: #4caf50;
+            flex-shrink: 0;
+        }
+        
+        .hcp-group {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            padding: 2px 8px;
+            border: 1px solid #2a5a2a;
+            border-radius: 4px;
+            background: #0a0a0a;
+            flex-shrink: 0;
+            min-width: 52px;
+            justify-content: center;
+        }
+        .hcp-group label {
+            display: none;
+        }
+        .hcp-group input {
+            width: 40px;
+            font-size: 0.85rem;
+            padding: 2px 0;
+            background: transparent;
+            border: none;
+            color: #e0e0e0;
+            text-align: center;
+            font-weight: 600;
+        }
+        .hcp-group input:focus {
+            outline: none;
+        }
+        
+        .team-display, .flight-display {
+            font-size: 0.85rem;
+            padding: 2px 4px;
+            border: 1px solid #2a5a2a;
+            border-radius: 4px;
+            background: #0a0a0a;
+            flex-shrink: 0;
+            min-width: 30px;
+            cursor: pointer;
+            font-weight: 600;
+            text-align: center;
+            transition: border-color 0.2s ease;
+        }
+        .team-display:focus, .flight-display:focus {
+            outline: none;
+            border-color: #4caf50;
+        }
+        .team-display { color: #ffaa44; }
+        .flight-display { color: #4caf50; }
+        .team-display option, .flight-display option {
+            background: #0a0a0a;
+            color: #e0e0e0;
+        }
+        
+        /* Player header row */
+        .player-header-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #2a5a2a;
+            font-size: 0.7rem;
+            color: #4caf50;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
         
         .btn { 
             padding: 12px 24px; 
@@ -311,7 +326,7 @@ STATUS: Ready for integration
             color: #4caf50;
         }
         .btn:active { transform: scale(0.98); }
-        .btn-primary { border-color: #4caf50; border-width: 2px; color: #4caf50; }
+        .btn-primary { border-color: #4caf50; color: #4caf50; }
         .btn-primary:hover { background: rgba(76, 175, 80, 0.04); }
         .btn-secondary { border-color: #2a5a2a; color: #666; }
         .btn-secondary:hover { border-color: #4caf50; color: #888; }
@@ -417,11 +432,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.46</div>
+<div class="version-tag">v1.47</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.46
+// VERSION: 1.47
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -429,8 +444,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.46";
-var CACHE_KEY = "setup_game_version_v146";
+var VERSION = "1.47";
+var CACHE_KEY = "setup_game_version_v147";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -453,7 +468,7 @@ var initialFormState = null;
 var beforeUnloadHandlerAttached = false;
 
 // ============================================================
-// v1.44: Player list from Firestore with isDefault support
+// Player list from Firestore with isDefault support
 // ============================================================
 var playerList = [];
 
@@ -485,7 +500,7 @@ function loadPlayerList(callback) {
 }
 
 // ============================================================
-// v1.44: Update default players after game commit
+// Update default players after game commit
 // ============================================================
 function updateDefaultPlayers(selectedPlayers, callback) {
     if (!firestoreReady) {
@@ -690,11 +705,10 @@ var state = {
 };
 
 function captureInitialFormState() {
-    var datePicker = document.getElementById("datePicker");
-    var courseSelect = document.getElementById("courseSelect");
-    var shotgunHoleSelect = document.getElementById("shotgunHoleSelect");
-    var tournamentRadio = document.getElementById("formatTournament");
-    var relativeRadio = document.getElementById("formatRelative");
+    var datePicker = document.getElementById("combinedDatePicker");
+    var courseSelect = document.getElementById("combinedCourseSelect");
+    var holeSelect = document.getElementById("combinedHoleSelect");
+    var formatSelect = document.getElementById("combinedFormatSelect");
     
     var playersSnapshot = JSON.parse(JSON.stringify(state.players));
     
@@ -702,7 +716,6 @@ function captureInitialFormState() {
         date: datePicker ? datePicker.value : "",
         courseId: state.selectedCourseId,
         startingHole: state.startingHole,
-        startingHoleType: state.startingHoleType,
         teamGameFormat: state.teamGameFormat,
         players: playersSnapshot
     };
@@ -713,12 +726,14 @@ function captureInitialFormState() {
 function checkForChanges() {
     if (!state.isEditMode) return false;
     
-    var datePicker = document.getElementById("datePicker");
+    var datePicker = document.getElementById("combinedDatePicker");
+    var courseSelect = document.getElementById("combinedCourseSelect");
+    var holeSelect = document.getElementById("combinedHoleSelect");
+    var formatSelect = document.getElementById("combinedFormatSelect");
     
     var currentDate = datePicker ? datePicker.value : "";
     var currentCourseId = state.selectedCourseId;
     var currentStartingHole = state.startingHole;
-    var currentStartingHoleType = state.startingHoleType;
     var currentTeamGameFormat = state.teamGameFormat;
     
     var playersChanged = false;
@@ -743,7 +758,6 @@ function checkForChanges() {
     isDirty = (currentDate !== initialFormState?.date ||
                currentCourseId !== initialFormState?.courseId ||
                currentStartingHole !== initialFormState?.startingHole ||
-               currentStartingHoleType !== initialFormState?.startingHoleType ||
                currentTeamGameFormat !== initialFormState?.teamGameFormat ||
                playersChanged);
     
@@ -911,9 +925,6 @@ function loadEditMode(callback) {
             
             if (gameData.startingHole) {
                 state.startingHole = gameData.startingHole;
-                if (state.startingHole === 1) state.startingHoleType = "hole1";
-                else if (state.startingHole === 10) state.startingHoleType = "hole10";
-                else state.startingHoleType = "shotgun";
             }
             
             if (gameData.teamGameFormat) state.teamGameFormat = gameData.teamGameFormat;
@@ -991,7 +1002,7 @@ function populatePlayerFields(idx) {
         state.players[idx].handicap = player.handicap;
     }
     
-    var teamSelect = document.querySelector('.team-select[data-idx="' + idx + '"]');
+    var teamSelect = document.querySelector('.team-display[data-idx="' + idx + '"]');
     if (teamSelect) {
         var defaultTeam = player.defaultTeam || "A";
         teamSelect.value = defaultTeam;
@@ -1057,11 +1068,8 @@ function validateDate(dateStr) {
     return null;
 }
 
-function setStartingHole(type, value) {
-    state.startingHoleType = type;
-    if (type === "hole1") state.startingHole = 1;
-    else if (type === "hole10") state.startingHole = 10;
-    else if (type === "shotgun") state.startingHole = value || 1;
+function setStartingHole(value) {
+    state.startingHole = parseInt(value) || 1;
     if (state.isEditMode) checkForChanges();
     render();
 }
@@ -1149,7 +1157,7 @@ function performFirestoreUpdate(collectionName, docId, data, successMessage, red
 }
 
 function commitGame() {
-    var dateInput = document.getElementById("datePicker");
+    var dateInput = document.getElementById("combinedDatePicker");
     var selectedDate = dateInput ? dateInput.value : "";
     
     var dateError = validateDate(selectedDate);
@@ -1204,7 +1212,7 @@ function createNewGame(anchorPlayer) {
     var emptyResults = initializeEmptyResults();
     
     var gameData = {
-        date: document.getElementById("datePicker").value,
+        date: document.getElementById("combinedDatePicker").value,
         course: state.selectedCourseData,
         players: state.players.map(function(p) {
             return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: p.label };
@@ -1252,7 +1260,7 @@ function updateExistingGame(anchorPlayer) {
             var existingData = doc.data();
             
             var updatePayload = {
-                date: document.getElementById("datePicker").value,
+                date: document.getElementById("combinedDatePicker").value,
                 course: state.selectedCourseData,
                 players: state.players.map(function(p) {
                     return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: p.label };
@@ -1401,6 +1409,18 @@ function render() {
     }
     
     var playersHtml = '';
+    
+    // Build header
+    var headerHtml = `
+        <div class="player-header-row">
+            <span style="flex:1; min-width:120px; text-align:left;">Player</span>
+            <span style="min-width:52px; text-align:center; flex-shrink:0;">Hcp</span>
+            <span style="min-width:32px; text-align:center; flex-shrink:0;">Team</span>
+            <span style="min-width:32px; text-align:center; flex-shrink:0;">Flight</span>
+        </div>
+    `;
+    playersHtml += headerHtml;
+    
     for (var idx = 0; idx < displayPlayers.length; idx++) {
         var p = displayPlayers[idx];
         var originalIdx = state.players.findIndex(function(orig) {
@@ -1408,7 +1428,7 @@ function render() {
         });
         if (originalIdx === -1) originalIdx = idx;
         
-        // v1.46: Player options - name only (no HCP)
+        // Player options - name only
         var playerOptions = '<option value="">— Select player —</option>';
         for (var i = 0; i < playerList.length; i++) {
             var pl = playerList[i];
@@ -1416,31 +1436,27 @@ function render() {
             playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
         }
         
-        // v1.46: 2 lines - no slot labels
         playersHtml += `
             <div class="player-row">
                 <div class="player-line1">
-                    <div class="name-group">
-                        <select class="player-name-select" data-idx="${originalIdx}" onchange="populatePlayerFields(${originalIdx})">
-                            ${playerOptions}
-                        </select>
-                        <span class="label-display" data-idx="${originalIdx}">${escapeHtml(p.label || '')}</span>
-                    </div>
+                    <select class="player-name-select" data-idx="${originalIdx}" onchange="populatePlayerFields(${originalIdx})">
+                        ${playerOptions}
+                    </select>
+                    <span class="label-display" data-idx="${originalIdx}">${escapeHtml(p.label || '')}</span>
                     <div class="hcp-group">
                         <label>Hcp</label>
                         <input type="number" class="player-hcp-input" value="${p.handicap}" data-idx="${originalIdx}" step="1" min="0" max="54">
                     </div>
-                </div>
-                <div class="player-line2">
-                    <select class="team-select" data-idx="${originalIdx}">
-                        <option value="A" ${p.team === "A" ? "selected" : ""}>Team A</option>
-                        <option value="B" ${p.team === "B" ? "selected" : ""}>Team B</option>
+                    <select class="team-display" data-idx="${originalIdx}" onchange="updatePlayerTeam(${originalIdx}, this.value)">
+                        <option value="A" ${p.team === "A" ? "selected" : ""}>A</option>
+                        <option value="B" ${p.team === "B" ? "selected" : ""}>B</option>
                     </select>
-                    <select class="flight-select" data-idx="${originalIdx}">
-                        <option value="1" ${p.flight === 1 ? "selected" : ""}>Flight 1</option>
-                        <option value="2" ${p.flight === 2 ? "selected" : ""}>Flight 2</option>
+                    <select class="flight-display" data-idx="${originalIdx}" onchange="updatePlayerFlight(${originalIdx}, this.value)">
+                        <option value="1" ${p.flight === 1 ? "selected" : ""}>F1</option>
+                        <option value="2" ${p.flight === 2 ? "selected" : ""}>F2</option>
                     </select>
                 </div>
+                <div class="player-line2"></div>
             </div>
         `;
     }
@@ -1459,12 +1475,6 @@ function render() {
     var modeTitle = state.isEditMode ? 'Edit Scheduled Game' : 'Set Up New Game';
     var modeBadge = state.isEditMode ? '<span class="edit-badge">Edit Mode</span>' : '';
     
-    var hole1Class = "hole-toggle-btn" + (state.startingHoleType === "hole1" ? " active" : "");
-    var hole10Class = "hole-toggle-btn" + (state.startingHoleType === "hole10" ? " active" : "");
-    var shotgunClass = "hole-toggle-btn shotgun-btn" + (state.startingHoleType === "shotgun" ? " active" : "");
-    
-    var shotgunSelectValue = state.startingHole;
-    
     var tournamentSelected = (state.teamGameFormat === "tournament");
     var relativeSelected = (state.teamGameFormat === "relative");
     
@@ -1474,65 +1484,49 @@ function render() {
             <div class="subtitle">Schedule</div>
         </div>
         
+        <!-- Combined Game Details Card -->
         <div class="card">
-            <div class="card-title">Game Date</div>
-            <div class="form-row">
-                <label>Date</label>
-                <input type="date" id="datePicker" class="date-input" value="${defaultDate}" min="${today}" max="${maxDateStr}">
+            <div class="card-title">Game Details</div>
+            <div class="form-row-compact">
+                <label>Game Date</label>
+                <input type="date" id="combinedDatePicker" class="date-input" value="${defaultDate}" min="${today}" max="${maxDateStr}">
             </div>
-            ${state.dateError ? '<div class="form-row"><div class="error-msg">' + state.dateError + '</div></div>' : ''}
-        </div>
-        
-        <div class="card">
-            <div class="card-title">Course</div>
-            <div class="form-row">
-                <select id="courseSelect" style="width:100%;">
+            <div class="form-row-compact">
+                <label>Course</label>
+                <select id="combinedCourseSelect">
                     ${courseOptions}
                 </select>
             </div>
+            ${state.dateError ? '<div class="error-msg">' + state.dateError + '</div>' : ''}
         </div>
         
+        <!-- Combined Game Format Settings Card -->
         <div class="card">
-            <div class="card-title">Starting Hole</div>
-            <div class="hole-toggle-group">
-                <div class="${hole1Class}" data-type="hole1">Hole 1</div>
-                <div class="${hole10Class}" data-type="hole10">Hole 10</div>
-                <div class="${shotgunClass}" data-type="shotgun">
-                    Shotgun 
-                    <select id="shotgunHoleSelect" class="inline-shotgun-select">
+            <div class="card-title">Game Format Settings</div>
+            <div class="form-row-inline">
+                <div class="field-group">
+                    <label>Starting Hole</label>
+                    <select id="combinedHoleSelect">
                         ${[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(function(h) {
-                            return '<option value="' + h + '" ' + (shotgunSelectValue === h ? 'selected' : '') + '>' + h + '</option>';
+                            return '<option value="' + h + '" ' + (state.startingHole === h ? 'selected' : '') + '>Hole ' + h + '</option>';
                         }).join('')}
                     </select>
                 </div>
-            </div>
-            <div class="info-note">Play begins at selected hole. Scorecard shows holes in play order.</div>
-        </div>
-        
-        <div class="card">
-            <div class="card-title">Team Game Format</div>
-            <div class="format-group">
-                <div class="format-option ${tournamentSelected ? 'selected' : ''}" data-format="tournament">
-                    <input type="radio" name="teamGameFormat" value="tournament" id="formatTournament" ${tournamentSelected ? 'checked' : ''}>
-                    <label for="formatTournament">
-                        <span class="format-title">Tournament Handicap</span>
-                        <span class="format-desc">Raw handicaps. Higher handicap players receive more strokes.</span>
-                    </label>
-                </div>
-                <div class="format-option ${relativeSelected ? 'selected' : ''}" data-format="relative">
-                    <input type="radio" name="teamGameFormat" value="relative" id="formatRelative" ${relativeSelected ? 'checked' : ''}>
-                    <label for="formatRelative">
-                        <span class="format-title">Relative Handicap</span>
-                        <span class="format-desc">Lowest handicap becomes zero. All others adjust accordingly.</span>
-                    </label>
+                <div class="field-group">
+                    <label>Team Game</label>
+                    <select id="combinedFormatSelect">
+                        <option value="tournament" ${state.teamGameFormat === 'tournament' ? 'selected' : ''}>Tournament</option>
+                        <option value="relative" ${state.teamGameFormat === 'relative' ? 'selected' : ''}>Relative</option>
+                    </select>
                 </div>
             </div>
         </div>
         
+        <!-- Players Card -->
         <div class="card">
             <div class="card-title">Players (8)</div>
             ${playersHtml}
-            ${!isValid ? '<div class="form-row"><div class="error-msg">Each flight needs exactly 2 Team A and 2 Team B players</div></div>' : ''}
+            ${!isValid ? '<div class="error-msg">Each flight needs exactly 2 Team A and 2 Team B players</div>' : ''}
         </div>
         
         <div class="button-group">
@@ -1552,7 +1546,8 @@ function render() {
         attachBeforeUnloadHandler();
     }
     
-    var datePicker = document.getElementById("datePicker");
+    // Event listeners for combined cards
+    var datePicker = document.getElementById("combinedDatePicker");
     if (datePicker) {
         datePicker.addEventListener("change", function() {
             state.userSelectedDate = this.value;
@@ -1560,59 +1555,30 @@ function render() {
         });
     }
     
-    var courseSelect = document.getElementById("courseSelect");
+    var courseSelect = document.getElementById("combinedCourseSelect");
     if (courseSelect) {
         courseSelect.addEventListener("change", function() {
             onCourseChange(this.value);
         });
     }
     
-    document.querySelectorAll(".hole-toggle-btn").forEach(function(btn) {
-        btn.addEventListener("click", function(e) {
-            if (e.target.tagName === 'SELECT') return;
-            var type = this.dataset.type;
-            if (type === "shotgun") {
-                var select = document.getElementById("shotgunHoleSelect");
-                var holeValue = select ? parseInt(select.value) : 1;
-                setStartingHole("shotgun", holeValue);
-                if (state.isEditMode) onStartingHoleChange();
-            } else if (type === "hole1") {
-                setStartingHole("hole1", 1);
-                if (state.isEditMode) onStartingHoleChange();
-            } else if (type === "hole10") {
-                setStartingHole("hole10", 10);
-                if (state.isEditMode) onStartingHoleChange();
-            }
-        });
-    });
-    
-    var shotgunSelect = document.getElementById("shotgunHoleSelect");
-    if (shotgunSelect) {
-        shotgunSelect.addEventListener("change", function() {
-            if (state.startingHoleType === "shotgun") {
-                state.startingHole = parseInt(this.value);
-            } else {
-                setStartingHole("shotgun", parseInt(this.value));
-            }
-            if (state.isEditMode) onStartingHoleChange();
+    var holeSelect = document.getElementById("combinedHoleSelect");
+    if (holeSelect) {
+        holeSelect.addEventListener("change", function() {
+            setStartingHole(this.value);
         });
     }
     
-    document.querySelectorAll(".format-option").forEach(function(opt) {
-        opt.addEventListener("click", function() {
-            var format = this.dataset.format;
-            onTeamGameFormatChange(format);
+    var formatSelect = document.getElementById("combinedFormatSelect");
+    if (formatSelect) {
+        formatSelect.addEventListener("change", function() {
+            state.teamGameFormat = this.value;
+            if (state.isEditMode) checkForChanges();
+            render();
         });
-    });
+    }
     
-    document.querySelectorAll("input[name='teamGameFormat']").forEach(function(radio) {
-        radio.addEventListener("change", function() {
-            if (this.checked) {
-                onTeamGameFormatChange(this.value);
-            }
-        });
-    });
-    
+    // Player dropdown handlers
     document.querySelectorAll(".player-name-select").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
@@ -1629,19 +1595,21 @@ function render() {
         });
     });
     
-    document.querySelectorAll(".team-select").forEach(function(el) {
+    document.querySelectorAll(".team-display").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
             state.players[idx].team = this.value;
             if (state.isEditMode) checkForChanges();
+            render();
         });
     });
     
-    document.querySelectorAll(".flight-select").forEach(function(el) {
+    document.querySelectorAll(".flight-display").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
             state.players[idx].flight = parseInt(this.value);
             if (state.isEditMode) checkForChanges();
+            render();
         });
     });
     
@@ -1661,18 +1629,13 @@ function render() {
     }
 }
 
-function onStartingHoleChange() {
-    if (state.isEditMode) checkForChanges();
-}
-
-function onTeamGameFormatChange(format) {
-    setTeamGameFormat(format);
-}
-
 window.changeCourse = onCourseChange;
 window.goBack = goBack;
 window.commitGame = commitGame;
 window.populatePlayerFields = populatePlayerFields;
+window.updatePlayerTeam = updatePlayerTeam;
+window.updatePlayerFlight = updatePlayerFlight;
+window.setStartingHole = setStartingHole;
 
 function escapeHtml(str) {
     if (!str) return "";
@@ -1705,15 +1668,16 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.46
-KEY CHANGES from v1.45:
-   - REMOVED: Slot labels (A1, A2, A3, A4, B1, B2, B3, B4) from player rows
-   - REMOVED: Handicap display from dropdown options (now just player name)
-   - CHANGED: Player card now exactly 2 lines (dropdown+label+hcp | team+flight)
-   - CHANGED: All font sizes increased for better readability
-   - CHANGED: Dropdown width reduced (more compact)
-   - CHANGED: Layout optimized to use dead space
-   - PRESERVED: All functionality from v1.45
+VERSION: 1.47
+KEY CHANGES from v1.46:
+   - COMBINED: Game Date + Course into "Game Details" card (2 lines)
+   - COMBINED: Starting Hole + Team Game Format into "Game Format Settings" card
+   - CHANGED: Player rows now single line: Name | Label | Hcp | Team | Flight
+   - ADDED: Column headers above players: Player | Hcp | Team | Flight
+   - CHANGED: Consistent font sizes (0.85rem) across all player elements
+   - REMOVED: Slot labels (A1, B1, etc.)
+   - CHANGED: Dropdown shows only player name (no HCP)
+   - PRESERVED: All functionality from v1.46
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
