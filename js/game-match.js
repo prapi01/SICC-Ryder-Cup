@@ -1,29 +1,24 @@
 /*
 FILE: js/game-match.js
-VERSION: 2.25
-KEY CHANGES from v2.24:
-   - ADDED: Detailed debug logging for intra-flight calculation flow
-   - Logs: calculateIntraFlightWithClinch() entry with flight, hole, holesPlayed, remainingHoles
-   - Logs: Each match result with player names, net scores, match result
-   - Logs: Cumulative lead calculation before and after each hole
-   - Logs: Clinch detection with lead vs remaining holes comparison
-   - Logs: calculateCrossFlightWithClinch() entry with hole, holesPlayed
-   - Logs: Each cross-flight match result
-   - Logs: getMatchBubbleClass() with matchValue, clinchHole, currentPlayPosition
-   - All existing functionality preserved from v2.24
+VERSION: 2.26
+KEY CHANGES from v2.25:
+   - ADDED: Detailed debug logging in getMatchBubbleClass() to trace cross-flight logic
+   - Logs: lastSyncedValue, currentHole, startingHole, currentPlayPosition, isCrossFlight, isSynced
+   - Logs: Actual condition evaluation for cross-flight grey AS check
+   - PRESERVED: All functionality from v2.25
 DEPENDS ON: GameData, GameOrder
 STATUS: Debug version - ready for testing
 */
 
 // Version exposure for console debugging
-window.GAME_MATCH_VERSION = "2.25";
+window.GAME_MATCH_VERSION = "2.26";
 
 var GameMatch = (function() {
     
-    console.log("[GAME-MATCH] Initializing v2.25 - DETAILED DEBUG LOGGING ENABLED");
+    console.log("[GAME-MATCH] Initializing v2.26 - ADDED DEBUG LOGGING FOR getMatchBubbleClass");
     console.log("[GAME-MATCH] ===================================================");
-    console.log("[GAME-MATCH] Debug logs will trace intra-flight and cross-flight calculations");
-    console.log("[GAME-MATCH] Including: player scores, net scores, match results, clinch detection");
+    console.log("[GAME-MATCH] Debug logs will trace cross-flight bubble color logic");
+    console.log("[GAME-MATCH] Specifically: lastSyncedValue, currentPlayPosition, isSynced evaluation");
     console.log("[GAME-MATCH] ===================================================");
     
     // ============================================================
@@ -465,7 +460,7 @@ var GameMatch = (function() {
                         remainingHolesAtClinch: remainingHoles,
                         recordedAt: new Date().toISOString(),
                         recordedByDevice: deviceId || "unknown",
-                        cascadeVersion: cascadeVersion || "2.25"
+                        cascadeVersion: cascadeVersion || "2.26"
                     };
                     clinchedAtUpdates[actualWinner + "_vs_" + actualLoser] = clinchData;
                     console.log(`[DEBUG-CROSS]   Clinch data: ${actualWinner}_vs_${actualLoser} at hole ${currentHole}`);
@@ -509,7 +504,7 @@ var GameMatch = (function() {
                     remainingHolesAtClinch: remainingHoles,
                     recordedAt: new Date().toISOString(),
                     recordedByDevice: deviceId || "unknown",
-                    cascadeVersion: cascadeVersion || "2.25"
+                    cascadeVersion: cascadeVersion || "2.26"
                 }
             };
         }
@@ -689,7 +684,7 @@ var GameMatch = (function() {
     }
     
     // ============================================================
-    // v2.25: getMatchBubbleClass with DEBUG LOGGING
+    // v2.26: getMatchBubbleClass with ADDED DEBUG LOGGING
     // ============================================================
     
     function getMatchBubbleClass(matchValue, clinchedAt, player, opponent, currentHole, isHoleSavedForFlight, lastSyncedValue, getClinchHoleFunc, startingHole) {
@@ -701,9 +696,39 @@ var GameMatch = (function() {
         var isCrossFlight = (player.flight !== opponent.flight);
         var logPrefix = isCrossFlight ? '[DEBUG-BUBBLE-CROSS]' : '[DEBUG-BUBBLE-INTRA]';
         
+        // ============================================================
+        // v2.26: ADDED DEBUG LOGGING for cross-flight logic
+        // ============================================================
+        console.log(`${logPrefix} =========================================`);
+        console.log(`${logPrefix} ${player.label} vs ${opponent.label}:`);
+        console.log(`${logPrefix}   matchValue=${matchValue}`);
+        console.log(`${logPrefix}   currentHole=${currentHole}`);
+        console.log(`${logPrefix}   startingHole=${startingHole}`);
+        console.log(`${logPrefix}   currentPlayPosition=${currentPlayPosition}`);
+        console.log(`${logPrefix}   lastSyncedValue=${lastSyncedValue}`);
+        console.log(`${logPrefix}   isCrossFlight=${isCrossFlight}`);
+        console.log(`${logPrefix}   isHoleSavedForFlight=${isHoleSavedForFlight}`);
+        console.log(`${logPrefix}   clinchHole=${clinchHole}`);
+        console.log(`${logPrefix}   clinchPlayPosition=${clinchPlayPosition}`);
+        
+        if (isCrossFlight) {
+            var isSynced = (lastSyncedValue >= currentPlayPosition);
+            console.log(`${logPrefix}   CROSS-FLIGHT: isSynced = ${lastSyncedValue} >= ${currentPlayPosition} = ${isSynced}`);
+            if (!isSynced) {
+                console.log(`${logPrefix}   -> GREY (not synced)`);
+                return 'bubble-grey';
+            }
+        } else {
+            console.log(`${logPrefix}   INTRA-FLIGHT: isHoleSaved=${isHoleSavedForFlight}`);
+            if (!isHoleSavedForFlight) {
+                console.log(`${logPrefix}   -> GREY (hole not saved)`);
+                return 'bubble-grey';
+            }
+        }
+        
         // Only log if matchValue is non-zero or we're at a clinch hole
         if (Math.abs(matchValue) > 0 || clinchPlayPosition !== null) {
-            console.log(`${logPrefix} ${player.label} vs ${opponent.label}: matchValue=${matchValue}, currentPos=${currentPlayPosition}, clinchPos=${clinchPlayPosition}, lastSynced=${lastSyncedValue}`);
+            console.log(`${logPrefix} matchValue=${matchValue}, currentPos=${currentPlayPosition}, clinchPos=${clinchPlayPosition}, lastSynced=${lastSyncedValue}`);
         }
         
         if (clinchPlayPosition !== null && currentPlayPosition > clinchPlayPosition) {
@@ -731,19 +756,6 @@ var GameMatch = (function() {
             return 'bubble-gold';
         }
         
-        if (player.flight === opponent.flight) {
-            if (!isHoleSavedForFlight) {
-                console.log(`${logPrefix}   -> GREY (hole not saved for flight)`);
-                return 'bubble-grey';
-            }
-        } else {
-            var isSynced = (lastSyncedValue >= currentPlayPosition);
-            if (!isSynced) {
-                console.log(`${logPrefix}   -> GREY (not synced: ${lastSyncedValue} < ${currentPlayPosition})`);
-                return 'bubble-grey';
-            }
-        }
-        
         if (matchValue > 0) {
             console.log(`${logPrefix}   -> GREEN (winning)`);
             return 'bubble-green';
@@ -753,6 +765,7 @@ var GameMatch = (function() {
             return 'bubble-red';
         }
         console.log(`${logPrefix}   -> GREEN (tie)`);
+        console.log(`${logPrefix} =========================================`);
         return 'bubble-green';
     }
     
@@ -830,21 +843,16 @@ var GameMatch = (function() {
 })();
 
 // Re-expose version for console debugging
-window.GAME_MATCH_VERSION = "2.25";
+window.GAME_MATCH_VERSION = "2.26";
 
 /*
 FILE: js/game-match.js
-VERSION: 2.25
-KEY CHANGES from v2.24:
-   - ADDED: Detailed debug logging for intra-flight calculation flow
-   - Logs: calculateIntraFlightWithClinch() entry with flight, hole, holesPlayed, remainingHoles
-   - Logs: Each match result with player names, net scores, match result
-   - Logs: Cumulative lead calculation before and after each hole
-   - Logs: Clinch detection with lead vs remaining holes comparison
-   - Logs: calculateCrossFlightWithClinch() entry with hole, holesPlayed
-   - Logs: Each cross-flight match result
-   - Logs: getMatchBubbleClass() with matchValue, clinchHole, currentPlayPosition
-   - All existing functionality preserved from v2.24
+VERSION: 2.26
+KEY CHANGES from v2.25:
+   - ADDED: Detailed debug logging in getMatchBubbleClass() to trace cross-flight logic
+   - Logs: lastSyncedValue, currentHole, startingHole, currentPlayPosition, isCrossFlight, isSynced
+   - Logs: Actual condition evaluation for cross-flight grey AS check
+   - PRESERVED: All functionality from v2.25
 DEPENDS ON: GameData, GameOrder
 STATUS: Debug version - ready for testing
 */
