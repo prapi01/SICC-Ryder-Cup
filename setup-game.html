@@ -1,13 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.43
-KEY CHANGES from v1.42:
-   - CHANGED: Player slots pre-populated from playerManagement on load
-   - CHANGED: Team A slots (A1-A4) and Team B slots (B1-B4) by handicap
-   - CHANGED: Flight assignment: slots 1-2 = Flight 1, slots 3-4 = Flight 2
-   - CHANGED: loadDefaultPlayers() now distributes players by team and handicap
-   - PRESERVED: All baseline UI styling from v1.41
-   - PRESERVED: All functionality from v1.42
+VERSION: 1.44
+KEY CHANGES from v1.43:
+   - ADDED: Automatic default player management when game is committed
+   - CHANGED: loadDefaultPlayers() now filters by isDefault: true from playerInformation/players
+   - ADDED: updateDefaultPlayers() function to set isDefault flags when game is committed
+   - CHANGED: New players added during game setup are automatically added to players list with isDefault: true
+   - CHANGED: All non-selected players have isDefault: false
+   - PRESERVED: All baseline UI styling and functionality from v1.43
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -35,10 +35,10 @@ STATUS: Ready for integration
             padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 20px) 20px env(safe-area-inset-left, 20px);
             min-height: 100vh;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
         }
-        .container { max-width: 420px; width: 100%; margin: 0 auto; }
+        .container { max-width: 420px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
         .version-tag { 
             position: fixed; 
@@ -401,10 +401,10 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.43</div>
+<div class="version-tag">v1.44</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.43
+// FILE: setup-game.html - VERSION 1.44
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -412,8 +412,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.43";
-var CACHE_KEY = "setup_game_version_v143";
+var VERSION = "1.44";
+var CACHE_KEY = "setup_game_version_v144";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -436,7 +436,7 @@ var initialFormState = null;
 var beforeUnloadHandlerAttached = false;
 
 // ============================================================
-// v1.43: Player list from Firestore
+// v1.44: Player list from Firestore with isDefault support
 // ============================================================
 var playerList = [];
 
@@ -464,6 +464,91 @@ function loadPlayerList(callback) {
             console.warn("[SETUP-GAME] Error loading players:", err);
             playerList = [];
             if (callback) callback();
+        });
+}
+
+// ============================================================
+// v1.44: Update default players after game commit
+// ============================================================
+function updateDefaultPlayers(selectedPlayers, callback) {
+    if (!firestoreReady) {
+        if (callback) callback(false);
+        return;
+    }
+    
+    // First, get the current player list
+    db.collection("playerInformation").doc("players").get()
+        .then(function(doc) {
+            var allPlayers = [];
+            if (doc.exists && doc.data().players) {
+                allPlayers = doc.data().players;
+            }
+            
+            // Create a map of selected player names for quick lookup
+            var selectedNames = {};
+            var selectedMap = {};
+            for (var i = 0; i < selectedPlayers.length; i++) {
+                var p = selectedPlayers[i];
+                selectedNames[p.name] = true;
+                selectedMap[p.name] = {
+                    name: p.name,
+                    handicap: p.handicap,
+                    defaultTeam: p.team,
+                    label: p.label || generateLabel(p.name),
+                    isDefault: true
+                };
+            }
+            
+            // Update all players: set isDefault based on whether they're in the selected list
+            var updatedPlayers = [];
+            var existingNames = {};
+            
+            // First, update existing players
+            for (var i = 0; i < allPlayers.length; i++) {
+                var player = allPlayers[i];
+                existingNames[player.name] = true;
+                if (selectedNames[player.name]) {
+                    // This player is selected - mark as default
+                    player.isDefault = true;
+                    // Update handicap and team from selected data
+                    var selected = selectedMap[player.name];
+                    player.handicap = selected.handicap;
+                    player.defaultTeam = selected.defaultTeam;
+                    player.label = selected.label;
+                    updatedPlayers.push(player);
+                } else {
+                    // This player is not selected - remove default status
+                    player.isDefault = false;
+                    updatedPlayers.push(player);
+                }
+            }
+            
+            // Add any new players that don't exist in the list
+            for (var name in selectedMap) {
+                if (!existingNames[name]) {
+                    var newPlayer = selectedMap[name];
+                    updatedPlayers.push(newPlayer);
+                }
+            }
+            
+            // Sort the updated list
+            updatedPlayers.sort(function(a, b) {
+                return a.name.localeCompare(b.name);
+            });
+            
+            // Save back to Firestore
+            return db.collection("playerInformation").doc("players").set({
+                players: updatedPlayers,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        })
+        .then(function() {
+            console.log("[SETUP-GAME] Default players updated successfully");
+            if (callback) callback(true);
+        })
+        .catch(function(err) {
+            console.error("[SETUP-GAME] Error updating default players:", err);
+            if (callback) callback(false);
         });
 }
 
@@ -691,34 +776,74 @@ function goBack() {
 }
 
 // ============================================================
-// v1.43: loadDefaultPlayers - pre-populate from playerManagement
-// Team A slots (A1-A4) and Team B slots (B1-B4) by handicap
+// v1.44: loadDefaultPlayers - filter by isDefault: true
 // ============================================================
 function loadDefaultPlayers(callback) {
-    // If playerList is loaded, use it
+    // If playerList is loaded, filter for default players
     if (playerList.length > 0) {
-        // Separate by team
-        var teamAPlayers = [];
-        var teamBPlayers = [];
-        for (var i = 0; i < playerList.length; i++) {
-            var p = playerList[i];
-            var team = p.defaultTeam || "A";
-            if (team === "A") {
-                teamAPlayers.push(p);
-            } else {
-                teamBPlayers.push(p);
-            }
-        }
+        // Find players with isDefault: true
+        var defaultPlayers = playerList.filter(function(p) {
+            return p.isDefault === true;
+        });
         
-        // Sort by handicap (lowest first)
+        console.log("[SETUP-GAME] Found", defaultPlayers.length, "default players");
+        
+        if (defaultPlayers.length === 8) {
+            // Sort by team and handicap
+            var teamAPlayers = defaultPlayers.filter(function(p) { return p.defaultTeam === "A"; });
+            var teamBPlayers = defaultPlayers.filter(function(p) { return p.defaultTeam === "B"; });
+            
+            teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+            teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            var result = [];
+            // Team A: slots 0-3
+            for (var i = 0; i < 4; i++) {
+                var p = teamAPlayers[i] || { name: "", handicap: 0, defaultTeam: "A", label: "" };
+                var flight = (i < 2) ? 1 : 2;
+                result.push({
+                    name: p.name || "",
+                    handicap: p.handicap || 0,
+                    team: "A",
+                    flight: flight,
+                    label: p.label || generateLabel(p.name),
+                    slot: "A" + (i + 1)
+                });
+            }
+            // Team B: slots 4-7
+            for (var i = 0; i < 4; i++) {
+                var p = teamBPlayers[i] || { name: "", handicap: 0, defaultTeam: "B", label: "" };
+                var flight = (i < 2) ? 1 : 2;
+                result.push({
+                    name: p.name || "",
+                    handicap: p.handicap || 0,
+                    team: "B",
+                    flight: flight,
+                    label: p.label || generateLabel(p.name),
+                    slot: "B" + (i + 1)
+                });
+            }
+            
+            state.players = result;
+            console.log("[SETUP-GAME] Pre-populated", state.players.length, "default players");
+            if (callback) callback();
+            return;
+        } else {
+            console.log("[SETUP-GAME] No default players found, falling back to top 4 per team");
+        }
+    }
+    
+    // Fallback: top 4 per team by handicap from playerList
+    if (playerList.length > 0) {
+        var teamAPlayers = playerList.filter(function(p) { return p.defaultTeam === "A"; });
+        var teamBPlayers = playerList.filter(function(p) { return p.defaultTeam === "B"; });
+        
         teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
         
-        // Take top 4 from each team
         var selectedA = teamAPlayers.slice(0, 4);
         var selectedB = teamBPlayers.slice(0, 4);
         
-        // Pad if less than 4 players per team
         while (selectedA.length < 4) {
             selectedA.push({ name: "", handicap: 0, defaultTeam: "A", label: "" });
         }
@@ -726,9 +851,7 @@ function loadDefaultPlayers(callback) {
             selectedB.push({ name: "", handicap: 0, defaultTeam: "B", label: "" });
         }
         
-        // Build state.players with slot labels
         var result = [];
-        // Team A: slots 0-3
         for (var i = 0; i < selectedA.length; i++) {
             var p = selectedA[i];
             var flight = (i < 2) ? 1 : 2;
@@ -741,7 +864,6 @@ function loadDefaultPlayers(callback) {
                 slot: "A" + (i + 1)
             });
         }
-        // Team B: slots 4-7
         for (var i = 0; i < selectedB.length; i++) {
             var p = selectedB[i];
             var flight = (i < 2) ? 1 : 2;
@@ -756,12 +878,12 @@ function loadDefaultPlayers(callback) {
         }
         
         state.players = result;
-        console.log("[SETUP-GAME] Pre-populated", state.players.length, "players from playerManagement");
+        console.log("[SETUP-GAME] Pre-populated", state.players.length, "players from top 4 per team");
         if (callback) callback();
         return;
     }
     
-    // Fallback: hardcoded default players
+    // Ultimate fallback: hardcoded default players
     var fallback = [
         { name: "Ang C H", handicap: 1, team: "A", flight: 1, label: "ACH", slot: "A1" },
         { name: "Chenh Hoe", handicap: 10, team: "A", flight: 1, label: "CH", slot: "A2" },
@@ -775,31 +897,6 @@ function loadDefaultPlayers(callback) {
     state.players = fallback;
     console.log("[SETUP-GAME] Using fallback players");
     if (callback) callback();
-}
-
-function saveAsDefaultPlayers(players, callback) {
-    if (!firestoreReady) { if (callback) callback(false); return; }
-    
-    var playersToSave = [...players];
-    playersToSave.sort(function(a, b) {
-        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
-        if (a.flight !== b.flight) return a.flight - b.flight;
-        return a.handicap - b.handicap;
-    });
-    
-    var playersForStorage = playersToSave.map(function(p) {
-        return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight };
-    });
-    
-    db.collection("playerInformation").doc("defaultPlayers").set({
-        players: playersForStorage,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(function() {
-        if (callback) callback(true);
-    }).catch(function(e) {
-        console.error(e);
-        if (callback) callback(false);
-    });
 }
 
 function loadEditMode(callback) {
@@ -1138,15 +1235,20 @@ function createNewGame(anchorPlayer) {
     
     var newGameId = generateGameId();
     
-    performFirestoreWrite("scheduledGames", newGameId, gameData, "Game scheduled successfully", "admin.html")
-        .then(function() {
-            saveAsDefaultPlayers(state.players, function(saveSuccess) {
-                if (saveSuccess) console.log("Default players updated");
-                else console.warn("Failed to save default players");
-            });
-            SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
-        })
-        .catch(function(e) {});
+    // v1.44: Update default players BEFORE saving the game
+    updateDefaultPlayers(state.players, function(success) {
+        if (success) {
+            console.log("[SETUP-GAME] Default players updated successfully");
+        } else {
+            console.warn("[SETUP-GAME] Failed to update default players");
+        }
+        
+        performFirestoreWrite("scheduledGames", newGameId, gameData, "Game scheduled successfully", "admin.html")
+            .then(function() {
+                SessionManager.addNavigationHistory("admin.html", "game_created", { gameId: newGameId });
+            })
+            .catch(function(e) {});
+    });
 }
 
 function updateExistingGame(anchorPlayer) {
@@ -1204,16 +1306,25 @@ function updateExistingGame(anchorPlayer) {
                         updatePayload.currentHoleF1 = 1;
                         updatePayload.currentHoleF2 = 1;
                         
-                        performFirestoreUpdate(
-                            "scheduledGames",
-                            state.editingGameId,
-                            updatePayload,
-                            "Game updated successfully",
-                            "manage-games.html"
-                        ).then(function() {
-                            SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
-                            isDirty = false;
-                        }).catch(function(e) {});
+                        // v1.44: Update default players on edit too
+                        updateDefaultPlayers(state.players, function(success) {
+                            if (success) {
+                                console.log("[SETUP-GAME] Default players updated on edit");
+                            } else {
+                                console.warn("[SETUP-GAME] Failed to update default players on edit");
+                            }
+                            
+                            performFirestoreUpdate(
+                                "scheduledGames",
+                                state.editingGameId,
+                                updatePayload,
+                                "Game updated successfully",
+                                "manage-games.html"
+                            ).then(function() {
+                                SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
+                                isDirty = false;
+                            }).catch(function(e) {});
+                        });
                     },
                     function() {
                         console.log("Starting hole change cancelled");
@@ -1223,16 +1334,25 @@ function updateExistingGame(anchorPlayer) {
                 return;
             }
             
-            performFirestoreUpdate(
-                "scheduledGames",
-                state.editingGameId,
-                updatePayload,
-                "Game updated successfully",
-                "manage-games.html"
-            ).then(function() {
-                SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
-                isDirty = false;
-            }).catch(function(e) {});
+            // v1.44: Update default players on edit
+            updateDefaultPlayers(state.players, function(success) {
+                if (success) {
+                    console.log("[SETUP-GAME] Default players updated on edit");
+                } else {
+                    console.warn("[SETUP-GAME] Failed to update default players on edit");
+                }
+                
+                performFirestoreUpdate(
+                    "scheduledGames",
+                    state.editingGameId,
+                    updatePayload,
+                    "Game updated successfully",
+                    "manage-games.html"
+                ).then(function() {
+                    SessionManager.addNavigationHistory("manage-games.html", "game_updated", { gameId: state.editingGameId });
+                    isDirty = false;
+                }).catch(function(e) {});
+            });
         })
         .catch(function(e) {
             WaitingScreen.hide();
@@ -1597,7 +1717,7 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     
     archiveOldGames();
     
-    // v1.43: Load player list first, then courses, then edit mode
+    // v1.44: Load player list first, then courses, then edit mode
     loadPlayerList(function() {
         loadEditMode(function() {
             loadCourses(function() {
@@ -1612,14 +1732,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.43
-KEY CHANGES from v1.42:
-   - CHANGED: Player slots pre-populated from playerManagement on load
-   - CHANGED: Team A slots (A1-A4) and Team B slots (B1-B4) by handicap
-   - CHANGED: Flight assignment: slots 1-2 = Flight 1, slots 3-4 = Flight 2
-   - CHANGED: loadDefaultPlayers() now distributes players by team and handicap
-   - PRESERVED: All baseline UI styling from v1.41
-   - PRESERVED: All functionality from v1.42
+VERSION: 1.44
+KEY CHANGES from v1.43:
+   - ADDED: Automatic default player management when game is committed
+   - CHANGED: loadDefaultPlayers() now filters by isDefault: true from playerInformation/players
+   - ADDED: updateDefaultPlayers() function to set isDefault flags when game is committed
+   - CHANGED: New players added during game setup are automatically added to players list with isDefault: true
+   - CHANGED: All non-selected players have isDefault: false
+   - PRESERVED: All baseline UI styling and functionality from v1.43
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
