@@ -1,12 +1,14 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - CHANGED: Back button now sleek text-only style (no button background/border)
-   - ADDED: Green divider line above back link (#2a5a2a)
-   - CHANGED: Back link now uses "Back to Game Settings" text
-   - REMOVED: Button styling from back link (background, padding, border)
-   - PRESERVED: All functionality from v1.28
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - FIXED: Page now loads from top of screen (not centered)
+   - FIXED: All game items have 2px border (#2a5a2a)
+   - FIXED: Past games have grey border (#666) with readable text
+   - FIXED: CMD+Click on title now properly toggles between Upcoming/All
+   - FIXED: Back button now goes to Game Settings (admin.html)
+   - CHANGED: Past game opacity improved for readability
+   - PRESERVED: All functionality from v1.29
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -43,10 +45,10 @@ STATUS: Ready for integration
             font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif;
             color: #e0e0e0;
             display: flex;
-            align-items: center;
             justify-content: center;
-            min-height: 100vh;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            min-height: 100vh;
+            align-items: flex-start;
         }
         .container { max-width: 420px; width: 100%; margin: 0 auto; padding: 20px 16px; }
         
@@ -142,17 +144,32 @@ STATUS: Ready for integration
         
         .game-list { margin-top: 2px; }
         .game-item { 
-            background: transparent; 
-            border-bottom: 1px solid #1a3a1a; 
-            padding: 14px 0; 
+            background: rgba(20, 20, 20, 0.3);
+            border: 2px solid #2a5a2a;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 10px;
         }
-        .game-item:last-child { border-bottom: none; }
+        .game-item:last-child { margin-bottom: 0; }
         
-        .game-item-past { opacity: 0.35; }
-        .game-item-past .game-date { color: #444; }
-        .game-item-past .game-course { color: #333; }
-        .game-item-past .game-players { color: #222; }
-        .game-item-past .doc-id-display { opacity: 0.15; }
+        .game-item-past { 
+            border: 2px solid #666;
+            opacity: 0.85;
+            background: rgba(20, 20, 20, 0.15);
+        }
+        .game-item-past .game-date { 
+            color: #aaa;
+            font-weight: 500;
+        }
+        .game-item-past .game-course { 
+            color: #888;
+        }
+        .game-item-past .game-players { 
+            color: #666;
+        }
+        .game-item-past .doc-id-display { 
+            opacity: 0.4;
+        }
         
         .game-info { margin-bottom: 10px; }
         .game-date { font-size: 0.9rem; font-weight: 500; color: #e0e0e0; }
@@ -364,10 +381,10 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.29</div>
+<div class="version-tag">v1.30</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.29
+// FILE: manage-games.html - VERSION 1.30
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -375,8 +392,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[MANAGE-GAMES] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.29";
-var CACHE_KEY = "manage_games_version_v129";
+var VERSION = "1.30";
+var CACHE_KEY = "manage_games_version_v130";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -667,8 +684,7 @@ function deleteGameConfirmed(gameId, gameDate) {
 
 function goBackToSettings() {
     showAllGames = false;
-    var returnDest = SessionManager.getReturnDestination();
-    window.location.href = returnDest;
+    window.location.href = "admin.html";
 }
 
 function toggleView() {
@@ -720,7 +736,7 @@ function loadAndRender() {
                     <div class="subtitle">Manage</div>
                 </div>
                 <div class="card">
-                    <div class="card-title">
+                    <div class="card-title" id="cardTitle">
                         ${titleText}
                         <span class="badge ${badgeClass}">${badgeText}</span>
                         <span class="hint">${viewHint}</span>
@@ -767,7 +783,7 @@ function loadAndRender() {
                 <div class="subtitle">Manage</div>
             </div>
             <div class="card">
-                <div class="card-title">
+                <div class="card-title" id="cardTitle">
                     ${titleText}
                     <span class="badge ${badgeClass}">${badgeText}</span>
                     <span class="hint">${viewHint}</span>
@@ -855,13 +871,15 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.29
-KEY CHANGES from v1.28:
-   - CHANGED: Back button now sleek text-only style (no button background/border)
-   - ADDED: Green divider line above back link (#2a5a2a)
-   - CHANGED: Back link now uses "Back to Game Settings" text
-   - REMOVED: Button styling from back link (background, padding, border)
-   - PRESERVED: All functionality from v1.28
+VERSION: 1.30
+KEY CHANGES from v1.29:
+   - FIXED: Page now loads from top of screen (not centered)
+   - FIXED: All game items have 2px border (#2a5a2a)
+   - FIXED: Past games have grey border (#666) with readable text
+   - FIXED: CMD+Click on title now properly toggles between Upcoming/All
+   - FIXED: Back button now goes to Game Settings (admin.html)
+   - CHANGED: Past game opacity improved for readability
+   - PRESERVED: All functionality from v1.29
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
