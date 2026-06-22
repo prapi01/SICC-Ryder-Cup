@@ -1,13 +1,11 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.44
-KEY CHANGES from v1.43:
-   - ADDED: Automatic default player management when game is committed
-   - CHANGED: loadDefaultPlayers() now filters by isDefault: true from playerInformation/players
-   - ADDED: updateDefaultPlayers() function to set isDefault flags when game is committed
-   - CHANGED: New players added during game setup are automatically added to players list with isDefault: true
-   - CHANGED: All non-selected players have isDefault: false
-   - PRESERVED: All baseline UI styling and functionality from v1.43
+VERSION: 1.45
+KEY CHANGES from v1.44:
+   - FIXED: Dropdown menus now correctly display selected player names (not "- Select player -")
+   - CHANGED: playerOptions now built per slot with proper selected attribute
+   - FIXED: Labels, HCP, team, flight now populate correctly when dropdown changes
+   - PRESERVED: All functionality from v1.44
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -206,7 +204,7 @@ STATUS: Ready for integration
         .format-title { font-weight: 500; color: #e0e0e0; display: block; }
         .format-desc { font-size: 0.6rem; color: #555; display: block; margin-top: 1px; }
         
-        /* Player Rows - v1.43: Pre-populated with team labels */
+        /* Player Rows */
         .player-row { 
             background: transparent; 
             border-bottom: 1px solid #1a3a1a; 
@@ -401,10 +399,10 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.44</div>
+<div class="version-tag">v1.45</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.44
+// FILE: setup-game.html - VERSION 1.45
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -412,8 +410,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.44";
-var CACHE_KEY = "setup_game_version_v144";
+var VERSION = "1.45";
+var CACHE_KEY = "setup_game_version_v145";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1384,14 +1382,6 @@ function render() {
         courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
     }
     
-    // Build player options from playerList
-    var playerOptions = '';
-    for (var i = 0; i < playerList.length; i++) {
-        var p = playerList[i];
-        var label = p.label || generateLabel(p.name);
-        playerOptions += '<option value="' + escapeHtml(p.name) + '">' + escapeHtml(p.name) + ' (HCP ' + p.handicap + ')</option>';
-    }
-    
     // Display players in slot order (A1, A2, A3, A4, B1, B2, B3, B4)
     var displayPlayers = [];
     // Team A: slots 0-3
@@ -1435,9 +1425,13 @@ function render() {
         });
         if (originalIdx === -1) originalIdx = idx;
         
-        var selectedOption = '';
-        if (p.name) {
-            selectedOption = ' selected';
+        // Build player options for THIS slot with proper selected attribute
+        var playerOptions = '<option value="">— Select player —</option>';
+        for (var i = 0; i < playerList.length; i++) {
+            var pl = playerList[i];
+            var label = pl.label || generateLabel(pl.name);
+            var isSelected = (pl.name === p.name) ? ' selected' : '';
+            playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + ' (HCP ' + pl.handicap + ')</option>';
         }
         
         playersHtml += `
@@ -1446,7 +1440,6 @@ function render() {
                     <div class="name-group">
                         <span class="slot-label">${p.slot || (p.team + (idx % 4 + 1))}</span>
                         <select class="player-name-select" data-idx="${originalIdx}" onchange="populatePlayerFields(${originalIdx})">
-                            <option value="">— Select player —</option>
                             ${playerOptions}
                         </select>
                         <span class="label-display" data-idx="${originalIdx}">${escapeHtml(p.label || '')}</span>
@@ -1732,14 +1725,12 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.44
-KEY CHANGES from v1.43:
-   - ADDED: Automatic default player management when game is committed
-   - CHANGED: loadDefaultPlayers() now filters by isDefault: true from playerInformation/players
-   - ADDED: updateDefaultPlayers() function to set isDefault flags when game is committed
-   - CHANGED: New players added during game setup are automatically added to players list with isDefault: true
-   - CHANGED: All non-selected players have isDefault: false
-   - PRESERVED: All baseline UI styling and functionality from v1.43
+VERSION: 1.45
+KEY CHANGES from v1.44:
+   - FIXED: Dropdown menus now correctly display selected player names (not "- Select player -")
+   - CHANGED: playerOptions now built per slot with proper selected attribute
+   - FIXED: Labels, HCP, team, flight now populate correctly when dropdown changes
+   - PRESERVED: All functionality from v1.44
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
