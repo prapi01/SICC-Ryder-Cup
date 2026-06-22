@@ -1,14 +1,13 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.42
-KEY CHANGES from v1.41:
-   - CHANGED: Player name input now dropdown from playerInformation/players
-   - CHANGED: Handicap, Team, Flight auto-populate from selected player
-   - CHANGED: Player rows now use dropdown + auto-fill
-   - ADDED: loadPlayerList() function to fetch players from Firestore
-   - ADDED: populatePlayerFields() to fill handicap, team, flight on selection
+VERSION: 1.43
+KEY CHANGES from v1.42:
+   - CHANGED: Player slots pre-populated from playerManagement on load
+   - CHANGED: Team A slots (A1-A4) and Team B slots (B1-B4) by handicap
+   - CHANGED: Flight assignment: slots 1-2 = Flight 1, slots 3-4 = Flight 2
+   - CHANGED: loadDefaultPlayers() now distributes players by team and handicap
    - PRESERVED: All baseline UI styling from v1.41
-   - PRESERVED: All functionality from v1.41
+   - PRESERVED: All functionality from v1.42
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -129,7 +128,6 @@ STATUS: Ready for integration
         .form-row input.date-input { flex: 0 0 140px; }
         .form-row .error-msg { color: #ff6b6b; font-size: 0.65rem; margin-top: 4px; width: 100%; }
         
-        /* Starting Hole Toggle */
         .hole-toggle-group {
             display: flex;
             gap: 6px;
@@ -178,7 +176,6 @@ STATUS: Ready for integration
         
         .info-note { font-size: 0.6rem; color: #2a5a2a; margin-top: 6px; text-align: center; letter-spacing: 0.2px; }
         
-        /* Format Options */
         .format-group { margin: 4px 0; }
         .format-option {
             display: flex;
@@ -209,7 +206,7 @@ STATUS: Ready for integration
         .format-title { font-weight: 500; color: #e0e0e0; display: block; }
         .format-desc { font-size: 0.6rem; color: #555; display: block; margin-top: 1px; }
         
-        /* Player Rows - v1.42: Dropdown + auto-fill */
+        /* Player Rows - v1.43: Pre-populated with team labels */
         .player-row { 
             background: transparent; 
             border-bottom: 1px solid #1a3a1a; 
@@ -232,6 +229,16 @@ STATUS: Ready for integration
         }
         .player-line1 .name-group select:focus { outline: none; border-color: #4caf50; }
         .player-line1 .name-group select option { background: #0a0a0a; color: #e0e0e0; }
+        .player-line1 .slot-label { 
+            font-size: 0.6rem; 
+            font-weight: 600; 
+            color: #4caf50; 
+            background: #1a3a1a; 
+            padding: 2px 6px; 
+            border-radius: 4px; 
+            min-width: 28px;
+            text-align: center;
+        }
         .player-line1 .label-display { 
             background: #1a3a1a; 
             color: #4caf50; 
@@ -323,7 +330,6 @@ STATUS: Ready for integration
         
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
-        /* Anchor Modal - baseline UI */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -395,10 +401,10 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.42</div>
+<div class="version-tag">v1.43</div>
 
 <script>
-// FILE: setup-game.html - VERSION 1.42
+// FILE: setup-game.html - VERSION 1.43
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -406,8 +412,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.42";
-var CACHE_KEY = "setup_game_version_v142";
+var VERSION = "1.43";
+var CACHE_KEY = "setup_game_version_v143";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -430,7 +436,7 @@ var initialFormState = null;
 var beforeUnloadHandlerAttached = false;
 
 // ============================================================
-// v1.42: Player list from Firestore
+// v1.43: Player list from Firestore
 // ============================================================
 var playerList = [];
 
@@ -522,17 +528,6 @@ function archiveOldGames() {
         })
         .catch(function(e) { console.warn(e); });
 }
-
-var HARDCODED_FALLBACK_PLAYERS = [
-    { name: "Ang C H", handicap: 1, team: "A", flight: 1 },
-    { name: "Chenh Hoe", handicap: 10, team: "A", flight: 1 },
-    { name: "C K", handicap: 8, team: "A", flight: 2 },
-    { name: "Yip H M", handicap: 12, team: "A", flight: 2 },
-    { name: "Jeff Goh", handicap: 0, team: "B", flight: 1 },
-    { name: "Ong C B", handicap: 1, team: "B", flight: 1 },
-    { name: "Piti", handicap: 8, team: "B", flight: 2 },
-    { name: "James Ong", handicap: 11, team: "B", flight: 2 }
-];
 
 function generateLabel(name) {
     if (!name) return "?";
@@ -695,35 +690,90 @@ function goBack() {
     }
 }
 
+// ============================================================
+// v1.43: loadDefaultPlayers - pre-populate from playerManagement
+// Team A slots (A1-A4) and Team B slots (B1-B4) by handicap
+// ============================================================
 function loadDefaultPlayers(callback) {
-    // v1.42: First try to load from playerList (Firestore)
+    // If playerList is loaded, use it
     if (playerList.length > 0) {
-        // Use the first 8 players from the list, or all if less than 8
-        var selectedPlayers = [];
-        var count = Math.min(8, playerList.length);
-        for (var i = 0; i < count; i++) {
+        // Separate by team
+        var teamAPlayers = [];
+        var teamBPlayers = [];
+        for (var i = 0; i < playerList.length; i++) {
             var p = playerList[i];
-            // Assign flight based on position: 0-3 = Flight 1, 4-7 = Flight 2
-            var flight = (i < 4) ? 1 : 2;
-            // Assign team based on position: 0,2,4,6 = Team A, 1,3,5,7 = Team B (alternating)
-            var team = (i % 2 === 0) ? "A" : "B";
-            selectedPlayers.push({
-                name: p.name,
-                handicap: p.handicap,
-                team: team,
+            var team = p.defaultTeam || "A";
+            if (team === "A") {
+                teamAPlayers.push(p);
+            } else {
+                teamBPlayers.push(p);
+            }
+        }
+        
+        // Sort by handicap (lowest first)
+        teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+        
+        // Take top 4 from each team
+        var selectedA = teamAPlayers.slice(0, 4);
+        var selectedB = teamBPlayers.slice(0, 4);
+        
+        // Pad if less than 4 players per team
+        while (selectedA.length < 4) {
+            selectedA.push({ name: "", handicap: 0, defaultTeam: "A", label: "" });
+        }
+        while (selectedB.length < 4) {
+            selectedB.push({ name: "", handicap: 0, defaultTeam: "B", label: "" });
+        }
+        
+        // Build state.players with slot labels
+        var result = [];
+        // Team A: slots 0-3
+        for (var i = 0; i < selectedA.length; i++) {
+            var p = selectedA[i];
+            var flight = (i < 2) ? 1 : 2;
+            result.push({
+                name: p.name || "",
+                handicap: p.handicap || 0,
+                team: "A",
                 flight: flight,
-                label: generateLabel(p.name)
+                label: p.label || generateLabel(p.name),
+                slot: "A" + (i + 1)
             });
         }
-        state.players = selectedPlayers;
+        // Team B: slots 4-7
+        for (var i = 0; i < selectedB.length; i++) {
+            var p = selectedB[i];
+            var flight = (i < 2) ? 1 : 2;
+            result.push({
+                name: p.name || "",
+                handicap: p.handicap || 0,
+                team: "B",
+                flight: flight,
+                label: p.label || generateLabel(p.name),
+                slot: "B" + (i + 1)
+            });
+        }
+        
+        state.players = result;
+        console.log("[SETUP-GAME] Pre-populated", state.players.length, "players from playerManagement");
         if (callback) callback();
         return;
     }
     
-    // Fallback to hardcoded players
-    state.players = HARDCODED_FALLBACK_PLAYERS.map(function(p) {
-        return { name: p.name, handicap: p.handicap, team: p.team, flight: p.flight, label: generateLabel(p.name) };
-    });
+    // Fallback: hardcoded default players
+    var fallback = [
+        { name: "Ang C H", handicap: 1, team: "A", flight: 1, label: "ACH", slot: "A1" },
+        { name: "Chenh Hoe", handicap: 10, team: "A", flight: 1, label: "CH", slot: "A2" },
+        { name: "C K", handicap: 8, team: "A", flight: 2, label: "CK", slot: "A3" },
+        { name: "Yip H M", handicap: 12, team: "A", flight: 2, label: "YHM", slot: "A4" },
+        { name: "Jeff Goh", handicap: 0, team: "B", flight: 1, label: "JG", slot: "B1" },
+        { name: "Ong C B", handicap: 1, team: "B", flight: 1, label: "OCB", slot: "B2" },
+        { name: "Piti", handicap: 8, team: "B", flight: 2, label: "P", slot: "B3" },
+        { name: "James Ong", handicap: 11, team: "B", flight: 2, label: "JO", slot: "B4" }
+    ];
+    state.players = fallback;
+    console.log("[SETUP-GAME] Using fallback players");
     if (callback) callback();
 }
 
@@ -828,9 +878,6 @@ function loadCourses(callback) {
     });
 }
 
-// ============================================================
-// v1.42: populatePlayerFields - auto-fill from selected player
-// ============================================================
 function populatePlayerFields(idx) {
     var select = document.querySelector('.player-name-select[data-idx="' + idx + '"]');
     if (!select) return;
@@ -838,7 +885,6 @@ function populatePlayerFields(idx) {
     var selectedName = select.value;
     if (!selectedName) return;
     
-    // Find player in playerList
     var player = null;
     for (var i = 0; i < playerList.length; i++) {
         if (playerList[i].name === selectedName) {
@@ -849,21 +895,19 @@ function populatePlayerFields(idx) {
     
     if (!player) return;
     
-    // Update handicap
     var hcpInput = document.querySelector('.player-hcp-input[data-idx="' + idx + '"]');
     if (hcpInput) {
         hcpInput.value = player.handicap;
         state.players[idx].handicap = player.handicap;
     }
     
-    // Update team
     var teamSelect = document.querySelector('.team-select[data-idx="' + idx + '"]');
     if (teamSelect) {
-        teamSelect.value = player.defaultTeam || "A";
-        state.players[idx].team = player.defaultTeam || "A";
+        var defaultTeam = player.defaultTeam || "A";
+        teamSelect.value = defaultTeam;
+        state.players[idx].team = defaultTeam;
     }
     
-    // Update label
     var labelDisplay = document.querySelector('.label-display[data-idx="' + idx + '"]');
     if (labelDisplay) {
         var label = player.label || generateLabel(player.name);
@@ -872,15 +916,9 @@ function populatePlayerFields(idx) {
     }
     
     state.players[idx].name = player.name;
+    state.players[idx].slot = (state.players[idx].team === "A" ? "A" : "B") + (idx % 4 + 1);
     
     if (state.isEditMode) checkForChanges();
-}
-
-function updatePlayerName(idx, value) {
-    state.players[idx].name = value;
-    state.players[idx].label = generateLabel(value);
-    if (state.isEditMode) checkForChanges();
-    render();
 }
 
 function updatePlayerHandicap(idx, value) {
@@ -891,6 +929,7 @@ function updatePlayerHandicap(idx, value) {
 
 function updatePlayerTeam(idx, value) {
     state.players[idx].team = value;
+    state.players[idx].slot = (value === "A" ? "A" : "B") + (idx % 4 + 1);
     if (state.isEditMode) checkForChanges();
     render();
 }
@@ -1217,9 +1256,6 @@ function onCourseChange(courseId) {
     render();
 }
 
-// ============================================================
-// v1.42: render() with dropdowns and auto-fill
-// ============================================================
 function render() {
     var courseOptions = '';
     for (var i = 0; i < state.courses.length; i++) {
@@ -1232,21 +1268,50 @@ function render() {
     var playerOptions = '';
     for (var i = 0; i < playerList.length; i++) {
         var p = playerList[i];
+        var label = p.label || generateLabel(p.name);
         playerOptions += '<option value="' + escapeHtml(p.name) + '">' + escapeHtml(p.name) + ' (HCP ' + p.handicap + ')</option>';
     }
     
-    var displayPlayers = [...state.players];
-    displayPlayers.sort(function(a, b) {
-        if (a.team !== b.team) return a.team === "A" ? -1 : 1;
-        if (a.flight !== b.flight) return a.flight - b.flight;
-        return a.handicap - b.handicap;
-    });
+    // Display players in slot order (A1, A2, A3, A4, B1, B2, B3, B4)
+    var displayPlayers = [];
+    // Team A: slots 0-3
+    var teamAPlayers = state.players.filter(function(p) { return p.team === "A"; });
+    teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+    // Team B: slots 4-7
+    var teamBPlayers = state.players.filter(function(p) { return p.team === "B"; });
+    teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
+    
+    // Build final display order
+    displayPlayers = [];
+    for (var i = 0; i < 4; i++) {
+        if (i < teamAPlayers.length) {
+            var p = teamAPlayers[i];
+            var flight = (i < 2) ? 1 : 2;
+            p.flight = flight;
+            p.slot = "A" + (i + 1);
+            displayPlayers.push(p);
+        } else {
+            displayPlayers.push({ name: "", handicap: 0, team: "A", flight: (i < 2) ? 1 : 2, label: "", slot: "A" + (i + 1) });
+        }
+    }
+    for (var i = 0; i < 4; i++) {
+        if (i < teamBPlayers.length) {
+            var p = teamBPlayers[i];
+            var flight = (i < 2) ? 1 : 2;
+            p.flight = flight;
+            p.slot = "B" + (i + 1);
+            displayPlayers.push(p);
+        } else {
+            displayPlayers.push({ name: "", handicap: 0, team: "B", flight: (i < 2) ? 1 : 2, label: "", slot: "B" + (i + 1) });
+        }
+    }
     
     var playersHtml = '';
     for (var idx = 0; idx < displayPlayers.length; idx++) {
         var p = displayPlayers[idx];
-        var originalIdx = state.players.findIndex(function(orig) { 
-            return orig.name === p.name && orig.flight === p.flight && orig.team === p.team; 
+        // Find original index in state.players for binding
+        var originalIdx = state.players.findIndex(function(orig) {
+            return orig.name === p.name && orig.team === p.team && orig.flight === p.flight;
         });
         if (originalIdx === -1) originalIdx = idx;
         
@@ -1259,6 +1324,7 @@ function render() {
             <div class="player-row">
                 <div class="player-line1">
                     <div class="name-group">
+                        <span class="slot-label">${p.slot || (p.team + (idx % 4 + 1))}</span>
                         <select class="player-name-select" data-idx="${originalIdx}" onchange="populatePlayerFields(${originalIdx})">
                             <option value="">— Select player —</option>
                             ${playerOptions}
@@ -1452,9 +1518,8 @@ function render() {
         });
     });
     
-    // v1.42: Dropdown change handlers
+    // Dropdown change handlers
     document.querySelectorAll(".player-name-select").forEach(function(el) {
-        // Auto-populate on change
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
             populatePlayerFields(idx);
@@ -1532,7 +1597,7 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
     
     archiveOldGames();
     
-    // v1.42: Load player list first, then courses, then edit mode
+    // v1.43: Load player list first, then courses, then edit mode
     loadPlayerList(function() {
         loadEditMode(function() {
             loadCourses(function() {
@@ -1547,15 +1612,14 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.42
-KEY CHANGES from v1.41:
-   - CHANGED: Player name input now dropdown from playerInformation/players
-   - CHANGED: Handicap, Team, Flight auto-populate from selected player
-   - CHANGED: Player rows now use dropdown + auto-fill
-   - ADDED: loadPlayerList() function to fetch players from Firestore
-   - ADDED: populatePlayerFields() to fill handicap, team, flight on selection
+VERSION: 1.43
+KEY CHANGES from v1.42:
+   - CHANGED: Player slots pre-populated from playerManagement on load
+   - CHANGED: Team A slots (A1-A4) and Team B slots (B1-B4) by handicap
+   - CHANGED: Flight assignment: slots 1-2 = Flight 1, slots 3-4 = Flight 2
+   - CHANGED: loadDefaultPlayers() now distributes players by team and handicap
    - PRESERVED: All baseline UI styling from v1.41
-   - PRESERVED: All functionality from v1.41
+   - PRESERVED: All functionality from v1.42
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
