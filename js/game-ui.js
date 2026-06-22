@@ -1,18 +1,18 @@
 /*
 FILE: js/game-ui.js
-VERSION: 5.08
-KEY CHANGES from v5.07:
-   - REFACTORED: getDisplayHoles() now uses GameOrder as the single source of truth
-   - Removed local play order generation logic
-   - Now delegates to GameOrder.getDisplayHoles() for hole order
-   - All other functionality preserved (P/N button logic, styles, etc.)
+VERSION: 5.09
+KEY CHANGES from v5.08:
+   - FIXED: Cross-flight match bubbles now show grey AS until BOTH flights have scores
+   - CHANGED: getBubbleClassShared() now checks both flights for cross-flight matches
+   - FIXED: Intra-flight and cross-flight now have consistent "no data" behavior (grey AS)
+   - PRESERVED: All other functionality from v5.08
 DEPENDS ON: GameOrder
 STATUS: Ready for integration
 */
 
 var GameUI = (function() {
     
-    console.log("[GAME-UI] Initializing v5.08 - using GameOrder for display holes");
+    console.log("[GAME-UI] Initializing v5.09 - Fixed cross-flight AS bubble color");
     
     // ============================================================
     // Constants
@@ -1214,12 +1214,32 @@ var GameUI = (function() {
         return (player.team === 'B') ? -value : value;
     }
     
+    // ============================================================
+    // v5.09: FIXED - getBubbleClassShared - Cross-flight needs BOTH flights saved
+    // ============================================================
+    
     function getBubbleClassShared(player, opponent, currentHole, resultsCache, allPlayers, isHoleSavedFn, getHolePositionFn, clinchedAtMap) {
         var matchValue = getMatchValueShared(player, opponent, currentHole, resultsCache, allPlayers, getHolePositionFn);
-        var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
         
-        if (!isHoleSavedForFlight) return 'bubble-grey';
+        // === FIX v5.09: Check BOTH flights for cross-flight ===
+        if (player.flight !== opponent.flight) {
+            // Cross-flight: need BOTH flights to have saved data for this hole
+            var f1Saved = isHoleSavedFn(1, currentHole);
+            var f2Saved = isHoleSavedFn(2, currentHole);
+            if (!f1Saved || !f2Saved) {
+                // console.log(`[DEBUG-UI] ${player.label} vs ${opp.label}: CROSS-FLIGHT - BOTH flights not saved, GREY AS`);
+                return 'bubble-grey';
+            }
+        } else {
+            // Intra-flight: only check the player's flight
+            var isHoleSavedForFlight = isHoleSavedFn(player.flight, currentHole);
+            if (!isHoleSavedForFlight) {
+                // console.log(`[DEBUG-UI] ${player.label} vs ${opp.label}: INTRA-FLIGHT - ${player.flight} not saved, GREY AS`);
+                return 'bubble-grey';
+            }
+        }
         
+        // Check if match is clinched
         var clinchHole = null;
         if (clinchedAtMap) {
             var matchKey1 = player.name + "_vs_" + opponent.name;
@@ -1234,6 +1254,7 @@ var GameUI = (function() {
             return 'bubble-green';
         }
         
+        // Match value based colors
         if (matchValue > 0) return 'bubble-green';
         if (matchValue < 0) return 'bubble-red';
         return 'bubble-green';
@@ -1378,12 +1399,12 @@ window.GameUI = GameUI;
 
 /*
 FILE: js/game-ui.js
-VERSION: 5.08
-KEY CHANGES from v5.07:
-   - REFACTORED: getDisplayHoles() now uses GameOrder as the single source of truth
-   - Removed local play order generation logic
-   - Now delegates to GameOrder.getDisplayHoles() for hole order
-   - All other functionality preserved (P/N button logic, styles, etc.)
+VERSION: 5.09
+KEY CHANGES from v5.08:
+   - FIXED: Cross-flight match bubbles now show grey AS until BOTH flights have scores
+   - CHANGED: getBubbleClassShared() now checks both flights for cross-flight matches
+   - FIXED: Intra-flight and cross-flight now have consistent "no data" behavior (grey AS)
+   - PRESERVED: All other functionality from v5.08
 DEPENDS ON: GameOrder
 STATUS: Ready for integration
 */
