@@ -1,11 +1,12 @@
 <!--
 FILE: player-management.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - CHANGED: Edit/Del buttons replaced with SVG icons (pencil and trash)
-   - CHANGED: All player list elements now use consistent 0.75rem font size
-   - CHANGED: Mobile adjustments for 400px (0.7rem / 0.65rem)
-   - PRESERVED: All functionality from v1.10
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: 2-line form layout with labels above fields
+   - CHANGED: Line 1: Name (flex) + Label (narrow, 80px)
+   - CHANGED: Line 2: Hcp (60px) + Team (flex) + Cancel + Add buttons
+   - CHANGED: Consistent spacing and professional look
+   - PRESERVED: All functionality from v1.12
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -96,7 +97,7 @@ STATUS: Ready for integration
         }
         
         .card-title { 
-            font-size: 0.7rem; 
+            font-size: 0.75rem; 
             font-weight: 500; 
             color: #4caf50; 
             margin-bottom: 12px; 
@@ -104,65 +105,94 @@ STATUS: Ready for integration
             text-transform: uppercase;
         }
         
-        /* 2x2 grid form */
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 0.6fr;
-            gap: 8px 12px;
-            width: 100%;
+        /* ===== 2-LINE FORM LAYOUT ===== */
+        .form-line {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 8px;
+            align-items: flex-end;
+            flex-wrap: wrap;
         }
-        .form-grid .field {
-            width: 100%;
+        .form-line:last-child {
+            margin-bottom: 0;
+        }
+        
+        .form-group {
             display: flex;
             flex-direction: column;
             gap: 2px;
+            flex: 1;
         }
-        .form-grid .field label {
-            font-size: 0.6rem;
+        .form-group label {
+            font-size: 0.55rem;
             color: #4caf50;
             letter-spacing: 0.5px;
             text-transform: uppercase;
         }
-        .form-grid .field input,
-        .form-grid .field select {
+        .form-group input,
+        .form-group select {
             width: 100%;
             background: #0a0a0a;
             border: 1px solid #2a5a2a;
             border-radius: 6px;
-            padding: 8px 10px;
+            padding: 6px 8px;
             color: #e0e0e0;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             transition: border-color 0.2s ease;
             box-sizing: border-box;
         }
-        .form-grid .field input:focus,
-        .form-grid .field select:focus {
+        .form-group input:focus,
+        .form-group select:focus {
             outline: none;
             border-color: #4caf50;
         }
-        /* Label field - narrow, centered */
-        .form-grid .field.label-field input {
+        
+        /* Name group - flexible */
+        .form-group.name-group {
+            flex: 1;
+        }
+        
+        /* Label group - narrow (3 chars) */
+        .form-group.label-group {
+            flex: 0 0 80px;
+        }
+        .form-group.label-group input {
             max-width: 80px;
             text-align: center;
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             letter-spacing: 1px;
         }
-        /* Hcp field - centered */
-        .form-grid .field.hcp-field input {
-            text-align: center;
-            font-weight: 600;
-        }
-        .form-grid .field .hint {
-            font-size: 0.5rem;
-            color: #555;
-            margin-top: 1px;
-        }
-        .form-grid .field.label-field .hint {
+        .form-group.label-group .hint {
             display: none;
         }
-        .form-grid .field.full-width {
-            grid-column: 1 / -1;
+        
+        /* Hcp group - narrow, left-aligned */
+        .form-group.hcp-group {
+            flex: 0 0 60px;
+        }
+        .form-group.hcp-group input {
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        /* Team group - flexible */
+        .form-group.team-group {
+            flex: 1;
+        }
+        
+        /* Action buttons - inline */
+        .form-actions {
+            display: flex;
+            gap: 6px;
+            align-items: flex-end;
+            flex-shrink: 0;
+        }
+        .form-actions .btn {
+            padding: 6px 14px;
+            font-size: 0.8rem;
+            border-radius: 6px;
+            white-space: nowrap;
         }
         
         .btn {
@@ -186,7 +216,7 @@ STATUS: Ready for integration
         .btn-danger:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.04); }
         .btn-small { 
             padding: 4px 6px; 
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -217,25 +247,13 @@ STATUS: Ready for integration
         .btn-cancel { border-color: #2a5a2a; color: #666; }
         .btn-cancel:hover { border-color: #4caf50; color: #888; }
         
-        .btn-group { 
-            display: flex; 
-            gap: 10px; 
-            margin-top: 12px; 
-            width: 100%;
-            justify-content: flex-end;
-        }
-        .btn-group .btn { 
-            flex: 0 1 auto; 
-            padding: 10px 20px;
-        }
-        
-        /* Player list - single line flex with consistent 0.75rem font */
+        /* ===== PLAYER LIST - 0.8rem ===== */
         .player-list { margin-top: 4px; }
         .player-item {
             display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 6px 10px;
+            gap: 4px;
+            padding: 4px 8px;
             background: rgba(10, 10, 10, 0.5);
             border-radius: 6px;
             margin-bottom: 4px;
@@ -246,8 +264,8 @@ STATUS: Ready for integration
         }
         .player-item .p-name { 
             flex: 1;
-            min-width: 0;
-            font-size: 0.75rem;
+            min-width: 80px;
+            font-size: 0.8rem;
             font-weight: 500;
             color: #e0e0e0;
             overflow: hidden;
@@ -256,33 +274,33 @@ STATUS: Ready for integration
         }
         .player-item .p-label { 
             flex: 0 0 auto;
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             font-weight: 600;
             color: #4caf50;
             background: #1a3a1a;
-            padding: 2px 6px;
+            padding: 1px 5px;
             border-radius: 4px;
             text-align: center;
-            min-width: 22px;
+            min-width: 20px;
         }
         .player-item .p-hcp { 
             flex: 0 0 auto;
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             color: #4caf50;
-            min-width: 28px;
+            min-width: 24px;
             text-align: center;
         }
         .player-item .p-team { 
             flex: 0 0 auto;
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             color: #ffaa44;
-            min-width: 22px;
+            min-width: 20px;
             text-align: center;
         }
         .player-item .p-actions { 
             display: flex;
             flex: 0 0 auto;
-            gap: 4px;
+            gap: 3px;
             flex-wrap: nowrap;
         }
         
@@ -307,19 +325,20 @@ STATUS: Ready for integration
         .footer { text-align: center; margin-top: 16px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
-        /* Mobile adjustments */
+        /* ===== MOBILE ADJUSTMENTS ===== */
         @media (max-width: 400px) {
             .player-item {
-                gap: 4px;
-                padding: 4px 8px;
+                gap: 3px;
+                padding: 3px 6px;
             }
             .player-item .p-name {
-                font-size: 0.7rem;
+                font-size: 0.75rem;
+                min-width: 60px;
             }
             .player-item .p-label,
             .player-item .p-hcp,
             .player-item .p-team {
-                font-size: 0.65rem;
+                font-size: 0.7rem;
             }
             .btn-small {
                 min-width: 24px;
@@ -329,18 +348,28 @@ STATUS: Ready for integration
                 width: 12px;
                 height: 12px;
             }
-            .form-grid {
-                grid-template-columns: 1fr 0.6fr;
-                gap: 6px 8px;
+            
+            .form-line {
+                gap: 6px;
             }
-            .form-grid .field input,
-            .form-grid .field select {
-                padding: 6px 8px;
-                font-size: 0.8rem;
+            .form-group.label-group {
+                flex: 0 0 60px;
             }
-            .btn-group .btn {
-                padding: 8px 14px;
-                font-size: 0.8rem;
+            .form-group.label-group input {
+                max-width: 60px;
+                font-size: 0.75rem;
+            }
+            .form-group.hcp-group {
+                flex: 0 0 50px;
+            }
+            .form-group input,
+            .form-group select {
+                padding: 4px 6px;
+                font-size: 0.75rem;
+            }
+            .form-actions .btn {
+                padding: 4px 10px;
+                font-size: 0.75rem;
             }
         }
     </style>
@@ -352,12 +381,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.11</div>
+<div class="version-tag">v1.13</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.11
+// VERSION: 1.13
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -366,8 +395,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.11";
-var CACHE_KEY = "player_management_v111";
+var APP_VERSION = "1.13";
+var CACHE_KEY = "player_management_v113";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -379,8 +408,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.11";
-console.log("[PLAYER-MGMT] Initializing v1.11 - SVG icons, consistent 0.75rem fonts");
+window.PLAYER_MGMT_VERSION = "1.13";
+console.log("[PLAYER-MGMT] Initializing v1.13 - 2-line form layout");
 
 // ============================================================
 // Firebase
@@ -580,34 +609,40 @@ function render() {
             </div>
         </div>
         
-        <!-- Add/Edit Form (SECOND) -->
+        <!-- Add/Edit Form (SECOND) - 2-LINE LAYOUT -->
         <div class="card">
             <div class="card-title">${editingIndex >= 0 ? 'Edit Player' : 'Add New Player'}</div>
-            <div class="form-grid">
-                <div class="field">
+            
+            <!-- LINE 1: Name + Label -->
+            <div class="form-line">
+                <div class="form-group name-group">
                     <label>Name</label>
                     <input type="text" id="playerName" placeholder="" value="${escapeHtml(currentName)}" oninput="onNameInput()">
                 </div>
-                <div class="field hcp-field">
-                    <label>Hcp</label>
-                    <input type="number" id="playerHcp" min="0" max="54" value="${currentHcp}">
-                </div>
-                <div class="field label-field">
-                    <label>Label (max 3)</label>
+                <div class="form-group label-group">
+                    <label>Label</label>
                     <input type="text" id="playerLabel" class="label-input" value="${escapeHtml(currentLabel)}" maxlength="3" placeholder="" oninput="onLabelInput()">
                     <span class="hint">system generated</span>
                 </div>
-                <div class="field">
+            </div>
+            
+            <!-- LINE 2: Hcp + Team + Cancel + Add -->
+            <div class="form-line">
+                <div class="form-group hcp-group">
+                    <label>Hcp</label>
+                    <input type="number" id="playerHcp" min="0" max="54" value="${currentHcp}">
+                </div>
+                <div class="form-group team-group">
                     <label>Team</label>
                     <select id="playerTeam">
                         <option value="A" ${currentTeam === 'A' ? 'selected' : ''}>Team A</option>
                         <option value="B" ${currentTeam === 'B' ? 'selected' : ''}>Team B</option>
                     </select>
                 </div>
-            </div>
-            <div class="btn-group">
-                <button class="btn btn-cancel" id="cancelBtn">Cancel</button>
-                <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? 'Update' : 'Add'}</button>
+                <div class="form-actions">
+                    <button class="btn btn-cancel" id="cancelBtn">Cancel</button>
+                    <button class="btn btn-save" id="savePlayerBtn">${editingIndex >= 0 ? 'Update' : 'Add'}</button>
+                </div>
             </div>
         </div>
         
@@ -822,12 +857,13 @@ window.cancelForm = cancelForm;
 
 <!--
 FILE: player-management.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - CHANGED: Edit/Del buttons replaced with SVG icons (pencil and trash)
-   - CHANGED: All player list elements now use consistent 0.75rem font size
-   - CHANGED: Mobile adjustments for 400px (0.7rem / 0.65rem)
-   - PRESERVED: All functionality from v1.10
+VERSION: 1.13
+KEY CHANGES from v1.12:
+   - FIXED: 2-line form layout with labels above fields
+   - CHANGED: Line 1: Name (flex) + Label (narrow, 80px)
+   - CHANGED: Line 2: Hcp (60px) + Team (flex) + Cancel + Add buttons
+   - CHANGED: Consistent spacing and professional look
+   - PRESERVED: All functionality from v1.12
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
