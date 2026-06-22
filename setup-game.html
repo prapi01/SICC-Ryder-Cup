@@ -1,14 +1,14 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.49
-KEY CHANGES from v1.48:
-   - FIXED: Fixed column widths for table layout: Name(132px), Label(40px), HCP(30px), Team(40px), Flight(44px)
-   - FIXED: HCP spinner arrows removed, numbers right-aligned
-   - FIXED: All row content font size 14px
-   - ADDED: Horizontal scroll for screens smaller than table width
-   - FIXED: Header alignment with invisible Label column
-   - CHANGED: Player rows now use fixed-width columns for orderly alignment
-   - PRESERVED: All functionality from v1.48
+VERSION: 1.50
+KEY CHANGES from v1.49:
+   - FIXED: Custom dropdown arrows for Team and Flight (works on iOS, Android, Desktop)
+   - FIXED: Date picker icon visible on iOS
+   - FIXED: Course dropdown arrow visible on iOS
+   - CHANGED: Added select-wrapper for dropdowns with custom arrows
+   - CHANGED: Team width 44px, Flight width 48px (room for arrow)
+   - FIXED: HCP arrows removed (unchanged)
+   - PRESERVED: All functionality from v1.49
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -103,7 +103,7 @@ STATUS: Ready for integration
             text-transform: uppercase;
         }
         
-        /* Combined card row styles */
+        /* ===== FORM ROW STYLES ===== */
         .form-row-compact {
             display: flex;
             align-items: center;
@@ -137,7 +137,15 @@ STATUS: Ready for integration
             outline: none;
             border-color: #4caf50;
         }
-        .form-row-compact input.date-input { min-width: 140px; }
+        .form-row-compact input.date-input { 
+            min-width: 140px;
+            -webkit-appearance: menulist !important;
+            appearance: menulist !important;
+        }
+        .form-row-compact select {
+            -webkit-appearance: menulist !important;
+            appearance: menulist !important;
+        }
         
         .form-row-inline {
             display: flex;
@@ -168,6 +176,8 @@ STATUS: Ready for integration
             font-size: 0.85rem;
             min-width: 80px;
             transition: border-color 0.2s ease;
+            -webkit-appearance: menulist !important;
+            appearance: menulist !important;
         }
         .form-row-inline .field-group select:focus {
             outline: none;
@@ -250,6 +260,8 @@ STATUS: Ready for integration
             white-space: nowrap;
             cursor: pointer;
             transition: border-color 0.2s ease;
+            -webkit-appearance: menulist !important;
+            appearance: menulist !important;
         }
         .player-name-select:focus {
             outline: none;
@@ -310,9 +322,8 @@ STATUS: Ready for integration
             color: #e0e0e0;
             height: 22px;
             outline: none;
-            -webkit-appearance: none;
-            -moz-appearance: textfield;
-            appearance: textfield;
+            -webkit-appearance: none !important;
+            appearance: none !important;
         }
         .hcp-group input[type="number"]::-webkit-outer-spin-button,
         .hcp-group input[type="number"]::-webkit-inner-spin-button {
@@ -320,22 +331,42 @@ STATUS: Ready for integration
             margin: 0;
         }
         
-        /* Column 4: Team - 40px, center */
+        /* Column 4: Team - 44px, center, with custom arrow */
+        .team-wrapper {
+            flex: 0 0 44px;
+            width: 44px;
+            min-width: 44px;
+            max-width: 44px;
+            position: relative;
+            display: inline-block;
+            height: 24px;
+        }
+        .team-wrapper::after {
+            content: '▼';
+            position: absolute;
+            right: 3px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 7px;
+            color: #4caf50;
+            pointer-events: none;
+            opacity: 0.7;
+        }
         .team-display {
-            flex: 0 0 40px;
-            width: 40px;
-            min-width: 40px;
-            max-width: 40px;
+            width: 100%;
+            height: 24px;
             font-size: 14px;
             text-align: center;
-            padding: 1px 4px;
+            padding: 1px 16px 1px 4px;
             font-weight: 600;
             color: #ffaa44;
             border: 1px solid #2a5a2a;
             border-radius: 3px;
             background: #0a0a0a;
-            height: 24px;
             cursor: pointer;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            transition: border-color 0.2s ease;
         }
         .team-display:focus {
             outline: none;
@@ -346,22 +377,42 @@ STATUS: Ready for integration
             color: #e0e0e0;
         }
         
-        /* Column 5: Flight - 44px, center */
+        /* Column 5: Flight - 48px, center, with custom arrow */
+        .flight-wrapper {
+            flex: 0 0 48px;
+            width: 48px;
+            min-width: 48px;
+            max-width: 48px;
+            position: relative;
+            display: inline-block;
+            height: 24px;
+        }
+        .flight-wrapper::after {
+            content: '▼';
+            position: absolute;
+            right: 3px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 7px;
+            color: #4caf50;
+            pointer-events: none;
+            opacity: 0.7;
+        }
         .flight-display {
-            flex: 0 0 44px;
-            width: 44px;
-            min-width: 44px;
-            max-width: 44px;
+            width: 100%;
+            height: 24px;
             font-size: 14px;
             text-align: center;
-            padding: 1px 4px;
+            padding: 1px 16px 1px 4px;
             font-weight: 600;
             color: #4caf50;
             border: 1px solid #2a5a2a;
             border-radius: 3px;
             background: #0a0a0a;
-            height: 24px;
             cursor: pointer;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+            transition: border-color 0.2s ease;
         }
         .flight-display:focus {
             outline: none;
@@ -424,10 +475,10 @@ STATUS: Ready for integration
             height: 24px;
         }
         .player-header-row .header-team {
-            flex: 0 0 40px;
-            width: 40px;
-            min-width: 40px;
-            max-width: 40px;
+            flex: 0 0 44px;
+            width: 44px;
+            min-width: 44px;
+            max-width: 44px;
             text-align: center;
             display: flex;
             align-items: center;
@@ -435,10 +486,10 @@ STATUS: Ready for integration
             height: 24px;
         }
         .player-header-row .header-flight {
-            flex: 0 0 44px;
-            width: 44px;
-            min-width: 44px;
-            max-width: 44px;
+            flex: 0 0 48px;
+            width: 48px;
+            min-width: 48px;
+            max-width: 48px;
             text-align: center;
             display: flex;
             align-items: center;
@@ -565,11 +616,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.49</div>
+<div class="version-tag">v1.50</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.49
+// VERSION: 1.50
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -577,8 +628,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.49";
-var CACHE_KEY = "setup_game_version_v149";
+var VERSION = "1.50";
+var CACHE_KEY = "setup_game_version_v150";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1570,6 +1621,7 @@ function render() {
             playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
         }
         
+        // v1.50: Team and Flight with wrapper for custom arrow
         playersHtml += `
             <div class="player-row">
                 <div class="player-line1">
@@ -1581,14 +1633,18 @@ function render() {
                         <label>Hcp</label>
                         <input type="number" class="player-hcp-input" value="${p.handicap}" data-idx="${originalIdx}" step="1" min="0" max="54">
                     </div>
-                    <select class="team-display" data-idx="${originalIdx}" onchange="updatePlayerTeam(${originalIdx}, this.value)">
-                        <option value="A" ${p.team === "A" ? "selected" : ""}>A</option>
-                        <option value="B" ${p.team === "B" ? "selected" : ""}>B</option>
-                    </select>
-                    <select class="flight-display" data-idx="${originalIdx}" onchange="updatePlayerFlight(${originalIdx}, this.value)">
-                        <option value="1" ${p.flight === 1 ? "selected" : ""}>F1</option>
-                        <option value="2" ${p.flight === 2 ? "selected" : ""}>F2</option>
-                    </select>
+                    <div class="team-wrapper">
+                        <select class="team-display" data-idx="${originalIdx}" onchange="updatePlayerTeam(${originalIdx}, this.value)">
+                            <option value="A" ${p.team === "A" ? "selected" : ""}>A</option>
+                            <option value="B" ${p.team === "B" ? "selected" : ""}>B</option>
+                        </select>
+                    </div>
+                    <div class="flight-wrapper">
+                        <select class="flight-display" data-idx="${originalIdx}" onchange="updatePlayerFlight(${originalIdx}, this.value)">
+                            <option value="1" ${p.flight === 1 ? "selected" : ""}>F1</option>
+                            <option value="2" ${p.flight === 2 ? "selected" : ""}>F2</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="player-line2"></div>
             </div>
@@ -1803,15 +1859,15 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.49
-KEY CHANGES from v1.48:
-   - FIXED: Fixed column widths for table layout: Name(132px), Label(40px), HCP(30px), Team(40px), Flight(44px)
-   - FIXED: HCP spinner arrows removed, numbers right-aligned
-   - FIXED: All row content font size 14px
-   - ADDED: Horizontal scroll for screens smaller than table width
-   - FIXED: Header alignment with invisible Label column
-   - CHANGED: Player rows now use fixed-width columns for orderly alignment
-   - PRESERVED: All functionality from v1.48
+VERSION: 1.50
+KEY CHANGES from v1.49:
+   - FIXED: Custom dropdown arrows for Team and Flight (works on iOS, Android, Desktop)
+   - FIXED: Date picker icon visible on iOS
+   - FIXED: Course dropdown arrow visible on iOS
+   - CHANGED: Added select-wrapper for dropdowns with custom arrows
+   - CHANGED: Team width 44px, Flight width 48px (room for arrow)
+   - FIXED: HCP arrows removed (unchanged)
+   - PRESERVED: All functionality from v1.49
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
