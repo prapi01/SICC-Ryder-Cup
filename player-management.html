@@ -1,13 +1,10 @@
 <!--
 FILE: player-management.html
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - FIXED: 2-line form layout CSS (was completely broken)
-   - CHANGED: Proper flex layout for form lines and groups
-   - CHANGED: Name group flexible, Label group narrow (80px)
-   - CHANGED: Hcp group narrow (60px), Team group flexible
-   - CHANGED: Form actions (buttons) properly aligned
-   - PRESERVED: All functionality from v1.16
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - CHANGED: Team group now fixed width (100px) instead of flex: 1
+   - CHANGED: Form line now uses flex-wrap: nowrap to keep fields on one line
+   - PRESERVED: All functionality and other styling from v1.17
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -143,7 +140,7 @@ STATUS: Ready for integration
         /* ===== 2-LINE FORM LAYOUT ===== */
         .form-line {
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             gap: 8px 12px;
             margin-bottom: 8px;
             align-items: flex-end;
@@ -214,10 +211,12 @@ STATUS: Ready for integration
             font-weight: 600;
         }
         
-        /* Team group - flexible */
+        /* Team group - fixed width */
         .form-group.team-group {
-            flex: 1;
+            flex: 0 0 100px;
+            width: 100px;
             min-width: 100px;
+            max-width: 100px;
         }
         
         /* Action buttons - inline */
@@ -432,12 +431,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.17</div>
+<div class="version-tag">v1.18</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.17
+// VERSION: 1.18
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -446,8 +445,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.17";
-var CACHE_KEY = "player_management_v117";
+var APP_VERSION = "1.18";
+var CACHE_KEY = "player_management_v118";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -459,8 +458,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.17";
-console.log("[PLAYER-MGMT] Initializing v1.17 - Fixed 2-line form layout");
+window.PLAYER_MGMT_VERSION = "1.18";
+console.log("[PLAYER-MGMT] Initializing v1.18 - Team fixed width, no wrap");
 
 // ============================================================
 // Firebase
@@ -911,14 +910,11 @@ window.cancelForm = cancelForm;
 
 <!--
 FILE: player-management.html
-VERSION: 1.17
-KEY CHANGES from v1.16:
-   - FIXED: 2-line form layout CSS (was completely broken)
-   - CHANGED: Proper flex layout for form lines and groups
-   - CHANGED: Name group flexible, Label group narrow (80px)
-   - CHANGED: Hcp group narrow (60px), Team group flexible
-   - CHANGED: Form actions (buttons) properly aligned
-   - PRESERVED: All functionality from v1.16
+VERSION: 1.18
+KEY CHANGES from v1.17:
+   - CHANGED: Team group now fixed width (100px) instead of flex: 1
+   - CHANGED: Form line now uses flex-wrap: nowrap to keep fields on one line
+   - PRESERVED: All functionality and other styling from v1.17
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
