@@ -1,12 +1,13 @@
 <!--
 FILE: player-management.html
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - FIXED: 2-line form layout with labels above fields
-   - CHANGED: Line 1: Name (flex) + Label (narrow, 80px)
-   - CHANGED: Line 2: Hcp (60px) + Team (flex) + Cancel + Add buttons
-   - CHANGED: Consistent spacing and professional look
-   - PRESERVED: All functionality from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - CHANGED: All row content font size to 0.9rem (name, label, hcp, team, buttons)
+   - CHANGED: Form input font size to 0.9rem
+   - CHANGED: Label input size increased for better readability
+   - CHANGED: SVG icons slightly larger (18px)
+   - CHANGED: Mobile adjustments for 400px (0.8rem / 0.75rem)
+   - PRESERVED: 2-line form layout from v1.13
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -124,7 +125,7 @@ STATUS: Ready for integration
             flex: 1;
         }
         .form-group label {
-            font-size: 0.55rem;
+            font-size: 0.6rem;
             color: #4caf50;
             letter-spacing: 0.5px;
             text-transform: uppercase;
@@ -135,9 +136,9 @@ STATUS: Ready for integration
             background: #0a0a0a;
             border: 1px solid #2a5a2a;
             border-radius: 6px;
-            padding: 6px 8px;
+            padding: 8px 10px;
             color: #e0e0e0;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             transition: border-color 0.2s ease;
             box-sizing: border-box;
         }
@@ -160,7 +161,7 @@ STATUS: Ready for integration
             max-width: 80px;
             text-align: center;
             font-weight: 600;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             letter-spacing: 1px;
         }
         .form-group.label-group .hint {
@@ -189,8 +190,8 @@ STATUS: Ready for integration
             flex-shrink: 0;
         }
         .form-actions .btn {
-            padding: 6px 14px;
-            font-size: 0.8rem;
+            padding: 8px 16px;
+            font-size: 0.85rem;
             border-radius: 6px;
             white-space: nowrap;
         }
@@ -216,20 +217,20 @@ STATUS: Ready for integration
         .btn-danger:hover { border-color: #ff6b6b; background: rgba(255, 107, 107, 0.04); }
         .btn-small { 
             padding: 4px 6px; 
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             display: flex;
             align-items: center;
             justify-content: center;
-            min-width: 28px;
-            height: 28px;
+            min-width: 32px;
+            height: 32px;
             border-radius: 4px;
             cursor: pointer;
             transition: all 0.15s ease;
             background: rgba(20, 20, 20, 0.5);
         }
         .btn-small svg {
-            width: 14px;
-            height: 14px;
+            width: 18px;
+            height: 18px;
         }
         .btn-small-edit { 
             border: 1px solid #2a5a2a; 
@@ -247,7 +248,7 @@ STATUS: Ready for integration
         .btn-cancel { border-color: #2a5a2a; color: #666; }
         .btn-cancel:hover { border-color: #4caf50; color: #888; }
         
-        /* ===== PLAYER LIST - 0.8rem ===== */
+        /* ===== PLAYER LIST - 0.9rem ===== */
         .player-list { margin-top: 4px; }
         .player-item {
             display: flex;
@@ -265,7 +266,7 @@ STATUS: Ready for integration
         .player-item .p-name { 
             flex: 1;
             min-width: 80px;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             font-weight: 500;
             color: #e0e0e0;
             overflow: hidden;
@@ -274,27 +275,27 @@ STATUS: Ready for integration
         }
         .player-item .p-label { 
             flex: 0 0 auto;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             font-weight: 600;
             color: #4caf50;
             background: #1a3a1a;
-            padding: 1px 5px;
+            padding: 2px 6px;
             border-radius: 4px;
             text-align: center;
-            min-width: 20px;
+            min-width: 24px;
         }
         .player-item .p-hcp { 
             flex: 0 0 auto;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             color: #4caf50;
-            min-width: 24px;
+            min-width: 28px;
             text-align: center;
         }
         .player-item .p-team { 
             flex: 0 0 auto;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
             color: #ffaa44;
-            min-width: 20px;
+            min-width: 24px;
             text-align: center;
         }
         .player-item .p-actions { 
@@ -332,21 +333,21 @@ STATUS: Ready for integration
                 padding: 3px 6px;
             }
             .player-item .p-name {
-                font-size: 0.75rem;
+                font-size: 0.8rem;
                 min-width: 60px;
             }
             .player-item .p-label,
             .player-item .p-hcp,
             .player-item .p-team {
-                font-size: 0.7rem;
+                font-size: 0.75rem;
             }
             .btn-small {
-                min-width: 24px;
-                height: 24px;
+                min-width: 28px;
+                height: 28px;
             }
             .btn-small svg {
-                width: 12px;
-                height: 12px;
+                width: 16px;
+                height: 16px;
             }
             
             .form-line {
@@ -357,19 +358,19 @@ STATUS: Ready for integration
             }
             .form-group.label-group input {
                 max-width: 60px;
-                font-size: 0.75rem;
+                font-size: 0.8rem;
             }
             .form-group.hcp-group {
                 flex: 0 0 50px;
             }
             .form-group input,
             .form-group select {
-                padding: 4px 6px;
-                font-size: 0.75rem;
+                padding: 6px 8px;
+                font-size: 0.8rem;
             }
             .form-actions .btn {
-                padding: 4px 10px;
-                font-size: 0.75rem;
+                padding: 6px 12px;
+                font-size: 0.8rem;
             }
         }
     </style>
@@ -381,12 +382,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.13</div>
+<div class="version-tag">v1.14</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.13
+// VERSION: 1.14
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -395,8 +396,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.13";
-var CACHE_KEY = "player_management_v113";
+var APP_VERSION = "1.14";
+var CACHE_KEY = "player_management_v114";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -408,8 +409,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.13";
-console.log("[PLAYER-MGMT] Initializing v1.13 - 2-line form layout");
+window.PLAYER_MGMT_VERSION = "1.14";
+console.log("[PLAYER-MGMT] Initializing v1.14 - 0.9rem fonts everywhere");
 
 // ============================================================
 // Firebase
@@ -429,11 +430,11 @@ var isLoading = false;
 // SVG Icons
 // ============================================================
 function getEditSvg() {
-    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
+    return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 }
 
 function getDeleteSvg() {
-    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+    return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
 }
 
 // ============================================================
@@ -857,13 +858,14 @@ window.cancelForm = cancelForm;
 
 <!--
 FILE: player-management.html
-VERSION: 1.13
-KEY CHANGES from v1.12:
-   - FIXED: 2-line form layout with labels above fields
-   - CHANGED: Line 1: Name (flex) + Label (narrow, 80px)
-   - CHANGED: Line 2: Hcp (60px) + Team (flex) + Cancel + Add buttons
-   - CHANGED: Consistent spacing and professional look
-   - PRESERVED: All functionality from v1.12
+VERSION: 1.14
+KEY CHANGES from v1.13:
+   - CHANGED: All row content font size to 0.9rem (name, label, hcp, team, buttons)
+   - CHANGED: Form input font size to 0.9rem
+   - CHANGED: Label input size increased for better readability
+   - CHANGED: SVG icons slightly larger (18px)
+   - CHANGED: Mobile adjustments for 400px (0.8rem / 0.75rem)
+   - PRESERVED: 2-line form layout from v1.13
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
