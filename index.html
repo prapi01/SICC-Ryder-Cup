@@ -1,11 +1,11 @@
 <!--
 FILE: index.html
-VERSION: 3.60
-KEY CHANGES from v3.59:
-   - REMOVED: Gear icon (⚙️) from Game Settings button
-   - CHANGED: Game Settings button border to #2a5a2a (grey-green)
-   - CHANGED: Game Settings button text to #666 (grey)
-   - PRESERVED: All dimensions and functionality from v3.59
+VERSION: 3.61
+KEY CHANGES from v3.60:
+   - FIXED: Shrinking effect - container now stays hidden until after setButtonWidths() completes
+   - CHANGED: Menu buttons (VIEW PREVIOUS GAMES, DEMO & TUTORIAL) now have border: 2px solid #4caf50 (matching GAME DAY button)
+   - CHANGED: Game Settings button border to #2a5a2a (grey)
+   - PRESERVED: All dimensions and functionality from v3.60
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -380,10 +380,10 @@ STATUS: Ready for integration
             width: 100%;
         }
         
-        /* MENU BUTTONS - rounded rectangle, no icons */
+        /* MENU BUTTONS - now with 2px green border matching GAME DAY */
         .menu-btn {
             background: rgba(20, 20, 20, 0.5);
-            border: 1px solid #2a5a2a;
+            border: 2px solid #4caf50;
             border-radius: 10px;
             padding: 14px 20px;
             text-align: center;
@@ -404,10 +404,10 @@ STATUS: Ready for integration
             letter-spacing: -0.1px;
         }
         
-        /* GAME SETTINGS button - grey text and border */
+        /* GAME SETTINGS button - grey border */
         .gsb {
             background: rgba(20, 20, 20, 0.5);
-            border: 1px solid #2a5a2a;
+            border: 2px solid #2a5a2a;
             border-radius: 10px;
             padding: 14px 20px;
             text-align: center;
@@ -618,13 +618,13 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.60</div>
+<div class="version-tag">v3.61</div>
 
 <script>
-// FILE: index.html - VERSION 3.60
+// FILE: index.html - VERSION 3.61
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.60";
+window.INDEX_VERSION = "3.61";
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -635,8 +635,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "3.60";
-var CACHE_KEY = "index_version_v360";
+var APP_VERSION = "3.61";
+var CACHE_KEY = "index_version_v361";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -1390,7 +1390,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.60
+// Initialization - v3.61
 // ============================================================
 
 function initApp() {
@@ -1474,7 +1474,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.60
+// Start the app - v3.61
 // ============================================================
 
 if (isFirstLoad) {
@@ -1510,13 +1510,12 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.60
-KEY CHANGES from v3.59:
-   - REMOVED: Gear icon (⚙️) from Game Settings button
-   - CHANGED: Game Settings button border to #2a5a2a (grey-green)
-   - CHANGED: Game Settings button text to #666 (grey)
-   - CHANGED: renderMainUI() now hides container until widths are calculated
-   - PRESERVED: All dimensions and functionality from v3.59
+VERSION: 3.61
+KEY CHANGES from v3.60:
+   - FIXED: Shrinking effect - container now stays hidden until after setButtonWidths() completes
+   - CHANGED: Menu buttons (VIEW PREVIOUS GAMES, DEMO & TUTORIAL) now have border: 2px solid #4caf50 (matching GAME DAY button)
+   - CHANGED: Game Settings button border to #2a5a2a (grey)
+   - PRESERVED: All dimensions and functionality from v3.60
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
