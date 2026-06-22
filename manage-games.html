@@ -1,15 +1,12 @@
 <!--
 FILE: manage-games.html
-VERSION: 1.28
-KEY CHANGES from v1.27:
-   - APPLIED: Baseline UI design with visible green borders
-   - CHANGED: Card borders to #2a5a2a with rounded corners
-   - CHANGED: Button borders to #3a7a3a
-   - CHANGED: All headers, labels to #4caf50
-   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
-   - CHANGED: Back link divider to #2a5a2a
-   - CHANGED: Edit/Delete buttons to match baseline UI
-   - PRESERVED: All functionality from v1.27
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - CHANGED: Back button now sleek text-only style (no button background/border)
+   - ADDED: Green divider line above back link (#2a5a2a)
+   - CHANGED: Back link now uses "Back to Game Settings" text
+   - REMOVED: Button styling from back link (background, padding, border)
+   - PRESERVED: All functionality from v1.28
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -219,24 +216,19 @@ STATUS: Ready for integration
         
         .empty-msg { text-align: center; padding: 30px 20px; color: #444; font-size: 0.8rem; font-weight: 300; letter-spacing: 0.3px; }
         
-        .back-btn { 
-            background: rgba(20, 20, 20, 0.5);
-            border: 1px solid #2a5a2a; 
-            border-radius: 10px; 
-            padding: 14px; 
-            text-align: center; 
-            cursor: pointer; 
-            margin-top: 8px; 
-            transition: all 0.15s ease; 
-        }
-        .back-btn:hover { border-color: #4caf50; background: rgba(20, 20, 20, 0.8); }
-        .back-btn:active { transform: scale(0.98); }
-        .back-btn .label { 
-            font-size: 0.8rem; 
-            font-weight: 500; 
-            color: #4caf50; 
+        /* Back link - sleek text-only style with green divider */
+        .back-link {
+            border-top: 1px solid #2a5a2a;
+            text-align: center;
+            margin-top: 16px;
+            padding: 12px 0;
+            color: #666;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: color 0.15s ease;
             letter-spacing: 0.2px;
         }
+        .back-link:hover { color: #888; }
         
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
         
@@ -372,10 +364,10 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.28</div>
+<div class="version-tag">v1.29</div>
 
 <script>
-// FILE: manage-games.html - VERSION 1.28
+// FILE: manage-games.html - VERSION 1.29
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -383,8 +375,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[MANAGE-GAMES] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.28";
-var CACHE_KEY = "manage_games_version_v128";
+var VERSION = "1.29";
+var CACHE_KEY = "manage_games_version_v129";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -735,9 +727,7 @@ function loadAndRender() {
                     </div>
                     <div class="empty-msg">${emptyMsg}</div>
                 </div>
-                <div class="back-btn" onclick="goBackToSettings()">
-                    <span class="label">Back to Settings</span>
-                </div>
+                <div class="back-link" onclick="goBackToSettings()">Back to Game Settings</div>
             `;
             attachTitleClickHandler();
             return;
@@ -786,9 +776,7 @@ function loadAndRender() {
                     ${gamesHtml}
                 </div>
             </div>
-            <div class="back-btn" onclick="goBackToSettings()">
-                <span class="label">Back to Settings</span>
-            </div>
+            <div class="back-link" onclick="goBackToSettings()">Back to Game Settings</div>
         `;
         
         document.getElementById("app").innerHTML = html;
@@ -867,16 +855,13 @@ SessionManager.initSession("manage-games.html", "admin.html", function(session) 
 
 <!--
 FILE: manage-games.html
-VERSION: 1.28
-KEY CHANGES from v1.27:
-   - APPLIED: Baseline UI design with visible green borders
-   - CHANGED: Card borders to #2a5a2a with rounded corners
-   - CHANGED: Button borders to #3a7a3a
-   - CHANGED: All headers, labels to #4caf50
-   - CHANGED: Subtitles to #4caf50 with 0.7 opacity
-   - CHANGED: Back link divider to #2a5a2a
-   - CHANGED: Edit/Delete buttons to match baseline UI
-   - PRESERVED: All functionality from v1.27
+VERSION: 1.29
+KEY CHANGES from v1.28:
+   - CHANGED: Back button now sleek text-only style (no button background/border)
+   - ADDED: Green divider line above back link (#2a5a2a)
+   - CHANGED: Back link now uses "Back to Game Settings" text
+   - REMOVED: Button styling from back link (background, padding, border)
+   - PRESERVED: All functionality from v1.28
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
