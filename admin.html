@@ -1,12 +1,12 @@
 <!--
 FILE: admin.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - ADDED: 28px side padding to all card containers
-   - CHANGED: Pinch Zoom card narrowed to max-width: 320px and centered
-   - CHANGED: Back button now one line, same width as menu buttons (max-width: 320px)
-   - CHANGED: All cards now have consistent 28px padding
-   - PRESERVED: All functionality from v1.17
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - CHANGED: Back button now sleek text-only style (no button background/border)
+   - ADDED: Green divider line above back link (#2a5a2a)
+   - CHANGED: Back link now uses "Back to Main Menu" text
+   - REMOVED: Button styling from back link (background, padding, border)
+   - PRESERVED: All functionality from v1.18
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
@@ -211,32 +211,19 @@ STATUS: Ready for integration
         .zoom-row .status-text.on { color: #4caf50; }
         .zoom-row .status-text.off { color: #555; }
         
-        /* Back button - one line, same width as menu buttons */
-        .back-btn {
-            background: rgba(20, 20, 20, 0.5);
-            border: 1px solid #2a5a2a;
-            border-radius: 10px;
-            padding: 10px 28px;
+        /* Back link - sleek text-only style with green divider */
+        .back-link {
+            border-top: 1px solid #2a5a2a;
             text-align: center;
+            margin-top: 16px;
+            padding: 12px 0;
+            color: #666;
             cursor: pointer;
-            margin: 12px auto 0 auto;
-            display: inline-block;
-            width: auto;
-            min-width: 200px;
-            max-width: 320px;
-            transition: all 0.2s ease;
-        }
-        .back-btn:hover { 
-            border-color: #4caf50; 
-            background: rgba(20, 20, 20, 0.8);
-        }
-        .back-btn:active { transform: scale(0.98); }
-        .back-btn .label { 
-            font-size: 0.8rem; 
-            font-weight: 500; 
-            color: #4caf50; 
+            font-size: 0.75rem;
+            transition: color 0.15s ease;
             letter-spacing: 0.2px;
         }
+        .back-link:hover { color: #888; }
         
         .footer { text-align: center; margin-top: 24px; font-size: 0.5rem; color: #1a3a1a; letter-spacing: 0.5px; }
         .loading { text-align: center; padding: 60px 20px; color: #444; font-size: 0.8rem; }
@@ -247,13 +234,13 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.18</div>
+<div class="version-tag">v1.19</div>
 
 <script>
-// FILE: admin.html - VERSION 1.18
+// FILE: admin.html - VERSION 1.19
 
-var VERSION = "1.18";
-var CACHE_KEY = "admin_version_v118";
+var VERSION = "1.19";
+var CACHE_KEY = "admin_version_v119";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -371,9 +358,7 @@ function render() {
             </div>
         </div>
         
-        <div class="back-btn" onclick="goBackToMenu()">
-            <span class="label">Back to Main Menu</span>
-        </div>
+        <div class="back-link" onclick="goBackToMenu()">Back to Main Menu</div>
         
         <div class="footer">SICC Ryder Cup</div>
     `;
@@ -469,13 +454,13 @@ SessionManager.initSession("admin.html", "admin.html", function(session) {
 
 <!--
 FILE: admin.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - ADDED: 28px side padding to all card containers
-   - CHANGED: Pinch Zoom card narrowed to max-width: 320px and centered
-   - CHANGED: Back button now one line, same width as menu buttons (max-width: 320px)
-   - CHANGED: All cards now have consistent 28px padding
-   - PRESERVED: All functionality from v1.17
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - CHANGED: Back button now sleek text-only style (no button background/border)
+   - ADDED: Green divider line above back link (#2a5a2a)
+   - CHANGED: Back link now uses "Back to Main Menu" text
+   - REMOVED: Button styling from back link (background, padding, border)
+   - PRESERVED: All functionality from v1.18
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js, js/index-hidden.js
 STATUS: Ready for integration
 -->
