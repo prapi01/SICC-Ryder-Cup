@@ -1,11 +1,9 @@
 <!--
 FILE: index.html
-VERSION: 3.61
-KEY CHANGES from v3.60:
-   - FIXED: Shrinking effect - container now stays hidden until after setButtonWidths() completes
-   - CHANGED: Menu buttons (VIEW PREVIOUS GAMES, DEMO & TUTORIAL) now have border: 2px solid #4caf50 (matching GAME DAY button)
-   - CHANGED: Game Settings button border to #2a5a2a (grey)
-   - PRESERVED: All dimensions and functionality from v3.60
+VERSION: 3.62
+KEY CHANGES from v3.61:
+   - CHANGED: Game Settings button border from #2a5a2a to #666 (grey)
+   - PRESERVED: All other functionality and styling from v3.61
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -407,7 +405,7 @@ STATUS: Ready for integration
         /* GAME SETTINGS button - grey border */
         .gsb {
             background: rgba(20, 20, 20, 0.5);
-            border: 2px solid #2a5a2a;
+            border: 2px solid #666;
             border-radius: 10px;
             padding: 14px 20px;
             text-align: center;
@@ -618,13 +616,13 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.61</div>
+<div class="version-tag">v3.62</div>
 
 <script>
-// FILE: index.html - VERSION 3.61
+// FILE: index.html - VERSION 3.62
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.61";
+window.INDEX_VERSION = "3.62";
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -635,8 +633,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "3.61";
-var CACHE_KEY = "index_version_v361";
+var APP_VERSION = "3.62";
+var CACHE_KEY = "index_version_v362";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -1390,7 +1388,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.61
+// Initialization - v3.62
 // ============================================================
 
 function initApp() {
@@ -1474,7 +1472,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.61
+// Start the app - v3.62
 // ============================================================
 
 if (isFirstLoad) {
@@ -1510,12 +1508,10 @@ if (isFirstLoad) {
 
 <!--
 FILE: index.html
-VERSION: 3.61
-KEY CHANGES from v3.60:
-   - FIXED: Shrinking effect - container now stays hidden until after setButtonWidths() completes
-   - CHANGED: Menu buttons (VIEW PREVIOUS GAMES, DEMO & TUTORIAL) now have border: 2px solid #4caf50 (matching GAME DAY button)
-   - CHANGED: Game Settings button border to #2a5a2a (grey)
-   - PRESERVED: All dimensions and functionality from v3.60
+VERSION: 3.62
+KEY CHANGES from v3.61:
+   - CHANGED: Game Settings button border from #2a5a2a to #666 (grey)
+   - PRESERVED: All other functionality and styling from v3.61
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
