@@ -1,12 +1,13 @@
 <!--
 FILE: player-management.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - CHANGED: Back button now sleek text-only style (no button background/border)
-   - ADDED: Green divider line above back link (#2a5a2a)
-   - CHANGED: Back link now uses "Back to Game Settings" text
-   - REMOVED: Button styling from back link (background, padding, border)
-   - PRESERVED: All functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: "Default" toggle button for each player in the list
+   - ADDED: isDefault field to player data structure
+   - CHANGED: Player item display now shows "Default" badge for default players
+   - ADDED: Toggle functionality to mark/unmark player as default
+   - CHANGED: Only one player can be default per team (A and B separately)
+   - PRESERVED: All functionality from v1.05
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -42,7 +43,7 @@ STATUS: Ready for integration
             font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif;
             color: #e0e0e0;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
             min-height: 100vh;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -177,6 +178,19 @@ STATUS: Ready for integration
         .btn-save:hover { background: rgba(76, 175, 80, 0.04); }
         .btn-cancel { border-color: #2a5a2a; color: #666; }
         .btn-cancel:hover { border-color: #4caf50; color: #888; }
+        .btn-default { 
+            border-color: #2a5a2a; 
+            color: #666; 
+            font-size: 0.55rem; 
+            padding: 2px 8px; 
+            border-radius: 4px;
+        }
+        .btn-default-active { 
+            border-color: #4caf50; 
+            color: #4caf50; 
+            background: rgba(76, 175, 80, 0.1);
+        }
+        .btn-default:hover { border-color: #4caf50; color: #888; }
         
         .btn-group { display: flex; gap: 10px; margin-top: 12px; }
         .btn-group .btn { flex: 1; }
@@ -184,9 +198,9 @@ STATUS: Ready for integration
         .player-list { margin-top: 4px; }
         .player-item {
             display: grid;
-            grid-template-columns: 1fr auto auto auto auto;
+            grid-template-columns: 1fr auto auto auto auto auto;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             padding: 8px 12px;
             background: rgba(10, 10, 10, 0.5);
             border-radius: 6px;
@@ -206,7 +220,15 @@ STATUS: Ready for integration
         }
         .player-item .p-hcp { font-size: 0.6rem; color: #4caf50; }
         .player-item .p-team { font-size: 0.6rem; color: #ffaa44; }
-        .player-item .p-actions { display: flex; gap: 4px; }
+        .player-item .p-default { 
+            font-size: 0.5rem; 
+            color: #4caf50; 
+            background: #1a3a1a; 
+            padding: 1px 6px; 
+            border-radius: 3px;
+            border: 1px solid #4caf50;
+        }
+        .player-item .p-actions { display: flex; gap: 4px; align-items: center; }
         
         .player-item.editing { border-color: #4caf50; background: #1a2a1a; }
         
@@ -244,12 +266,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.05</div>
+<div class="version-tag">v1.06</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.05
+// VERSION: 1.06
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -258,8 +280,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.05";
-var CACHE_KEY = "player_management_v105";
+var APP_VERSION = "1.06";
+var CACHE_KEY = "player_management_v106";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -271,8 +293,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.05";
-console.log("[PLAYER-MGMT] Initializing v1.05 - Sleek back link with divider");
+window.PLAYER_MGMT_VERSION = "1.06";
+console.log("[PLAYER-MGMT] Initializing v1.06 - Default player toggle");
 
 // ============================================================
 // Firebase
@@ -339,14 +361,14 @@ function loadPlayers(callback) {
                 console.log("[PLAYER-MGMT] Loaded", players.length, "players");
             } else {
                 players = [
-                    { name: "Ang C H", handicap: 1, defaultTeam: "A", label: "ACH" },
-                    { name: "Chenh Hoe", handicap: 10, defaultTeam: "A", label: "CH" },
-                    { name: "C K", handicap: 8, defaultTeam: "A", label: "CK" },
-                    { name: "Yip H M", handicap: 12, defaultTeam: "A", label: "YHM" },
-                    { name: "Jeff Goh", handicap: 0, defaultTeam: "B", label: "JG" },
-                    { name: "Ong C B", handicap: 1, defaultTeam: "B", label: "OCB" },
-                    { name: "Piti", handicap: 8, defaultTeam: "B", label: "P" },
-                    { name: "James Ong", handicap: 11, defaultTeam: "B", label: "JO" }
+                    { name: "Ang C H", handicap: 1, defaultTeam: "A", label: "ACH", isDefault: true },
+                    { name: "Chenh Hoe", handicap: 10, defaultTeam: "A", label: "CH", isDefault: true },
+                    { name: "C K", handicap: 8, defaultTeam: "A", label: "CK", isDefault: true },
+                    { name: "Yip H M", handicap: 12, defaultTeam: "A", label: "YHM", isDefault: true },
+                    { name: "Jeff Goh", handicap: 0, defaultTeam: "B", label: "JG", isDefault: true },
+                    { name: "Ong C B", handicap: 1, defaultTeam: "B", label: "OCB", isDefault: true },
+                    { name: "Piti", handicap: 8, defaultTeam: "B", label: "P", isDefault: true },
+                    { name: "James Ong", handicap: 11, defaultTeam: "B", label: "JO", isDefault: true }
                 ];
                 console.log("[PLAYER-MGMT] Using default players");
                 savePlayers(function() {
@@ -388,6 +410,38 @@ function savePlayers(callback) {
 }
 
 // ============================================================
+// Toggle Default Player
+// ============================================================
+function toggleDefault(index) {
+    var player = players[index];
+    if (!player) return;
+    
+    // If setting to default, clear other defaults in same team
+    if (!player.isDefault) {
+        var team = player.defaultTeam || "A";
+        for (var i = 0; i < players.length; i++) {
+            if (i !== index && players[i].defaultTeam === team && players[i].isDefault) {
+                players[i].isDefault = false;
+            }
+        }
+        player.isDefault = true;
+    } else {
+        player.isDefault = false;
+    }
+    
+    savePlayers(function(success) {
+        if (success) {
+            render();
+        } else {
+            loadPlayers(function() {
+                render();
+                Modal.alert("Failed to update default player.");
+            });
+        }
+    });
+}
+
+// ============================================================
 // updateLabelPreview
 // ============================================================
 function updateLabelPreview() {
@@ -413,10 +467,9 @@ function render() {
         currentName = p.name;
         currentLabel = p.label || generateLabel(p.name);
         currentHcp = p.handicap;
-        currentTeam = p.defaultTeam;
+        currentTeam = p.defaultTeam || 'A';
     }
     
-    // v1.05: Player List FIRST, Add/Edit Form SECOND, sleek back link at bottom
     var html = `
         <div class="header">
             <div class="title">Player Management</div>
@@ -502,13 +555,18 @@ function renderPlayerList() {
         var p = players[i];
         var isEditing = (i === editingIndex);
         var label = p.label || generateLabel(p.name);
+        var isDefault = p.isDefault === true;
+        var defaultBadge = isDefault ? '<span class="p-default">DEFAULT</span>' : '';
+        
         html += `
             <div class="player-item ${isEditing ? 'editing' : ''}">
                 <span class="p-name">${escapeHtml(p.name)}</span>
                 <span class="p-label">${escapeHtml(label)}</span>
                 <span class="p-hcp">HCP ${p.handicap}</span>
-                <span class="p-team">Team ${p.defaultTeam}</span>
+                <span class="p-team">Team ${p.defaultTeam || 'A'}</span>
+                ${defaultBadge}
                 <div class="p-actions">
+                    <button class="btn btn-small btn-default ${isDefault ? 'btn-default-active' : ''}" onclick="toggleDefault(${i})">${isDefault ? 'Default ✓' : 'Default'}</button>
                     <button class="btn btn-small btn-primary edit-btn" data-index="${i}">Edit</button>
                     <button class="btn btn-small btn-danger delete-btn" data-index="${i}">Del</button>
                 </div>
@@ -581,10 +639,13 @@ function savePlayer() {
         name: name,
         label: generateLabel(name),
         handicap: handicap,
-        defaultTeam: defaultTeam
+        defaultTeam: defaultTeam,
+        isDefault: false
     };
     
     if (editingIndex >= 0) {
+        // Preserve isDefault value from existing player
+        playerData.isDefault = players[editingIndex].isDefault || false;
         players[editingIndex] = playerData;
         players.sort(function(a, b) { return a.name.localeCompare(b.name); });
         editingIndex = -1;
@@ -646,19 +707,21 @@ window.savePlayer = savePlayer;
 window.deletePlayer = deletePlayer;
 window.generateLabel = generateLabel;
 window.updateLabelPreview = updateLabelPreview;
+window.toggleDefault = toggleDefault;
 </script>
 </body>
 </html>
 
 <!--
 FILE: player-management.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - CHANGED: Back button now sleek text-only style (no button background/border)
-   - ADDED: Green divider line above back link (#2a5a2a)
-   - CHANGED: Back link now uses "Back to Game Settings" text
-   - REMOVED: Button styling from back link (background, padding, border)
-   - PRESERVED: All functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: "Default" toggle button for each player in the list
+   - ADDED: isDefault field to player data structure
+   - CHANGED: Player item display now shows "Default" badge for default players
+   - ADDED: Toggle functionality to mark/unmark player as default
+   - CHANGED: Only one player can be default per team (A and B separately)
+   - PRESERVED: All functionality from v1.05
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
