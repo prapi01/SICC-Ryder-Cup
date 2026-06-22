@@ -1,13 +1,12 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.54
-KEY CHANGES from v1.53:
-   - CHANGED: Flight field is now user-assigned (no auto-assignment)
-   - CHANGED: Flight dropdown starts empty (—) - user selects F1 or F2
-   - CHANGED: Flight validation at commit ensures 2 players per team per flight
-   - CHANGED: loadDefaultPlayers() no longer assigns flights based on position
-   - CHANGED: loadEditMode() preserves existing flight values
-   - PRESERVED: All functionality from v1.53
+VERSION: 1.55
+KEY CHANGES from v1.54:
+   - FIXED: Removed real-time validation on flight change (no modal popups)
+   - CHANGED: Validation only runs on Commit/Update
+   - CHANGED: Removed error message from player card (only shows on commit)
+   - CHANGED: Flight change now just updates state without re-render or validation
+   - PRESERVED: All functionality from v1.54
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -624,11 +623,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.54</div>
+<div class="version-tag">v1.55</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.54
+// VERSION: 1.55
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -636,8 +635,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.54";
-var CACHE_KEY = "setup_game_version_v154";
+var VERSION = "1.55";
+var CACHE_KEY = "setup_game_version_v155";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1006,7 +1005,6 @@ function loadDefaultPlayers(callback) {
             var result = [];
             for (var i = 0; i < 4; i++) {
                 var p = teamAPlayers[i] || { name: "", handicap: 0, defaultTeam: "A", label: "" };
-                // v1.54: No auto-flight assignment - leave as null
                 var flight = p.flight !== undefined ? p.flight : null;
                 result.push({
                     name: p.name || "",
@@ -1057,7 +1055,6 @@ function loadDefaultPlayers(callback) {
         var result = [];
         for (var i = 0; i < selectedA.length; i++) {
             var p = selectedA[i];
-            // v1.54: No auto-flight assignment
             var flight = p.flight !== undefined ? p.flight : null;
             result.push({
                 name: p.name || "",
@@ -1217,8 +1214,6 @@ function populatePlayerFields(idx) {
     }
     
     state.players[idx].name = player.name;
-    // v1.54: Preserve existing flight value when populating
-    // Don't override state.players[idx].flight
     
     if (state.isEditMode) checkForChanges();
 }
@@ -1236,11 +1231,10 @@ function updatePlayerTeam(idx, value) {
 }
 
 function updatePlayerFlight(idx, value) {
-    // v1.54: Allow null (empty) selection
     var flightVal = value === '' ? null : parseInt(value);
     state.players[idx].flight = flightVal;
     if (state.isEditMode) checkForChanges();
-    // No render() call - let the user's selection persist
+    // No render - preserve user selection
 }
 
 function setTeamGameFormat(format) {
@@ -1249,7 +1243,7 @@ function setTeamGameFormat(format) {
     render();
 }
 
-// v1.54: Updated validation - checks for unassigned flights
+// v1.55: Validation only runs on commit - no real-time checking
 function validateTeamFlight() {
     var unassigned = state.players.filter(function(p) {
         return p.flight === null || p.flight === undefined || p.flight === '';
@@ -1387,7 +1381,7 @@ function commitGame() {
         return;
     }
     
-    // v1.54: Use updated validation
+    // v1.55: Validate at commit time only
     if (!validateTeamFlight()) {
         return;
     }
@@ -1600,28 +1594,24 @@ function render() {
         courseOptions += '<option value="' + c.id + '" ' + selected + '>' + escapeHtml(c.name) + '</option>';
     }
     
-    // v1.54: Display players without re-assigning flights
+    // v1.55: Display players without re-assigning flights
     var displayPlayers = [];
     var teamAPlayers = state.players.filter(function(p) { return p.team === "A"; });
     teamAPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
     var teamBPlayers = state.players.filter(function(p) { return p.team === "B"; });
     teamBPlayers.sort(function(a, b) { return a.handicap - b.handicap; });
     
-    // Build display order - Team A then Team B, preserve existing flight values
     displayPlayers = [];
     for (var i = 0; i < 4; i++) {
         if (i < teamAPlayers.length) {
-            var p = teamAPlayers[i];
-            // Keep existing flight value, don't auto-assign
-            displayPlayers.push(p);
+            displayPlayers.push(teamAPlayers[i]);
         } else {
             displayPlayers.push({ name: "", handicap: 0, team: "A", flight: null, label: "" });
         }
     }
     for (var i = 0; i < 4; i++) {
         if (i < teamBPlayers.length) {
-            var p = teamBPlayers[i];
-            displayPlayers.push(p);
+            displayPlayers.push(teamBPlayers[i]);
         } else {
             displayPlayers.push({ name: "", handicap: 0, team: "B", flight: null, label: "" });
         }
@@ -1629,7 +1619,6 @@ function render() {
     
     var playersHtml = '';
     
-    // Build header with fixed columns (Label hidden)
     var headerHtml = `
         <div class="player-header-row">
             <span class="header-player">Player</span>
@@ -1655,7 +1644,6 @@ function render() {
             playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
         }
         
-        // v1.54: Flight dropdown - show empty option (—) for unassigned
         var flightVal = p.flight !== null && p.flight !== undefined ? p.flight : '';
         var f1Selected = (flightVal === 1) ? 'selected' : '';
         var f2Selected = (flightVal === 2) ? 'selected' : '';
@@ -1695,7 +1683,6 @@ function render() {
         `;
     }
     
-    var isValid = validateTeamFlight();
     var today = new Date().toISOString().split('T')[0];
     var maxDate = new Date();
     maxDate.setMonth(maxDate.getMonth() + 12);
@@ -1715,7 +1702,6 @@ function render() {
             <div class="subtitle">Schedule</div>
         </div>
         
-        <!-- Combined Game Details Card -->
         <div class="card">
             <div class="card-title">Game Details</div>
             <div class="form-row-compact">
@@ -1734,7 +1720,6 @@ function render() {
             ${state.dateError ? '<div class="error-msg">' + state.dateError + '</div>' : ''}
         </div>
         
-        <!-- Combined Game Format Settings Card -->
         <div class="card">
             <div class="card-title">Game Format Settings</div>
             <div class="form-row-inline">
@@ -1762,13 +1747,11 @@ function render() {
             </div>
         </div>
         
-        <!-- Players Card with horizontal scroll -->
         <div class="card">
             <div class="card-title">Players (8)</div>
             <div class="table-scroll">
                 <div class="table-container">
                     ${playersHtml}
-                    ${!isValid ? '<div class="error-msg">Each flight needs exactly 2 Team A and 2 Team B players</div>' : ''}
                 </div>
             </div>
         </div>
@@ -1790,7 +1773,6 @@ function render() {
         attachBeforeUnloadHandler();
     }
     
-    // Event listeners for combined cards
     var datePicker = document.getElementById("combinedDatePicker");
     if (datePicker) {
         datePicker.addEventListener("change", function() {
@@ -1822,7 +1804,6 @@ function render() {
         });
     }
     
-    // Player dropdown handlers
     document.querySelectorAll(".player-name-select").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
@@ -1849,24 +1830,14 @@ function render() {
         });
     });
     
+    // v1.55: Flight change - no validation, no modal, no re-render
     document.querySelectorAll(".flight-display").forEach(function(el) {
         el.addEventListener("change", function() {
             var idx = parseInt(this.dataset.idx);
             var val = this.value;
             state.players[idx].flight = val === '' ? null : parseInt(val);
             if (state.isEditMode) checkForChanges();
-            // v1.54: No render() call - preserve user selection
-            // Just update the error message if validation changes
-            var isValidNow = validateTeamFlight();
-            var errorEl = document.querySelector('.error-msg');
-            if (errorEl) {
-                if (!isValidNow) {
-                    errorEl.textContent = 'Each flight needs exactly 2 Team A and 2 Team B players';
-                    errorEl.style.display = 'block';
-                } else {
-                    errorEl.style.display = 'none';
-                }
-            }
+            // No validation, no modal, no re-render
         });
     });
     
@@ -1925,14 +1896,13 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.54
-KEY CHANGES from v1.53:
-   - CHANGED: Flight field is now user-assigned (no auto-assignment)
-   - CHANGED: Flight dropdown starts empty (—) - user selects F1 or F2
-   - CHANGED: Flight validation at commit ensures 2 players per team per flight
-   - CHANGED: loadDefaultPlayers() no longer assigns flights based on position
-   - CHANGED: loadEditMode() preserves existing flight values
-   - PRESERVED: All functionality from v1.53
+VERSION: 1.55
+KEY CHANGES from v1.54:
+   - FIXED: Removed real-time validation on flight change (no modal popups)
+   - CHANGED: Validation only runs on Commit/Update
+   - CHANGED: Removed error message from player card (only shows on commit)
+   - CHANGED: Flight change now just updates state without re-render or validation
+   - PRESERVED: All functionality from v1.54
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
