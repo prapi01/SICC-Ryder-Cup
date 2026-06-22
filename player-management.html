@@ -1,12 +1,12 @@
 <!--
 FILE: player-management.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - CHANGED: Back button now sleek text-only style (no button background/border)
-   - ADDED: Green divider line above back link (#2a5a2a)
-   - CHANGED: Back link now uses "Back to Game Settings" text
-   - REMOVED: Button styling from back link (background, padding, border)
-   - PRESERVED: All functionality from v1.04
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - CHANGED: Label field is now user-editable (not read-only)
+   - CHANGED: Label field still pre-populates with system-generated label
+   - ADDED: Max 3 characters validation for label
+   - CHANGED: Label field styling to match editable fields (not greyed out)
+   - PRESERVED: All functionality from v1.06
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -42,7 +42,7 @@ STATUS: Ready for integration
             font-family: -apple-system, 'Helvetica Neue', 'SF Pro Text', system-ui, sans-serif;
             color: #e0e0e0;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
             min-height: 100vh;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -88,19 +88,19 @@ STATUS: Ready for integration
         .title { font-size: 1.2rem; font-weight: 600; color: #4caf50; }
         .subtitle { font-size: 0.6rem; color: #4caf50; opacity: 0.7; margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
         
-        .card {
+        .card { 
             background: rgba(20, 20, 20, 0.5);
-            border: 1px solid #2a5a2a;
-            border-radius: 10px;
-            padding: 16px;
-            margin-bottom: 12px;
+            border: 1px solid #2a5a2a; 
+            border-radius: 10px; 
+            padding: 16px; 
+            margin-bottom: 12px; 
         }
         
-        .card-title {
-            font-size: 0.7rem;
-            font-weight: 500;
-            color: #4caf50;
-            margin-bottom: 12px;
+        .card-title { 
+            font-size: 0.7rem; 
+            font-weight: 500; 
+            color: #4caf50; 
+            margin-bottom: 12px; 
             letter-spacing: 0.5px;
             text-transform: uppercase;
         }
@@ -138,13 +138,6 @@ STATUS: Ready for integration
             outline: none;
             border-color: #4caf50;
         }
-        .form-grid .field input:read-only {
-            color: #4caf50;
-            background: #1a3a1a;
-            border-color: #4caf50;
-            opacity: 0.8;
-            cursor: default;
-        }
         .form-grid .field .hint {
             font-size: 0.5rem;
             color: #555;
@@ -152,6 +145,11 @@ STATUS: Ready for integration
         }
         .form-grid .field.full-width {
             grid-column: 1 / -1;
+        }
+        .form-grid .field input.label-input {
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
         }
         
         .btn {
@@ -177,6 +175,19 @@ STATUS: Ready for integration
         .btn-save:hover { background: rgba(76, 175, 80, 0.04); }
         .btn-cancel { border-color: #2a5a2a; color: #666; }
         .btn-cancel:hover { border-color: #4caf50; color: #888; }
+        .btn-default { 
+            border-color: #2a5a2a; 
+            color: #666; 
+            font-size: 0.55rem; 
+            padding: 2px 8px; 
+            border-radius: 4px;
+        }
+        .btn-default-active { 
+            border-color: #4caf50; 
+            color: #4caf50; 
+            background: rgba(76, 175, 80, 0.1);
+        }
+        .btn-default:hover { border-color: #4caf50; color: #888; }
         
         .btn-group { display: flex; gap: 10px; margin-top: 12px; }
         .btn-group .btn { flex: 1; }
@@ -184,9 +195,9 @@ STATUS: Ready for integration
         .player-list { margin-top: 4px; }
         .player-item {
             display: grid;
-            grid-template-columns: 1fr auto auto auto auto;
+            grid-template-columns: 1fr auto auto auto auto auto;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             padding: 8px 12px;
             background: rgba(10, 10, 10, 0.5);
             border-radius: 6px;
@@ -194,19 +205,27 @@ STATUS: Ready for integration
             border: 1px solid #2a5a2a;
         }
         .player-item .p-name { font-size: 0.8rem; font-weight: 500; color: #e0e0e0; }
-        .player-item .p-label {
-            font-size: 0.6rem;
-            font-weight: 600;
-            color: #4caf50;
-            background: #1a3a1a;
-            padding: 1px 8px;
-            border-radius: 4px;
-            text-align: center;
+        .player-item .p-label { 
+            font-size: 0.6rem; 
+            font-weight: 600; 
+            color: #4caf50; 
+            background: #1a3a1a; 
+            padding: 1px 8px; 
+            border-radius: 4px; 
+            text-align: center; 
             min-width: 28px;
         }
         .player-item .p-hcp { font-size: 0.6rem; color: #4caf50; }
         .player-item .p-team { font-size: 0.6rem; color: #ffaa44; }
-        .player-item .p-actions { display: flex; gap: 4px; }
+        .player-item .p-default { 
+            font-size: 0.5rem; 
+            color: #4caf50; 
+            background: #1a3a1a; 
+            padding: 1px 6px; 
+            border-radius: 3px;
+            border: 1px solid #4caf50;
+        }
+        .player-item .p-actions { display: flex; gap: 4px; align-items: center; }
         
         .player-item.editing { border-color: #4caf50; background: #1a2a1a; }
         
@@ -244,12 +263,12 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.05</div>
+<div class="version-tag">v1.07</div>
 
 <script>
 // ============================================================
 // FILE: player-management.html
-// VERSION: 1.05
+// VERSION: 1.07
 // ============================================================
 
 if (typeof AppSettings !== 'undefined') {
@@ -258,8 +277,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[PLAYER-MGMT] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "1.05";
-var CACHE_KEY = "player_management_v105";
+var APP_VERSION = "1.07";
+var CACHE_KEY = "player_management_v107";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -271,8 +290,8 @@ if (storedVersion !== APP_VERSION) {
     window.location.href = newUrl;
 }
 
-window.PLAYER_MGMT_VERSION = "1.05";
-console.log("[PLAYER-MGMT] Initializing v1.05 - Sleek back link with divider");
+window.PLAYER_MGMT_VERSION = "1.07";
+console.log("[PLAYER-MGMT] Initializing v1.07 - Editable label field");
 
 // ============================================================
 // Firebase
@@ -289,7 +308,7 @@ var editingIndex = -1;
 var isLoading = false;
 
 // ============================================================
-// generateLabel - system-generated, user cannot change
+// generateLabel - system-generated, user can override
 // Rule: First letter of each word, up to 3 chars, uppercase
 // ============================================================
 function generateLabel(name) {
@@ -339,14 +358,14 @@ function loadPlayers(callback) {
                 console.log("[PLAYER-MGMT] Loaded", players.length, "players");
             } else {
                 players = [
-                    { name: "Ang C H", handicap: 1, defaultTeam: "A", label: "ACH" },
-                    { name: "Chenh Hoe", handicap: 10, defaultTeam: "A", label: "CH" },
-                    { name: "C K", handicap: 8, defaultTeam: "A", label: "CK" },
-                    { name: "Yip H M", handicap: 12, defaultTeam: "A", label: "YHM" },
-                    { name: "Jeff Goh", handicap: 0, defaultTeam: "B", label: "JG" },
-                    { name: "Ong C B", handicap: 1, defaultTeam: "B", label: "OCB" },
-                    { name: "Piti", handicap: 8, defaultTeam: "B", label: "P" },
-                    { name: "James Ong", handicap: 11, defaultTeam: "B", label: "JO" }
+                    { name: "Ang C H", handicap: 1, defaultTeam: "A", label: "ACH", isDefault: true },
+                    { name: "Chenh Hoe", handicap: 10, defaultTeam: "A", label: "CH", isDefault: true },
+                    { name: "C K", handicap: 8, defaultTeam: "A", label: "CK", isDefault: true },
+                    { name: "Yip H M", handicap: 12, defaultTeam: "A", label: "YHM", isDefault: true },
+                    { name: "Jeff Goh", handicap: 0, defaultTeam: "B", label: "JG", isDefault: true },
+                    { name: "Ong C B", handicap: 1, defaultTeam: "B", label: "OCB", isDefault: true },
+                    { name: "Piti", handicap: 8, defaultTeam: "B", label: "P", isDefault: true },
+                    { name: "James Ong", handicap: 11, defaultTeam: "B", label: "JO", isDefault: true }
                 ];
                 console.log("[PLAYER-MGMT] Using default players");
                 savePlayers(function() {
@@ -388,13 +407,63 @@ function savePlayers(callback) {
 }
 
 // ============================================================
-// updateLabelPreview
+// Toggle Default Player
+// ============================================================
+function toggleDefault(index) {
+    var player = players[index];
+    if (!player) return;
+    
+    // If setting to default, clear other defaults in same team
+    if (!player.isDefault) {
+        var team = player.defaultTeam || "A";
+        for (var i = 0; i < players.length; i++) {
+            if (i !== index && players[i].defaultTeam === team && players[i].isDefault) {
+                players[i].isDefault = false;
+            }
+        }
+        player.isDefault = true;
+    } else {
+        player.isDefault = false;
+    }
+    
+    savePlayers(function(success) {
+        if (success) {
+            render();
+        } else {
+            loadPlayers(function() {
+                render();
+                Modal.alert("Failed to update default player.");
+            });
+        }
+    });
+}
+
+// ============================================================
+// updateLabelPreview - v1.07: auto-generate label from name, but allow user to edit
 // ============================================================
 function updateLabelPreview() {
     var nameInput = document.getElementById('playerName');
     var labelInput = document.getElementById('playerLabel');
     if (nameInput && labelInput) {
-        labelInput.value = generateLabel(nameInput.value);
+        // Only auto-generate if label is empty or user hasn't manually changed it
+        // We use a flag to track if user has edited the label
+        if (!labelInput.dataset.userEdited || labelInput.dataset.userEdited === 'false') {
+            labelInput.value = generateLabel(nameInput.value);
+        }
+    }
+}
+
+function onLabelInput() {
+    var labelInput = document.getElementById('playerLabel');
+    if (labelInput) {
+        // Mark that user has manually edited the label
+        labelInput.dataset.userEdited = 'true';
+        // Enforce max 3 characters
+        if (labelInput.value.length > 3) {
+            labelInput.value = labelInput.value.substring(0, 3);
+        }
+        // Convert to uppercase
+        labelInput.value = labelInput.value.toUpperCase();
     }
 }
 
@@ -413,10 +482,9 @@ function render() {
         currentName = p.name;
         currentLabel = p.label || generateLabel(p.name);
         currentHcp = p.handicap;
-        currentTeam = p.defaultTeam;
+        currentTeam = p.defaultTeam || 'A';
     }
     
-    // v1.05: Player List FIRST, Add/Edit Form SECOND, sleek back link at bottom
     var html = `
         <div class="header">
             <div class="title">Player Management</div>
@@ -444,9 +512,9 @@ function render() {
                     <input type="number" id="playerHcp" min="0" max="54" value="${currentHcp}">
                 </div>
                 <div class="field">
-                    <label>Label</label>
-                    <input type="text" id="playerLabel" value="${currentLabel}" readonly>
-                    <span class="hint">system generated</span>
+                    <label>Label (max 3 chars)</label>
+                    <input type="text" id="playerLabel" class="label-input" value="${escapeHtml(currentLabel)}" maxlength="3" placeholder="e.g. ACH" oninput="onLabelInput()">
+                    <span class="hint">system generated, editable</span>
                 </div>
                 <div class="field">
                     <label>Team</label>
@@ -485,6 +553,21 @@ function render() {
     document.getElementById('playerHcp').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') savePlayer();
     });
+    document.getElementById('playerLabel').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') savePlayer();
+    });
+    
+    // Reset the userEdited flag when name changes (auto-generate label)
+    var nameInput = document.getElementById('playerName');
+    var labelInput = document.getElementById('playerLabel');
+    if (nameInput && labelInput) {
+        nameInput.addEventListener('input', function() {
+            // Only auto-generate if user hasn't manually edited the label
+            if (labelInput.dataset.userEdited !== 'true') {
+                labelInput.value = generateLabel(nameInput.value);
+            }
+        });
+    }
     
     updateLabelPreview();
 }
@@ -502,13 +585,18 @@ function renderPlayerList() {
         var p = players[i];
         var isEditing = (i === editingIndex);
         var label = p.label || generateLabel(p.name);
+        var isDefault = p.isDefault === true;
+        var defaultBadge = isDefault ? '<span class="p-default">DEFAULT</span>' : '';
+        
         html += `
             <div class="player-item ${isEditing ? 'editing' : ''}">
                 <span class="p-name">${escapeHtml(p.name)}</span>
                 <span class="p-label">${escapeHtml(label)}</span>
                 <span class="p-hcp">HCP ${p.handicap}</span>
-                <span class="p-team">Team ${p.defaultTeam}</span>
+                <span class="p-team">Team ${p.defaultTeam || 'A'}</span>
+                ${defaultBadge}
                 <div class="p-actions">
+                    <button class="btn btn-small btn-default ${isDefault ? 'btn-default-active' : ''}" onclick="toggleDefault(${i})">${isDefault ? 'Default ✓' : 'Default'}</button>
                     <button class="btn btn-small btn-primary edit-btn" data-index="${i}">Edit</button>
                     <button class="btn btn-small btn-danger delete-btn" data-index="${i}">Del</button>
                 </div>
@@ -525,7 +613,12 @@ function attachPlayerActions() {
             render();
             setTimeout(function() {
                 var nameInput = document.getElementById('playerName');
-                if (nameInput) { nameInput.focus(); nameInput.select(); updateLabelPreview(); }
+                if (nameInput) { nameInput.focus(); nameInput.select(); }
+                var labelInput = document.getElementById('playerLabel');
+                if (labelInput) {
+                    labelInput.dataset.userEdited = 'true';
+                }
+                updateLabelPreview();
             }, 100);
         });
     });
@@ -553,7 +646,7 @@ function savePlayer() {
     var teamSelect = document.getElementById('playerTeam');
     
     var name = nameInput.value.trim();
-    var label = labelInput ? labelInput.value.trim() : generateLabel(name);
+    var label = labelInput ? labelInput.value.trim().toUpperCase() : generateLabel(name);
     var handicap = parseInt(hcpInput.value);
     var defaultTeam = teamSelect.value;
     
@@ -569,6 +662,13 @@ function savePlayer() {
         return;
     }
     
+    // Validate label - max 3 chars
+    if (label.length > 3) {
+        Modal.alert("Label must be 3 characters or less.");
+        labelInput.focus();
+        return;
+    }
+    
     for (var i = 0; i < players.length; i++) {
         if (i !== editingIndex && players[i].name.toLowerCase() === name.toLowerCase()) {
             Modal.alert("A player with this name already exists.");
@@ -579,12 +679,15 @@ function savePlayer() {
     
     var playerData = {
         name: name,
-        label: generateLabel(name),
+        label: label || generateLabel(name),
         handicap: handicap,
-        defaultTeam: defaultTeam
+        defaultTeam: defaultTeam,
+        isDefault: false
     };
     
     if (editingIndex >= 0) {
+        // Preserve isDefault value from existing player
+        playerData.isDefault = players[editingIndex].isDefault || false;
         players[editingIndex] = playerData;
         players.sort(function(a, b) { return a.name.localeCompare(b.name); });
         editingIndex = -1;
@@ -646,19 +749,21 @@ window.savePlayer = savePlayer;
 window.deletePlayer = deletePlayer;
 window.generateLabel = generateLabel;
 window.updateLabelPreview = updateLabelPreview;
+window.onLabelInput = onLabelInput;
+window.toggleDefault = toggleDefault;
 </script>
 </body>
 </html>
 
 <!--
 FILE: player-management.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - CHANGED: Back button now sleek text-only style (no button background/border)
-   - ADDED: Green divider line above back link (#2a5a2a)
-   - CHANGED: Back link now uses "Back to Game Settings" text
-   - REMOVED: Button styling from back link (background, padding, border)
-   - PRESERVED: All functionality from v1.04
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - CHANGED: Label field is now user-editable (not read-only)
+   - CHANGED: Label field still pre-populates with system-generated label
+   - ADDED: Max 3 characters validation for label
+   - CHANGED: Label field styling to match editable fields (not greyed out)
+   - PRESERVED: All functionality from v1.06
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
