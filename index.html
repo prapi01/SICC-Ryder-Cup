@@ -1,13 +1,10 @@
 <!--
 FILE: index.html
-VERSION: 3.64
-KEY CHANGES from v3.63:
-   - RESTORED: Original design with square GAME DAY button
-   - RESTORED: Dynamic button width matching title width (105%)
-   - FIXED: No shrink effect - container visible from start
-   - CHANGED: GAME DAY button is now square (width = height)
-   - CHANGED: All buttons centered with matching widths
-   - PRESERVED: All styling, colors, borders from v3.62
+VERSION: 3.65
+KEY CHANGES from v3.64:
+   - FIXED: Splash screen now only shows once per session (flag set BEFORE splash starts)
+   - CHANGED: appInitialized flag moved to initApp() before splash animation
+   - PRESERVED: All styling, functionality, and UI from v3.64
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -270,9 +267,9 @@ STATUS: Ready for integration
         }
         
         .header { text-align: center; margin-bottom: 20px; }
-        .golf-icon { 
-            font-size: 4rem; 
-            margin-bottom: 4px; 
+        .golf-icon {
+            font-size: 4rem;
+            margin-bottom: 4px;
             filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
             cursor: pointer;
             transition: transform 0.1s ease;
@@ -307,14 +304,14 @@ STATUS: Ready for integration
             opacity: 0.4;
         }
         
-        .title { 
-            font-size: 1.8rem; 
-            font-weight: 800; 
-            letter-spacing: -0.5px; 
-            background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%); 
-            background-clip: text; 
-            -webkit-background-clip: text; 
-            color: transparent; 
+        .title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 0%, #4caf50 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
             text-shadow: 0 2px 4px rgba(0,0,0,0.2);
             display: inline-block;
             white-space: nowrap;
@@ -390,8 +387,8 @@ STATUS: Ready for integration
             width: auto;
             margin: 0 auto;
         }
-        .menu-btn:hover { 
-            border-color: #4caf50; 
+        .menu-btn:hover {
+            border-color: #4caf50;
             background: rgba(20, 20, 20, 0.8);
         }
         .menu-btn:active { transform: scale(0.98); }
@@ -415,17 +412,17 @@ STATUS: Ready for integration
             box-sizing: border-box;
             width: auto;
         }
-        .gsb:hover { 
-            border-color: #4caf50; 
+        .gsb:hover {
+            border-color: #4caf50;
             background: rgba(20, 20, 20, 0.8);
         }
         .gsb:active { transform: scale(0.98); }
-        .gsb .label { 
-            font-size: 0.85rem; 
-            font-weight: 600; 
+        .gsb .label {
+            font-size: 0.85rem;
+            font-weight: 600;
             color: #666;
-            display: inline-block; 
-            vertical-align: middle; 
+            display: inline-block;
+            vertical-align: middle;
             letter-spacing: -0.1px;
         }
         
@@ -584,13 +581,14 @@ STATUS: Ready for integration
 <div class="container" id="app"></div>
 
 <div class="device-tag" id="deviceTag">🖥️ ---</div>
-<div class="version-tag">v3.64</div>
+<div class="version-tag">v3.65</div>
 
 <script>
-// FILE: index.html - VERSION 3.64
+// FILE: index.html v3.65
+// VERSION: 3.65
 
 // Version exposure for console debugging
-window.INDEX_VERSION = "3.64";
+window.INDEX_VERSION = "3.65";
 
 // ============================================================
 // Apply user settings IMMEDIATELY before anything else
@@ -601,8 +599,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[INDEX] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var APP_VERSION = "3.64";
-var CACHE_KEY = "index_version_v364";
+var APP_VERSION = "3.65";
+var CACHE_KEY = "index_version_v365";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -655,8 +653,7 @@ var splashSubtitle = document.getElementById('splashSubtitle');
 // ============================================================
 
 function recordSplashShown() {
-    sessionStorage.setItem('appInitialized', 'true');
-    console.log("[SPLASH] App marked as initialized");
+    console.log("[SPLASH] App already marked as initialized");
 }
 
 function startSplashAnimation() {
@@ -1368,7 +1365,7 @@ function renderMainUI() {
 }
 
 // ============================================================
-// Initialization - v3.64
+// Initialization - v3.65
 // ============================================================
 
 function initApp() {
@@ -1383,6 +1380,10 @@ function initApp() {
     if (isFirstLoad) {
         // FIRST LOAD: Show splash for exactly 4 seconds
         console.log("[INDEX] First load - showing splash for 4 seconds");
+        
+        // v3.65: Set flag BEFORE splash starts
+        sessionStorage.setItem('appInitialized', 'true');
+        console.log("[SPLASH] App marked as initialized before splash");
         
         // Start loading data in background immediately
         FirebaseRetry.getCollection("scheduledGames", {
@@ -1452,7 +1453,7 @@ function displayDeviceId() {
 }
 
 // ============================================================
-// Start the app - v3.64
+// Start the app - v3.65
 // ============================================================
 
 if (isFirstLoad) {
@@ -1487,15 +1488,12 @@ if (isFirstLoad) {
 </html>
 
 <!--
-FILE: index.html
-VERSION: 3.64
-KEY CHANGES from v3.63:
-   - RESTORED: Original design with square GAME DAY button
-   - RESTORED: Dynamic button width matching title width (105%)
-   - FIXED: No shrink effect - container visible from start
-   - CHANGED: GAME DAY button is now square (width = height)
-   - CHANGED: All buttons centered with matching widths
-   - PRESERVED: All styling, colors, borders from v3.62
+FILE: index.html v3.65
+VERSION: 3.65
+KEY CHANGES from v3.64:
+   - FIXED: Splash screen now only shows once per session (flag set BEFORE splash starts)
+   - CHANGED: appInitialized flag moved to initApp() before splash animation
+   - PRESERVED: All styling, functionality, and UI from v3.64
 DEPENDS ON: js/firebase-config.js, js/session.js, js/index-hidden.js (v1.08), js/firebase-retry.js, js/modal.js, js/settings.js
 STATUS: Ready for integration
 -->
