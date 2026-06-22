@@ -1,13 +1,12 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.52
-KEY CHANGES from v1.51:
-   - FIXED: Custom arrow for Course dropdown (visible on iOS)
-   - FIXED: Custom calendar icon for Date picker (visible on iOS)
-   - FIXED: Date input left-aligned on all platforms
-   - CHANGED: Team and Flight right-aligned
-   - CHANGED: HCP center-aligned with focus arrows
-   - PRESERVED: All functionality from v1.51
+VERSION: 1.53
+KEY CHANGES from v1.52:
+   - ADDED: Custom green arrow (▼) for all dropdowns using .select-wrapper
+   - CHANGED: All selects now use appearance: none with custom arrow
+   - REMOVED: iOS-specific appearance hacks
+   - CHANGED: Name, Team, Flight, Course, Starting Hole, Team Game all have consistent green arrows
+   - PRESERVED: All functionality from v1.52
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -120,20 +119,13 @@ STATUS: Ready for integration
             min-width: 70px;
         }
         
-        /* Date input wrapper with custom icon */
-        .date-wrapper {
-            position: relative;
+        /* Date input - left-aligned */
+        .date-input {
             flex: 1;
-            display: flex;
-            align-items: center;
-            min-width: 140px;
-        }
-        .date-wrapper input[type="date"] {
-            width: 100%;
             background: #0a0a0a;
             border: 2px solid #2a5a2a;
             border-radius: 6px;
-            padding: 6px 30px 6px 8px;
+            padding: 6px 8px;
             color: #e0e0e0;
             font-size: 0.85rem;
             min-width: 120px;
@@ -144,29 +136,19 @@ STATUS: Ready for integration
             -webkit-appearance: none;
             appearance: none;
         }
-        .date-wrapper input[type="date"]:focus {
+        .date-input:focus {
             outline: none;
             border-color: #4caf50;
         }
-        .date-wrapper .date-icon {
-            position: absolute;
-            right: 8px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 14px;
-            pointer-events: none;
-            opacity: 0.7;
-        }
         
-        /* Course select wrapper with custom arrow */
-        .course-wrapper {
+        /* ===== SELECT WRAPPER WITH CUSTOM GREEN ARROW ===== */
+        .select-wrapper {
             position: relative;
+            display: inline-block;
             flex: 1;
-            display: flex;
-            align-items: center;
-            min-width: 120px;
+            min-width: 80px;
         }
-        .course-wrapper select {
+        .select-wrapper select {
             width: 100%;
             background: #0a0a0a;
             border: 2px solid #2a5a2a;
@@ -174,22 +156,21 @@ STATUS: Ready for integration
             padding: 6px 24px 6px 8px;
             color: #e0e0e0;
             font-size: 0.85rem;
-            min-width: 80px;
             transition: border-color 0.2s ease;
-            -webkit-appearance: none;
-            appearance: none;
+            -webkit-appearance: none !important;
+            appearance: none !important;
             cursor: pointer;
         }
-        .course-wrapper select:focus {
+        .select-wrapper select:focus {
             outline: none;
             border-color: #4caf50;
         }
-        .course-wrapper .course-arrow {
+        .select-wrapper .arrow {
             position: absolute;
             right: 8px;
             top: 50%;
             transform: translateY(-50%);
-            font-size: 10px;
+            font-size: 8px;
             color: #4caf50;
             pointer-events: none;
             opacity: 0.7;
@@ -214,22 +195,9 @@ STATUS: Ready for integration
             white-space: nowrap;
             font-weight: 500;
         }
-        .form-row-inline .field-group select {
+        .form-row-inline .field-group .select-wrapper {
             flex: 1;
-            background: #0a0a0a;
-            border: 2px solid #2a5a2a;
-            border-radius: 6px;
-            padding: 6px 8px;
-            color: #e0e0e0;
-            font-size: 0.85rem;
             min-width: 80px;
-            transition: border-color 0.2s ease;
-            -webkit-appearance: menulist !important;
-            appearance: menulist !important;
-        }
-        .form-row-inline .field-group select:focus {
-            outline: none;
-            border-color: #4caf50;
         }
         
         .error-msg { color: #ff6b6b; font-size: 0.7rem; margin-top: 4px; }
@@ -291,25 +259,41 @@ STATUS: Ready for integration
         }
         
         /* Column 1: Name - 160px */
-        .player-name-select {
+        .player-name-wrapper {
             flex: 0 0 160px;
             width: 160px;
             min-width: 160px;
             max-width: 160px;
+            position: relative;
+            display: inline-block;
+            height: 24px;
+        }
+        .player-name-wrapper .arrow {
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 7px;
+            color: #4caf50;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        .player-name-select {
+            width: 100%;
+            height: 24px;
             font-size: 14px;
-            padding: 2px 4px;
+            padding: 2px 18px 2px 4px;
             border: 1px solid #2a5a2a;
             border-radius: 3px;
             background: #0a0a0a;
             color: #e0e0e0;
-            height: 24px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             cursor: pointer;
             transition: border-color 0.2s ease;
-            -webkit-appearance: menulist !important;
-            appearance: menulist !important;
+            -webkit-appearance: none !important;
+            appearance: none !important;
         }
         .player-name-select:focus {
             outline: none;
@@ -381,8 +365,7 @@ STATUS: Ready for integration
             display: inline-block;
             height: 24px;
         }
-        .team-wrapper::after {
-            content: '▼';
+        .team-wrapper .arrow {
             position: absolute;
             right: 3px;
             top: 50%;
@@ -427,8 +410,7 @@ STATUS: Ready for integration
             display: inline-block;
             height: 24px;
         }
-        .flight-wrapper::after {
-            content: '▼';
+        .flight-wrapper .arrow {
             position: absolute;
             right: 3px;
             top: 50%;
@@ -645,11 +627,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.52</div>
+<div class="version-tag">v1.53</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.52
+// VERSION: 1.53
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -657,8 +639,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.52";
-var CACHE_KEY = "setup_game_version_v152";
+var VERSION = "1.53";
+var CACHE_KEY = "setup_game_version_v153";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -1650,12 +1632,16 @@ function render() {
             playerOptions += '<option value="' + escapeHtml(pl.name) + '"' + isSelected + '>' + escapeHtml(pl.name) + '</option>';
         }
         
+        // v1.53: All dropdowns wrapped with custom green arrow
         playersHtml += `
             <div class="player-row">
                 <div class="player-line1">
-                    <select class="player-name-select" data-idx="${originalIdx}" onchange="populatePlayerFields(${originalIdx})">
-                        ${playerOptions}
-                    </select>
+                    <div class="player-name-wrapper">
+                        <select class="player-name-select" data-idx="${originalIdx}" onchange="populatePlayerFields(${originalIdx})">
+                            ${playerOptions}
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
                     <span class="label-display" data-idx="${originalIdx}">${escapeHtml(p.label || '')}</span>
                     <div class="hcp-group">
                         <label>Hcp</label>
@@ -1666,12 +1652,14 @@ function render() {
                             <option value="A" ${p.team === "A" ? "selected" : ""}>A</option>
                             <option value="B" ${p.team === "B" ? "selected" : ""}>B</option>
                         </select>
+                        <span class="arrow">▼</span>
                     </div>
                     <div class="flight-wrapper">
                         <select class="flight-display" data-idx="${originalIdx}" onchange="updatePlayerFlight(${originalIdx}, this.value)">
                             <option value="1" ${p.flight === 1 ? "selected" : ""}>F1</option>
                             <option value="2" ${p.flight === 2 ? "selected" : ""}>F2</option>
                         </select>
+                        <span class="arrow">▼</span>
                     </div>
                 </div>
                 <div class="player-line2"></div>
@@ -1704,18 +1692,15 @@ function render() {
             <div class="card-title">Game Details</div>
             <div class="form-row-compact">
                 <label>Game Date</label>
-                <div class="date-wrapper">
-                    <input type="date" id="combinedDatePicker" class="date-input" value="${defaultDate}" min="${today}" max="${maxDateStr}">
-                    <span class="date-icon">📅</span>
-                </div>
+                <input type="date" id="combinedDatePicker" class="date-input" value="${defaultDate}" min="${today}" max="${maxDateStr}">
             </div>
             <div class="form-row-compact">
                 <label>Course</label>
-                <div class="course-wrapper">
+                <div class="select-wrapper">
                     <select id="combinedCourseSelect">
                         ${courseOptions}
                     </select>
-                    <span class="course-arrow">▼</span>
+                    <span class="arrow">▼</span>
                 </div>
             </div>
             ${state.dateError ? '<div class="error-msg">' + state.dateError + '</div>' : ''}
@@ -1727,18 +1712,24 @@ function render() {
             <div class="form-row-inline">
                 <div class="field-group">
                     <label>Starting Hole</label>
-                    <select id="combinedHoleSelect">
-                        ${[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(function(h) {
-                            return '<option value="' + h + '" ' + (state.startingHole === h ? 'selected' : '') + '>Hole ' + h + '</option>';
-                        }).join('')}
-                    </select>
+                    <div class="select-wrapper">
+                        <select id="combinedHoleSelect">
+                            ${[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(function(h) {
+                                return '<option value="' + h + '" ' + (state.startingHole === h ? 'selected' : '') + '>Hole ' + h + '</option>';
+                            }).join('')}
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
                 </div>
                 <div class="field-group">
                     <label>Team Game</label>
-                    <select id="combinedFormatSelect">
-                        <option value="tournament" ${state.teamGameFormat === 'tournament' ? 'selected' : ''}>Tournament</option>
-                        <option value="relative" ${state.teamGameFormat === 'relative' ? 'selected' : ''}>Relative</option>
-                    </select>
+                    <div class="select-wrapper">
+                        <select id="combinedFormatSelect">
+                            <option value="tournament" ${state.teamGameFormat === 'tournament' ? 'selected' : ''}>Tournament</option>
+                            <option value="relative" ${state.teamGameFormat === 'relative' ? 'selected' : ''}>Relative</option>
+                        </select>
+                        <span class="arrow">▼</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1893,14 +1884,13 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.52
-KEY CHANGES from v1.51:
-   - FIXED: Custom arrow for Course dropdown (visible on iOS)
-   - FIXED: Custom calendar icon for Date picker (visible on iOS)
-   - FIXED: Date input left-aligned on all platforms
-   - CHANGED: Team and Flight right-aligned
-   - CHANGED: HCP center-aligned with focus arrows
-   - PRESERVED: All functionality from v1.51
+VERSION: 1.53
+KEY CHANGES from v1.52:
+   - ADDED: Custom green arrow (▼) for all dropdowns using .select-wrapper
+   - CHANGED: All selects now use appearance: none with custom arrow
+   - REMOVED: iOS-specific appearance hacks
+   - CHANGED: Name, Team, Flight, Course, Starting Hole, Team Game all have consistent green arrows
+   - PRESERVED: All functionality from v1.52
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
