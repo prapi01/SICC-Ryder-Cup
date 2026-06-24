@@ -1,15 +1,12 @@
 /*
 FILE: js/util-copy-record.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW FILE: All COPY tab logic extracted from util-record-management.html v1.03
-   - ADDED: Environment management functions (shared with compare)
-   - ADDED: Source record loading and display
-   - ADDED: Destination record loading and display
-   - ADDED: Copy record with date override and replace confirmation
-   - ADDED: Check destination and delete destination functions
-   - DEPENDS ON: Firebase (prodDb, devDb, currentDb, currentEnv)
-PURPOSE: Copy records between collections with date override and replace confirmation
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Now uses initFirebase, log, logStep, escapeHtml from main HTML
+   - FIXED: Removed duplicate function definitions that conflicted with main HTML
+   - FIXED: Environment functions now properly reference prodDb and devDb
+   - PRESERVED: All COPY tab functionality
+DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml
 STATUS: Ready for integration
 */
 
@@ -24,6 +21,8 @@ SHARED STATE (defined in main HTML)
 - currentSourceCollection: Source collection name
 - currentDestCollection: Destination collection name
 - destRecords: Array of destination records
+- prodDb: PROD Firestore instance
+- devDb: DEV Firestore instance
 ============================================================
 */
 
@@ -535,8 +534,6 @@ function deleteDestination() {
 // COPY TAB: DESTINATION EXISTING SELECT HANDLER
 // ============================================================
 
-// Event listener setup is done in the main HTML via onclick
-// This function is called when the dropdown changes
 function onDestExistingSelect() {
     var selectedId = document.getElementById('destExistingSelect').value;
     if (selectedId) {
@@ -546,22 +543,20 @@ function onDestExistingSelect() {
 }
 
 // ============================================================
-// EVENT HANDLERS (Set up in main HTML)
-// ============================================================
-
-// These functions are exposed globally for the HTML onclick/onchange events
-window.loadSourceRecords = loadSourceRecords;
-window.loadDestinationRecords = loadDestinationRecords;
-window.loadGameData = loadGameData;
-window.copyRecord = copyRecord;
-window.checkDestination = checkDestination;
-window.deleteDestination = deleteDestination;
-window.onDestExistingSelect = onDestExistingSelect;
-window.setEnvironment = setEnvironment;
-
-// ============================================================
 // EXPOSE FOR DEBUGGING
 // ============================================================
 
-window.COPY_UTIL_VERSION = "1.00";
-console.log("[COPY-UTIL] v1.00 loaded");
+window.COPY_UTIL_VERSION = "1.01";
+console.log("[COPY-UTIL] v1.01 loaded");
+
+/*
+FILE: js/util-copy-record.js
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Now uses initFirebase, log, logStep, escapeHtml from main HTML
+   - FIXED: Removed duplicate function definitions that conflicted with main HTML
+   - FIXED: Environment functions now properly reference prodDb and devDb
+   - PRESERVED: All COPY tab functionality
+DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml
+STATUS: Ready for integration
+*/
