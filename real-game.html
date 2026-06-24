@@ -1,11 +1,12 @@
 <!--
 FILE: real-game.html
-VERSION: 6.21
-KEY CHANGES from v6.20:
-   - CHANGED: js/sign-card.js from v1.18 to v1.20 (complete flow + dummy celebration pointer)
-   - CHANGED: js/history-record.js from v6.20 to v3.05 (celebration field support)
-   - All existing functionality preserved from v6.20
-DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.20), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js (v1.06), js/real-game-init.js, js/waiting-screen.js, js/settings.js
+VERSION: 6.22
+KEY CHANGES from v6.21:
+   - ADDED: celebration-photo.js script tag
+   - ADDED: wrv.js script tag
+   - CHANGED: Updated script versions to latest
+   - All existing functionality preserved from v6.21
+DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.21), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.02), js/real-game-nav.js (v1.06), js/real-game-init.js (v1.02), js/waiting-screen.js, js/settings.js, js/celebration-photo.js, js/wrv.js
 STATUS: Ready for integration
 -->
 
@@ -19,35 +20,41 @@ STATUS: Ready for integration
     <!-- Third-party libraries -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     
     <!-- Core dependencies -->
-    <script src="js/firebase-config.js?v=6.21"></script>
-    <script src="js/session.js?v=6.21"></script>
-    <script src="js/settings.js?v=6.21"></script>
-    <script src="js/modal.js?v=6.21"></script>
+    <script src="js/firebase-config.js?v=6.22"></script>
+    <script src="js/session.js?v=6.22"></script>
+    <script src="js/settings.js?v=6.22"></script>
+    <script src="js/modal.js?v=6.22"></script>
     <script src="js/waiting-screen.js?v=1.00"></script>
     <script src="js/game-order.js?v=1.00"></script>
-    <script src="js/game-data.js?v=2.07"></script>
+    <script src="js/game-data.js?v=2.08"></script>
     <script src="js/game-match.js?v=2.25"></script>
     <script src="js/game-team.js?v=1.13"></script>
     <script src="js/game-stroke.js?v=1.09"></script>
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/card-submit.js?v=6.21"></script>
-    <script src="js/sign-card.js?v=1.20"></script>
+    <script src="js/card-submit.js?v=6.22"></script>
+    
+    <!-- v6.22: WRV and Celebration Photo modules -->
+    <script src="js/wrv.js?v=1.00"></script>
+    <script src="js/celebration-photo.js?v=1.00"></script>
+    
+    <script src="js/sign-card.js?v=1.23"></script>
     <script src="js/hcp-adjust.js?v=2.47"></script>
-    <script src="js/ticker.js?v=6.21"></script>
+    <script src="js/ticker.js?v=6.22"></script>
     <script src="js/history-record.js?v=3.05"></script>
     
     <!-- Real Game Modules - Load in order of dependency -->
     <script src="js/real-game-state.js?v=1.00"></script>
     <script src="js/real-game-utils.js?v=1.00"></script>
     <script src="js/real-game-cascade.js?v=1.01"></script>
-    <script src="js/real-game-save.js?v=1.20"></script>
-    <script src="js/real-game-ui.js?v=1.01"></script>
+    <script src="js/real-game-save.js?v=1.21"></script>
+    <script src="js/real-game-ui.js?v=1.02"></script>
     <script src="js/real-game-nav.js?v=1.11"></script>
-    <script src="js/real-game-init.js?v=1.01"></script>
+    <script src="js/real-game-init.js?v=1.02"></script>
     <script src="js/real-game-main.js?v=1.00"></script>
     
     <style>
@@ -311,7 +318,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v6.21</div>
+<div class="version-tag">v6.22</div>
 
 <script>
 // ============================================================
@@ -324,10 +331,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v6.21: Updated dependencies
+// VERSION CACHE-BUSTING - v6.22: Added WRV and Celebration Photo
 // ============================================================
-var APP_VERSION = "6.21";
-var CACHE_KEY = "real_game_version_v621";
+var APP_VERSION = "6.22";
+var CACHE_KEY = "real_game_version_v622";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -344,11 +351,12 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.REAL_GAME_VERSION = "6.21";
-console.log("[REAL-GAME] Initializing v6.21 - Updated sign-card.js to v1.20, history-record.js to v3.05");
+window.REAL_GAME_VERSION = "6.22";
+console.log("[REAL-GAME] Initializing v6.22 - Added WRV and Celebration Photo modules");
 console.log("[REAL-GAME] =========================================");
-console.log("[REAL-GAME] sign-card.js v1.20: Complete flow + dummy celebration pointer");
-console.log("[REAL-GAME] history-record.js v3.05: Celebration field support");
+console.log("[REAL-GAME] wrv.js v1.00: Write-Read-Verify with self-healing");
+console.log("[REAL-GAME] celebration-photo.js v1.00: Celebration photo management");
+console.log("[REAL-GAME] sign-card.js v1.23: Light theme capture");
 console.log("[REAL-GAME] =========================================");
 
 // ============================================================
@@ -372,11 +380,13 @@ setTimeout(function() {
 
 <!--
 FILE: real-game.html
-VERSION: 6.21
-KEY CHANGES from v6.20:
-   - CHANGED: js/sign-card.js from v1.18 to v1.20 (complete flow + dummy celebration pointer)
-   - CHANGED: js/history-record.js from v6.20 to v3.05 (celebration field support)
-   - All existing functionality preserved from v6.20
-DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.20), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.01), js/real-game-nav.js (v1.06), js/real-game-init.js, js/waiting-screen.js, js/settings.js
+VERSION: 6.22
+KEY CHANGES from v6.21:
+   - ADDED: celebration-photo.js script tag
+   - ADDED: wrv.js script tag
+   - ADDED: firebase-storage-compat.js for Storage support
+   - CHANGED: Updated script versions to latest
+   - All existing functionality preserved from v6.21
+DEPENDS ON: js/real-game-main.js, js/real-game-state.js, js/real-game-utils.js, js/real-game-save.js (v1.21), js/real-game-cascade.js (v1.01), js/real-game-ui.js (v1.02), js/real-game-nav.js (v1.06), js/real-game-init.js (v1.02), js/waiting-screen.js, js/settings.js, js/celebration-photo.js, js/wrv.js
 STATUS: Ready for integration
 -->
