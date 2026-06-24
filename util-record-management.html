@@ -1,14 +1,16 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: Independent environment selection for COPY tab (Source / Destination)
-   - ADDED: Independent environment selection for COMPARE tab (Left / Right)
-   - ADDED: Visual indicators showing which environment each side is connected to
-   - ADDED: Environment selectors in COPY and COMPARE tabs
-   - CHANGED: Removed global environment selector at top
-   - PRESERVED: All functionality from v1.05
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: VALIDATE tab integrated into record management
+   - ADDED: Load and validate records from any collection
+   - ADDED: Fix corrupted records with preview before write
+   - ADDED: Backup creation before fixing
+   - ADDED: Full validation UI (game info, flights, T-1, T-2, Strk, Match, TR)
+   - ADDED: Auto-detection of mismatched holes
+   - ADDED: Backup and restore functionality integrated
+   - PRESERVED: All existing COPY and COMPARE functionality
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js, js/util-validate-record.js, js/util-validate-ui.js
 STATUS: Ready for integration
 -->
 
@@ -26,6 +28,8 @@ STATUS: Ready for integration
     <!-- Utility JS Files -->
     <script src="js/util-copy-record.js"></script>
     <script src="js/util-compare-record.js"></script>
+    <script src="js/util-validate-record.js"></script>
+    <script src="js/util-validate-ui.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -388,6 +392,24 @@ STATUS: Ready for integration
             color: #4caf50;
         }
         
+        .btn-validate {
+            background: #1a2a2a;
+            border: 1px solid #4a8af4;
+            color: #4a8af4;
+        }
+        
+        .btn-fix {
+            background: #1a3a1a;
+            border: 1px solid #ffaa44;
+            color: #ffaa44;
+        }
+        
+        .btn-backup {
+            background: #1a2a3a;
+            border: 1px solid #4a8af4;
+            color: #4a8af4;
+        }
+        
         .log {
             background: #0a0a0a;
             border-radius: 12px;
@@ -607,6 +629,198 @@ STATUS: Ready for integration
         
         .tab-content { display: none; }
         .tab-content.active { display: block; }
+        
+        /* Validate Tab Styles */
+        .validate-results {
+            display: none;
+            margin-top: 16px;
+        }
+        
+        .validate-results.active { display: block; }
+        
+        .validate-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        @media (max-width: 600px) {
+            .validate-grid { grid-template-columns: 1fr; }
+        }
+        
+        .validate-section {
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 12px;
+            border: 1px solid #2a2a2a;
+            overflow: hidden;
+            min-width: 0;
+        }
+        
+        .validate-section-title {
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            color: #4caf50;
+        }
+        
+        .validate-summary-box {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            padding: 8px 0;
+        }
+        
+        .validate-summary-item {
+            background: #0a0a0a;
+            padding: 6px 12px;
+            border-radius: 8px;
+            border-left: 3px solid #4caf50;
+        }
+        
+        .validate-summary-item .label {
+            font-size: 0.6rem;
+            color: #888;
+        }
+        
+        .validate-summary-item .value {
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+        
+        .validate-summary-item .value.mismatch { color: #ff6b6b; }
+        .validate-summary-item .value.match { color: #4caf50; }
+        
+        .validate-hole-list {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+            margin-top: 4px;
+        }
+        
+        .validate-hole-item {
+            padding: 4px 6px;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 0.65rem;
+            font-weight: 600;
+        }
+        
+        .validate-hole-item.ok {
+            background: #0a2a0a;
+            color: #4caf50;
+            border: 1px solid #2a5a2a;
+        }
+        
+        .validate-hole-item.fix {
+            background: #2a0a0a;
+            color: #ff6b6b;
+            border: 1px solid #5a2a2a;
+        }
+        
+        .validate-hole-item.unknown {
+            background: #1a1a1a;
+            color: #555;
+            border: 1px solid #333;
+        }
+        
+        .validate-fix-btn-container {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        
+        .validate-fix-btn {
+            padding: 12px 24px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            border: 2px solid;
+            transition: all 0.2s;
+            flex: 1;
+            min-width: 120px;
+        }
+        
+        .validate-fix-btn:active { transform: scale(0.97); }
+        .validate-fix-btn-fix {
+            background: #1a3a1a;
+            border-color: #ffaa44;
+            color: #ffaa44;
+        }
+        .validate-fix-btn-fix:hover { background: #2a4a2a; }
+        .validate-fix-btn-backup {
+            background: #1a2a3a;
+            border-color: #4a8af4;
+            color: #4a8af4;
+        }
+        .validate-fix-btn-backup:hover { background: #2a3a4a; }
+        .validate-fix-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .validate-progress {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            background: #0a0a0a;
+            font-size: 0.75rem;
+            color: #888;
+            display: none;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .validate-progress.active { display: block; }
+        .validate-progress .step { padding: 2px 0; }
+        .validate-progress .step.done { color: #4caf50; }
+        .validate-progress .step.error { color: #ff6b6b; }
+        .validate-progress .step.info { color: #4a8af4; }
+        .validate-progress .step.warning { color: #ffaa44; }
+        
+        .validate-status {
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin: 8px 0;
+            font-size: 0.8rem;
+        }
+        
+        .validate-status.success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #4caf50; }
+        .validate-status.error { background: #2a0a0a; border: 1px solid #5a2a2a; color: #ff6b6b; }
+        .validate-status.info { background: #0a1a2a; border: 1px solid #2a3a5a; color: #4a8af4; }
+        .validate-status.warning { background: #2a2a0a; border: 1px solid #5a5a2a; color: #ffaa44; }
+        
+        .game-info-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 4px 16px;
+            font-size: 0.8rem;
+        }
+        
+        .game-info-grid .label { color: #666; }
+        .game-info-grid .value { color: #e0e0e0; }
+        
+        .empty-state {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        .col-total { font-weight: 700; color: #4caf50; }
+        .col-mismatch { background: #3a1a1a !important; color: #ef5350 !important; font-weight: 700; }
+        .col-match { background: #1a2a1a !important; color: #8bc34a !important; }
+        .col-green { color: #4caf50; font-weight: 600; }
+        .col-red { color: #ff6b6b; font-weight: 600; }
+        .col-gold { color: #ffaa44; font-weight: 600; }
+        .tr-total { font-weight: 700; color: #ffaa44; }
+        .team-a-col { color: #4caf50; }
+        .team-b-col { color: #ff6b6b; }
+        .clinch-cell { background: rgba(255, 170, 68, 0.25) !important; border-radius: 4px; }
+        .final-row { background: rgba(255, 170, 68, 0.15); font-weight: 700; }
     </style>
 </head>
 <body>
@@ -622,18 +836,19 @@ STATUS: Ready for integration
         <button class="tab-btn" data-tab="tabCompare">
             <span class="tab-icon">🔍</span> COMPARE
         </button>
+        <button class="tab-btn" data-tab="tabValidate">
+            <span class="tab-icon">🔬</span> VALIDATE
+        </button>
     </div>
     
     <!-- ============================================================ -->
     <!-- TAB: COPY -->
     <!-- ============================================================ -->
     <div class="tab-content active" id="tabCopy">
-        
         <!-- Environment Selection for COPY -->
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
             
-            <!-- SOURCE Environment -->
             <div class="env-row">
                 <span class="env-side-label source">📤 SOURCE</span>
                 <div class="env-selector">
@@ -643,7 +858,6 @@ STATUS: Ready for integration
                 <span id="copySourceIndicator" class="env-indicator-small none">Not connected</span>
             </div>
             
-            <!-- DESTINATION Environment -->
             <div class="env-row">
                 <span class="env-side-label dest">📥 DEST</span>
                 <div class="env-selector">
@@ -656,7 +870,6 @@ STATUS: Ready for integration
         
         <div class="card">
             <div class="card-title">📂 STEP 1: COLLECTIONS</div>
-            
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
                 <div style="flex:1; min-width:180px;">
                     <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">📤 SOURCE</label>
@@ -679,7 +892,6 @@ STATUS: Ready for integration
                     </div>
                 </div>
             </div>
-            
             <button id="loadSourceBtn" class="btn btn-secondary" style="margin-top:8px;">🔄 Load Source Records</button>
             <button id="loadDestBtn" class="btn btn-secondary" style="margin-top:8px;">📥 Load Destination Records</button>
         </div>
@@ -708,7 +920,6 @@ STATUS: Ready for integration
         
         <div class="card">
             <div class="card-title">📝 STEP 4: DESTINATION DOCUMENT NAME</div>
-            
             <div class="input-with-datalist">
                 <input type="text" id="destDocId" placeholder="Enter or select destination document ID" list="destRecordsList" autocomplete="off">
                 <datalist id="destRecordsList"></datalist>
@@ -716,14 +927,12 @@ STATUS: Ready for integration
             <div class="existing-hint">
                 💡 Start typing or select from existing records below. <strong>Selecting an existing record will REPLACE it</strong> (with confirmation).
             </div>
-            
             <div style="margin-top:8px;">
                 <label style="font-size:0.65rem; color:#888; display:block; margin-bottom:4px;">📋 Existing records in destination:</label>
                 <select id="destExistingSelect" class="game-select" style="font-size:0.75rem; padding:8px 14px;" onchange="onDestExistingSelect()">
                     <option value="">-- Select existing to REPLACE --</option>
                 </select>
             </div>
-            
             <div style="font-size:0.65rem; color:#666; margin-top:4px;">
                 ⚠️ If document exists, you will be prompted to confirm replacement.
             </div>
@@ -743,12 +952,8 @@ STATUS: Ready for integration
     <!-- TAB: COMPARE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabCompare">
-        
-        <!-- Environment Selection for COMPARE -->
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
-            
-            <!-- LEFT Environment -->
             <div class="env-row">
                 <span class="env-side-label left">📤 LEFT</span>
                 <div class="env-selector">
@@ -757,8 +962,6 @@ STATUS: Ready for integration
                 </div>
                 <span id="compareLeftIndicator" class="env-indicator-small none">Not connected</span>
             </div>
-            
-            <!-- RIGHT Environment -->
             <div class="env-row">
                 <span class="env-side-label right">📥 RIGHT</span>
                 <div class="env-selector">
@@ -830,6 +1033,118 @@ STATUS: Ready for integration
         </div>
     </div>
     
+    <!-- ============================================================ -->
+    <!-- TAB: VALIDATE -->
+    <!-- ============================================================ -->
+    <div class="tab-content" id="tabValidate">
+        <div class="card">
+            <div class="card-title">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label left">📤 ENVIRONMENT</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="validateProdBtn">PROD</button>
+                    <button class="env-btn-small" id="validateDevBtn">DEV</button>
+                </div>
+                <span id="validateIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title">📥 SELECT RECORD</div>
+            
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
+                <div style="flex:1; min-width:180px;">
+                    <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">Collection</label>
+                    <div class="select-wrapper">
+                        <select id="validateCollection" class="collection-select">
+                            <option value="historyGames">historyGames</option>
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="flex:1; min-width:180px;">
+                    <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">Record</label>
+                    <div class="select-wrapper">
+                        <select id="validateRecordSelect" class="game-select">
+                            <option value="">-- Select a record --</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="button-group">
+                <button id="validateLoadBtn" class="btn btn-load">🔄 Load & Validate</button>
+                <button id="validateRefreshBtn" class="btn btn-secondary">↻ Refresh</button>
+            </div>
+            
+            <div id="validateStatus" class="validate-status" style="display:none;"></div>
+        </div>
+        
+        <div id="validateResults" class="validate-results">
+            <div class="card">
+                <div class="card-title">📋 Game Info</div>
+                <div id="validateGameInfo"></div>
+            </div>
+            
+            <div class="validate-grid">
+                <div class="validate-section">
+                    <div class="validate-section-title">✈️ Flight 1</div>
+                    <div id="validateFlight1"></div>
+                </div>
+                <div class="validate-section">
+                    <div class="validate-section-title">✈️ Flight 2</div>
+                    <div id="validateFlight2"></div>
+                </div>
+            </div>
+            
+            <div class="validate-grid">
+                <div class="validate-section">
+                    <div class="validate-section-title">📊 T-1</div>
+                    <div id="validateT1"></div>
+                </div>
+                <div class="validate-section">
+                    <div class="validate-section-title">📊 T-2</div>
+                    <div id="validateT2"></div>
+                </div>
+                <div class="validate-section">
+                    <div class="validate-section-title">📊 Strk</div>
+                    <div id="validateStrk"></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">🏅 Match Game</div>
+                <div id="validateMatch"></div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">🏆 TR — Per Hole</div>
+                <div id="validateTR"></div>
+            </div>
+            
+            <div class="card" style="border-color: #4caf50;">
+                <div class="card-title">✅ Summary</div>
+                <div id="validateSummary"></div>
+            </div>
+            
+            <div class="card" style="border-color: #ffaa44; display:none;" id="validateFixCard">
+                <div class="card-title">🔧 Fix Record</div>
+                <div style="font-size:0.8rem; color:#ccc; margin-bottom:12px;">
+                    This will recalculate all derived data from raw data and update the Firestore record.
+                    <br><strong style="color:#4caf50;">Preserves: raw scores, players, course, gameInfo</strong>
+                    <br><strong style="color:#4a8af4;">NOT TOUCHED: f1IntraMatches, f2IntraMatches, matchResults, adjustedHandicaps</strong>
+                    <br><strong style="color:#ffaa44;">A backup will be created before updating.</strong>
+                </div>
+                <div id="validateProgress" class="validate-progress"></div>
+                <div class="validate-fix-btn-container">
+                    <button class="validate-fix-btn validate-fix-btn-backup" id="validateBackupBtn">💾 Backup Only</button>
+                    <button class="validate-fix-btn validate-fix-btn-fix" id="validateFixBtn">🔧 Fix Record</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <!-- Log -->
     <div class="card">
         <div class="card-title">📜 LOG</div>
@@ -838,15 +1153,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.06</div>
+<div class="version-tag">v1.07</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html (Main Container)
-// VERSION: 1.06
+// VERSION: 1.07
 // ============================================================
 
-var APP_VERSION = "1.06";
+var APP_VERSION = "1.07";
 
 // Firebase Configurations
 var PROD_CONFIG = {
@@ -864,6 +1179,11 @@ var DEV_CONFIG = {
 // Firebase instances
 var prodDb = null;
 var devDb = null;
+
+// Validate state
+var validateRecords = [];
+var validateCurrentIndex = -1;
+var validateGameData = null;
 
 // ============================================================
 // FIREBASE INITIALIZATION
@@ -941,6 +1261,16 @@ function escapeHtml(str) {
     });
 }
 
+function formatDate(dateStr) {
+    if (!dateStr) return 'Unknown';
+    var parts = dateStr.split('-');
+    if (parts.length === 3) {
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return parts[2] + ' ' + months[parseInt(parts[1])-1] + ' ' + parts[0];
+    }
+    return dateStr;
+}
+
 function initDateToggle() {
     var radios = document.querySelectorAll('input[name="dateOption"]');
     var customDateInput = document.getElementById('customDate');
@@ -983,6 +1313,9 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
         if (tabId === 'tabCompare') {
             loadCompareRecords();
         }
+        if (tabId === 'tabValidate') {
+            loadValidateRecords();
+        }
     });
 });
 
@@ -1018,6 +1351,17 @@ document.getElementById('compareRightProdBtn').onclick = function() {
 };
 document.getElementById('compareRightDevBtn').onclick = function() {
     setCompareRightEnvironment('DEV');
+};
+
+// ============================================================
+// EVENT HANDLERS FOR VALIDATE TAB (Environment)
+// ============================================================
+
+document.getElementById('validateProdBtn').onclick = function() {
+    setValidateEnvironment('PROD');
+};
+document.getElementById('validateDevBtn').onclick = function() {
+    setValidateEnvironment('DEV');
 };
 
 // ============================================================
@@ -1061,32 +1405,587 @@ document.getElementById('compareLoadBtn').onclick = function() { loadCompareReco
 document.getElementById('compareBtn').onclick = function() { performCompare(); };
 
 // ============================================================
+// VALIDATE TAB EVENT HANDLERS
+// ============================================================
+
+document.getElementById('validateLoadBtn').onclick = function() { loadAndValidate(); };
+document.getElementById('validateRefreshBtn').onclick = function() { loadValidateRecords(); };
+document.getElementById('validateBackupBtn').onclick = function() { validateBackupOnly(); };
+document.getElementById('validateFixBtn').onclick = function() { validateFixRecord(); };
+
+document.getElementById('validateCollection').onchange = function() {
+    loadValidateRecords();
+};
+
+document.getElementById('validateRecordSelect').onchange = function() {
+    var index = parseInt(this.value);
+    if (!isNaN(index) && index >= 0 && index < validateRecords.length) {
+        validateCurrentIndex = index;
+        validateGameData = validateRecords[index].rawData;
+        validateGameData.id = validateRecords[index].id;
+        validateProcessGameData(validateGameData);
+    } else {
+        validateCurrentIndex = -1;
+        validateGameData = null;
+        document.getElementById('validateResults').classList.remove('active');
+        document.getElementById('validateFixCard').style.display = 'none';
+    }
+};
+
+// ============================================================
+// VALIDATE FUNCTIONS
+// ============================================================
+
+function setValidateEnvironment(env) {
+    // Update buttons
+    document.getElementById('validateProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
+    document.getElementById('validateDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
+    
+    var indicator = document.getElementById('validateIndicator');
+    if (env === 'PROD') {
+        indicator.textContent = 'PROD';
+        indicator.className = 'env-indicator-small prod';
+    } else {
+        indicator.textContent = 'DEV';
+        indicator.className = 'env-indicator-small dev';
+    }
+    
+    log('Validate environment set to: ' + env, 'success');
+    
+    // Reload records with new environment
+    loadValidateRecords();
+}
+
+function getValidateDb() {
+    var indicator = document.getElementById('validateIndicator');
+    if (indicator.textContent === 'PROD') {
+        return prodDb;
+    } else if (indicator.textContent === 'DEV') {
+        return devDb;
+    }
+    return prodDb;
+}
+
+function loadValidateRecords() {
+    var db = getValidateDb();
+    if (!db) {
+        log('No database selected for validate', 'error');
+        return;
+    }
+    
+    var collection = document.getElementById('validateCollection').value;
+    var select = document.getElementById('validateRecordSelect');
+    var statusEl = document.getElementById('validateStatus');
+    
+    select.innerHTML = '<option value="">Loading...</option>';
+    statusEl.style.display = 'block';
+    statusEl.className = 'validate-status info';
+    statusEl.textContent = '⏳ Loading records from ' + collection + '...';
+    
+    db.collection(collection).limit(200).get()
+        .then(function(snapshot) {
+            validateRecords = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                validateRecords.push({
+                    id: doc.id,
+                    originalGameId: data.originalGameId || doc.id,
+                    date: data.gameInfo?.date || 'Unknown',
+                    courseName: data.gameInfo?.course?.name || 'Unknown Course',
+                    status: data.status || 'unknown',
+                    rawData: data
+                });
+            });
+            
+            validateRecords.sort(function(a, b) {
+                if (a.date > b.date) return -1;
+                if (a.date < b.date) return 1;
+                return 0;
+            });
+            
+            if (validateRecords.length === 0) {
+                select.innerHTML = '<option value="">No records found</option>';
+                statusEl.className = 'validate-status warning';
+                statusEl.textContent = '⚠️ No records found in ' + collection;
+            } else {
+                var html = '<option value="">-- Select a record --</option>';
+                for (var i = 0; i < validateRecords.length; i++) {
+                    var r = validateRecords[i];
+                    html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
+                }
+                select.innerHTML = html;
+                statusEl.className = 'validate-status success';
+                statusEl.textContent = '✅ Loaded ' + validateRecords.length + ' records from ' + collection;
+            }
+            
+            document.getElementById('validateResults').classList.remove('active');
+            document.getElementById('validateFixCard').style.display = 'none';
+        })
+        .catch(function(err) {
+            select.innerHTML = '<option value="">Error loading records</option>';
+            statusEl.className = 'validate-status error';
+            statusEl.textContent = '❌ Error loading records: ' + err.message;
+            log('Error loading validate records: ' + err.message, 'error');
+        });
+}
+
+function loadAndValidate() {
+    var select = document.getElementById('validateRecordSelect');
+    var index = parseInt(select.value);
+    
+    if (isNaN(index) || index < 0 || index >= validateRecords.length) {
+        var statusEl = document.getElementById('validateStatus');
+        statusEl.style.display = 'block';
+        statusEl.className = 'validate-status warning';
+        statusEl.textContent = '⚠️ Please select a record first.';
+        return;
+    }
+    
+    validateCurrentIndex = index;
+    validateGameData = validateRecords[index].rawData;
+    validateGameData.id = validateRecords[index].id;
+    
+    var statusEl = document.getElementById('validateStatus');
+    statusEl.style.display = 'block';
+    statusEl.className = 'validate-status info';
+    statusEl.textContent = '⏳ Validating: ' + validateRecords[index].originalGameId + '...';
+    
+    validateProcessGameData(validateGameData);
+}
+
+function validateProcessGameData(data) {
+    var resultsContainer = document.getElementById('validateResults');
+    var fixCard = document.getElementById('validateFixCard');
+    
+    // Validate using UtilValidate
+    var validation = UtilValidate.validateRecord(data);
+    
+    if (!validation || validation.error) {
+        var statusEl = document.getElementById('validateStatus');
+        statusEl.className = 'validate-status error';
+        statusEl.textContent = '❌ Validation failed: ' + (validation?.error || 'Unknown error');
+        resultsContainer.classList.remove('active');
+        return;
+    }
+    
+    // Render using UtilValidateUI
+    UtilValidateUI.renderGameInfo(data, 'validateGameInfo');
+    
+    // Flights
+    var f1Scores = validation.f1Scores;
+    var f2Scores = validation.f2Scores;
+    var players = validation.players;
+    var courseSi = validation.courseSi;
+    var coursePar = validation.coursePar;
+    
+    UtilValidateUI.renderFlightTable(f1Scores, players, 1, 'validateFlight1');
+    UtilValidateUI.renderFlightTable(f2Scores, players, 2, 'validateFlight2');
+    
+    // T-1, T-2, Strk
+    var t1Results = UtilValidate.calculateTeamGame(f1Scores, players, 1, courseSi);
+    var t2Results = UtilValidate.calculateTeamGame(f2Scores, players, 2, courseSi);
+    var strkResults = UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players);
+    
+    UtilValidateUI.renderTeamGameTable(t1Results, 'validateT1', 'T-1');
+    UtilValidateUI.renderTeamGameTable(t2Results, 'validateT2', 'T-2');
+    UtilValidateUI.renderStrkTable(strkResults, 'validateStrk');
+    
+    // Match
+    var matchData = UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
+    var orderedPlayers = matchData.orderedPlayers;
+    var matchResults = matchData.results;
+    var matchPointsPerHole = matchData.matchPointsPerHole;
+    
+    UtilValidateUI.renderMatchTable(orderedPlayers, matchResults, 'validateMatch');
+    
+    // TR
+    UtilValidateUI.renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, data, 'validateTR');
+    
+    // Summary
+    UtilValidateUI.renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, data, 'validateSummary');
+    
+    resultsContainer.classList.add('active');
+    
+    // Check if fix is needed
+    if (validation.needsFix) {
+        fixCard.style.display = 'block';
+        var statusEl = document.getElementById('validateStatus');
+        var msg = '';
+        if (validation.mismatches.length > 0) {
+            msg += 'TR mismatches at holes: ' + validation.mismatches.join(', ');
+        }
+        if (validation.isPending) {
+            msg += ' Status: pending_handicap → completed';
+        }
+        statusEl.className = 'validate-status warning';
+        statusEl.textContent = '⚠️ Record needs fixing. ' + msg;
+        log('Record needs fixing: ' + msg, 'warning');
+    } else {
+        fixCard.style.display = 'none';
+        var statusEl = document.getElementById('validateStatus');
+        statusEl.className = 'validate-status success';
+        statusEl.textContent = '✅ Record is valid. No changes needed.';
+        log('Record is valid', 'success');
+    }
+    
+    // Store recalculated data for fix operations
+    window._validateRecalculated = validation.recalculated;
+    window._validateValidation = validation;
+}
+
+function validateBackupOnly() {
+    if (validateCurrentIndex < 0 || validateCurrentIndex >= validateRecords.length) {
+        log('No record selected for backup', 'error');
+        return;
+    }
+    
+    var record = validateRecords[validateCurrentIndex];
+    var progressEl = document.getElementById('validateProgress');
+    
+    if (!confirm('💾 Create a backup of this record?\n\nID: ' + record.id + '\nGame: ' + record.originalGameId)) {
+        return;
+    }
+    
+    var fixBtn = document.getElementById('validateFixBtn');
+    var backupBtn = document.getElementById('validateBackupBtn');
+    
+    fixBtn.disabled = true;
+    backupBtn.disabled = true;
+    backupBtn.textContent = '⏳ Creating backup...';
+    progressEl.className = 'validate-progress active';
+    progressEl.innerHTML = '';
+    
+    createValidateBackup(record, progressEl)
+        .then(function(backupId) {
+            progressEl.innerHTML += '<div class="step done">✅ Backup complete: ' + backupId + '</div>';
+            backupBtn.textContent = '✅ Backup: ' + backupId;
+            fixBtn.disabled = false;
+            backupBtn.disabled = false;
+            log('Backup created: ' + backupId, 'success');
+        })
+        .catch(function(err) {
+            progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
+            backupBtn.textContent = '❌ Error';
+            fixBtn.disabled = false;
+            backupBtn.disabled = false;
+            log('Backup failed: ' + err.message, 'error');
+        });
+}
+
+function createValidateBackup(record, progressEl) {
+    return new Promise(function(resolve, reject) {
+        var docId = record.id;
+        var data = record.rawData;
+        var originalGameId = record.originalGameId || docId;
+        var now = new Date();
+        var dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '_' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
+        var backupId = 'Backup_' + dateStr + '_' + originalGameId;
+        progressEl.innerHTML += '<div class="step info">💾 Creating backup: ' + backupId + '...</div>';
+        
+        var backupData = JSON.parse(JSON.stringify(data));
+        backupData._backupTimestamp = firebase.firestore.FieldValue.serverTimestamp();
+        backupData._backupOriginalId = docId;
+        backupData._backupOriginalCollection = 'historyGames';
+        backupData._backupCreatedAt = new Date().toISOString();
+        backupData._backupReason = 'Pre-fix backup from validator v1.07';
+        
+        var db = getValidateDb();
+        if (!db) {
+            reject(new Error('No database selected'));
+            return;
+        }
+        
+        db.collection('backupFolder').doc(backupId).set(backupData)
+            .then(function() {
+                progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
+                resolve(backupId);
+            })
+            .catch(function(err) {
+                progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
+                reject(err);
+            });
+    });
+}
+
+function validateFixRecord() {
+    if (validateCurrentIndex < 0 || validateCurrentIndex >= validateRecords.length) {
+        log('No record selected to fix', 'error');
+        return;
+    }
+    
+    var record = validateRecords[validateCurrentIndex];
+    var validation = window._validateValidation;
+    var recalculated = window._validateRecalculated;
+    
+    if (!validation || !recalculated) {
+        log('No validation data available. Please load and validate first.', 'error');
+        return;
+    }
+    
+    if (!validation.needsFix) {
+        log('Record is already valid. No fix needed.', 'info');
+        return;
+    }
+    
+    // Build preview
+    var previewData = UtilValidate.buildFixPreview(record.rawData, recalculated);
+    
+    // Show preview modal
+    UtilValidateUI.showFixPreview(record, recalculated, previewData, null, function() {
+        // User confirmed - execute fix
+        executeValidateFix(record, recalculated);
+    });
+}
+
+function executeValidateFix(record, recalculated) {
+    var progressEl = document.getElementById('validateProgress');
+    var fixBtn = document.getElementById('validateFixBtn');
+    var backupBtn = document.getElementById('validateBackupBtn');
+    
+    fixBtn.disabled = true;
+    backupBtn.disabled = true;
+    fixBtn.textContent = '⏳ Fixing...';
+    progressEl.className = 'validate-progress active';
+    progressEl.innerHTML = '<div class="step info">🔧 Creating backup before fix...</div>';
+    
+    // Create backup first
+    createValidateBackup(record, progressEl)
+        .then(function(backupId) {
+            progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
+            progressEl.innerHTML += '<div class="step info">📝 Building update payload...</div>';
+            
+            // Build fix payload
+            var fixPayload = UtilValidate.buildFixPayload(record.rawData, recalculated);
+            var updatePayload = fixPayload.updatePayload;
+            
+            progressEl.innerHTML += '<div class="step info">📝 ' + Object.keys(updatePayload).length + ' fields to update</div>';
+            progressEl.innerHTML += '<div class="step info">🔄 Holes to fix: ' + (fixPayload.holesToFix.length > 0 ? fixPayload.holesToFix.map(function(h) { return h+1; }).join(', ') : 'None') + '</div>';
+            
+            var db = getValidateDb();
+            if (!db) {
+                throw new Error('No database selected');
+            }
+            
+            progressEl.innerHTML += '<div class="step info">💾 Writing to Firestore...</div>';
+            
+            return db.collection('historyGames').doc(record.id).update(updatePayload);
+        })
+        .then(function() {
+            progressEl.innerHTML += '<div class="step done">✅ Firestore update successful</div>';
+            
+            // Refresh the record
+            var db = getValidateDb();
+            return db.collection('historyGames').doc(record.id).get();
+        })
+        .then(function(doc) {
+            if (doc.exists) {
+                validateRecords[validateCurrentIndex].rawData = doc.data();
+                progressEl.innerHTML += '<div class="step done">✅ Cache refreshed</div>';
+                
+                var msg = '✅ Record fixed successfully!';
+                if (window._validateValidation && window._validateValidation.mismatches) {
+                    msg += ' Fixed TR at holes: ' + window._validateValidation.mismatches.join(', ');
+                }
+                msg += ' adjustedHandicaps: PRESERVED (not changed)';
+                
+                progressEl.innerHTML += '<div class="step done">✅ ' + msg + '</div>';
+                fixBtn.textContent = '✅ Fixed!';
+                fixBtn.disabled = false;
+                backupBtn.textContent = '💾 Backup Only';
+                backupBtn.disabled = false;
+                
+                log(msg, 'success');
+                
+                // Re-validate
+                setTimeout(function() {
+                    validateProcessGameData(doc.data());
+                }, 500);
+            }
+        })
+        .catch(function(err) {
+            var msg = '❌ Error fixing record: ' + (err.message || 'Unknown error');
+            progressEl.innerHTML += '<div class="step error">❌ ' + msg + '</div>';
+            fixBtn.textContent = '❌ Error';
+            fixBtn.disabled = false;
+            backupBtn.textContent = '💾 Backup Only';
+            backupBtn.disabled = false;
+            log(msg, 'error');
+        });
+}
+
+// ============================================================
+// COPY ENVIRONMENT FUNCTIONS (Stubs - to be implemented)
+// ============================================================
+
+function setCopySourceEnvironment(env) {
+    document.getElementById('copySourceProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
+    document.getElementById('copySourceDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
+    var indicator = document.getElementById('copySourceIndicator');
+    if (env === 'PROD') {
+        indicator.textContent = 'PROD';
+        indicator.className = 'env-indicator-small prod';
+    } else {
+        indicator.textContent = 'DEV';
+        indicator.className = 'env-indicator-small dev';
+    }
+    log('Copy source environment set to: ' + env, 'success');
+}
+
+function setCopyDestEnvironment(env) {
+    document.getElementById('copyDestProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
+    document.getElementById('copyDestDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
+    var indicator = document.getElementById('copyDestIndicator');
+    if (env === 'PROD') {
+        indicator.textContent = 'PROD';
+        indicator.className = 'env-indicator-small prod';
+    } else {
+        indicator.textContent = 'DEV';
+        indicator.className = 'env-indicator-small dev';
+    }
+    log('Copy destination environment set to: ' + env, 'success');
+}
+
+// ============================================================
+// COMPARE ENVIRONMENT FUNCTIONS (Stubs - to be implemented)
+// ============================================================
+
+function setCompareLeftEnvironment(env) {
+    document.getElementById('compareLeftProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
+    document.getElementById('compareLeftDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
+    var indicator = document.getElementById('compareLeftIndicator');
+    if (env === 'PROD') {
+        indicator.textContent = 'PROD';
+        indicator.className = 'env-indicator-small prod';
+    } else {
+        indicator.textContent = 'DEV';
+        indicator.className = 'env-indicator-small dev';
+    }
+    log('Compare left environment set to: ' + env, 'success');
+}
+
+function setCompareRightEnvironment(env) {
+    document.getElementById('compareRightProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
+    document.getElementById('compareRightDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
+    var indicator = document.getElementById('compareRightIndicator');
+    if (env === 'PROD') {
+        indicator.textContent = 'PROD';
+        indicator.className = 'env-indicator-small prod';
+    } else {
+        indicator.textContent = 'DEV';
+        indicator.className = 'env-indicator-small dev';
+    }
+    log('Compare right environment set to: ' + env, 'success');
+}
+
+// ============================================================
+// COPY FUNCTIONS (Stubs)
+// ============================================================
+
+var currentGameData = null;
+var currentGameId = null;
+
+function loadSourceRecords() {
+    log('Loading source records...', 'info');
+    // Implement in util-copy-record.js
+}
+
+function loadDestinationRecords() {
+    log('Loading destination records...', 'info');
+    // Implement in util-copy-record.js
+}
+
+function loadGameData(gameId) {
+    log('Loading game data for: ' + gameId, 'info');
+    // Implement in util-copy-record.js
+}
+
+function copyRecord() {
+    log('Copying record...', 'info');
+    // Implement in util-copy-record.js
+}
+
+function checkDestination() {
+    log('Checking destination...', 'info');
+    // Implement in util-copy-record.js
+}
+
+function deleteDestination() {
+    log('Deleting destination...', 'info');
+    // Implement in util-copy-record.js
+}
+
+function onDestExistingSelect() {
+    var select = document.getElementById('destExistingSelect');
+    var destDocId = document.getElementById('destDocId');
+    if (select.value) {
+        destDocId.value = select.value;
+    }
+}
+
+// ============================================================
+// COMPARE FUNCTIONS (Stubs)
+// ============================================================
+
+function loadCompareRecords() {
+    log('Loading compare records...', 'info');
+    // Implement in util-compare-record.js
+}
+
+function loadCompareRecordsLeft() {
+    log('Loading left compare records...', 'info');
+    // Implement in util-compare-record.js
+}
+
+function loadCompareRecordsRight() {
+    log('Loading right compare records...', 'info');
+    // Implement in util-compare-record.js
+}
+
+function loadCompareRecordData(side) {
+    log('Loading compare record data for: ' + side, 'info');
+    // Implement in util-compare-record.js
+}
+
+function performCompare() {
+    log('Performing compare...', 'info');
+    // Implement in util-compare-record.js
+}
+
+// ============================================================
 // INIT
 // ============================================================
 
 initFirebase();
 initDateToggle();
 
-log('Record Management v1.06 loaded', 'success');
+log('Record Management v1.07 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
-log('1. Select environments for each side (PROD/DEV)', 'info');
+log('1. Select environments for each tab (PROD/DEV)', 'info');
 log('2. COPY tab: copy records between collections and environments', 'info');
 log('3. COMPARE tab: field-by-field comparison across environments', 'info');
+log('4. VALIDATE tab: load and validate records, fix corrupted ones', 'info');
 log('=====================================', 'info');
+
+// Pre-load validate records
+setTimeout(function() {
+    loadValidateRecords();
+}, 500);
 </script>
 </body>
 </html>
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: Independent environment selection for COPY tab (Source / Destination)
-   - ADDED: Independent environment selection for COMPARE tab (Left / Right)
-   - ADDED: Visual indicators showing which environment each side is connected to
-   - ADDED: Environment selectors in COPY and COMPARE tabs
-   - CHANGED: Removed global environment selector at top
-   - PRESERVED: All functionality from v1.05
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: VALIDATE tab integrated into record management
+   - ADDED: Load and validate records from any collection
+   - ADDED: Fix corrupted records with preview before write
+   - ADDED: Backup creation before fixing
+   - ADDED: Full validation UI (game info, flights, T-1, T-2, Strk, Match, TR)
+   - ADDED: Auto-detection of mismatched holes
+   - ADDED: Backup and restore functionality integrated
+   - PRESERVED: All existing COPY and COMPARE functionality
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js, js/util-validate-record.js, js/util-validate-ui.js
 STATUS: Ready for integration
 -->
