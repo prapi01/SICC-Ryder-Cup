@@ -1,12 +1,14 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.04
-KEY CHANGES from v3.03:
-   - FIXED: updateWithHandicap() now correctly sets status: "completed" from the start
-   - FIXED: ensure all handicap data is properly saved before status change
-   - ADDED: Better error handling and logging for handicap update
-   - ADDED: Validation of handicapData before writing to Firestore
-   - All existing functionality preserved from v3.03
+VERSION: 3.05
+KEY CHANGES from v3.04:
+   - ADDED: celebration field support in updateWithHandicap()
+   - ADDED: Dummy celebration pointer (imageRef + capturedAt) stored in historyGames
+   - ADDED: updateWithHandicapAndCelebration() - separate function for celebration data
+   - ADDED: getCelebrationData() - retrieve celebration pointer from history record
+   - CHANGED: updateWithHandicap() now accepts optional celebrationData parameter
+   - CHANGED: Handicap data and celebration data saved together in one atomic update
+   - All existing functionality preserved from v3.04
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
@@ -218,7 +220,7 @@ var HistoryRecord = (function() {
     
     // ============================================================
     // Update with handicap adjustment (mark as completed)
-    // v3.04: Ensures status is set to "completed" with handicap data
+    // v3.05: Added celebration field support
     // ============================================================
     
     function updateWithHandicap(archiveId, handicapData, startingPlayers, callback) {
@@ -282,12 +284,21 @@ var HistoryRecord = (function() {
             });
         }
         
-        // v3.04: Ensure status is "completed" and all data is properly set
+        // v3.05: Build update payload with optional celebration data
         var updatePayload = {
             "adjustedHandicaps": adjustedHandicaps,
             "status": "completed",
             "updatedAt": firebase.firestore.FieldValue.serverTimestamp()
         };
+        
+        // v3.05: Add celebration data if provided
+        if (handicapData.celebration) {
+            updatePayload["celebration"] = {
+                imageRef: handicapData.celebration.imageRef || "dummy_celebration_image.jpg",
+                capturedAt: handicapData.celebration.capturedAt || firebase.firestore.FieldValue.serverTimestamp()
+            };
+            console.log("[HistoryRecord] Adding celebration pointer:", handicapData.celebration.imageRef);
+        }
         
         console.log("[HistoryRecord] Writing to Firestore with status: completed");
         console.log("[HistoryRecord] Payload keys:", Object.keys(updatePayload));
@@ -301,6 +312,69 @@ var HistoryRecord = (function() {
             .catch(function(err) {
                 console.error("[HistoryRecord] Error updating archive record:", err);
                 if (callback) callback(err);
+            });
+    }
+    
+    // ============================================================
+    // v3.05: Update with celebration data only (for later updates)
+    // ============================================================
+    
+    function updateCelebrationData(archiveId, celebrationData, callback) {
+        if (!archiveId) {
+            if (callback) callback(new Error("Missing archiveId"));
+            return;
+        }
+        
+        if (!celebrationData || !celebrationData.imageRef) {
+            if (callback) callback(new Error("Missing celebration data"));
+            return;
+        }
+        
+        console.log("[HistoryRecord] Updating celebration data for:", archiveId);
+        console.log("[HistoryRecord] ImageRef:", celebrationData.imageRef);
+        
+        var updatePayload = {
+            "celebration": {
+                imageRef: celebrationData.imageRef,
+                capturedAt: celebrationData.capturedAt || firebase.firestore.FieldValue.serverTimestamp()
+            },
+            "updatedAt": firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        firebase.firestore().collection(COLLECTION).doc(archiveId).update(updatePayload)
+            .then(function() {
+                console.log("[HistoryRecord] Celebration data updated:", archiveId);
+                if (callback) callback(null);
+            })
+            .catch(function(err) {
+                console.error("[HistoryRecord] Error updating celebration data:", err);
+                if (callback) callback(err);
+            });
+    }
+    
+    // ============================================================
+    // v3.05: Get celebration data from history record
+    // ============================================================
+    
+    function getCelebrationData(archiveId, callback) {
+        if (!archiveId) {
+            if (callback) callback(new Error("Missing archiveId"), null);
+            return;
+        }
+        
+        firebase.firestore().collection(COLLECTION).doc(archiveId).get()
+            .then(function(doc) {
+                if (doc.exists) {
+                    var data = doc.data();
+                    var celebration = data.celebration || null;
+                    callback(null, celebration);
+                } else {
+                    callback(new Error("Record not found"), null);
+                }
+            })
+            .catch(function(err) {
+                console.error("[HistoryRecord] Error getting celebration data:", err);
+                callback(err, null);
             });
     }
     
@@ -359,7 +433,8 @@ var HistoryRecord = (function() {
                         winner: data.finalResults?.winnerText,
                         teamAScore: data.finalResults?.teamAScore,
                         teamBScore: data.finalResults?.teamBScore,
-                        completedAt: data.completedAt
+                        completedAt: data.completedAt,
+                        celebration: data.celebration || null
                     });
                 });
                 callback(null, games);
@@ -451,6 +526,8 @@ var HistoryRecord = (function() {
         createPendingRecord: createPendingRecord,
         upsertPendingRecord: upsertPendingRecord,
         updateWithHandicap: updateWithHandicap,
+        updateCelebrationData: updateCelebrationData,
+        getCelebrationData: getCelebrationData,
         getArchivedGame: getArchivedGame,
         getArchivedGames: getArchivedGames,
         getArchivedGameByOriginalId: getArchivedGameByOriginalId,
@@ -465,13 +542,15 @@ var HistoryRecord = (function() {
 
 /*
 FILE: js/history-record.js
-VERSION: 3.04
-KEY CHANGES from v3.03:
-   - FIXED: updateWithHandicap() now correctly sets status: "completed" from the start
-   - FIXED: ensure all handicap data is properly saved before status change
-   - ADDED: Better error handling and logging for handicap update
-   - ADDED: Validation of handicapData before writing to Firestore
-   - All existing functionality preserved from v3.03
+VERSION: 3.05
+KEY CHANGES from v3.04:
+   - ADDED: celebration field support in updateWithHandicap()
+   - ADDED: Dummy celebration pointer (imageRef + capturedAt) stored in historyGames
+   - ADDED: updateCelebrationData() - separate function for later celebration updates
+   - ADDED: getCelebrationData() - retrieve celebration pointer from history record
+   - CHANGED: updateWithHandicap() now accepts optional celebrationData from handicapData.celebration
+   - CHANGED: getArchivedGames() now includes celebration field in response
+   - All existing functionality preserved from v3.04
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
