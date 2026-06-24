@@ -1,15 +1,15 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - FIXED: Celebration flow now calculates adjustedHandicaps immediately
-   - FIXED: Now calls HistoryRecord.updateWithHandicap() instead of just upsertPendingRecord()
-   - FIXED: Record is written with status: "completed" and adjustedHandicaps populated
-   - ADDED: calculateAdjustedHandicapsFromGameData() - calculates all handicap adjustment values
-   - ADDED: Proper anchor detection (lowest handicap player)
-   - ADDED: Player totals from results for performance adjustment
-   - ADDED: ensureArchiveRecordComplete() - creates pending record then immediately completes it
-   - All existing functionality preserved from v1.18
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: scheduledGames status now updated to "completed" after historyGames write
+   - FIXED: Celebration screen now appears AFTER all Firestore writes complete (not before)
+   - FIXED: showCelebrationScreen() now uses Promise chain to ensure write order
+   - ADDED: completeGameInBothCollections() - updates both collections with status: "completed"
+   - ADDED: Dummy celebration pointer (imageRef + capturedAt) saved to historyGames
+   - ADDED: updateScheduledGameStatus() - updates scheduledGames status only
+   - CHANGED: Celebration modal render moved to AFTER write completion
+   - All existing functionality preserved from v1.19
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
@@ -96,7 +96,76 @@ var SignCard = (function() {
     }
     
     // ============================================================
+    // v1.20: UPDATE SCHEDULED GAME STATUS
+    // ============================================================
+    
+    function updateScheduledGameStatus(gameId, callback) {
+        var db = getDb();
+        var updatePayload = {
+            status: "completed",
+            completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        console.log("[SignCard] Updating scheduledGames status to 'completed' for:", gameId);
+        
+        db.collection('scheduledGames').doc(gameId).update(updatePayload)
+            .then(function() {
+                console.log("[SignCard] scheduledGames status updated to 'completed'");
+                if (callback) callback(null);
+            })
+            .catch(function(err) {
+                console.error("[SignCard] Failed to update scheduledGames status:", err);
+                if (callback) callback(err);
+            });
+    }
+    
+    // ============================================================
+    // v1.20: COMPLETE GAME IN BOTH COLLECTIONS
+    // ============================================================
+    
+    function completeGameInBothCollections(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
+        console.log("[SignCard] Starting completeGameInBothCollections for:", gameId);
+        
+        // Step 1: Create/update historyGames record with handicap data
+        ensureArchiveRecordComplete(
+            gameId,
+            gameData,
+            results,
+            finalScores,
+            signatures,
+            flight1DataString,
+            flight2DataString,
+            matchResults,
+            function(err, archiveId) {
+                if (err) {
+                    console.error("[SignCard] Failed to complete historyGames record:", err);
+                    if (callback) callback(err, null);
+                    return;
+                }
+                
+                console.log("[SignCard] historyGames record completed:", archiveId);
+                
+                // Step 2: Update scheduledGames status to "completed"
+                updateScheduledGameStatus(gameId, function(err2) {
+                    if (err2) {
+                        console.error("[SignCard] Failed to update scheduledGames status:", err2);
+                        // Even if scheduledGames update fails, we still have historyGames written
+                        // But we should report the error
+                        if (callback) callback(err2, archiveId);
+                        return;
+                    }
+                    
+                    console.log("[SignCard] Both collections updated successfully");
+                    if (callback) callback(null, archiveId);
+                });
+            }
+        );
+    }
+    
+    // ============================================================
     // Helper: Get or create archive record, then complete it
+    // v1.20: Added dummy celebration pointer
     // ============================================================
     
     function ensureArchiveRecordComplete(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
@@ -115,7 +184,7 @@ var SignCard = (function() {
                 var isUpdate = doc.exists;
                 
                 if (isUpdate) {
-                    // Record exists - update it with handicap data
+                    // Record exists - update it with handicap data and celebration pointer
                     console.log("[SignCard] Record exists, updating with handicap:", docId);
                     
                     // Calculate handicap data from game data
@@ -136,13 +205,19 @@ var SignCard = (function() {
                         };
                     });
                     
+                    // v1.20: Add dummy celebration pointer to handicapData
+                    handicapData.celebration = {
+                        imageRef: "dummy_celebration_image.jpg",
+                        capturedAt: new Date().toISOString()
+                    };
+                    
                     // Call updateWithHandicap
                     HistoryRecord.updateWithHandicap(docId, handicapData, startingPlayers, function(err) {
                         if (err) {
                             console.error("[SignCard] Failed to update with handicap:", err);
                             if (callback) callback(err, null);
                         } else {
-                            console.log("[SignCard] Record completed with handicap data:", docId);
+                            console.log("[SignCard] Record completed with handicap data and dummy celebration pointer:", docId);
                             if (callback) callback(null, docId);
                         }
                     });
@@ -175,12 +250,18 @@ var SignCard = (function() {
                             };
                         });
                         
+                        // v1.20: Add dummy celebration pointer to handicapData
+                        handicapData.celebration = {
+                            imageRef: "dummy_celebration_image.jpg",
+                            capturedAt: new Date().toISOString()
+                        };
+                        
                         HistoryRecord.updateWithHandicap(newDocId, handicapData, startingPlayers, function(err2) {
                             if (err2) {
                                 console.error("[SignCard] Failed to update with handicap:", err2);
                                 if (callback) callback(err2, null);
                             } else {
-                                console.log("[SignCard] Record created and completed with handicap data:", newDocId);
+                                console.log("[SignCard] Record created and completed with handicap data and dummy celebration pointer:", newDocId);
                                 if (callback) callback(null, newDocId);
                             }
                         });
@@ -370,7 +451,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Celebration Screen - v1.19: Auto-completes record with handicap
+    // v1.20: CELEBRATION SCREEN - Shows AFTER all writes complete
     // ============================================================
     
     function showCelebrationScreen(winner, teamAScore, teamBScore, winningPlayers, gameId, onClose) {
@@ -405,55 +486,69 @@ var SignCard = (function() {
             onClose: onClose
         };
         
-        // ---- v1.19: COMPLETE THE RECORD WITH HANDICAP DATA ----
-        // Fetch the game data from Firestore to calculate handicaps
+        // ---- v1.20: COMPLETE THE RECORD FIRST, THEN SHOW CELEBRATION ----
+        // Step 1: Fetch game data from Firestore
         var db = getDb();
         db.collection('scheduledGames').doc(gameId).get()
             .then(function(doc) {
-                if (doc.exists) {
-                    var gameData = doc.data();
-                    // Calculate handicap data
-                    var handicapData = calculateAdjustedHandicapsFromGameData(gameData);
-                    if (handicapData) {
-                        // Save the handicap data to the archive record
-                        var finalScores = {
-                            teamA: teamAScore,
-                            teamB: teamBScore
-                        };
-                        var signatures = gameData.signatures || {};
-                        var results = gameData.results || {};
-                        var flight1DataString = gameData.f1?.d || "";
-                        var flight2DataString = gameData.f2?.d || "";
-                        
-                        ensureArchiveRecordComplete(
-                            gameId,
-                            gameData,
-                            results,
-                            finalScores,
-                            signatures,
-                            flight1DataString,
-                            flight2DataString,
-                            {},
-                            function(err, archiveId) {
-                                if (err) {
-                                    console.warn("[SignCard] Failed to complete record with handicap:", err);
-                                } else {
-                                    console.log("[SignCard] Record completed with handicap data:", archiveId);
-                                }
-                            }
-                        );
-                    } else {
-                        console.warn("[SignCard] Could not calculate handicap data - record may remain pending");
-                    }
-                } else {
-                    console.warn("[SignCard] Game data not found - record may remain pending");
+                if (!doc.exists) {
+                    console.warn("[SignCard] Game data not found - cannot complete record");
+                    // Still show celebration but log error
+                    renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose);
+                    return;
                 }
+                
+                var gameData = doc.data();
+                var finalScores = {
+                    teamA: teamAScore,
+                    teamB: teamBScore
+                };
+                var signatures = gameData.signatures || {};
+                var results = gameData.results || {};
+                var flight1DataString = gameData.f1?.d || "";
+                var flight2DataString = gameData.f2?.d || "";
+                
+                console.log("[SignCard] Completing game in both collections...");
+                
+                // Step 2: Complete the game in BOTH collections
+                completeGameInBothCollections(
+                    gameId,
+                    gameData,
+                    results,
+                    finalScores,
+                    signatures,
+                    flight1DataString,
+                    flight2DataString,
+                    {},
+                    function(err, archiveId) {
+                        if (err) {
+                            console.error("[SignCard] Failed to complete game in both collections:", err);
+                            // Still show celebration but log error
+                            renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose);
+                            return;
+                        }
+                        
+                        console.log("[SignCard] ✅ Game successfully completed in BOTH collections. Archive ID:", archiveId);
+                        
+                        // Step 3: NOW show celebration (after writes are complete)
+                        renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose);
+                    }
+                );
             })
             .catch(function(err) {
-                console.warn("[SignCard] Error fetching game data for handicap:", err);
+                console.error("[SignCard] Error fetching game data:", err);
+                // Still show celebration but log error
+                renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose);
             });
+    }
+    
+    // ============================================================
+    // v1.20: RENDER CELEBRATION MODAL (separated from data logic)
+    // ============================================================
+    
+    function renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose) {
+        console.log("[SignCard] Rendering celebration modal (after writes complete)");
         
-        // ---- RENDER CELEBRATION MODAL ----
         getCelebrationImage(function(imageSrc) {
             var imageHtml = '';
             if (imageSrc) {
@@ -904,7 +999,9 @@ var SignCard = (function() {
         clearConfetti: clearConfetti,
         ensureArchiveRecord: ensureArchiveRecord,
         ensureArchiveRecordComplete: ensureArchiveRecordComplete,
-        calculateAdjustedHandicapsFromGameData: calculateAdjustedHandicapsFromGameData
+        calculateAdjustedHandicapsFromGameData: calculateAdjustedHandicapsFromGameData,
+        completeGameInBothCollections: completeGameInBothCollections,
+        updateScheduledGameStatus: updateScheduledGameStatus
     };
     
 })();
@@ -914,16 +1011,16 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.19
-KEY CHANGES from v1.18:
-   - FIXED: Celebration flow now calculates adjustedHandicaps immediately
-   - FIXED: Now calls HistoryRecord.updateWithHandicap() instead of just upsertPendingRecord()
-   - FIXED: Record is written with status: "completed" and adjustedHandicaps populated
-   - ADDED: calculateAdjustedHandicapsFromGameData() - calculates all handicap adjustment values
-   - ADDED: Proper anchor detection (lowest handicap player)
-   - ADDED: Player totals from results for performance adjustment
-   - ADDED: ensureArchiveRecordComplete() - creates pending record then immediately completes it
-   - All existing functionality preserved from v1.18
+VERSION: 1.20
+KEY CHANGES from v1.19:
+   - FIXED: scheduledGames status now updated to "completed" after historyGames write
+   - FIXED: Celebration screen now appears AFTER all Firestore writes complete (not before)
+   - FIXED: showCelebrationScreen() now uses Promise chain to ensure write order
+   - ADDED: completeGameInBothCollections() - updates both collections with status: "completed"
+   - ADDED: Dummy celebration pointer (imageRef + capturedAt) saved to historyGames
+   - ADDED: updateScheduledGameStatus() - updates scheduledGames status only
+   - CHANGED: Celebration modal render moved to AFTER write completion
+   - All existing functionality preserved from v1.19
 DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
 STATUS: Ready for integration
 */
