@@ -1,14 +1,13 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: Destination record dropdown now shows existing records from destination collection
-   - FIXED: User can select existing document to REPLACE (with confirmation)
-   - FIXED: User can modify name to create new record
-   - CHANGED: File renamed from record-management.html to util-record-management.html
-   - IMPROVED: Destination document name input now includes datalist for existing records
-   - PRESERVED: All functionality from v1.02
-DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - REFACTORED: Split into separate JS files for maintainability
+   - MOVED: All COPY logic to util-copy-record.js
+   - MOVED: All COMPARE logic to util-compare-record.js
+   - CHANGED: HTML now only contains UI structure and basic initialization
+   - PRESERVED: All functionality from v1.03
+DEPENDS ON: js/firebase-config.js, js/session.js, util-copy-record.js, util-compare-record.js
 STATUS: Ready for integration
 -->
 
@@ -18,8 +17,15 @@ STATUS: Ready for integration
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Record Management - SICC Ryder Cup</title>
+    
+    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <!-- Utility JS Files -->
+    <script src="util-copy-record.js"></script>
+    <script src="util-compare-record.js"></script>
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -100,6 +106,7 @@ STATUS: Ready for integration
             border: 1px solid #2a2a2a;
             background: #0a0a0a;
         }
+        
         .tab-btn {
             flex: 1;
             padding: 14px 20px;
@@ -113,6 +120,7 @@ STATUS: Ready for integration
             transition: all 0.3s ease;
             border-right: 1px solid #1a1a1a;
         }
+        
         .tab-btn:last-child { border-right: none; }
         .tab-btn:hover { color: #aaa; background: #111; }
         .tab-btn.active { background: #1a3a1a; color: #4caf50; box-shadow: inset 0 -2px 0 #4caf50; }
@@ -258,19 +266,13 @@ STATUS: Ready for integration
         
         input:focus { outline: none; border-color: #ffaa44; }
         
-        /* Datalist styles */
         .input-with-datalist {
             position: relative;
             width: 100%;
         }
         
-        .input-with-datalist input {
-            width: 100%;
-        }
-        
-        .input-with-datalist datalist {
-            display: none;
-        }
+        .input-with-datalist input { width: 100%; }
+        .input-with-datalist datalist { display: none; }
         
         .date-row {
             display: flex;
@@ -576,7 +578,6 @@ STATUS: Ready for integration
         
         .compare-actions .btn { margin-top: 0; }
         
-        /* Existing records hint */
         .existing-hint {
             font-size: 0.65rem;
             color: #666;
@@ -585,6 +586,9 @@ STATUS: Ready for integration
         }
         
         .existing-hint strong { color: #ffaa44; }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
     </style>
 </head>
 <body>
@@ -676,7 +680,6 @@ STATUS: Ready for integration
         <div class="card">
             <div class="card-title">📝 STEP 4: DESTINATION DOCUMENT NAME</div>
             
-            <!-- Input with datalist for existing records -->
             <div class="input-with-datalist">
                 <input type="text" id="destDocId" placeholder="Enter or select destination document ID" list="destRecordsList" autocomplete="off">
                 <datalist id="destRecordsList"></datalist>
@@ -685,7 +688,6 @@ STATUS: Ready for integration
                 💡 Start typing or select from existing records below. <strong>Selecting an existing record will REPLACE it</strong> (with confirmation).
             </div>
             
-            <!-- Existing records dropdown (for easy selection) -->
             <div style="margin-top:8px;">
                 <label style="font-size:0.65rem; color:#888; display:block; margin-bottom:4px;">📋 Existing records in destination:</label>
                 <select id="destExistingSelect" class="game-select" style="font-size:0.75rem; padding:8px 14px;">
@@ -781,1298 +783,55 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.03</div>
+<div class="version-tag">v1.04</div>
 
 <script>
 // ============================================================
-// FILE: util-record-management.html
-// VERSION: 1.03
+// FILE: util-record-management.html (Main Container)
+// VERSION: 1.04
 // ============================================================
 
-var APP_VERSION = "1.03";
-var currentDb = null;
-var currentEnv = null;
-var currentGameData = null;
-var currentGameId = null;
-var currentSourceCollection = 'scheduledGames';
-var currentDestCollection = 'scheduledGames';
-var destRecords = [];
-
-// Compare state
-var leftData = null;
-var rightData = null;
-var leftId = null;
-var rightId = null;
-
-// Firebase Configurations
-var PROD_CONFIG = {
-    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
-    authDomain: "sicc-ryder-cup.firebaseapp.com",
-    projectId: "sicc-ryder-cup"
-};
-
-var DEV_CONFIG = {
-    apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
-    authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
-    projectId: "sicc-ryder-cup-dev"
-};
-
-var prodDb = null;
-var devDb = null;
+var APP_VERSION = "1.04";
 
 // ============================================================
 // INIT
 // ============================================================
 
-function initFirebase() {
-    try {
-        var existingProd = firebase.apps.find(function(app) { return app.name === "prod"; });
-        var existingDev = firebase.apps.find(function(app) { return app.name === "dev"; });
-        
-        if (existingProd) {
-            prodDb = firebase.firestore(existingProd);
-        } else {
-            var prodApp = firebase.initializeApp(PROD_CONFIG, "prod");
-            prodDb = firebase.firestore(prodApp);
-        }
-        
-        if (existingDev) {
-            devDb = firebase.firestore(existingDev);
-        } else {
-            var devApp = firebase.initializeApp(DEV_CONFIG, "dev");
-            devDb = firebase.firestore(devApp);
-        }
-        
-        log("Firebase initialized", "success");
-    } catch(e) {
-        log("Firebase init error: " + e.message, "error");
-        console.error(e);
-    }
-}
+// Initialize Firebase (must be available to both JS files)
+initFirebase();
 
-// ============================================================
-// LOGGING
-// ============================================================
+// Initialize date toggle
+initDateToggle();
 
-function log(message, type) {
-    var logDiv = document.getElementById('log');
-    var entry = document.createElement('div');
-    entry.className = 'log-entry';
-    var timestamp = new Date().toLocaleTimeString();
-    
-    if (type === 'error') {
-        entry.innerHTML = `<span class="log-error">[${timestamp}] ❌ ${message}</span>`;
-    } else if (type === 'success') {
-        entry.innerHTML = `<span class="log-success">[${timestamp}] ✅ ${message}</span>`;
-    } else if (type === 'info') {
-        entry.innerHTML = `<span class="log-info">[${timestamp}] ℹ️ ${message}</span>`;
-    } else if (type === 'diff') {
-        entry.innerHTML = `<span class="log-diff">[${timestamp}] 🔴 ${message}</span>`;
-    } else if (type === 'match') {
-        entry.innerHTML = `<span class="log-match">[${timestamp}] 🟢 ${message}</span>`;
-    } else {
-        entry.innerHTML = `<span class="log-info">[${timestamp}] ${message}</span>`;
-    }
-    
-    logDiv.appendChild(entry);
-    logDiv.scrollTop = logDiv.scrollHeight;
-}
+// Set up environment buttons
+document.getElementById('envProdBtn').onclick = function() { setEnvironment('PROD'); };
+document.getElementById('envDevBtn').onclick = function() { setEnvironment('DEV'); };
 
-function logStep(step, message, type) {
-    log(`[STEP ${step}] ${message}`, type || 'info');
-}
-
-// ============================================================
-// TAB SWITCHING
-// ============================================================
-
-function switchTab(tabId) {
-    document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
-    document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
-    document.getElementById(tabId).classList.add('active');
-    document.querySelector('.tab-btn[data-tab="' + tabId + '"]').classList.add('active');
-}
-
+// Tab switching
 document.querySelectorAll('.tab-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() { 
-        switchTab(this.dataset.tab);
-        if (this.dataset.tab === 'tabCompare') {
+    btn.addEventListener('click', function() {
+        var tabId = this.dataset.tab;
+        document.querySelectorAll('.tab-content').forEach(function(el) {
+            el.classList.remove('active');
+        });
+        document.querySelectorAll('.tab-btn').forEach(function(el) {
+            el.classList.remove('active');
+        });
+        document.getElementById(tabId).classList.add('active');
+        this.classList.add('active');
+        
+        // Load compare records when switching to compare tab
+        if (tabId === 'tabCompare') {
             loadCompareRecords();
         }
     });
 });
 
-// ============================================================
-// ENVIRONMENT
-// ============================================================
-
-function updateEnvironmentUI(env) {
-    var prodBtn = document.getElementById('envProdBtn');
-    var devBtn = document.getElementById('envDevBtn');
-    var envIndicator = document.getElementById('envIndicator');
-    var warningDiv = document.getElementById('envWarning');
-    
-    prodBtn.classList.remove('env-active');
-    devBtn.classList.remove('env-active');
-    
-    if (env === 'PROD') {
-        prodBtn.classList.add('env-active');
-        envIndicator.className = 'env-indicator env-indicator-prod';
-        envIndicator.innerHTML = '🔴 ACTIVE: PRODUCTION';
-        warningDiv.style.display = 'block';
-        logStep(1, 'Connected to PRODUCTION', 'info');
-    } else if (env === 'DEV') {
-        devBtn.classList.add('env-active');
-        envIndicator.className = 'env-indicator env-indicator-dev';
-        envIndicator.innerHTML = '🟡 ACTIVE: DEVELOPMENT';
-        warningDiv.style.display = 'none';
-        logStep(1, 'Connected to DEVELOPMENT', 'info');
-    } else {
-        envIndicator.className = 'env-indicator env-indicator-none';
-        envIndicator.innerHTML = '⚠️ No environment selected';
-        warningDiv.style.display = 'none';
-    }
-}
-
-function setEnvironment(env) {
-    if (env === 'PROD') {
-        if (!prodDb) {
-            initFirebase();
-            if (!prodDb) {
-                log("Cannot connect to PRODUCTION", "error");
-                return;
-            }
-        }
-        currentDb = prodDb;
-        currentEnv = 'PROD';
-        updateEnvironmentUI('PROD');
-    } else if (env === 'DEV') {
-        if (!devDb) {
-            initFirebase();
-            if (!devDb) {
-                log("Cannot connect to DEVELOPMENT", "error");
-                return;
-            }
-        }
-        currentDb = devDb;
-        currentEnv = 'DEV';
-        updateEnvironmentUI('DEV');
-    } else {
-        currentDb = null;
-        currentEnv = null;
-        updateEnvironmentUI(null);
-        return;
-    }
-    
-    // Clear previous selections
-    document.getElementById('gameSelect').innerHTML = '<option value="">-- Select a record --</option>';
-    document.getElementById('gameInfo').style.display = 'none';
-    document.getElementById('destExistingSelect').innerHTML = '<option value="">-- Select existing to REPLACE --</option>';
-    document.getElementById('destRecordsList').innerHTML = '';
-    destRecords = [];
-    currentGameData = null;
-    currentGameId = null;
-    
-    // Reset compare state
-    leftData = null;
-    rightData = null;
-    leftId = null;
-    rightId = null;
-    document.getElementById('compareLeftInfo').style.display = 'none';
-    document.getElementById('compareRightInfo').style.display = 'none';
-    document.getElementById('compareResults').style.display = 'none';
-    
-    // Auto-load records
-    loadSourceRecords();
-    loadDestinationRecords();
-    loadCompareRecords();
-}
-
-// ============================================================
-// COPY TAB: LOAD SOURCE RECORDS
-// ============================================================
-
-function loadSourceRecords() {
-    if (!currentDb) {
-        log("Select an environment first", "error");
-        return;
-    }
-    
-    var sourceCollection = document.getElementById('sourceCollection').value;
-    currentSourceCollection = sourceCollection;
-    
-    var select = document.getElementById('gameSelect');
-    select.innerHTML = '<option value="">Loading...</option>';
-    select.disabled = true;
-    
-    logStep(2, 'Loading from: ' + sourceCollection, 'info');
-    
-    currentDb.collection(sourceCollection)
-        .orderBy('date', 'desc')
-        .limit(100)
-        .get()
-        .then(function(snapshot) {
-            select.innerHTML = '<option value="">-- Select a record --</option>';
-            select.disabled = false;
-            
-            if (snapshot.empty) {
-                select.innerHTML = '<option value="">-- No records found in ' + sourceCollection + ' --</option>';
-                logStep(2, 'No records found in ' + sourceCollection, 'info');
-                return;
-            }
-            
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                var option = document.createElement('option');
-                option.value = doc.id;
-                var displayDate = data.date || 'No date';
-                var courseName = data.course ? data.course.name : 'Unknown';
-                option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                option.dataset.date = displayDate;
-                option.dataset.course = courseName;
-                select.appendChild(option);
-            });
-            
-            logStep(2, 'Loaded ' + snapshot.size + ' records from ' + sourceCollection, 'success');
-        })
-        .catch(function(err) {
-            logStep(2, 'Error loading records: ' + err.message, 'error');
-            console.error(err);
-            select.innerHTML = '<option value="">-- Error loading records --</option>';
-            select.disabled = false;
-        });
-}
-
-// ============================================================
-// COPY TAB: LOAD DESTINATION RECORDS
-// ============================================================
-
-function loadDestinationRecords() {
-    if (!currentDb) {
-        log("Select an environment first", "error");
-        return;
-    }
-    
-    var destCollection = document.getElementById('destCollection').value;
-    currentDestCollection = destCollection;
-    
-    var select = document.getElementById('destExistingSelect');
-    var datalist = document.getElementById('destRecordsList');
-    
-    select.innerHTML = '<option value="">Loading...</option>';
-    select.disabled = true;
-    datalist.innerHTML = '';
-    
-    logStep(2, 'Loading destination records from: ' + destCollection, 'info');
-    
-    currentDb.collection(destCollection)
-        .orderBy('date', 'desc')
-        .limit(100)
-        .get()
-        .then(function(snapshot) {
-            select.innerHTML = '<option value="">-- Select existing to REPLACE --</option>';
-            select.disabled = false;
-            destRecords = [];
-            
-            if (snapshot.empty) {
-                select.innerHTML = '<option value="">-- No records found in ' + destCollection + ' --</option>';
-                logStep(2, 'No records found in ' + destCollection, 'info');
-                return;
-            }
-            
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                var displayDate = data.date || 'No date';
-                var courseName = data.course ? data.course.name : 'Unknown';
-                var label = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                
-                // Add to dropdown
-                var option = document.createElement('option');
-                option.value = doc.id;
-                option.textContent = label;
-                select.appendChild(option);
-                
-                // Add to datalist
-                var dOption = document.createElement('option');
-                dOption.value = doc.id;
-                datalist.appendChild(dOption);
-                
-                destRecords.push({ id: doc.id, date: displayDate, course: courseName });
-            });
-            
-            logStep(2, 'Loaded ' + snapshot.size + ' destination records from ' + destCollection, 'success');
-        })
-        .catch(function(err) {
-            logStep(2, 'Error loading destination records: ' + err.message, 'error');
-            console.error(err);
-            select.innerHTML = '<option value="">-- Error loading records --</option>';
-            select.disabled = false;
-        });
-}
-
-// ============================================================
-// COPY TAB: LOAD GAME DATA
-// ============================================================
-
-function loadGameData(gameId) {
-    if (!currentDb || !gameId) {
-        log("Select a record first", "error");
-        return;
-    }
-    
-    var sourceCollection = document.getElementById('sourceCollection').value;
-    currentSourceCollection = sourceCollection;
-    
-    logStep(4, 'Loading record: ' + gameId + ' from ' + sourceCollection, 'info');
-    
-    currentDb.collection(sourceCollection).doc(gameId).get()
-        .then(function(doc) {
-            if (doc.exists) {
-                currentGameData = doc.data();
-                currentGameId = gameId;
-                displayGameInfo(currentGameData);
-                logStep(4, 'Record loaded: ' + gameId, 'success');
-                
-                var destInput = document.getElementById('destDocId');
-                if (!destInput.value || destInput.value === '') {
-                    destInput.value = gameId + '_COPY';
-                }
-            } else {
-                logStep(4, 'Record not found: ' + gameId, 'error');
-            }
-        })
-        .catch(function(err) {
-            logStep(4, 'Error loading record: ' + err.message, 'error');
-        });
-}
-
-// ============================================================
-// COPY TAB: DISPLAY GAME INFO
-// ============================================================
-
-function displayGameInfo(data) {
-    var infoDiv = document.getElementById('gameInfo');
-    var courseName = data.course ? data.course.name : 'Unknown';
-    var playerCount = data.players ? data.players.length : 0;
-    var startingHole = data.startingHole || 1;
-    var teamGameFormat = data.teamGameFormat || 'tournament';
-    var status = data.status || 'unknown';
-    var gameStarted = data.gameStarted ? '✅ Yes' : '❌ No';
-    
-    var sourceCollection = document.getElementById('sourceCollection').value;
-    var badgeClass = sourceCollection === 'scheduledGames' ? 'badge-sched' : 
-                     sourceCollection === 'historyGames' ? 'badge-history' : 'badge-backup';
-    
-    infoDiv.innerHTML = `
-        <div class="game-info">
-            <div class="game-info-row">
-                <span class="game-info-label">Source:</span>
-                <span class="game-info-value"><span class="badge ${badgeClass}">${sourceCollection}</span></span>
-            </div>
-            <div class="game-info-row">
-                <span class="game-info-label">ID:</span>
-                <span class="game-info-value gold">${escapeHtml(currentGameId)}</span>
-            </div>
-            <div class="game-info-row">
-                <span class="game-info-label">Date:</span>
-                <span class="game-info-value">${escapeHtml(data.date || 'Unknown')}</span>
-            </div>
-            <div class="game-info-row">
-                <span class="game-info-label">Course:</span>
-                <span class="game-info-value">${escapeHtml(courseName)}</span>
-            </div>
-            <div class="game-info-row">
-                <span class="game-info-label">Players:</span>
-                <span class="game-info-value">${playerCount}</span>
-            </div>
-            <div class="game-info-row">
-                <span class="game-info-label">Status:</span>
-                <span class="game-info-value">${escapeHtml(status)}</span>
-            </div>
-            <div class="game-info-row">
-                <span class="game-info-label">Game Started:</span>
-                <span class="game-info-value">${gameStarted}</span>
-            </div>
-            <div class="game-info-row">
-                <span class="game-info-label">Starting Hole:</span>
-                <span class="game-info-value">${startingHole}</span>
-            </div>
-            <div class="game-info-row">
-                <span class="game-info-label">Format:</span>
-                <span class="game-info-value">${escapeHtml(teamGameFormat)}</span>
-            </div>
-        </div>
-    `;
-    infoDiv.style.display = 'block';
-}
-
-// ============================================================
-// COPY TAB: GET DATE OVERRIDE
-// ============================================================
-
-function getDateOverride() {
-    var option = document.querySelector('input[name="dateOption"]:checked').value;
-    
-    if (option === 'today') {
-        var today = new Date().toISOString().split('T')[0];
-        return { type: 'custom', value: today };
-    }
-    if (option === 'custom') {
-        var customDate = document.getElementById('customDate').value;
-        if (!customDate) {
-            log("Please select a custom date", "error");
-            return null;
-        }
-        return { type: 'custom', value: customDate };
-    }
-    return { type: 'keep', value: null };
-}
-
-// ============================================================
-// COPY TAB: COPY RECORD
-// ============================================================
-
-function copyRecord() {
-    if (!currentDb) {
-        log("Select an environment first", "error");
-        return;
-    }
-    
-    if (!currentGameData || !currentGameId) {
-        log("Load a source record first", "error");
-        return;
-    }
-    
-    var destDocId = document.getElementById('destDocId').value.trim();
-    if (!destDocId) {
-        log("Enter or select a destination document name", "error");
-        return;
-    }
-    
-    var destCollection = document.getElementById('destCollection').value;
-    currentDestCollection = destCollection;
-    var sourceCollection = document.getElementById('sourceCollection').value;
-    
-    logStep(7, '=== START COPY ===', 'info');
-    logStep(7, 'Source: ' + sourceCollection + '/' + currentGameId, 'info');
-    logStep(7, 'Destination: ' + destCollection + '/' + destDocId, 'info');
-    logStep(7, 'Environment: ' + currentEnv, 'info');
-    
-    // Check if destination document already exists
-    currentDb.collection(destCollection).doc(destDocId).get()
-        .then(function(doc) {
-            if (doc.exists) {
-                logStep(7, '⚠️ Document already exists in destination', 'info');
-                
-                // Show confirmation dialog
-                return new Promise(function(resolve, reject) {
-                    if (confirm('⚠️ Document "' + destDocId + '" already exists in ' + destCollection + '.\n\nREPLACE it with the source record?\n\nThis action CANNOT be undone.')) {
-                        resolve();
-                    } else {
-                        reject(new Error('User cancelled replacement'));
-                    }
-                });
-            }
-            return Promise.resolve();
-        })
-        .then(function() {
-            // Proceed with copy
-            var copyData = JSON.parse(JSON.stringify(currentGameData));
-            
-            var dateOverride = getDateOverride();
-            if (dateOverride === null) {
-                logStep(7, 'Date override cancelled', 'error');
-                return;
-            }
-            
-            if (dateOverride.type === 'custom') {
-                var newDate = dateOverride.value;
-                copyData.date = newDate;
-                logStep(7, 'Date changed to: ' + newDate, 'info');
-            } else {
-                logStep(7, 'Date kept: ' + copyData.date, 'info');
-            }
-            
-            var playerCount = copyData.players ? copyData.players.length : 0;
-            var courseName = copyData.course ? copyData.course.name : 'Unknown';
-            logStep(7, 'Copying: ' + playerCount + ' players, Course: ' + courseName, 'info');
-            logStep(7, 'gameStarted: ' + (copyData.gameStarted ? 'true' : 'false'), 'info');
-            logStep(7, 'status: ' + copyData.status, 'info');
-            logStep(7, 'All fields preserved exactly as-is (except date if changed)', 'info');
-            
-            logStep(7, 'Writing to ' + destCollection + '/' + destDocId + '...', 'info');
-            
-            return currentDb.collection(destCollection).doc(destDocId).set(copyData);
-        })
-        .then(function() {
-            logStep(7, '✅ COPY SUCCESSFUL', 'success');
-            logStep(7, 'Record copied to: ' + destCollection + '/' + destDocId, 'success');
-            
-            // Verify
-            return currentDb.collection(destCollection).doc(destDocId).get();
-        })
-        .then(function(doc) {
-            if (doc.exists) {
-                var verifyData = doc.data();
-                logStep(7, '✅ Verification: Document exists in destination', 'success');
-                logStep(7, '   Date: ' + verifyData.date, 'info');
-                logStep(7, '   gameStarted: ' + (verifyData.gameStarted ? 'true' : 'false'), 'info');
-                logStep(7, '   Status: ' + verifyData.status, 'info');
-            } else {
-                logStep(7, '⚠️ Verification: Document not found after write', 'error');
-            }
-            logStep(7, '=== COPY COMPLETE ===', 'success');
-            
-            // Refresh destination records list
-            loadDestinationRecords();
-        })
-        .catch(function(err) {
-            if (err.message === 'User cancelled replacement') {
-                logStep(7, 'Copy cancelled by user', 'info');
-            } else {
-                logStep(7, '❌ COPY FAILED: ' + err.message, 'error');
-                console.error(err);
-            }
-        });
-}
-
-// ============================================================
-// COPY TAB: CHECK DESTINATION
-// ============================================================
-
-function checkDestination() {
-    if (!currentDb) {
-        log("Select an environment first", "error");
-        return;
-    }
-    
-    var destDocId = document.getElementById('destDocId').value.trim();
-    if (!destDocId) {
-        log("Enter a destination document name", "error");
-        return;
-    }
-    
-    var destCollection = document.getElementById('destCollection').value;
-    
-    logStep(7, 'Checking: ' + destCollection + '/' + destDocId, 'info');
-    
-    currentDb.collection(destCollection).doc(destDocId).get()
-        .then(function(doc) {
-            if (doc.exists) {
-                var data = doc.data();
-                logStep(7, '✅ EXISTS in ' + destCollection, 'success');
-                logStep(7, '   Date: ' + data.date, 'info');
-                logStep(7, '   Course: ' + (data.course ? data.course.name : 'Unknown'), 'info');
-                logStep(7, '   Status: ' + data.status, 'info');
-                logStep(7, '   Players: ' + (data.players ? data.players.length : 0), 'info');
-                logStep(7, '   gameStarted: ' + (data.gameStarted ? 'true' : 'false'), 'info');
-            } else {
-                logStep(7, '❌ NOT FOUND in ' + destCollection, 'error');
-            }
-        })
-        .catch(function(err) {
-            logStep(7, 'Error checking: ' + err.message, 'error');
-        });
-}
-
-// ============================================================
-// COPY TAB: DELETE DESTINATION
-// ============================================================
-
-function deleteDestination() {
-    if (!currentDb) {
-        log("Select an environment first", "error");
-        return;
-    }
-    
-    var destDocId = document.getElementById('destDocId').value.trim();
-    if (!destDocId) {
-        log("Enter a destination document name", "error");
-        return;
-    }
-    
-    var destCollection = document.getElementById('destCollection').value;
-    
-    if (!confirm('Delete ' + destCollection + '/' + destDocId + ' from ' + currentEnv + '?\n\nThis cannot be undone.')) {
-        logStep(7, 'Delete cancelled', 'info');
-        return;
-    }
-    
-    logStep(7, 'Deleting: ' + destCollection + '/' + destDocId, 'info');
-    
-    currentDb.collection(destCollection).doc(destDocId).delete()
-        .then(function() {
-            logStep(7, '✅ DELETED: ' + destDocId, 'success');
-            // Refresh destination records
-            loadDestinationRecords();
-        })
-        .catch(function(err) {
-            logStep(7, '❌ Delete failed: ' + err.message, 'error');
-        });
-}
-
-// ============================================================
-// COPY TAB: DESTINATION EXISTING SELECT HANDLER
-// ============================================================
-
-document.getElementById('destExistingSelect').addEventListener('change', function() {
-    var selectedId = this.value;
-    if (selectedId) {
-        document.getElementById('destDocId').value = selectedId;
-        log('Selected existing destination: ' + selectedId, 'info');
-    }
-});
-
-// ============================================================
-// COMPARE TAB: LOAD RECORDS (INDEPENDENT SIDES)
-// ============================================================
-
-function loadCompareRecords() {
-    if (!currentDb) return;
-    
-    // Load LEFT records
-    var leftCollection = document.getElementById('compareLeftCollection').value;
-    var leftSelect = document.getElementById('compareLeftRecord');
-    var currentLeftValue = leftSelect.value;
-    leftSelect.innerHTML = '<option value="">Loading...</option>';
-    leftSelect.disabled = true;
-    
-    currentDb.collection(leftCollection)
-        .orderBy('date', 'desc')
-        .limit(100)
-        .get()
-        .then(function(snapshot) {
-            leftSelect.innerHTML = '<option value="">-- Select left record --</option>';
-            leftSelect.disabled = false;
-            
-            if (!snapshot.empty) {
-                snapshot.forEach(function(doc) {
-                    var data = doc.data();
-                    var option = document.createElement('option');
-                    option.value = doc.id;
-                    var displayDate = data.date || 'No date';
-                    var courseName = data.course ? data.course.name : 'Unknown';
-                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                    leftSelect.appendChild(option);
-                });
-            }
-            
-            if (currentLeftValue) {
-                var options = leftSelect.options;
-                for (var i = 0; i < options.length; i++) {
-                    if (options[i].value === currentLeftValue) {
-                        leftSelect.value = currentLeftValue;
-                        break;
-                    }
-                }
-            }
-            
-            if (leftSelect.value) {
-                loadCompareRecordData('left');
-            } else {
-                leftData = null;
-                leftId = null;
-                document.getElementById('compareLeftInfo').style.display = 'none';
-            }
-        })
-        .catch(function() {
-            leftSelect.innerHTML = '<option value="">-- Error loading --</option>';
-            leftSelect.disabled = false;
-        });
-    
-    // Load RIGHT records
-    var rightCollection = document.getElementById('compareRightCollection').value;
-    var rightSelect = document.getElementById('compareRightRecord');
-    var currentRightValue = rightSelect.value;
-    rightSelect.innerHTML = '<option value="">Loading...</option>';
-    rightSelect.disabled = true;
-    
-    currentDb.collection(rightCollection)
-        .orderBy('date', 'desc')
-        .limit(100)
-        .get()
-        .then(function(snapshot) {
-            rightSelect.innerHTML = '<option value="">-- Select right record --</option>';
-            rightSelect.disabled = false;
-            
-            if (!snapshot.empty) {
-                snapshot.forEach(function(doc) {
-                    var data = doc.data();
-                    var option = document.createElement('option');
-                    option.value = doc.id;
-                    var displayDate = data.date || 'No date';
-                    var courseName = data.course ? data.course.name : 'Unknown';
-                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                    rightSelect.appendChild(option);
-                });
-            }
-            
-            if (currentRightValue) {
-                var options = rightSelect.options;
-                for (var i = 0; i < options.length; i++) {
-                    if (options[i].value === currentRightValue) {
-                        rightSelect.value = currentRightValue;
-                        break;
-                    }
-                }
-            }
-            
-            if (rightSelect.value) {
-                loadCompareRecordData('right');
-            } else {
-                rightData = null;
-                rightId = null;
-                document.getElementById('compareRightInfo').style.display = 'none';
-            }
-        })
-        .catch(function() {
-            rightSelect.innerHTML = '<option value="">-- Error loading --</option>';
-            rightSelect.disabled = false;
-        });
-}
-
-// ============================================================
-// COMPARE TAB: LOAD INDIVIDUAL RECORD DATA
-// ============================================================
-
-function loadCompareRecordData(side) {
-    if (!currentDb) {
-        log("Select an environment first", "error");
-        return;
-    }
-    
-    var collectionId = side === 'left' ? 'compareLeftCollection' : 'compareRightCollection';
-    var selectId = side === 'left' ? 'compareLeftRecord' : 'compareRightRecord';
-    var infoId = side === 'left' ? 'compareLeftInfo' : 'compareRightInfo';
-    
-    var collection = document.getElementById(collectionId).value;
-    var recordId = document.getElementById(selectId).value;
-    
-    if (!recordId) {
-        document.getElementById(infoId).style.display = 'none';
-        if (side === 'left') { leftData = null; leftId = null; }
-        else { rightData = null; rightId = null; }
-        document.getElementById('compareResults').style.display = 'none';
-        return;
-    }
-    
-    log('Loading ' + side + ' record: ' + recordId + ' from ' + collection, 'info');
-    
-    currentDb.collection(collection).doc(recordId).get()
-        .then(function(doc) {
-            if (doc.exists) {
-                var data = doc.data();
-                if (side === 'left') {
-                    leftData = data;
-                    leftId = recordId;
-                } else {
-                    rightData = data;
-                    rightId = recordId;
-                }
-                
-                var infoDiv = document.getElementById(infoId);
-                var courseName = data.course ? data.course.name : 'Unknown';
-                var playerCount = data.players ? data.players.length : 0;
-                
-                infoDiv.innerHTML = `
-                    <div class="game-info" style="margin:0;">
-                        <div class="game-info-row">
-                            <span class="game-info-label">ID:</span>
-                            <span class="game-info-value gold" style="word-break:break-all;">${escapeHtml(recordId)}</span>
-                        </div>
-                        <div class="game-info-row">
-                            <span class="game-info-label">Date:</span>
-                            <span class="game-info-value">${escapeHtml(data.date || 'Unknown')}</span>
-                        </div>
-                        <div class="game-info-row">
-                            <span class="game-info-label">Course:</span>
-                            <span class="game-info-value">${escapeHtml(courseName)}</span>
-                        </div>
-                        <div class="game-info-row">
-                            <span class="game-info-label">Players:</span>
-                            <span class="game-info-value">${playerCount}</span>
-                        </div>
-                        <div class="game-info-row">
-                            <span class="game-info-label">Status:</span>
-                            <span class="game-info-value">${escapeHtml(data.status || 'unknown')}</span>
-                        </div>
-                    </div>
-                `;
-                infoDiv.style.display = 'block';
-                
-                log('Loaded ' + side + ' record: ' + recordId, 'success');
-            } else {
-                document.getElementById(infoId).style.display = 'none';
-                if (side === 'left') { leftData = null; leftId = null; }
-                else { rightData = null; rightId = null; }
-                document.getElementById('compareResults').style.display = 'none';
-                log('Record not found: ' + recordId, 'error');
-            }
-        })
-        .catch(function(err) {
-            document.getElementById(infoId).style.display = 'none';
-            if (side === 'left') { leftData = null; leftId = null; }
-            else { rightData = null; rightId = null; }
-            document.getElementById('compareResults').style.display = 'none';
-            log('Error loading ' + side + ' record: ' + err.message, 'error');
-        });
-}
-
-// ============================================================
-// COMPARE TAB: PERFORM COMPARISON
-// ============================================================
-
-function performCompare() {
-    if (!currentDb) {
-        log("Select an environment first", "error");
-        return;
-    }
-    
-    if (!leftData || !leftId) {
-        log("Load a left record first", "error");
-        return;
-    }
-    
-    if (!rightData || !rightId) {
-        log("Load a right record first", "error");
-        return;
-    }
-    
-    log('=== START COMPARISON ===', 'info');
-    log('Left: ' + leftId, 'info');
-    log('Right: ' + rightId, 'info');
-    
-    var results = compareObjects(leftData, rightData);
-    displayCompareResults(results);
-    
-    log('=== COMPARISON COMPLETE ===', 'success');
-}
-
-// ============================================================
-// COMPARE OBJECTS (Deep comparison)
-// ============================================================
-
-function compareObjects(obj1, obj2, path) {
-    path = path || '';
-    var diffs = [];
-    var matches = [];
-    var allKeys = new Set();
-    
-    if (obj1 && typeof obj1 === 'object' && obj1 !== null) {
-        Object.keys(obj1).forEach(function(k) { allKeys.add(k); });
-    }
-    if (obj2 && typeof obj2 === 'object' && obj2 !== null) {
-        Object.keys(obj2).forEach(function(k) { allKeys.add(k); });
-    }
-    
-    var keys = Array.from(allKeys).sort();
-    
-    keys.forEach(function(key) {
-        var currentPath = path ? path + '.' + key : key;
-        var val1 = (obj1 && typeof obj1 === 'object' && obj1 !== null) ? obj1[key] : undefined;
-        var val2 = (obj2 && typeof obj2 === 'object' && obj2 !== null) ? obj2[key] : undefined;
-        
-        if (val1 === undefined && val2 !== undefined) {
-            diffs.push({
-                path: currentPath,
-                left: 'undefined',
-                right: String(val2),
-                reason: 'Missing in left'
-            });
-            return;
-        }
-        if (val2 === undefined && val1 !== undefined) {
-            diffs.push({
-                path: currentPath,
-                left: String(val1),
-                right: 'undefined',
-                reason: 'Missing in right'
-            });
-            return;
-        }
-        
-        if (val1 === undefined && val2 === undefined) {
-            matches.push({
-                path: currentPath,
-                value: 'undefined',
-                reason: 'Both undefined'
-            });
-            return;
-        }
-        
-        if (val1 !== null && val2 !== null && 
-            typeof val1 === 'object' && typeof val2 === 'object' &&
-            !Array.isArray(val1) && !Array.isArray(val2)) {
-            
-            var nested = compareObjects(val1, val2, currentPath);
-            diffs = diffs.concat(nested.diffs);
-            matches = matches.concat(nested.matches);
-            return;
-        }
-        
-        if (Array.isArray(val1) && Array.isArray(val2)) {
-            if (val1.length !== val2.length) {
-                diffs.push({
-                    path: currentPath,
-                    left: 'Array length ' + val1.length,
-                    right: 'Array length ' + val2.length,
-                    reason: 'Array length mismatch'
-                });
-            } else {
-                var arrayMatch = true;
-                for (var i = 0; i < val1.length; i++) {
-                    if (val1[i] !== val2[i]) {
-                        arrayMatch = false;
-                        break;
-                    }
-                }
-                if (arrayMatch) {
-                    matches.push({
-                        path: currentPath,
-                        value: 'Array length ' + val1.length + ' (all elements match)',
-                        reason: 'Array match'
-                    });
-                } else {
-                    var nestedArray = compareObjects(val1, val2, currentPath);
-                    diffs = diffs.concat(nestedArray.diffs);
-                    matches = matches.concat(nestedArray.matches);
-                }
-            }
-            return;
-        }
-        
-        if (val1 === val2) {
-            matches.push({
-                path: currentPath,
-                value: String(val1 !== undefined && val1 !== null ? val1 : 'null'),
-                reason: 'Match'
-            });
-        } else {
-            diffs.push({
-                path: currentPath,
-                left: String(val1 !== undefined && val1 !== null ? val1 : 'null'),
-                right: String(val2 !== undefined && val2 !== null ? val2 : 'null'),
-                reason: 'Value mismatch'
-            });
-        }
-    });
-    
-    return { diffs: diffs, matches: matches };
-}
-
-// ============================================================
-// DISPLAY COMPARE RESULTS
-// ============================================================
-
-function displayCompareResults(results) {
-    var diffCount = results.diffs.length;
-    var matchCount = results.matches.length;
-    var totalCount = diffCount + matchCount;
-    
-    document.getElementById('compareResults').style.display = 'block';
-    
-    var summaryHtml = `
-        <div class="diff-summary">
-            <div class="diff-summary-item">
-                <span class="count total">${totalCount}</span>
-                <span class="label">Total Fields</span>
-            </div>
-            <div class="diff-summary-item">
-                <span class="count match">${matchCount}</span>
-                <span class="label">Matching</span>
-            </div>
-            <div class="diff-summary-item">
-                <span class="count diff">${diffCount}</span>
-                <span class="label">Differences</span>
-            </div>
-        </div>
-        ${diffCount === 0 ? 
-            '<div style="text-align:center; padding:12px; color:#4caf50; font-weight:700;">✅ RECORDS ARE IDENTICAL</div>' :
-            '<div style="text-align:center; padding:8px; color:#ff6b6b; font-weight:600;">🔴 ' + diffCount + ' difference(s) found</div>'
-        }
-    `;
-    document.getElementById('compareSummary').innerHTML = summaryHtml;
-    
-    var detailHtml = '';
-    
-    if (diffCount > 0) {
-        detailHtml += '<div style="margin-bottom:8px; color:#ff6b6b; font-weight:600;">🔴 DIFFERENCES (' + diffCount + ')</div>';
-        results.diffs.forEach(function(diff) {
-            detailHtml += `
-                <div class="diff-item diff">
-                    <span class="field-name">${escapeHtml(diff.path)}</span>
-                    <span>
-                        <span class="field-value-left">${escapeHtml(diff.left)}</span>
-                        <span style="color:#666; margin:0 4px;">≠</span>
-                        <span class="field-value-right">${escapeHtml(diff.right)}</span>
-                    </span>
-                </div>
-            `;
-        });
-    } else {
-        detailHtml += '<div style="padding:12px; text-align:center; color:#4caf50;">✅ No differences found — records match perfectly</div>';
-    }
-    
-    if (matchCount > 0) {
-        detailHtml += '<div style="margin:12px 0 8px 0; color:#4caf50; font-weight:600;">🟢 MATCHING FIELDS (' + matchCount + ')</div>';
-        var matchDisplay = results.matches.slice(0, 50);
-        matchDisplay.forEach(function(match) {
-            detailHtml += `
-                <div class="diff-item match">
-                    <span class="field-name">${escapeHtml(match.path)}</span>
-                    <span class="field-value-left">${escapeHtml(match.value)}</span>
-                </div>
-            `;
-        });
-        if (results.matches.length > 50) {
-            detailHtml += '<div style="padding:4px 8px; color:#888; font-size:0.65rem;">... and ' + (results.matches.length - 50) + ' more matching fields</div>';
-        }
-    }
-    
-    document.getElementById('compareDetail').innerHTML = detailHtml;
-    
-    log('Comparison complete: ' + matchCount + ' match, ' + diffCount + ' diff', 'info');
-    if (diffCount > 0) {
-        log('Differences found in ' + diffCount + ' fields', 'diff');
-        results.diffs.slice(0, 10).forEach(function(diff) {
-            log('  ' + diff.path + ': ' + diff.left + ' ≠ ' + diff.right, 'diff');
-        });
-        if (results.diffs.length > 10) {
-            log('  ... and ' + (results.diffs.length - 10) + ' more differences', 'diff');
-        }
-    } else {
-        log('Records are identical', 'match');
-    }
-}
-
-// ============================================================
-// COMPARE TAB: EVENT HANDLERS
-// ============================================================
-
-document.getElementById('compareLeftCollection').addEventListener('change', function() {
-    leftData = null;
-    leftId = null;
-    document.getElementById('compareLeftInfo').style.display = 'none';
-    document.getElementById('compareResults').style.display = 'none';
-    loadCompareRecordsLeft();
-});
-
-document.getElementById('compareRightCollection').addEventListener('change', function() {
-    rightData = null;
-    rightId = null;
-    document.getElementById('compareRightInfo').style.display = 'none';
-    document.getElementById('compareResults').style.display = 'none';
-    loadCompareRecordsRight();
-});
-
-document.getElementById('compareLeftRecord').addEventListener('change', function() {
-    document.getElementById('compareResults').style.display = 'none';
-    loadCompareRecordData('left');
-});
-
-document.getElementById('compareRightRecord').addEventListener('change', function() {
-    document.getElementById('compareResults').style.display = 'none';
-    loadCompareRecordData('right');
-});
-
-document.getElementById('compareLoadBtn').addEventListener('click', function() {
-    loadCompareRecords();
-    log('Compare records reloaded', 'info');
-});
-
-document.getElementById('compareBtn').addEventListener('click', performCompare);
-
-// ============================================================
-// COMPARE TAB: INDEPENDENT LOAD FUNCTIONS
-// ============================================================
-
-function loadCompareRecordsLeft() {
-    if (!currentDb) return;
-    
-    var collection = document.getElementById('compareLeftCollection').value;
-    var select = document.getElementById('compareLeftRecord');
-    var currentValue = select.value;
-    
-    select.innerHTML = '<option value="">Loading...</option>';
-    select.disabled = true;
-    
-    currentDb.collection(collection)
-        .orderBy('date', 'desc')
-        .limit(100)
-        .get()
-        .then(function(snapshot) {
-            select.innerHTML = '<option value="">-- Select left record --</option>';
-            select.disabled = false;
-            
-            if (!snapshot.empty) {
-                snapshot.forEach(function(doc) {
-                    var data = doc.data();
-                    var option = document.createElement('option');
-                    option.value = doc.id;
-                    var displayDate = data.date || 'No date';
-                    var courseName = data.course ? data.course.name : 'Unknown';
-                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                    select.appendChild(option);
-                });
-            }
-            
-            if (currentValue) {
-                var options = select.options;
-                for (var i = 0; i < options.length; i++) {
-                    if (options[i].value === currentValue) {
-                        select.value = currentValue;
-                        break;
-                    }
-                }
-            }
-            
-            if (select.value) {
-                loadCompareRecordData('left');
-            }
-        })
-        .catch(function() {
-            select.innerHTML = '<option value="">-- Error loading --</option>';
-            select.disabled = false;
-        });
-}
-
-function loadCompareRecordsRight() {
-    if (!currentDb) return;
-    
-    var collection = document.getElementById('compareRightCollection').value;
-    var select = document.getElementById('compareRightRecord');
-    var currentValue = select.value;
-    
-    select.innerHTML = '<option value="">Loading...</option>';
-    select.disabled = true;
-    
-    currentDb.collection(collection)
-        .orderBy('date', 'desc')
-        .limit(100)
-        .get()
-        .then(function(snapshot) {
-            select.innerHTML = '<option value="">-- Select right record --</option>';
-            select.disabled = false;
-            
-            if (!snapshot.empty) {
-                snapshot.forEach(function(doc) {
-                    var data = doc.data();
-                    var option = document.createElement('option');
-                    option.value = doc.id;
-                    var displayDate = data.date || 'No date';
-                    var courseName = data.course ? data.course.name : 'Unknown';
-                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                    select.appendChild(option);
-                });
-            }
-            
-            if (currentValue) {
-                var options = select.options;
-                for (var i = 0; i < options.length; i++) {
-                    if (options[i].value === currentValue) {
-                        select.value = currentValue;
-                        break;
-                    }
-                }
-            }
-            
-            if (select.value) {
-                loadCompareRecordData('right');
-            }
-        })
-        .catch(function() {
-            select.innerHTML = '<option value="">-- Error loading --</option>';
-            select.disabled = false;
-        });
-}
-
-// ============================================================
-// UTILITY
-// ============================================================
-
-function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str).replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
-function initDateToggle() {
-    var radios = document.querySelectorAll('input[name="dateOption"]');
-    var customDateInput = document.getElementById('customDate');
-    
-    radios.forEach(function(radio) {
-        radio.addEventListener('change', function() {
-            var labels = document.querySelectorAll('.radio-group label');
-            labels.forEach(function(l) { l.classList.remove('active'); });
-            this.closest('label').classList.add('active');
-            
-            if (this.value === 'custom') {
-                customDateInput.style.display = 'block';
-                if (!customDateInput.value) {
-                    var today = new Date().toISOString().split('T')[0];
-                    customDateInput.value = today;
-                }
-            } else {
-                customDateInput.style.display = 'none';
-            }
-        });
-    });
-}
-
-// ============================================================
-// EVENT HANDLERS
-// ============================================================
-
-document.getElementById('envProdBtn').onclick = function() { setEnvironment('PROD'); };
-document.getElementById('envDevBtn').onclick = function() { setEnvironment('DEV'); };
-document.getElementById('loadSourceBtn').onclick = function() { loadSourceRecords(); };
-document.getElementById('loadDestBtn').onclick = function() { loadDestinationRecords(); };
-document.getElementById('copyBtn').onclick = function() { copyRecord(); };
-document.getElementById('checkBtn').onclick = function() { checkDestination(); };
-document.getElementById('deleteBtn').onclick = function() { deleteDestination(); };
-
-document.getElementById('sourceCollection').onchange = function() {
-    loadSourceRecords();
-    document.getElementById('gameInfo').style.display = 'none';
-    currentGameData = null;
-    currentGameId = null;
-};
-
-document.getElementById('destCollection').onchange = function() {
-    loadDestinationRecords();
-    document.getElementById('destDocId').value = '';
-};
-
-document.getElementById('gameSelect').onchange = function() {
-    var gameId = this.value;
-    if (gameId) {
-        loadGameData(gameId);
-    } else {
-        document.getElementById('gameInfo').style.display = 'none';
-        currentGameData = null;
-        currentGameId = null;
-    }
-};
-
-// ============================================================
-// INIT
-// ============================================================
-
-initFirebase();
-initDateToggle();
-
-log('Record Management v1.03 loaded', 'success');
+log('Record Management v1.04 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
 log('1. Select PROD or DEV (both turn GREEN when active)', 'info');
 log('2. COPY tab: copy records between collections', 'info');
-log('   - Destination records shown for selection/overwrite', 'info');
-log('   - Select existing to REPLACE (with confirmation)', 'info');
-log('   - Type new name to CREATE new record', 'info');
-log('3. COMPARE tab: field-by-field comparison', 'info');
+log('3. COMPARE tab: field-by-field comparison (independent selection)', 'info');
 log('=====================================', 'info');
 </script>
 </body>
@@ -2080,14 +839,13 @@ log('=====================================', 'info');
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: Destination record dropdown now shows existing records from destination collection
-   - FIXED: User can select existing document to REPLACE (with confirmation)
-   - FIXED: User can modify name to create new record
-   - CHANGED: File renamed from record-management.html to util-record-management.html
-   - IMPROVED: Destination document name input now includes datalist for existing records
-   - PRESERVED: All functionality from v1.02
-DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - REFACTORED: Split into separate JS files for maintainability
+   - MOVED: All COPY logic to util-copy-record.js
+   - MOVED: All COMPARE logic to util-compare-record.js
+   - CHANGED: HTML now only contains UI structure and basic initialization
+   - PRESERVED: All functionality from v1.03
+DEPENDS ON: js/firebase-config.js, js/session.js, util-copy-record.js, util-compare-record.js
 STATUS: Ready for integration
 -->
