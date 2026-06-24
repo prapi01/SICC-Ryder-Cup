@@ -1,21 +1,21 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.20
-KEY CHANGES from v1.06:
-   - FIXED: updateLocalCacheWithResults() now updates game1.pointsA and game1.pointsB
-   - Previously game1 points were not updated during cascade, causing TR values to remain static
-   - This fixes the cascade bug where editing a previous hole didn't recalculate TR values correctly
-   - All existing functionality preserved from v1.06
-DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - REPLACED: Direct Firestore writes with WRV in writeSingleHoleToFirestore() and writeNewHoleData()
+   - ADDED: checkAndRenameCelebrationPhoto() call at H4, H9, H14 in performSave()
+   - ADDED: WRV and celebration-photo.js dependencies
+   - All existing functionality preserved from v1.20
+DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, js/wrv.js, js/celebration-photo.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.20";
+window.REAL_GAME_SAVE_VERSION = "1.21";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.20 - fixed game1 points in cascade");
+    console.log("[REAL-GAME-SAVE] Initializing v1.21 - WRV integration + celebration photo check");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -116,7 +116,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.20] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.21] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -247,7 +247,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore
+    // v1.21: writeSingleHoleToFirestore - UPDATED with WRV
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -375,26 +375,47 @@ var RealGameSave = (function() {
         updatePayload["lastSyncedPosition"] = lastSyncedPos;
         if(isTarget) console.log(`[DEBUG-WRITE] Added lastSyncedPosition=${lastSyncedPos} to payload`);
         
+        // Add gameId for WRV celebration photo check
+        updatePayload.gameId = gameId;
+        
         if(isTarget) {
             console.log(`[DEBUG-WRITE] Payload keys being sent to Firestore:`, Object.keys(updatePayload));
             console.log(`[DEBUG-WRITE] TR in payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
         }
         
         try {
-            var db = getDb();
-            await db.collection("scheduledGames").doc(gameId).update(updatePayload);
+            // v1.21: Use WRV instead of direct Firestore write
+            if (typeof WRV !== 'undefined' && WRV.update) {
+                console.log(`[DEBUG-WRITE] Using WRV for hole ${holeNumber}`);
+                await new Promise(function(resolve, reject) {
+                    WRV.update("scheduledGames", gameId, updatePayload, function(err, result) {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve(result);
+                        }
+                    });
+                });
+            } else {
+                // Fallback to direct Firestore write
+                console.warn(`[DEBUG-WRITE] WRV not available, using direct Firestore write`);
+                var db = getDb();
+                await db.collection("scheduledGames").doc(gameId).update(updatePayload);
+            }
+            
             if(isTarget) console.log(`[DEBUG-WRITE] SUCCESS - Firestore update completed for hole ${holeNumber}`);
             console.log(`[CASCADE-DEBUG] Results saved successfully for hole ${holeNumber}`);
         } catch (error) {
             console.error('Error saving results:', error);
             if(isTarget) console.error(`[DEBUG-WRITE] FAILED - Firestore update error:`, error);
+            throw error;
         }
         
         return true;
     }
     
     // ============================================================
-    // writeNewHoleData - v1.06: Fixes stroke points 0 value issue
+    // v1.21: writeNewHoleData - UPDATED with WRV
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache) {
@@ -720,6 +741,9 @@ var RealGameSave = (function() {
         
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
+        // Add gameId for WRV celebration photo check
+        updatePayload.gameId = gameId;
+        
         console.log(`[DEBUG-FLOW] --- PAYLOAD SUMMARY: ${Object.keys(updatePayload).length} fields`);
         console.log(`[DEBUG-FLOW] --- Has f1IntraMatches: ${!!updatePayload[`results.f1IntraMatches.${position}`]}`);
         console.log(`[DEBUG-FLOW] --- Has f2IntraMatches: ${!!updatePayload[`results.f2IntraMatches.${position}`]}`);
@@ -738,8 +762,24 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] =========================================`);
         
         try {
-            var db = getDb();
-            await db.collection("scheduledGames").doc(gameId).update(updatePayload);
+            // v1.21: Use WRV instead of direct Firestore write
+            if (typeof WRV !== 'undefined' && WRV.update) {
+                console.log(`[DEBUG-FLOW] Using WRV for hole ${holeNumber}`);
+                await new Promise(function(resolve, reject) {
+                    WRV.update("scheduledGames", gameId, updatePayload, function(err, result) {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve(result);
+                        }
+                    });
+                });
+            } else {
+                // Fallback to direct Firestore write
+                console.warn(`[DEBUG-FLOW] WRV not available, using direct Firestore write`);
+                var db = getDb();
+                await db.collection("scheduledGames").doc(gameId).update(updatePayload);
+            }
             console.log(`[DEBUG-FLOW] Firestore write SUCCESS for hole ${holeNumber}`);
             return true;
         } catch (error) {
@@ -905,7 +945,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.20: Uses updated updateLocalCacheWithResults
+    // v1.21: performSave - UPDATED with celebration photo check
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -983,6 +1023,19 @@ var RealGameSave = (function() {
                         console.log(`[DEBUG-SAVE] isNewHole = ${currentPosition >= lastSyncedPos}`);
                         
                         // ============================================================
+                        // v1.21: CELEBRATION PHOTO CHECK at H4, H9, H14
+                        // ============================================================
+                        var photoCheckHoles = [4, 9, 14];
+                        if (photoCheckHoles.indexOf(currentHole) !== -1) {
+                            if (typeof checkAndRenameCelebrationPhoto === 'function') {
+                                console.log(`[DEBUG-SAVE] 🔍 Checking celebration photo at H${currentHole}`);
+                                checkAndRenameCelebrationPhoto(gameId);
+                            } else {
+                                console.warn('[DEBUG-SAVE] celebration-photo.js not loaded');
+                            }
+                        }
+                        
+                        // ============================================================
                         // T-1 IMMEDIATE RECALCULATION
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- T-1 IMMEDIATE RECALCULATION ---`);
@@ -1023,10 +1076,21 @@ var RealGameSave = (function() {
                             t1UpdatePayload["results.game2.flight1.cumulativePoints"] = fullCumulativeF1;
                             t1UpdatePayload["results.game2.flight1.leader"] = fullLeaderF1;
                             t1UpdatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+                            t1UpdatePayload.gameId = gameId;
                             
                             try {
-                                var db = getDb();
-                                await db.collection("scheduledGames").doc(gameId).update(t1UpdatePayload);
+                                // v1.21: Use WRV for T-1 update
+                                if (typeof WRV !== 'undefined' && WRV.update) {
+                                    await new Promise(function(resolve, reject) {
+                                        WRV.update("scheduledGames", gameId, t1UpdatePayload, function(err, result) {
+                                            if (err) reject(err);
+                                            else resolve(result);
+                                        });
+                                    });
+                                } else {
+                                    var db = getDb();
+                                    await db.collection("scheduledGames").doc(gameId).update(t1UpdatePayload);
+                                }
                                 console.log(`[DEBUG-SAVE] T-1 Firestore write SUCCESS`);
                             } catch (e) {
                                 console.warn(`[DEBUG-SAVE] T-1 Firestore write FAILED:`, e);
@@ -1376,12 +1440,12 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.20
-KEY CHANGES from v1.06:
-   - FIXED: updateLocalCacheWithResults() now updates game1.pointsA and game1.pointsB
-   - Previously game1 points were not updated during cascade, causing TR values to remain static
-   - This fixes the cascade bug where editing a previous hole didn't recalculate TR values correctly
-   - All existing functionality preserved from v1.06
-DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - REPLACED: Direct Firestore writes with WRV in writeSingleHoleToFirestore() and writeNewHoleData()
+   - ADDED: checkAndRenameCelebrationPhoto() call at H4, H9, H14 in performSave()
+   - ADDED: WRV and celebration-photo.js dependencies
+   - All existing functionality preserved from v1.20
+DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, js/wrv.js, js/celebration-photo.js
 STATUS: Ready for integration
 */
