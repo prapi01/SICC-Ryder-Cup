@@ -324,7 +324,7 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v6.21: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v6.21: Updated dependencies
 // ============================================================
 var APP_VERSION = "6.21";
 var CACHE_KEY = "real_game_version_v621";
@@ -333,7 +333,6 @@ var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
     
-    // v6.19: Preserve ALL existing URL parameters
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', APP_VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
