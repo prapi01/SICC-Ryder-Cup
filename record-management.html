@@ -1,27 +1,16 @@
 <!--
 FILE: record-management.html
-VERSION: 1.00
-KEY CHANGES:
-   - NEW FILE: Master Record Manager for copying and comparing records
-   - ADDED: Two tabs: COPY | COMPARE (mutually exclusive)
-   - ADDED: Environment selector (PROD / DEV)
-   - COPY TAB:
-     - Source collection selector (scheduledGames / historyGames / backupFolder)
-     - Destination collection selector (scheduledGames / historyGames / backupFolder)
-     - Source record selector with date + course + player count display
-     - Date override (Keep original / Set to today / Custom date)
-     - Destination document name input (user-defined)
-     - EXACT copy — only the date field may be changed
-   - COMPARE TAB:
-     - LEFT: Collection + Record selector (scheduledGames / historyGames / backupFolder)
-     - RIGHT: Collection + Record selector (scheduledGames / historyGames / backupFolder)
-     - Field-by-field comparison of two records
-     - Highlights differences with color coding
-     - Detailed logging of all differences found
-   - All other fields preserved as-is (gameStarted, signatures, locks, etc.)
-   - Detailed step-by-step logging
-   - Check destination and Delete destination functions
-   - PURPOSE: Backup, restore, copy, and compare records across collections and environments
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Record dropdown now shows actual document ID (not truncated)
+   - FIXED: Overflow issues — fields no longer protrude outside frame
+   - FIXED: Full browser screen utilization with responsive design
+   - FIXED: Improved container max-width for better use of screen space
+   - FIXED: Game select option text now shows full record ID with date
+   - FIXED: Compare side panels now properly contain content
+   - FIXED: Text overflow with ellipsis where needed
+   - IMPROVED: Layout optimized for mobile and desktop
+   - PRESERVED: All functionality from v1.00
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -46,7 +35,7 @@ STATUS: Ready for integration
         }
         
         .container {
-            max-width: 600px;
+            max-width: 900px;
             width: 100%;
             margin: 0 auto;
             padding: 20px 16px;
@@ -93,6 +82,7 @@ STATUS: Ready for integration
             border-radius: 20px;
             padding: 16px;
             margin-bottom: 16px;
+            overflow: hidden;
         }
         
         .card-title {
@@ -191,13 +181,16 @@ STATUS: Ready for integration
             padding: 12px 16px;
             color: #fff;
             font-size: 0.9rem;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
             cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
         }
         
         .collection-select option {
             background: #1a1a1a;
             color: #fff;
+            padding: 8px;
         }
         
         .game-select {
@@ -207,40 +200,54 @@ STATUS: Ready for integration
             border-radius: 30px;
             padding: 12px 16px;
             color: #fff;
-            font-size: 0.9rem;
-            margin-bottom: 12px;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
             cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+            word-break: break-all;
         }
         
         .game-select option {
             background: #1a1a1a;
             color: #fff;
+            padding: 8px;
+            word-break: break-all;
+            white-space: normal;
         }
         
         .game-info {
             background: #0a0a0a;
             border-radius: 12px;
             padding: 12px;
-            margin: 12px 0;
+            margin: 8px 0;
             font-size: 0.75rem;
             font-family: monospace;
+            overflow: hidden;
+            word-break: break-all;
         }
         
         .game-info-row {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
             flex-wrap: wrap;
             gap: 4px;
+            padding: 2px 0;
         }
         
         .game-info-label {
             color: #888;
+            flex-shrink: 0;
         }
         
         .game-info-value {
             color: #4caf50;
             font-weight: 600;
+            word-break: break-all;
+            text-align: right;
+            flex: 1;
+            min-width: 80px;
         }
         
         .game-info-value.gold {
@@ -255,7 +262,7 @@ STATUS: Ready for integration
             color: #fff;
             font-size: 0.9rem;
             width: 100%;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
         }
         
         input:focus {
@@ -303,7 +310,7 @@ STATUS: Ready for integration
         }
         
         .btn:active {
-            transform: scale(0.98);
+            transform: scale(0.97);
         }
         
         .btn-primary {
@@ -339,6 +346,7 @@ STATUS: Ready for integration
             font-family: monospace;
             max-height: 300px;
             overflow-y: auto;
+            word-break: break-all;
         }
         
         .log-entry {
@@ -369,7 +377,7 @@ STATUS: Ready for integration
         .button-group {
             display: flex;
             gap: 12px;
-            margin-top: 16px;
+            margin-top: 12px;
         }
         
         .button-group .btn {
@@ -432,6 +440,7 @@ STATUS: Ready for integration
             border-radius: 12px;
             font-size: 0.6rem;
             font-weight: 600;
+            white-space: nowrap;
         }
         
         .badge-sched { background: #1a3a1a; color: #4caf50; }
@@ -444,7 +453,7 @@ STATUS: Ready for integration
             gap: 16px;
         }
         
-        @media (max-width: 480px) {
+        @media (max-width: 600px) {
             .compare-layout {
                 grid-template-columns: 1fr;
             }
@@ -455,12 +464,13 @@ STATUS: Ready for integration
             border-radius: 12px;
             padding: 12px;
             border: 1px solid #2a2a2a;
+            overflow: hidden;
+            min-width: 0;
         }
         
         .compare-side-title {
             font-size: 0.7rem;
             font-weight: 600;
-            color: #4caf50;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-bottom: 8px;
@@ -481,6 +491,8 @@ STATUS: Ready for integration
             align-items: center;
             flex-wrap: wrap;
             gap: 4px;
+            word-break: break-all;
+            overflow: hidden;
         }
         
         .diff-item.diff {
@@ -498,6 +510,7 @@ STATUS: Ready for integration
         .diff-item .field-name {
             color: #888;
             font-weight: 400;
+            word-break: break-all;
         }
         
         .diff-item .field-value-left {
@@ -521,6 +534,7 @@ STATUS: Ready for integration
             background: #0a0a0a;
             border-radius: 8px;
             border: 1px solid #2a2a2a;
+            flex-wrap: wrap;
         }
         
         .diff-summary-item {
@@ -551,6 +565,83 @@ STATUS: Ready for integration
             max-height: 400px;
             overflow-y: auto;
             margin-top: 8px;
+            overflow-x: hidden;
+        }
+        
+        .scrollable-select {
+            max-width: 100%;
+            overflow: hidden;
+        }
+        
+        .inline-flex {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .flex-1 {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .text-ellipsis {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .select-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        
+        .select-wrapper select {
+            width: 100%;
+            padding-right: 32px;
+        }
+        
+        .select-wrapper::after {
+            content: "▼";
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #4caf50;
+            font-size: 0.6rem;
+            pointer-events: none;
+        }
+        
+        /* Fix for option text wrapping */
+        select option {
+            white-space: normal !important;
+            word-break: break-all !important;
+            padding: 4px 8px !important;
+        }
+        
+        /* Compact mode for compare side */
+        .compare-side .game-info {
+            font-size: 0.65rem;
+            padding: 8px;
+            margin: 4px 0;
+        }
+        
+        .compare-side .game-info-row {
+            padding: 1px 0;
+        }
+        
+        .compare-side .game-info-value {
+            font-size: 0.65rem;
+        }
+        
+        .compare-side .game-select {
+            font-size: 0.75rem;
+            padding: 10px 14px;
+        }
+        
+        .compare-side .collection-select {
+            font-size: 0.75rem;
+            padding: 10px 14px;
         }
     </style>
 </head>
@@ -593,21 +684,25 @@ STATUS: Ready for integration
             <div class="card-title">📂 STEP 1: COLLECTIONS</div>
             
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
-                <div style="flex:1; min-width:200px;">
+                <div style="flex:1; min-width:180px;">
                     <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">📤 SOURCE</label>
-                    <select id="sourceCollection" class="collection-select">
-                        <option value="scheduledGames">scheduledGames</option>
-                        <option value="historyGames">historyGames</option>
-                        <option value="backupFolder">backupFolder</option>
-                    </select>
+                    <div class="select-wrapper">
+                        <select id="sourceCollection" class="collection-select">
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="historyGames">historyGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
                 </div>
-                <div style="flex:1; min-width:200px;">
+                <div style="flex:1; min-width:180px;">
                     <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">📥 DESTINATION</label>
-                    <select id="destCollection" class="collection-select">
-                        <option value="scheduledGames">scheduledGames</option>
-                        <option value="historyGames">historyGames</option>
-                        <option value="backupFolder">backupFolder</option>
-                    </select>
+                    <div class="select-wrapper">
+                        <select id="destCollection" class="collection-select">
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="historyGames">historyGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             
@@ -617,9 +712,11 @@ STATUS: Ready for integration
         <!-- Step 4: Source Record -->
         <div class="card">
             <div class="card-title">📄 STEP 2: SOURCE RECORD</div>
-            <select id="gameSelect" class="game-select">
-                <option value="">-- Select a record --</option>
-            </select>
+            <div class="select-wrapper">
+                <select id="gameSelect" class="game-select">
+                    <option value="">-- Select a record --</option>
+                </select>
+            </div>
             <div id="gameInfo" style="display:none;"></div>
         </div>
         
@@ -639,7 +736,7 @@ STATUS: Ready for integration
         <!-- Step 6: Destination Document Name -->
         <div class="card">
             <div class="card-title">📝 STEP 4: DESTINATION DOCUMENT NAME</div>
-            <input type="text" id="destDocId" placeholder="Enter destination document ID (e.g., MASTER_RECORD)" value="">
+            <input type="text" id="destDocId" placeholder="Enter destination document ID" value="">
             <div style="font-size:0.65rem; color:#666; margin-top:4px;">
                 ⚠️ Will overwrite if document already exists in destination collection.
             </div>
@@ -670,28 +767,36 @@ STATUS: Ready for integration
                 <!-- LEFT SIDE -->
                 <div class="compare-side">
                     <div class="compare-side-title left">📤 LEFT RECORD</div>
-                    <select id="compareLeftCollection" class="collection-select" style="margin-bottom:8px;">
-                        <option value="scheduledGames">scheduledGames</option>
-                        <option value="historyGames">historyGames</option>
-                        <option value="backupFolder">backupFolder</option>
-                    </select>
-                    <select id="compareLeftRecord" class="game-select">
-                        <option value="">-- Select left record --</option>
-                    </select>
+                    <div class="select-wrapper">
+                        <select id="compareLeftCollection" class="collection-select">
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="historyGames">historyGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
+                    <div class="select-wrapper">
+                        <select id="compareLeftRecord" class="game-select">
+                            <option value="">-- Select left record --</option>
+                        </select>
+                    </div>
                     <div id="compareLeftInfo" style="display:none; margin-top:8px;"></div>
                 </div>
                 
                 <!-- RIGHT SIDE -->
                 <div class="compare-side">
                     <div class="compare-side-title right">📥 RIGHT RECORD</div>
-                    <select id="compareRightCollection" class="collection-select" style="margin-bottom:8px;">
-                        <option value="scheduledGames">scheduledGames</option>
-                        <option value="historyGames">historyGames</option>
-                        <option value="backupFolder">backupFolder</option>
-                    </select>
-                    <select id="compareRightRecord" class="game-select">
-                        <option value="">-- Select right record --</option>
-                    </select>
+                    <div class="select-wrapper">
+                        <select id="compareRightCollection" class="collection-select">
+                            <option value="scheduledGames">scheduledGames</option>
+                            <option value="historyGames">historyGames</option>
+                            <option value="backupFolder">backupFolder</option>
+                        </select>
+                    </div>
+                    <div class="select-wrapper">
+                        <select id="compareRightRecord" class="game-select">
+                            <option value="">-- Select right record --</option>
+                        </select>
+                    </div>
                     <div id="compareRightInfo" style="display:none; margin-top:8px;"></div>
                 </div>
             </div>
@@ -724,15 +829,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.00</div>
+<div class="version-tag">v1.01</div>
 
 <script>
 // ============================================================
 // FILE: record-management.html
-// VERSION: 1.00
+// VERSION: 1.01
 // ============================================================
 
-var APP_VERSION = "1.00";
+var APP_VERSION = "1.01";
 var currentDb = null;
 var currentEnv = null;
 var currentGameData = null;
@@ -958,12 +1063,10 @@ function loadSourceRecords() {
                 option.value = doc.id;
                 var displayDate = data.date || 'No date';
                 var courseName = data.course ? data.course.name : 'Unknown';
-                var playerCount = data.players ? data.players.length : 0;
-                var label = displayDate + ' | ' + courseName + ' | ' + playerCount + ' players';
-                option.textContent = label;
+                // Show full document ID with date and course
+                option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
                 option.dataset.date = displayDate;
                 option.dataset.course = courseName;
-                option.dataset.players = playerCount;
                 select.appendChild(option);
             });
             
@@ -1277,7 +1380,8 @@ function loadCompareRecords() {
                     option.value = doc.id;
                     var displayDate = data.date || 'No date';
                     var courseName = data.course ? data.course.name : 'Unknown';
-                    option.textContent = displayDate + ' | ' + courseName;
+                    // Show full document ID with date
+                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
                     option.dataset.date = displayDate;
                     option.dataset.course = courseName;
                     leftSelect.appendChild(option);
@@ -1310,7 +1414,7 @@ function loadCompareRecords() {
                     option.value = doc.id;
                     var displayDate = data.date || 'No date';
                     var courseName = data.course ? data.course.name : 'Unknown';
-                    option.textContent = displayDate + ' | ' + courseName;
+                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
                     option.dataset.date = displayDate;
                     option.dataset.course = courseName;
                     rightSelect.appendChild(option);
@@ -1369,7 +1473,7 @@ function loadCompareRecordData(side) {
                     <div class="game-info" style="margin:0;">
                         <div class="game-info-row">
                             <span class="game-info-label">ID:</span>
-                            <span class="game-info-value gold">${escapeHtml(recordId)}</span>
+                            <span class="game-info-value gold" style="word-break:break-all;">${escapeHtml(recordId)}</span>
                         </div>
                         <div class="game-info-row">
                             <span class="game-info-label">Date:</span>
@@ -1447,11 +1551,10 @@ function compareObjects(obj1, obj2, path) {
     var matches = [];
     var allKeys = new Set();
     
-    // Collect all keys from both objects
-    if (obj1 && typeof obj1 === 'object') {
+    if (obj1 && typeof obj1 === 'object' && obj1 !== null) {
         Object.keys(obj1).forEach(function(k) { allKeys.add(k); });
     }
-    if (obj2 && typeof obj2 === 'object') {
+    if (obj2 && typeof obj2 === 'object' && obj2 !== null) {
         Object.keys(obj2).forEach(function(k) { allKeys.add(k); });
     }
     
@@ -1459,13 +1562,9 @@ function compareObjects(obj1, obj2, path) {
     
     keys.forEach(function(key) {
         var currentPath = path ? path + '.' + key : key;
-        var val1 = obj1 ? obj1[key] : undefined;
-        var val2 = obj2 ? obj2[key] : undefined;
+        var val1 = (obj1 && typeof obj1 === 'object' && obj1 !== null) ? obj1[key] : undefined;
+        var val2 = (obj2 && typeof obj2 === 'object' && obj2 !== null) ? obj2[key] : undefined;
         
-        var type1 = typeof val1;
-        var type2 = typeof val2;
-        
-        // Check if one exists and the other doesn't
         if (val1 === undefined && val2 !== undefined) {
             diffs.push({
                 path: currentPath,
@@ -1485,7 +1584,6 @@ function compareObjects(obj1, obj2, path) {
             return;
         }
         
-        // Both undefined
         if (val1 === undefined && val2 === undefined) {
             matches.push({
                 path: currentPath,
@@ -1495,7 +1593,7 @@ function compareObjects(obj1, obj2, path) {
             return;
         }
         
-        // Both are objects (non-array) → recurse
+        // Both are objects (non-array, non-null)
         if (val1 !== null && val2 !== null && 
             typeof val1 === 'object' && typeof val2 === 'object' &&
             !Array.isArray(val1) && !Array.isArray(val2)) {
@@ -1530,7 +1628,6 @@ function compareObjects(obj1, obj2, path) {
                         reason: 'Array match'
                     });
                 } else {
-                    // Deep compare array elements
                     var nestedArray = compareObjects(val1, val2, currentPath);
                     diffs = diffs.concat(nestedArray.diffs);
                     matches = matches.concat(nestedArray.matches);
@@ -1543,14 +1640,14 @@ function compareObjects(obj1, obj2, path) {
         if (val1 === val2) {
             matches.push({
                 path: currentPath,
-                value: String(val1),
+                value: String(val1 !== undefined && val1 !== null ? val1 : 'null'),
                 reason: 'Match'
             });
         } else {
             diffs.push({
                 path: currentPath,
-                left: String(val1 !== null && val1 !== undefined ? val1 : 'null'),
-                right: String(val2 !== null && val2 !== undefined ? val2 : 'null'),
+                left: String(val1 !== undefined && val1 !== null ? val1 : 'null'),
+                right: String(val2 !== undefined && val2 !== null ? val2 : 'null'),
                 reason: 'Value mismatch'
             });
         }
@@ -1570,7 +1667,6 @@ function displayCompareResults(results) {
     
     document.getElementById('compareResults').style.display = 'block';
     
-    // Summary
     var summaryHtml = `
         <div class="diff-summary">
             <div class="diff-summary-item">
@@ -1593,7 +1689,6 @@ function displayCompareResults(results) {
     `;
     document.getElementById('compareSummary').innerHTML = summaryHtml;
     
-    // Detailed results
     var detailHtml = '';
     
     if (diffCount > 0) {
@@ -1632,7 +1727,6 @@ function displayCompareResults(results) {
     
     document.getElementById('compareDetail').innerHTML = detailHtml;
     
-    // Log summary
     log('Comparison complete: ' + matchCount + ' match, ' + diffCount + ' diff', 'info');
     if (diffCount > 0) {
         log('Differences found in ' + diffCount + ' fields', 'diff');
@@ -1764,7 +1858,7 @@ document.getElementById('gameSelect').onchange = function() {
 initFirebase();
 initDateToggle();
 
-log('Record Management v1.00 loaded', 'success');
+log('Record Management v1.01 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
 log('1. Select PROD or DEV', 'info');
 log('2. COPY tab: copy records between collections', 'info');
@@ -1776,28 +1870,17 @@ log('=====================================', 'info');
 
 <!--
 FILE: record-management.html
-VERSION: 1.00
-KEY CHANGES:
-   - NEW FILE: Master Record Manager for copying and comparing records
-   - ADDED: Two tabs: COPY | COMPARE (mutually exclusive)
-   - ADDED: Environment selector (PROD / DEV)
-   - COPY TAB:
-     - Source collection selector (scheduledGames / historyGames / backupFolder)
-     - Destination collection selector (scheduledGames / historyGames / backupFolder)
-     - Source record selector with date + course + player count display
-     - Date override (Keep original / Set to today / Custom date)
-     - Destination document name input (user-defined)
-     - EXACT copy — only the date field may be changed
-   - COMPARE TAB:
-     - LEFT: Collection + Record selector (scheduledGames / historyGames / backupFolder)
-     - RIGHT: Collection + Record selector (scheduledGames / historyGames / backupFolder)
-     - Field-by-field comparison of two records
-     - Highlights differences with color coding
-     - Detailed logging of all differences found
-   - All other fields preserved as-is (gameStarted, signatures, locks, etc.)
-   - Detailed step-by-step logging
-   - Check destination and Delete destination functions
-   - PURPOSE: Backup, restore, copy, and compare records across collections and environments
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Record dropdown now shows actual document ID (not truncated)
+   - FIXED: Overflow issues — fields no longer protrude outside frame
+   - FIXED: Full browser screen utilization with responsive design
+   - FIXED: Improved container max-width for better use of screen space
+   - FIXED: Game select option text now shows full record ID with date
+   - FIXED: Compare side panels now properly contain content
+   - FIXED: Text overflow with ellipsis where needed
+   - IMPROVED: Layout optimized for mobile and desktop
+   - PRESERVED: All functionality from v1.00
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
