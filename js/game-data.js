@@ -1,17 +1,16 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.07
-KEY CHANGES from v2.06:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
-   - Removed local implementations of getPlayOrder(), getPlayPosition(), getNaturalHole()
-   - All order-related functions now delegate to GameOrder
-   - Maintains backward compatibility with existing API
-   - All other functionality unchanged (data strings, saving, loading, etc.)
-DEPENDS ON: js/game-order.js, Firebase Firestore
+VERSION: 2.08
+KEY CHANGES from v2.07:
+   - REPLACED: Direct Firestore writes with WRV in saveCurrentHole()
+   - ADDED: checkAndRenameCelebrationPhoto() call after successful save
+   - ADDED: WRV dependency
+   - All other functionality unchanged
+DEPENDS ON: js/game-order.js, Firebase Firestore, js/wrv.js, js/celebration-photo.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.07
+// FILE: js/game-data.js - VERSION 2.08
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -487,23 +486,45 @@ var GameData = (function() {
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         
-        firebase.firestore().collection(collection).doc(gameIdParam).update(resetData)
-            .then(function() {
-                console.log("Full game reset completed");
-                flight1Data.data = rotatedData;
-                flight1Data.saveEvent = false;
-                flight1Data.crossEvent = false;
-                flight2Data.data = rotatedData;
-                flight2Data.saveEvent = false;
-                flight2Data.crossEvent = false;
-                locks.f1 = null;
-                locks.f2 = null;
-                if (callback) callback(true);
-            })
-            .catch(function(e) {
-                console.error("Full reset error:", e);
-                if (callback) callback(false);
+        // Use WRV if available, otherwise fallback to direct write
+        if (typeof WRV !== 'undefined' && WRV.update) {
+            WRV.update(collection, gameIdParam, resetData, function(err) {
+                if (err) {
+                    console.error("Full reset error (WRV):", err);
+                    if (callback) callback(false);
+                } else {
+                    console.log("Full game reset completed (WRV)");
+                    flight1Data.data = rotatedData;
+                    flight1Data.saveEvent = false;
+                    flight1Data.crossEvent = false;
+                    flight2Data.data = rotatedData;
+                    flight2Data.saveEvent = false;
+                    flight2Data.crossEvent = false;
+                    locks.f1 = null;
+                    locks.f2 = null;
+                    if (callback) callback(true);
+                }
             });
+        } else {
+            // Fallback to direct Firestore write
+            firebase.firestore().collection(collection).doc(gameIdParam).update(resetData)
+                .then(function() {
+                    console.log("Full game reset completed");
+                    flight1Data.data = rotatedData;
+                    flight1Data.saveEvent = false;
+                    flight1Data.crossEvent = false;
+                    flight2Data.data = rotatedData;
+                    flight2Data.saveEvent = false;
+                    flight2Data.crossEvent = false;
+                    locks.f1 = null;
+                    locks.f2 = null;
+                    if (callback) callback(true);
+                })
+                .catch(function(e) {
+                    console.error("Full reset error:", e);
+                    if (callback) callback(false);
+                });
+        }
     }
     
     function setCourse(course) {
@@ -610,6 +631,10 @@ var GameData = (function() {
         return "scheduledGames";
     }
     
+    // ============================================================
+    // v2.08: UPDATED saveCurrentHole() - Uses WRV
+    // ============================================================
+    
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
         var flight = (editableFlight === 1) ? 1 : 2;
         
@@ -626,8 +651,22 @@ var GameData = (function() {
         updatePayload[otherFlightField + ".x"] = true;
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
-        firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
-            .then(function() {
+        // Add gameId to payload for celebration photo check
+        updatePayload.gameId = gameId;
+        
+        console.log("[GameData] saveCurrentHole: saving hole", holeNumber, "using WRV");
+        
+        // Use WRV if available
+        if (typeof WRV !== 'undefined' && WRV.update) {
+            WRV.update(collection, gameId, updatePayload, function(err) {
+                if (err) {
+                    console.error("[GameData] Save failed (WRV):", err);
+                    notifyError("Save failed: " + err.message);
+                    if (callback) callback(false);
+                    return;
+                }
+                
+                // Update local data
                 if (flight === 1) {
                     flight1Data.data = newData;
                     flight1Data.saveEvent = true;
@@ -637,15 +676,57 @@ var GameData = (function() {
                     flight2Data.saveEvent = true;
                     flight1Data.crossEvent = true;
                 }
-                console.log("Save successful");
+                
+                console.log("[GameData] Save successful (WRV)");
                 notifyDataChanged();
+                
+                // --- CELEBRATION PHOTO CHECK ---
+                // Check at H4, H9, H14
+                var holeNumbers = [4, 9, 14];
+                if (holeNumbers.indexOf(holeNumber) !== -1) {
+                    if (typeof checkAndRenameCelebrationPhoto === 'function') {
+                        console.log("[GameData] 🔍 Checking celebration photo at H" + holeNumber);
+                        checkAndRenameCelebrationPhoto(gameId);
+                    }
+                }
+                
                 if (callback) callback(true);
-            })
-            .catch(function(err) {
-                console.error("Save error:", err);
-                notifyError("Save failed: " + err.message);
-                if (callback) callback(false);
             });
+        } else {
+            // Fallback to direct Firestore write
+            console.warn("[GameData] WRV not available, using direct Firestore write");
+            
+            firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
+                .then(function() {
+                    if (flight === 1) {
+                        flight1Data.data = newData;
+                        flight1Data.saveEvent = true;
+                        flight2Data.crossEvent = true;
+                    } else {
+                        flight2Data.data = newData;
+                        flight2Data.saveEvent = true;
+                        flight1Data.crossEvent = true;
+                    }
+                    console.log("Save successful");
+                    notifyDataChanged();
+                    
+                    // --- CELEBRATION PHOTO CHECK ---
+                    var holeNumbers = [4, 9, 14];
+                    if (holeNumbers.indexOf(holeNumber) !== -1) {
+                        if (typeof checkAndRenameCelebrationPhoto === 'function') {
+                            console.log("[GameData] 🔍 Checking celebration photo at H" + holeNumber);
+                            checkAndRenameCelebrationPhoto(gameId);
+                        }
+                    }
+                    
+                    if (callback) callback(true);
+                })
+                .catch(function(err) {
+                    console.error("Save error:", err);
+                    notifyError("Save failed: " + err.message);
+                    if (callback) callback(false);
+                });
+        }
     }
     
     function forceRefresh() {
@@ -784,7 +865,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v2.07: Delegates to GameOrder for order functions
+    // Public API - v2.08
     // ============================================================
     
     return {
@@ -842,13 +923,12 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 2.07
-KEY CHANGES from v2.06:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
-   - Removed local implementations of getPlayOrder(), getPlayPosition(), getNaturalHole()
-   - All order-related functions now delegate to GameOrder
-   - Maintains backward compatibility with existing API
-   - All other functionality unchanged (data strings, saving, loading, etc.)
-DEPENDS ON: js/game-order.js, Firebase Firestore
+VERSION: 2.08
+KEY CHANGES from v2.07:
+   - REPLACED: Direct Firestore writes with WRV in saveCurrentHole()
+   - ADDED: checkAndRenameCelebrationPhoto() call after successful save at H4, H9, H14
+   - ADDED: WRV dependency
+   - All other functionality unchanged
+DEPENDS ON: js/game-order.js, Firebase Firestore, js/wrv.js, js/celebration-photo.js
 STATUS: Ready for integration
 */
