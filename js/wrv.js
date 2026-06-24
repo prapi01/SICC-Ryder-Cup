@@ -2,7 +2,7 @@
 FILE: js/wrv.js
 VERSION: 1.00
 KEY CHANGES:
-   - NEW: Write-Read-Verify with self-healing
+   - NEW: Write-Read-Verify with self-healing and retry
    - Automatic retry on failure (exponential backoff)
    - Includes celebration photo check on every write
    - No user-facing errors - silent retry
@@ -38,8 +38,8 @@ var WRV = (function() {
             
             // --- Step 1: Check for celebration photo ---
             // This runs on EVERY write, catches uploads anytime
-            if (data.gameId && typeof copyCelebrationPhoto === 'function') {
-                copyCelebrationPhoto(data.gameId);
+            if (data.gameId && typeof checkAndRenameCelebrationPhoto === 'function') {
+                checkAndRenameCelebrationPhoto(data.gameId);
             }
             
             // --- Step 2: Write to Firestore ---
@@ -89,7 +89,7 @@ var WRV = (function() {
      */
     function verifyData(original, written) {
         // Check key fields that must match
-        var keyFields = ['status', 'currentHoleF1', 'currentHoleF2'];
+        var keyFields = ['status', 'currentHoleF1', 'currentHoleF2', 'lastSyncedPosition'];
         
         for (var i = 0; i < keyFields.length; i++) {
             var field = keyFields[i];
@@ -124,7 +124,7 @@ window.WRV = WRV;
 FILE: js/wrv.js
 VERSION: 1.00
 KEY CHANGES:
-   - NEW: Write-Read-Verify with self-healing
+   - NEW: Write-Read-Verify with self-healing and retry
    - Automatic retry on failure (exponential backoff)
    - Includes celebration photo check on every write
    - No user-facing errors - silent retry
