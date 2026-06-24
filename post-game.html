@@ -1,17 +1,12 @@
 <!--
 FILE: post-game.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: js/history-record.js v3.05 dependency (celebration field support)
-   - CHANGED: js/sign-card.js from v1.18 to v1.20 (complete flow + dummy celebration pointer)
-   - ADDED: Background processing - calculates handicaps and writes to both collections on load
-   - ADDED: "SEE RESULTS" button with status states (Processing → Ready → See Results)
-   - Button is DISABLED during backend work, ENABLED after writes complete
-   - REMOVED: Auto-trigger celebration - user must click "SEE RESULTS"
-   - All existing functionality preserved from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: html2canvas library for celebration image capture
+   - All existing functionality preserved from v1.06
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, 
              js/game-loader.js, js/sign-card.js, js/history-record.js, 
-             js/firebase-retry.js, js/settings.js
+             js/firebase-retry.js, js/settings.js, html2canvas
 STATUS: Ready for integration
 -->
 
@@ -22,13 +17,17 @@ STATUS: Ready for integration
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SICC Ryder Cup - POST GAME</title>
     
+    <!-- Third-party libraries -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=1.06"></script>
-    <script src="js/session.js?v=1.06"></script>
-    <script src="js/settings.js?v=1.06"></script>
-    <script src="js/modal.js?v=1.06"></script>
-    <script src="js/waiting-screen.js?v=1.06"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    
+    <script src="js/firebase-config.js?v=1.07"></script>
+    <script src="js/session.js?v=1.07"></script>
+    <script src="js/settings.js?v=1.07"></script>
+    <script src="js/modal.js?v=1.07"></script>
+    <script src="js/waiting-screen.js?v=1.07"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.25"></script>
@@ -259,7 +258,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.06</div>
+<div class="version-tag">v1.07</div>
 
 <script>
 // ============================================================
@@ -272,10 +271,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.06: User clicks SEE RESULTS after backend work
+// VERSION CACHE-BUSTING - v1.07: Added html2canvas for celebration capture
 // ============================================================
-var APP_VERSION = "1.06";
-var CACHE_KEY = "post_game_version_v106";
+var APP_VERSION = "1.07";
+var CACHE_KEY = "post_game_version_v107";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -292,8 +291,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.06";
-console.log("[POST-GAME] Initializing v1.06 - User clicks SEE RESULTS after backend work");
+window.POST_GAME_PAGE_VERSION = "1.07";
+console.log("[POST-GAME] Initializing v1.07 - Added html2canvas for celebration capture");
 
 // ============================================================
 // Main Logic
@@ -317,7 +316,6 @@ function getUrlParams() {
 function showPostGameUI(statusText, statusType, buttonText, buttonEnabled, buttonCallback, errorMessage) {
     var content = document.getElementById('content');
     
-    var statusColor = '';
     var statusClass = '';
     if (statusType === 'processing') {
         statusClass = 'status-processing';
@@ -365,13 +363,11 @@ function showPostGameUI(statusText, statusType, buttonText, buttonEnabled, butto
     
     content.innerHTML = html;
     
-    // Attach button event
     var btn = document.getElementById('seeResultsBtn');
     if (btn && buttonEnabled && buttonCallback) {
         btn.addEventListener('click', buttonCallback);
     }
     
-    // Attach retry button
     var retryBtn = document.getElementById('retryBtn');
     if (retryBtn) {
         retryBtn.addEventListener('click', function() {
@@ -390,7 +386,6 @@ function showPostGameUI(statusText, statusType, buttonText, buttonEnabled, butto
 function startBackgroundProcessing() {
     console.log("[POST-GAME] Starting background processing...");
     
-    // Show processing state
     showPostGameUI(
         '⏳ Processing game data...',
         'processing',
@@ -424,7 +419,6 @@ function startBackgroundProcessing() {
         return;
     }
     
-    // Check if game data is available
     if (!gameData) {
         showPostGameUI(
             '❌ Error',
@@ -437,9 +431,6 @@ function startBackgroundProcessing() {
         return;
     }
     
-    // ============================================================
-    // Step 1: Calculate handicaps
-    // ============================================================
     console.log("[POST-GAME] Calculating handicap adjustments...");
     
     var handicapData = null;
@@ -462,9 +453,6 @@ function startBackgroundProcessing() {
         return;
     }
     
-    // ============================================================
-    // Step 2: Write to historyGames
-    // ============================================================
     var archiveId = gameId + "_H";
     console.log("[POST-GAME] Writing to historyGames:", archiveId);
     
@@ -477,7 +465,6 @@ function startBackgroundProcessing() {
     var flight1DataString = gameData.f1?.d || "";
     var flight2DataString = gameData.f2?.d || "";
     
-    // Get starting players
     var startingPlayers = gameData.players.map(function(p) {
         return {
             name: p.name,
@@ -488,14 +475,11 @@ function startBackgroundProcessing() {
         };
     });
     
-    // Create or update history record with handicap data + dummy celebration pointer
-    // First check if record exists
     var db = firebase.firestore();
     db.collection('historyGames').doc(archiveId).get()
         .then(function(doc) {
             var isUpdate = doc.exists;
             
-            // Add dummy celebration pointer to handicapData
             handicapData.celebration = {
                 imageRef: "dummy_celebration_image.jpg",
                 capturedAt: new Date().toISOString()
@@ -503,7 +487,6 @@ function startBackgroundProcessing() {
             
             if (isUpdate) {
                 console.log("[POST-GAME] Updating existing history record:", archiveId);
-                // Update existing record
                 HistoryRecord.updateWithHandicap(archiveId, handicapData, startingPlayers, function(err) {
                     if (err) {
                         console.error("[POST-GAME] Failed to update history record:", err);
@@ -518,12 +501,10 @@ function startBackgroundProcessing() {
                         return;
                     }
                     console.log("[POST-GAME] historyGames updated successfully");
-                    // Step 3: Update scheduledGames status
                     updateScheduledGameStatus();
                 });
             } else {
                 console.log("[POST-GAME] Creating new history record:", archiveId);
-                // Create pending record first
                 HistoryRecord.upsertPendingRecord(
                     gameId,
                     gameData,
@@ -547,7 +528,6 @@ function startBackgroundProcessing() {
                             return;
                         }
                         console.log("[POST-GAME] Pending record created:", newDocId);
-                        // Now update with handicap data
                         HistoryRecord.updateWithHandicap(newDocId, handicapData, startingPlayers, function(err2) {
                             if (err2) {
                                 console.error("[POST-GAME] Failed to update with handicap:", err2);
@@ -562,7 +542,6 @@ function startBackgroundProcessing() {
                                 return;
                             }
                             console.log("[POST-GAME] historyGames created and updated successfully");
-                            // Step 3: Update scheduledGames status
                             updateScheduledGameStatus();
                         });
                     }
@@ -582,10 +561,6 @@ function startBackgroundProcessing() {
         });
 }
 
-// ============================================================
-// Step 3: Update scheduledGames status
-// ============================================================
-
 function updateScheduledGameStatus() {
     console.log("[POST-GAME] Updating scheduledGames status to 'completed'...");
     
@@ -600,11 +575,9 @@ function updateScheduledGameStatus() {
         .then(function() {
             console.log("[POST-GAME] scheduledGames status updated to 'completed'");
             
-            // ALL BACKEND WORK COMPLETE!
             processingComplete = true;
             processingError = null;
             
-            // Show READY state with enabled button
             showPostGameUI(
                 '✅ Ready! Click below to see results.',
                 'ready',
@@ -663,8 +636,6 @@ function onSeeResultsClick() {
     console.log("  - teamBScore:", teamBScore);
     console.log("  - gameId:", gameId);
     
-    // v1.06: SignCard.showCelebrationScreen() should already have the data
-    // but we pass the data anyway for safety. The writes are already done.
     if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
         SignCard.showCelebrationScreen(
             winner,
@@ -678,7 +649,6 @@ function onSeeResultsClick() {
         );
     } else {
         console.error("[POST-GAME] SignCard.showCelebrationScreen not available");
-        // Fallback: navigate to hcp-adjust
         window.location.href = 'hcp-adjust.html?gameId=' + gameId;
     }
 }
@@ -700,7 +670,6 @@ function loadGameData() {
         return;
     }
     
-    // Show waiting screen before Firestore read
     if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
         WaitingScreen.show("Loading game data...");
         console.log("[POST-GAME] Waiting screen shown");
@@ -714,7 +683,6 @@ function loadGameData() {
             window.location.href = "index.html";
         }
     }).then(function(doc) {
-        // Hide waiting screen on success
         if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
             WaitingScreen.hide();
             console.log("[POST-GAME] Waiting screen hidden (success)");
@@ -736,7 +704,6 @@ function loadGameData() {
         gameData = doc.data();
         console.log("[POST-GAME] Game loaded, players:", gameData.players ? gameData.players.length : 0);
         
-        // Check if game data is valid
         if (!gameData.players || gameData.players.length === 0) {
             document.getElementById('debug').textContent = 'Error: Invalid game data - no players';
             showPostGameUI(
@@ -750,7 +717,6 @@ function loadGameData() {
             return;
         }
         
-        // Check if game is complete
         var signatures = gameData.signatures || {};
         var f1Signed = signatures.f1?.signed === true;
         var f2Signed = signatures.f2?.signed === true;
@@ -762,7 +728,6 @@ function loadGameData() {
             return;
         }
         
-        // Check if already completed (status check)
         if (gameData.status === "completed") {
             console.log("[POST-GAME] Game already completed - showing READY state");
             processingComplete = true;
@@ -777,11 +742,9 @@ function loadGameData() {
             return;
         }
         
-        // v1.06: Start background processing
         startBackgroundProcessing();
         
     }).catch(function(err) {
-        // Hide waiting screen on error
         if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
             WaitingScreen.hide();
             console.log("[POST-GAME] Waiting screen hidden (error)");
@@ -838,17 +801,13 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - ADDED: js/history-record.js v3.05 dependency (celebration field support)
-   - CHANGED: js/sign-card.js from v1.18 to v1.20 (complete flow + dummy celebration pointer)
-   - ADDED: Background processing - calculates handicaps and writes to both collections on load
-   - ADDED: "SEE RESULTS" button with status states (Processing → Ready → See Results)
-   - Button is DISABLED during backend work, ENABLED after writes complete
-   - REMOVED: Auto-trigger celebration - user must click "SEE RESULTS"
-   - All existing functionality preserved from v1.05
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - ADDED: html2canvas library for celebration image capture
+   - ADDED: Firebase Storage SDK for image upload
+   - All existing functionality preserved from v1.06
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, 
              js/game-loader.js, js/sign-card.js, js/history-record.js, 
-             js/firebase-retry.js, js/settings.js
+             js/firebase-retry.js, js/settings.js, html2canvas
 STATUS: Ready for integration
 -->
