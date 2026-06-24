@@ -1,13 +1,12 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - REFACTORED: Split into separate JS files for maintainability
-   - MOVED: All COPY logic to util-copy-record.js
-   - MOVED: All COMPARE logic to util-compare-record.js
-   - CHANGED: HTML now only contains UI structure and basic initialization
-   - PRESERVED: All functionality from v1.03
-DEPENDS ON: js/firebase-config.js, js/session.js, util-copy-record.js, util-compare-record.js
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: Script paths corrected to js/util-copy-record.js and js/util-compare-record.js
+   - FIXED: initFirebase function moved to main HTML (was undefined)
+   - FIXED: Firebase initialization now works before utility scripts load
+   - PRESERVED: All functionality from v1.04
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js
 STATUS: Ready for integration
 -->
 
@@ -23,8 +22,8 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Utility JS Files -->
-    <script src="util-copy-record.js"></script>
-    <script src="util-compare-record.js"></script>
+    <script src="js/util-copy-record.js"></script>
+    <script src="js/util-compare-record.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -690,7 +689,7 @@ STATUS: Ready for integration
             
             <div style="margin-top:8px;">
                 <label style="font-size:0.65rem; color:#888; display:block; margin-bottom:4px;">📋 Existing records in destination:</label>
-                <select id="destExistingSelect" class="game-select" style="font-size:0.75rem; padding:8px 14px;">
+                <select id="destExistingSelect" class="game-select" style="font-size:0.75rem; padding:8px 14px;" onchange="onDestExistingSelect()">
                     <option value="">-- Select existing to REPLACE --</option>
                 </select>
             </div>
@@ -724,14 +723,14 @@ STATUS: Ready for integration
                 <div class="compare-side">
                     <div class="compare-side-title left">📤 LEFT RECORD</div>
                     <div class="select-wrapper">
-                        <select id="compareLeftCollection" class="collection-select">
+                        <select id="compareLeftCollection" class="collection-select" onchange="loadCompareRecordsLeft()">
                             <option value="scheduledGames">scheduledGames</option>
                             <option value="historyGames">historyGames</option>
                             <option value="backupFolder">backupFolder</option>
                         </select>
                     </div>
                     <div class="select-wrapper">
-                        <select id="compareLeftRecord" class="game-select">
+                        <select id="compareLeftRecord" class="game-select" onchange="loadCompareRecordData('left')">
                             <option value="">-- Select left record --</option>
                         </select>
                     </div>
@@ -741,14 +740,14 @@ STATUS: Ready for integration
                 <div class="compare-side">
                     <div class="compare-side-title right">📥 RIGHT RECORD</div>
                     <div class="select-wrapper">
-                        <select id="compareRightCollection" class="collection-select">
+                        <select id="compareRightCollection" class="collection-select" onchange="loadCompareRecordsRight()">
                             <option value="scheduledGames">scheduledGames</option>
                             <option value="historyGames">historyGames</option>
                             <option value="backupFolder">backupFolder</option>
                         </select>
                     </div>
                     <div class="select-wrapper">
-                        <select id="compareRightRecord" class="game-select">
+                        <select id="compareRightRecord" class="game-select" onchange="loadCompareRecordData('right')">
                             <option value="">-- Select right record --</option>
                         </select>
                     </div>
@@ -783,31 +782,173 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.04</div>
+<div class="version-tag">v1.05</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html (Main Container)
-// VERSION: 1.04
+// VERSION: 1.05
 // ============================================================
 
-var APP_VERSION = "1.04";
+var APP_VERSION = "1.05";
+
+// Firebase Configurations
+var PROD_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup"
+};
+
+var DEV_CONFIG = {
+    apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
+    authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
+    projectId: "sicc-ryder-cup-dev"
+};
+
+// Firebase instances
+var prodDb = null;
+var devDb = null;
 
 // ============================================================
-// INIT
+// FIREBASE INITIALIZATION
 // ============================================================
 
-// Initialize Firebase (must be available to both JS files)
-initFirebase();
+function initFirebase() {
+    try {
+        var existingProd = firebase.apps.find(function(app) { return app.name === "prod"; });
+        var existingDev = firebase.apps.find(function(app) { return app.name === "dev"; });
+        
+        if (existingProd) {
+            prodDb = firebase.firestore(existingProd);
+        } else {
+            var prodApp = firebase.initializeApp(PROD_CONFIG, "prod");
+            prodDb = firebase.firestore(prodApp);
+        }
+        
+        if (existingDev) {
+            devDb = firebase.firestore(existingDev);
+        } else {
+            var devApp = firebase.initializeApp(DEV_CONFIG, "dev");
+            devDb = firebase.firestore(devApp);
+        }
+        
+        log("Firebase initialized", "success");
+    } catch(e) {
+        log("Firebase init error: " + e.message, "error");
+        console.error(e);
+    }
+}
 
-// Initialize date toggle
-initDateToggle();
+// ============================================================
+// LOGGING
+// ============================================================
 
-// Set up environment buttons
+function log(message, type) {
+    var logDiv = document.getElementById('log');
+    var entry = document.createElement('div');
+    entry.className = 'log-entry';
+    var timestamp = new Date().toLocaleTimeString();
+    
+    if (type === 'error') {
+        entry.innerHTML = `<span class="log-error">[${timestamp}] ❌ ${message}</span>`;
+    } else if (type === 'success') {
+        entry.innerHTML = `<span class="log-success">[${timestamp}] ✅ ${message}</span>`;
+    } else if (type === 'info') {
+        entry.innerHTML = `<span class="log-info">[${timestamp}] ℹ️ ${message}</span>`;
+    } else if (type === 'diff') {
+        entry.innerHTML = `<span class="log-diff">[${timestamp}] 🔴 ${message}</span>`;
+    } else if (type === 'match') {
+        entry.innerHTML = `<span class="log-match">[${timestamp}] 🟢 ${message}</span>`;
+    } else {
+        entry.innerHTML = `<span class="log-info">[${timestamp}] ${message}</span>`;
+    }
+    
+    logDiv.appendChild(entry);
+    logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+function logStep(step, message, type) {
+    log(`[STEP ${step}] ${message}`, type || 'info');
+}
+
+// ============================================================
+// UTILITY
+// ============================================================
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+function initDateToggle() {
+    var radios = document.querySelectorAll('input[name="dateOption"]');
+    var customDateInput = document.getElementById('customDate');
+    
+    radios.forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            var labels = document.querySelectorAll('.radio-group label');
+            labels.forEach(function(l) { l.classList.remove('active'); });
+            this.closest('label').classList.add('active');
+            
+            if (this.value === 'custom') {
+                customDateInput.style.display = 'block';
+                if (!customDateInput.value) {
+                    var today = new Date().toISOString().split('T')[0];
+                    customDateInput.value = today;
+                }
+            } else {
+                customDateInput.style.display = 'none';
+            }
+        });
+    });
+}
+
+// ============================================================
+// EVENT HANDLERS
+// ============================================================
+
 document.getElementById('envProdBtn').onclick = function() { setEnvironment('PROD'); };
 document.getElementById('envDevBtn').onclick = function() { setEnvironment('DEV'); };
+document.getElementById('loadSourceBtn').onclick = function() { loadSourceRecords(); };
+document.getElementById('loadDestBtn').onclick = function() { loadDestinationRecords(); };
+document.getElementById('copyBtn').onclick = function() { copyRecord(); };
+document.getElementById('checkBtn').onclick = function() { checkDestination(); };
+document.getElementById('deleteBtn').onclick = function() { deleteDestination(); };
+document.getElementById('compareLoadBtn').onclick = function() { loadCompareRecords(); };
+document.getElementById('compareBtn').onclick = function() { performCompare(); };
 
-// Tab switching
+document.getElementById('sourceCollection').onchange = function() {
+    loadSourceRecords();
+    document.getElementById('gameInfo').style.display = 'none';
+    currentGameData = null;
+    currentGameId = null;
+};
+
+document.getElementById('destCollection').onchange = function() {
+    loadDestinationRecords();
+    document.getElementById('destDocId').value = '';
+};
+
+document.getElementById('gameSelect').onchange = function() {
+    var gameId = this.value;
+    if (gameId) {
+        loadGameData(gameId);
+    } else {
+        document.getElementById('gameInfo').style.display = 'none';
+        currentGameData = null;
+        currentGameId = null;
+    }
+};
+
+// ============================================================
+// TAB SWITCHING
+// ============================================================
+
 document.querySelectorAll('.tab-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
         var tabId = this.dataset.tab;
@@ -820,14 +961,20 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
         document.getElementById(tabId).classList.add('active');
         this.classList.add('active');
         
-        // Load compare records when switching to compare tab
         if (tabId === 'tabCompare') {
             loadCompareRecords();
         }
     });
 });
 
-log('Record Management v1.04 loaded', 'success');
+// ============================================================
+// INIT
+// ============================================================
+
+initFirebase();
+initDateToggle();
+
+log('Record Management v1.05 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
 log('1. Select PROD or DEV (both turn GREEN when active)', 'info');
 log('2. COPY tab: copy records between collections', 'info');
@@ -839,13 +986,12 @@ log('=====================================', 'info');
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - REFACTORED: Split into separate JS files for maintainability
-   - MOVED: All COPY logic to util-copy-record.js
-   - MOVED: All COMPARE logic to util-compare-record.js
-   - CHANGED: HTML now only contains UI structure and basic initialization
-   - PRESERVED: All functionality from v1.03
-DEPENDS ON: js/firebase-config.js, js/session.js, util-copy-record.js, util-compare-record.js
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: Script paths corrected to js/util-copy-record.js and js/util-compare-record.js
+   - FIXED: initFirebase function moved to main HTML (was undefined)
+   - FIXED: Firebase initialization now works before utility scripts load
+   - PRESERVED: All functionality from v1.04
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js
 STATUS: Ready for integration
 -->
