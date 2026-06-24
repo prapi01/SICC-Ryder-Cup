@@ -1,11 +1,13 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: Script paths corrected to js/util-copy-record.js and js/util-compare-record.js
-   - FIXED: initFirebase function moved to main HTML (was undefined)
-   - FIXED: Firebase initialization now works before utility scripts load
-   - PRESERVED: All functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: Independent environment selection for COPY tab (Source / Destination)
+   - ADDED: Independent environment selection for COMPARE tab (Left / Right)
+   - ADDED: Visual indicators showing which environment each side is connected to
+   - ADDED: Environment selectors in COPY and COMPARE tabs
+   - CHANGED: Removed global environment selector at top
+   - PRESERVED: All functionality from v1.05
 DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js
 STATUS: Ready for integration
 -->
@@ -127,54 +129,98 @@ STATUS: Ready for integration
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         
-        .env-buttons {
+        /* Environment selector buttons - small version */
+        .env-selector {
             display: flex;
-            gap: 12px;
-            margin-bottom: 16px;
+            gap: 6px;
+            align-items: center;
         }
         
-        .env-btn {
-            flex: 1;
-            padding: 14px 12px;
-            border-radius: 40px;
-            font-weight: 700;
-            font-size: 1rem;
-            text-align: center;
+        .env-selector .env-label {
+            font-size: 0.6rem;
+            color: #888;
+            margin-right: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        
+        .env-btn-small {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.65rem;
+            font-weight: 600;
             cursor: pointer;
-            border: 2px solid;
+            border: 2px solid #333;
             background: #1a1a1a;
+            color: #555;
             transition: all 0.2s ease;
-            color: #555;
-            border-color: #333;
         }
         
-        .env-btn-prod {
-            border-color: #333;
-            color: #555;
-            background: #1a1a1a;
-        }
-        
-        .env-btn-prod.env-active {
+        .env-btn-small.active-prod {
             background: #1a3a1a;
             border-color: #4caf50;
             color: #4caf50;
-            box-shadow: 0 0 12px rgba(76, 175, 80, 0.6);
         }
         
-        .env-btn-dev {
-            border-color: #333;
-            color: #555;
-            background: #1a1a1a;
-        }
-        
-        .env-btn-dev.env-active {
+        .env-btn-small.active-dev {
             background: #1a3a1a;
             border-color: #4caf50;
             color: #4caf50;
-            box-shadow: 0 0 12px rgba(76, 175, 80, 0.6);
         }
         
-        .env-btn:active { transform: scale(0.97); }
+        .env-btn-small:active {
+            transform: scale(0.95);
+        }
+        
+        .env-indicator-small {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.55rem;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        
+        .env-indicator-small.prod {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        
+        .env-indicator-small.dev {
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        
+        .env-indicator-small.none {
+            background: #1a1a1a;
+            color: #555;
+            border: 1px solid #333;
+        }
+        
+        .env-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+            padding: 6px 10px;
+            background: #0a0a0a;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+        }
+        
+        .env-row .env-side-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            min-width: 60px;
+        }
+        
+        .env-row .env-side-label.source { color: #4caf50; }
+        .env-row .env-side-label.dest { color: #ffaa44; }
+        .env-row .env-side-label.left { color: #4caf50; }
+        .env-row .env-side-label.right { color: #4a8af4; }
         
         .collection-select {
             width: 100%;
@@ -384,33 +430,6 @@ STATUS: Ready for integration
             text-align: center;
         }
         
-        .env-indicator {
-            text-align: center;
-            margin-top: 12px;
-            padding: 8px;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-        
-        .env-indicator-prod {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        
-        .env-indicator-dev {
-            background: #1a3a1a;
-            color: #4caf50;
-            border: 1px solid #4caf50;
-        }
-        
-        .env-indicator-none {
-            background: #1a1a1a;
-            color: #555;
-            border: 1px solid #333;
-        }
-        
         .badge {
             display: inline-block;
             padding: 2px 10px;
@@ -595,21 +614,6 @@ STATUS: Ready for integration
 <div class="container">
     <h1>📋 RECORD MANAGEMENT</h1>
     
-    <!-- Environment -->
-    <div class="card">
-        <div class="card-title">🌍 ENVIRONMENT</div>
-        <div class="env-buttons">
-            <button class="env-btn env-btn-prod" id="envProdBtn">🔴 PRODUCTION</button>
-            <button class="env-btn env-btn-dev" id="envDevBtn">🟡 DEVELOPMENT</button>
-        </div>
-        <div id="envIndicator" class="env-indicator env-indicator-none">
-            ⚠️ No environment selected
-        </div>
-        <div id="envWarning" class="warning" style="display:none;">
-            ⚠️ You are connected to PRODUCTION. This will affect live data.
-        </div>
-    </div>
-    
     <!-- Tabs -->
     <div class="tab-nav" id="tabNav">
         <button class="tab-btn active" data-tab="tabCopy">
@@ -624,6 +628,32 @@ STATUS: Ready for integration
     <!-- TAB: COPY -->
     <!-- ============================================================ -->
     <div class="tab-content active" id="tabCopy">
+        
+        <!-- Environment Selection for COPY -->
+        <div class="card">
+            <div class="card-title">🌍 ENVIRONMENT</div>
+            
+            <!-- SOURCE Environment -->
+            <div class="env-row">
+                <span class="env-side-label source">📤 SOURCE</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="copySourceProdBtn">PROD</button>
+                    <button class="env-btn-small" id="copySourceDevBtn">DEV</button>
+                </div>
+                <span id="copySourceIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+            
+            <!-- DESTINATION Environment -->
+            <div class="env-row">
+                <span class="env-side-label dest">📥 DEST</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="copyDestProdBtn">PROD</button>
+                    <button class="env-btn-small" id="copyDestDevBtn">DEV</button>
+                </div>
+                <span id="copyDestIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+        </div>
+        
         <div class="card">
             <div class="card-title">📂 STEP 1: COLLECTIONS</div>
             
@@ -713,6 +743,32 @@ STATUS: Ready for integration
     <!-- TAB: COMPARE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabCompare">
+        
+        <!-- Environment Selection for COMPARE -->
+        <div class="card">
+            <div class="card-title">🌍 ENVIRONMENT</div>
+            
+            <!-- LEFT Environment -->
+            <div class="env-row">
+                <span class="env-side-label left">📤 LEFT</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="compareLeftProdBtn">PROD</button>
+                    <button class="env-btn-small" id="compareLeftDevBtn">DEV</button>
+                </div>
+                <span id="compareLeftIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+            
+            <!-- RIGHT Environment -->
+            <div class="env-row">
+                <span class="env-side-label right">📥 RIGHT</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="compareRightProdBtn">PROD</button>
+                    <button class="env-btn-small" id="compareRightDevBtn">DEV</button>
+                </div>
+                <span id="compareRightIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+        </div>
+        
         <div class="card">
             <div class="card-title">🔍 COMPARE TWO RECORDS</div>
             <div style="font-size:0.7rem; color:#888; margin-bottom:12px;">
@@ -777,20 +833,20 @@ STATUS: Ready for integration
     <!-- Log -->
     <div class="card">
         <div class="card-title">📜 LOG</div>
-        <div id="log" class="log">Ready. Select PROD or DEV to begin.</div>
+        <div id="log" class="log">Ready. Select environments for each tab.</div>
     </div>
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.05</div>
+<div class="version-tag">v1.06</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html (Main Container)
-// VERSION: 1.05
+// VERSION: 1.06
 // ============================================================
 
-var APP_VERSION = "1.05";
+var APP_VERSION = "1.06";
 
 // Firebase Configurations
 var PROD_CONFIG = {
@@ -909,18 +965,70 @@ function initDateToggle() {
 }
 
 // ============================================================
-// EVENT HANDLERS
+// TAB SWITCHING
 // ============================================================
 
-document.getElementById('envProdBtn').onclick = function() { setEnvironment('PROD'); };
-document.getElementById('envDevBtn').onclick = function() { setEnvironment('DEV'); };
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var tabId = this.dataset.tab;
+        document.querySelectorAll('.tab-content').forEach(function(el) {
+            el.classList.remove('active');
+        });
+        document.querySelectorAll('.tab-btn').forEach(function(el) {
+            el.classList.remove('active');
+        });
+        document.getElementById(tabId).classList.add('active');
+        this.classList.add('active');
+        
+        if (tabId === 'tabCompare') {
+            loadCompareRecords();
+        }
+    });
+});
+
+// ============================================================
+// EVENT HANDLERS FOR COPY TAB (Environment)
+// ============================================================
+
+document.getElementById('copySourceProdBtn').onclick = function() {
+    setCopySourceEnvironment('PROD');
+};
+document.getElementById('copySourceDevBtn').onclick = function() {
+    setCopySourceEnvironment('DEV');
+};
+document.getElementById('copyDestProdBtn').onclick = function() {
+    setCopyDestEnvironment('PROD');
+};
+document.getElementById('copyDestDevBtn').onclick = function() {
+    setCopyDestEnvironment('DEV');
+};
+
+// ============================================================
+// EVENT HANDLERS FOR COMPARE TAB (Environment)
+// ============================================================
+
+document.getElementById('compareLeftProdBtn').onclick = function() {
+    setCompareLeftEnvironment('PROD');
+};
+document.getElementById('compareLeftDevBtn').onclick = function() {
+    setCompareLeftEnvironment('DEV');
+};
+document.getElementById('compareRightProdBtn').onclick = function() {
+    setCompareRightEnvironment('PROD');
+};
+document.getElementById('compareRightDevBtn').onclick = function() {
+    setCompareRightEnvironment('DEV');
+};
+
+// ============================================================
+// COPY TAB EVENT HANDLERS (Collections & Actions)
+// ============================================================
+
 document.getElementById('loadSourceBtn').onclick = function() { loadSourceRecords(); };
 document.getElementById('loadDestBtn').onclick = function() { loadDestinationRecords(); };
 document.getElementById('copyBtn').onclick = function() { copyRecord(); };
 document.getElementById('checkBtn').onclick = function() { checkDestination(); };
 document.getElementById('deleteBtn').onclick = function() { deleteDestination(); };
-document.getElementById('compareLoadBtn').onclick = function() { loadCompareRecords(); };
-document.getElementById('compareBtn').onclick = function() { performCompare(); };
 
 document.getElementById('sourceCollection').onchange = function() {
     loadSourceRecords();
@@ -946,26 +1054,11 @@ document.getElementById('gameSelect').onchange = function() {
 };
 
 // ============================================================
-// TAB SWITCHING
+// COMPARE TAB EVENT HANDLERS
 // ============================================================
 
-document.querySelectorAll('.tab-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var tabId = this.dataset.tab;
-        document.querySelectorAll('.tab-content').forEach(function(el) {
-            el.classList.remove('active');
-        });
-        document.querySelectorAll('.tab-btn').forEach(function(el) {
-            el.classList.remove('active');
-        });
-        document.getElementById(tabId).classList.add('active');
-        this.classList.add('active');
-        
-        if (tabId === 'tabCompare') {
-            loadCompareRecords();
-        }
-    });
-});
+document.getElementById('compareLoadBtn').onclick = function() { loadCompareRecords(); };
+document.getElementById('compareBtn').onclick = function() { performCompare(); };
 
 // ============================================================
 // INIT
@@ -974,11 +1067,11 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
 initFirebase();
 initDateToggle();
 
-log('Record Management v1.05 loaded', 'success');
+log('Record Management v1.06 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
-log('1. Select PROD or DEV (both turn GREEN when active)', 'info');
-log('2. COPY tab: copy records between collections', 'info');
-log('3. COMPARE tab: field-by-field comparison (independent selection)', 'info');
+log('1. Select environments for each side (PROD/DEV)', 'info');
+log('2. COPY tab: copy records between collections and environments', 'info');
+log('3. COMPARE tab: field-by-field comparison across environments', 'info');
 log('=====================================', 'info');
 </script>
 </body>
@@ -986,12 +1079,14 @@ log('=====================================', 'info');
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: Script paths corrected to js/util-copy-record.js and js/util-compare-record.js
-   - FIXED: initFirebase function moved to main HTML (was undefined)
-   - FIXED: Firebase initialization now works before utility scripts load
-   - PRESERVED: All functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: Independent environment selection for COPY tab (Source / Destination)
+   - ADDED: Independent environment selection for COMPARE tab (Left / Right)
+   - ADDED: Visual indicators showing which environment each side is connected to
+   - ADDED: Environment selectors in COPY and COMPARE tabs
+   - CHANGED: Removed global environment selector at top
+   - PRESERVED: All functionality from v1.05
 DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js
 STATUS: Ready for integration
 -->
