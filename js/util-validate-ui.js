@@ -1,27 +1,30 @@
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: UI rendering functions for validate tab
-   - Functions: renderGameInfo, renderFlightTable, renderTeamGameTable
-   - Functions: renderStrkTable, renderMatchTable, renderTRTable, renderSummary
-   - Functions: showFixPreview, renderFixPreview
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: renderFlightTable() now handles variable team sizes (supports 1-4 players per team)
+   - FIXED: renderMatchTable() checks if clinchInfo exists before accessing
+   - FIXED: renderTRTable() handles undefined recA/recB gracefully
+   - FIXED: showFixPreview() removes existing overlay before creating new one
+   - FIXED: escapeHtml() handles null and undefined input
+   - ADDED: null/undefined checks throughout
+   - All core functionality preserved from v1.00
 DEPENDS ON: UtilValidate
 STATUS: Ready for integration
 */
 
-window.UTIL_VALIDATE_UI_VERSION = "1.00";
+window.UTIL_VALIDATE_UI_VERSION = "1.01";
 
 var UtilValidateUI = (function() {
     
-    console.log("[UTIL-VALIDATE-UI] Initializing v1.00");
+    console.log("[UTIL-VALIDATE-UI] Initializing v1.01");
     
     // ============================================================
     // HELPERS
     // ============================================================
     
     function escapeHtml(str) {
-        if (!str) return '';
+        if (str === null || str === undefined) return '';
         return String(str).replace(/[&<>]/g, function(m) {
             if (m === '&') return '&amp;';
             if (m === '<') return '&lt;';
@@ -48,6 +51,11 @@ var UtilValidateUI = (function() {
         var container = document.getElementById(containerId);
         if (!container) return;
         
+        if (!data) {
+            container.innerHTML = '<div style="color:#666; padding:12px;">No data available</div>';
+            return;
+        }
+        
         var courseName = data.gameInfo?.course?.name || data.course?.name || 'Unknown';
         var date = data.gameInfo?.date || data.date || 'Unknown';
         var players = data.players || [];
@@ -65,19 +73,36 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Flight Table
+    // RENDER: Flight Table (v1.01: handles variable team sizes)
     // ============================================================
     
     function renderFlightTable(scores, players, flightNum, containerId) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
+        if (!scores || !players) {
+            container.innerHTML = '<div class="empty-state" style="text-align:center; padding:20px; color:#666;">No data available</div>';
+            return;
+        }
+        
         var flightPlayers = players.filter(function(p) { return p.flight === flightNum; });
         var teamA = flightPlayers.filter(function(p) { return p.team === 'A'; }).sort(function(a, b) { return a.handicap - b.handicap; });
         var teamB = flightPlayers.filter(function(p) { return p.team === 'B'; }).sort(function(a, b) { return a.handicap - b.handicap; });
+        
         var names = [];
-        for (var i = 0; i < teamA.length; i++) names.push(teamA[i].label);
-        for (var i = 0; i < teamB.length; i++) names.push(teamB[i].label);
+        // v1.01: Handle variable team sizes (1-4 players per team)
+        var maxTeamSize = Math.max(teamA.length, teamB.length);
+        for (var i = 0; i < maxTeamSize; i++) {
+            if (i < teamA.length) names.push(teamA[i].label);
+            else names.push('-');
+        }
+        for (var i = 0; i < maxTeamSize; i++) {
+            if (i < teamB.length) names.push(teamB[i].label);
+            else names.push('-');
+        }
+        
+        // Remove empty names
+        names = names.filter(function(n) { return n !== '-'; });
         
         if (names.length === 0) {
             container.innerHTML = '<div class="empty-state" style="text-align:center; padding:20px; color:#666;">No players</div>';
@@ -93,7 +118,25 @@ var UtilValidateUI = (function() {
         
         for (var h = 0; h < 18; h++) {
             var hole = scores[h];
-            var vals = hole ? [hole.a1, hole.a2, hole.b1, hole.b2] : ['-', '-', '-', '-'];
+            // v1.01: Build score array based on actual data
+            var vals = [];
+            if (hole) {
+                // Team A scores
+                for (var i = 0; i < teamA.length; i++) {
+                    if (i === 0) vals.push(hole.a1);
+                    else if (i === 1) vals.push(hole.a2);
+                    else vals.push('-');
+                }
+                // Team B scores
+                for (var i = 0; i < teamB.length; i++) {
+                    if (i === 0) vals.push(hole.b1);
+                    else if (i === 1) vals.push(hole.b2);
+                    else vals.push('-');
+                }
+            } else {
+                vals = names.map(function() { return '-'; });
+            }
+            
             html += '<tr><td style="color:#888;font-weight:600;text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + (h+1) + '</td>';
             for (var i = 0; i < vals.length; i++) {
                 html += '<td style="text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + vals[i] + '</td>';
@@ -111,6 +154,11 @@ var UtilValidateUI = (function() {
     function renderTeamGameTable(results, containerId, label) {
         var container = document.getElementById(containerId);
         if (!container) return;
+        
+        if (!results) {
+            container.innerHTML = '<div style="color:#666; padding:8px;">No data</div>';
+            return;
+        }
         
         var html = '<div style="overflow-x:auto; max-width:100%;"><table style="width:100%; border-collapse:collapse; font-size:0.7rem;">';
         html += '<tr><th style="background:#1a1a1a; color:#4caf50; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Hole</th>';
@@ -147,6 +195,11 @@ var UtilValidateUI = (function() {
         var container = document.getElementById(containerId);
         if (!container) return;
         
+        if (!results) {
+            container.innerHTML = '<div style="color:#666; padding:8px;">No data</div>';
+            return;
+        }
+        
         var html = '<div style="overflow-x:auto; max-width:100%;"><table style="width:100%; border-collapse:collapse; font-size:0.7rem;">';
         html += '<tr><th style="background:#1a1a1a; color:#4caf50; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Hole</th>';
         html += '<th style="background:#1a1a1a; color:#4caf50; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Gross A</th>';
@@ -172,15 +225,15 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Match Table
+    // RENDER: Match Table (v1.01: checks clinchInfo exists)
     // ============================================================
     
     function renderMatchTable(orderedPlayers, matchResults, containerId) {
         var container = document.getElementById(containerId);
         if (!container) return;
         
-        if (!orderedPlayers || orderedPlayers.length === 0) {
-            container.innerHTML = '<div class="empty-state" style="text-align:center; padding:20px; color:#666;">No players found</div>';
+        if (!orderedPlayers || orderedPlayers.length === 0 || !matchResults) {
+            container.innerHTML = '<div class="empty-state" style="text-align:center; padding:20px; color:#666;">No match data found</div>';
             return;
         }
         
@@ -195,21 +248,30 @@ var UtilValidateUI = (function() {
         
         for (var h = 0; h < matchResults.length; h++) {
             var holeData = matchResults[h];
-            var holePoints = holeData.points;
-            var holeClinch = holeData.clinchInfo;
+            if (!holeData) continue;
+            
+            var holePoints = holeData.points || {};
+            var holeClinch = holeData.clinchInfo || {};
             var total = 0;
             var isClinchRow = false;
+            
+            // Check if any player clinched this hole
             for (var p = 0; p < orderedPlayers.length; p++) {
                 var player = orderedPlayers[p];
-                if (holeClinch[player.name] && holeClinch[player.name].clinched) { isClinchRow = true; break; }
+                if (holeClinch[player.name] && holeClinch[player.name].clinched) { 
+                    isClinchRow = true; 
+                    break; 
+                }
             }
+            
             html += '<tr><td style="color:#888;font-weight:600;text-align:center;padding:3px 2px;border-bottom:1px solid #1a1a1a;">' + (h+1) + '</td>';
             for (var p = 0; p < orderedPlayers.length; p++) {
                 var player = orderedPlayers[p];
                 var score = holePoints[player.name] || 0;
                 total += score;
+                // v1.01: Check if clinchInfo exists for this player
                 var clinchInfo = holeClinch[player.name] || {};
-                var isClinched = clinchInfo.clinched;
+                var isClinched = clinchInfo.clinched || false;
                 var isASAtH18 = clinchInfo.asAtH18 || false;
                 var displayText = score.toFixed(1);
                 var cellClass = '';
@@ -232,12 +294,17 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: TR Table
+    // RENDER: TR Table (v1.01: handles undefined recA/recB)
     // ============================================================
     
     function renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, gameData, containerId) {
         var container = document.getElementById(containerId);
         if (!container) return;
+        
+        if (!t1Results || !t2Results || !strkResults || !matchPointsPerHole) {
+            container.innerHTML = '<div style="color:#666; padding:8px;">No TR data available</div>';
+            return;
+        }
         
         var html = '<div style="overflow-x:auto; max-width:100%;"><table style="width:100%; border-collapse:collapse; font-size:0.7rem;">';
         html += '<tr><th style="background:#1a1a1a; color:#4caf50; padding:4px 3px; text-align:center; border-bottom:2px solid #2a2a2a;">Hole</th>';
@@ -268,8 +335,9 @@ var UtilValidateUI = (function() {
             var trB = mB + t1B + t2B + sB;
             var teamABreakdown = '[' + mA.toFixed(1) + ' + ' + t1A.toFixed(1) + ' + ' + t2A.toFixed(1) + ' + ' + sA.toFixed(1) + ']';
             var teamBBreakdown = '[' + mB.toFixed(1) + ' + ' + t1B.toFixed(1) + ' + ' + t2B.toFixed(1) + ' + ' + sB.toFixed(1) + ']';
-            var recA = gameData.results?.tr?.teamA?.[i];
-            var recB = gameData.results?.tr?.teamB?.[i];
+            // v1.01: Handle undefined recA/recB
+            var recA = gameData?.results?.tr?.teamA?.[i];
+            var recB = gameData?.results?.tr?.teamB?.[i];
             var recMatch = (recA !== undefined && recA !== null && recB !== undefined && recB !== null);
             var match = recMatch && Math.abs(trA - recA) < 0.01 && Math.abs(trB - recB) < 0.01;
             var matchClass = match ? 'col-match' : 'col-mismatch';
@@ -298,6 +366,11 @@ var UtilValidateUI = (function() {
         var container = document.getElementById(containerId);
         if (!container) return;
         
+        if (!t1Results || !t2Results || !strkResults || !matchPointsPerHole) {
+            container.innerHTML = '<div style="color:#666; padding:8px;">No summary data available</div>';
+            return;
+        }
+        
         var t1Final = t1Results[17] || {};
         var t2Final = t2Results[17] || {};
         var strkFinal = strkResults[17] || {};
@@ -306,9 +379,9 @@ var UtilValidateUI = (function() {
         var t2Display = t2Final.display || '-';
         var strkDisplay = strkFinal.display || '-';
         
-        var recT1 = gameData.results?.game2?.displayT1?.[17] || '-';
-        var recT2 = gameData.results?.game2?.displayT2?.[17] || '-';
-        var recStrk = gameData.results?.game3?.displayStrk?.[17] || '-';
+        var recT1 = gameData?.results?.game2?.displayT1?.[17] || '-';
+        var recT2 = gameData?.results?.game2?.displayT2?.[17] || '-';
+        var recStrk = gameData?.results?.game3?.displayStrk?.[17] || '-';
         
         var t1Match = (t1Display === recT1) || (t1Display === '-' && recT1 === '-');
         var t2Match = (t2Display === recT2) || (t2Display === '-' && recT2 === '-');
@@ -332,8 +405,8 @@ var UtilValidateUI = (function() {
         var trA_h18 = h18mA + t1A + t2A + sA;
         var trB_h18 = h18mB + t1B + t2B + sB;
         
-        var recA = gameData.finalResults?.teamAScore || gameData.results?.tr?.teamA?.[17] || '-';
-        var recB = gameData.finalResults?.teamBScore || gameData.results?.tr?.teamB?.[17] || '-';
+        var recA = gameData?.finalResults?.teamAScore || gameData?.results?.tr?.teamA?.[17] || '-';
+        var recB = gameData?.finalResults?.teamBScore || gameData?.results?.tr?.teamB?.[17] || '-';
         var trMatch = (typeof recA === 'number' && typeof recB === 'number' &&
                        Math.abs(trA_h18 - recA) < 0.01 && Math.abs(trB_h18 - recB) < 0.01);
         
@@ -367,11 +440,11 @@ var UtilValidateUI = (function() {
     }
     
     // ============================================================
-    // RENDER: Fix Preview Modal
+    // RENDER: Fix Preview Modal (v1.01: removes existing overlay)
     // ============================================================
     
     function showFixPreview(record, recalculated, previewData, backupId, onConfirm) {
-        // Remove existing overlay
+        // v1.01: Remove existing overlay
         var existing = document.getElementById('previewOverlay');
         if (existing) existing.remove();
         
@@ -525,12 +598,15 @@ window.UtilValidateUI = UtilValidateUI;
 
 /*
 FILE: js/util-validate-ui.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: UI rendering functions for validate tab
-   - Functions: renderGameInfo, renderFlightTable, renderTeamGameTable
-   - Functions: renderStrkTable, renderMatchTable, renderTRTable, renderSummary
-   - Functions: showFixPreview, renderFixPreview
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: renderFlightTable() now handles variable team sizes (supports 1-4 players per team)
+   - FIXED: renderMatchTable() checks if clinchInfo exists before accessing
+   - FIXED: renderTRTable() handles undefined recA/recB gracefully
+   - FIXED: showFixPreview() removes existing overlay before creating new one
+   - FIXED: escapeHtml() handles null and undefined input
+   - ADDED: null/undefined checks throughout
+   - All core functionality preserved from v1.00
 DEPENDS ON: UtilValidate
 STATUS: Ready for integration
 */
