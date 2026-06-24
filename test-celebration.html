@@ -1,11 +1,11 @@
 <!--
 FILE: test-celebration.html
-VERSION: 1.07
+VERSION: 1.08
 KEY CHANGES:
-   - FIXED: Full screen image now fills the screen properly
-   - FIXED: Image sizing for mobile display
-   - Added: Background color matches the celebration modal
-   - Better full screen experience
+   - ADDED: Auto-crop to remove empty space
+   - ADDED: Pixel analysis to find content bounds
+   - FIXED: Image now fills the screen properly
+   - Better aspect ratio display
 STATUS: Ready for testing
 -->
 
@@ -84,6 +84,7 @@ STATUS: Ready for testing
         .debug-box .ok { color: #4caf50; }
         .debug-box .error { color: #ff4444; }
         .debug-box .info { color: #ffaa44; }
+        .debug-box .warn { color: #ffaa44; }
         
         .status-card {
             background: #111;
@@ -108,12 +109,12 @@ STATUS: Ready for testing
         .status-value.error { color: #ff4444; }
         
         .image-container {
-            background: #111;
+            background: #1a1a1a;
             border-radius: 16px;
             overflow: hidden;
-            border: 2px solid #1a1a1a;
+            border: 2px solid #2a2a2a;
             position: relative;
-            min-height: 300px;
+            min-height: 400px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -124,6 +125,7 @@ STATUS: Ready for testing
             width: 100%;
             height: auto;
             display: block;
+            border-radius: 0;
         }
         
         .image-container .placeholder {
@@ -201,9 +203,7 @@ STATUS: Ready for testing
         
         @keyframes spin { to { transform: rotate(360deg); } }
         
-        /* ============================================================
-           FULL SCREEN OVERLAY - FIXED
-           ============================================================ */
+        /* Full Screen Overlay */
         .fullscreen-overlay {
             position: fixed;
             top: 0;
@@ -329,12 +329,16 @@ STATUS: Ready for testing
             <span class="status-value pending" id="firebaseStatus">Checking...</span>
         </div>
         <div class="status-row">
-            <span class="status-label">Document</span>
-            <span class="status-value pending" id="docStatus">Checking...</span>
-        </div>
-        <div class="status-row">
             <span class="status-label">Image Status</span>
             <span class="status-value pending" id="statusText">Loading...</span>
+        </div>
+        <div class="status-row">
+            <span class="status-label">Image Size</span>
+            <span class="status-value" id="imageSize">-</span>
+        </div>
+        <div class="status-row">
+            <span class="status-label">Dimensions</span>
+            <span class="status-value" id="dimensions">-</span>
         </div>
         <div class="status-row">
             <span class="status-label">Load Time</span>
@@ -346,7 +350,7 @@ STATUS: Ready for testing
     <div class="image-container" id="imageContainer">
         <div class="loading-overlay" id="loadingOverlay">
             <div class="spinner"></div>
-            <div class="loading-text">Loading image...</div>
+            <div class="loading-text">Processing image...</div>
         </div>
         <div class="placeholder" id="placeholder">
             <span class="icon">🏌️</span>
@@ -373,14 +377,11 @@ STATUS: Ready for testing
     </div>
     
     <!-- Buttons -->
-    <button class="btn btn-primary" id="loadBtn">🔄 Load Image from Firestore</button>
-    <button class="btn btn-secondary" id="retryBtn">🔄 Retry Connection</button>
+    <button class="btn btn-primary" id="loadBtn">🔄 Load & Crop Image</button>
     <button class="btn btn-secondary" id="fullscreenBtn" style="display:none;">⛶ View Full Screen</button>
 </div>
 
-<!-- ============================================================
-     FULL SCREEN OVERLAY - FIXED
-     ============================================================ -->
+<!-- Full Screen Overlay -->
 <div class="fullscreen-overlay" id="fullscreenOverlay">
     <button class="close-btn" id="closeFullscreenBtn">✕</button>
     <div class="fullscreen-image-wrapper" id="fullscreenWrapper">
@@ -391,10 +392,9 @@ STATUS: Ready for testing
 
 <script>
 // ============================================================
-// 🔥 FIREBASE CONFIGURATION - From firebase-config.js
+// FIREBASE CONFIGURATION
 // ============================================================
 
-// Production config (main branch)
 var PROD_CONFIG = {
     apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
     authDomain: "sicc-ryder-cup.firebaseapp.com",
@@ -404,7 +404,6 @@ var PROD_CONFIG = {
     appId: "1:137641493845:web:32399940bce639b01ddbdc"
 };
 
-// Development config (staging branch)
 var DEV_CONFIG = {
     apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
     authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
@@ -415,17 +414,11 @@ var DEV_CONFIG = {
 };
 
 function getFirebaseConfig() {
-    var isDev = false;
     var hostname = window.location.hostname;
-    
-    var isPreviewHash = /^[a-f0-9]{7,8}\./.test(hostname);
-    var isStagingSubdomain = hostname.startsWith('staging.');
-    var isLocalhost = (hostname === 'localhost' || hostname === '127.0.0.1');
-    
-    if (isPreviewHash || isStagingSubdomain || isLocalhost) {
-        isDev = true;
-    }
-    
+    var isDev = /^[a-f0-9]{7,8}\./.test(hostname) || 
+                hostname.startsWith('staging.') || 
+                hostname === 'localhost' || 
+                hostname === '127.0.0.1';
     return isDev ? DEV_CONFIG : PROD_CONFIG;
 }
 
@@ -444,6 +437,7 @@ function debug(msg, type) {
     if (type === 'ok') className = 'ok';
     else if (type === 'error') className = 'error';
     else if (type === 'info') className = 'info';
+    else if (type === 'warn') className = 'warn';
     
     var line = document.createElement('div');
     line.className = className;
@@ -458,8 +452,9 @@ function debug(msg, type) {
 // ============================================================
 
 var firebaseStatus = document.getElementById('firebaseStatus');
-var docStatus = document.getElementById('docStatus');
 var statusText = document.getElementById('statusText');
+var imageSize = document.getElementById('imageSize');
+var dimensions = document.getElementById('dimensions');
 var loadTime = document.getElementById('loadTime');
 var imageContainer = document.getElementById('imageContainer');
 var celebrationImage = document.getElementById('celebrationImage');
@@ -469,7 +464,6 @@ var widthDisplay = document.getElementById('widthDisplay');
 var heightDisplay = document.getElementById('heightDisplay');
 var sizeDisplay = document.getElementById('sizeDisplay');
 var loadBtn = document.getElementById('loadBtn');
-var retryBtn = document.getElementById('retryBtn');
 var fullscreenBtn = document.getElementById('fullscreenBtn');
 
 // Full screen elements
@@ -486,7 +480,6 @@ var ARCHIVE_ID = GAME_ID + '_H';
 
 function initFirebase() {
     debug('Initializing Firebase...', 'info');
-    debug('Using project: ' + firebaseConfig.projectId, 'info');
     
     if (typeof firebase === 'undefined') {
         debug('❌ Firebase SDK not loaded!', 'error');
@@ -496,16 +489,16 @@ function initFirebase() {
     }
     
     if (firebase.apps && firebase.apps.length > 0) {
-        debug('✅ Firebase already initialized: ' + firebase.apps[0].options.projectId, 'ok');
-        firebaseStatus.textContent = '✅ Ready (' + firebase.apps[0].options.projectId + ')';
+        debug('✅ Firebase already initialized', 'ok');
+        firebaseStatus.textContent = '✅ Ready';
         firebaseStatus.className = 'status-value';
         return true;
     }
     
     try {
         firebase.initializeApp(firebaseConfig);
-        debug('✅ Firebase initialized successfully: ' + firebaseConfig.projectId, 'ok');
-        firebaseStatus.textContent = '✅ Ready (' + firebaseConfig.projectId + ')';
+        debug('✅ Firebase initialized successfully', 'ok');
+        firebaseStatus.textContent = '✅ Ready';
         firebaseStatus.className = 'status-value';
         return true;
     } catch (err) {
@@ -527,20 +520,110 @@ function getBase64Size(base64) {
 }
 
 // ============================================================
+// CROP IMAGE - Remove empty space
+// ============================================================
+
+function cropCelebrationImage(imageData) {
+    debug('Cropping image to remove empty space...', 'info');
+    
+    return new Promise(function(resolve, reject) {
+        var img = new Image();
+        img.onload = function() {
+            debug('Original size: ' + img.width + ' x ' + img.height, 'info');
+            
+            // Create a canvas to analyze the image
+            var canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            // Get image data
+            var imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            var data = imageDataObj.data;
+            
+            // Find the bounds of non-black content
+            var top = canvas.height;
+            var bottom = 0;
+            var left = canvas.width;
+            var right = 0;
+            
+            // Sample pixels (skip every 10th pixel for performance)
+            var step = 10;
+            var threshold = 30;
+            var foundContent = false;
+            
+            for (var y = 0; y < canvas.height; y += step) {
+                for (var x = 0; x < canvas.width; x += step) {
+                    var index = (y * canvas.width + x) * 4;
+                    var r = data[index];
+                    var g = data[index + 1];
+                    var b = data[index + 2];
+                    
+                    var brightness = (r + g + b) / 3;
+                    if (brightness > threshold) {
+                        foundContent = true;
+                        if (x < left) left = x;
+                        if (x > right) right = x;
+                        if (y < top) top = y;
+                        if (y > bottom) bottom = y;
+                    }
+                }
+            }
+            
+            if (!foundContent) {
+                debug('⚠️ No content found, using full image', 'warn');
+                resolve(imageData);
+                return;
+            }
+            
+            // Add some padding
+            var contentWidth = right - left;
+            var contentHeight = bottom - top;
+            var padding = Math.max(20, Math.min(contentWidth, contentHeight) * 0.05);
+            
+            left = Math.max(0, left - padding);
+            right = Math.min(canvas.width, right + padding);
+            top = Math.max(0, top - padding);
+            bottom = Math.min(canvas.height, bottom + padding);
+            
+            var cropWidth = right - left;
+            var cropHeight = bottom - top;
+            
+            debug('Crop bounds: ' + Math.round(left) + ', ' + Math.round(top) + ' → ' + Math.round(cropWidth) + ' x ' + Math.round(cropHeight), 'info');
+            
+            // Create cropped canvas
+            var croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = cropWidth;
+            croppedCanvas.height = cropHeight;
+            var croppedCtx = croppedCanvas.getContext('2d');
+            croppedCtx.drawImage(canvas, left, top, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+            
+            // Convert to data URL
+            var croppedData = croppedCanvas.toDataURL('image/jpeg', 0.95);
+            debug('✅ Cropped successfully: ' + Math.round(cropWidth) + ' x ' + Math.round(cropHeight), 'ok');
+            resolve(croppedData);
+        };
+        img.onerror = function() {
+            debug('❌ Failed to load image for cropping', 'error');
+            reject(new Error('Failed to load image for cropping'));
+        };
+        img.src = imageData;
+    });
+}
+
+// ============================================================
 // LOAD FROM FIRESTORE
 // ============================================================
 
 function loadFromFirestore() {
     if (!initFirebase()) {
-        debug('❌ Cannot load - Firebase not ready', 'error');
         statusText.textContent = '❌ Firebase not ready';
         statusText.className = 'status-value error';
         return;
     }
     
-    debug('Loading from Firestore: ' + ARCHIVE_ID, 'info');
-    docStatus.textContent = 'Loading...';
-    docStatus.className = 'status-value pending';
+    debug('Loading from Firestore...', 'info');
     statusText.textContent = 'Loading...';
     statusText.className = 'status-value pending';
     loadingOverlay.style.display = 'flex';
@@ -553,9 +636,6 @@ function loadFromFirestore() {
     
     db.collection('historyGames').doc(ARCHIVE_ID).get()
         .then(function(doc) {
-            docStatus.textContent = '✅ Found';
-            docStatus.className = 'status-value';
-            
             if (!doc.exists) {
                 throw new Error('Document not found: ' + ARCHIVE_ID);
             }
@@ -570,43 +650,43 @@ function loadFromFirestore() {
             var sizeBytes = getBase64Size(imageData);
             var sizeKB = (sizeBytes / 1024).toFixed(1);
             
-            debug('✅ Image data retrieved: ' + sizeKB + ' KB (' + sizeBytes + ' bytes)', 'ok');
+            debug('✅ Image data retrieved: ' + sizeKB + ' KB', 'ok');
+            imageSize.textContent = sizeKB + ' KB';
             sizeDisplay.textContent = sizeKB;
             
-            // Load the image
-            celebrationImage.src = imageData;
+            // Crop the image to remove empty space
+            return cropCelebrationImage(imageData);
+        })
+        .then(function(croppedImageData) {
+            var loadTimeMs = (performance.now() - startTime).toFixed(0);
+            loadTime.textContent = loadTimeMs + ' ms';
+            
+            celebrationImage.src = croppedImageData;
             celebrationImage.onload = function() {
-                var loadTimeMs = (performance.now() - startTime).toFixed(0);
-                loadTime.textContent = loadTimeMs + ' ms';
+                loadingOverlay.style.display = 'none';
+                celebrationImage.style.display = 'block';
+                placeholder.style.display = 'none';
                 statusText.textContent = '✅ Loaded';
                 statusText.className = 'status-value';
                 
                 widthDisplay.textContent = celebrationImage.naturalWidth;
                 heightDisplay.textContent = celebrationImage.naturalHeight;
+                dimensions.textContent = celebrationImage.naturalWidth + ' x ' + celebrationImage.naturalHeight;
                 
-                loadingOverlay.style.display = 'none';
-                celebrationImage.style.display = 'block';
-                placeholder.style.display = 'none';
                 fullscreenBtn.style.display = 'block';
-                
-                debug('✅ Image displayed: ' + celebrationImage.naturalWidth + 'x' + celebrationImage.naturalHeight + ' in ' + loadTimeMs + 'ms', 'ok');
+                debug('✅ Image displayed: ' + celebrationImage.naturalWidth + 'x' + celebrationImage.naturalHeight, 'ok');
             };
             
-            celebrationImage.onerror = function(e) {
-                var loadTimeMs = (performance.now() - startTime).toFixed(0);
-                loadTime.textContent = loadTimeMs + ' ms';
-                statusText.textContent = '❌ Failed to load image';
-                statusText.className = 'status-value error';
+            celebrationImage.onerror = function() {
                 loadingOverlay.style.display = 'none';
                 placeholder.style.display = 'block';
-                debug('❌ Image failed to load', 'error');
+                statusText.textContent = '❌ Failed to display';
+                statusText.className = 'status-value error';
+                debug('❌ Image failed to display', 'error');
             };
-            
         })
         .catch(function(err) {
             debug('❌ Error: ' + err.message, 'error');
-            docStatus.textContent = '❌ ' + err.message;
-            docStatus.className = 'status-value error';
             statusText.textContent = '❌ ' + err.message;
             statusText.className = 'status-value error';
             loadingOverlay.style.display = 'none';
@@ -616,30 +696,23 @@ function loadFromFirestore() {
 }
 
 // ============================================================
-// FULL SCREEN - FIXED
+// FULL SCREEN
 // ============================================================
 
 function openFullscreen() {
     if (!celebrationImage.src || celebrationImage.src === '') {
-        debug('No image to display full screen', 'error');
         return;
     }
     
-    debug('Opening full screen view', 'info');
-    
-    // Set the full screen image source
     fullscreenImage.src = celebrationImage.src;
+    fullscreenOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
     
     // Reset zoom
     currentScale = 1;
     translateX = 0;
     translateY = 0;
     fullscreenImage.style.transform = 'scale(1) translate(0, 0)';
-    fullscreenImage.style.transformOrigin = 'center center';
-    
-    // Show the overlay
-    fullscreenOverlay.classList.add('active');
-    document.body.style.overflow = 'hidden';
 }
 
 function closeFullscreen() {
@@ -647,19 +720,31 @@ function closeFullscreen() {
     document.body.style.overflow = '';
 }
 
+// Close button
+closeFullscreenBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    closeFullscreen();
+});
+
+// Tap to close
+fullscreenOverlay.addEventListener('click', function(e) {
+    if (e.target === fullscreenOverlay || e.target === fullscreenImage) {
+        closeFullscreen();
+    }
+});
+
 // ============================================================
-// PINCH ZOOM FOR FULL SCREEN - iOS Compatible
+// PINCH ZOOM
 // ============================================================
 
-var fullscreenWrapper = document.getElementById('fullscreenWrapper');
 var currentScale = 1;
 var translateX = 0;
 var translateY = 0;
 var startX = 0;
 var startY = 0;
 var isDragging = false;
+var fullscreenWrapper = document.getElementById('fullscreenWrapper');
 
-// Single finger pan
 fullscreenWrapper.addEventListener('touchstart', function(e) {
     if (e.touches.length === 1) {
         isDragging = true;
@@ -680,7 +765,6 @@ fullscreenWrapper.addEventListener('touchend', function(e) {
     isDragging = false;
 }, { passive: true });
 
-// Pinch zoom
 var lastTouchDistance = 0;
 var initialScale = 1;
 
@@ -698,28 +782,13 @@ fullscreenWrapper.addEventListener('touchmove', function(e) {
         var dx = e.touches[0].clientX - e.touches[1].clientX;
         var dy = e.touches[0].clientY - e.touches[1].clientY;
         var distance = Math.sqrt(dx * dx + dy * dy);
-        
         var scaleChange = distance / lastTouchDistance;
         var newScale = Math.min(Math.max(initialScale * scaleChange, 0.5), 4);
         currentScale = newScale;
-        
         fullscreenImage.style.transform = 'scale(' + currentScale + ')';
         fullscreenImage.style.transformOrigin = 'center center';
     }
 }, { passive: true });
-
-// Click/tap to close
-fullscreenOverlay.addEventListener('click', function(e) {
-    if (e.target === fullscreenOverlay || e.target === fullscreenImage) {
-        closeFullscreen();
-    }
-});
-
-// Close button
-closeFullscreenBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    closeFullscreen();
-});
 
 // ============================================================
 // EVENT LISTENERS
@@ -727,41 +796,8 @@ closeFullscreenBtn.addEventListener('click', function(e) {
 
 loadBtn.addEventListener('click', loadFromFirestore);
 
-retryBtn.addEventListener('click', function() {
-    debug('Manual retry...', 'info');
-    debugBox.innerHTML = '';
-    firebaseStatus.textContent = 'Retrying...';
-    firebaseStatus.className = 'status-value pending';
-    docStatus.textContent = 'Retrying...';
-    docStatus.className = 'status-value pending';
-    statusText.textContent = 'Retrying...';
-    statusText.className = 'status-value pending';
-    loadTime.textContent = '-';
-    widthDisplay.textContent = '-';
-    heightDisplay.textContent = '-';
-    sizeDisplay.textContent = '-';
-    celebrationImage.style.display = 'none';
-    placeholder.style.display = 'block';
-    loadingOverlay.style.display = 'none';
-    fullscreenBtn.style.display = 'none';
-    closeFullscreen();
-    
-    if (firebase.apps && firebase.apps.length > 0) {
-        try {
-            firebase.app().delete();
-        } catch (e) {
-            // Ignore
-        }
-    }
-    
-    setTimeout(function() {
-        loadFromFirestore();
-    }, 500);
-});
-
 fullscreenBtn.addEventListener('click', openFullscreen);
 
-// Also tap on image to open full screen
 imageContainer.addEventListener('click', function() {
     if (celebrationImage.style.display !== 'none' && celebrationImage.src) {
         openFullscreen();
@@ -769,17 +805,15 @@ imageContainer.addEventListener('click', function() {
 });
 
 // ============================================================
-// AUTO-LOAD ON PAGE LOAD
+// AUTO-LOAD
 // ============================================================
 
 function checkFirebaseSDK() {
     if (typeof firebase !== 'undefined') {
         debug('✅ Firebase SDK loaded', 'ok');
         return true;
-    } else {
-        debug('⏳ Waiting for Firebase SDK...', 'info');
-        return false;
     }
+    return false;
 }
 
 var sdkCheckInterval = setInterval(function() {
@@ -795,8 +829,8 @@ var sdkCheckInterval = setInterval(function() {
 setTimeout(function() {
     clearInterval(sdkCheckInterval);
     if (typeof firebase === 'undefined') {
-        debug('❌ Firebase SDK failed to load after 5 seconds', 'error');
-        firebaseStatus.textContent = '❌ SDK load timeout';
+        debug('❌ Firebase SDK failed to load', 'error');
+        firebaseStatus.textContent = '❌ SDK timeout';
         firebaseStatus.className = 'status-value error';
     }
 }, 5000);
@@ -808,11 +842,11 @@ setTimeout(function() {
 
 <!--
 FILE: test-celebration.html
-VERSION: 1.07
+VERSION: 1.08
 KEY CHANGES:
-   - FIXED: Full screen image now fills the screen properly
-   - FIXED: Image sizing for mobile display
-   - Added: Background color matches the celebration modal
-   - Better full screen experience
+   - ADDED: Auto-crop to remove empty space
+   - ADDED: Pixel analysis to find content bounds
+   - FIXED: Image now fills the screen properly
+   - Better aspect ratio display
 STATUS: Ready for testing
 -->
