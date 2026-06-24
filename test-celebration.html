@@ -1,12 +1,11 @@
 <!--
 FILE: test-celebration.html
-VERSION: 1.06
+VERSION: 1.07
 KEY CHANGES:
-   - Fixed: Full screen view works on iOS
-   - Added: Zoomable image with pinch-to-zoom
-   - Added: Double-tap to zoom
-   - Added: Close button for full screen view
-   - Better mobile UX
+   - FIXED: Full screen image now fills the screen properly
+   - FIXED: Image sizing for mobile display
+   - Added: Background color matches the celebration modal
+   - Better full screen experience
 STATUS: Ready for testing
 -->
 
@@ -203,7 +202,7 @@ STATUS: Ready for testing
         @keyframes spin { to { transform: rotate(360deg); } }
         
         /* ============================================================
-           FULL SCREEN OVERLAY - iOS Friendly
+           FULL SCREEN OVERLAY - FIXED
            ============================================================ */
         .fullscreen-overlay {
             position: fixed;
@@ -211,12 +210,12 @@ STATUS: Ready for testing
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.98);
+            background: #1a1a1a;
             z-index: 99999;
             display: none;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            flex-direction: column;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
             -webkit-tap-highlight-color: transparent;
         }
@@ -227,26 +226,26 @@ STATUS: Ready for testing
         
         .fullscreen-overlay .close-btn {
             position: fixed;
-            top: 16px;
+            top: 20px;
             right: 20px;
             z-index: 100000;
-            background: rgba(0, 0, 0, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             color: #fff;
-            font-size: 28px;
-            width: 48px;
-            height: 48px;
+            font-size: 24px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             -webkit-tap-highlight-color: transparent;
-            transition: all 0.2s;
             padding: 0;
             line-height: 1;
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         }
         
         .fullscreen-overlay .close-btn:active {
@@ -267,27 +266,31 @@ STATUS: Ready for testing
         .fullscreen-overlay .fullscreen-image-wrapper img {
             max-width: 100%;
             max-height: 100%;
+            width: auto;
+            height: auto;
             object-fit: contain;
             touch-action: pan-x pan-y pinch-zoom;
             -webkit-user-select: none;
             user-select: none;
-            transition: transform 0.1s ease;
+            border-radius: 0;
+            background: #1a1a1a;
         }
         
         .fullscreen-overlay .fullscreen-info {
             position: fixed;
-            bottom: 20px;
+            bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
-            color: rgba(255, 255, 255, 0.4);
+            color: rgba(255, 255, 255, 0.3);
             font-size: 12px;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.6);
             padding: 6px 16px;
             border-radius: 20px;
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             pointer-events: none;
             white-space: nowrap;
+            letter-spacing: 0.3px;
         }
         
         @media (max-width: 380px) {
@@ -300,7 +303,7 @@ STATUS: Ready for testing
                 right: 12px;
                 width: 40px;
                 height: 40px;
-                font-size: 22px;
+                font-size: 20px;
             }
         }
         
@@ -376,7 +379,7 @@ STATUS: Ready for testing
 </div>
 
 <!-- ============================================================
-     FULL SCREEN OVERLAY
+     FULL SCREEN OVERLAY - FIXED
      ============================================================ -->
 <div class="fullscreen-overlay" id="fullscreenOverlay">
     <button class="close-btn" id="closeFullscreenBtn">✕</button>
@@ -548,16 +551,6 @@ function loadFromFirestore() {
     var startTime = performance.now();
     var db = firebase.firestore();
     
-    // Enable offline persistence for better mobile performance
-    try {
-        db.enablePersistence()
-            .catch(function(err) {
-                // Ignore - persistence not critical
-            });
-    } catch (err) {
-        // Ignore
-    }
-    
     db.collection('historyGames').doc(ARCHIVE_ID).get()
         .then(function(doc) {
             docStatus.textContent = '✅ Found';
@@ -623,7 +616,7 @@ function loadFromFirestore() {
 }
 
 // ============================================================
-// FULL SCREEN - iOS Friendly
+// FULL SCREEN - FIXED
 // ============================================================
 
 function openFullscreen() {
@@ -637,13 +630,16 @@ function openFullscreen() {
     // Set the full screen image source
     fullscreenImage.src = celebrationImage.src;
     
+    // Reset zoom
+    currentScale = 1;
+    translateX = 0;
+    translateY = 0;
+    fullscreenImage.style.transform = 'scale(1) translate(0, 0)';
+    fullscreenImage.style.transformOrigin = 'center center';
+    
     // Show the overlay
     fullscreenOverlay.classList.add('active');
     document.body.style.overflow = 'hidden';
-    
-    // Reset zoom on open
-    fullscreenImage.style.transform = 'scale(1)';
-    fullscreenImage.style.transformOrigin = 'center center';
 }
 
 function closeFullscreen() {
@@ -657,12 +653,13 @@ function closeFullscreen() {
 
 var fullscreenWrapper = document.getElementById('fullscreenWrapper');
 var currentScale = 1;
-var startX = 0;
-var startY = 0;
 var translateX = 0;
 var translateY = 0;
+var startX = 0;
+var startY = 0;
 var isDragging = false;
 
+// Single finger pan
 fullscreenWrapper.addEventListener('touchstart', function(e) {
     if (e.touches.length === 1) {
         isDragging = true;
@@ -675,7 +672,7 @@ fullscreenWrapper.addEventListener('touchmove', function(e) {
     if (e.touches.length === 1 && isDragging && currentScale > 1) {
         translateX = e.touches[0].clientX - startX;
         translateY = e.touches[0].clientY - startY;
-        fullscreenImage.style.transform = 'scale(' + currentScale + ') translate(' + (translateX / currentScale) + 'px, ' + (translateY / currentScale) + 'px)';
+        fullscreenImage.style.transform = 'scale(' + currentScale + ') translate(' + translateX + 'px, ' + translateY + 'px)';
     }
 }, { passive: true });
 
@@ -749,7 +746,6 @@ retryBtn.addEventListener('click', function() {
     fullscreenBtn.style.display = 'none';
     closeFullscreen();
     
-    // Try to reinitialize Firebase
     if (firebase.apps && firebase.apps.length > 0) {
         try {
             firebase.app().delete();
@@ -776,7 +772,6 @@ imageContainer.addEventListener('click', function() {
 // AUTO-LOAD ON PAGE LOAD
 // ============================================================
 
-// Check if Firebase SDK is loaded
 function checkFirebaseSDK() {
     if (typeof firebase !== 'undefined') {
         debug('✅ Firebase SDK loaded', 'ok');
@@ -787,7 +782,6 @@ function checkFirebaseSDK() {
     }
 }
 
-// Wait for Firebase SDK to load, then auto-load
 var sdkCheckInterval = setInterval(function() {
     if (checkFirebaseSDK()) {
         clearInterval(sdkCheckInterval);
@@ -798,7 +792,6 @@ var sdkCheckInterval = setInterval(function() {
     }
 }, 200);
 
-// Timeout after 5 seconds
 setTimeout(function() {
     clearInterval(sdkCheckInterval);
     if (typeof firebase === 'undefined') {
@@ -815,12 +808,11 @@ setTimeout(function() {
 
 <!--
 FILE: test-celebration.html
-VERSION: 1.06
+VERSION: 1.07
 KEY CHANGES:
-   - Fixed: Full screen view works on iOS
-   - Added: Zoomable image with pinch-to-zoom
-   - Added: Double-tap to zoom
-   - Added: Close button for full screen view
-   - Better mobile UX
+   - FIXED: Full screen image now fills the screen properly
+   - FIXED: Image sizing for mobile display
+   - Added: Background color matches the celebration modal
+   - Better full screen experience
 STATUS: Ready for testing
 -->
