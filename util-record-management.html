@@ -1,15 +1,14 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: getValidateDb() now correctly detects active environment
-   - FIXED: validateProcessGameData() checks UtilValidateUI functions exist before calling
-   - FIXED: loadAndValidate() clears previous results before loading new data
-   - FIXED: createValidateBackup() handles db being null
-   - FIXED: validateFixRecord() checks validation data exists before proceeding
-   - ADDED: Missing null/undefined checks throughout
-   - PRESERVED: All existing COPY and COMPARE functionality
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js, js/util-validate-record.js, js/util-validate-ui.js
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - RESTORED: COPY tab functions from v1.06 (loadSourceRecords, loadDestinationRecords, loadGameData, copyRecord, checkDestination, deleteDestination)
+   - RESTORED: COMPARE tab functions from v1.06 (loadCompareRecords, loadCompareRecordsLeft, loadCompareRecordsRight, loadCompareRecordData, performCompare)
+   - REMOVED: Stub functions that depended on non-existent util-copy-record.js and util-compare-record.js
+   - REMOVED: util-copy-record.js and util-compare-record.js from script tags
+   - ADDED: Environment helper functions (getDbForEnv, getCopySourceEnvironment, etc.)
+   - PRESERVED: All VALIDATE tab functionality from v1.08
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js
 STATUS: Ready for integration
 -->
 
@@ -25,8 +24,6 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <!-- Utility JS Files -->
-    <script src="js/util-copy-record.js"></script>
-    <script src="js/util-compare-record.js"></script>
     <script src="js/util-validate-record.js"></script>
     <script src="js/util-validate-ui.js"></script>
     
@@ -139,14 +136,6 @@ STATUS: Ready for integration
             align-items: center;
         }
         
-        .env-selector .env-label {
-            font-size: 0.6rem;
-            color: #888;
-            margin-right: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-        
         .env-btn-small {
             padding: 4px 12px;
             border-radius: 20px;
@@ -171,9 +160,7 @@ STATUS: Ready for integration
             color: #4caf50;
         }
         
-        .env-btn-small:active {
-            transform: scale(0.95);
-        }
+        .env-btn-small:active { transform: scale(0.95); }
         
         .env-indicator-small {
             display: inline-block;
@@ -289,16 +276,7 @@ STATUS: Ready for integration
         }
         
         .game-info-label { color: #888; flex-shrink: 0; }
-        
-        .game-info-value {
-            color: #4caf50;
-            font-weight: 600;
-            word-break: break-all;
-            text-align: right;
-            flex: 1;
-            min-width: 80px;
-        }
-        
+        .game-info-value { color: #4caf50; font-weight: 600; word-break: break-all; text-align: right; flex: 1; min-width: 80px; }
         .game-info-value.gold { color: #ffaa44; }
         
         input {
@@ -314,11 +292,7 @@ STATUS: Ready for integration
         
         input:focus { outline: none; border-color: #ffaa44; }
         
-        .input-with-datalist {
-            position: relative;
-            width: 100%;
-        }
-        
+        .input-with-datalist { position: relative; width: 100%; }
         .input-with-datalist input { width: 100%; }
         .input-with-datalist datalist { display: none; }
         
@@ -391,24 +365,6 @@ STATUS: Ready for integration
             color: #4caf50;
         }
         
-        .btn-validate {
-            background: #1a2a2a;
-            border: 1px solid #4a8af4;
-            color: #4a8af4;
-        }
-        
-        .btn-fix {
-            background: #1a3a1a;
-            border: 1px solid #ffaa44;
-            color: #ffaa44;
-        }
-        
-        .btn-backup {
-            background: #1a2a3a;
-            border: 1px solid #4a8af4;
-            color: #4a8af4;
-        }
-        
         .log {
             background: #0a0a0a;
             border-radius: 12px;
@@ -421,11 +377,7 @@ STATUS: Ready for integration
             word-break: break-all;
         }
         
-        .log-entry {
-            padding: 4px 0;
-            border-bottom: 1px solid #1a1a1a;
-        }
-        
+        .log-entry { padding: 4px 0; border-bottom: 1px solid #1a1a1a; }
         .log-error { color: #ff6b6b; }
         .log-success { color: #4caf50; }
         .log-info { color: #ffaa44; }
@@ -440,29 +392,41 @@ STATUS: Ready for integration
         
         .button-group .btn { flex: 1; margin-top: 0; }
         
-        .warning {
-            background: #2a1a1a;
-            border: 1px solid #ffaa44;
-            border-radius: 12px;
-            padding: 10px;
-            margin: 12px 0;
-            font-size: 0.7rem;
-            color: #ffaa44;
-            text-align: center;
+        .existing-hint {
+            font-size: 0.65rem;
+            color: #666;
+            margin-top: -4px;
+            margin-bottom: 8px;
         }
         
-        .badge {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 12px;
+        .existing-hint strong { color: #ffaa44; }
+        
+        .select-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        
+        .select-wrapper select {
+            width: 100%;
+            padding-right: 32px;
+        }
+        
+        .select-wrapper::after {
+            content: "▼";
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #4caf50;
             font-size: 0.6rem;
-            font-weight: 600;
-            white-space: nowrap;
+            pointer-events: none;
         }
         
-        .badge-sched { background: #1a3a1a; color: #4caf50; }
-        .badge-history { background: #1a2a3a; color: #4a8af4; }
-        .badge-backup { background: #2a2a1a; color: #ffaa44; }
+        select option {
+            white-space: normal !important;
+            word-break: break-all !important;
+            padding: 4px 8px !important;
+        }
         
         .compare-layout {
             display: grid;
@@ -555,58 +519,12 @@ STATUS: Ready for integration
         .diff-summary-item .count.total { color: #ffaa44; }
         .diff-summary-item .label { color: #888; font-size: 0.6rem; }
         
-        .footer {
-            text-align: center;
-            margin-top: 16px;
-            font-size: 0.55rem;
-            color: #1a3a1a;
-            letter-spacing: 0.5px;
-        }
-        
         .compare-result-box {
             max-height: 400px;
             overflow-y: auto;
             margin-top: 8px;
             overflow-x: hidden;
         }
-        
-        .select-wrapper {
-            position: relative;
-            width: 100%;
-        }
-        
-        .select-wrapper select {
-            width: 100%;
-            padding-right: 32px;
-        }
-        
-        .select-wrapper::after {
-            content: "▼";
-            position: absolute;
-            right: 14px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #4caf50;
-            font-size: 0.6rem;
-            pointer-events: none;
-        }
-        
-        select option {
-            white-space: normal !important;
-            word-break: break-all !important;
-            padding: 4px 8px !important;
-        }
-        
-        .compare-side .game-info {
-            font-size: 0.65rem;
-            padding: 8px;
-            margin: 4px 0;
-        }
-        
-        .compare-side .game-info-row { padding: 1px 0; }
-        .compare-side .game-info-value { font-size: 0.65rem; }
-        .compare-side .game-select { font-size: 0.75rem; padding: 10px 14px; }
-        .compare-side .collection-select { font-size: 0.75rem; padding: 10px 14px; }
         
         .compare-actions {
             display: flex;
@@ -616,18 +534,6 @@ STATUS: Ready for integration
         }
         
         .compare-actions .btn { margin-top: 0; }
-        
-        .existing-hint {
-            font-size: 0.65rem;
-            color: #666;
-            margin-top: -4px;
-            margin-bottom: 8px;
-        }
-        
-        .existing-hint strong { color: #ffaa44; }
-        
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
         
         /* Validate Tab Styles */
         .validate-results {
@@ -665,65 +571,45 @@ STATUS: Ready for integration
             color: #4caf50;
         }
         
-        .validate-summary-box {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-            padding: 8px 0;
-        }
-        
-        .validate-summary-item {
-            background: #0a0a0a;
-            padding: 6px 12px;
+        .validate-status {
+            padding: 8px 12px;
             border-radius: 8px;
-            border-left: 3px solid #4caf50;
+            margin: 8px 0;
+            font-size: 0.8rem;
         }
         
-        .validate-summary-item .label {
-            font-size: 0.6rem;
-            color: #888;
-        }
+        .validate-status.success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #4caf50; }
+        .validate-status.error { background: #2a0a0a; border: 1px solid #5a2a2a; color: #ff6b6b; }
+        .validate-status.info { background: #0a1a2a; border: 1px solid #2a3a5a; color: #4a8af4; }
+        .validate-status.warning { background: #2a2a0a; border: 1px solid #5a5a2a; color: #ffaa44; }
         
-        .validate-summary-item .value {
-            font-size: 0.9rem;
-            font-weight: 700;
-        }
-        
-        .validate-summary-item .value.mismatch { color: #ff6b6b; }
-        .validate-summary-item .value.match { color: #4caf50; }
-        
-        .validate-hole-list {
+        .game-info-grid {
             display: grid;
-            grid-template-columns: repeat(6, 1fr);
-            gap: 4px;
-            margin-top: 4px;
+            grid-template-columns: auto 1fr;
+            gap: 4px 16px;
+            font-size: 0.8rem;
         }
         
-        .validate-hole-item {
-            padding: 4px 6px;
-            border-radius: 4px;
+        .game-info-grid .label { color: #666; }
+        .game-info-grid .value { color: #e0e0e0; }
+        
+        .empty-state {
             text-align: center;
-            font-size: 0.65rem;
-            font-weight: 600;
+            padding: 20px;
+            color: #666;
         }
         
-        .validate-hole-item.ok {
-            background: #0a2a0a;
-            color: #4caf50;
-            border: 1px solid #2a5a2a;
-        }
-        
-        .validate-hole-item.fix {
-            background: #2a0a0a;
-            color: #ff6b6b;
-            border: 1px solid #5a2a2a;
-        }
-        
-        .validate-hole-item.unknown {
-            background: #1a1a1a;
-            color: #555;
-            border: 1px solid #333;
-        }
+        .col-total { font-weight: 700; color: #4caf50; }
+        .col-mismatch { background: #3a1a1a !important; color: #ef5350 !important; font-weight: 700; }
+        .col-match { background: #1a2a1a !important; color: #8bc34a !important; }
+        .col-green { color: #4caf50; font-weight: 600; }
+        .col-red { color: #ff6b6b; font-weight: 600; }
+        .col-gold { color: #ffaa44; font-weight: 600; }
+        .tr-total { font-weight: 700; color: #ffaa44; }
+        .team-a-col { color: #4caf50; }
+        .team-b-col { color: #ff6b6b; }
+        .clinch-cell { background: rgba(255, 170, 68, 0.25) !important; border-radius: 4px; }
+        .final-row { background: rgba(255, 170, 68, 0.15); font-weight: 700; }
         
         .validate-fix-btn-container {
             display: flex;
@@ -781,45 +667,38 @@ STATUS: Ready for integration
         .validate-progress .step.info { color: #4a8af4; }
         .validate-progress .step.warning { color: #ffaa44; }
         
-        .validate-status {
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin: 8px 0;
-            font-size: 0.8rem;
-        }
-        
-        .validate-status.success { background: #0a2a0a; border: 1px solid #2a5a2a; color: #4caf50; }
-        .validate-status.error { background: #2a0a0a; border: 1px solid #5a2a2a; color: #ff6b6b; }
-        .validate-status.info { background: #0a1a2a; border: 1px solid #2a3a5a; color: #4a8af4; }
-        .validate-status.warning { background: #2a2a0a; border: 1px solid #5a5a2a; color: #ffaa44; }
-        
-        .game-info-grid {
+        .validate-hole-list {
             display: grid;
-            grid-template-columns: auto 1fr;
-            gap: 4px 16px;
-            font-size: 0.8rem;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+            margin-top: 4px;
         }
         
-        .game-info-grid .label { color: #666; }
-        .game-info-grid .value { color: #e0e0e0; }
-        
-        .empty-state {
+        .validate-hole-item {
+            padding: 4px 6px;
+            border-radius: 4px;
             text-align: center;
-            padding: 20px;
-            color: #666;
+            font-size: 0.65rem;
+            font-weight: 600;
         }
         
-        .col-total { font-weight: 700; color: #4caf50; }
-        .col-mismatch { background: #3a1a1a !important; color: #ef5350 !important; font-weight: 700; }
-        .col-match { background: #1a2a1a !important; color: #8bc34a !important; }
-        .col-green { color: #4caf50; font-weight: 600; }
-        .col-red { color: #ff6b6b; font-weight: 600; }
-        .col-gold { color: #ffaa44; font-weight: 600; }
-        .tr-total { font-weight: 700; color: #ffaa44; }
-        .team-a-col { color: #4caf50; }
-        .team-b-col { color: #ff6b6b; }
-        .clinch-cell { background: rgba(255, 170, 68, 0.25) !important; border-radius: 4px; }
-        .final-row { background: rgba(255, 170, 68, 0.15); font-weight: 700; }
+        .validate-hole-item.ok {
+            background: #0a2a0a;
+            color: #4caf50;
+            border: 1px solid #2a5a2a;
+        }
+        
+        .validate-hole-item.fix {
+            background: #2a0a0a;
+            color: #ff6b6b;
+            border: 1px solid #5a2a2a;
+        }
+        
+        .validate-hole-item.unknown {
+            background: #1a1a1a;
+            color: #555;
+            border: 1px solid #333;
+        }
     </style>
 </head>
 <body>
@@ -844,10 +723,8 @@ STATUS: Ready for integration
     <!-- TAB: COPY -->
     <!-- ============================================================ -->
     <div class="tab-content active" id="tabCopy">
-        <!-- Environment Selection for COPY -->
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
-            
             <div class="env-row">
                 <span class="env-side-label source">📤 SOURCE</span>
                 <div class="env-selector">
@@ -856,7 +733,6 @@ STATUS: Ready for integration
                 </div>
                 <span id="copySourceIndicator" class="env-indicator-small none">Not connected</span>
             </div>
-            
             <div class="env-row">
                 <span class="env-side-label dest">📥 DEST</span>
                 <div class="env-selector">
@@ -981,14 +857,14 @@ STATUS: Ready for integration
                 <div class="compare-side">
                     <div class="compare-side-title left">📤 LEFT RECORD</div>
                     <div class="select-wrapper">
-                        <select id="compareLeftCollection" class="collection-select" onchange="loadCompareRecordsLeft()">
+                        <select id="compareLeftCollection" class="collection-select">
                             <option value="scheduledGames">scheduledGames</option>
                             <option value="historyGames">historyGames</option>
                             <option value="backupFolder">backupFolder</option>
                         </select>
                     </div>
                     <div class="select-wrapper">
-                        <select id="compareLeftRecord" class="game-select" onchange="loadCompareRecordData('left')">
+                        <select id="compareLeftRecord" class="game-select">
                             <option value="">-- Select left record --</option>
                         </select>
                     </div>
@@ -998,14 +874,14 @@ STATUS: Ready for integration
                 <div class="compare-side">
                     <div class="compare-side-title right">📥 RIGHT RECORD</div>
                     <div class="select-wrapper">
-                        <select id="compareRightCollection" class="collection-select" onchange="loadCompareRecordsRight()">
+                        <select id="compareRightCollection" class="collection-select">
                             <option value="scheduledGames">scheduledGames</option>
                             <option value="historyGames">historyGames</option>
                             <option value="backupFolder">backupFolder</option>
                         </select>
                     </div>
                     <div class="select-wrapper">
-                        <select id="compareRightRecord" class="game-select" onchange="loadCompareRecordData('right')">
+                        <select id="compareRightRecord" class="game-select">
                             <option value="">-- Select right record --</option>
                         </select>
                     </div>
@@ -1024,7 +900,6 @@ STATUS: Ready for integration
                 <div class="card-title">📊 COMPARISON SUMMARY</div>
                 <div id="compareSummary"></div>
             </div>
-            
             <div class="card">
                 <div class="card-title">🔍 FIELD BY FIELD</div>
                 <div id="compareDetail" class="compare-result-box"></div>
@@ -1033,7 +908,7 @@ STATUS: Ready for integration
     </div>
     
     <!-- ============================================================ -->
-    <!-- TAB: VALIDATE (v1.08: Fixed) -->
+    <!-- TAB: VALIDATE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabValidate">
         <div class="card">
@@ -1050,7 +925,6 @@ STATUS: Ready for integration
         
         <div class="card">
             <div class="card-title">📥 SELECT RECORD</div>
-            
             <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
                 <div style="flex:1; min-width:180px;">
                     <label style="font-size:0.7rem; color:#888; display:block; margin-bottom:4px;">Collection</label>
@@ -1152,15 +1026,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.08</div>
+<div class="version-tag">v1.09</div>
 
 <script>
 // ============================================================
-// FILE: util-record-management.html (Main Container)
-// VERSION: 1.08
+// FILE: util-record-management.html
+// VERSION: 1.09
 // ============================================================
 
-var APP_VERSION = "1.08";
+var APP_VERSION = "1.09";
 
 // Firebase Configurations
 var PROD_CONFIG = {
@@ -1178,11 +1052,6 @@ var DEV_CONFIG = {
 // Firebase instances
 var prodDb = null;
 var devDb = null;
-
-// Validate state
-var validateRecords = [];
-var validateCurrentIndex = -1;
-var validateGameData = null;
 
 // ============================================================
 // FIREBASE INITIALIZATION
@@ -1215,6 +1084,51 @@ function initFirebase() {
 }
 
 // ============================================================
+// ENVIRONMENT HELPERS
+// ============================================================
+
+function getDbForEnv(env) {
+    if (env === 'PROD') return prodDb;
+    if (env === 'DEV') return devDb;
+    return prodDb;
+}
+
+function getCopySourceEnvironment() {
+    var indicator = document.getElementById('copySourceIndicator');
+    if (indicator.textContent === 'PROD') return 'PROD';
+    if (indicator.textContent === 'DEV') return 'DEV';
+    return 'PROD';
+}
+
+function getCopyDestEnvironment() {
+    var indicator = document.getElementById('copyDestIndicator');
+    if (indicator.textContent === 'PROD') return 'PROD';
+    if (indicator.textContent === 'DEV') return 'DEV';
+    return 'PROD';
+}
+
+function getCompareLeftEnvironment() {
+    var indicator = document.getElementById('compareLeftIndicator');
+    if (indicator.textContent === 'PROD') return 'PROD';
+    if (indicator.textContent === 'DEV') return 'DEV';
+    return 'PROD';
+}
+
+function getCompareRightEnvironment() {
+    var indicator = document.getElementById('compareRightIndicator');
+    if (indicator.textContent === 'PROD') return 'PROD';
+    if (indicator.textContent === 'DEV') return 'DEV';
+    return 'PROD';
+}
+
+function getValidateEnvironment() {
+    var indicator = document.getElementById('validateIndicator');
+    if (indicator.textContent === 'PROD') return 'PROD';
+    if (indicator.textContent === 'DEV') return 'DEV';
+    return 'PROD';
+}
+
+// ============================================================
 // LOGGING
 // ============================================================
 
@@ -1241,14 +1155,6 @@ function log(message, type) {
     logDiv.appendChild(entry);
     logDiv.scrollTop = logDiv.scrollHeight;
 }
-
-function logStep(step, message, type) {
-    log(`[STEP ${step}] ${message}`, type || 'info');
-}
-
-// ============================================================
-// UTILITY
-// ============================================================
 
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
@@ -1293,6 +1199,14 @@ function initDateToggle() {
     });
 }
 
+function onDestExistingSelect() {
+    var select = document.getElementById('destExistingSelect');
+    var destDocId = document.getElementById('destDocId');
+    if (select.value) {
+        destDocId.value = select.value;
+    }
+}
+
 // ============================================================
 // TAB SWITCHING
 // ============================================================
@@ -1319,152 +1233,695 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
 });
 
 // ============================================================
-// EVENT HANDLERS FOR COPY TAB (Environment)
+// COPY TAB ENVIRONMENT HANDLERS
 // ============================================================
 
 document.getElementById('copySourceProdBtn').onclick = function() {
-    setCopySourceEnvironment('PROD');
+    document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
+    document.getElementById('copySourceDevBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('copySourceIndicator');
+    indicator.textContent = 'PROD';
+    indicator.className = 'env-indicator-small prod';
+    log('Copy source environment set to: PROD', 'success');
 };
+
 document.getElementById('copySourceDevBtn').onclick = function() {
-    setCopySourceEnvironment('DEV');
+    document.getElementById('copySourceDevBtn').className = 'env-btn-small active-dev';
+    document.getElementById('copySourceProdBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('copySourceIndicator');
+    indicator.textContent = 'DEV';
+    indicator.className = 'env-indicator-small dev';
+    log('Copy source environment set to: DEV', 'success');
 };
+
 document.getElementById('copyDestProdBtn').onclick = function() {
-    setCopyDestEnvironment('PROD');
+    document.getElementById('copyDestProdBtn').className = 'env-btn-small active-prod';
+    document.getElementById('copyDestDevBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('copyDestIndicator');
+    indicator.textContent = 'PROD';
+    indicator.className = 'env-indicator-small prod';
+    log('Copy destination environment set to: PROD', 'success');
 };
+
 document.getElementById('copyDestDevBtn').onclick = function() {
-    setCopyDestEnvironment('DEV');
+    document.getElementById('copyDestDevBtn').className = 'env-btn-small active-dev';
+    document.getElementById('copyDestProdBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('copyDestIndicator');
+    indicator.textContent = 'DEV';
+    indicator.className = 'env-indicator-small dev';
+    log('Copy destination environment set to: DEV', 'success');
 };
 
 // ============================================================
-// EVENT HANDLERS FOR COMPARE TAB (Environment)
+// COMPARE TAB ENVIRONMENT HANDLERS
 // ============================================================
 
 document.getElementById('compareLeftProdBtn').onclick = function() {
-    setCompareLeftEnvironment('PROD');
+    document.getElementById('compareLeftProdBtn').className = 'env-btn-small active-prod';
+    document.getElementById('compareLeftDevBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('compareLeftIndicator');
+    indicator.textContent = 'PROD';
+    indicator.className = 'env-indicator-small prod';
+    log('Compare left environment set to: PROD', 'success');
 };
+
 document.getElementById('compareLeftDevBtn').onclick = function() {
-    setCompareLeftEnvironment('DEV');
+    document.getElementById('compareLeftDevBtn').className = 'env-btn-small active-dev';
+    document.getElementById('compareLeftProdBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('compareLeftIndicator');
+    indicator.textContent = 'DEV';
+    indicator.className = 'env-indicator-small dev';
+    log('Compare left environment set to: DEV', 'success');
 };
+
 document.getElementById('compareRightProdBtn').onclick = function() {
-    setCompareRightEnvironment('PROD');
+    document.getElementById('compareRightProdBtn').className = 'env-btn-small active-prod';
+    document.getElementById('compareRightDevBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('compareRightIndicator');
+    indicator.textContent = 'PROD';
+    indicator.className = 'env-indicator-small prod';
+    log('Compare right environment set to: PROD', 'success');
 };
+
 document.getElementById('compareRightDevBtn').onclick = function() {
-    setCompareRightEnvironment('DEV');
+    document.getElementById('compareRightDevBtn').className = 'env-btn-small active-dev';
+    document.getElementById('compareRightProdBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('compareRightIndicator');
+    indicator.textContent = 'DEV';
+    indicator.className = 'env-indicator-small dev';
+    log('Compare right environment set to: DEV', 'success');
 };
 
 // ============================================================
-// EVENT HANDLERS FOR VALIDATE TAB (Environment)
+// VALIDATE TAB ENVIRONMENT HANDLERS
 // ============================================================
 
 document.getElementById('validateProdBtn').onclick = function() {
-    setValidateEnvironment('PROD');
+    document.getElementById('validateProdBtn').className = 'env-btn-small active-prod';
+    document.getElementById('validateDevBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('validateIndicator');
+    indicator.textContent = 'PROD';
+    indicator.className = 'env-indicator-small prod';
+    log('Validate environment set to: PROD', 'success');
+    loadValidateRecords();
 };
+
 document.getElementById('validateDevBtn').onclick = function() {
-    setValidateEnvironment('DEV');
+    document.getElementById('validateDevBtn').className = 'env-btn-small active-dev';
+    document.getElementById('validateProdBtn').className = 'env-btn-small';
+    var indicator = document.getElementById('validateIndicator');
+    indicator.textContent = 'DEV';
+    indicator.className = 'env-indicator-small dev';
+    log('Validate environment set to: DEV', 'success');
+    loadValidateRecords();
 };
 
 // ============================================================
-// COPY TAB EVENT HANDLERS (Collections & Actions)
+// COPY TAB: FUNCTIONS (RESTORED FROM v1.06)
 // ============================================================
 
-document.getElementById('loadSourceBtn').onclick = function() { loadSourceRecords(); };
-document.getElementById('loadDestBtn').onclick = function() { loadDestinationRecords(); };
-document.getElementById('copyBtn').onclick = function() { copyRecord(); };
-document.getElementById('checkBtn').onclick = function() { checkDestination(); };
-document.getElementById('deleteBtn').onclick = function() { deleteDestination(); };
-
-document.getElementById('sourceCollection').onchange = function() {
-    loadSourceRecords();
-    document.getElementById('gameInfo').style.display = 'none';
+function loadSourceRecords() {
+    var env = getCopySourceEnvironment();
+    var db = getDbForEnv(env);
+    var collection = document.getElementById('sourceCollection').value;
+    
+    log('📤 Loading source records from ' + env + ':' + collection, 'info');
+    
+    var select = document.getElementById('gameSelect');
+    select.innerHTML = '<option value="">Loading...</option>';
+    var infoDiv = document.getElementById('gameInfo');
+    infoDiv.style.display = 'none';
+    infoDiv.innerHTML = '';
     currentGameData = null;
     currentGameId = null;
-};
-
-document.getElementById('destCollection').onchange = function() {
-    loadDestinationRecords();
-    document.getElementById('destDocId').value = '';
-};
-
-document.getElementById('gameSelect').onchange = function() {
-    var gameId = this.value;
-    if (gameId) {
-        loadGameData(gameId);
-    } else {
-        document.getElementById('gameInfo').style.display = 'none';
-        currentGameData = null;
-        currentGameId = null;
-    }
-};
-
-// ============================================================
-// COMPARE TAB EVENT HANDLERS
-// ============================================================
-
-document.getElementById('compareLoadBtn').onclick = function() { loadCompareRecords(); };
-document.getElementById('compareBtn').onclick = function() { performCompare(); };
-
-// ============================================================
-// VALIDATE TAB EVENT HANDLERS (v1.08: Fixed)
-// ============================================================
-
-document.getElementById('validateLoadBtn').onclick = function() { loadAndValidate(); };
-document.getElementById('validateRefreshBtn').onclick = function() { loadValidateRecords(); };
-document.getElementById('validateBackupBtn').onclick = function() { validateBackupOnly(); };
-document.getElementById('validateFixBtn').onclick = function() { validateFixRecord(); };
-
-document.getElementById('validateCollection').onchange = function() {
-    loadValidateRecords();
-};
-
-document.getElementById('validateRecordSelect').onchange = function() {
-    var index = parseInt(this.value);
-    if (!isNaN(index) && index >= 0 && index < validateRecords.length) {
-        validateCurrentIndex = index;
-        validateGameData = validateRecords[index].rawData;
-        validateGameData.id = validateRecords[index].id;
-        // v1.08: Clear previous results before loading new
-        clearValidateResults();
-        validateProcessGameData(validateGameData);
-    } else {
-        validateCurrentIndex = -1;
-        validateGameData = null;
-        clearValidateResults();
-    }
-};
-
-// ============================================================
-// VALIDATE FUNCTIONS (v1.08: Fixed)
-// ============================================================
-
-function setValidateEnvironment(env) {
-    // Update buttons
-    document.getElementById('validateProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
-    document.getElementById('validateDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
     
-    var indicator = document.getElementById('validateIndicator');
-    if (env === 'PROD') {
-        indicator.textContent = 'PROD';
-        indicator.className = 'env-indicator-small prod';
-    } else {
-        indicator.textContent = 'DEV';
-        indicator.className = 'env-indicator-small dev';
-    }
-    
-    log('Validate environment set to: ' + env, 'success');
-    
-    // Reload records with new environment
-    loadValidateRecords();
+    db.collection(collection).limit(200).get()
+        .then(function(snapshot) {
+            var records = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                records.push({
+                    id: doc.id,
+                    originalGameId: data.originalGameId || doc.id,
+                    date: data.gameInfo?.date || data.date || 'Unknown',
+                    courseName: data.gameInfo?.course?.name || 'Unknown',
+                    status: data.status || 'unknown',
+                    rawData: data
+                });
+            });
+            
+            window._sourceRecords = records;
+            
+            records.sort(function(a, b) {
+                if (a.date > b.date) return -1;
+                if (a.date < b.date) return 1;
+                return 0;
+            });
+            
+            if (records.length === 0) {
+                select.innerHTML = '<option value="">No records found</option>';
+                log('ℹ️ No records found in ' + collection, 'info');
+                return;
+            }
+            
+            var html = '<option value="">-- Select a record --</option>';
+            for (var i = 0; i < records.length; i++) {
+                var r = records[i];
+                html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
+            }
+            select.innerHTML = html;
+            log('✅ Loaded ' + records.length + ' source records from ' + collection, 'success');
+        })
+        .catch(function(err) {
+            select.innerHTML = '<option value="">Error loading records</option>';
+            log('❌ Error loading source records: ' + err.message, 'error');
+        });
 }
 
-function getValidateDb() {
-    var indicator = document.getElementById('validateIndicator');
-    if (indicator.textContent === 'PROD') {
-        return prodDb;
-    } else if (indicator.textContent === 'DEV') {
-        return devDb;
+function loadDestinationRecords() {
+    var env = getCopyDestEnvironment();
+    var db = getDbForEnv(env);
+    var collection = document.getElementById('destCollection').value;
+    
+    log('📥 Loading destination records from ' + env + ':' + collection, 'info');
+    
+    var select = document.getElementById('destExistingSelect');
+    select.innerHTML = '<option value="">Loading...</option>';
+    
+    var datalist = document.getElementById('destRecordsList');
+    datalist.innerHTML = '';
+    
+    db.collection(collection).limit(200).get()
+        .then(function(snapshot) {
+            var records = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                records.push({
+                    id: doc.id,
+                    originalGameId: data.originalGameId || doc.id,
+                    date: data.gameInfo?.date || data.date || 'Unknown',
+                    courseName: data.gameInfo?.course?.name || 'Unknown',
+                    status: data.status || 'unknown'
+                });
+            });
+            
+            window._destRecords = records;
+            
+            records.sort(function(a, b) {
+                if (a.date > b.date) return -1;
+                if (a.date < b.date) return 1;
+                return 0;
+            });
+            
+            if (records.length === 0) {
+                select.innerHTML = '<option value="">No records found</option>';
+                log('ℹ️ No records found in ' + collection, 'info');
+                return;
+            }
+            
+            var html = '<option value="">-- Select existing to REPLACE --</option>';
+            for (var i = 0; i < records.length; i++) {
+                var r = records[i];
+                html += '<option value="' + escapeHtml(r.id) + '">' + escapeHtml(r.id + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
+                var option = document.createElement('option');
+                option.value = r.id;
+                datalist.appendChild(option);
+            }
+            select.innerHTML = html;
+            log('✅ Loaded ' + records.length + ' destination records from ' + collection, 'success');
+        })
+        .catch(function(err) {
+            select.innerHTML = '<option value="">Error loading records</option>';
+            log('❌ Error loading destination records: ' + err.message, 'error');
+        });
+}
+
+function loadGameData(index) {
+    var records = window._sourceRecords || [];
+    if (!records || records.length === 0) {
+        log('No source records loaded. Click "Load Source Records" first.', 'error');
+        return;
     }
-    // v1.08: Fallback to prod if not set
-    return prodDb;
+    
+    var idx = parseInt(index);
+    if (isNaN(idx) || idx < 0 || idx >= records.length) {
+        log('Invalid record selection', 'error');
+        return;
+    }
+    
+    var record = records[idx];
+    currentGameData = record.rawData;
+    currentGameId = record.id;
+    
+    var infoDiv = document.getElementById('gameInfo');
+    infoDiv.style.display = 'block';
+    
+    var html = '<div class="game-info">';
+    html += '<div class="game-info-row"><span class="game-info-label">ID</span><span class="game-info-value">' + escapeHtml(record.id) + '</span></div>';
+    html += '<div class="game-info-row"><span class="game-info-label">Original ID</span><span class="game-info-value">' + escapeHtml(record.originalGameId) + '</span></div>';
+    html += '<div class="game-info-row"><span class="game-info-label">Date</span><span class="game-info-value">' + escapeHtml(record.date) + '</span></div>';
+    html += '<div class="game-info-row"><span class="game-info-label">Course</span><span class="game-info-value">' + escapeHtml(record.courseName) + '</span></div>';
+    html += '<div class="game-info-row"><span class="game-info-label">Status</span><span class="game-info-value">' + escapeHtml(record.status) + '</span></div>';
+    html += '<div class="game-info-row"><span class="game-info-label">Players</span><span class="game-info-value">' + (record.rawData.players ? record.rawData.players.length : 0) + '</span></div>';
+    html += '</div>';
+    
+    infoDiv.innerHTML = html;
+    log('✅ Loaded game data for: ' + record.id, 'success');
+}
+
+function copyRecord() {
+    if (!currentGameData || !currentGameId) {
+        log('No source record selected. Please load a record first.', 'error');
+        return;
+    }
+    
+    var destDocId = document.getElementById('destDocId').value.trim();
+    if (!destDocId) {
+        log('Please enter a destination document ID.', 'error');
+        return;
+    }
+    
+    var sourceEnv = getCopySourceEnvironment();
+    var destEnv = getCopyDestEnvironment();
+    var sourceCollection = document.getElementById('sourceCollection').value;
+    var destCollection = document.getElementById('destCollection').value;
+    
+    var dateOption = document.querySelector('input[name="dateOption"]:checked');
+    var dateValue = dateOption ? dateOption.value : 'keep';
+    
+    log('📝 Copying from ' + sourceEnv + ':' + sourceCollection + '/' + currentGameId + ' to ' + destEnv + ':' + destCollection + '/' + destDocId, 'info');
+    
+    var destDb = getDbForEnv(destEnv);
+    
+    destDb.collection(destCollection).doc(destDocId).get()
+        .then(function(doc) {
+            if (doc.exists) {
+                return new Promise(function(resolve, reject) {
+                    if (confirm('⚠️ Document already exists in ' + destCollection + '/' + destDocId + '\n\nDo you want to REPLACE it?')) {
+                        resolve();
+                    } else {
+                        reject(new Error('User cancelled'));
+                    }
+                });
+            }
+            return Promise.resolve();
+        })
+        .then(function() {
+            var copyData = JSON.parse(JSON.stringify(currentGameData));
+            
+            if (dateValue === 'today') {
+                var today = new Date().toISOString().split('T')[0];
+                if (copyData.gameInfo) copyData.gameInfo.date = today;
+                if (copyData.date) copyData.date = today;
+            } else if (dateValue === 'custom') {
+                var customDate = document.getElementById('customDate').value;
+                if (customDate) {
+                    if (copyData.gameInfo) copyData.gameInfo.date = customDate;
+                    if (copyData.date) copyData.date = customDate;
+                }
+            }
+            
+            copyData._copiedFrom = currentGameId;
+            copyData._copiedFromEnv = sourceEnv;
+            copyData._copiedFromCollection = sourceCollection;
+            copyData._copiedAt = new Date().toISOString();
+            copyData.updatedAt = new Date().toISOString();
+            
+            return destDb.collection(destCollection).doc(destDocId).set(copyData);
+        })
+        .then(function() {
+            log('✅ Record copied successfully to ' + destCollection + '/' + destDocId, 'success');
+            loadDestinationRecords();
+        })
+        .catch(function(err) {
+            if (err.message === 'User cancelled') {
+                log('⏹️ Copy cancelled by user.', 'info');
+            } else {
+                log('❌ Error copying record: ' + err.message, 'error');
+            }
+        });
+}
+
+function checkDestination() {
+    var destDocId = document.getElementById('destDocId').value.trim();
+    if (!destDocId) {
+        log('Please enter a destination document ID.', 'error');
+        return;
+    }
+    
+    var destEnv = getCopyDestEnvironment();
+    var destCollection = document.getElementById('destCollection').value;
+    var db = getDbForEnv(destEnv);
+    
+    log('🔍 Checking ' + destEnv + ':' + destCollection + '/' + destDocId, 'info');
+    
+    db.collection(destCollection).doc(destDocId).get()
+        .then(function(doc) {
+            if (doc.exists) {
+                var data = doc.data();
+                log('✅ Document exists. Status: ' + (data.status || 'unknown'), 'success');
+                var infoHtml = '<div class="game-info">';
+                infoHtml += '<div class="game-info-row"><span class="game-info-label">ID</span><span class="game-info-value">' + escapeHtml(doc.id) + '</span></div>';
+                infoHtml += '<div class="game-info-row"><span class="game-info-label">Status</span><span class="game-info-value">' + escapeHtml(data.status || 'unknown') + '</span></div>';
+                infoHtml += '<div class="game-info-row"><span class="game-info-label">Players</span><span class="game-info-value">' + (data.players ? data.players.length : 0) + '</span></div>';
+                if (data._copiedFrom) {
+                    infoHtml += '<div class="game-info-row"><span class="game-info-label">Copied From</span><span class="game-info-value">' + escapeHtml(data._copiedFrom) + '</span></div>';
+                }
+                infoHtml += '</div>';
+                document.getElementById('gameInfo').innerHTML = infoHtml;
+                document.getElementById('gameInfo').style.display = 'block';
+            } else {
+                log('❌ Document does not exist.', 'error');
+                document.getElementById('gameInfo').style.display = 'none';
+            }
+        })
+        .catch(function(err) {
+            log('❌ Error checking destination: ' + err.message, 'error');
+        });
+}
+
+function deleteDestination() {
+    var destDocId = document.getElementById('destDocId').value.trim();
+    if (!destDocId) {
+        log('Please enter a destination document ID.', 'error');
+        return;
+    }
+    
+    var destEnv = getCopyDestEnvironment();
+    var destCollection = document.getElementById('destCollection').value;
+    var db = getDbForEnv(destEnv);
+    
+    if (!confirm('🗑️ Delete document from ' + destCollection + '/' + destDocId + '?\n\nThis action cannot be undone.')) {
+        return;
+    }
+    
+    log('🗑️ Deleting ' + destEnv + ':' + destCollection + '/' + destDocId, 'info');
+    
+    db.collection(destCollection).doc(destDocId).delete()
+        .then(function() {
+            log('✅ Document deleted successfully.', 'success');
+            loadDestinationRecords();
+            document.getElementById('destDocId').value = '';
+            document.getElementById('gameInfo').style.display = 'none';
+        })
+        .catch(function(err) {
+            log('❌ Error deleting document: ' + err.message, 'error');
+        });
+}
+
+// ============================================================
+// COMPARE TAB: FUNCTIONS (RESTORED FROM v1.06)
+// ============================================================
+
+function loadCompareRecords() {
+    loadCompareRecordsLeft();
+    loadCompareRecordsRight();
+}
+
+function loadCompareRecordsLeft() {
+    var env = getCompareLeftEnvironment();
+    var db = getDbForEnv(env);
+    var collection = document.getElementById('compareLeftCollection').value;
+    var select = document.getElementById('compareLeftRecord');
+    
+    select.innerHTML = '<option value="">Loading...</option>';
+    
+    db.collection(collection).limit(200).get()
+        .then(function(snapshot) {
+            var records = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                records.push({
+                    id: doc.id,
+                    originalGameId: data.originalGameId || doc.id,
+                    date: data.gameInfo?.date || data.date || 'Unknown',
+                    courseName: data.gameInfo?.course?.name || 'Unknown',
+                    status: data.status || 'unknown',
+                    rawData: data
+                });
+            });
+            
+            window._compareLeftRecords = records;
+            
+            records.sort(function(a, b) {
+                if (a.date > b.date) return -1;
+                if (a.date < b.date) return 1;
+                return 0;
+            });
+            
+            if (records.length === 0) {
+                select.innerHTML = '<option value="">No records found</option>';
+                return;
+            }
+            
+            var html = '<option value="">-- Select left record --</option>';
+            for (var i = 0; i < records.length; i++) {
+                var r = records[i];
+                html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
+            }
+            select.innerHTML = html;
+        })
+        .catch(function(err) {
+            select.innerHTML = '<option value="">Error loading records</option>';
+            log('❌ Error loading left records: ' + err.message, 'error');
+        });
+}
+
+function loadCompareRecordsRight() {
+    var env = getCompareRightEnvironment();
+    var db = getDbForEnv(env);
+    var collection = document.getElementById('compareRightCollection').value;
+    var select = document.getElementById('compareRightRecord');
+    
+    select.innerHTML = '<option value="">Loading...</option>';
+    
+    db.collection(collection).limit(200).get()
+        .then(function(snapshot) {
+            var records = [];
+            snapshot.forEach(function(doc) {
+                var data = doc.data();
+                records.push({
+                    id: doc.id,
+                    originalGameId: data.originalGameId || doc.id,
+                    date: data.gameInfo?.date || data.date || 'Unknown',
+                    courseName: data.gameInfo?.course?.name || 'Unknown',
+                    status: data.status || 'unknown',
+                    rawData: data
+                });
+            });
+            
+            window._compareRightRecords = records;
+            
+            records.sort(function(a, b) {
+                if (a.date > b.date) return -1;
+                if (a.date < b.date) return 1;
+                return 0;
+            });
+            
+            if (records.length === 0) {
+                select.innerHTML = '<option value="">No records found</option>';
+                return;
+            }
+            
+            var html = '<option value="">-- Select right record --</option>';
+            for (var i = 0; i < records.length; i++) {
+                var r = records[i];
+                html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
+            }
+            select.innerHTML = html;
+        })
+        .catch(function(err) {
+            select.innerHTML = '<option value="">Error loading records</option>';
+            log('❌ Error loading right records: ' + err.message, 'error');
+        });
+}
+
+function loadCompareRecordData(side) {
+    var isLeft = side === 'left';
+    var selectId = isLeft ? 'compareLeftRecord' : 'compareRightRecord';
+    var infoId = isLeft ? 'compareLeftInfo' : 'compareRightInfo';
+    var records = isLeft ? window._compareLeftRecords : window._compareRightRecords;
+    
+    var select = document.getElementById(selectId);
+    var index = parseInt(select.value);
+    
+    if (isNaN(index) || index < 0 || !records || index >= records.length) {
+        document.getElementById(infoId).style.display = 'none';
+        return;
+    }
+    
+    var record = records[index];
+    var infoDiv = document.getElementById(infoId);
+    infoDiv.style.display = 'block';
+    
+    var html = '<div class="game-info" style="font-size:0.65rem; padding:8px;">';
+    html += '<div class="game-info-row"><span class="game-info-label">ID</span><span class="game-info-value">' + escapeHtml(record.id) + '</span></div>';
+    html += '<div class="game-info-row"><span class="game-info-label">Date</span><span class="game-info-value">' + escapeHtml(record.date) + '</span></div>';
+    html += '<div class="game-info-row"><span class="game-info-label">Course</span><span class="game-info-value">' + escapeHtml(record.courseName) + '</span></div>';
+    html += '<div class="game-info-row"><span class="game-info-label">Status</span><span class="game-info-value">' + escapeHtml(record.status) + '</span></div>';
+    html += '</div>';
+    
+    infoDiv.innerHTML = html;
+    
+    // Store for comparison
+    if (isLeft) {
+        window._compareLeftData = record.rawData;
+        window._compareLeftId = record.id;
+    } else {
+        window._compareRightData = record.rawData;
+        window._compareRightId = record.id;
+    }
+}
+
+function performCompare() {
+    var leftData = window._compareLeftData;
+    var rightData = window._compareRightData;
+    var leftId = window._compareLeftId;
+    var rightId = window._compareRightId;
+    
+    if (!leftData || !rightData) {
+        log('Please select both left and right records.', 'error');
+        return;
+    }
+    
+    log('🔍 Comparing ' + leftId + ' vs ' + rightId, 'info');
+    
+    // Get all keys from both objects
+    var allKeys = new Set();
+    function collectKeys(obj, prefix) {
+        if (!obj || typeof obj !== 'object') return;
+        for (var key in obj) {
+            var fullKey = prefix ? prefix + '.' + key : key;
+            allKeys.add(fullKey);
+            if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key]) && !(obj[key] instanceof Date)) {
+                collectKeys(obj[key], fullKey);
+            }
+        }
+    }
+    collectKeys(leftData, '');
+    collectKeys(rightData, '');
+    
+    var keys = Array.from(allKeys).sort();
+    var diffs = [];
+    var matches = 0;
+    
+    for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        var leftVal = getValueByPath(leftData, key);
+        var rightVal = getValueByPath(rightData, key);
+        
+        // Skip metadata
+        if (key.startsWith('_')) continue;
+        
+        // Special handling for Firestore Timestamps
+        var leftStr = stringifyValue(leftVal);
+        var rightStr = stringifyValue(rightVal);
+        
+        if (leftStr === rightStr) {
+            matches++;
+        } else {
+            diffs.push({ key: key, left: leftStr, right: rightStr });
+        }
+    }
+    
+    // Display results
+    var summaryDiv = document.getElementById('compareSummary');
+    var detailDiv = document.getElementById('compareDetail');
+    var resultsDiv = document.getElementById('compareResults');
+    
+    resultsDiv.style.display = 'block';
+    
+    var total = matches + diffs.length;
+    var matchPct = total > 0 ? Math.round((matches / total) * 100) : 0;
+    
+    summaryDiv.innerHTML = `
+        <div class="diff-summary">
+            <div class="diff-summary-item">
+                <span class="count total">${total}</span>
+                <span class="label">Total Fields</span>
+            </div>
+            <div class="diff-summary-item">
+                <span class="count match">${matches}</span>
+                <span class="label">Match</span>
+            </div>
+            <div class="diff-summary-item">
+                <span class="count diff">${diffs.length}</span>
+                <span class="label">Differences</span>
+            </div>
+            <div class="diff-summary-item">
+                <span class="count ${matchPct >= 95 ? 'match' : 'diff'}">${matchPct}%</span>
+                <span class="label">Match Rate</span>
+            </div>
+        </div>
+        <div style="text-align:center;font-size:0.7rem;color:#888;margin-top:4px;">
+            ${leftId} ↔ ${rightId}
+        </div>
+    `;
+    
+    if (diffs.length === 0) {
+        detailDiv.innerHTML = '<div style="color:#4caf50;text-align:center;padding:20px;">✅ All fields match!</div>';
+        log('✅ All fields match!', 'success');
+    } else {
+        var html = '';
+        for (var i = 0; i < diffs.length; i++) {
+            var d = diffs[i];
+            html += `<div class="diff-item diff">
+                <span class="field-name">${escapeHtml(d.key)}</span>
+                <span>
+                    <span class="field-value-left">${escapeHtml(d.left)}</span>
+                    <span style="color:#666;margin:0 4px;">≠</span>
+                    <span class="field-value-right">${escapeHtml(d.right)}</span>
+                </span>
+            </div>`;
+        }
+        detailDiv.innerHTML = html;
+        log('🔴 Found ' + diffs.length + ' differences.', 'diff');
+    }
+}
+
+function getValueByPath(obj, path) {
+    var parts = path.split('.');
+    var current = obj;
+    for (var i = 0; i < parts.length; i++) {
+        if (current === null || current === undefined) return undefined;
+        current = current[parts[i]];
+    }
+    return current;
+}
+
+function stringifyValue(val) {
+    if (val === null || val === undefined) return 'null';
+    if (val instanceof Date) return val.toISOString();
+    if (val && typeof val === 'object' && val.toDate) {
+        return val.toDate().toISOString();
+    }
+    if (typeof val === 'object') {
+        try { return JSON.stringify(val); } catch(e) { return String(val); }
+    }
+    return String(val);
+}
+
+// ============================================================
+// VALIDATE TAB: FUNCTIONS (FROM v1.08)
+// ============================================================
+
+var validateRecords = [];
+var validateCurrentIndex = -1;
+var validateGameData = null;
+var _sourceRecords = [];
+var _destRecords = [];
+var _compareLeftRecords = [];
+var _compareRightRecords = [];
+var _compareLeftData = null;
+var _compareRightData = null;
+var _compareLeftId = null;
+var _compareRightId = null;
+var currentGameData = null;
+var currentGameId = null;
+
+function getValidateDb() {
+    var env = getValidateEnvironment();
+    return getDbForEnv(env);
 }
 
 function clearValidateResults() {
@@ -1544,6 +2001,30 @@ function loadValidateRecords() {
         });
 }
 
+document.getElementById('validateLoadBtn').onclick = function() { loadAndValidate(); };
+document.getElementById('validateRefreshBtn').onclick = function() { loadValidateRecords(); };
+document.getElementById('validateBackupBtn').onclick = function() { validateBackupOnly(); };
+document.getElementById('validateFixBtn').onclick = function() { validateFixRecord(); };
+
+document.getElementById('validateCollection').onchange = function() {
+    loadValidateRecords();
+};
+
+document.getElementById('validateRecordSelect').onchange = function() {
+    var index = parseInt(this.value);
+    if (!isNaN(index) && index >= 0 && index < validateRecords.length) {
+        validateCurrentIndex = index;
+        validateGameData = validateRecords[index].rawData;
+        validateGameData.id = validateRecords[index].id;
+        clearValidateResults();
+        validateProcessGameData(validateGameData);
+    } else {
+        validateCurrentIndex = -1;
+        validateGameData = null;
+        clearValidateResults();
+    }
+};
+
 function loadAndValidate() {
     var select = document.getElementById('validateRecordSelect');
     var index = parseInt(select.value);
@@ -1565,7 +2046,6 @@ function loadAndValidate() {
     statusEl.className = 'validate-status info';
     statusEl.textContent = '⏳ Validating: ' + validateRecords[index].originalGameId + '...';
     
-    // v1.08: Clear previous results before loading new
     clearValidateResults();
     validateProcessGameData(validateGameData);
 }
@@ -1574,7 +2054,6 @@ function validateProcessGameData(data) {
     var resultsContainer = document.getElementById('validateResults');
     var fixCard = document.getElementById('validateFixCard');
     
-    // v1.08: Check if UtilValidate exists
     if (typeof UtilValidate === 'undefined') {
         var statusEl = document.getElementById('validateStatus');
         statusEl.className = 'validate-status error';
@@ -1583,7 +2062,6 @@ function validateProcessGameData(data) {
         return;
     }
     
-    // Validate using UtilValidate
     var validation = UtilValidate.validateRecord(data);
     
     if (!validation || validation.error) {
@@ -1594,7 +2072,6 @@ function validateProcessGameData(data) {
         return;
     }
     
-    // v1.08: Check if UtilValidateUI exists
     if (typeof UtilValidateUI === 'undefined') {
         var statusEl = document.getElementById('validateStatus');
         statusEl.className = 'validate-status error';
@@ -1603,10 +2080,8 @@ function validateProcessGameData(data) {
         return;
     }
     
-    // Render using UtilValidateUI
     UtilValidateUI.renderGameInfo(data, 'validateGameInfo');
     
-    // Flights
     var f1Scores = validation.f1Scores;
     var f2Scores = validation.f2Scores;
     var players = validation.players;
@@ -1616,7 +2091,6 @@ function validateProcessGameData(data) {
     UtilValidateUI.renderFlightTable(f1Scores, players, 1, 'validateFlight1');
     UtilValidateUI.renderFlightTable(f2Scores, players, 2, 'validateFlight2');
     
-    // T-1, T-2, Strk
     var t1Results = UtilValidate.calculateTeamGame(f1Scores, players, 1, courseSi);
     var t2Results = UtilValidate.calculateTeamGame(f2Scores, players, 2, courseSi);
     var strkResults = UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players);
@@ -1625,23 +2099,17 @@ function validateProcessGameData(data) {
     UtilValidateUI.renderTeamGameTable(t2Results, 'validateT2', 'T-2');
     UtilValidateUI.renderStrkTable(strkResults, 'validateStrk');
     
-    // Match
     var matchData = UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
     var orderedPlayers = matchData.orderedPlayers;
     var matchResults = matchData.results;
     var matchPointsPerHole = matchData.matchPointsPerHole;
     
     UtilValidateUI.renderMatchTable(orderedPlayers, matchResults, 'validateMatch');
-    
-    // TR
     UtilValidateUI.renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, data, 'validateTR');
-    
-    // Summary
     UtilValidateUI.renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, data, 'validateSummary');
     
     resultsContainer.classList.add('active');
     
-    // Check if fix is needed
     if (validation.needsFix) {
         fixCard.style.display = 'block';
         var statusEl = document.getElementById('validateStatus');
@@ -1663,7 +2131,6 @@ function validateProcessGameData(data) {
         log('Record is valid', 'success');
     }
     
-    // Store recalculated data for fix operations
     window._validateRecalculated = validation.recalculated;
     window._validateValidation = validation;
 }
@@ -1722,10 +2189,9 @@ function createValidateBackup(record, progressEl) {
         backupData._backupOriginalId = docId;
         backupData._backupOriginalCollection = 'historyGames';
         backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v1.08';
+        backupData._backupReason = 'Pre-fix backup from validator v1.09';
         
         var db = getValidateDb();
-        // v1.08: Check if db exists
         if (!db) {
             reject(new Error('No database selected'));
             return;
@@ -1753,7 +2219,6 @@ function validateFixRecord() {
     var validation = window._validateValidation;
     var recalculated = window._validateRecalculated;
     
-    // v1.08: Check if validation data exists
     if (!validation || !recalculated) {
         log('No validation data available. Please load and validate first.', 'error');
         return;
@@ -1764,12 +2229,9 @@ function validateFixRecord() {
         return;
     }
     
-    // Build preview
     var previewData = UtilValidate.buildFixPreview(record.rawData, recalculated);
     
-    // Show preview modal
     UtilValidateUI.showFixPreview(record, recalculated, previewData, null, function() {
-        // User confirmed - execute fix
         executeValidateFix(record, recalculated);
     });
 }
@@ -1785,13 +2247,11 @@ function executeValidateFix(record, recalculated) {
     progressEl.className = 'validate-progress active';
     progressEl.innerHTML = '<div class="step info">🔧 Creating backup before fix...</div>';
     
-    // Create backup first
     createValidateBackup(record, progressEl)
         .then(function(backupId) {
             progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
             progressEl.innerHTML += '<div class="step info">📝 Building update payload...</div>';
             
-            // Build fix payload
             var fixPayload = UtilValidate.buildFixPayload(record.rawData, recalculated);
             var updatePayload = fixPayload.updatePayload;
             
@@ -1810,7 +2270,6 @@ function executeValidateFix(record, recalculated) {
         .then(function() {
             progressEl.innerHTML += '<div class="step done">✅ Firestore update successful</div>';
             
-            // Refresh the record
             var db = getValidateDb();
             if (!db) {
                 throw new Error('No database selected');
@@ -1836,7 +2295,6 @@ function executeValidateFix(record, recalculated) {
                 
                 log(msg, 'success');
                 
-                // Re-validate
                 setTimeout(function() {
                     validateProcessGameData(doc.data());
                 }, 500);
@@ -1854,142 +2312,54 @@ function executeValidateFix(record, recalculated) {
 }
 
 // ============================================================
-// COPY ENVIRONMENT FUNCTIONS (Stubs)
+// COPY TAB: EVENT BINDINGS
 // ============================================================
 
-function setCopySourceEnvironment(env) {
-    document.getElementById('copySourceProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
-    document.getElementById('copySourceDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
-    var indicator = document.getElementById('copySourceIndicator');
-    if (env === 'PROD') {
-        indicator.textContent = 'PROD';
-        indicator.className = 'env-indicator-small prod';
+document.getElementById('loadSourceBtn').onclick = loadSourceRecords;
+document.getElementById('loadDestBtn').onclick = loadDestinationRecords;
+document.getElementById('copyBtn').onclick = copyRecord;
+document.getElementById('checkBtn').onclick = checkDestination;
+document.getElementById('deleteBtn').onclick = deleteDestination;
+
+document.getElementById('sourceCollection').onchange = function() {
+    loadSourceRecords();
+    document.getElementById('gameInfo').style.display = 'none';
+    currentGameData = null;
+    currentGameId = null;
+};
+
+document.getElementById('destCollection').onchange = function() {
+    loadDestinationRecords();
+    document.getElementById('destDocId').value = '';
+};
+
+document.getElementById('gameSelect').onchange = function() {
+    var idx = this.value;
+    if (idx !== '') {
+        loadGameData(idx);
     } else {
-        indicator.textContent = 'DEV';
-        indicator.className = 'env-indicator-small dev';
+        document.getElementById('gameInfo').style.display = 'none';
+        currentGameData = null;
+        currentGameId = null;
     }
-    log('Copy source environment set to: ' + env, 'success');
-}
-
-function setCopyDestEnvironment(env) {
-    document.getElementById('copyDestProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
-    document.getElementById('copyDestDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
-    var indicator = document.getElementById('copyDestIndicator');
-    if (env === 'PROD') {
-        indicator.textContent = 'PROD';
-        indicator.className = 'env-indicator-small prod';
-    } else {
-        indicator.textContent = 'DEV';
-        indicator.className = 'env-indicator-small dev';
-    }
-    log('Copy destination environment set to: ' + env, 'success');
-}
+};
 
 // ============================================================
-// COMPARE ENVIRONMENT FUNCTIONS (Stubs)
+// COMPARE TAB: EVENT BINDINGS
 // ============================================================
 
-function setCompareLeftEnvironment(env) {
-    document.getElementById('compareLeftProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
-    document.getElementById('compareLeftDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
-    var indicator = document.getElementById('compareLeftIndicator');
-    if (env === 'PROD') {
-        indicator.textContent = 'PROD';
-        indicator.className = 'env-indicator-small prod';
-    } else {
-        indicator.textContent = 'DEV';
-        indicator.className = 'env-indicator-small dev';
-    }
-    log('Compare left environment set to: ' + env, 'success');
-}
+document.getElementById('compareLoadBtn').onclick = loadCompareRecords;
+document.getElementById('compareBtn').onclick = performCompare;
 
-function setCompareRightEnvironment(env) {
-    document.getElementById('compareRightProdBtn').className = 'env-btn-small' + (env === 'PROD' ? ' active-prod' : '');
-    document.getElementById('compareRightDevBtn').className = 'env-btn-small' + (env === 'DEV' ? ' active-dev' : '');
-    var indicator = document.getElementById('compareRightIndicator');
-    if (env === 'PROD') {
-        indicator.textContent = 'PROD';
-        indicator.className = 'env-indicator-small prod';
-    } else {
-        indicator.textContent = 'DEV';
-        indicator.className = 'env-indicator-small dev';
-    }
-    log('Compare right environment set to: ' + env, 'success');
-}
+document.getElementById('compareLeftCollection').onchange = loadCompareRecordsLeft;
+document.getElementById('compareRightCollection').onchange = loadCompareRecordsRight;
 
-// ============================================================
-// COPY FUNCTIONS (Stubs)
-// ============================================================
-
-var currentGameData = null;
-var currentGameId = null;
-
-function loadSourceRecords() {
-    log('Loading source records...', 'info');
-    // Implement in util-copy-record.js
-}
-
-function loadDestinationRecords() {
-    log('Loading destination records...', 'info');
-    // Implement in util-copy-record.js
-}
-
-function loadGameData(gameId) {
-    log('Loading game data for: ' + gameId, 'info');
-    // Implement in util-copy-record.js
-}
-
-function copyRecord() {
-    log('Copying record...', 'info');
-    // Implement in util-copy-record.js
-}
-
-function checkDestination() {
-    log('Checking destination...', 'info');
-    // Implement in util-copy-record.js
-}
-
-function deleteDestination() {
-    log('Deleting destination...', 'info');
-    // Implement in util-copy-record.js
-}
-
-function onDestExistingSelect() {
-    var select = document.getElementById('destExistingSelect');
-    var destDocId = document.getElementById('destDocId');
-    if (select.value) {
-        destDocId.value = select.value;
-    }
-}
-
-// ============================================================
-// COMPARE FUNCTIONS (Stubs)
-// ============================================================
-
-function loadCompareRecords() {
-    log('Loading compare records...', 'info');
-    // Implement in util-compare-record.js
-}
-
-function loadCompareRecordsLeft() {
-    log('Loading left compare records...', 'info');
-    // Implement in util-compare-record.js
-}
-
-function loadCompareRecordsRight() {
-    log('Loading right compare records...', 'info');
-    // Implement in util-compare-record.js
-}
-
-function loadCompareRecordData(side) {
-    log('Loading compare record data for: ' + side, 'info');
-    // Implement in util-compare-record.js
-}
-
-function performCompare() {
-    log('Performing compare...', 'info');
-    // Implement in util-compare-record.js
-}
+document.getElementById('compareLeftRecord').onchange = function() {
+    loadCompareRecordData('left');
+};
+document.getElementById('compareRightRecord').onchange = function() {
+    loadCompareRecordData('right');
+};
 
 // ============================================================
 // INIT
@@ -1998,7 +2368,25 @@ function performCompare() {
 initFirebase();
 initDateToggle();
 
-log('Record Management v1.08 loaded', 'success');
+// Set default environments
+document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('copyDestProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('compareLeftProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('compareRightProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('validateProdBtn').className = 'env-btn-small active-prod';
+
+document.getElementById('copySourceIndicator').textContent = 'PROD';
+document.getElementById('copySourceIndicator').className = 'env-indicator-small prod';
+document.getElementById('copyDestIndicator').textContent = 'PROD';
+document.getElementById('copyDestIndicator').className = 'env-indicator-small prod';
+document.getElementById('compareLeftIndicator').textContent = 'PROD';
+document.getElementById('compareLeftIndicator').className = 'env-indicator-small prod';
+document.getElementById('compareRightIndicator').textContent = 'PROD';
+document.getElementById('compareRightIndicator').className = 'env-indicator-small prod';
+document.getElementById('validateIndicator').textContent = 'PROD';
+document.getElementById('validateIndicator').className = 'env-indicator-small prod';
+
+log('Record Management v1.09 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
 log('1. Select environments for each tab (PROD/DEV)', 'info');
 log('2. COPY tab: copy records between collections and environments', 'info');
@@ -2006,8 +2394,11 @@ log('3. COMPARE tab: field-by-field comparison across environments', 'info');
 log('4. VALIDATE tab: load and validate records, fix corrupted ones', 'info');
 log('=====================================', 'info');
 
-// Pre-load validate records
+// Pre-load records
 setTimeout(function() {
+    loadSourceRecords();
+    loadDestinationRecords();
+    loadCompareRecords();
     loadValidateRecords();
 }, 500);
 </script>
@@ -2016,15 +2407,14 @@ setTimeout(function() {
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: getValidateDb() now correctly detects active environment
-   - FIXED: validateProcessGameData() checks UtilValidateUI functions exist before calling
-   - FIXED: loadAndValidate() clears previous results before loading new data
-   - FIXED: createValidateBackup() handles db being null
-   - FIXED: validateFixRecord() checks validation data exists before proceeding
-   - ADDED: Missing null/undefined checks throughout
-   - PRESERVED: All existing COPY and COMPARE functionality
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js, js/util-validate-record.js, js/util-validate-ui.js
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - RESTORED: COPY tab functions from v1.06 (loadSourceRecords, loadDestinationRecords, loadGameData, copyRecord, checkDestination, deleteDestination)
+   - RESTORED: COMPARE tab functions from v1.06 (loadCompareRecords, loadCompareRecordsLeft, loadCompareRecordsRight, loadCompareRecordData, performCompare)
+   - REMOVED: Stub functions that depended on non-existent util-copy-record.js and util-compare-record.js
+   - REMOVED: util-copy-record.js and util-compare-record.js from script tags
+   - ADDED: Environment helper functions (getDbForEnv, getCopySourceEnvironment, etc.)
+   - PRESERVED: All VALIDATE tab functionality from v1.08
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js
 STATUS: Ready for integration
 -->
