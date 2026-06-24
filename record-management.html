@@ -1,16 +1,12 @@
 <!--
 FILE: record-management.html
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Record dropdown now shows actual document ID (not truncated)
-   - FIXED: Overflow issues — fields no longer protrude outside frame
-   - FIXED: Full browser screen utilization with responsive design
-   - FIXED: Improved container max-width for better use of screen space
-   - FIXED: Game select option text now shows full record ID with date
-   - FIXED: Compare side panels now properly contain content
-   - FIXED: Text overflow with ellipsis where needed
-   - IMPROVED: Layout optimized for mobile and desktop
-   - PRESERVED: All functionality from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Compare tab — Left record no longer resets when Right record is selected
+   - FIXED: Environment buttons — Grey when inactive, Green when active (PROD and DEV)
+   - CHANGED: "Load Records" button moved to stack naturally above Compare button
+   - IMPROVED: User flow in Compare tab — select collections, load records, then compare
+   - PRESERVED: All functionality from v1.01
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
@@ -141,14 +137,18 @@ STATUS: Ready for integration
             border: 2px solid;
             background: #1a1a1a;
             transition: all 0.2s ease;
+            color: #555;
+            border-color: #333;
         }
         
+        /* PRODUCTION button - default (grey) */
         .env-btn-prod {
-            border-color: #4caf50;
-            color: #4caf50;
+            border-color: #333;
+            color: #555;
             background: #1a1a1a;
         }
         
+        /* PRODUCTION button - active (green) */
         .env-btn-prod.env-active {
             background: #1a3a1a;
             border-color: #4caf50;
@@ -156,17 +156,19 @@ STATUS: Ready for integration
             box-shadow: 0 0 12px rgba(76, 175, 80, 0.6);
         }
         
+        /* DEVELOPMENT button - default (grey) */
         .env-btn-dev {
-            border-color: #ffaa44;
-            color: #ffaa44;
+            border-color: #333;
+            color: #555;
             background: #1a1a1a;
         }
         
+        /* DEVELOPMENT button - active (green) */
         .env-btn-dev.env-active {
-            background: #2a2a1a;
-            border-color: #ffaa44;
-            color: #ffaa44;
-            box-shadow: 0 0 12px rgba(255, 170, 68, 0.6);
+            background: #1a3a1a;
+            border-color: #4caf50;
+            color: #4caf50;
+            box-shadow: 0 0 12px rgba(76, 175, 80, 0.6);
         }
         
         .env-btn:active {
@@ -337,6 +339,12 @@ STATUS: Ready for integration
             color: #4a8af4;
         }
         
+        .btn-load {
+            background: #1a2a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+        
         .log {
             background: #0a0a0a;
             border-radius: 12px;
@@ -412,14 +420,14 @@ STATUS: Ready for integration
         }
         
         .env-indicator-dev {
-            background: #2a2a1a;
-            color: #ffaa44;
-            border: 1px solid #ffaa44;
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
         }
         
         .env-indicator-none {
             background: #1a1a1a;
-            color: #888;
+            color: #555;
             border: 1px solid #333;
         }
         
@@ -568,29 +576,6 @@ STATUS: Ready for integration
             overflow-x: hidden;
         }
         
-        .scrollable-select {
-            max-width: 100%;
-            overflow: hidden;
-        }
-        
-        .inline-flex {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        
-        .flex-1 {
-            flex: 1;
-            min-width: 0;
-        }
-        
-        .text-ellipsis {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
         .select-wrapper {
             position: relative;
             width: 100%;
@@ -612,14 +597,12 @@ STATUS: Ready for integration
             pointer-events: none;
         }
         
-        /* Fix for option text wrapping */
         select option {
             white-space: normal !important;
             word-break: break-all !important;
             padding: 4px 8px !important;
         }
         
-        /* Compact mode for compare side */
         .compare-side .game-info {
             font-size: 0.65rem;
             padding: 8px;
@@ -642,6 +625,18 @@ STATUS: Ready for integration
         .compare-side .collection-select {
             font-size: 0.75rem;
             padding: 10px 14px;
+        }
+        
+        /* Action row for compare tab — natural stacking */
+        .compare-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        
+        .compare-actions .btn {
+            margin-top: 0;
         }
     </style>
 </head>
@@ -679,7 +674,6 @@ STATUS: Ready for integration
     <!-- TAB: COPY -->
     <!-- ============================================================ -->
     <div class="tab-content active" id="tabCopy">
-        <!-- Step 2 & 3: Source & Destination Collections -->
         <div class="card">
             <div class="card-title">📂 STEP 1: COLLECTIONS</div>
             
@@ -709,7 +703,6 @@ STATUS: Ready for integration
             <button id="loadSourceBtn" class="btn btn-secondary" style="margin-top:8px;">🔄 Load Source Records</button>
         </div>
         
-        <!-- Step 4: Source Record -->
         <div class="card">
             <div class="card-title">📄 STEP 2: SOURCE RECORD</div>
             <div class="select-wrapper">
@@ -720,7 +713,6 @@ STATUS: Ready for integration
             <div id="gameInfo" style="display:none;"></div>
         </div>
         
-        <!-- Step 5: Date Setting -->
         <div class="card">
             <div class="card-title">📅 STEP 3: DATE SETTING</div>
             <div class="date-row">
@@ -733,7 +725,6 @@ STATUS: Ready for integration
             <input type="date" id="customDate" style="display:none; margin-top:8px;">
         </div>
         
-        <!-- Step 6: Destination Document Name -->
         <div class="card">
             <div class="card-title">📝 STEP 4: DESTINATION DOCUMENT NAME</div>
             <input type="text" id="destDocId" placeholder="Enter destination document ID" value="">
@@ -742,7 +733,6 @@ STATUS: Ready for integration
             </div>
         </div>
         
-        <!-- Step 7: Execute -->
         <div class="card">
             <div class="card-title">🚀 STEP 5: EXECUTE</div>
             <div class="button-group">
@@ -801,8 +791,9 @@ STATUS: Ready for integration
                 </div>
             </div>
             
-            <div class="button-group" style="margin-top:12px;">
-                <button id="compareLoadBtn" class="btn btn-secondary">🔄 Load Records</button>
+            <!-- Actions stacked naturally -->
+            <div class="compare-actions">
+                <button id="compareLoadBtn" class="btn btn-load">🔄 Load Records</button>
                 <button id="compareBtn" class="btn btn-compare">🔍 COMPARE</button>
             </div>
         </div>
@@ -829,15 +820,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.01</div>
+<div class="version-tag">v1.02</div>
 
 <script>
 // ============================================================
 // FILE: record-management.html
-// VERSION: 1.01
+// VERSION: 1.02
 // ============================================================
 
-var APP_VERSION = "1.01";
+var APP_VERSION = "1.02";
 var currentDb = null;
 var currentEnv = null;
 var currentGameData = null;
@@ -845,11 +836,13 @@ var currentGameId = null;
 var currentSourceCollection = 'scheduledGames';
 var currentDestCollection = 'scheduledGames';
 
-// Compare state
+// Compare state - independent tracking
 var leftData = null;
 var rightData = null;
 var leftId = null;
 var rightId = null;
+var leftRecordsLoaded = false;
+var rightRecordsLoaded = false;
 
 // Firebase Configurations
 var PROD_CONFIG = {
@@ -959,6 +952,7 @@ function updateEnvironmentUI(env) {
     var envIndicator = document.getElementById('envIndicator');
     var warningDiv = document.getElementById('envWarning');
     
+    // Reset both buttons to default (grey)
     prodBtn.classList.remove('env-active');
     devBtn.classList.remove('env-active');
     
@@ -1017,10 +1011,17 @@ function setEnvironment(env) {
     currentGameData = null;
     currentGameId = null;
     
-    // Auto-load records for COPY tab
-    loadSourceRecords();
+    // Reset compare state
+    leftData = null;
+    rightData = null;
+    leftId = null;
+    rightId = null;
+    document.getElementById('compareLeftInfo').style.display = 'none';
+    document.getElementById('compareRightInfo').style.display = 'none';
+    document.getElementById('compareResults').style.display = 'none';
     
-    // Auto-load records for COMPARE tab
+    // Auto-load records
+    loadSourceRecords();
     loadCompareRecords();
 }
 
@@ -1063,7 +1064,6 @@ function loadSourceRecords() {
                 option.value = doc.id;
                 var displayDate = data.date || 'No date';
                 var courseName = data.course ? data.course.name : 'Unknown';
-                // Show full document ID with date and course
                 option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
                 option.dataset.date = displayDate;
                 option.dataset.course = courseName;
@@ -1351,7 +1351,7 @@ function deleteDestination() {
 }
 
 // ============================================================
-// COMPARE TAB: LOAD RECORDS
+// COMPARE TAB: LOAD RECORDS (INDEPENDENT SIDES)
 // ============================================================
 
 function loadCompareRecords() {
@@ -1359,9 +1359,10 @@ function loadCompareRecords() {
         return;
     }
     
-    // Load left records
+    // Load LEFT records
     var leftCollection = document.getElementById('compareLeftCollection').value;
     var leftSelect = document.getElementById('compareLeftRecord');
+    var currentLeftValue = leftSelect.value;
     leftSelect.innerHTML = '<option value="">Loading...</option>';
     leftSelect.disabled = true;
     
@@ -1380,12 +1381,29 @@ function loadCompareRecords() {
                     option.value = doc.id;
                     var displayDate = data.date || 'No date';
                     var courseName = data.course ? data.course.name : 'Unknown';
-                    // Show full document ID with date
                     option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                    option.dataset.date = displayDate;
-                    option.dataset.course = courseName;
                     leftSelect.appendChild(option);
                 });
+            }
+            
+            // Restore selection if it still exists
+            if (currentLeftValue) {
+                var options = leftSelect.options;
+                for (var i = 0; i < options.length; i++) {
+                    if (options[i].value === currentLeftValue) {
+                        leftSelect.value = currentLeftValue;
+                        break;
+                    }
+                }
+            }
+            
+            // If selection was restored, load its data
+            if (leftSelect.value) {
+                loadCompareRecordData('left');
+            } else {
+                leftData = null;
+                leftId = null;
+                document.getElementById('compareLeftInfo').style.display = 'none';
             }
         })
         .catch(function() {
@@ -1393,9 +1411,10 @@ function loadCompareRecords() {
             leftSelect.disabled = false;
         });
     
-    // Load right records
+    // Load RIGHT records
     var rightCollection = document.getElementById('compareRightCollection').value;
     var rightSelect = document.getElementById('compareRightRecord');
+    var currentRightValue = rightSelect.value;
     rightSelect.innerHTML = '<option value="">Loading...</option>';
     rightSelect.disabled = true;
     
@@ -1415,10 +1434,28 @@ function loadCompareRecords() {
                     var displayDate = data.date || 'No date';
                     var courseName = data.course ? data.course.name : 'Unknown';
                     option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
-                    option.dataset.date = displayDate;
-                    option.dataset.course = courseName;
                     rightSelect.appendChild(option);
                 });
+            }
+            
+            // Restore selection if it still exists
+            if (currentRightValue) {
+                var options = rightSelect.options;
+                for (var i = 0; i < options.length; i++) {
+                    if (options[i].value === currentRightValue) {
+                        rightSelect.value = currentRightValue;
+                        break;
+                    }
+                }
+            }
+            
+            // If selection was restored, load its data
+            if (rightSelect.value) {
+                loadCompareRecordData('right');
+            } else {
+                rightData = null;
+                rightId = null;
+                document.getElementById('compareRightInfo').style.display = 'none';
             }
         })
         .catch(function() {
@@ -1448,6 +1485,7 @@ function loadCompareRecordData(side) {
         document.getElementById(infoId).style.display = 'none';
         if (side === 'left') { leftData = null; leftId = null; }
         else { rightData = null; rightId = null; }
+        document.getElementById('compareResults').style.display = 'none';
         return;
     }
     
@@ -1500,6 +1538,7 @@ function loadCompareRecordData(side) {
                 document.getElementById(infoId).style.display = 'none';
                 if (side === 'left') { leftData = null; leftId = null; }
                 else { rightData = null; rightId = null; }
+                document.getElementById('compareResults').style.display = 'none';
                 log('Record not found: ' + recordId, 'error');
             }
         })
@@ -1507,6 +1546,7 @@ function loadCompareRecordData(side) {
             document.getElementById(infoId).style.display = 'none';
             if (side === 'left') { leftData = null; leftId = null; }
             else { rightData = null; rightId = null; }
+            document.getElementById('compareResults').style.display = 'none';
             log('Error loading ' + side + ' record: ' + err.message, 'error');
         });
 }
@@ -1593,7 +1633,6 @@ function compareObjects(obj1, obj2, path) {
             return;
         }
         
-        // Both are objects (non-array, non-null)
         if (val1 !== null && val2 !== null && 
             typeof val1 === 'object' && typeof val2 === 'object' &&
             !Array.isArray(val1) && !Array.isArray(val2)) {
@@ -1604,7 +1643,6 @@ function compareObjects(obj1, obj2, path) {
             return;
         }
         
-        // Both are arrays
         if (Array.isArray(val1) && Array.isArray(val2)) {
             if (val1.length !== val2.length) {
                 diffs.push({
@@ -1636,7 +1674,6 @@ function compareObjects(obj1, obj2, path) {
             return;
         }
         
-        // Primitive values
         if (val1 === val2) {
             matches.push({
                 path: currentPath,
@@ -1746,44 +1783,145 @@ function displayCompareResults(results) {
 // ============================================================
 
 document.getElementById('compareLeftCollection').addEventListener('change', function() {
-    loadCompareRecords();
+    // Reset left side data when collection changes
     leftData = null;
     leftId = null;
     document.getElementById('compareLeftInfo').style.display = 'none';
     document.getElementById('compareResults').style.display = 'none';
+    // Reload left records only
+    loadCompareRecordsLeft();
 });
 
 document.getElementById('compareRightCollection').addEventListener('change', function() {
-    loadCompareRecords();
+    // Reset right side data when collection changes
     rightData = null;
     rightId = null;
     document.getElementById('compareRightInfo').style.display = 'none';
     document.getElementById('compareResults').style.display = 'none';
+    // Reload right records only
+    loadCompareRecordsRight();
 });
 
 document.getElementById('compareLeftRecord').addEventListener('change', function() {
-    loadCompareRecordData('left');
     document.getElementById('compareResults').style.display = 'none';
+    loadCompareRecordData('left');
 });
 
 document.getElementById('compareRightRecord').addEventListener('change', function() {
-    loadCompareRecordData('right');
     document.getElementById('compareResults').style.display = 'none';
+    loadCompareRecordData('right');
 });
 
 document.getElementById('compareLoadBtn').addEventListener('click', function() {
     loadCompareRecords();
-    leftData = null;
-    rightData = null;
-    leftId = null;
-    rightId = null;
-    document.getElementById('compareLeftInfo').style.display = 'none';
-    document.getElementById('compareRightInfo').style.display = 'none';
-    document.getElementById('compareResults').style.display = 'none';
     log('Compare records reloaded', 'info');
 });
 
 document.getElementById('compareBtn').addEventListener('click', performCompare);
+
+// ============================================================
+// COMPARE TAB: INDEPENDENT LOAD FUNCTIONS
+// ============================================================
+
+function loadCompareRecordsLeft() {
+    if (!currentDb) return;
+    
+    var collection = document.getElementById('compareLeftCollection').value;
+    var select = document.getElementById('compareLeftRecord');
+    var currentValue = select.value;
+    
+    select.innerHTML = '<option value="">Loading...</option>';
+    select.disabled = true;
+    
+    currentDb.collection(collection)
+        .orderBy('date', 'desc')
+        .limit(100)
+        .get()
+        .then(function(snapshot) {
+            select.innerHTML = '<option value="">-- Select left record --</option>';
+            select.disabled = false;
+            
+            if (!snapshot.empty) {
+                snapshot.forEach(function(doc) {
+                    var data = doc.data();
+                    var option = document.createElement('option');
+                    option.value = doc.id;
+                    var displayDate = data.date || 'No date';
+                    var courseName = data.course ? data.course.name : 'Unknown';
+                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
+                    select.appendChild(option);
+                });
+            }
+            
+            if (currentValue) {
+                var options = select.options;
+                for (var i = 0; i < options.length; i++) {
+                    if (options[i].value === currentValue) {
+                        select.value = currentValue;
+                        break;
+                    }
+                }
+            }
+            
+            if (select.value) {
+                loadCompareRecordData('left');
+            }
+        })
+        .catch(function() {
+            select.innerHTML = '<option value="">-- Error loading --</option>';
+            select.disabled = false;
+        });
+}
+
+function loadCompareRecordsRight() {
+    if (!currentDb) return;
+    
+    var collection = document.getElementById('compareRightCollection').value;
+    var select = document.getElementById('compareRightRecord');
+    var currentValue = select.value;
+    
+    select.innerHTML = '<option value="">Loading...</option>';
+    select.disabled = true;
+    
+    currentDb.collection(collection)
+        .orderBy('date', 'desc')
+        .limit(100)
+        .get()
+        .then(function(snapshot) {
+            select.innerHTML = '<option value="">-- Select right record --</option>';
+            select.disabled = false;
+            
+            if (!snapshot.empty) {
+                snapshot.forEach(function(doc) {
+                    var data = doc.data();
+                    var option = document.createElement('option');
+                    option.value = doc.id;
+                    var displayDate = data.date || 'No date';
+                    var courseName = data.course ? data.course.name : 'Unknown';
+                    option.textContent = doc.id + ' | ' + displayDate + ' | ' + courseName;
+                    select.appendChild(option);
+                });
+            }
+            
+            if (currentValue) {
+                var options = select.options;
+                for (var i = 0; i < options.length; i++) {
+                    if (options[i].value === currentValue) {
+                        select.value = currentValue;
+                        break;
+                    }
+                }
+            }
+            
+            if (select.value) {
+                loadCompareRecordData('right');
+            }
+        })
+        .catch(function() {
+            select.innerHTML = '<option value="">-- Error loading --</option>';
+            select.disabled = false;
+        });
+}
 
 // ============================================================
 // UTILITY
@@ -1858,11 +1996,11 @@ document.getElementById('gameSelect').onchange = function() {
 initFirebase();
 initDateToggle();
 
-log('Record Management v1.01 loaded', 'success');
+log('Record Management v1.02 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
-log('1. Select PROD or DEV', 'info');
+log('1. Select PROD or DEV (both turn GREEN when active)', 'info');
 log('2. COPY tab: copy records between collections', 'info');
-log('3. COMPARE tab: field-by-field comparison', 'info');
+log('3. COMPARE tab: field-by-field comparison (independent selection)', 'info');
 log('=====================================', 'info');
 </script>
 </body>
@@ -1870,17 +2008,13 @@ log('=====================================', 'info');
 
 <!--
 FILE: record-management.html
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Record dropdown now shows actual document ID (not truncated)
-   - FIXED: Overflow issues — fields no longer protrude outside frame
-   - FIXED: Full browser screen utilization with responsive design
-   - FIXED: Improved container max-width for better use of screen space
-   - FIXED: Game select option text now shows full record ID with date
-   - FIXED: Compare side panels now properly contain content
-   - FIXED: Text overflow with ellipsis where needed
-   - IMPROVED: Layout optimized for mobile and desktop
-   - PRESERVED: All functionality from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: Compare tab — Left record no longer resets when Right record is selected
+   - FIXED: Environment buttons — Grey when inactive, Green when active (PROD and DEV)
+   - CHANGED: "Load Records" button moved to stack naturally above Compare button
+   - IMPROVED: User flow in Compare tab — select collections, load records, then compare
+   - PRESERVED: All functionality from v1.01
 DEPENDS ON: Firebase Firestore (Firebase SDK loaded via CDN)
 STATUS: Ready for integration
 -->
