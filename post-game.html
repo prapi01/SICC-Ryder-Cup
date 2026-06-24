@@ -1,12 +1,14 @@
 <!--
 FILE: post-game.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: html2canvas library for celebration image capture
-   - All existing functionality preserved from v1.06
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - ADDED: celebration-photo.js script tag
+   - ADDED: wrv.js script tag
+   - CHANGED: onSeeResultsClick() now calls copyCelebrationPhoto() before celebration
+   - All existing functionality preserved from v1.07
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, 
              js/game-loader.js, js/sign-card.js, js/history-record.js, 
-             js/firebase-retry.js, js/settings.js, html2canvas
+             js/firebase-retry.js, js/settings.js, js/celebration-photo.js, js/wrv.js, html2canvas
 STATUS: Ready for integration
 -->
 
@@ -23,19 +25,24 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     
-    <script src="js/firebase-config.js?v=1.07"></script>
-    <script src="js/session.js?v=1.07"></script>
-    <script src="js/settings.js?v=1.07"></script>
-    <script src="js/modal.js?v=1.07"></script>
-    <script src="js/waiting-screen.js?v=1.07"></script>
+    <script src="js/firebase-config.js?v=1.08"></script>
+    <script src="js/session.js?v=1.08"></script>
+    <script src="js/settings.js?v=1.08"></script>
+    <script src="js/modal.js?v=1.08"></script>
+    <script src="js/waiting-screen.js?v=1.08"></script>
     <script src="js/game-order.js?v=1.00"></script>
-    <script src="js/game-data.js?v=2.07"></script>
+    <script src="js/game-data.js?v=2.08"></script>
     <script src="js/game-match.js?v=2.25"></script>
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
     <script src="js/history-record.js?v=3.05"></script>
-    <script src="js/sign-card.js?v=1.20"></script>
+    
+    <!-- v1.08: New modules -->
+    <script src="js/celebration-photo.js?v=1.00"></script>
+    <script src="js/wrv.js?v=1.00"></script>
+    
+    <script src="js/sign-card.js?v=1.21"></script>
     <script src="js/firebase-retry.js"></script>
     
     <style>
@@ -258,7 +265,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.07</div>
+<div class="version-tag">v1.08</div>
 
 <script>
 // ============================================================
@@ -271,10 +278,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.07: Added html2canvas for celebration capture
+// VERSION CACHE-BUSTING - v1.08: Added celebration-photo.js and wrv.js
 // ============================================================
-var APP_VERSION = "1.07";
-var CACHE_KEY = "post_game_version_v107";
+var APP_VERSION = "1.08";
+var CACHE_KEY = "post_game_version_v108";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -291,8 +298,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.07";
-console.log("[POST-GAME] Initializing v1.07 - Added html2canvas for celebration capture");
+window.POST_GAME_PAGE_VERSION = "1.08";
+console.log("[POST-GAME] Initializing v1.08 - Added celebration-photo.js and wrv.js");
 
 // ============================================================
 // Main Logic
@@ -601,7 +608,7 @@ function updateScheduledGameStatus() {
 }
 
 // ============================================================
-// v1.06: SEE RESULTS button handler
+// v1.08: SEE RESULTS button handler - UPDATED with copyCelebrationPhoto
 // ============================================================
 
 function onSeeResultsClick() {
@@ -636,20 +643,52 @@ function onSeeResultsClick() {
     console.log("  - teamBScore:", teamBScore);
     console.log("  - gameId:", gameId);
     
-    if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-        SignCard.showCelebrationScreen(
-            winner,
-            teamAScore,
-            teamBScore,
-            winningPlayers,
-            gameId,
-            function() {
-                console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
+    // v1.08: Copy celebration photo from GitHub to Firebase Storage first
+    if (typeof copyCelebrationPhoto === 'function') {
+        console.log("[POST-GAME] 📸 Copying celebration photo to Firebase Storage...");
+        copyCelebrationPhoto(gameId, function(err) {
+            if (err) {
+                console.warn("[POST-GAME] ⚠️ Failed to copy celebration photo:", err.message);
+                console.warn("[POST-GAME] Continuing with celebration using GitHub fallback...");
+            } else {
+                console.log("[POST-GAME] ✅ Celebration photo copied to Firebase Storage");
             }
-        );
+            
+            // Now show celebration screen
+            if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+                SignCard.showCelebrationScreen(
+                    winner,
+                    teamAScore,
+                    teamBScore,
+                    winningPlayers,
+                    gameId,
+                    function() {
+                        console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
+                    }
+                );
+            } else {
+                console.error("[POST-GAME] SignCard.showCelebrationScreen not available");
+                window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+            }
+        });
     } else {
-        console.error("[POST-GAME] SignCard.showCelebrationScreen not available");
-        window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+        console.warn("[POST-GAME] copyCelebrationPhoto not available, using fallback");
+        // Fallback: Just show celebration without photo copy
+        if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+            SignCard.showCelebrationScreen(
+                winner,
+                teamAScore,
+                teamBScore,
+                winningPlayers,
+                gameId,
+                function() {
+                    console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
+                }
+            );
+        } else {
+            console.error("[POST-GAME] SignCard.showCelebrationScreen not available");
+            window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+        }
     }
 }
 
@@ -801,13 +840,14 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: html2canvas library for celebration image capture
-   - ADDED: Firebase Storage SDK for image upload
-   - All existing functionality preserved from v1.06
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - ADDED: celebration-photo.js script tag
+   - ADDED: wrv.js script tag
+   - CHANGED: onSeeResultsClick() now calls copyCelebrationPhoto() before celebration
+   - All existing functionality preserved from v1.07
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, 
              js/game-loader.js, js/sign-card.js, js/history-record.js, 
-             js/firebase-retry.js, js/settings.js, html2canvas
+             js/firebase-retry.js, js/settings.js, js/celebration-photo.js, js/wrv.js, html2canvas
 STATUS: Ready for integration
 -->
