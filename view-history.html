@@ -1,13 +1,12 @@
 <!--
 FILE: view-history.html
-VERSION: 8.33
-KEY CHANGES from v8.32:
-   - FIXED: Scorecard now uses displayStrk instead of game3.leader for Strk display row
-   - FIXED: Strk values now correctly show margins (A6, B9, etc.) instead of just A/B
-   - CHANGED: renderDetailView() now uses displayStrk for Strk row
-   - CHANGED: renderScorecardView() now uses displayStrk for Strk row
-   - All existing functionality preserved from v8.32
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
+VERSION: 8.34
+KEY CHANGES from v8.33:
+   - ADDED: celebration-photo.js script tag
+   - ADDED: Celebration image display in game list cards
+   - ADDED: getCelebrationPhoto() call to load and display celebration image
+   - All existing functionality preserved from v8.33
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
 
@@ -25,6 +24,7 @@ STATUS: Ready for integration
     <script src="js/settings.js"></script>
     <script src="js/firebase-retry.js"></script>
     <script src="js/modal.js"></script>
+    <script src="js/celebration-photo.js"></script>
     
     <style>
         * {
@@ -115,6 +115,38 @@ STATUS: Ready for integration
             font-size: 0.7rem;
             color: #888888;
             margin-top: 4px;
+        }
+        
+        /* v8.34: Celebration image in game card */
+        .game-celebration {
+            margin: 8px 0 12px 0;
+            text-align: center;
+        }
+        
+        .game-celebration img {
+            max-width: 100%;
+            max-height: 120px;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+            object-fit: cover;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+        
+        .game-celebration img:hover {
+            opacity: 0.8;
+        }
+        
+        .game-celebration-placeholder {
+            font-size: 2.5rem;
+            opacity: 0.3;
+            padding: 8px 0;
+        }
+        
+        .game-celebration-loading {
+            font-size: 1.5rem;
+            opacity: 0.5;
+            padding: 8px 0;
         }
         
         .game-tr-result {
@@ -341,7 +373,7 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v8.33</div>
+<div class="version-tag">v8.34</div>
 
 <script>
 // ============================================================
@@ -354,10 +386,10 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v8.33: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v8.34: Added celebration-photo.js
 // ============================================================
-var APP_VERSION = "8.33";
-var CACHE_KEY = "view_history_version_v833";
+var APP_VERSION = "8.34";
+var CACHE_KEY = "view_history_version_v834";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
@@ -375,8 +407,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.VIEW_HISTORY_VERSION = "8.33";
-console.log("[VIEW-HISTORY] Initializing v8.33 - Fixed Strk display using displayStrk");
+window.VIEW_HISTORY_VERSION = "8.34";
+console.log("[VIEW-HISTORY] Initializing v8.34 - Added celebration image display");
 
 // ============================================================
 // Helper: Parse completedAt safely (handles both string and Firestore Timestamp)
@@ -447,6 +479,41 @@ function escapeHtml(str) {
         if (m === '>') return '&gt;';
         return m;
     });
+}
+
+// ============================================================
+// v8.34: Load and display celebration image
+// ============================================================
+
+function loadCelebrationImage(gameId, containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    
+    // Show loading state
+    container.innerHTML = '<div class="game-celebration-loading">📸</div>';
+    
+    if (typeof getCelebrationPhoto === 'function') {
+        getCelebrationPhoto(gameId, function(err, url) {
+            if (err || !url) {
+                console.log('[VIEW-HISTORY] No celebration photo for:', gameId);
+                container.innerHTML = '<div class="game-celebration-placeholder">🏌️</div>';
+                return;
+            }
+            
+            // Check if it's the GitHub fallback or a real photo
+            var isFallback = url.includes('pages.dev/images/celebration/C.jpg');
+            
+            var imgHtml = '<img src="' + url + '" alt="Celebration" loading="lazy" onclick="window.open(\'' + url + '\', \'_blank\')" title="Click to view full size">';
+            if (isFallback) {
+                imgHtml += '<div style="font-size:0.5rem;color:#444;margin-top:2px;">Default image</div>';
+            }
+            container.innerHTML = imgHtml;
+            console.log('[VIEW-HISTORY] Celebration image loaded for:', gameId);
+        });
+    } else {
+        container.innerHTML = '<div class="game-celebration-placeholder">🏌️</div>';
+        console.warn('[VIEW-HISTORY] getCelebrationPhoto not available');
+    }
 }
 
 // ============================================================
@@ -925,8 +992,7 @@ function renderScorecardView(game) {
 }
 
 // ============================================================
-// Game List Functions - v8.23: Uses grey icon for loading
-// v8.24: Uses Modal.alert for error messages
+// v8.34: Game List Functions - UPDATED with celebration image
 // ============================================================
 
 function enableButtons() {
@@ -1036,11 +1102,18 @@ function renderGameList(games) {
         var teamADisplay = tr.teamA % 1 === 0 ? tr.teamA : tr.teamA.toFixed(1);
         var teamBDisplay = tr.teamB % 1 === 0 ? tr.teamB : tr.teamB.toFixed(1);
         
+        // v8.34: Celebration image container with unique ID
+        var celebrationContainerId = 'celebration_' + i;
+        
         html += `
             <div class="game-card">
                 <div class="game-header">
                     <div class="game-course">⛳ ${escapeHtml(game.courseName)}</div>
                     <div class="game-date">${displayDate}</div>
+                </div>
+                <!-- v8.34: Celebration Image -->
+                <div class="game-celebration" id="${celebrationContainerId}">
+                    <div class="game-celebration-loading">📸</div>
                 </div>
                 <div class="game-tr-result">
                     <div class="tr-scores">
@@ -1079,6 +1152,20 @@ function renderGameList(games) {
     
     container.innerHTML = html;
     console.log("[VIEW-HISTORY] Game list rendered with", games.length, "games");
+    
+    // v8.34: Load celebration images for each game
+    for (var i = 0; i < games.length; i++) {
+        var game = games[i];
+        var containerId = 'celebration_' + i;
+        if (game.originalGameId) {
+            loadCelebrationImage(game.originalGameId, containerId);
+        } else {
+            var containerEl = document.getElementById(containerId);
+            if (containerEl) {
+                containerEl.innerHTML = '<div class="game-celebration-placeholder">🏌️</div>';
+            }
+        }
+    }
     
     dataLoaded = true;
     checkBothReady();
@@ -1212,13 +1299,12 @@ init();
 
 <!--
 FILE: view-history.html
-VERSION: 8.33
-KEY CHANGES from v8.32:
-   - FIXED: Scorecard now uses displayStrk instead of game3.leader for Strk display row
-   - FIXED: Strk values now correctly show margins (A6, B9, etc.) instead of just A/B
-   - CHANGED: renderDetailView() now uses displayStrk for Strk row
-   - CHANGED: renderScorecardView() now uses displayStrk for Strk row
-   - All existing functionality preserved from v8.32
-DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js
+VERSION: 8.34
+KEY CHANGES from v8.33:
+   - ADDED: celebration-photo.js script tag
+   - ADDED: Celebration image display in game list cards
+   - ADDED: getCelebrationPhoto() call to load and display celebration image
+   - All existing functionality preserved from v8.33
+DEPENDS ON: js/firebase-config.js, js/session.js, js/firebase-retry.js, js/modal.js, js/game-order.js, js/game-ui.js, js/hcp-adjust.js, js/settings.js, js/celebration-photo.js
 STATUS: Ready for integration
 -->
