@@ -1,13 +1,17 @@
 <!--
 FILE: post-game.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.04
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: js/history-record.js v3.05 dependency (celebration field support)
+   - CHANGED: js/sign-card.js from v1.18 to v1.20 (complete flow + dummy celebration pointer)
+   - ADDED: Background processing - calculates handicaps and writes to both collections on load
+   - ADDED: "SEE RESULTS" button with status states (Processing → Ready → See Results)
+   - Button is DISABLED during backend work, ENABLED after writes complete
+   - REMOVED: Auto-trigger celebration - user must click "SEE RESULTS"
+   - All existing functionality preserved from v1.05
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, 
+             js/game-loader.js, js/sign-card.js, js/history-record.js, 
+             js/firebase-retry.js, js/settings.js
 STATUS: Ready for integration
 -->
 
@@ -20,18 +24,19 @@ STATUS: Ready for integration
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="js/firebase-config.js?v=1.05"></script>
-    <script src="js/session.js?v=1.05"></script>
-    <script src="js/settings.js?v=1.05"></script>
-    <script src="js/modal.js?v=1.05"></script>
-    <script src="js/waiting-screen.js?v=1.05"></script>
+    <script src="js/firebase-config.js?v=1.06"></script>
+    <script src="js/session.js?v=1.06"></script>
+    <script src="js/settings.js?v=1.06"></script>
+    <script src="js/modal.js?v=1.06"></script>
+    <script src="js/waiting-screen.js?v=1.06"></script>
     <script src="js/game-order.js?v=1.00"></script>
     <script src="js/game-data.js?v=2.07"></script>
     <script src="js/game-match.js?v=2.25"></script>
     <script src="js/game-scorecard.js?v=1.16"></script>
     <script src="js/game-ui.js?v=5.08"></script>
     <script src="js/game-loader.js?v=1.09"></script>
-    <script src="js/sign-card.js?v=1.18"></script>
+    <script src="js/history-record.js?v=3.05"></script>
+    <script src="js/sign-card.js?v=1.20"></script>
     <script src="js/firebase-retry.js"></script>
     
     <style>
@@ -94,6 +99,21 @@ STATUS: Ready for integration
             color: #888;
         }
         
+        .loading-spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 3px solid #333;
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
         .debug {
             text-align: center;
             font-size: 0.6rem;
@@ -101,21 +121,8 @@ STATUS: Ready for integration
             margin-top: 20px;
         }
         
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.95);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10001;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-        }
-        
-        .game-complete-modal {
+        /* Post-Game Modal Styles */
+        .post-game-modal {
             background: #1a1a1a;
             border-radius: 28px;
             padding: 32px 28px;
@@ -123,28 +130,58 @@ STATUS: Ready for integration
             width: 90%;
             text-align: center;
             border: 2px solid #4caf50;
+            margin: 0 auto;
         }
         
-        .game-complete-title {
+        .post-game-title {
             font-size: 1.5rem;
             font-weight: 700;
             color: #ffaa44;
             margin-bottom: 12px;
         }
         
-        .game-complete-message {
+        .post-game-message {
             font-size: 0.9rem;
             color: #ccc;
-            margin-bottom: 16px;
+            margin-bottom: 8px;
             line-height: 1.4;
         }
         
-        .game-complete-emojis {
+        .post-game-submessage {
+            font-size: 0.75rem;
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.3;
+        }
+        
+        .post-game-emojis {
             font-size: 1.5rem;
             margin-bottom: 24px;
         }
         
-        .game-complete-btn {
+        .post-game-status {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 16px;
+            padding: 8px 12px;
+            background: #0a0a0a;
+            border-radius: 12px;
+            font-family: monospace;
+        }
+        
+        .post-game-status .status-ready {
+            color: #4caf50;
+        }
+        
+        .post-game-status .status-processing {
+            color: #ffaa44;
+        }
+        
+        .post-game-status .status-error {
+            color: #ff6b6b;
+        }
+        
+        .post-game-btn {
             background: #1a3a1a;
             border: 1px solid #4caf50;
             color: #4caf50;
@@ -157,12 +194,55 @@ STATUS: Ready for integration
             transition: all 0.2s;
         }
         
-        .game-complete-btn:hover {
+        .post-game-btn:hover:not(:disabled) {
             background: #2a4a2a;
         }
         
-        .game-complete-btn:active {
+        .post-game-btn:active:not(:disabled) {
             transform: scale(0.98);
+        }
+        
+        .post-game-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .post-game-btn .btn-spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #333;
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        
+        .post-game-error {
+            color: #ff6b6b;
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+            padding: 12px;
+            background: rgba(255,107,107,0.1);
+            border-radius: 12px;
+            border: 1px solid #ff6b6b;
+        }
+        
+        .post-game-retry-btn {
+            background: #1a1a1a;
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        
+        .post-game-retry-btn:hover {
+            background: #2a1a1a;
         }
     </style>
 </head>
@@ -170,13 +250,16 @@ STATUS: Ready for integration
 
 <div class="container" id="mainContainer">
     <div id="content">
-        <div class="loading-placeholder">⛳ Loading game data...</div>
+        <div class="loading-placeholder">
+            <div class="loading-spinner"></div>
+            <div>⛳ Loading game data...</div>
+        </div>
     </div>
     <div class="debug" id="debug"></div>
 </div>
 
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.05</div>
+<div class="version-tag">v1.06</div>
 
 <script>
 // ============================================================
@@ -189,16 +272,15 @@ if (typeof AppSettings !== 'undefined') {
 }
 
 // ============================================================
-// VERSION CACHE-BUSTING - v1.05: Preserves all URL parameters
+// VERSION CACHE-BUSTING - v1.06: User clicks SEE RESULTS after backend work
 // ============================================================
-var APP_VERSION = "1.05";
-var CACHE_KEY = "post_game_version_v105";
+var APP_VERSION = "1.06";
+var CACHE_KEY = "post_game_version_v106";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== APP_VERSION) {
     localStorage.setItem(CACHE_KEY, APP_VERSION);
     
-    // Preserve ALL existing URL parameters (gameId, etc.)
     var currentParams = new URLSearchParams(window.location.search);
     currentParams.set('v', APP_VERSION);
     var newUrl = window.location.pathname + "?" + currentParams.toString();
@@ -210,8 +292,8 @@ if (storedVersion !== APP_VERSION) {
 // ============================================================
 // Version Exposure for Console Debugging
 // ============================================================
-window.POST_GAME_PAGE_VERSION = "1.05";
-console.log("[POST-GAME] Initializing v1.05 - Added settings.js zoom control");
+window.POST_GAME_PAGE_VERSION = "1.06";
+console.log("[POST-GAME] Initializing v1.06 - User clicks SEE RESULTS after backend work");
 
 // ============================================================
 // Main Logic
@@ -219,6 +301,8 @@ console.log("[POST-GAME] Initializing v1.05 - Added settings.js zoom control");
 
 var gameId = null;
 var gameData = null;
+var processingComplete = false;
+var processingError = null;
 
 function getUrlParams() {
     var params = new URLSearchParams(window.location.search);
@@ -226,68 +310,382 @@ function getUrlParams() {
     console.log("[POST-GAME] gameId:", gameId);
 }
 
-function showGameCompleteModal() {
+// ============================================================
+// v1.06: Show Post-Game UI with status
+// ============================================================
+
+function showPostGameUI(statusText, statusType, buttonText, buttonEnabled, buttonCallback, errorMessage) {
     var content = document.getElementById('content');
     
-    var html = `
-        <div class="modal-overlay" id="postGameModal" style="position:relative; background:transparent; z-index:auto;">
-            <div class="game-complete-modal">
-                <div class="game-complete-title">🏆 GAME COMPLETED</div>
-                <div class="game-complete-message">Both cards have been signed!</div>
-                <div class="game-complete-emojis">🍺 🏆 🍺</div>
-                <button class="game-complete-btn" id="seeResultsBtn">🏆 SEE RESULTS</button>
+    var statusColor = '';
+    var statusClass = '';
+    if (statusType === 'processing') {
+        statusClass = 'status-processing';
+    } else if (statusType === 'ready') {
+        statusClass = 'status-ready';
+    } else if (statusType === 'error') {
+        statusClass = 'status-error';
+    }
+    
+    var errorHtml = '';
+    if (errorMessage) {
+        errorHtml = `
+            <div class="post-game-error">
+                ⚠️ ${errorMessage}
+                <br><button class="post-game-retry-btn" id="retryBtn">🔄 Retry</button>
             </div>
+        `;
+    }
+    
+    var spinnerHtml = '';
+    if (statusType === 'processing') {
+        spinnerHtml = '<span class="btn-spinner"></span>';
+    }
+    
+    var buttonDisabled = buttonEnabled ? '' : 'disabled';
+    
+    var html = `
+        <div class="post-game-modal">
+            <div class="post-game-title">🏆 GAME COMPLETED</div>
+            <div class="post-game-message">Both cards have been signed!</div>
+            <div class="post-game-submessage">Finalizing game data...</div>
+            <div class="post-game-emojis">🍺 🏆 🍺</div>
+            
+            <div class="post-game-status ${statusClass}">
+                ${statusText}
+            </div>
+            
+            ${errorHtml}
+            
+            <button class="post-game-btn" id="seeResultsBtn" ${buttonDisabled}>
+                ${spinnerHtml} ${buttonText}
+            </button>
         </div>
     `;
     
     content.innerHTML = html;
     
-    document.getElementById('seeResultsBtn').addEventListener('click', function() {
-        console.log("[POST-GAME] SEE RESULTS clicked");
-        
-        // Store celebration data and go to celebration
-        var players = gameData.players || [];
-        var results = gameData.results || {};
-        var tr = results.tr || {};
-        var lastIdx = tr.teamA ? tr.teamA.length - 1 : 0;
-        var teamAScore = tr.teamA ? tr.teamA[lastIdx] : 9.5;
-        var teamBScore = tr.teamB ? tr.teamB[lastIdx] : 9.5;
-        var winner = teamAScore > teamBScore ? 'A' : (teamBScore > teamAScore ? 'B' : 'Tie');
-        
-        var winningPlayers = {
-            teamA: players.filter(function(p) { return p.team === "A"; }),
-            teamB: players.filter(function(p) { return p.team === "B"; })
-        };
-        
-        var celebrationData = {
-            winner: winner,
-            teamAScore: teamAScore,
-            teamBScore: teamBScore,
-            winningPlayers: winningPlayers,
-            gameId: gameId
-        };
-        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
-        window._currentCelebrationData = celebrationData;
-        
-        // Go to celebration
-        if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-            SignCard.showCelebrationScreen(
-                winner,
-                teamAScore,
-                teamBScore,
-                winningPlayers,
-                gameId,
-                function() {
-                    // onClose callback - do NOT navigate automatically
-                    console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
-                }
-            );
-        } else {
-            console.error("[POST-GAME] SignCard not loaded");
-            window.location.href = 'hcp-adjust.html?gameId=' + gameId;
-        }
-    });
+    // Attach button event
+    var btn = document.getElementById('seeResultsBtn');
+    if (btn && buttonEnabled && buttonCallback) {
+        btn.addEventListener('click', buttonCallback);
+    }
+    
+    // Attach retry button
+    var retryBtn = document.getElementById('retryBtn');
+    if (retryBtn) {
+        retryBtn.addEventListener('click', function() {
+            console.log("[POST-GAME] Retry clicked");
+            processingComplete = false;
+            processingError = null;
+            startBackgroundProcessing();
+        });
+    }
 }
+
+// ============================================================
+// v1.06: Background Processing - Calculate & Write
+// ============================================================
+
+function startBackgroundProcessing() {
+    console.log("[POST-GAME] Starting background processing...");
+    
+    // Show processing state
+    showPostGameUI(
+        '⏳ Processing game data...',
+        'processing',
+        '⏳ Processing...',
+        false,
+        null,
+        null
+    );
+    
+    if (typeof SignCard === 'undefined') {
+        showPostGameUI(
+            '❌ Error',
+            'error',
+            '⚠️ Error',
+            false,
+            null,
+            'SignCard module not loaded. Please refresh.'
+        );
+        return;
+    }
+    
+    if (typeof HistoryRecord === 'undefined') {
+        showPostGameUI(
+            '❌ Error',
+            'error',
+            '⚠️ Error',
+            false,
+            null,
+            'HistoryRecord module not loaded. Please refresh.'
+        );
+        return;
+    }
+    
+    // Check if game data is available
+    if (!gameData) {
+        showPostGameUI(
+            '❌ Error',
+            'error',
+            '⚠️ Error',
+            false,
+            null,
+            'Game data not loaded. Please refresh.'
+        );
+        return;
+    }
+    
+    // ============================================================
+    // Step 1: Calculate handicaps
+    // ============================================================
+    console.log("[POST-GAME] Calculating handicap adjustments...");
+    
+    var handicapData = null;
+    try {
+        handicapData = SignCard.calculateAdjustedHandicapsFromGameData(gameData);
+        if (!handicapData) {
+            throw new Error("Failed to calculate handicap data");
+        }
+        console.log("[POST-GAME] Handicap calculation complete:", handicapData.players.length, "players");
+    } catch (err) {
+        console.error("[POST-GAME] Handicap calculation failed:", err);
+        showPostGameUI(
+            '❌ Calculation failed',
+            'error',
+            '⚠️ Error',
+            false,
+            null,
+            'Failed to calculate handicap adjustments: ' + err.message
+        );
+        return;
+    }
+    
+    // ============================================================
+    // Step 2: Write to historyGames
+    // ============================================================
+    var archiveId = gameId + "_H";
+    console.log("[POST-GAME] Writing to historyGames:", archiveId);
+    
+    var finalScores = {
+        teamA: gameData.results?.tr?.teamA?.[17] || 9.5,
+        teamB: gameData.results?.tr?.teamB?.[17] || 9.5
+    };
+    var signatures = gameData.signatures || {};
+    var results = gameData.results || {};
+    var flight1DataString = gameData.f1?.d || "";
+    var flight2DataString = gameData.f2?.d || "";
+    
+    // Get starting players
+    var startingPlayers = gameData.players.map(function(p) {
+        return {
+            name: p.name,
+            label: p.label || '',
+            handicap: p.handicap,
+            team: p.team,
+            flight: p.flight
+        };
+    });
+    
+    // Create or update history record with handicap data + dummy celebration pointer
+    // First check if record exists
+    var db = firebase.firestore();
+    db.collection('historyGames').doc(archiveId).get()
+        .then(function(doc) {
+            var isUpdate = doc.exists;
+            
+            // Add dummy celebration pointer to handicapData
+            handicapData.celebration = {
+                imageRef: "dummy_celebration_image.jpg",
+                capturedAt: new Date().toISOString()
+            };
+            
+            if (isUpdate) {
+                console.log("[POST-GAME] Updating existing history record:", archiveId);
+                // Update existing record
+                HistoryRecord.updateWithHandicap(archiveId, handicapData, startingPlayers, function(err) {
+                    if (err) {
+                        console.error("[POST-GAME] Failed to update history record:", err);
+                        showPostGameUI(
+                            '❌ Write failed',
+                            'error',
+                            '⚠️ Error',
+                            false,
+                            null,
+                            'Failed to update history record: ' + err.message
+                        );
+                        return;
+                    }
+                    console.log("[POST-GAME] historyGames updated successfully");
+                    // Step 3: Update scheduledGames status
+                    updateScheduledGameStatus();
+                });
+            } else {
+                console.log("[POST-GAME] Creating new history record:", archiveId);
+                // Create pending record first
+                HistoryRecord.upsertPendingRecord(
+                    gameId,
+                    gameData,
+                    results,
+                    finalScores,
+                    signatures,
+                    flight1DataString,
+                    flight2DataString,
+                    {},
+                    function(err, newDocId) {
+                        if (err) {
+                            console.error("[POST-GAME] Failed to create pending record:", err);
+                            showPostGameUI(
+                                '❌ Write failed',
+                                'error',
+                                '⚠️ Error',
+                                false,
+                                null,
+                                'Failed to create history record: ' + err.message
+                            );
+                            return;
+                        }
+                        console.log("[POST-GAME] Pending record created:", newDocId);
+                        // Now update with handicap data
+                        HistoryRecord.updateWithHandicap(newDocId, handicapData, startingPlayers, function(err2) {
+                            if (err2) {
+                                console.error("[POST-GAME] Failed to update with handicap:", err2);
+                                showPostGameUI(
+                                    '❌ Write failed',
+                                    'error',
+                                    '⚠️ Error',
+                                    false,
+                                    null,
+                                    'Failed to update history record: ' + err2.message
+                                );
+                                return;
+                            }
+                            console.log("[POST-GAME] historyGames created and updated successfully");
+                            // Step 3: Update scheduledGames status
+                            updateScheduledGameStatus();
+                        });
+                    }
+                );
+            }
+        })
+        .catch(function(err) {
+            console.error("[POST-GAME] Error checking history record:", err);
+            showPostGameUI(
+                '❌ Write failed',
+                'error',
+                '⚠️ Error',
+                false,
+                null,
+                'Error checking history record: ' + err.message
+            );
+        });
+}
+
+// ============================================================
+// Step 3: Update scheduledGames status
+// ============================================================
+
+function updateScheduledGameStatus() {
+    console.log("[POST-GAME] Updating scheduledGames status to 'completed'...");
+    
+    var db = firebase.firestore();
+    var updatePayload = {
+        status: "completed",
+        completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    
+    db.collection('scheduledGames').doc(gameId).update(updatePayload)
+        .then(function() {
+            console.log("[POST-GAME] scheduledGames status updated to 'completed'");
+            
+            // ALL BACKEND WORK COMPLETE!
+            processingComplete = true;
+            processingError = null;
+            
+            // Show READY state with enabled button
+            showPostGameUI(
+                '✅ Ready! Click below to see results.',
+                'ready',
+                '🏆 SEE RESULTS',
+                true,
+                onSeeResultsClick,
+                null
+            );
+        })
+        .catch(function(err) {
+            console.error("[POST-GAME] Failed to update scheduledGames status:", err);
+            showPostGameUI(
+                '❌ Write failed',
+                'error',
+                '⚠️ Error',
+                false,
+                null,
+                'Failed to update game status: ' + err.message
+            );
+        });
+}
+
+// ============================================================
+// v1.06: SEE RESULTS button handler
+// ============================================================
+
+function onSeeResultsClick() {
+    console.log("[POST-GAME] SEE RESULTS clicked - triggering celebration");
+    
+    if (!processingComplete) {
+        console.warn("[POST-GAME] SEE RESULTS clicked but processing not complete");
+        return;
+    }
+    
+    if (!gameData) {
+        console.error("[POST-GAME] No game data available");
+        return;
+    }
+    
+    var players = gameData.players || [];
+    var results = gameData.results || {};
+    var tr = results.tr || {};
+    var lastIdx = tr.teamA ? tr.teamA.length - 1 : 0;
+    var teamAScore = tr.teamA ? tr.teamA[lastIdx] : 9.5;
+    var teamBScore = tr.teamB ? tr.teamB[lastIdx] : 9.5;
+    var winner = teamAScore > teamBScore ? 'A' : (teamBScore > teamAScore ? 'B' : 'Tie');
+    
+    var winningPlayers = {
+        teamA: players.filter(function(p) { return p.team === "A"; }),
+        teamB: players.filter(function(p) { return p.team === "B"; })
+    };
+    
+    console.log("[POST-GAME] Calling SignCard.showCelebrationScreen()");
+    console.log("  - winner:", winner);
+    console.log("  - teamAScore:", teamAScore);
+    console.log("  - teamBScore:", teamBScore);
+    console.log("  - gameId:", gameId);
+    
+    // v1.06: SignCard.showCelebrationScreen() should already have the data
+    // but we pass the data anyway for safety. The writes are already done.
+    if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+        SignCard.showCelebrationScreen(
+            winner,
+            teamAScore,
+            teamBScore,
+            winningPlayers,
+            gameId,
+            function() {
+                console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
+            }
+        );
+    } else {
+        console.error("[POST-GAME] SignCard.showCelebrationScreen not available");
+        // Fallback: navigate to hcp-adjust
+        window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+    }
+}
+
+// ============================================================
+// Load Game Data
+// ============================================================
 
 function loadGameData() {
     if (!gameId) {
@@ -324,6 +722,14 @@ function loadGameData() {
         
         if (!doc.exists) {
             document.getElementById('debug').textContent = 'Error: Game not found';
+            showPostGameUI(
+                '❌ Error',
+                'error',
+                '⚠️ Error',
+                false,
+                null,
+                'Game not found. Please return to main menu.'
+            );
             return;
         }
         
@@ -333,6 +739,14 @@ function loadGameData() {
         // Check if game data is valid
         if (!gameData.players || gameData.players.length === 0) {
             document.getElementById('debug').textContent = 'Error: Invalid game data - no players';
+            showPostGameUI(
+                '❌ Error',
+                'error',
+                '⚠️ Error',
+                false,
+                null,
+                'Invalid game data. Please return to main menu.'
+            );
             return;
         }
         
@@ -348,8 +762,23 @@ function loadGameData() {
             return;
         }
         
-        // Show the GAME COMPLETED modal
-        showGameCompleteModal();
+        // Check if already completed (status check)
+        if (gameData.status === "completed") {
+            console.log("[POST-GAME] Game already completed - showing READY state");
+            processingComplete = true;
+            showPostGameUI(
+                '✅ Already completed! Click below to see results.',
+                'ready',
+                '🏆 SEE RESULTS',
+                true,
+                onSeeResultsClick,
+                null
+            );
+            return;
+        }
+        
+        // v1.06: Start background processing
+        startBackgroundProcessing();
         
     }).catch(function(err) {
         // Hide waiting screen on error
@@ -361,17 +790,20 @@ function loadGameData() {
         console.error("[POST-GAME] Error loading game:", err);
         document.getElementById('debug').textContent = 'Error: ' + err.message;
         
-        // Show retry option
-        var content = document.getElementById('content');
-        content.innerHTML = `
-            <div style="padding:40px 20px; text-align:center;">
-                <div style="font-size:1.2rem; color:#ff6b6b; margin-bottom:16px;">⚠️ Failed to load game</div>
-                <div style="font-size:0.85rem; color:#888; margin-bottom:24px;">${err.message}</div>
-                <button onclick="location.reload()" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:14px 32px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer;">RETRY</button>
-            </div>
-        `;
+        showPostGameUI(
+            '❌ Error',
+            'error',
+            '⚠️ Error',
+            false,
+            null,
+            'Failed to load game: ' + err.message
+        );
     });
 }
+
+// ============================================================
+// Init
+// ============================================================
 
 function init() {
     console.log("[POST-GAME] Initializing...");
@@ -383,7 +815,6 @@ function init() {
         return;
     }
     
-    // SessionManager.getShortNameOnly() is SYNC - no .then()
     try {
         var name = SessionManager.getShortNameOnly();
         document.getElementById('deviceTag').textContent = '🏌️ ' + (name || 'DEV-??');
@@ -407,13 +838,17 @@ if (document.readyState === 'loading') {
 
 <!--
 FILE: post-game.html
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - ADDED: js/settings.js dependency for user preferences
-   - CHANGED: Viewport meta tag now controlled by settings.js
-   - REMOVED: hardcoded user-scalable (now dynamic)
-   - AppSettings.init() called early in page load
-   - All existing functionality preserved from v1.04
-DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: js/history-record.js v3.05 dependency (celebration field support)
+   - CHANGED: js/sign-card.js from v1.18 to v1.20 (complete flow + dummy celebration pointer)
+   - ADDED: Background processing - calculates handicaps and writes to both collections on load
+   - ADDED: "SEE RESULTS" button with status states (Processing → Ready → See Results)
+   - Button is DISABLED during backend work, ENABLED after writes complete
+   - REMOVED: Auto-trigger celebration - user must click "SEE RESULTS"
+   - All existing functionality preserved from v1.05
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, 
+             js/game-loader.js, js/sign-card.js, js/history-record.js, 
+             js/firebase-retry.js, js/settings.js
 STATUS: Ready for integration
 -->
