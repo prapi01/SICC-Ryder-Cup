@@ -1,16 +1,14 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Write-Read-Verify with self-healing and retry
-   - Automatic retry on failure (exponential backoff)
-   - Includes celebration photo check on every write
-   - No user-facing errors - silent retry
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - EXPOSED: MAX_RETRIES, BASE_DELAY, MAX_DELAY for test validation
+   - All existing functionality preserved from v1.00
 DEPENDS ON: Firebase Firestore, celebration-photo.js
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.00";
+window.WRV_VERSION = "1.01";
 
 var WRV = (function() {
     
@@ -112,7 +110,11 @@ var WRV = (function() {
     // Public API
     return {
         write: writeWithWRV,
-        update: updateWithWRV
+        update: updateWithWRV,
+        // Expose configuration for testing
+        MAX_RETRIES: MAX_RETRIES,
+        BASE_DELAY: BASE_DELAY,
+        MAX_DELAY: MAX_DELAY
     };
     
 })();
@@ -122,12 +124,10 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Write-Read-Verify with self-healing and retry
-   - Automatic retry on failure (exponential backoff)
-   - Includes celebration photo check on every write
-   - No user-facing errors - silent retry
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - EXPOSED: MAX_RETRIES, BASE_DELAY, MAX_DELAY for test validation
+   - All existing functionality preserved from v1.00
 DEPENDS ON: Firebase Firestore, celebration-photo.js
 STATUS: Ready for integration
 */
