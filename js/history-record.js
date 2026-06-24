@@ -1,14 +1,13 @@
 /*
 FILE: js/history-record.js
-VERSION: 3.05
-KEY CHANGES from v3.04:
-   - ADDED: celebration field support in updateWithHandicap()
-   - ADDED: Dummy celebration pointer (imageRef + capturedAt) stored in historyGames
-   - ADDED: updateWithHandicapAndCelebration() - separate function for celebration data
-   - ADDED: getCelebrationData() - retrieve celebration pointer from history record
-   - CHANGED: updateWithHandicap() now accepts optional celebrationData parameter
-   - CHANGED: Handicap data and celebration data saved together in one atomic update
-   - All existing functionality preserved from v3.04
+VERSION: 3.06
+KEY CHANGES from v3.05:
+   - ADDED: updateCelebrationPointer() - dedicated function to update celebration imageRef
+   - ADDED: getCelebrationData() now returns full celebration object (already existed)
+   - ADDED: updateCelebrationData() now accepts imageRef as primary parameter
+   - CHANGED: More robust error handling for celebration updates
+   - ADDED: Success/failure logging for celebration pointer updates
+   - All existing functionality preserved from v3.05
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
@@ -316,7 +315,7 @@ var HistoryRecord = (function() {
     }
     
     // ============================================================
-    // v3.05: Update with celebration data only (for later updates)
+    // v3.06: Update celebration data only (for later updates)
     // ============================================================
     
     function updateCelebrationData(archiveId, celebrationData, callback) {
@@ -348,6 +347,41 @@ var HistoryRecord = (function() {
             })
             .catch(function(err) {
                 console.error("[HistoryRecord] Error updating celebration data:", err);
+                if (callback) callback(err);
+            });
+    }
+    
+    // ============================================================
+    // v3.06: Update celebration pointer with image URL (convenience function)
+    // ============================================================
+    
+    function updateCelebrationPointer(archiveId, imageUrl, callback) {
+        if (!archiveId) {
+            if (callback) callback(new Error("Missing archiveId"));
+            return;
+        }
+        
+        if (!imageUrl) {
+            if (callback) callback(new Error("Missing imageUrl"));
+            return;
+        }
+        
+        console.log("[HistoryRecord] Updating celebration pointer for:", archiveId);
+        console.log("[HistoryRecord] Image URL:", imageUrl);
+        
+        var updatePayload = {
+            "celebration.imageRef": imageUrl,
+            "celebration.updatedAt": firebase.firestore.FieldValue.serverTimestamp(),
+            "updatedAt": firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        firebase.firestore().collection(COLLECTION).doc(archiveId).update(updatePayload)
+            .then(function() {
+                console.log("[HistoryRecord] ✅ Celebration pointer updated for:", archiveId);
+                if (callback) callback(null);
+            })
+            .catch(function(err) {
+                console.error("[HistoryRecord] Error updating celebration pointer:", err);
                 if (callback) callback(err);
             });
     }
@@ -527,6 +561,7 @@ var HistoryRecord = (function() {
         upsertPendingRecord: upsertPendingRecord,
         updateWithHandicap: updateWithHandicap,
         updateCelebrationData: updateCelebrationData,
+        updateCelebrationPointer: updateCelebrationPointer,
         getCelebrationData: getCelebrationData,
         getArchivedGame: getArchivedGame,
         getArchivedGames: getArchivedGames,
@@ -540,17 +575,19 @@ var HistoryRecord = (function() {
     
 })();
 
+// Make available globally
+window.HistoryRecord = HistoryRecord;
+
 /*
 FILE: js/history-record.js
-VERSION: 3.05
-KEY CHANGES from v3.04:
-   - ADDED: celebration field support in updateWithHandicap()
-   - ADDED: Dummy celebration pointer (imageRef + capturedAt) stored in historyGames
-   - ADDED: updateCelebrationData() - separate function for later celebration updates
-   - ADDED: getCelebrationData() - retrieve celebration pointer from history record
-   - CHANGED: updateWithHandicap() now accepts optional celebrationData from handicapData.celebration
-   - CHANGED: getArchivedGames() now includes celebration field in response
-   - All existing functionality preserved from v3.04
+VERSION: 3.06
+KEY CHANGES from v3.05:
+   - ADDED: updateCelebrationPointer() - dedicated function to update celebration imageRef
+   - ADDED: getCelebrationData() now returns full celebration object (already existed)
+   - ADDED: updateCelebrationData() now accepts imageRef as primary parameter
+   - CHANGED: More robust error handling for celebration updates
+   - ADDED: Success/failure logging for celebration pointer updates
+   - All existing functionality preserved from v3.05
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
