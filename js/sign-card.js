@@ -1,15 +1,16 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - ADDED: captureCelebrationImage() - captures screenshot of celebration modal
-   - ADDED: uploadCelebrationImage() - uploads image to Firebase Storage
-   - ADDED: updateCelebrationPointer() - updates historyGames with real image URL
-   - ADDED: html2canvas integration for automatic screenshot capture
-   - CHANGED: renderCelebrationModal() now triggers capture 2.5s after render
-   - ADDED: Background image upload - user unaffected, happens silently
-   - All existing functionality preserved from v1.20
-DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, html2canvas
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - ADDED: cropAndBrighten() - removes padding and brightens image
+   - ADDED: storeCelebrationImageInFirestore() - stores Base64 directly
+   - CHANGED: captureCelebrationImage() - now crops and brightens
+   - CHANGED: Removed Firebase Storage dependency (no CORS issues)
+   - CHANGED: Pure black background for capture
+   - CHANGED: 20% brightness enhancement for vibrant images
+   - FIXED: No more dim filter effect on captured images
+   - FIXED: Removed empty padding from captured images
+DEPENDS ON: Firebase Firestore, html2canvas
 STATUS: Ready for integration
 */
 
@@ -20,13 +21,6 @@ var SignCard = (function() {
     // ============================================================
     function getDb() {
         return firebase.firestore();
-    }
-    
-    // ============================================================
-    // Helper: Get Storage instance
-    // ============================================================
-    function getStorage() {
-        return firebase.storage();
     }
     
     // ============================================================
@@ -61,7 +55,6 @@ var SignCard = (function() {
             var p = players[i];
             var total = playerTotals[p.name];
             
-            // Calculate performance adjustment (relativeToPar / holesPlayed)
             var perfAdj = 0;
             var perfRaw = 0;
             if (total && total.holesPlayed > 0) {
@@ -69,11 +62,8 @@ var SignCard = (function() {
                 perfAdj = Math.round((total.relativeToPar / total.holesPlayed) * 10) / 10;
             }
             
-            // Calculate anchor adjustment (player handicap - anchor handicap)
             var anchorAdj = p.handicap - minHcp;
             var anchorRaw = anchorAdj;
-            
-            // Calculate final handicap (startingHcp + anchorAdj + perfAdj)
             var finalHcp = Math.round((p.handicap + anchorAdj + perfAdj) * 10) / 10;
             
             playerList.push({
@@ -133,7 +123,6 @@ var SignCard = (function() {
     function completeGameInBothCollections(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
         console.log("[SignCard] Starting completeGameInBothCollections for:", gameId);
         
-        // Step 1: Create/update historyGames record with handicap data
         ensureArchiveRecordComplete(
             gameId,
             gameData,
@@ -152,7 +141,6 @@ var SignCard = (function() {
                 
                 console.log("[SignCard] historyGames record completed:", archiveId);
                 
-                // Step 2: Update scheduledGames status to "completed"
                 updateScheduledGameStatus(gameId, function(err2) {
                     if (err2) {
                         console.error("[SignCard] Failed to update scheduledGames status:", err2);
@@ -169,17 +157,14 @@ var SignCard = (function() {
     
     // ============================================================
     // Helper: Get or create archive record, then complete it
-    // v1.20: Added dummy celebration pointer
     // ============================================================
     
     function ensureArchiveRecordComplete(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, callback) {
-        // First, create the pending record if it doesn't exist
         if (typeof HistoryRecord === 'undefined') {
             if (callback) callback(new Error("HistoryRecord not available"), null);
             return;
         }
         
-        // Check if record exists
         var docId = HistoryRecord.getHistoryDocId(gameId);
         var db = getDb();
         
@@ -188,17 +173,14 @@ var SignCard = (function() {
                 var isUpdate = doc.exists;
                 
                 if (isUpdate) {
-                    // Record exists - update it with handicap data and celebration pointer
                     console.log("[SignCard] Record exists, updating with handicap:", docId);
                     
-                    // Calculate handicap data from game data
                     var handicapData = calculateAdjustedHandicapsFromGameData(gameData);
                     if (!handicapData) {
                         if (callback) callback(new Error("Failed to calculate handicap data"), null);
                         return;
                     }
                     
-                    // Get starting players from game data
                     var startingPlayers = gameData.players.map(function(p) {
                         return {
                             name: p.name,
@@ -209,13 +191,12 @@ var SignCard = (function() {
                         };
                     });
                     
-                    // v1.20: Add dummy celebration pointer to handicapData
+                    // Add dummy celebration pointer
                     handicapData.celebration = {
                         imageRef: "dummy_celebration_image.jpg",
                         capturedAt: new Date().toISOString()
                     };
                     
-                    // Call updateWithHandicap
                     HistoryRecord.updateWithHandicap(docId, handicapData, startingPlayers, function(err) {
                         if (err) {
                             console.error("[SignCard] Failed to update with handicap:", err);
@@ -227,7 +208,6 @@ var SignCard = (function() {
                     });
                     
                 } else {
-                    // Record doesn't exist - create pending record first, then complete it
                     console.log("[SignCard] Record doesn't exist, creating and completing:", docId);
                     
                     HistoryRecord.upsertPendingRecord(gameId, gameData, results, finalScores, signatures, flight1DataString, flight2DataString, matchResults, function(err, newDocId) {
@@ -237,7 +217,6 @@ var SignCard = (function() {
                             return;
                         }
                         
-                        // Now calculate handicap data and update
                         var handicapData = calculateAdjustedHandicapsFromGameData(gameData);
                         if (!handicapData) {
                             if (callback) callback(new Error("Failed to calculate handicap data"), null);
@@ -254,7 +233,6 @@ var SignCard = (function() {
                             };
                         });
                         
-                        // v1.20: Add dummy celebration pointer to handicapData
                         handicapData.celebration = {
                             imageRef: "dummy_celebration_image.jpg",
                             capturedAt: new Date().toISOString()
@@ -330,11 +308,88 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.21: Capture celebration image using html2canvas
+    // v1.23: Crop and brighten the captured image
+    // ============================================================
+    
+    function cropAndBrighten(canvas, brightnessFactor) {
+        // brightnessFactor: 1.0 = original, 1.2 = 20% brighter
+        brightnessFactor = brightnessFactor || 1.2;
+        
+        return new Promise(function(resolve) {
+            // Crop: remove 5% padding from each side
+            var cropX = Math.round(canvas.width * 0.05);
+            var cropY = Math.round(canvas.height * 0.05);
+            var cropW = Math.round(canvas.width * 0.90);
+            var cropH = Math.round(canvas.height * 0.90);
+            
+            var croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = cropW;
+            croppedCanvas.height = cropH;
+            var ctx = croppedCanvas.getContext('2d');
+            
+            // Draw the cropped image
+            ctx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+            
+            // --- BRIGHTEN THE IMAGE ---
+            var imageData = ctx.getImageData(0, 0, cropW, cropH);
+            var data = imageData.data;
+            
+            for (var i = 0; i < data.length; i += 4) {
+                data[i] = Math.min(255, data[i] * brightnessFactor);     // Red
+                data[i+1] = Math.min(255, data[i+1] * brightnessFactor); // Green
+                data[i+2] = Math.min(255, data[i+2] * brightnessFactor); // Blue
+                // Alpha (data[i+3]) stays the same
+            }
+            
+            // Put the brightened data back
+            ctx.putImageData(imageData, 0, 0);
+            
+            // Convert to blob
+            croppedCanvas.toBlob(function(blob) {
+                resolve(blob);
+            }, 'image/jpeg', 0.95);
+        });
+    }
+    
+    // ============================================================
+    // v1.23: Store celebration image as Base64 in Firestore
+    // ============================================================
+    
+    function storeCelebrationImageInFirestore(gameId, blob) {
+        return new Promise(function(resolve, reject) {
+            var reader = new FileReader();
+            reader.onload = function() {
+                var base64Data = reader.result;
+                var archiveId = gameId + '_H';
+                var db = getDb();
+                
+                console.log("[SignCard] Storing Base64 image in Firestore:", archiveId);
+                console.log("[SignCard] Image size:", base64Data.length, "chars");
+                
+                db.collection('historyGames').doc(archiveId).update({
+                    'celebration.imageData': base64Data,
+                    'celebration.imageFormat': 'base64_jpeg',
+                    'celebration.capturedAt': firebase.firestore.FieldValue.serverTimestamp(),
+                    'celebration.quality': 'high',
+                    'celebration.brightness': 'enhanced'
+                }).then(function() {
+                    resolve();
+                }).catch(function(err) {
+                    reject(err);
+                });
+            };
+            reader.onerror = function(err) {
+                reject(err);
+            };
+            reader.readAsDataURL(blob);
+        });
+    }
+    
+    // ============================================================
+    // v1.23: Capture celebration image with brightness enhancement
     // ============================================================
     
     function captureCelebrationImage(modalElement, gameId, gameData) {
-        // Check if html2canvas is available
         if (typeof html2canvas === 'undefined') {
             console.warn("[SignCard] html2canvas not available - skipping capture");
             return;
@@ -343,96 +398,40 @@ var SignCard = (function() {
         var gameDate = gameData?.date || new Date().toISOString().split('T')[0];
         var fileName = gameDate + '_' + gameId + '_H.jpg';
         
-        console.log("[SignCard] Capturing celebration image:", fileName);
+        console.log("[SignCard] Capturing celebration image (brightness enhanced):", fileName);
         
-        // Wait for DOM to fully render and settle
         setTimeout(function() {
-            // Get the actual modal content (not the overlay)
             var modalContent = modalElement.querySelector('.celebration-modal');
             if (!modalContent) {
-                console.warn("[SignCard] Modal content not found - skipping capture");
+                console.warn("[SignCard] Modal content not found");
                 return;
             }
             
+            var rect = modalContent.getBoundingClientRect();
+            var scale = 2.0;
+            
             html2canvas(modalContent, {
-                scale: 0.8,
+                scale: scale,
                 useCORS: true,
                 allowTaint: true,
-                backgroundColor: '#1a1a1a',
+                backgroundColor: '#000000', // Pure black for clean capture
                 logging: false,
-                width: modalContent.scrollWidth,
-                height: modalContent.scrollHeight,
-                onclone: function(doc) {
-                    // Ensure all images are loaded
-                }
+                width: rect.width * scale,
+                height: rect.height * scale
             }).then(function(canvas) {
                 console.log("[SignCard] Canvas captured, size:", canvas.width, "x", canvas.height);
                 
-                return new Promise(function(resolve) {
-                    canvas.toBlob(function(blob) {
-                        resolve(blob);
-                    }, 'image/jpeg', 0.85);
-                });
+                // Crop AND brighten the image (20% brighter)
+                return cropAndBrighten(canvas, 1.2);
             }).then(function(blob) {
                 console.log("[SignCard] Image blob created, size:", blob.size, "bytes");
-                return uploadCelebrationImage(blob, gameId, fileName);
-            }).then(function(downloadURL) {
-                console.log("[SignCard] Image uploaded successfully:", downloadURL);
-                return updateCelebrationPointer(gameId, downloadURL);
+                return storeCelebrationImageInFirestore(gameId, blob);
             }).then(function() {
-                console.log("[SignCard] ✅ Celebration image capture and upload complete");
+                console.log("[SignCard] ✅ Celebration image saved to Firestore (brightness enhanced)");
             }).catch(function(err) {
-                console.warn("[SignCard] Celebration image capture/upload failed:", err.message);
-                // Silent failure - user unaffected
+                console.warn("[SignCard] Celebration image capture failed:", err.message);
             });
         }, 2500);
-    }
-    
-    // ============================================================
-    // v1.21: Upload celebration image to Firebase Storage
-    // ============================================================
-    
-    function uploadCelebrationImage(blob, gameId, fileName) {
-        var storage = getStorage();
-        var storageRef = storage.ref('celebrations/' + fileName);
-        
-        var metadata = {
-            contentType: 'image/jpeg',
-            customMetadata: {
-                gameId: gameId,
-                capturedAt: new Date().toISOString()
-            }
-        };
-        
-        console.log("[SignCard] Uploading to Firebase Storage: celebrations/" + fileName);
-        
-        return storageRef.put(blob, metadata)
-            .then(function(snapshot) {
-                console.log("[SignCard] Upload complete, getting download URL...");
-                return snapshot.ref.getDownloadURL();
-            });
-    }
-    
-    // ============================================================
-    // v1.21: Update celebration pointer in historyGames with real URL
-    // ============================================================
-    
-    function updateCelebrationPointer(gameId, imageUrl) {
-        var archiveId = gameId + '_H';
-        var db = getDb();
-        
-        console.log("[SignCard] Updating celebration pointer in historyGames:", archiveId);
-        console.log("[SignCard] New imageRef:", imageUrl);
-        
-        return db.collection('historyGames').doc(archiveId).update({
-            'celebration.imageRef': imageUrl,
-            'celebration.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
-        }).then(function() {
-            console.log("[SignCard] ✅ Celebration pointer updated in historyGames");
-        }).catch(function(err) {
-            console.warn("[SignCard] Failed to update celebration pointer:", err.message);
-            throw err;
-        });
     }
     
     // ============================================================
@@ -499,7 +498,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // Helper: Get or create archive record for handicap adjustment (LEGACY - kept for compatibility)
+    // Helper: Get or create archive record (LEGACY)
     // ============================================================
     
     function ensureArchiveRecord(gameId, callback) {
@@ -520,15 +519,12 @@ var SignCard = (function() {
                                         teamB: results.tr?.teamB?.[17] || 9.5
                                     };
                                     var signatures = gameData.signatures || {};
-                                    
                                     var flight1DataString = gameData.f1?.d || "";
                                     var flight2DataString = gameData.f2?.d || "";
-                                    
                                     var matchResults = {};
                                     if (results.game1 && results.game1.matches) {
                                         matchResults = results.game1.matches;
                                     }
-                                    
                                     HistoryRecord.createPendingRecord(
                                         gameId, 
                                         gameData, 
@@ -596,8 +592,6 @@ var SignCard = (function() {
             onClose: onClose
         };
         
-        // ---- v1.20: COMPLETE THE RECORD FIRST, THEN SHOW CELEBRATION ----
-        // Step 1: Fetch game data from Firestore
         var db = getDb();
         db.collection('scheduledGames').doc(gameId).get()
             .then(function(doc) {
@@ -619,7 +613,6 @@ var SignCard = (function() {
                 
                 console.log("[SignCard] Completing game in both collections...");
                 
-                // Step 2: Complete the game in BOTH collections
                 completeGameInBothCollections(
                     gameId,
                     gameData,
@@ -637,8 +630,6 @@ var SignCard = (function() {
                         }
                         
                         console.log("[SignCard] ✅ Game successfully completed in BOTH collections. Archive ID:", archiveId);
-                        
-                        // Step 3: NOW show celebration (after writes are complete)
                         renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose, gameData);
                     }
                 );
@@ -650,7 +641,7 @@ var SignCard = (function() {
     }
     
     // ============================================================
-    // v1.21: RENDER CELEBRATION MODAL (with auto-capture)
+    // v1.23: RENDER CELEBRATION MODAL (with auto-capture)
     // ============================================================
     
     function renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose, gameData) {
@@ -693,13 +684,10 @@ var SignCard = (function() {
             addCelebrationStyles();
             launchConfetti();
             
-            // v1.21: Auto-capture celebration image after modal renders (2.5s delay)
             var modalElement = document.getElementById('celebrationModal');
             if (modalElement && gameId) {
                 console.log("[SignCard] Scheduling celebration image capture in 2.5s...");
                 captureCelebrationImage(modalElement, gameId, gameData);
-            } else {
-                console.warn("[SignCard] Modal element not found - skipping image capture");
             }
             
             setTimeout(function() {
@@ -845,10 +833,6 @@ var SignCard = (function() {
                 .celebration-modal {
                     background: #1a1a1a;
                     border-radius: 24px !important;
-                    border-top-left-radius: 24px !important;
-                    border-top-right-radius: 24px !important;
-                    border-bottom-left-radius: 24px !important;
-                    border-bottom-right-radius: 24px !important;
                     overflow: hidden !important;
                     padding: 24px 28px 20px 28px;
                     max-width: 95%;
@@ -1119,8 +1103,8 @@ var SignCard = (function() {
         completeGameInBothCollections: completeGameInBothCollections,
         updateScheduledGameStatus: updateScheduledGameStatus,
         captureCelebrationImage: captureCelebrationImage,
-        uploadCelebrationImage: uploadCelebrationImage,
-        updateCelebrationPointer: updateCelebrationPointer
+        cropAndBrighten: cropAndBrighten,
+        storeCelebrationImageInFirestore: storeCelebrationImageInFirestore
     };
     
 })();
@@ -1130,15 +1114,16 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - ADDED: captureCelebrationImage() - captures screenshot of celebration modal
-   - ADDED: uploadCelebrationImage() - uploads image to Firebase Storage
-   - ADDED: updateCelebrationPointer() - updates historyGames with real image URL
-   - ADDED: html2canvas integration for automatic screenshot capture
-   - CHANGED: renderCelebrationModal() now triggers capture 2.5s after render
-   - ADDED: Background image upload - user unaffected, happens silently
-   - All existing functionality preserved from v1.20
-DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, html2canvas
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - ADDED: cropAndBrighten() - removes padding and brightens image
+   - ADDED: storeCelebrationImageInFirestore() - stores Base64 directly
+   - CHANGED: captureCelebrationImage() - now crops and brightens
+   - CHANGED: Removed Firebase Storage dependency (no CORS issues)
+   - CHANGED: Pure black background for capture
+   - CHANGED: 20% brightness enhancement for vibrant images
+   - FIXED: No more dim filter effect on captured images
+   - FIXED: Removed empty padding from captured images
+DEPENDS ON: Firebase Firestore, html2canvas
 STATUS: Ready for integration
 */
