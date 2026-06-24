@@ -1,16 +1,15 @@
 /*
 FILE: js/sign-card.js
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: scheduledGames status now updated to "completed" after historyGames write
-   - FIXED: Celebration screen now appears AFTER all Firestore writes complete (not before)
-   - FIXED: showCelebrationScreen() now uses Promise chain to ensure write order
-   - ADDED: completeGameInBothCollections() - updates both collections with status: "completed"
-   - ADDED: Dummy celebration pointer (imageRef + capturedAt) saved to historyGames
-   - ADDED: updateScheduledGameStatus() - updates scheduledGames status only
-   - CHANGED: Celebration modal render moved to AFTER write completion
-   - All existing functionality preserved from v1.19
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - ADDED: captureCelebrationImage() - captures screenshot of celebration modal
+   - ADDED: uploadCelebrationImage() - uploads image to Firebase Storage
+   - ADDED: updateCelebrationPointer() - updates historyGames with real image URL
+   - ADDED: html2canvas integration for automatic screenshot capture
+   - CHANGED: renderCelebrationModal() now triggers capture 2.5s after render
+   - ADDED: Background image upload - user unaffected, happens silently
+   - All existing functionality preserved from v1.20
+DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, html2canvas
 STATUS: Ready for integration
 */
 
@@ -21,6 +20,13 @@ var SignCard = (function() {
     // ============================================================
     function getDb() {
         return firebase.firestore();
+    }
+    
+    // ============================================================
+    // Helper: Get Storage instance
+    // ============================================================
+    function getStorage() {
+        return firebase.storage();
     }
     
     // ============================================================
@@ -150,8 +156,6 @@ var SignCard = (function() {
                 updateScheduledGameStatus(gameId, function(err2) {
                     if (err2) {
                         console.error("[SignCard] Failed to update scheduledGames status:", err2);
-                        // Even if scheduledGames update fails, we still have historyGames written
-                        // But we should report the error
                         if (callback) callback(err2, archiveId);
                         return;
                     }
@@ -326,6 +330,112 @@ var SignCard = (function() {
     }
     
     // ============================================================
+    // v1.21: Capture celebration image using html2canvas
+    // ============================================================
+    
+    function captureCelebrationImage(modalElement, gameId, gameData) {
+        // Check if html2canvas is available
+        if (typeof html2canvas === 'undefined') {
+            console.warn("[SignCard] html2canvas not available - skipping capture");
+            return;
+        }
+        
+        var gameDate = gameData?.date || new Date().toISOString().split('T')[0];
+        var fileName = gameDate + '_' + gameId + '_H.jpg';
+        
+        console.log("[SignCard] Capturing celebration image:", fileName);
+        
+        // Wait for DOM to fully render and settle
+        setTimeout(function() {
+            // Get the actual modal content (not the overlay)
+            var modalContent = modalElement.querySelector('.celebration-modal');
+            if (!modalContent) {
+                console.warn("[SignCard] Modal content not found - skipping capture");
+                return;
+            }
+            
+            html2canvas(modalContent, {
+                scale: 0.8,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#1a1a1a',
+                logging: false,
+                width: modalContent.scrollWidth,
+                height: modalContent.scrollHeight,
+                onclone: function(doc) {
+                    // Ensure all images are loaded
+                }
+            }).then(function(canvas) {
+                console.log("[SignCard] Canvas captured, size:", canvas.width, "x", canvas.height);
+                
+                return new Promise(function(resolve) {
+                    canvas.toBlob(function(blob) {
+                        resolve(blob);
+                    }, 'image/jpeg', 0.85);
+                });
+            }).then(function(blob) {
+                console.log("[SignCard] Image blob created, size:", blob.size, "bytes");
+                return uploadCelebrationImage(blob, gameId, fileName);
+            }).then(function(downloadURL) {
+                console.log("[SignCard] Image uploaded successfully:", downloadURL);
+                return updateCelebrationPointer(gameId, downloadURL);
+            }).then(function() {
+                console.log("[SignCard] ✅ Celebration image capture and upload complete");
+            }).catch(function(err) {
+                console.warn("[SignCard] Celebration image capture/upload failed:", err.message);
+                // Silent failure - user unaffected
+            });
+        }, 2500);
+    }
+    
+    // ============================================================
+    // v1.21: Upload celebration image to Firebase Storage
+    // ============================================================
+    
+    function uploadCelebrationImage(blob, gameId, fileName) {
+        var storage = getStorage();
+        var storageRef = storage.ref('celebrations/' + fileName);
+        
+        var metadata = {
+            contentType: 'image/jpeg',
+            customMetadata: {
+                gameId: gameId,
+                capturedAt: new Date().toISOString()
+            }
+        };
+        
+        console.log("[SignCard] Uploading to Firebase Storage: celebrations/" + fileName);
+        
+        return storageRef.put(blob, metadata)
+            .then(function(snapshot) {
+                console.log("[SignCard] Upload complete, getting download URL...");
+                return snapshot.ref.getDownloadURL();
+            });
+    }
+    
+    // ============================================================
+    // v1.21: Update celebration pointer in historyGames with real URL
+    // ============================================================
+    
+    function updateCelebrationPointer(gameId, imageUrl) {
+        var archiveId = gameId + '_H';
+        var db = getDb();
+        
+        console.log("[SignCard] Updating celebration pointer in historyGames:", archiveId);
+        console.log("[SignCard] New imageRef:", imageUrl);
+        
+        return db.collection('historyGames').doc(archiveId).update({
+            'celebration.imageRef': imageUrl,
+            'celebration.updatedAt': firebase.firestore.FieldValue.serverTimestamp()
+        }).then(function() {
+            console.log("[SignCard] ✅ Celebration pointer updated in historyGames");
+        }).catch(function(err) {
+            console.warn("[SignCard] Failed to update celebration pointer:", err.message);
+            throw err;
+        });
+    }
+    
+    // ============================================================
     // Waiting Screen (legacy - kept for compatibility)
     // ============================================================
     
@@ -493,8 +603,7 @@ var SignCard = (function() {
             .then(function(doc) {
                 if (!doc.exists) {
                     console.warn("[SignCard] Game data not found - cannot complete record");
-                    // Still show celebration but log error
-                    renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose);
+                    renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose, null);
                     return;
                 }
                 
@@ -523,30 +632,28 @@ var SignCard = (function() {
                     function(err, archiveId) {
                         if (err) {
                             console.error("[SignCard] Failed to complete game in both collections:", err);
-                            // Still show celebration but log error
-                            renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose);
+                            renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose, gameData);
                             return;
                         }
                         
                         console.log("[SignCard] ✅ Game successfully completed in BOTH collections. Archive ID:", archiveId);
                         
                         // Step 3: NOW show celebration (after writes are complete)
-                        renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose);
+                        renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose, gameData);
                     }
                 );
             })
             .catch(function(err) {
                 console.error("[SignCard] Error fetching game data:", err);
-                // Still show celebration but log error
-                renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose);
+                renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose, null);
             });
     }
     
     // ============================================================
-    // v1.20: RENDER CELEBRATION MODAL (separated from data logic)
+    // v1.21: RENDER CELEBRATION MODAL (with auto-capture)
     // ============================================================
     
-    function renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose) {
+    function renderCelebrationModal(winnerText, winnerClass, teamADisplay, teamBDisplay, gameId, celebrationData, onClose, gameData) {
         console.log("[SignCard] Rendering celebration modal (after writes complete)");
         
         getCelebrationImage(function(imageSrc) {
@@ -585,6 +692,15 @@ var SignCard = (function() {
             document.body.insertAdjacentHTML('beforeend', modalHtml);
             addCelebrationStyles();
             launchConfetti();
+            
+            // v1.21: Auto-capture celebration image after modal renders (2.5s delay)
+            var modalElement = document.getElementById('celebrationModal');
+            if (modalElement && gameId) {
+                console.log("[SignCard] Scheduling celebration image capture in 2.5s...");
+                captureCelebrationImage(modalElement, gameId, gameData);
+            } else {
+                console.warn("[SignCard] Modal element not found - skipping image capture");
+            }
             
             setTimeout(function() {
                 console.log("[SignCard] Celebration modal fully rendered - calling onClose callback");
@@ -1001,7 +1117,10 @@ var SignCard = (function() {
         ensureArchiveRecordComplete: ensureArchiveRecordComplete,
         calculateAdjustedHandicapsFromGameData: calculateAdjustedHandicapsFromGameData,
         completeGameInBothCollections: completeGameInBothCollections,
-        updateScheduledGameStatus: updateScheduledGameStatus
+        updateScheduledGameStatus: updateScheduledGameStatus,
+        captureCelebrationImage: captureCelebrationImage,
+        uploadCelebrationImage: uploadCelebrationImage,
+        updateCelebrationPointer: updateCelebrationPointer
     };
     
 })();
@@ -1011,16 +1130,15 @@ window.SignCard = SignCard;
 
 /*
 FILE: js/sign-card.js
-VERSION: 1.20
-KEY CHANGES from v1.19:
-   - FIXED: scheduledGames status now updated to "completed" after historyGames write
-   - FIXED: Celebration screen now appears AFTER all Firestore writes complete (not before)
-   - FIXED: showCelebrationScreen() now uses Promise chain to ensure write order
-   - ADDED: completeGameInBothCollections() - updates both collections with status: "completed"
-   - ADDED: Dummy celebration pointer (imageRef + capturedAt) saved to historyGames
-   - ADDED: updateScheduledGameStatus() - updates scheduledGames status only
-   - CHANGED: Celebration modal render moved to AFTER write completion
-   - All existing functionality preserved from v1.19
-DEPENDS ON: Firebase Firestore, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js
+VERSION: 1.21
+KEY CHANGES from v1.20:
+   - ADDED: captureCelebrationImage() - captures screenshot of celebration modal
+   - ADDED: uploadCelebrationImage() - uploads image to Firebase Storage
+   - ADDED: updateCelebrationPointer() - updates historyGames with real image URL
+   - ADDED: html2canvas integration for automatic screenshot capture
+   - CHANGED: renderCelebrationModal() now triggers capture 2.5s after render
+   - ADDED: Background image upload - user unaffected, happens silently
+   - All existing functionality preserved from v1.20
+DEPENDS ON: Firebase Firestore, Firebase Storage, js/history-record.js, js/hcp-adjust.js, js/waiting-screen.js, html2canvas
 STATUS: Ready for integration
 */
