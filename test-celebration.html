@@ -1,0 +1,639 @@
+<!--
+FILE: test-celebration.html
+VERSION: 1.05
+KEY CHANGES:
+   - More robust Firebase initialization with retry
+   - Better error handling for iOS Safari
+   - Manual load button as fallback
+   - Shows detailed connection status
+STATUS: Ready for testing
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Celebration Image Test</title>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 16px;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .container {
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 20px 0 16px 0;
+            border-bottom: 1px solid #1a1a1a;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #4caf50;
+            letter-spacing: 0.5px;
+        }
+        
+        .header .subtitle {
+            font-size: 13px;
+            color: #666;
+            margin-top: 4px;
+            font-weight: 400;
+        }
+        
+        .debug-box {
+            background: #0a0a0a;
+            border: 1px solid #1a1a1a;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #888;
+            max-height: 180px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.6;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .debug-box .ok { color: #4caf50; }
+        .debug-box .error { color: #ff4444; }
+        .debug-box .info { color: #ffaa44; }
+        .debug-box .warn { color: #ffaa44; }
+        
+        .status-card {
+            background: #111;
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            border: 1px solid #1a1a1a;
+        }
+        
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 14px;
+            border-bottom: 1px solid #0a0a0a;
+        }
+        
+        .status-row:last-child { border-bottom: none; }
+        .status-label { color: #888; }
+        .status-value { color: #4caf50; font-weight: 500; text-align: right; max-width: 60%; word-break: break-all; }
+        .status-value.pending { color: #ffaa44; }
+        .status-value.error { color: #ff4444; }
+        
+        .image-container {
+            background: #111;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 2px solid #1a1a1a;
+            position: relative;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .image-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        .image-container .placeholder {
+            color: #444;
+            font-size: 14px;
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .image-container .placeholder .icon { font-size: 48px; margin-bottom: 12px; display: block; }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(17, 17, 17, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+        
+        .loading-overlay .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #1a1a1a;
+            border-top-color: #4caf50;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        .loading-overlay .loading-text { color: #666; font-size: 13px; margin-top: 16px; }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        
+        .info-card {
+            background: #111;
+            border-radius: 12px;
+            padding: 14px 12px;
+            text-align: center;
+            border: 1px solid #1a1a1a;
+        }
+        
+        .info-card .number { font-size: 22px; font-weight: 700; color: #4caf50; }
+        .info-card .number.pending { color: #ffaa44; }
+        .info-card .label { font-size: 11px; color: #666; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: all 0.2s;
+            background: #1a3a1a;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: #4caf50; color: #000; border: none; }
+        .btn-primary:active { background: #388e3c; }
+        .btn-secondary { background: #1a1a1a; color: #888; border: 1px solid #2a2a2a; }
+        .btn-secondary:active { background: #222; }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        @media (max-width: 380px) {
+            body { padding: 10px; }
+            .header h1 { font-size: 18px; }
+            .info-grid { grid-template-columns: 1fr 1fr; }
+            .status-row { font-size: 12px; }
+        }
+        
+        @media (min-width: 501px) { .container { max-width: 480px; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Header -->
+    <div class="header">
+        <h1>📸 Celebration Image Test</h1>
+        <div class="subtitle">Record: GM_260624_0902_70_R_H</div>
+    </div>
+    
+    <!-- Debug Box -->
+    <div class="debug-box" id="debugBox">⏳ Initializing...</div>
+    
+    <!-- Status -->
+    <div class="status-card" id="statusCard">
+        <div class="status-row">
+            <span class="status-label">Firebase</span>
+            <span class="status-value pending" id="firebaseStatus">Checking...</span>
+        </div>
+        <div class="status-row">
+            <span class="status-label">Document</span>
+            <span class="status-value pending" id="docStatus">Checking...</span>
+        </div>
+        <div class="status-row">
+            <span class="status-label">Image Status</span>
+            <span class="status-value pending" id="statusText">Loading...</span>
+        </div>
+        <div class="status-row">
+            <span class="status-label">Load Time</span>
+            <span class="status-value" id="loadTime">-</span>
+        </div>
+    </div>
+    
+    <!-- Image -->
+    <div class="image-container" id="imageContainer">
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="spinner"></div>
+            <div class="loading-text">Loading image...</div>
+        </div>
+        <div class="placeholder" id="placeholder">
+            <span class="icon">🏌️</span>
+            <div>No image loaded yet</div>
+            <div style="font-size:12px;color:#333;margin-top:8px;">Tap "Load Image" below</div>
+        </div>
+        <img id="celebrationImage" style="display:none;" alt="Celebration">
+    </div>
+    
+    <!-- Info Grid -->
+    <div class="info-grid">
+        <div class="info-card">
+            <div class="number" id="widthDisplay">-</div>
+            <div class="label">Width</div>
+        </div>
+        <div class="info-card">
+            <div class="number" id="heightDisplay">-</div>
+            <div class="label">Height</div>
+        </div>
+        <div class="info-card">
+            <div class="number" id="sizeDisplay">-</div>
+            <div class="label">KB</div>
+        </div>
+    </div>
+    
+    <!-- Buttons -->
+    <button class="btn btn-primary" id="loadBtn">🔄 Load Image from Firestore</button>
+    <button class="btn btn-secondary" id="retryBtn">🔄 Retry Connection</button>
+    <button class="btn btn-secondary" id="fullscreenBtn" style="display:none;">⛶ View Full Screen</button>
+</div>
+
+<script>
+// ============================================================
+// 🔥 FIREBASE CONFIGURATION - From firebase-config.js
+// ============================================================
+
+// Production config (main branch)
+var PROD_CONFIG = {
+    apiKey: "AIzaSyB-9hqHpG_Op_kxp9sj8pLs1LS261o2oc",
+    authDomain: "sicc-ryder-cup.firebaseapp.com",
+    projectId: "sicc-ryder-cup",
+    storageBucket: "sicc-ryder-cup.firebasestorage.app",
+    messagingSenderId: "137641493845",
+    appId: "1:137641493845:web:32399940bce639b01ddbdc"
+};
+
+// Development config (staging branch)
+var DEV_CONFIG = {
+    apiKey: "AIzaSyAw3UVNMET59rjgHNQvu_3qXUQ4RileQeQ",
+    authDomain: "sicc-ryder-cup-dev.firebaseapp.com",
+    projectId: "sicc-ryder-cup-dev",
+    storageBucket: "sicc-ryder-cup-dev.firebasestorage.app",
+    messagingSenderId: "181134548931",
+    appId: "1:181134548931:web:2e4b0d5e3a513ac21e2776"
+};
+
+// Determine which config to use
+function getFirebaseConfig() {
+    var isDev = false;
+    var hostname = window.location.hostname;
+    
+    var isPreviewHash = /^[a-f0-9]{7,8}\./.test(hostname);
+    var isStagingSubdomain = hostname.startsWith('staging.');
+    var isLocalhost = (hostname === 'localhost' || hostname === '127.0.0.1');
+    
+    if (isPreviewHash || isStagingSubdomain || isLocalhost) {
+        isDev = true;
+    }
+    
+    return isDev ? DEV_CONFIG : PROD_CONFIG;
+}
+
+var firebaseConfig = getFirebaseConfig();
+
+// ============================================================
+// DEBUG HELPER
+// ============================================================
+
+var debugBox = document.getElementById('debugBox');
+var debugCount = 0;
+
+function debug(msg, type) {
+    debugCount++;
+    var timestamp = new Date().toLocaleTimeString();
+    var prefix = '[' + timestamp + '] ';
+    var className = '';
+    if (type === 'ok') className = 'ok';
+    else if (type === 'error') className = 'error';
+    else if (type === 'info') className = 'info';
+    else if (type === 'warn') className = 'warn';
+    
+    var line = document.createElement('div');
+    line.className = className;
+    line.textContent = prefix + msg;
+    debugBox.appendChild(line);
+    debugBox.scrollTop = debugBox.scrollHeight;
+    console.log('[Test]', msg);
+}
+
+// ============================================================
+// DOM REFS
+// ============================================================
+
+var firebaseStatus = document.getElementById('firebaseStatus');
+var docStatus = document.getElementById('docStatus');
+var statusText = document.getElementById('statusText');
+var loadTime = document.getElementById('loadTime');
+var imageContainer = document.getElementById('imageContainer');
+var celebrationImage = document.getElementById('celebrationImage');
+var placeholder = document.getElementById('placeholder');
+var loadingOverlay = document.getElementById('loadingOverlay');
+var widthDisplay = document.getElementById('widthDisplay');
+var heightDisplay = document.getElementById('heightDisplay');
+var sizeDisplay = document.getElementById('sizeDisplay');
+var loadBtn = document.getElementById('loadBtn');
+var retryBtn = document.getElementById('retryBtn');
+var fullscreenBtn = document.getElementById('fullscreenBtn');
+
+var GAME_ID = 'GM_260624_0902_70_R';
+var ARCHIVE_ID = GAME_ID + '_H';
+var INIT_RETRIES = 0;
+var MAX_RETRIES = 5;
+
+// ============================================================
+// INITIALIZE FIREBASE
+// ============================================================
+
+function initFirebase() {
+    debug('Initializing Firebase... (attempt ' + (INIT_RETRIES + 1) + ')', 'info');
+    debug('Using project: ' + firebaseConfig.projectId, 'info');
+    
+    // Check if Firebase SDK is loaded
+    if (typeof firebase === 'undefined') {
+        debug('❌ Firebase SDK not loaded!', 'error');
+        firebaseStatus.textContent = '❌ SDK not loaded';
+        firebaseStatus.className = 'status-value error';
+        return false;
+    }
+    
+    // Check if already initialized
+    if (firebase.apps && firebase.apps.length > 0) {
+        debug('✅ Firebase already initialized: ' + firebase.apps[0].options.projectId, 'ok');
+        firebaseStatus.textContent = '✅ Ready (' + firebase.apps[0].options.projectId + ')';
+        firebaseStatus.className = 'status-value';
+        return true;
+    }
+    
+    // Initialize with config
+    try {
+        firebase.initializeApp(firebaseConfig);
+        debug('✅ Firebase initialized successfully: ' + firebaseConfig.projectId, 'ok');
+        firebaseStatus.textContent = '✅ Ready (' + firebaseConfig.projectId + ')';
+        firebaseStatus.className = 'status-value';
+        return true;
+    } catch (err) {
+        debug('❌ Failed to initialize: ' + err.message, 'error');
+        firebaseStatus.textContent = '❌ ' + err.message;
+        firebaseStatus.className = 'status-value error';
+        return false;
+    }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function getBase64Size(base64) {
+    var base64String = base64.includes('base64,') ? base64.split('base64,')[1] : base64;
+    var padding = base64String.endsWith('==') ? 2 : (base64String.endsWith('=') ? 1 : 0);
+    return Math.floor((base64String.length * 3) / 4) - padding;
+}
+
+// ============================================================
+// LOAD FROM FIRESTORE
+// ============================================================
+
+function loadFromFirestore() {
+    // Try to initialize if not ready
+    if (!initFirebase()) {
+        debug('❌ Cannot load - Firebase not ready', 'error');
+        statusText.textContent = '❌ Firebase not ready';
+        statusText.className = 'status-value error';
+        
+        // Retry after a delay
+        if (INIT_RETRIES < MAX_RETRIES) {
+            INIT_RETRIES++;
+            debug('Retrying in 1 second... (' + INIT_RETRIES + '/' + MAX_RETRIES + ')', 'warn');
+            setTimeout(function() {
+                loadFromFirestore();
+            }, 1000);
+        }
+        return;
+    }
+    
+    debug('Loading from Firestore: ' + ARCHIVE_ID, 'info');
+    docStatus.textContent = 'Loading...';
+    docStatus.className = 'status-value pending';
+    statusText.textContent = 'Loading...';
+    statusText.className = 'status-value pending';
+    loadingOverlay.style.display = 'flex';
+    placeholder.style.display = 'none';
+    celebrationImage.style.display = 'none';
+    fullscreenBtn.style.display = 'none';
+    
+    var startTime = performance.now();
+    var db = firebase.firestore();
+    
+    // Enable offline persistence for better mobile performance
+    try {
+        db.enablePersistence()
+            .catch(function(err) {
+                debug('ℹ️ Offline persistence not available: ' + err.message, 'warn');
+            });
+    } catch (err) {
+        // Ignore
+    }
+    
+    db.collection('historyGames').doc(ARCHIVE_ID).get()
+        .then(function(doc) {
+            docStatus.textContent = '✅ Found';
+            docStatus.className = 'status-value';
+            
+            if (!doc.exists) {
+                throw new Error('Document not found: ' + ARCHIVE_ID);
+            }
+            
+            var data = doc.data();
+            var imageData = data.celebration?.imageData;
+            
+            if (!imageData) {
+                throw new Error('No imageData found in celebration object');
+            }
+            
+            var sizeBytes = getBase64Size(imageData);
+            var sizeKB = (sizeBytes / 1024).toFixed(1);
+            
+            debug('✅ Image data retrieved: ' + sizeKB + ' KB (' + sizeBytes + ' bytes)', 'ok');
+            sizeDisplay.textContent = sizeKB;
+            
+            // Load the image
+            celebrationImage.src = imageData;
+            celebrationImage.onload = function() {
+                var loadTimeMs = (performance.now() - startTime).toFixed(0);
+                loadTime.textContent = loadTimeMs + ' ms';
+                statusText.textContent = '✅ Loaded';
+                statusText.className = 'status-value';
+                
+                widthDisplay.textContent = celebrationImage.naturalWidth;
+                heightDisplay.textContent = celebrationImage.naturalHeight;
+                
+                loadingOverlay.style.display = 'none';
+                celebrationImage.style.display = 'block';
+                placeholder.style.display = 'none';
+                fullscreenBtn.style.display = 'block';
+                
+                debug('✅ Image displayed: ' + celebrationImage.naturalWidth + 'x' + celebrationImage.naturalHeight + ' in ' + loadTimeMs + 'ms', 'ok');
+            };
+            
+            celebrationImage.onerror = function(e) {
+                var loadTimeMs = (performance.now() - startTime).toFixed(0);
+                loadTime.textContent = loadTimeMs + ' ms';
+                statusText.textContent = '❌ Failed to load image';
+                statusText.className = 'status-value error';
+                loadingOverlay.style.display = 'none';
+                placeholder.style.display = 'block';
+                debug('❌ Image failed to load', 'error');
+                console.error('Image load error:', e);
+            };
+            
+        })
+        .catch(function(err) {
+            debug('❌ Error: ' + err.message, 'error');
+            docStatus.textContent = '❌ ' + err.message;
+            docStatus.className = 'status-value error';
+            statusText.textContent = '❌ ' + err.message;
+            statusText.className = 'status-value error';
+            loadingOverlay.style.display = 'none';
+            placeholder.style.display = 'block';
+            loadTime.textContent = '-';
+        });
+}
+
+// ============================================================
+// FULL SCREEN
+// ============================================================
+
+function viewFullscreen() {
+    if (celebrationImage.src) {
+        window.open(celebrationImage.src, '_blank');
+    }
+}
+
+// ============================================================
+// EVENT LISTENERS
+// ============================================================
+
+loadBtn.addEventListener('click', function() {
+    INIT_RETRIES = 0;
+    loadFromFirestore();
+});
+
+retryBtn.addEventListener('click', function() {
+    debug('Manual retry...', 'info');
+    debugBox.innerHTML = '';
+    debugCount = 0;
+    INIT_RETRIES = 0;
+    firebaseStatus.textContent = 'Retrying...';
+    firebaseStatus.className = 'status-value pending';
+    docStatus.textContent = 'Retrying...';
+    docStatus.className = 'status-value pending';
+    statusText.textContent = 'Retrying...';
+    statusText.className = 'status-value pending';
+    loadTime.textContent = '-';
+    widthDisplay.textContent = '-';
+    heightDisplay.textContent = '-';
+    sizeDisplay.textContent = '-';
+    celebrationImage.style.display = 'none';
+    placeholder.style.display = 'block';
+    loadingOverlay.style.display = 'none';
+    fullscreenBtn.style.display = 'none';
+    
+    // Try to reinitialize Firebase
+    if (firebase.apps && firebase.apps.length > 0) {
+        debug('Deleting existing Firebase app...', 'info');
+        try {
+            firebase.app().delete();
+        } catch (e) {
+            // Ignore
+        }
+    }
+    
+    setTimeout(function() {
+        loadFromFirestore();
+    }, 500);
+});
+
+fullscreenBtn.addEventListener('click', viewFullscreen);
+
+// ============================================================
+// AUTO-LOAD ON PAGE LOAD
+// ============================================================
+
+// Check if Firebase SDK is loaded
+function checkFirebaseSDK() {
+    if (typeof firebase !== 'undefined') {
+        debug('✅ Firebase SDK loaded', 'ok');
+        return true;
+    } else {
+        debug('⏳ Waiting for Firebase SDK...', 'info');
+        return false;
+    }
+}
+
+// Wait for Firebase SDK to load, then auto-load
+var sdkCheckInterval = setInterval(function() {
+    if (checkFirebaseSDK()) {
+        clearInterval(sdkCheckInterval);
+        setTimeout(function() {
+            debug('Auto-loading image...', 'info');
+            loadFromFirestore();
+        }, 500);
+    }
+}, 200);
+
+// Timeout after 5 seconds
+setTimeout(function() {
+    clearInterval(sdkCheckInterval);
+    if (typeof firebase === 'undefined') {
+        debug('❌ Firebase SDK failed to load after 5 seconds', 'error');
+        firebaseStatus.textContent = '❌ SDK load timeout';
+        firebaseStatus.className = 'status-value error';
+    }
+}, 5000);
+
+</script>
+
+</body>
+</html>
+
+<!--
+FILE: test-celebration.html
+VERSION: 1.05
+KEY CHANGES:
+   - More robust Firebase initialization with retry
+   - Better error handling for iOS Safari
+   - Manual load button as fallback
+   - Shows detailed connection status
+STATUS: Ready for testing
+-->
