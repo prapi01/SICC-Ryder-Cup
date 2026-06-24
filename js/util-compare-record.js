@@ -1,14 +1,12 @@
 /*
 FILE: js/util-compare-record.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW FILE: All COMPARE tab logic extracted from util-record-management.html v1.03
-   - ADDED: Compare record loading (independent left and right sides)
-   - ADDED: Field-by-field deep comparison of two records
-   - ADDED: Display comparison results with color-coded differences
-   - ADDED: Detailed logging of comparison results
-   - DEPENDS ON: Firebase (prodDb, devDb, currentDb, currentEnv)
-PURPOSE: Compare two records field-by-field across collections and environments
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Now uses initFirebase, log, logStep, escapeHtml from main HTML
+   - FIXED: Removed duplicate function definitions that conflicted with main HTML
+   - FIXED: Compare functions now properly reference currentDb and currentEnv
+   - PRESERVED: All COMPARE tab functionality
+DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml
 STATUS: Ready for integration
 */
 
@@ -553,19 +551,20 @@ function loadCompareRecordsRight() {
 }
 
 // ============================================================
-// EVENT HANDLERS (Set up in main HTML)
-// ============================================================
-
-// These functions are exposed globally for the HTML onclick/onchange events
-window.loadCompareRecords = loadCompareRecords;
-window.loadCompareRecordData = loadCompareRecordData;
-window.performCompare = performCompare;
-window.loadCompareRecordsLeft = loadCompareRecordsLeft;
-window.loadCompareRecordsRight = loadCompareRecordsRight;
-
-// ============================================================
 // EXPOSE FOR DEBUGGING
 // ============================================================
 
-window.COMPARE_UTIL_VERSION = "1.00";
-console.log("[COMPARE-UTIL] v1.00 loaded");
+window.COMPARE_UTIL_VERSION = "1.01";
+console.log("[COMPARE-UTIL] v1.01 loaded");
+
+/*
+FILE: js/util-compare-record.js
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Now uses initFirebase, log, logStep, escapeHtml from main HTML
+   - FIXED: Removed duplicate function definitions that conflicted with main HTML
+   - FIXED: Compare functions now properly reference currentDb and currentEnv
+   - PRESERVED: All COMPARE tab functionality
+DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml
+STATUS: Ready for integration
+*/
