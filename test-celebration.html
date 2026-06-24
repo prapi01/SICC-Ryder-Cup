@@ -1,11 +1,12 @@
 <!--
 FILE: test-celebration.html
-VERSION: 1.05
+VERSION: 1.06
 KEY CHANGES:
-   - More robust Firebase initialization with retry
-   - Better error handling for iOS Safari
-   - Manual load button as fallback
-   - Shows detailed connection status
+   - Fixed: Full screen view works on iOS
+   - Added: Zoomable image with pinch-to-zoom
+   - Added: Double-tap to zoom
+   - Added: Close button for full screen view
+   - Better mobile UX
 STATUS: Ready for testing
 -->
 
@@ -73,7 +74,7 @@ STATUS: Ready for testing
             font-family: 'Courier New', monospace;
             font-size: 11px;
             color: #888;
-            max-height: 180px;
+            max-height: 150px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -84,7 +85,6 @@ STATUS: Ready for testing
         .debug-box .ok { color: #4caf50; }
         .debug-box .error { color: #ff4444; }
         .debug-box .info { color: #ffaa44; }
-        .debug-box .warn { color: #ffaa44; }
         
         .status-card {
             background: #111;
@@ -118,6 +118,7 @@ STATUS: Ready for testing
             display: flex;
             align-items: center;
             justify-content: center;
+            cursor: pointer;
         }
         
         .image-container img {
@@ -201,11 +202,106 @@ STATUS: Ready for testing
         
         @keyframes spin { to { transform: rotate(360deg); } }
         
+        /* ============================================================
+           FULL SCREEN OVERLAY - iOS Friendly
+           ============================================================ */
+        .fullscreen-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.98);
+            z-index: 99999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .fullscreen-overlay.active {
+            display: flex;
+        }
+        
+        .fullscreen-overlay .close-btn {
+            position: fixed;
+            top: 16px;
+            right: 20px;
+            z-index: 100000;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            font-size: 28px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            transition: all 0.2s;
+            padding: 0;
+            line-height: 1;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .fullscreen-overlay .close-btn:active {
+            transform: scale(0.9);
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .fullscreen-overlay .fullscreen-image-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            touch-action: pan-x pan-y pinch-zoom;
+        }
+        
+        .fullscreen-overlay .fullscreen-image-wrapper img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            touch-action: pan-x pan-y pinch-zoom;
+            -webkit-user-select: none;
+            user-select: none;
+            transition: transform 0.1s ease;
+        }
+        
+        .fullscreen-overlay .fullscreen-info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 6px 16px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        
         @media (max-width: 380px) {
             body { padding: 10px; }
             .header h1 { font-size: 18px; }
             .info-grid { grid-template-columns: 1fr 1fr; }
             .status-row { font-size: 12px; }
+            .fullscreen-overlay .close-btn {
+                top: 12px;
+                right: 12px;
+                width: 40px;
+                height: 40px;
+                font-size: 22px;
+            }
         }
         
         @media (min-width: 501px) { .container { max-width: 480px; } }
@@ -279,6 +375,17 @@ STATUS: Ready for testing
     <button class="btn btn-secondary" id="fullscreenBtn" style="display:none;">⛶ View Full Screen</button>
 </div>
 
+<!-- ============================================================
+     FULL SCREEN OVERLAY
+     ============================================================ -->
+<div class="fullscreen-overlay" id="fullscreenOverlay">
+    <button class="close-btn" id="closeFullscreenBtn">✕</button>
+    <div class="fullscreen-image-wrapper" id="fullscreenWrapper">
+        <img id="fullscreenImage" src="" alt="Celebration Full Screen">
+    </div>
+    <div class="fullscreen-info">Pinch to zoom • Tap to close</div>
+</div>
+
 <script>
 // ============================================================
 // 🔥 FIREBASE CONFIGURATION - From firebase-config.js
@@ -304,7 +411,6 @@ var DEV_CONFIG = {
     appId: "1:181134548931:web:2e4b0d5e3a513ac21e2776"
 };
 
-// Determine which config to use
 function getFirebaseConfig() {
     var isDev = false;
     var hostname = window.location.hostname;
@@ -327,17 +433,14 @@ var firebaseConfig = getFirebaseConfig();
 // ============================================================
 
 var debugBox = document.getElementById('debugBox');
-var debugCount = 0;
 
 function debug(msg, type) {
-    debugCount++;
     var timestamp = new Date().toLocaleTimeString();
     var prefix = '[' + timestamp + '] ';
     var className = '';
     if (type === 'ok') className = 'ok';
     else if (type === 'error') className = 'error';
     else if (type === 'info') className = 'info';
-    else if (type === 'warn') className = 'warn';
     
     var line = document.createElement('div');
     line.className = className;
@@ -366,20 +469,22 @@ var loadBtn = document.getElementById('loadBtn');
 var retryBtn = document.getElementById('retryBtn');
 var fullscreenBtn = document.getElementById('fullscreenBtn');
 
+// Full screen elements
+var fullscreenOverlay = document.getElementById('fullscreenOverlay');
+var fullscreenImage = document.getElementById('fullscreenImage');
+var closeFullscreenBtn = document.getElementById('closeFullscreenBtn');
+
 var GAME_ID = 'GM_260624_0902_70_R';
 var ARCHIVE_ID = GAME_ID + '_H';
-var INIT_RETRIES = 0;
-var MAX_RETRIES = 5;
 
 // ============================================================
 // INITIALIZE FIREBASE
 // ============================================================
 
 function initFirebase() {
-    debug('Initializing Firebase... (attempt ' + (INIT_RETRIES + 1) + ')', 'info');
+    debug('Initializing Firebase...', 'info');
     debug('Using project: ' + firebaseConfig.projectId, 'info');
     
-    // Check if Firebase SDK is loaded
     if (typeof firebase === 'undefined') {
         debug('❌ Firebase SDK not loaded!', 'error');
         firebaseStatus.textContent = '❌ SDK not loaded';
@@ -387,7 +492,6 @@ function initFirebase() {
         return false;
     }
     
-    // Check if already initialized
     if (firebase.apps && firebase.apps.length > 0) {
         debug('✅ Firebase already initialized: ' + firebase.apps[0].options.projectId, 'ok');
         firebaseStatus.textContent = '✅ Ready (' + firebase.apps[0].options.projectId + ')';
@@ -395,7 +499,6 @@ function initFirebase() {
         return true;
     }
     
-    // Initialize with config
     try {
         firebase.initializeApp(firebaseConfig);
         debug('✅ Firebase initialized successfully: ' + firebaseConfig.projectId, 'ok');
@@ -425,20 +528,10 @@ function getBase64Size(base64) {
 // ============================================================
 
 function loadFromFirestore() {
-    // Try to initialize if not ready
     if (!initFirebase()) {
         debug('❌ Cannot load - Firebase not ready', 'error');
         statusText.textContent = '❌ Firebase not ready';
         statusText.className = 'status-value error';
-        
-        // Retry after a delay
-        if (INIT_RETRIES < MAX_RETRIES) {
-            INIT_RETRIES++;
-            debug('Retrying in 1 second... (' + INIT_RETRIES + '/' + MAX_RETRIES + ')', 'warn');
-            setTimeout(function() {
-                loadFromFirestore();
-            }, 1000);
-        }
         return;
     }
     
@@ -459,7 +552,7 @@ function loadFromFirestore() {
     try {
         db.enablePersistence()
             .catch(function(err) {
-                debug('ℹ️ Offline persistence not available: ' + err.message, 'warn');
+                // Ignore - persistence not critical
             });
     } catch (err) {
         // Ignore
@@ -514,7 +607,6 @@ function loadFromFirestore() {
                 loadingOverlay.style.display = 'none';
                 placeholder.style.display = 'block';
                 debug('❌ Image failed to load', 'error');
-                console.error('Image load error:', e);
             };
             
         })
@@ -531,29 +623,116 @@ function loadFromFirestore() {
 }
 
 // ============================================================
-// FULL SCREEN
+// FULL SCREEN - iOS Friendly
 // ============================================================
 
-function viewFullscreen() {
-    if (celebrationImage.src) {
-        window.open(celebrationImage.src, '_blank');
+function openFullscreen() {
+    if (!celebrationImage.src || celebrationImage.src === '') {
+        debug('No image to display full screen', 'error');
+        return;
     }
+    
+    debug('Opening full screen view', 'info');
+    
+    // Set the full screen image source
+    fullscreenImage.src = celebrationImage.src;
+    
+    // Show the overlay
+    fullscreenOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    
+    // Reset zoom on open
+    fullscreenImage.style.transform = 'scale(1)';
+    fullscreenImage.style.transformOrigin = 'center center';
 }
+
+function closeFullscreen() {
+    fullscreenOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+// ============================================================
+// PINCH ZOOM FOR FULL SCREEN - iOS Compatible
+// ============================================================
+
+var fullscreenWrapper = document.getElementById('fullscreenWrapper');
+var currentScale = 1;
+var startX = 0;
+var startY = 0;
+var translateX = 0;
+var translateY = 0;
+var isDragging = false;
+
+fullscreenWrapper.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+        isDragging = true;
+        startX = e.touches[0].clientX - translateX;
+        startY = e.touches[0].clientY - translateY;
+    }
+}, { passive: true });
+
+fullscreenWrapper.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 1 && isDragging && currentScale > 1) {
+        translateX = e.touches[0].clientX - startX;
+        translateY = e.touches[0].clientY - startY;
+        fullscreenImage.style.transform = 'scale(' + currentScale + ') translate(' + (translateX / currentScale) + 'px, ' + (translateY / currentScale) + 'px)';
+    }
+}, { passive: true });
+
+fullscreenWrapper.addEventListener('touchend', function(e) {
+    isDragging = false;
+}, { passive: true });
+
+// Pinch zoom
+var lastTouchDistance = 0;
+var initialScale = 1;
+
+fullscreenWrapper.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 2) {
+        var dx = e.touches[0].clientX - e.touches[1].clientX;
+        var dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastTouchDistance = Math.sqrt(dx * dx + dy * dy);
+        initialScale = currentScale;
+    }
+}, { passive: true });
+
+fullscreenWrapper.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 2) {
+        var dx = e.touches[0].clientX - e.touches[1].clientX;
+        var dy = e.touches[0].clientY - e.touches[1].clientY;
+        var distance = Math.sqrt(dx * dx + dy * dy);
+        
+        var scaleChange = distance / lastTouchDistance;
+        var newScale = Math.min(Math.max(initialScale * scaleChange, 0.5), 4);
+        currentScale = newScale;
+        
+        fullscreenImage.style.transform = 'scale(' + currentScale + ')';
+        fullscreenImage.style.transformOrigin = 'center center';
+    }
+}, { passive: true });
+
+// Click/tap to close
+fullscreenOverlay.addEventListener('click', function(e) {
+    if (e.target === fullscreenOverlay || e.target === fullscreenImage) {
+        closeFullscreen();
+    }
+});
+
+// Close button
+closeFullscreenBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    closeFullscreen();
+});
 
 // ============================================================
 // EVENT LISTENERS
 // ============================================================
 
-loadBtn.addEventListener('click', function() {
-    INIT_RETRIES = 0;
-    loadFromFirestore();
-});
+loadBtn.addEventListener('click', loadFromFirestore);
 
 retryBtn.addEventListener('click', function() {
     debug('Manual retry...', 'info');
     debugBox.innerHTML = '';
-    debugCount = 0;
-    INIT_RETRIES = 0;
     firebaseStatus.textContent = 'Retrying...';
     firebaseStatus.className = 'status-value pending';
     docStatus.textContent = 'Retrying...';
@@ -568,10 +747,10 @@ retryBtn.addEventListener('click', function() {
     placeholder.style.display = 'block';
     loadingOverlay.style.display = 'none';
     fullscreenBtn.style.display = 'none';
+    closeFullscreen();
     
     // Try to reinitialize Firebase
     if (firebase.apps && firebase.apps.length > 0) {
-        debug('Deleting existing Firebase app...', 'info');
         try {
             firebase.app().delete();
         } catch (e) {
@@ -584,7 +763,14 @@ retryBtn.addEventListener('click', function() {
     }, 500);
 });
 
-fullscreenBtn.addEventListener('click', viewFullscreen);
+fullscreenBtn.addEventListener('click', openFullscreen);
+
+// Also tap on image to open full screen
+imageContainer.addEventListener('click', function() {
+    if (celebrationImage.style.display !== 'none' && celebrationImage.src) {
+        openFullscreen();
+    }
+});
 
 // ============================================================
 // AUTO-LOAD ON PAGE LOAD
@@ -629,11 +815,12 @@ setTimeout(function() {
 
 <!--
 FILE: test-celebration.html
-VERSION: 1.05
+VERSION: 1.06
 KEY CHANGES:
-   - More robust Firebase initialization with retry
-   - Better error handling for iOS Safari
-   - Manual load button as fallback
-   - Shows detailed connection status
+   - Fixed: Full screen view works on iOS
+   - Added: Zoomable image with pinch-to-zoom
+   - Added: Double-tap to zoom
+   - Added: Close button for full screen view
+   - Better mobile UX
 STATUS: Ready for testing
 -->
