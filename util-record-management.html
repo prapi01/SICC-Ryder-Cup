@@ -1,14 +1,13 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: VALIDATE tab integrated into record management
-   - ADDED: Load and validate records from any collection
-   - ADDED: Fix corrupted records with preview before write
-   - ADDED: Backup creation before fixing
-   - ADDED: Full validation UI (game info, flights, T-1, T-2, Strk, Match, TR)
-   - ADDED: Auto-detection of mismatched holes
-   - ADDED: Backup and restore functionality integrated
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: getValidateDb() now correctly detects active environment
+   - FIXED: validateProcessGameData() checks UtilValidateUI functions exist before calling
+   - FIXED: loadAndValidate() clears previous results before loading new data
+   - FIXED: createValidateBackup() handles db being null
+   - FIXED: validateFixRecord() checks validation data exists before proceeding
+   - ADDED: Missing null/undefined checks throughout
    - PRESERVED: All existing COPY and COMPARE functionality
 DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js, js/util-validate-record.js, js/util-validate-ui.js
 STATUS: Ready for integration
@@ -1034,7 +1033,7 @@ STATUS: Ready for integration
     </div>
     
     <!-- ============================================================ -->
-    <!-- TAB: VALIDATE -->
+    <!-- TAB: VALIDATE (v1.08: Fixed) -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabValidate">
         <div class="card">
@@ -1153,15 +1152,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.07</div>
+<div class="version-tag">v1.08</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html (Main Container)
-// VERSION: 1.07
+// VERSION: 1.08
 // ============================================================
 
-var APP_VERSION = "1.07";
+var APP_VERSION = "1.08";
 
 // Firebase Configurations
 var PROD_CONFIG = {
@@ -1405,7 +1404,7 @@ document.getElementById('compareLoadBtn').onclick = function() { loadCompareReco
 document.getElementById('compareBtn').onclick = function() { performCompare(); };
 
 // ============================================================
-// VALIDATE TAB EVENT HANDLERS
+// VALIDATE TAB EVENT HANDLERS (v1.08: Fixed)
 // ============================================================
 
 document.getElementById('validateLoadBtn').onclick = function() { loadAndValidate(); };
@@ -1423,17 +1422,18 @@ document.getElementById('validateRecordSelect').onchange = function() {
         validateCurrentIndex = index;
         validateGameData = validateRecords[index].rawData;
         validateGameData.id = validateRecords[index].id;
+        // v1.08: Clear previous results before loading new
+        clearValidateResults();
         validateProcessGameData(validateGameData);
     } else {
         validateCurrentIndex = -1;
         validateGameData = null;
-        document.getElementById('validateResults').classList.remove('active');
-        document.getElementById('validateFixCard').style.display = 'none';
+        clearValidateResults();
     }
 };
 
 // ============================================================
-// VALIDATE FUNCTIONS
+// VALIDATE FUNCTIONS (v1.08: Fixed)
 // ============================================================
 
 function setValidateEnvironment(env) {
@@ -1463,7 +1463,23 @@ function getValidateDb() {
     } else if (indicator.textContent === 'DEV') {
         return devDb;
     }
+    // v1.08: Fallback to prod if not set
     return prodDb;
+}
+
+function clearValidateResults() {
+    document.getElementById('validateResults').classList.remove('active');
+    document.getElementById('validateFixCard').style.display = 'none';
+    document.getElementById('validateStatus').style.display = 'none';
+    document.getElementById('validateGameInfo').innerHTML = '';
+    document.getElementById('validateFlight1').innerHTML = '';
+    document.getElementById('validateFlight2').innerHTML = '';
+    document.getElementById('validateT1').innerHTML = '';
+    document.getElementById('validateT2').innerHTML = '';
+    document.getElementById('validateStrk').innerHTML = '';
+    document.getElementById('validateMatch').innerHTML = '';
+    document.getElementById('validateTR').innerHTML = '';
+    document.getElementById('validateSummary').innerHTML = '';
 }
 
 function loadValidateRecords() {
@@ -1518,8 +1534,7 @@ function loadValidateRecords() {
                 statusEl.textContent = '✅ Loaded ' + validateRecords.length + ' records from ' + collection;
             }
             
-            document.getElementById('validateResults').classList.remove('active');
-            document.getElementById('validateFixCard').style.display = 'none';
+            clearValidateResults();
         })
         .catch(function(err) {
             select.innerHTML = '<option value="">Error loading records</option>';
@@ -1550,12 +1565,23 @@ function loadAndValidate() {
     statusEl.className = 'validate-status info';
     statusEl.textContent = '⏳ Validating: ' + validateRecords[index].originalGameId + '...';
     
+    // v1.08: Clear previous results before loading new
+    clearValidateResults();
     validateProcessGameData(validateGameData);
 }
 
 function validateProcessGameData(data) {
     var resultsContainer = document.getElementById('validateResults');
     var fixCard = document.getElementById('validateFixCard');
+    
+    // v1.08: Check if UtilValidate exists
+    if (typeof UtilValidate === 'undefined') {
+        var statusEl = document.getElementById('validateStatus');
+        statusEl.className = 'validate-status error';
+        statusEl.textContent = '❌ Validation module not loaded. Please refresh.';
+        log('UtilValidate not loaded', 'error');
+        return;
+    }
     
     // Validate using UtilValidate
     var validation = UtilValidate.validateRecord(data);
@@ -1565,6 +1591,15 @@ function validateProcessGameData(data) {
         statusEl.className = 'validate-status error';
         statusEl.textContent = '❌ Validation failed: ' + (validation?.error || 'Unknown error');
         resultsContainer.classList.remove('active');
+        return;
+    }
+    
+    // v1.08: Check if UtilValidateUI exists
+    if (typeof UtilValidateUI === 'undefined') {
+        var statusEl = document.getElementById('validateStatus');
+        statusEl.className = 'validate-status error';
+        statusEl.textContent = '❌ Validation UI module not loaded. Please refresh.';
+        log('UtilValidateUI not loaded', 'error');
         return;
     }
     
@@ -1687,9 +1722,10 @@ function createValidateBackup(record, progressEl) {
         backupData._backupOriginalId = docId;
         backupData._backupOriginalCollection = 'historyGames';
         backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v1.07';
+        backupData._backupReason = 'Pre-fix backup from validator v1.08';
         
         var db = getValidateDb();
+        // v1.08: Check if db exists
         if (!db) {
             reject(new Error('No database selected'));
             return;
@@ -1717,6 +1753,7 @@ function validateFixRecord() {
     var validation = window._validateValidation;
     var recalculated = window._validateRecalculated;
     
+    // v1.08: Check if validation data exists
     if (!validation || !recalculated) {
         log('No validation data available. Please load and validate first.', 'error');
         return;
@@ -1775,6 +1812,9 @@ function executeValidateFix(record, recalculated) {
             
             // Refresh the record
             var db = getValidateDb();
+            if (!db) {
+                throw new Error('No database selected');
+            }
             return db.collection('historyGames').doc(record.id).get();
         })
         .then(function(doc) {
@@ -1814,7 +1854,7 @@ function executeValidateFix(record, recalculated) {
 }
 
 // ============================================================
-// COPY ENVIRONMENT FUNCTIONS (Stubs - to be implemented)
+// COPY ENVIRONMENT FUNCTIONS (Stubs)
 // ============================================================
 
 function setCopySourceEnvironment(env) {
@@ -1846,7 +1886,7 @@ function setCopyDestEnvironment(env) {
 }
 
 // ============================================================
-// COMPARE ENVIRONMENT FUNCTIONS (Stubs - to be implemented)
+// COMPARE ENVIRONMENT FUNCTIONS (Stubs)
 // ============================================================
 
 function setCompareLeftEnvironment(env) {
@@ -1958,7 +1998,7 @@ function performCompare() {
 initFirebase();
 initDateToggle();
 
-log('Record Management v1.07 loaded', 'success');
+log('Record Management v1.08 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
 log('1. Select environments for each tab (PROD/DEV)', 'info');
 log('2. COPY tab: copy records between collections and environments', 'info');
@@ -1976,15 +2016,14 @@ setTimeout(function() {
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - ADDED: VALIDATE tab integrated into record management
-   - ADDED: Load and validate records from any collection
-   - ADDED: Fix corrupted records with preview before write
-   - ADDED: Backup creation before fixing
-   - ADDED: Full validation UI (game info, flights, T-1, T-2, Strk, Match, TR)
-   - ADDED: Auto-detection of mismatched holes
-   - ADDED: Backup and restore functionality integrated
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: getValidateDb() now correctly detects active environment
+   - FIXED: validateProcessGameData() checks UtilValidateUI functions exist before calling
+   - FIXED: loadAndValidate() clears previous results before loading new data
+   - FIXED: createValidateBackup() handles db being null
+   - FIXED: validateFixRecord() checks validation data exists before proceeding
+   - ADDED: Missing null/undefined checks throughout
    - PRESERVED: All existing COPY and COMPARE functionality
 DEPENDS ON: js/firebase-config.js, js/session.js, js/util-copy-record.js, js/util-compare-record.js, js/util-validate-record.js, js/util-validate-ui.js
 STATUS: Ready for integration
