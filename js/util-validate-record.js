@@ -1,22 +1,24 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Validation logic extracted from validate.html
-   - Functions: parseDataString, parseHoleData, getStrokeHoles, getNetScoreMatchGame
-   - Functions: getPlayerScore, getIntraMatchResultForHole, getCrossMatchResultForHole
-   - Functions: calculateTeamGame, calculateStrokeGame, calculateMatchGamePerHole
-   - Functions: buildCompleteResultsFromRawData, compareRecords, validateRecord
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: getPlayerGrossFromScores() now correctly maps player scores
+   - FIXED: validateRecord() handles missing gameInfo gracefully
+   - FIXED: buildFixPreview() handles missing results object
+   - FIXED: deepEqual() handles Date and Firestore Timestamp objects
+   - FIXED: getStrokeHoles() handles undefined courseSi
+   - ADDED: null/undefined checks throughout
+   - All core functionality preserved from v1.00
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.00";
+window.UTIL_VALIDATE_VERSION = "1.01";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.00");
+    console.log("[UTIL-VALIDATE] Initializing v1.01");
     
     // ============================================================
     // PARSING FUNCTIONS
@@ -51,6 +53,11 @@ var UtilValidate = (function() {
     
     function getStrokeHoles(handicapDiff, courseSi) {
         if (handicapDiff <= 0) return [];
+        if (!courseSi || courseSi.length === 0) {
+            // Default SI if not provided
+            courseSi = [];
+            for (var i = 0; i < 18; i++) courseSi[i] = i + 1;
+        }
         var holesWithSi = [];
         for (var i = 0; i < 18; i++) { holesWithSi.push({ hole: i+1, si: courseSi[i] || 1 }); }
         holesWithSi.sort(function(a, b) { return a.si - b.si; });
@@ -95,12 +102,50 @@ var UtilValidate = (function() {
     function getPlayerGrossFromScores(player, holeNumber, f1Scores, f2Scores) {
         var holeData = player.flight === 1 ? f1Scores[holeNumber - 1] : f2Scores[holeNumber - 1];
         if (!holeData || !holeData.saved) return null;
+        
+        // Determine which slot this player occupies
         if (player.team === 'A') {
+            // Check if this is the first A player based on handicap order
+            var flightPlayers = player.flight === 1 ? 
+                f1Scores[holeNumber - 1] : f2Scores[holeNumber - 1];
+            // Use the scores directly - in the data string, a1 is always first A, a2 is second A
+            // We need to determine by player's handicap rank within team
+            var allPlayers = window._validatePlayers || [];
+            var flightTeamPlayers = allPlayers.filter(function(p) { 
+                return p.flight === player.flight && p.team === 'A'; 
+            }).sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            if (flightTeamPlayers.length === 0) {
+                // Fallback: use a1
+                if (holeData.a1 !== undefined) return holeData.a1;
+            }
+            
+            if (flightTeamPlayers[0] && flightTeamPlayers[0].name === player.name) {
+                return holeData.a1;
+            } else if (flightTeamPlayers[1] && flightTeamPlayers[1].name === player.name) {
+                return holeData.a2;
+            }
+            
+            // Fallback if not found
             if (holeData.a1 !== undefined) return holeData.a1;
-            if (holeData.a2 !== undefined) return holeData.a2;
         } else {
+            // Team B
+            var allPlayers = window._validatePlayers || [];
+            var flightTeamPlayers = allPlayers.filter(function(p) { 
+                return p.flight === player.flight && p.team === 'B'; 
+            }).sort(function(a, b) { return a.handicap - b.handicap; });
+            
+            if (flightTeamPlayers.length === 0) {
+                if (holeData.b1 !== undefined) return holeData.b1;
+            }
+            
+            if (flightTeamPlayers[0] && flightTeamPlayers[0].name === player.name) {
+                return holeData.b1;
+            } else if (flightTeamPlayers[1] && flightTeamPlayers[1].name === player.name) {
+                return holeData.b2;
+            }
+            
             if (holeData.b1 !== undefined) return holeData.b1;
-            if (holeData.b2 !== undefined) return holeData.b2;
         }
         return null;
     }
@@ -190,7 +235,7 @@ var UtilValidate = (function() {
                 results.push({ hole: idx+1, match1: null, match2: null, holeResult: null, running: null, display: '-', trPointsA: 0.5, trPointsB: 0.5, teamGameTR: { A: 0.5, B: 0.5 } });
                 continue;
             }
-            var si = courseSi[idx] || 1;
+            var si = courseSi && courseSi[idx] ? courseSi[idx] : 1;
             var teamAGross = [hole.a1, hole.a2];
             var teamBGross = [hole.b1, hole.b2];
             var teamANets = [], teamBNets = [];
@@ -478,7 +523,9 @@ var UtilValidate = (function() {
             trTeamBGreen.push(trB > trA);
         }
         
-        // Player totals
+        // Player totals - store players for use in getPlayerGrossFromScores
+        window._validatePlayers = players;
+        
         var playerTotals = {};
         for (var p = 0; p < players.length; p++) {
             var player = players[p];
@@ -513,7 +560,7 @@ var UtilValidate = (function() {
             var holeData = matchResults[h];
             var clinchInfo = holeData.clinchInfo;
             for (var playerName in clinchInfo) {
-                if (clinchInfo[playerName].clinched) {
+                if (clinchInfo[playerName] && clinchInfo[playerName].clinched) {
                     var opponent = clinchInfo[playerName].clinchOpponent;
                     var clinchHole = clinchInfo[playerName].clinchHole;
                     clinchedAt[playerName + "_vs_" + opponent] = {
@@ -654,18 +701,73 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
+    // DEEP EQUAL HELPER (v1.01: handles Date and Firestore Timestamp)
+    // ============================================================
+    
+    function deepEqual(a, b) {
+        if (a === b) return true;
+        if (a === null || b === null) return a === b;
+        if (typeof a === 'undefined' || typeof b === 'undefined') return a === b;
+        
+        // Handle Date objects
+        if (a instanceof Date && b instanceof Date) {
+            return a.getTime() === b.getTime();
+        }
+        if (a instanceof Date) return false;
+        if (b instanceof Date) return false;
+        
+        // Handle Firestore Timestamp (has toDate method)
+        if (a && typeof a.toDate === 'function') {
+            if (b && typeof b.toDate === 'function') {
+                return a.toDate().getTime() === b.toDate().getTime();
+            }
+            return false;
+        }
+        if (b && typeof b.toDate === 'function') {
+            return false;
+        }
+        
+        if (typeof a !== 'object' || typeof b !== 'object') return a === b;
+        if (Array.isArray(a) && Array.isArray(b)) {
+            if (a.length !== b.length) return false;
+            for (var i = 0; i < a.length; i++) {
+                if (!deepEqual(a[i], b[i])) return false;
+            }
+            return true;
+        }
+        var keysA = Object.keys(a);
+        var keysB = Object.keys(b);
+        if (keysA.length !== keysB.length) return false;
+        for (var k = 0; k < keysA.length; k++) {
+            var key = keysA[k];
+            if (!deepEqual(a[key], b[key])) return false;
+        }
+        return true;
+    }
+    
+    // ============================================================
     // VALIDATE RECORD - Check if record needs fixing
     // ============================================================
     
     function validateRecord(recordData) {
-        var f1Scores = parseDataString(recordData.f1DataString);
-        var f2Scores = parseDataString(recordData.f2DataString);
-        var players = recordData.players || [];
-        var courseSi = recordData.gameInfo?.course?.si || recordData.course?.si || [];
-        var coursePar = recordData.gameInfo?.course?.par || recordData.course?.par || [];
+        // v1.01: Handle missing data gracefully
+        if (!recordData) {
+            return { valid: false, error: 'No record data provided' };
+        }
         
-        if (!f1Scores || !f2Scores || players.length === 0) {
-            return { valid: false, error: 'Invalid data' };
+        var f1DataString = recordData.f1DataString || '';
+        var f2DataString = recordData.f2DataString || '';
+        var f1Scores = parseDataString(f1DataString);
+        var f2Scores = parseDataString(f2DataString);
+        var players = recordData.players || [];
+        var courseSi = (recordData.gameInfo?.course?.si) || (recordData.course?.si) || [];
+        var coursePar = (recordData.gameInfo?.course?.par) || (recordData.course?.par) || [];
+        
+        if (!f1Scores || !f2Scores) {
+            return { valid: false, error: 'Invalid data strings' };
+        }
+        if (players.length === 0) {
+            return { valid: false, error: 'No players found' };
         }
         
         if (courseSi.length === 0) {
@@ -678,8 +780,8 @@ var UtilValidate = (function() {
         var recalculated = buildCompleteResultsFromRawData(f1Scores, f2Scores, players, courseSi, coursePar);
         var recTrA = recalculated.tr.teamA || [];
         var recTrB = recalculated.tr.teamB || [];
-        var curTrA = recordData.results?.tr?.teamA || [];
-        var curTrB = recordData.results?.tr?.teamB || [];
+        var curTrA = (recordData.results?.tr?.teamA) || [];
+        var curTrB = (recordData.results?.tr?.teamB) || [];
         
         var mismatches = [];
         for (var i = 0; i < 18; i++) {
@@ -714,14 +816,26 @@ var UtilValidate = (function() {
     // ============================================================
     
     function buildFixPreview(recordData, recalculated) {
+        // v1.01: Handle missing data gracefully
+        if (!recordData || !recalculated) {
+            return {
+                changes: [],
+                unchanged: [],
+                notTouched: [],
+                hasChanges: false,
+                mismatchedHoles: [],
+                matchingHoles: []
+            };
+        }
+        
         var changes = [];
         var unchanged = [];
         var notTouched = [];
         var mismatchedHoles = [];
         var matchingHoles = [];
         
-        var curTrA = recordData.results?.tr?.teamA || [];
-        var curTrB = recordData.results?.tr?.teamB || [];
+        var curTrA = (recordData.results?.tr?.teamA) || [];
+        var curTrB = (recordData.results?.tr?.teamB) || [];
         var newTrA = recalculated.tr.teamA || [];
         var newTrB = recalculated.tr.teamB || [];
         
@@ -747,7 +861,7 @@ var UtilValidate = (function() {
         }
         
         // T-1 Display
-        var curT1 = recordData.results?.game2?.displayT1 || [];
+        var curT1 = (recordData.results?.game2?.displayT1) || [];
         var newT1 = recalculated.game2.displayT1 || [];
         for (var i = 0; i < 18; i++) {
             if (curT1[i] !== newT1[i]) {
@@ -762,7 +876,7 @@ var UtilValidate = (function() {
         }
         
         // T-2 Display
-        var curT2 = recordData.results?.game2?.displayT2 || [];
+        var curT2 = (recordData.results?.game2?.displayT2) || [];
         var newT2 = recalculated.game2.displayT2 || [];
         for (var i = 0; i < 18; i++) {
             if (curT2[i] !== newT2[i]) {
@@ -777,7 +891,7 @@ var UtilValidate = (function() {
         }
         
         // Strk Display
-        var curStrk = recordData.results?.game3?.displayStrk || [];
+        var curStrk = (recordData.results?.game3?.displayStrk) || [];
         var newStrk = recalculated.game3.displayStrk || [];
         for (var i = 0; i < 18; i++) {
             if (curStrk[i] !== newStrk[i]) {
@@ -799,6 +913,8 @@ var UtilValidate = (function() {
                 new: 'completed',
                 type: 'status'
             });
+        } else {
+            unchanged.push('Status already completed');
         }
         
         // Player totals
@@ -809,6 +925,8 @@ var UtilValidate = (function() {
                 new: 'recalculated',
                 type: 'totals'
             });
+        } else {
+            unchanged.push('Player Totals match');
         }
         
         // Not touched fields
@@ -835,39 +953,14 @@ var UtilValidate = (function() {
     }
     
     // ============================================================
-    // DEEP EQUAL HELPER
-    // ============================================================
-    
-    function deepEqual(a, b) {
-        if (a === b) return true;
-        if (a === null || b === null) return a === b;
-        if (typeof a !== 'object' || typeof b !== 'object') return a === b;
-        if (Array.isArray(a) && Array.isArray(b)) {
-            if (a.length !== b.length) return false;
-            for (var i = 0; i < a.length; i++) {
-                if (!deepEqual(a[i], b[i])) return false;
-            }
-            return true;
-        }
-        var keysA = Object.keys(a);
-        var keysB = Object.keys(b);
-        if (keysA.length !== keysB.length) return false;
-        for (var k = 0; k < keysA.length; k++) {
-            var key = keysA[k];
-            if (!deepEqual(a[key], b[key])) return false;
-        }
-        return true;
-    }
-    
-    // ============================================================
     // BUILD FIX PAYLOAD
     // ============================================================
     
     function buildFixPayload(recordData, recalculated) {
         var updatePayload = {};
         var holesToFix = [];
-        var curTrA = recordData.results?.tr?.teamA || [];
-        var curTrB = recordData.results?.tr?.teamB || [];
+        var curTrA = (recordData.results?.tr?.teamA) || [];
+        var curTrB = (recordData.results?.tr?.teamB) || [];
         var newTrA = recalculated.tr.teamA || [];
         var newTrB = recalculated.tr.teamB || [];
         
@@ -890,8 +983,8 @@ var UtilValidate = (function() {
             updatePayload['results.tr.teamB'] = updatedTrB;
             
             // Green flags
-            var updatedGreenA = recordData.results?.tr?.teamAGreen || [];
-            var updatedGreenB = recordData.results?.tr?.teamBGreen || [];
+            var updatedGreenA = (recordData.results?.tr?.teamAGreen) || [];
+            var updatedGreenB = (recordData.results?.tr?.teamBGreen) || [];
             for (var idx = 0; idx < holesToFix.length; idx++) {
                 var holeIdx = holesToFix[idx];
                 updatedGreenA[holeIdx] = newTrA[holeIdx] > newTrB[holeIdx];
@@ -902,7 +995,7 @@ var UtilValidate = (function() {
         }
         
         // T-2 Display
-        var curT2 = recordData.results?.game2?.displayT2 || [];
+        var curT2 = (recordData.results?.game2?.displayT2) || [];
         var newT2 = recalculated.game2.displayT2 || [];
         var t2Mismatches = [];
         for (var i = 0; i < 18; i++) {
@@ -975,13 +1068,15 @@ window.UtilValidate = UtilValidate;
 
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Validation logic extracted from validate.html
-   - Functions: parseDataString, parseHoleData, getStrokeHoles, getNetScoreMatchGame
-   - Functions: getPlayerScore, getIntraMatchResultForHole, getCrossMatchResultForHole
-   - Functions: calculateTeamGame, calculateStrokeGame, calculateMatchGamePerHole
-   - Functions: buildCompleteResultsFromRawData, compareRecords, validateRecord
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: getPlayerGrossFromScores() now correctly maps player scores
+   - FIXED: validateRecord() handles missing gameInfo gracefully
+   - FIXED: buildFixPreview() handles missing results object
+   - FIXED: deepEqual() handles Date and Firestore Timestamp objects
+   - FIXED: getStrokeHoles() handles undefined courseSi
+   - ADDED: null/undefined checks throughout
+   - All core functionality preserved from v1.00
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
