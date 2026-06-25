@@ -1,16 +1,15 @@
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Centralized celebration photo management
-   - Copies C.jpg from GitHub to Firebase Storage
-   - Stores pointer in history record
-   - Checks for C.jpg at key points in the game
-DEPENDS ON: Firebase Storage, Firestore
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - CHANGED: Firestore writes now use WRV.update() for reliability
+   - ADDED: Fallback to direct update if WRV not available
+   - CHANGED: Now depends on WRV.js for Firestore writes
+DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-window.CELEBRATION_PHOTO_VERSION = "1.00";
+window.CELEBRATION_PHOTO_VERSION = "1.01";
 
 /**
  * Copy C.jpg from GitHub to Firebase Storage with game ID
@@ -54,12 +53,29 @@ function copyCelebrationPhoto(gameId, callback) {
                     return snapshot.ref.getDownloadURL();
                 })
                 .then(function(url) {
-                    var db = firebase.firestore();
-                    return db.collection('historyGames').doc(archiveId).update({
+                    var updateData = {
                         'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
                         'celebration.imageUrl': url,
                         'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                    };
+                    
+                    // Use WRV for reliable Firestore write
+                    if (typeof WRV !== 'undefined' && WRV.update) {
+                        return new Promise(function(resolve, reject) {
+                            WRV.update('historyGames', archiveId, updateData, function(err, result) {
+                                if (err) {
+                                    reject(err);
+                                } else {
+                                    resolve(result);
+                                }
+                            });
+                        });
+                    } else {
+                        // Fallback: direct update
+                        console.warn('[CelebrationPhoto] WRV not available, using direct update');
+                        var db = firebase.firestore();
+                        return db.collection('historyGames').doc(archiveId).update(updateData);
+                    }
                 })
                 .then(function() {
                     console.log('[CelebrationPhoto] ✅ Copied to:', archiveId + '.jpg');
@@ -109,11 +125,30 @@ function checkAndRenameCelebrationPhoto(gameId, callback) {
                         .then(function(blob) { return destRef.put(blob); })
                         .then(function(snapshot) { return snapshot.ref.getDownloadURL(); })
                         .then(function(destUrl) {
-                            var db = firebase.firestore();
-                            return db.collection('historyGames').doc(archiveId).update({
+                            var updateData = {
                                 'celebration.imageRef': 'celebration/' + archiveId + '.jpg',
                                 'celebration.imageUrl': destUrl,
                                 'celebration.copiedAt': firebase.firestore.FieldValue.serverTimestamp()
+                            };
+                            
+                            // Use WRV for reliable Firestore write
+                            return new Promise(function(resolve, reject) {
+                                if (typeof WRV !== 'undefined' && WRV.update) {
+                                    WRV.update('historyGames', archiveId, updateData, function(err, result) {
+                                        if (err) {
+                                            reject(err);
+                                        } else {
+                                            resolve(result);
+                                        }
+                                    });
+                                } else {
+                                    // Fallback: direct update
+                                    console.warn('[CelebrationPhoto] WRV not available, using direct update');
+                                    var db = firebase.firestore();
+                                    db.collection('historyGames').doc(archiveId).update(updateData)
+                                        .then(resolve)
+                                        .catch(reject);
+                                }
                             });
                         })
                         .then(function() {
@@ -168,12 +203,11 @@ window.checkAndRenameCelebrationPhoto = checkAndRenameCelebrationPhoto;
 
 /*
 FILE: js/celebration-photo.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Centralized celebration photo management
-   - Copies C.jpg from GitHub to Firebase Storage
-   - Stores pointer in history record
-   - Checks for C.jpg at key points in the game
-DEPENDS ON: Firebase Storage, Firestore
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - CHANGED: Firestore writes now use WRV.update() for reliability
+   - ADDED: Fallback to direct update if WRV not available
+   - CHANGED: Now depends on WRV.js for Firestore writes
+DEPENDS ON: Firebase Storage, Firestore, WRV.js
 STATUS: Ready for integration
 */
