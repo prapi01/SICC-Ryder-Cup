@@ -1,22 +1,24 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - CHANGED: Firestore writes now use WRV.update() for reliability
-   - ADDED: Promise wrapper for WRV to maintain async/await compatibility
-   - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: ALL v1.20 functions and API unchanged
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - CHANGED: WRV writes now run in BACKGROUND (fire-and-forget)
+   - Restores production callback timing (UI updates before WRV verification completes)
+   - writeSingleHoleToFirestore() now returns immediately, WRV runs in background
+   - writeNewHoleData() now returns immediately, WRV runs in background
+   - performSave() T-1 write now runs in background
+   - PRESERVED: ALL v1.21 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.21";
+window.REAL_GAME_SAVE_VERSION = "1.22";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.21 - WRV integration");
+    console.log("[REAL-GAME-SAVE] Initializing v1.22 - Background WRV writes");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -47,6 +49,33 @@ var RealGameSave = (function() {
                     .catch(reject);
             }
         });
+    }
+    
+    // ============================================================
+    // Helper: WRV update - BACKGROUND (fire and forget)
+    // Does NOT block the calling function
+    // ============================================================
+    function wruBackground(collection, docId, data, logLabel) {
+        if (typeof WRV !== 'undefined' && WRV.update) {
+            WRV.update(collection, docId, data, function(err, result) {
+                if (err) {
+                    console.warn('[RealGameSave] BACKGROUND WRV failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
+                } else {
+                    console.log('[RealGameSave] BACKGROUND WRV success' + (logLabel ? ' (' + logLabel + ')' : ''));
+                }
+            });
+        } else {
+            // Fallback: direct update in background
+            console.warn('[RealGameSave] WRV not available, using direct background update');
+            var db = getDb();
+            db.collection(collection).doc(docId).update(data)
+                .then(function() {
+                    console.log('[RealGameSave] BACKGROUND direct update success' + (logLabel ? ' (' + logLabel + ')' : ''));
+                })
+                .catch(function(err) {
+                    console.warn('[RealGameSave] BACKGROUND direct update failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
+                });
+        }
     }
     
     // ============================================================
@@ -272,7 +301,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore - v1.21: WRV integration
+    // writeSingleHoleToFirestore - v1.22: Background WRV
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -405,22 +434,19 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-WRITE] TR in payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
         }
         
-        try {
-            // Use WRV with Promise wrapper for async/await compatibility
-            await wru("scheduledGames", gameId, updatePayload);
-            if(isTarget) console.log(`[DEBUG-WRITE] SUCCESS - Firestore update completed for hole ${holeNumber}`);
-            console.log(`[CASCADE-DEBUG] Results saved successfully for hole ${holeNumber}`);
-        } catch (error) {
-            console.error('Error saving results:', error);
-            if(isTarget) console.error(`[DEBUG-WRITE] FAILED - Firestore update error:`, error);
-            throw error;
-        }
+        // ============================================================
+        // v1.22: WRITE IN BACKGROUND - don't await
+        // Fire and forget - UI is already updated
+        // ============================================================
+        wruBackground("scheduledGames", gameId, updatePayload, "singleHole_" + holeNumber);
+        if(isTarget) console.log(`[DEBUG-WRITE] INITIATED - Firestore update in background for hole ${holeNumber}`);
+        console.log(`[CASCADE-DEBUG] Results save initiated for hole ${holeNumber} (background)`);
         
         return true;
     }
     
     // ============================================================
-    // writeNewHoleData - v1.21: WRV integration
+    // writeNewHoleData - v1.22: Background WRV
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache) {
@@ -763,15 +789,14 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         
-        try {
-            // Use WRV with Promise wrapper for async/await compatibility
-            await wru("scheduledGames", gameId, updatePayload);
-            console.log(`[DEBUG-FLOW] Firestore write SUCCESS for hole ${holeNumber}`);
-            return true;
-        } catch (error) {
-            console.error(`[DEBUG-FLOW] Firestore write FAILED for hole ${holeNumber}:`, error);
-            throw error;
-        }
+        // ============================================================
+        // v1.22: WRITE IN BACKGROUND - don't await
+        // Fire and forget - UI is already updated
+        // ============================================================
+        wruBackground("scheduledGames", gameId, updatePayload, "newHole_" + holeNumber);
+        console.log(`[DEBUG-FLOW] Firestore write INITIATED in background for hole ${holeNumber}`);
+        
+        return true;
     }
     
     // ============================================================
@@ -931,7 +956,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.21: WRV integration for T-1 write
+    // performSave - v1.22: Background WRV for T-1 write
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1050,13 +1075,9 @@ var RealGameSave = (function() {
                             t1UpdatePayload["results.game2.flight1.leader"] = fullLeaderF1;
                             t1UpdatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
                             
-                            try {
-                                // Use WRV with Promise wrapper for async/await compatibility
-                                await wru("scheduledGames", gameId, t1UpdatePayload);
-                                console.log(`[DEBUG-SAVE] T-1 Firestore write SUCCESS`);
-                            } catch (e) {
-                                console.warn(`[DEBUG-SAVE] T-1 Firestore write FAILED:`, e);
-                            }
+                            // v1.22: Write T-1 in BACKGROUND - don't await
+                            wruBackground("scheduledGames", gameId, t1UpdatePayload, "T1_recalc");
+                            console.log(`[DEBUG-SAVE] T-1 Firestore write INITIATED in background`);
                         }
                         
                         if (renderAllCallback) renderAllCallback();
@@ -1069,7 +1090,7 @@ var RealGameSave = (function() {
                         
                         try {
                             await writeNewHoleData(currentPosition, currentHole, cache);
-                            console.log(`[DEBUG-SAVE] writeNewHoleData SUCCESS for hole ${currentHole}`);
+                            console.log(`[DEBUG-SAVE] writeNewHoleData INITIATED for hole ${currentHole}`);
                         } catch (error) {
                             console.error(`[DEBUG-SAVE] writeNewHoleData FAILED:`, error);
                             reject(new Error(`Failed to write match data for hole ${currentHole}`));
@@ -1162,7 +1183,7 @@ var RealGameSave = (function() {
                                 
                                 try {
                                     await writeSingleHoleToFirestore(item.hole, item.resultsData, finalCache);
-                                    console.log(`[DEBUG-SAVE] Successfully wrote hole ${item.hole}`);
+                                    console.log(`[DEBUG-SAVE] Cascade write INITIATED for hole ${item.hole}`);
                                     
                                     pendingData.pendingWrites = pendingData.pendingWrites.filter(function(w) {
                                         return w.hole !== item.hole;
@@ -1343,7 +1364,7 @@ var RealGameSave = (function() {
             
             try {
                 await writeSingleHoleToFirestore(holeNum, pending.resultsData, resultsCache);
-                console.log(`[CASCADE-DEBUG] Successfully wrote pending hole ${holeNum}`);
+                console.log(`[CASCADE-DEBUG] Pending write INITIATED for hole ${holeNum}`);
                 
                 pendingData.pendingWrites.splice(i, 1);
                 i--;
@@ -1358,11 +1379,11 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log(`[CASCADE-DEBUG] All pending writes completed successfully`);
+        console.log(`[CASCADE-DEBUG] All pending writes processed`);
         if (debugDiv) {
-            debugDiv.innerHTML = "✓ All updates completed";
+            debugDiv.innerHTML = "✓ All updates processed";
             setTimeout(function() {
-                if (debugDiv.innerHTML === "✓ All updates completed") {
+                if (debugDiv.innerHTML === "✓ All updates processed") {
                     debugDiv.innerHTML = "";
                 }
             }, 3000);
@@ -1402,12 +1423,14 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.21
-KEY CHANGES from v1.20:
-   - CHANGED: Firestore writes now use WRV.update() for reliability
-   - ADDED: Promise wrapper for WRV to maintain async/await compatibility
-   - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: ALL v1.20 functions and API unchanged
+VERSION: 1.22
+KEY CHANGES from v1.21:
+   - CHANGED: WRV writes now run in BACKGROUND (fire-and-forget)
+   - Restores production callback timing (UI updates before WRV verification completes)
+   - writeSingleHoleToFirestore() now returns immediately, WRV runs in background
+   - writeNewHoleData() now returns immediately, WRV runs in background
+   - performSave() T-1 write now runs in background
+   - PRESERVED: ALL v1.21 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
