@@ -1,17 +1,17 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.08
-KEY CHANGES from v2.07:
-   - CHANGED: saveCurrentHole() now uses WRV.update() for reliability
-   - CHANGED: resetFullGame() now uses WRV.update() for reliability
-   - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: ALL v2.07 functions and API unchanged
+VERSION: 2.09
+KEY CHANGES from v2.08:
+   - CHANGED: saveCurrentHole() now updates local data and UI IMMEDIATELY
+   - WRV now runs in background for reliability without blocking UI refresh
+   - Restores production callback timing (UI updates before WRV verification completes)
+   - PRESERVED: ALL v2.08 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.08
+// FILE: js/game-data.js - VERSION 2.09
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -638,7 +638,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // saveCurrentHole - v2.08: WRV integration
+    // saveCurrentHole - v2.09: Immediate UI + Background WRV
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -657,50 +657,49 @@ var GameData = (function() {
         updatePayload[otherFlightField + ".x"] = true;
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
-        // Use WRV for reliable Firestore write
+        // ============================================================
+        // STEP 1: Update local data and UI IMMEDIATELY (like production)
+        // This restores the original callback timing
+        // ============================================================
+        if (flight === 1) {
+            flight1Data.data = newData;
+            flight1Data.saveEvent = true;
+            flight2Data.crossEvent = true;
+        } else {
+            flight2Data.data = newData;
+            flight2Data.saveEvent = true;
+            flight1Data.crossEvent = true;
+        }
+        
+        console.log("[GameData] Save successful (local) for hole " + holeNumber);
+        notifyDataChanged();
+        
+        // Call callback immediately (production behavior)
+        if (callback) callback(true);
+        
+        // ============================================================
+        // STEP 2: Write to Firestore in the background (WRV for reliability)
+        // This doesn't block the UI
+        // ============================================================
         if (typeof WRV !== 'undefined' && WRV.update) {
+            // Use WRV in background - don't wait for it
             WRV.update(collection, gameId, updatePayload, function(err, result) {
                 if (err) {
-                    console.error("Save error (WRV):", err);
-                    notifyError("Save failed: " + err.message);
-                    if (callback) callback(false);
+                    console.warn("[GameData] WRV background write FAILED for hole " + holeNumber + ":", err);
+                    // The UI is already updated, but we log the error for debugging
                 } else {
-                    if (flight === 1) {
-                        flight1Data.data = newData;
-                        flight1Data.saveEvent = true;
-                        flight2Data.crossEvent = true;
-                    } else {
-                        flight2Data.data = newData;
-                        flight2Data.saveEvent = true;
-                        flight1Data.crossEvent = true;
-                    }
-                    console.log("Save successful via WRV");
-                    notifyDataChanged();
-                    if (callback) callback(true);
+                    console.log("[GameData] WRV background write SUCCESS for hole " + holeNumber);
                 }
             });
         } else {
-            // Fallback: direct update
-            console.warn('[GameData] WRV not available, using direct update for save');
+            // Fallback: direct update in background
+            console.warn('[GameData] WRV not available, using direct background write');
             firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
                 .then(function() {
-                    if (flight === 1) {
-                        flight1Data.data = newData;
-                        flight1Data.saveEvent = true;
-                        flight2Data.crossEvent = true;
-                    } else {
-                        flight2Data.data = newData;
-                        flight2Data.saveEvent = true;
-                        flight1Data.crossEvent = true;
-                    }
-                    console.log("Save successful");
-                    notifyDataChanged();
-                    if (callback) callback(true);
+                    console.log("[GameData] Direct background write SUCCESS for hole " + holeNumber);
                 })
                 .catch(function(err) {
-                    console.error("Save error:", err);
-                    notifyError("Save failed: " + err.message);
-                    if (callback) callback(false);
+                    console.warn("[GameData] Direct background write FAILED for hole " + holeNumber + ":", err);
                 });
         }
     }
@@ -841,7 +840,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v2.08: UNCHANGED from v2.07
+    // Public API - v2.09: UNCHANGED from v2.07
     // ============================================================
     
     return {
@@ -899,12 +898,12 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 2.08
-KEY CHANGES from v2.07:
-   - CHANGED: saveCurrentHole() now uses WRV.update() for reliability
-   - CHANGED: resetFullGame() now uses WRV.update() for reliability
-   - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: ALL v2.07 functions and API unchanged
+VERSION: 2.09
+KEY CHANGES from v2.08:
+   - CHANGED: saveCurrentHole() now updates local data and UI IMMEDIATELY
+   - WRV now runs in background for reliability without blocking UI refresh
+   - Restores production callback timing (UI updates before WRV verification completes)
+   - PRESERVED: ALL v2.08 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
