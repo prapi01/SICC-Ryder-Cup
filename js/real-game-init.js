@@ -2,10 +2,12 @@
 FILE: js/real-game-init.js
 VERSION: 1.02
 KEY CHANGES from v1.01:
-   - CHANGED: Firestore writes now use WRV.update() for reliability
+   - CHANGED: updateGameMetadata() now uses WRV.update() for reliability
+   - CHANGED: exitToMainMenu() now uses WRV.update() for reliability (lock release)
+   - ADDED: Promise wrapper for WRV to maintain async/await compatibility
    - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: All v1.01 API and structure (RealGameInit.init() remains unchanged)
-   - PRESERVED: All existing functionality
+   - PRESERVED: ALL v1.01 functions and API unchanged (init() signature preserved)
+   - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
@@ -22,6 +24,30 @@ var RealGameInit = (function() {
     // ============================================================
     function getDb() {
         return firebase.firestore();
+    }
+    
+    // ============================================================
+    // Helper: WRV update with Promise wrapper (async/await compatible)
+    // ============================================================
+    function wru(collection, docId, data) {
+        return new Promise(function(resolve, reject) {
+            if (typeof WRV !== 'undefined' && WRV.update) {
+                WRV.update(collection, docId, data, function(err, result) {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(result);
+                    }
+                });
+            } else {
+                // Fallback: direct update
+                console.warn('[RealGameInit] WRV not available, using direct update');
+                var db = getDb();
+                db.collection(collection).doc(docId).update(data)
+                    .then(resolve)
+                    .catch(reject);
+            }
+        });
     }
     
     // ============================================================
@@ -177,8 +203,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // updateGameMetadata - NOW WITH WRV
-    // v1.02: Uses WRV.update() for reliability
+    // updateGameMetadata - v1.02: WRV integration
     // ============================================================
     
     function updateGameMetadata(flight, holeNumber) {
@@ -210,31 +235,16 @@ var RealGameInit = (function() {
                     
                     console.log(`[METADATA] Writing to Firestore:`, metaPayload);
                     
-                    // Use WRV for reliable Firestore write
-                    if (typeof WRV !== 'undefined' && WRV.update) {
-                        WRV.update('scheduledGames', gameId, metaPayload, function(err, result) {
-                            if (err) {
-                                console.warn(`[METADATA] WRV update failed:`, err);
-                                resolve(false);
-                            } else {
-                                console.log(`[METADATA] WRV update successful for flight ${flight}`);
-                                resolve(true);
-                            }
+                    // Use WRV with Promise wrapper
+                    wru("scheduledGames", gameId, metaPayload)
+                        .then(function() {
+                            console.log(`[METADATA] Successfully updated metadata for flight ${flight}`);
+                            resolve(true);
+                        })
+                        .catch(function(e) {
+                            console.warn(`[METADATA] Failed to update metadata:`, e);
+                            resolve(false);
                         });
-                    } else {
-                        // Fallback: direct update
-                        console.warn(`[METADATA] WRV not available, using direct update`);
-                        var db = getDb();
-                        db.collection("scheduledGames").doc(gameId).update(metaPayload)
-                            .then(function() {
-                                console.log(`[METADATA] Direct update successful for flight ${flight}`);
-                                resolve(true);
-                            })
-                            .catch(function(e) {
-                                console.warn(`[METADATA] Direct update failed:`, e);
-                                resolve(false);
-                            });
-                    }
                 });
             });
         });
@@ -410,6 +420,7 @@ var RealGameInit = (function() {
     
     // ============================================================
     // setupRealtimeListener
+    // v1.01: Uses firebase.firestore() instead of global db
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -559,8 +570,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // exitToMainMenu - NOW WITH WRV
-    // v1.02: Uses WRV.update() for reliability
+    // exitToMainMenu - v1.02: WRV integration
     // ============================================================
     
     function exitToMainMenu() {
@@ -582,30 +592,16 @@ var RealGameInit = (function() {
                 ["locks.f" + editableFlight]: null,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             };
-            
             console.log("[EXIT] Releasing lock for flight", editableFlight);
             
-            // Use WRV for reliable Firestore write
-            if (typeof WRV !== 'undefined' && WRV.update) {
-                WRV.update('scheduledGames', gameId, releasePayload, function(err, result) {
-                    if (err) {
-                        console.warn("[EXIT] WRV lock release failed:", err);
-                    } else {
-                        console.log("[EXIT] WRV lock release successful for flight", editableFlight);
-                    }
+            // Use WRV with Promise wrapper
+            wru("scheduledGames", gameId, releasePayload)
+                .then(function() {
+                    console.log("[EXIT] Lock released for flight", editableFlight);
+                })
+                .catch(function(e) {
+                    console.warn("[EXIT] Failed to release lock:", e);
                 });
-            } else {
-                // Fallback: direct update
-                console.warn("[EXIT] WRV not available, using direct update for lock release");
-                var db = getDb();
-                db.collection("scheduledGames").doc(gameId).update(releasePayload)
-                    .then(function() {
-                        console.log("[EXIT] Direct lock release successful for flight", editableFlight);
-                    })
-                    .catch(function(e) {
-                        console.warn("[EXIT] Direct lock release failed:", e);
-                    });
-            }
         }
         
         if (typeof Modal !== 'undefined') {
@@ -638,7 +634,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // init - Main Initialization Function - UNCHANGED SIGNATURE
+    // init - Main Initialization Function - UNCHANGED
     // ============================================================
     
     async function init(renderAllCallback) {
@@ -899,10 +895,12 @@ window.onCacheUpdate = function(cache) {
 FILE: js/real-game-init.js
 VERSION: 1.02
 KEY CHANGES from v1.01:
-   - CHANGED: Firestore writes now use WRV.update() for reliability
+   - CHANGED: updateGameMetadata() now uses WRV.update() for reliability
+   - CHANGED: exitToMainMenu() now uses WRV.update() for reliability (lock release)
+   - ADDED: Promise wrapper for WRV to maintain async/await compatibility
    - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: All v1.01 API and structure (RealGameInit.init() remains unchanged)
-   - PRESERVED: All existing functionality
+   - PRESERVED: ALL v1.01 functions and API unchanged (init() signature preserved)
+   - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
