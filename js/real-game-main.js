@@ -1,18 +1,19 @@
 /*
 FILE: js/real-game-main.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Changed RealGameInit.init() to RealGameInit.initGame() (line 164)
-   - This fixes the initialization error where init() didn't exist
-   - All other functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: startGame() now parses gameId from URL and passes it to initGame()
+   - FIXED: Added null check for gameId before calling initGame()
+   - FIXED: Better error handling when gameId is missing
+   - All other functionality preserved from v1.01
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, RealGameInit, RealGameCascade
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_MAIN_VERSION = "1.01";
+window.REAL_GAME_MAIN_VERSION = "1.02";
 
-console.log("[REAL-GAME-MAIN] Initializing v1.01 - Fixed init call");
+console.log("[REAL-GAME-MAIN] Initializing v1.02 - Fixed gameId passing to initGame");
 
 // ============================================================
 // Main render wrapper
@@ -158,9 +159,21 @@ if (typeof RealGameUI !== 'undefined') {
 function startGame() {
     console.log("[REAL-GAME-MAIN] Starting game...");
     
-    // Initialize the game
-    if (typeof RealGameInit !== 'undefined' && RealGameInit.initGame) {
-        RealGameInit.initGame(renderAll);
+    // Get gameId from URL query parameter
+    var urlParams = new URLSearchParams(window.location.search);
+    var gameId = urlParams.get('gameId');
+    
+    if (!gameId) {
+        console.error("[REAL-GAME-MAIN] No gameId found in URL");
+        document.getElementById("debug").innerHTML = "Error: No game ID found. Please return to the main menu.";
+        return;
+    }
+    
+    console.log("[REAL-GAME-MAIN] Game ID from URL:", gameId);
+    
+    // Initialize the game with the gameId
+    if (typeof RealGameInit !== 'undefined' && typeof RealGameInit.initGame === 'function') {
+        RealGameInit.initGame(gameId, renderAll);
     } else {
         console.error("[REAL-GAME-MAIN] RealGameInit.initGame not available");
         document.getElementById("debug").innerHTML = "Error: Initialization failed. Please refresh.";
@@ -205,11 +218,12 @@ window.addEventListener('beforeunload', function() {
 
 /*
 FILE: js/real-game-main.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: Changed RealGameInit.init() to RealGameInit.initGame() (line 164)
-   - This fixes the initialization error where init() didn't exist
-   - All other functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: startGame() now parses gameId from URL and passes it to initGame()
+   - FIXED: Added null check for gameId before calling initGame()
+   - FIXED: Better error handling when gameId is missing
+   - All other functionality preserved from v1.01
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, RealGameInit, RealGameCascade
 STATUS: Ready for integration
 */
