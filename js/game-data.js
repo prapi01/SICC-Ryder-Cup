@@ -1,17 +1,15 @@
 /*
 FILE: js/game-data.js
-VERSION: 2.07
-KEY CHANGES from v2.06:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
-   - Removed local implementations of getPlayOrder(), getPlayPosition(), getNaturalHole()
-   - All order-related functions now delegate to GameOrder
-   - Maintains backward compatibility with existing API
-   - All other functionality unchanged (data strings, saving, loading, etc.)
-DEPENDS ON: js/game-order.js, Firebase Firestore
+VERSION: 3.00
+KEY CHANGES from v2.07:
+   - CHANGED: saveCurrentHole() now uses WRV.update() for reliability
+   - PRESERVED: EXACT order, timing, and behavior of all operations
+   - PRESERVED: ALL v2.07 functions and API unchanged
+DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 2.07
+// FILE: js/game-data.js - VERSION 3.00
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -610,6 +608,10 @@ var GameData = (function() {
         return "scheduledGames";
     }
     
+    // ============================================================
+    // saveCurrentHole - v3.00: WRV integration (ONLY change)
+    // ============================================================
+    
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
         var flight = (editableFlight === 1) ? 1 : 2;
         
@@ -626,26 +628,54 @@ var GameData = (function() {
         updatePayload[otherFlightField + ".x"] = true;
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
-        firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
-            .then(function() {
-                if (flight === 1) {
-                    flight1Data.data = newData;
-                    flight1Data.saveEvent = true;
-                    flight2Data.crossEvent = true;
+        // v3.00: Use WRV for reliable Firestore write
+        // Fallback to direct update if WRV not available
+        if (typeof WRV !== 'undefined' && WRV.update) {
+            WRV.update(collection, gameId, updatePayload, function(err, result) {
+                if (err) {
+                    console.error("Save error (WRV):", err);
+                    notifyError("Save failed: " + err.message);
+                    if (callback) callback(false);
                 } else {
-                    flight2Data.data = newData;
-                    flight2Data.saveEvent = true;
-                    flight1Data.crossEvent = true;
+                    // AFTER Firestore confirms, update local data
+                    if (flight === 1) {
+                        flight1Data.data = newData;
+                        flight1Data.saveEvent = true;
+                        flight2Data.crossEvent = true;
+                    } else {
+                        flight2Data.data = newData;
+                        flight2Data.saveEvent = true;
+                        flight1Data.crossEvent = true;
+                    }
+                    console.log("Save successful");
+                    notifyDataChanged();
+                    if (callback) callback(true);
                 }
-                console.log("Save successful");
-                notifyDataChanged();
-                if (callback) callback(true);
-            })
-            .catch(function(err) {
-                console.error("Save error:", err);
-                notifyError("Save failed: " + err.message);
-                if (callback) callback(false);
             });
+        } else {
+            // Fallback: direct update
+            console.warn('[GameData] WRV not available, using direct update');
+            firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
+                .then(function() {
+                    if (flight === 1) {
+                        flight1Data.data = newData;
+                        flight1Data.saveEvent = true;
+                        flight2Data.crossEvent = true;
+                    } else {
+                        flight2Data.data = newData;
+                        flight2Data.saveEvent = true;
+                        flight1Data.crossEvent = true;
+                    }
+                    console.log("Save successful");
+                    notifyDataChanged();
+                    if (callback) callback(true);
+                })
+                .catch(function(err) {
+                    console.error("Save error:", err);
+                    notifyError("Save failed: " + err.message);
+                    if (callback) callback(false);
+                });
+        }
     }
     
     function forceRefresh() {
@@ -784,7 +814,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v2.07: Delegates to GameOrder for order functions
+    // Public API - v3.00: UNCHANGED from v2.07
     // ============================================================
     
     return {
@@ -842,13 +872,11 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 2.07
-KEY CHANGES from v2.06:
-   - REFACTORED: Now uses GameOrder as the single source of truth for play order conversions
-   - Removed local implementations of getPlayOrder(), getPlayPosition(), getNaturalHole()
-   - All order-related functions now delegate to GameOrder
-   - Maintains backward compatibility with existing API
-   - All other functionality unchanged (data strings, saving, loading, etc.)
-DEPENDS ON: js/game-order.js, Firebase Firestore
+VERSION: 3.00
+KEY CHANGES from v2.07:
+   - CHANGED: saveCurrentHole() now uses WRV.update() for reliability
+   - PRESERVED: EXACT order, timing, and behavior of all operations
+   - PRESERVED: ALL v2.07 functions and API unchanged
+DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
