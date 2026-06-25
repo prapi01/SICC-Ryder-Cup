@@ -1,17 +1,20 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: Added RealGameState.setGameId(gameId) to store game ID in state
-   - FIXED: Added RealGameState.setAllPlayers(data.players) to store players in state
-   - FIXED: Added data-ready class to container to make UI visible
-   - FIXED: Removed celebration photo check at game start (H1) - moved to save points
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - REMOVED: Celebration photo check at game start (H1) - moved to save points
+   - REMOVED: RealGameUI.init(gameData) call - function doesn't exist
+   - REMOVED: RealGameState.init(gameData) call - function doesn't exist
+   - ADDED: RealGameState.setGameId(gameId) to store game ID in state
+   - ADDED: RealGameState.setAllPlayers(data.players) to store players in state
+   - ADDED: RealGameState.setCourseName/Par/Si/StartingHole/TeamGameFormat
+   - ADDED: data-ready class to container to make UI visible
    - All other functionality preserved from v1.02
-DEPENDS ON: GameData, GameUI, real-game-state, Firebase Firestore, js/celebration-photo.js
+DEPENDS ON: GameData, GameUI, real-game-state, Firebase Firestore
 STATUS: Ready for integration
 */
 
-// FILE: js/real-game-init.js - VERSION 1.03
+// FILE: js/real-game-init.js - VERSION 1.04
 
 var RealGameInit = (function() {
     
@@ -45,40 +48,39 @@ var RealGameInit = (function() {
             
             gameData = data;
             
-            // --- STORE GAME ID AND PLAYERS IN STATE ---
+            // ============================================================
+            // STORE DATA IN RealGameState
+            // ============================================================
             if (typeof RealGameState !== 'undefined') {
+                // Game ID
                 RealGameState.setGameId(gameId);
+                
+                // Players
                 if (data.players) {
                     RealGameState.setAllPlayers(data.players);
                 }
+                
+                // Course data
                 if (data.course) {
                     if (data.course.name) RealGameState.setCourseName(data.course.name);
                     if (data.course.par) RealGameState.setCoursePar(data.course.par);
                     if (data.course.si) RealGameState.setCourseSi(data.course.si);
                 }
+                
+                // Starting hole
                 if (data.startingHole) RealGameState.setStartingHole(data.startingHole);
+                
+                // Team game format
                 if (data.teamGameFormat) RealGameState.setTeamGameFormat(data.teamGameFormat);
-                console.log('[RealGameInit] State updated with gameId:', gameId, 'players:', data.players?.length);
+                
+                console.log('[RealGameInit] State updated - gameId:', gameId, 'players:', data.players?.length || 0);
             } else {
                 console.warn('[RealGameInit] RealGameState not available');
             }
             
-            // --- REMOVED: Celebration photo check at game start (H1)
-            // Now handled in real-game-save.js at H1, H4, H9, H14, H17 saves
-            
-            // Initialize UI
-            if (typeof RealGameUI !== 'undefined' && RealGameUI.init) {
-                RealGameUI.init(gameData);
-            }
-            
-            // Initialize game state
-            if (typeof RealGameState !== 'undefined' && RealGameState.init) {
-                RealGameState.init(gameData);
-            }
-            
-            initialized = true;
-            
-            // --- ADD DATA-READY CLASS TO MAKE UI VISIBLE ---
+            // ============================================================
+            // MAKE UI VISIBLE
+            // ============================================================
             var container = document.getElementById('mainContainer');
             if (container) {
                 container.classList.add('data-ready');
@@ -86,6 +88,8 @@ var RealGameInit = (function() {
             } else {
                 console.warn('[RealGameInit] mainContainer not found');
             }
+            
+            initialized = true;
             
             console.log('[RealGameInit] Game initialized successfully');
             if (callback) callback(null);
@@ -114,7 +118,6 @@ var RealGameInit = (function() {
                 
                 // Store in GameData if available
                 if (typeof GameData !== 'undefined') {
-                    // Update GameData with loaded data
                     if (data.f1) {
                         var f1Data = GameData.getFlightData(1);
                         f1Data.data = data.f1.d || f1Data.data;
@@ -173,14 +176,16 @@ window.RealGameInit = RealGameInit;
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - FIXED: Added RealGameState.setGameId(gameId) to store game ID in state
-   - FIXED: Added RealGameState.setAllPlayers(data.players) to store players in state
-   - FIXED: Added RealGameState.setCourseName/Par/Si/StartingHole/TeamGameFormat
-   - FIXED: Added data-ready class to container to make UI visible
+VERSION: 1.04
+KEY CHANGES from v1.03:
    - REMOVED: Celebration photo check at game start (H1) - moved to save points
+   - REMOVED: RealGameUI.init(gameData) call - function doesn't exist
+   - REMOVED: RealGameState.init(gameData) call - function doesn't exist
+   - ADDED: RealGameState.setGameId(gameId) to store game ID in state
+   - ADDED: RealGameState.setAllPlayers(data.players) to store players in state
+   - ADDED: RealGameState.setCourseName/Par/Si/StartingHole/TeamGameFormat
+   - ADDED: data-ready class to container to make UI visible
    - All other functionality preserved from v1.02
-DEPENDS ON: GameData, GameUI, real-game-state, Firebase Firestore, js/celebration-photo.js
+DEPENDS ON: GameData, GameUI, real-game-state, Firebase Firestore
 STATUS: Ready for integration
 */
