@@ -1,16 +1,17 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: checkAndRenameCelebrationPhoto() at game start (H1)
-   - ADDED: celebration-photo.js dependency
-   - All other functionality unchanged
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Added RealGameState.setGameId(gameId) to store game ID in state
+   - FIXED: Added RealGameState.setAllPlayers(data.players) to store players in state
+   - FIXED: Added data-ready class to container to make UI visible
+   - FIXED: Removed celebration photo check at game start (H1) - moved to save points
+   - All other functionality preserved from v1.02
 DEPENDS ON: GameData, GameUI, real-game-state, Firebase Firestore, js/celebration-photo.js
 STATUS: Ready for integration
 */
 
-// FILE: js/real-game-init.js - VERSION 1.02
-// Game initialization logic for real-game.html
+// FILE: js/real-game-init.js - VERSION 1.03
 
 var RealGameInit = (function() {
     
@@ -44,13 +45,26 @@ var RealGameInit = (function() {
             
             gameData = data;
             
-            // --- CELEBRATION PHOTO CHECK AT GAME START (H1) ---
-            if (typeof checkAndRenameCelebrationPhoto === 'function') {
-                console.log('[RealGameInit] 🔍 Checking celebration photo at game start (H1)');
-                checkAndRenameCelebrationPhoto(gameId);
+            // --- STORE GAME ID AND PLAYERS IN STATE ---
+            if (typeof RealGameState !== 'undefined') {
+                RealGameState.setGameId(gameId);
+                if (data.players) {
+                    RealGameState.setAllPlayers(data.players);
+                }
+                if (data.course) {
+                    if (data.course.name) RealGameState.setCourseName(data.course.name);
+                    if (data.course.par) RealGameState.setCoursePar(data.course.par);
+                    if (data.course.si) RealGameState.setCourseSi(data.course.si);
+                }
+                if (data.startingHole) RealGameState.setStartingHole(data.startingHole);
+                if (data.teamGameFormat) RealGameState.setTeamGameFormat(data.teamGameFormat);
+                console.log('[RealGameInit] State updated with gameId:', gameId, 'players:', data.players?.length);
             } else {
-                console.warn('[RealGameInit] celebration-photo.js not loaded');
+                console.warn('[RealGameInit] RealGameState not available');
             }
+            
+            // --- REMOVED: Celebration photo check at game start (H1)
+            // Now handled in real-game-save.js at H1, H4, H9, H14, H17 saves
             
             // Initialize UI
             if (typeof RealGameUI !== 'undefined' && RealGameUI.init) {
@@ -63,6 +77,15 @@ var RealGameInit = (function() {
             }
             
             initialized = true;
+            
+            // --- ADD DATA-READY CLASS TO MAKE UI VISIBLE ---
+            var container = document.getElementById('mainContainer');
+            if (container) {
+                container.classList.add('data-ready');
+                console.log('[RealGameInit] data-ready class added to container');
+            } else {
+                console.warn('[RealGameInit] mainContainer not found');
+            }
             
             console.log('[RealGameInit] Game initialized successfully');
             if (callback) callback(null);
@@ -150,11 +173,14 @@ window.RealGameInit = RealGameInit;
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: checkAndRenameCelebrationPhoto() at game start (H1)
-   - ADDED: celebration-photo.js dependency
-   - All other functionality unchanged
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: Added RealGameState.setGameId(gameId) to store game ID in state
+   - FIXED: Added RealGameState.setAllPlayers(data.players) to store players in state
+   - FIXED: Added RealGameState.setCourseName/Par/Si/StartingHole/TeamGameFormat
+   - FIXED: Added data-ready class to container to make UI visible
+   - REMOVED: Celebration photo check at game start (H1) - moved to save points
+   - All other functionality preserved from v1.02
 DEPENDS ON: GameData, GameUI, real-game-state, Firebase Firestore, js/celebration-photo.js
 STATUS: Ready for integration
 */
