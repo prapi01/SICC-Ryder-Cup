@@ -1,14 +1,16 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - EXPOSED: MAX_RETRIES, BASE_DELAY, MAX_DELAY for test validation
-   - All existing functionality preserved from v1.00
-DEPENDS ON: Firebase Firestore, celebration-photo.js
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - REMOVED: Celebration photo check from doWrite() - this belongs in celebration-photo.js
+   - PURE: WRV now only handles Write-Read-Verify with retry logic
+   - CLEAN: No domain-specific logic in this utility
+   - REMOVED: Dependency on celebration-photo.js
+DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.01";
+window.WRV_VERSION = "1.02";
 
 var WRV = (function() {
     
@@ -34,16 +36,10 @@ var WRV = (function() {
             attempt++;
             console.log('[WRV] Attempt', attempt, 'for', collection + '/' + docId);
             
-            // --- Step 1: Check for celebration photo ---
-            // This runs on EVERY write, catches uploads anytime
-            if (data.gameId && typeof checkAndRenameCelebrationPhoto === 'function') {
-                checkAndRenameCelebrationPhoto(data.gameId);
-            }
-            
-            // --- Step 2: Write to Firestore ---
+            // --- Step 1: Write to Firestore ---
             docRef.set(data, { merge: true })
                 .then(function() {
-                    // --- Step 3: Read back to verify ---
+                    // --- Step 2: Read back to verify ---
                     return docRef.get();
                 })
                 .then(function(doc) {
@@ -53,7 +49,7 @@ var WRV = (function() {
                     
                     var writtenData = doc.data();
                     
-                    // --- Step 4: Verify critical fields ---
+                    // --- Step 3: Verify critical fields ---
                     var verified = verifyData(data, writtenData);
                     
                     if (verified) {
@@ -124,10 +120,12 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - EXPOSED: MAX_RETRIES, BASE_DELAY, MAX_DELAY for test validation
-   - All existing functionality preserved from v1.00
-DEPENDS ON: Firebase Firestore, celebration-photo.js
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - REMOVED: Celebration photo check from doWrite() - this belongs in celebration-photo.js
+   - PURE: WRV now only handles Write-Read-Verify with retry logic
+   - CLEAN: No domain-specific logic in this utility
+   - REMOVED: Dependency on celebration-photo.js
+DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
