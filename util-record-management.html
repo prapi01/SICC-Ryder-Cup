@@ -1,14 +1,14 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - RESTORED: COPY tab functions from v1.06 (loadSourceRecords, loadDestinationRecords, loadGameData, copyRecord, checkDestination, deleteDestination)
-   - RESTORED: COMPARE tab functions from v1.06 (loadCompareRecords, loadCompareRecordsLeft, loadCompareRecordsRight, loadCompareRecordData, performCompare)
-   - REMOVED: Stub functions that depended on non-existent util-copy-record.js and util-compare-record.js
-   - REMOVED: util-copy-record.js and util-compare-record.js from script tags
-   - ADDED: Environment helper functions (getDbForEnv, getCopySourceEnvironment, etc.)
-   - PRESERVED: All VALIDATE tab functionality from v1.08
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - REFACTORED: Removed all embedded COPY, COMPARE, DELETE logic from HTML
+   - REFACTORED: Now uses separate JS files for each tab
+   - ADDED: js/util-delete-record.js script tag
+   - PRESERVED: All UI structure, tab switching, event bindings
+   - PRESERVED: All VALIDATE tab functionality (uses js/util-validate-record.js and js/util-validate-ui.js)
+   - CLEANER: HTML is now ~50% smaller
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js
 STATUS: Ready for integration
 -->
 
@@ -26,6 +26,9 @@ STATUS: Ready for integration
     <!-- Utility JS Files -->
     <script src="js/util-validate-record.js"></script>
     <script src="js/util-validate-ui.js"></script>
+    <script src="js/util-copy-record.js"></script>
+    <script src="js/util-compare-record.js"></script>
+    <script src="js/util-delete-record.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -98,6 +101,8 @@ STATUS: Ready for integration
             padding-left: 10px;
         }
         
+        .card-title.danger { border-left-color: #ff6b6b; color: #ff6b6b; }
+        
         .tab-nav {
             display: flex;
             gap: 0;
@@ -125,6 +130,7 @@ STATUS: Ready for integration
         .tab-btn:last-child { border-right: none; }
         .tab-btn:hover { color: #aaa; background: #111; }
         .tab-btn.active { background: #1a3a1a; color: #4caf50; box-shadow: inset 0 -2px 0 #4caf50; }
+        .tab-btn.active.danger-active { background: #3a1a1a; color: #ff6b6b; box-shadow: inset 0 -2px 0 #ff6b6b; }
         .tab-btn .tab-icon { margin-right: 8px; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
@@ -211,6 +217,7 @@ STATUS: Ready for integration
         .env-row .env-side-label.dest { color: #ffaa44; }
         .env-row .env-side-label.left { color: #4caf50; }
         .env-row .env-side-label.right { color: #4a8af4; }
+        .env-row .env-side-label.delete { color: #ff6b6b; }
         
         .collection-select {
             width: 100%;
@@ -351,6 +358,11 @@ STATUS: Ready for integration
             background: #3a1a1a;
             border: 1px solid #ff6b6b;
             color: #ff6b6b;
+        }
+        
+        .btn-danger:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
         }
         
         .btn-compare {
@@ -699,6 +711,196 @@ STATUS: Ready for integration
             color: #555;
             border: 1px solid #333;
         }
+        
+        /* DELETE Tab Styles */
+        .delete-records-container {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 8px;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            background: #0a0a0a;
+        }
+        
+        .delete-records-container table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+        
+        .delete-records-container th {
+            padding: 8px 6px;
+            text-align: left;
+            background: #0a0a0a;
+            border-bottom: 2px solid #333;
+            font-weight: 600;
+            color: #888;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #111;
+        }
+        
+        .delete-records-container td {
+            padding: 6px 6px;
+            border-bottom: 1px solid #1a1a1a;
+            vertical-align: middle;
+        }
+        
+        .delete-records-container tr:hover {
+            background: #1a1a1a;
+            cursor: pointer;
+        }
+        
+        .delete-records-container tr.selected {
+            background: #1a2a1a;
+        }
+        
+        .delete-records-container .checkbox-col {
+            width: 32px;
+            text-align: center;
+        }
+        
+        .delete-records-container input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #4caf50;
+            cursor: pointer;
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            border: 2px solid #4caf50;
+            border-radius: 4px;
+            appearance: none;
+            -webkit-appearance: none;
+            position: relative;
+            flex-shrink: 0;
+        }
+        
+        .delete-records-container input[type="checkbox"]:checked {
+            background: #4caf50;
+        }
+        
+        .delete-records-container input[type="checkbox"]:checked::after {
+            content: "✓";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #000;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        
+        .delete-records-container .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.6rem;
+            font-weight: 600;
+        }
+        
+        .delete-records-container .status-badge.completed {
+            background: #0a2a0a;
+            color: #4caf50;
+            border: 1px solid #2a5a2a;
+        }
+        
+        .delete-records-container .status-badge.pending {
+            background: #2a2a0a;
+            color: #ffaa44;
+            border: 1px solid #5a5a2a;
+        }
+        
+        .delete-records-container .status-badge.unknown {
+            background: #1a1a1a;
+            color: #555;
+            border: 1px solid #333;
+        }
+        
+        .delete-count {
+            font-size: 0.75rem;
+            color: #888;
+            margin-left: 8px;
+        }
+        
+        .delete-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+            padding: 8px 0;
+        }
+        
+        .delete-toolbar .btn-small {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #4caf50;
+            background: #1a3a1a;
+            color: #4caf50;
+            transition: all 0.2s;
+        }
+        
+        .delete-toolbar .btn-small:hover {
+            background: #2a4a2a;
+        }
+        
+        .delete-toolbar .btn-small:active {
+            transform: scale(0.95);
+        }
+        
+        .delete-toolbar .btn-small.danger {
+            border-color: #ff6b6b;
+            color: #ff6b6b;
+            background: #3a1a1a;
+        }
+        
+        .delete-toolbar .btn-small.danger:hover {
+            background: #4a2a2a;
+        }
+        
+        .delete-toolbar .btn-small:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .delete-progress {
+            display: none;
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            background: #0a0a0a;
+            font-size: 0.75rem;
+            color: #888;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .delete-progress.active { display: block; }
+        .delete-progress .step { padding: 2px 0; }
+        .delete-progress .step.done { color: #4caf50; }
+        .delete-progress .step.error { color: #ff6b6b; }
+        .delete-progress .step.info { color: #4a8af4; }
+        .delete-progress .step.warning { color: #ffaa44; }
+        
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.6rem;
+            font-weight: 600;
+        }
+        
+        .badge-sched { background: #1a2a3a; color: #4a8af4; border: 1px solid #2a4a5a; }
+        .badge-history { background: #1a3a2a; color: #4caf50; border: 1px solid #2a5a3a; }
+        .badge-backup { background: #3a2a1a; color: #ffaa44; border: 1px solid #5a4a2a; }
     </style>
 </head>
 <body>
@@ -716,6 +918,9 @@ STATUS: Ready for integration
         </button>
         <button class="tab-btn" data-tab="tabValidate">
             <span class="tab-icon">🔬</span> VALIDATE
+        </button>
+        <button class="tab-btn" data-tab="tabDelete">
+            <span class="tab-icon">🗑️</span> DELETE
         </button>
     </div>
     
@@ -819,7 +1024,7 @@ STATUS: Ready for integration
                 <button id="copyBtn" class="btn btn-primary">📝 COPY RECORD</button>
                 <button id="checkBtn" class="btn btn-secondary">🔍 CHECK DESTINATION</button>
             </div>
-            <button id="deleteBtn" class="btn btn-danger" style="margin-top:12px;">🗑️ DELETE DESTINATION RECORD</button>
+            <button id="deleteCopyDestBtn" class="btn btn-danger" style="margin-top:12px;">🗑️ DELETE DESTINATION RECORD</button>
         </div>
     </div>
     
@@ -1018,6 +1223,65 @@ STATUS: Ready for integration
         </div>
     </div>
     
+    <!-- ============================================================ -->
+    <!-- TAB: DELETE -->
+    <!-- ============================================================ -->
+    <div class="tab-content" id="tabDelete">
+        <div class="card">
+            <div class="card-title danger">🌍 ENVIRONMENT</div>
+            <div class="env-row">
+                <span class="env-side-label delete">🗑️ DELETE</span>
+                <div class="env-selector">
+                    <button class="env-btn-small" id="deleteProdBtn">PROD</button>
+                    <button class="env-btn-small" id="deleteDevBtn">DEV</button>
+                </div>
+                <span id="deleteIndicator" class="env-indicator-small none">Not connected</span>
+            </div>
+            <div style="font-size:0.7rem; color:#ff6b6b; margin-top:4px;">
+                ⚠️ Deleting records is permanent and cannot be undone.
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title danger">📂 SELECT COLLECTION</div>
+            <div class="select-wrapper">
+                <select id="deleteCollection" class="collection-select" style="border-color:#ff6b6b;" onchange="loadDeleteRecords()">
+                    <option value="scheduledGames">scheduledGames</option>
+                    <option value="historyGames">historyGames</option>
+                    <option value="backupFolder">backupFolder</option>
+                </select>
+            </div>
+            <button id="deleteRefreshBtn" class="btn btn-secondary" style="margin-top:8px;">↻ Refresh Records</button>
+        </div>
+        
+        <div class="card">
+            <div class="card-title danger">📋 DOCUMENTS <span class="delete-count" id="deleteCount">Loading...</span></div>
+            
+            <div class="delete-toolbar">
+                <button class="btn-small" id="deleteSelectAllBtn" onclick="selectAllDeleteRecords()">☑ Select All</button>
+                <button class="btn-small" id="deleteDeselectAllBtn" onclick="deselectAllDeleteRecords()">☐ Deselect All</button>
+                <span style="flex:1;"></span>
+                <span id="deleteSelectedCount" style="font-size:0.7rem; color:#888;">0 selected</span>
+            </div>
+            
+            <div class="delete-records-container" id="deleteRecordsContainer">
+                <div style="text-align:center; padding:20px; color:#555;">Loading records...</div>
+            </div>
+        </div>
+        
+        <div class="card" style="border-color:#ff6b6b;">
+            <div class="card-title danger">🗑️ DELETE RECORDS</div>
+            <div style="font-size:0.8rem; color:#ff6b6b; margin-bottom:12px;">
+                ⚠️ This action is <strong>PERMANENT</strong> and cannot be undone.
+                <br>Selected records will be removed from the database.
+            </div>
+            <div id="deleteProgress" class="delete-progress"></div>
+            <button id="deleteExecuteBtn" class="btn btn-danger" disabled>
+                🗑️ DELETE SELECTED (0 records)
+            </button>
+        </div>
+    </div>
+    
     <!-- Log -->
     <div class="card">
         <div class="card-title">📜 LOG</div>
@@ -1026,15 +1290,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.09</div>
+<div class="version-tag">v1.11</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.09
+// VERSION: 1.11
 // ============================================================
 
-var APP_VERSION = "1.09";
+var APP_VERSION = "1.11";
 
 // Firebase Configurations
 var PROD_CONFIG = {
@@ -1076,56 +1340,10 @@ function initFirebase() {
             devDb = firebase.firestore(devApp);
         }
         
-        log("Firebase initialized", "success");
+        console.log("[REC-MGMT] Firebase initialized");
     } catch(e) {
-        log("Firebase init error: " + e.message, "error");
-        console.error(e);
+        console.error("[REC-MGMT] Firebase init error:", e);
     }
-}
-
-// ============================================================
-// ENVIRONMENT HELPERS
-// ============================================================
-
-function getDbForEnv(env) {
-    if (env === 'PROD') return prodDb;
-    if (env === 'DEV') return devDb;
-    return prodDb;
-}
-
-function getCopySourceEnvironment() {
-    var indicator = document.getElementById('copySourceIndicator');
-    if (indicator.textContent === 'PROD') return 'PROD';
-    if (indicator.textContent === 'DEV') return 'DEV';
-    return 'PROD';
-}
-
-function getCopyDestEnvironment() {
-    var indicator = document.getElementById('copyDestIndicator');
-    if (indicator.textContent === 'PROD') return 'PROD';
-    if (indicator.textContent === 'DEV') return 'DEV';
-    return 'PROD';
-}
-
-function getCompareLeftEnvironment() {
-    var indicator = document.getElementById('compareLeftIndicator');
-    if (indicator.textContent === 'PROD') return 'PROD';
-    if (indicator.textContent === 'DEV') return 'DEV';
-    return 'PROD';
-}
-
-function getCompareRightEnvironment() {
-    var indicator = document.getElementById('compareRightIndicator');
-    if (indicator.textContent === 'PROD') return 'PROD';
-    if (indicator.textContent === 'DEV') return 'DEV';
-    return 'PROD';
-}
-
-function getValidateEnvironment() {
-    var indicator = document.getElementById('validateIndicator');
-    if (indicator.textContent === 'PROD') return 'PROD';
-    if (indicator.textContent === 'DEV') return 'DEV';
-    return 'PROD';
 }
 
 // ============================================================
@@ -1134,6 +1352,8 @@ function getValidateEnvironment() {
 
 function log(message, type) {
     var logDiv = document.getElementById('log');
+    if (!logDiv) return;
+    
     var entry = document.createElement('div');
     entry.className = 'log-entry';
     var timestamp = new Date().toLocaleTimeString();
@@ -1176,35 +1396,10 @@ function formatDate(dateStr) {
     return dateStr;
 }
 
-function initDateToggle() {
-    var radios = document.querySelectorAll('input[name="dateOption"]');
-    var customDateInput = document.getElementById('customDate');
-    
-    radios.forEach(function(radio) {
-        radio.addEventListener('change', function() {
-            var labels = document.querySelectorAll('.radio-group label');
-            labels.forEach(function(l) { l.classList.remove('active'); });
-            this.closest('label').classList.add('active');
-            
-            if (this.value === 'custom') {
-                customDateInput.style.display = 'block';
-                if (!customDateInput.value) {
-                    var today = new Date().toISOString().split('T')[0];
-                    customDateInput.value = today;
-                }
-            } else {
-                customDateInput.style.display = 'none';
-            }
-        });
-    });
-}
-
-function onDestExistingSelect() {
-    var select = document.getElementById('destExistingSelect');
-    var destDocId = document.getElementById('destDocId');
-    if (select.value) {
-        destDocId.value = select.value;
-    }
+function getDbForEnv(env) {
+    if (env === 'PROD') return prodDb;
+    if (env === 'DEV') return devDb;
+    return prodDb;
 }
 
 // ============================================================
@@ -1219,9 +1414,13 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
         });
         document.querySelectorAll('.tab-btn').forEach(function(el) {
             el.classList.remove('active');
+            el.classList.remove('danger-active');
         });
         document.getElementById(tabId).classList.add('active');
         this.classList.add('active');
+        if (tabId === 'tabDelete') {
+            this.classList.add('danger-active');
+        }
         
         if (tabId === 'tabCompare') {
             loadCompareRecords();
@@ -1229,96 +1428,59 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
         if (tabId === 'tabValidate') {
             loadValidateRecords();
         }
+        if (tabId === 'tabDelete') {
+            if (typeof deleteDb !== 'undefined' && deleteDb) {
+                loadDeleteRecords();
+            }
+        }
     });
 });
 
 // ============================================================
-// COPY TAB ENVIRONMENT HANDLERS
+// COPY TAB: ENVIRONMENT HANDLERS (delegates to util-copy-record.js)
 // ============================================================
 
 document.getElementById('copySourceProdBtn').onclick = function() {
-    document.getElementById('copySourceProdBtn').className = 'env-btn-small active-prod';
-    document.getElementById('copySourceDevBtn').className = 'env-btn-small';
-    var indicator = document.getElementById('copySourceIndicator');
-    indicator.textContent = 'PROD';
-    indicator.className = 'env-indicator-small prod';
-    log('Copy source environment set to: PROD', 'success');
+    setCopySourceEnvironment('PROD');
 };
 
 document.getElementById('copySourceDevBtn').onclick = function() {
-    document.getElementById('copySourceDevBtn').className = 'env-btn-small active-dev';
-    document.getElementById('copySourceProdBtn').className = 'env-btn-small';
-    var indicator = document.getElementById('copySourceIndicator');
-    indicator.textContent = 'DEV';
-    indicator.className = 'env-indicator-small dev';
-    log('Copy source environment set to: DEV', 'success');
+    setCopySourceEnvironment('DEV');
 };
 
 document.getElementById('copyDestProdBtn').onclick = function() {
-    document.getElementById('copyDestProdBtn').className = 'env-btn-small active-prod';
-    document.getElementById('copyDestDevBtn').className = 'env-btn-small';
-    var indicator = document.getElementById('copyDestIndicator');
-    indicator.textContent = 'PROD';
-    indicator.className = 'env-indicator-small prod';
-    log('Copy destination environment set to: PROD', 'success');
+    setCopyDestEnvironment('PROD');
 };
 
 document.getElementById('copyDestDevBtn').onclick = function() {
-    document.getElementById('copyDestDevBtn').className = 'env-btn-small active-dev';
-    document.getElementById('copyDestProdBtn').className = 'env-btn-small';
-    var indicator = document.getElementById('copyDestIndicator');
-    indicator.textContent = 'DEV';
-    indicator.className = 'env-indicator-small dev';
-    log('Copy destination environment set to: DEV', 'success');
+    setCopyDestEnvironment('DEV');
 };
 
 // ============================================================
-// COMPARE TAB ENVIRONMENT HANDLERS
+// COMPARE TAB: ENVIRONMENT HANDLERS (delegates to util-compare-record.js)
 // ============================================================
 
 document.getElementById('compareLeftProdBtn').onclick = function() {
-    document.getElementById('compareLeftProdBtn').className = 'env-btn-small active-prod';
-    document.getElementById('compareLeftDevBtn').className = 'env-btn-small';
-    var indicator = document.getElementById('compareLeftIndicator');
-    indicator.textContent = 'PROD';
-    indicator.className = 'env-indicator-small prod';
-    log('Compare left environment set to: PROD', 'success');
+    setCompareLeftEnvironment('PROD');
 };
 
 document.getElementById('compareLeftDevBtn').onclick = function() {
-    document.getElementById('compareLeftDevBtn').className = 'env-btn-small active-dev';
-    document.getElementById('compareLeftProdBtn').className = 'env-btn-small';
-    var indicator = document.getElementById('compareLeftIndicator');
-    indicator.textContent = 'DEV';
-    indicator.className = 'env-indicator-small dev';
-    log('Compare left environment set to: DEV', 'success');
+    setCompareLeftEnvironment('DEV');
 };
 
 document.getElementById('compareRightProdBtn').onclick = function() {
-    document.getElementById('compareRightProdBtn').className = 'env-btn-small active-prod';
-    document.getElementById('compareRightDevBtn').className = 'env-btn-small';
-    var indicator = document.getElementById('compareRightIndicator');
-    indicator.textContent = 'PROD';
-    indicator.className = 'env-indicator-small prod';
-    log('Compare right environment set to: PROD', 'success');
+    setCompareRightEnvironment('PROD');
 };
 
 document.getElementById('compareRightDevBtn').onclick = function() {
-    document.getElementById('compareRightDevBtn').className = 'env-btn-small active-dev';
-    document.getElementById('compareRightProdBtn').className = 'env-btn-small';
-    var indicator = document.getElementById('compareRightIndicator');
-    indicator.textContent = 'DEV';
-    indicator.className = 'env-indicator-small dev';
-    log('Compare right environment set to: DEV', 'success');
+    setCompareRightEnvironment('DEV');
 };
 
 // ============================================================
-// VALIDATE TAB ENVIRONMENT HANDLERS
+// VALIDATE TAB: ENVIRONMENT HANDLERS (delegates to util-validate-record.js)
 // ============================================================
 
 document.getElementById('validateProdBtn').onclick = function() {
-    document.getElementById('validateProdBtn').className = 'env-btn-small active-prod';
-    document.getElementById('validateDevBtn').className = 'env-btn-small';
     var indicator = document.getElementById('validateIndicator');
     indicator.textContent = 'PROD';
     indicator.className = 'env-indicator-small prod';
@@ -1327,8 +1489,6 @@ document.getElementById('validateProdBtn').onclick = function() {
 };
 
 document.getElementById('validateDevBtn').onclick = function() {
-    document.getElementById('validateDevBtn').className = 'env-btn-small active-dev';
-    document.getElementById('validateProdBtn').className = 'env-btn-small';
     var indicator = document.getElementById('validateIndicator');
     indicator.textContent = 'DEV';
     indicator.className = 'env-indicator-small dev';
@@ -1337,989 +1497,40 @@ document.getElementById('validateDevBtn').onclick = function() {
 };
 
 // ============================================================
-// COPY TAB: FUNCTIONS (RESTORED FROM v1.06)
+// DELETE TAB: ENVIRONMENT HANDLERS (delegates to util-delete-record.js)
 // ============================================================
 
-function loadSourceRecords() {
-    var env = getCopySourceEnvironment();
-    var db = getDbForEnv(env);
-    var collection = document.getElementById('sourceCollection').value;
-    
-    log('📤 Loading source records from ' + env + ':' + collection, 'info');
-    
-    var select = document.getElementById('gameSelect');
-    select.innerHTML = '<option value="">Loading...</option>';
-    var infoDiv = document.getElementById('gameInfo');
-    infoDiv.style.display = 'none';
-    infoDiv.innerHTML = '';
-    currentGameData = null;
-    currentGameId = null;
-    
-    db.collection(collection).limit(200).get()
-        .then(function(snapshot) {
-            var records = [];
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                records.push({
-                    id: doc.id,
-                    originalGameId: data.originalGameId || doc.id,
-                    date: data.gameInfo?.date || data.date || 'Unknown',
-                    courseName: data.gameInfo?.course?.name || 'Unknown',
-                    status: data.status || 'unknown',
-                    rawData: data
-                });
-            });
-            
-            window._sourceRecords = records;
-            
-            records.sort(function(a, b) {
-                if (a.date > b.date) return -1;
-                if (a.date < b.date) return 1;
-                return 0;
-            });
-            
-            if (records.length === 0) {
-                select.innerHTML = '<option value="">No records found</option>';
-                log('ℹ️ No records found in ' + collection, 'info');
-                return;
-            }
-            
-            var html = '<option value="">-- Select a record --</option>';
-            for (var i = 0; i < records.length; i++) {
-                var r = records[i];
-                html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
-            }
-            select.innerHTML = html;
-            log('✅ Loaded ' + records.length + ' source records from ' + collection, 'success');
-        })
-        .catch(function(err) {
-            select.innerHTML = '<option value="">Error loading records</option>';
-            log('❌ Error loading source records: ' + err.message, 'error');
-        });
-}
-
-function loadDestinationRecords() {
-    var env = getCopyDestEnvironment();
-    var db = getDbForEnv(env);
-    var collection = document.getElementById('destCollection').value;
-    
-    log('📥 Loading destination records from ' + env + ':' + collection, 'info');
-    
-    var select = document.getElementById('destExistingSelect');
-    select.innerHTML = '<option value="">Loading...</option>';
-    
-    var datalist = document.getElementById('destRecordsList');
-    datalist.innerHTML = '';
-    
-    db.collection(collection).limit(200).get()
-        .then(function(snapshot) {
-            var records = [];
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                records.push({
-                    id: doc.id,
-                    originalGameId: data.originalGameId || doc.id,
-                    date: data.gameInfo?.date || data.date || 'Unknown',
-                    courseName: data.gameInfo?.course?.name || 'Unknown',
-                    status: data.status || 'unknown'
-                });
-            });
-            
-            window._destRecords = records;
-            
-            records.sort(function(a, b) {
-                if (a.date > b.date) return -1;
-                if (a.date < b.date) return 1;
-                return 0;
-            });
-            
-            if (records.length === 0) {
-                select.innerHTML = '<option value="">No records found</option>';
-                log('ℹ️ No records found in ' + collection, 'info');
-                return;
-            }
-            
-            var html = '<option value="">-- Select existing to REPLACE --</option>';
-            for (var i = 0; i < records.length; i++) {
-                var r = records[i];
-                html += '<option value="' + escapeHtml(r.id) + '">' + escapeHtml(r.id + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
-                var option = document.createElement('option');
-                option.value = r.id;
-                datalist.appendChild(option);
-            }
-            select.innerHTML = html;
-            log('✅ Loaded ' + records.length + ' destination records from ' + collection, 'success');
-        })
-        .catch(function(err) {
-            select.innerHTML = '<option value="">Error loading records</option>';
-            log('❌ Error loading destination records: ' + err.message, 'error');
-        });
-}
-
-function loadGameData(index) {
-    var records = window._sourceRecords || [];
-    if (!records || records.length === 0) {
-        log('No source records loaded. Click "Load Source Records" first.', 'error');
-        return;
-    }
-    
-    var idx = parseInt(index);
-    if (isNaN(idx) || idx < 0 || idx >= records.length) {
-        log('Invalid record selection', 'error');
-        return;
-    }
-    
-    var record = records[idx];
-    currentGameData = record.rawData;
-    currentGameId = record.id;
-    
-    var infoDiv = document.getElementById('gameInfo');
-    infoDiv.style.display = 'block';
-    
-    var html = '<div class="game-info">';
-    html += '<div class="game-info-row"><span class="game-info-label">ID</span><span class="game-info-value">' + escapeHtml(record.id) + '</span></div>';
-    html += '<div class="game-info-row"><span class="game-info-label">Original ID</span><span class="game-info-value">' + escapeHtml(record.originalGameId) + '</span></div>';
-    html += '<div class="game-info-row"><span class="game-info-label">Date</span><span class="game-info-value">' + escapeHtml(record.date) + '</span></div>';
-    html += '<div class="game-info-row"><span class="game-info-label">Course</span><span class="game-info-value">' + escapeHtml(record.courseName) + '</span></div>';
-    html += '<div class="game-info-row"><span class="game-info-label">Status</span><span class="game-info-value">' + escapeHtml(record.status) + '</span></div>';
-    html += '<div class="game-info-row"><span class="game-info-label">Players</span><span class="game-info-value">' + (record.rawData.players ? record.rawData.players.length : 0) + '</span></div>';
-    html += '</div>';
-    
-    infoDiv.innerHTML = html;
-    log('✅ Loaded game data for: ' + record.id, 'success');
-}
-
-function copyRecord() {
-    if (!currentGameData || !currentGameId) {
-        log('No source record selected. Please load a record first.', 'error');
-        return;
-    }
-    
-    var destDocId = document.getElementById('destDocId').value.trim();
-    if (!destDocId) {
-        log('Please enter a destination document ID.', 'error');
-        return;
-    }
-    
-    var sourceEnv = getCopySourceEnvironment();
-    var destEnv = getCopyDestEnvironment();
-    var sourceCollection = document.getElementById('sourceCollection').value;
-    var destCollection = document.getElementById('destCollection').value;
-    
-    var dateOption = document.querySelector('input[name="dateOption"]:checked');
-    var dateValue = dateOption ? dateOption.value : 'keep';
-    
-    log('📝 Copying from ' + sourceEnv + ':' + sourceCollection + '/' + currentGameId + ' to ' + destEnv + ':' + destCollection + '/' + destDocId, 'info');
-    
-    var destDb = getDbForEnv(destEnv);
-    
-    destDb.collection(destCollection).doc(destDocId).get()
-        .then(function(doc) {
-            if (doc.exists) {
-                return new Promise(function(resolve, reject) {
-                    if (confirm('⚠️ Document already exists in ' + destCollection + '/' + destDocId + '\n\nDo you want to REPLACE it?')) {
-                        resolve();
-                    } else {
-                        reject(new Error('User cancelled'));
-                    }
-                });
-            }
-            return Promise.resolve();
-        })
-        .then(function() {
-            var copyData = JSON.parse(JSON.stringify(currentGameData));
-            
-            if (dateValue === 'today') {
-                var today = new Date().toISOString().split('T')[0];
-                if (copyData.gameInfo) copyData.gameInfo.date = today;
-                if (copyData.date) copyData.date = today;
-            } else if (dateValue === 'custom') {
-                var customDate = document.getElementById('customDate').value;
-                if (customDate) {
-                    if (copyData.gameInfo) copyData.gameInfo.date = customDate;
-                    if (copyData.date) copyData.date = customDate;
-                }
-            }
-            
-            copyData._copiedFrom = currentGameId;
-            copyData._copiedFromEnv = sourceEnv;
-            copyData._copiedFromCollection = sourceCollection;
-            copyData._copiedAt = new Date().toISOString();
-            copyData.updatedAt = new Date().toISOString();
-            
-            return destDb.collection(destCollection).doc(destDocId).set(copyData);
-        })
-        .then(function() {
-            log('✅ Record copied successfully to ' + destCollection + '/' + destDocId, 'success');
-            loadDestinationRecords();
-        })
-        .catch(function(err) {
-            if (err.message === 'User cancelled') {
-                log('⏹️ Copy cancelled by user.', 'info');
-            } else {
-                log('❌ Error copying record: ' + err.message, 'error');
-            }
-        });
-}
-
-function checkDestination() {
-    var destDocId = document.getElementById('destDocId').value.trim();
-    if (!destDocId) {
-        log('Please enter a destination document ID.', 'error');
-        return;
-    }
-    
-    var destEnv = getCopyDestEnvironment();
-    var destCollection = document.getElementById('destCollection').value;
-    var db = getDbForEnv(destEnv);
-    
-    log('🔍 Checking ' + destEnv + ':' + destCollection + '/' + destDocId, 'info');
-    
-    db.collection(destCollection).doc(destDocId).get()
-        .then(function(doc) {
-            if (doc.exists) {
-                var data = doc.data();
-                log('✅ Document exists. Status: ' + (data.status || 'unknown'), 'success');
-                var infoHtml = '<div class="game-info">';
-                infoHtml += '<div class="game-info-row"><span class="game-info-label">ID</span><span class="game-info-value">' + escapeHtml(doc.id) + '</span></div>';
-                infoHtml += '<div class="game-info-row"><span class="game-info-label">Status</span><span class="game-info-value">' + escapeHtml(data.status || 'unknown') + '</span></div>';
-                infoHtml += '<div class="game-info-row"><span class="game-info-label">Players</span><span class="game-info-value">' + (data.players ? data.players.length : 0) + '</span></div>';
-                if (data._copiedFrom) {
-                    infoHtml += '<div class="game-info-row"><span class="game-info-label">Copied From</span><span class="game-info-value">' + escapeHtml(data._copiedFrom) + '</span></div>';
-                }
-                infoHtml += '</div>';
-                document.getElementById('gameInfo').innerHTML = infoHtml;
-                document.getElementById('gameInfo').style.display = 'block';
-            } else {
-                log('❌ Document does not exist.', 'error');
-                document.getElementById('gameInfo').style.display = 'none';
-            }
-        })
-        .catch(function(err) {
-            log('❌ Error checking destination: ' + err.message, 'error');
-        });
-}
-
-function deleteDestination() {
-    var destDocId = document.getElementById('destDocId').value.trim();
-    if (!destDocId) {
-        log('Please enter a destination document ID.', 'error');
-        return;
-    }
-    
-    var destEnv = getCopyDestEnvironment();
-    var destCollection = document.getElementById('destCollection').value;
-    var db = getDbForEnv(destEnv);
-    
-    if (!confirm('🗑️ Delete document from ' + destCollection + '/' + destDocId + '?\n\nThis action cannot be undone.')) {
-        return;
-    }
-    
-    log('🗑️ Deleting ' + destEnv + ':' + destCollection + '/' + destDocId, 'info');
-    
-    db.collection(destCollection).doc(destDocId).delete()
-        .then(function() {
-            log('✅ Document deleted successfully.', 'success');
-            loadDestinationRecords();
-            document.getElementById('destDocId').value = '';
-            document.getElementById('gameInfo').style.display = 'none';
-        })
-        .catch(function(err) {
-            log('❌ Error deleting document: ' + err.message, 'error');
-        });
-}
-
-// ============================================================
-// COMPARE TAB: FUNCTIONS (RESTORED FROM v1.06)
-// ============================================================
-
-function loadCompareRecords() {
-    loadCompareRecordsLeft();
-    loadCompareRecordsRight();
-}
-
-function loadCompareRecordsLeft() {
-    var env = getCompareLeftEnvironment();
-    var db = getDbForEnv(env);
-    var collection = document.getElementById('compareLeftCollection').value;
-    var select = document.getElementById('compareLeftRecord');
-    
-    select.innerHTML = '<option value="">Loading...</option>';
-    
-    db.collection(collection).limit(200).get()
-        .then(function(snapshot) {
-            var records = [];
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                records.push({
-                    id: doc.id,
-                    originalGameId: data.originalGameId || doc.id,
-                    date: data.gameInfo?.date || data.date || 'Unknown',
-                    courseName: data.gameInfo?.course?.name || 'Unknown',
-                    status: data.status || 'unknown',
-                    rawData: data
-                });
-            });
-            
-            window._compareLeftRecords = records;
-            
-            records.sort(function(a, b) {
-                if (a.date > b.date) return -1;
-                if (a.date < b.date) return 1;
-                return 0;
-            });
-            
-            if (records.length === 0) {
-                select.innerHTML = '<option value="">No records found</option>';
-                return;
-            }
-            
-            var html = '<option value="">-- Select left record --</option>';
-            for (var i = 0; i < records.length; i++) {
-                var r = records[i];
-                html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
-            }
-            select.innerHTML = html;
-        })
-        .catch(function(err) {
-            select.innerHTML = '<option value="">Error loading records</option>';
-            log('❌ Error loading left records: ' + err.message, 'error');
-        });
-}
-
-function loadCompareRecordsRight() {
-    var env = getCompareRightEnvironment();
-    var db = getDbForEnv(env);
-    var collection = document.getElementById('compareRightCollection').value;
-    var select = document.getElementById('compareRightRecord');
-    
-    select.innerHTML = '<option value="">Loading...</option>';
-    
-    db.collection(collection).limit(200).get()
-        .then(function(snapshot) {
-            var records = [];
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                records.push({
-                    id: doc.id,
-                    originalGameId: data.originalGameId || doc.id,
-                    date: data.gameInfo?.date || data.date || 'Unknown',
-                    courseName: data.gameInfo?.course?.name || 'Unknown',
-                    status: data.status || 'unknown',
-                    rawData: data
-                });
-            });
-            
-            window._compareRightRecords = records;
-            
-            records.sort(function(a, b) {
-                if (a.date > b.date) return -1;
-                if (a.date < b.date) return 1;
-                return 0;
-            });
-            
-            if (records.length === 0) {
-                select.innerHTML = '<option value="">No records found</option>';
-                return;
-            }
-            
-            var html = '<option value="">-- Select right record --</option>';
-            for (var i = 0; i < records.length; i++) {
-                var r = records[i];
-                html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
-            }
-            select.innerHTML = html;
-        })
-        .catch(function(err) {
-            select.innerHTML = '<option value="">Error loading records</option>';
-            log('❌ Error loading right records: ' + err.message, 'error');
-        });
-}
-
-function loadCompareRecordData(side) {
-    var isLeft = side === 'left';
-    var selectId = isLeft ? 'compareLeftRecord' : 'compareRightRecord';
-    var infoId = isLeft ? 'compareLeftInfo' : 'compareRightInfo';
-    var records = isLeft ? window._compareLeftRecords : window._compareRightRecords;
-    
-    var select = document.getElementById(selectId);
-    var index = parseInt(select.value);
-    
-    if (isNaN(index) || index < 0 || !records || index >= records.length) {
-        document.getElementById(infoId).style.display = 'none';
-        return;
-    }
-    
-    var record = records[index];
-    var infoDiv = document.getElementById(infoId);
-    infoDiv.style.display = 'block';
-    
-    var html = '<div class="game-info" style="font-size:0.65rem; padding:8px;">';
-    html += '<div class="game-info-row"><span class="game-info-label">ID</span><span class="game-info-value">' + escapeHtml(record.id) + '</span></div>';
-    html += '<div class="game-info-row"><span class="game-info-label">Date</span><span class="game-info-value">' + escapeHtml(record.date) + '</span></div>';
-    html += '<div class="game-info-row"><span class="game-info-label">Course</span><span class="game-info-value">' + escapeHtml(record.courseName) + '</span></div>';
-    html += '<div class="game-info-row"><span class="game-info-label">Status</span><span class="game-info-value">' + escapeHtml(record.status) + '</span></div>';
-    html += '</div>';
-    
-    infoDiv.innerHTML = html;
-    
-    // Store for comparison
-    if (isLeft) {
-        window._compareLeftData = record.rawData;
-        window._compareLeftId = record.id;
-    } else {
-        window._compareRightData = record.rawData;
-        window._compareRightId = record.id;
-    }
-}
-
-function performCompare() {
-    var leftData = window._compareLeftData;
-    var rightData = window._compareRightData;
-    var leftId = window._compareLeftId;
-    var rightId = window._compareRightId;
-    
-    if (!leftData || !rightData) {
-        log('Please select both left and right records.', 'error');
-        return;
-    }
-    
-    log('🔍 Comparing ' + leftId + ' vs ' + rightId, 'info');
-    
-    // Get all keys from both objects
-    var allKeys = new Set();
-    function collectKeys(obj, prefix) {
-        if (!obj || typeof obj !== 'object') return;
-        for (var key in obj) {
-            var fullKey = prefix ? prefix + '.' + key : key;
-            allKeys.add(fullKey);
-            if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key]) && !(obj[key] instanceof Date)) {
-                collectKeys(obj[key], fullKey);
-            }
-        }
-    }
-    collectKeys(leftData, '');
-    collectKeys(rightData, '');
-    
-    var keys = Array.from(allKeys).sort();
-    var diffs = [];
-    var matches = 0;
-    
-    for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        var leftVal = getValueByPath(leftData, key);
-        var rightVal = getValueByPath(rightData, key);
-        
-        // Skip metadata
-        if (key.startsWith('_')) continue;
-        
-        // Special handling for Firestore Timestamps
-        var leftStr = stringifyValue(leftVal);
-        var rightStr = stringifyValue(rightVal);
-        
-        if (leftStr === rightStr) {
-            matches++;
-        } else {
-            diffs.push({ key: key, left: leftStr, right: rightStr });
-        }
-    }
-    
-    // Display results
-    var summaryDiv = document.getElementById('compareSummary');
-    var detailDiv = document.getElementById('compareDetail');
-    var resultsDiv = document.getElementById('compareResults');
-    
-    resultsDiv.style.display = 'block';
-    
-    var total = matches + diffs.length;
-    var matchPct = total > 0 ? Math.round((matches / total) * 100) : 0;
-    
-    summaryDiv.innerHTML = `
-        <div class="diff-summary">
-            <div class="diff-summary-item">
-                <span class="count total">${total}</span>
-                <span class="label">Total Fields</span>
-            </div>
-            <div class="diff-summary-item">
-                <span class="count match">${matches}</span>
-                <span class="label">Match</span>
-            </div>
-            <div class="diff-summary-item">
-                <span class="count diff">${diffs.length}</span>
-                <span class="label">Differences</span>
-            </div>
-            <div class="diff-summary-item">
-                <span class="count ${matchPct >= 95 ? 'match' : 'diff'}">${matchPct}%</span>
-                <span class="label">Match Rate</span>
-            </div>
-        </div>
-        <div style="text-align:center;font-size:0.7rem;color:#888;margin-top:4px;">
-            ${leftId} ↔ ${rightId}
-        </div>
-    `;
-    
-    if (diffs.length === 0) {
-        detailDiv.innerHTML = '<div style="color:#4caf50;text-align:center;padding:20px;">✅ All fields match!</div>';
-        log('✅ All fields match!', 'success');
-    } else {
-        var html = '';
-        for (var i = 0; i < diffs.length; i++) {
-            var d = diffs[i];
-            html += `<div class="diff-item diff">
-                <span class="field-name">${escapeHtml(d.key)}</span>
-                <span>
-                    <span class="field-value-left">${escapeHtml(d.left)}</span>
-                    <span style="color:#666;margin:0 4px;">≠</span>
-                    <span class="field-value-right">${escapeHtml(d.right)}</span>
-                </span>
-            </div>`;
-        }
-        detailDiv.innerHTML = html;
-        log('🔴 Found ' + diffs.length + ' differences.', 'diff');
-    }
-}
-
-function getValueByPath(obj, path) {
-    var parts = path.split('.');
-    var current = obj;
-    for (var i = 0; i < parts.length; i++) {
-        if (current === null || current === undefined) return undefined;
-        current = current[parts[i]];
-    }
-    return current;
-}
-
-function stringifyValue(val) {
-    if (val === null || val === undefined) return 'null';
-    if (val instanceof Date) return val.toISOString();
-    if (val && typeof val === 'object' && val.toDate) {
-        return val.toDate().toISOString();
-    }
-    if (typeof val === 'object') {
-        try { return JSON.stringify(val); } catch(e) { return String(val); }
-    }
-    return String(val);
-}
-
-// ============================================================
-// VALIDATE TAB: FUNCTIONS (FROM v1.08)
-// ============================================================
-
-var validateRecords = [];
-var validateCurrentIndex = -1;
-var validateGameData = null;
-var _sourceRecords = [];
-var _destRecords = [];
-var _compareLeftRecords = [];
-var _compareRightRecords = [];
-var _compareLeftData = null;
-var _compareRightData = null;
-var _compareLeftId = null;
-var _compareRightId = null;
-var currentGameData = null;
-var currentGameId = null;
-
-function getValidateDb() {
-    var env = getValidateEnvironment();
-    return getDbForEnv(env);
-}
-
-function clearValidateResults() {
-    document.getElementById('validateResults').classList.remove('active');
-    document.getElementById('validateFixCard').style.display = 'none';
-    document.getElementById('validateStatus').style.display = 'none';
-    document.getElementById('validateGameInfo').innerHTML = '';
-    document.getElementById('validateFlight1').innerHTML = '';
-    document.getElementById('validateFlight2').innerHTML = '';
-    document.getElementById('validateT1').innerHTML = '';
-    document.getElementById('validateT2').innerHTML = '';
-    document.getElementById('validateStrk').innerHTML = '';
-    document.getElementById('validateMatch').innerHTML = '';
-    document.getElementById('validateTR').innerHTML = '';
-    document.getElementById('validateSummary').innerHTML = '';
-}
-
-function loadValidateRecords() {
-    var db = getValidateDb();
-    if (!db) {
-        log('No database selected for validate', 'error');
-        return;
-    }
-    
-    var collection = document.getElementById('validateCollection').value;
-    var select = document.getElementById('validateRecordSelect');
-    var statusEl = document.getElementById('validateStatus');
-    
-    select.innerHTML = '<option value="">Loading...</option>';
-    statusEl.style.display = 'block';
-    statusEl.className = 'validate-status info';
-    statusEl.textContent = '⏳ Loading records from ' + collection + '...';
-    
-    db.collection(collection).limit(200).get()
-        .then(function(snapshot) {
-            validateRecords = [];
-            snapshot.forEach(function(doc) {
-                var data = doc.data();
-                validateRecords.push({
-                    id: doc.id,
-                    originalGameId: data.originalGameId || doc.id,
-                    date: data.gameInfo?.date || 'Unknown',
-                    courseName: data.gameInfo?.course?.name || 'Unknown Course',
-                    status: data.status || 'unknown',
-                    rawData: data
-                });
-            });
-            
-            validateRecords.sort(function(a, b) {
-                if (a.date > b.date) return -1;
-                if (a.date < b.date) return 1;
-                return 0;
-            });
-            
-            if (validateRecords.length === 0) {
-                select.innerHTML = '<option value="">No records found</option>';
-                statusEl.className = 'validate-status warning';
-                statusEl.textContent = '⚠️ No records found in ' + collection;
-            } else {
-                var html = '<option value="">-- Select a record --</option>';
-                for (var i = 0; i < validateRecords.length; i++) {
-                    var r = validateRecords[i];
-                    html += '<option value="' + i + '">' + escapeHtml(r.originalGameId + ' — ' + formatDate(r.date) + ' (' + r.status + ')') + '</option>';
-                }
-                select.innerHTML = html;
-                statusEl.className = 'validate-status success';
-                statusEl.textContent = '✅ Loaded ' + validateRecords.length + ' records from ' + collection;
-            }
-            
-            clearValidateResults();
-        })
-        .catch(function(err) {
-            select.innerHTML = '<option value="">Error loading records</option>';
-            statusEl.className = 'validate-status error';
-            statusEl.textContent = '❌ Error loading records: ' + err.message;
-            log('Error loading validate records: ' + err.message, 'error');
-        });
-}
-
-document.getElementById('validateLoadBtn').onclick = function() { loadAndValidate(); };
-document.getElementById('validateRefreshBtn').onclick = function() { loadValidateRecords(); };
-document.getElementById('validateBackupBtn').onclick = function() { validateBackupOnly(); };
-document.getElementById('validateFixBtn').onclick = function() { validateFixRecord(); };
-
-document.getElementById('validateCollection').onchange = function() {
-    loadValidateRecords();
+document.getElementById('deleteProdBtn').onclick = function() {
+    setDeleteEnvironment('PROD');
 };
 
-document.getElementById('validateRecordSelect').onchange = function() {
-    var index = parseInt(this.value);
-    if (!isNaN(index) && index >= 0 && index < validateRecords.length) {
-        validateCurrentIndex = index;
-        validateGameData = validateRecords[index].rawData;
-        validateGameData.id = validateRecords[index].id;
-        clearValidateResults();
-        validateProcessGameData(validateGameData);
-    } else {
-        validateCurrentIndex = -1;
-        validateGameData = null;
-        clearValidateResults();
-    }
+document.getElementById('deleteDevBtn').onclick = function() {
+    setDeleteEnvironment('DEV');
 };
 
-function loadAndValidate() {
-    var select = document.getElementById('validateRecordSelect');
-    var index = parseInt(select.value);
-    
-    if (isNaN(index) || index < 0 || index >= validateRecords.length) {
-        var statusEl = document.getElementById('validateStatus');
-        statusEl.style.display = 'block';
-        statusEl.className = 'validate-status warning';
-        statusEl.textContent = '⚠️ Please select a record first.';
-        return;
-    }
-    
-    validateCurrentIndex = index;
-    validateGameData = validateRecords[index].rawData;
-    validateGameData.id = validateRecords[index].id;
-    
-    var statusEl = document.getElementById('validateStatus');
-    statusEl.style.display = 'block';
-    statusEl.className = 'validate-status info';
-    statusEl.textContent = '⏳ Validating: ' + validateRecords[index].originalGameId + '...';
-    
-    clearValidateResults();
-    validateProcessGameData(validateGameData);
-}
-
-function validateProcessGameData(data) {
-    var resultsContainer = document.getElementById('validateResults');
-    var fixCard = document.getElementById('validateFixCard');
-    
-    if (typeof UtilValidate === 'undefined') {
-        var statusEl = document.getElementById('validateStatus');
-        statusEl.className = 'validate-status error';
-        statusEl.textContent = '❌ Validation module not loaded. Please refresh.';
-        log('UtilValidate not loaded', 'error');
-        return;
-    }
-    
-    var validation = UtilValidate.validateRecord(data);
-    
-    if (!validation || validation.error) {
-        var statusEl = document.getElementById('validateStatus');
-        statusEl.className = 'validate-status error';
-        statusEl.textContent = '❌ Validation failed: ' + (validation?.error || 'Unknown error');
-        resultsContainer.classList.remove('active');
-        return;
-    }
-    
-    if (typeof UtilValidateUI === 'undefined') {
-        var statusEl = document.getElementById('validateStatus');
-        statusEl.className = 'validate-status error';
-        statusEl.textContent = '❌ Validation UI module not loaded. Please refresh.';
-        log('UtilValidateUI not loaded', 'error');
-        return;
-    }
-    
-    UtilValidateUI.renderGameInfo(data, 'validateGameInfo');
-    
-    var f1Scores = validation.f1Scores;
-    var f2Scores = validation.f2Scores;
-    var players = validation.players;
-    var courseSi = validation.courseSi;
-    var coursePar = validation.coursePar;
-    
-    UtilValidateUI.renderFlightTable(f1Scores, players, 1, 'validateFlight1');
-    UtilValidateUI.renderFlightTable(f2Scores, players, 2, 'validateFlight2');
-    
-    var t1Results = UtilValidate.calculateTeamGame(f1Scores, players, 1, courseSi);
-    var t2Results = UtilValidate.calculateTeamGame(f2Scores, players, 2, courseSi);
-    var strkResults = UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players);
-    
-    UtilValidateUI.renderTeamGameTable(t1Results, 'validateT1', 'T-1');
-    UtilValidateUI.renderTeamGameTable(t2Results, 'validateT2', 'T-2');
-    UtilValidateUI.renderStrkTable(strkResults, 'validateStrk');
-    
-    var matchData = UtilValidate.calculateMatchGamePerHole(f1Scores, f2Scores, players, courseSi, coursePar);
-    var orderedPlayers = matchData.orderedPlayers;
-    var matchResults = matchData.results;
-    var matchPointsPerHole = matchData.matchPointsPerHole;
-    
-    UtilValidateUI.renderMatchTable(orderedPlayers, matchResults, 'validateMatch');
-    UtilValidateUI.renderTRTable(t1Results, t2Results, strkResults, matchPointsPerHole, data, 'validateTR');
-    UtilValidateUI.renderSummary(t1Results, t2Results, strkResults, matchPointsPerHole, data, 'validateSummary');
-    
-    resultsContainer.classList.add('active');
-    
-    if (validation.needsFix) {
-        fixCard.style.display = 'block';
-        var statusEl = document.getElementById('validateStatus');
-        var msg = '';
-        if (validation.mismatches.length > 0) {
-            msg += 'TR mismatches at holes: ' + validation.mismatches.join(', ');
-        }
-        if (validation.isPending) {
-            msg += ' Status: pending_handicap → completed';
-        }
-        statusEl.className = 'validate-status warning';
-        statusEl.textContent = '⚠️ Record needs fixing. ' + msg;
-        log('Record needs fixing: ' + msg, 'warning');
-    } else {
-        fixCard.style.display = 'none';
-        var statusEl = document.getElementById('validateStatus');
-        statusEl.className = 'validate-status success';
-        statusEl.textContent = '✅ Record is valid. No changes needed.';
-        log('Record is valid', 'success');
-    }
-    
-    window._validateRecalculated = validation.recalculated;
-    window._validateValidation = validation;
-}
-
-function validateBackupOnly() {
-    if (validateCurrentIndex < 0 || validateCurrentIndex >= validateRecords.length) {
-        log('No record selected for backup', 'error');
-        return;
-    }
-    
-    var record = validateRecords[validateCurrentIndex];
-    var progressEl = document.getElementById('validateProgress');
-    
-    if (!confirm('💾 Create a backup of this record?\n\nID: ' + record.id + '\nGame: ' + record.originalGameId)) {
-        return;
-    }
-    
-    var fixBtn = document.getElementById('validateFixBtn');
-    var backupBtn = document.getElementById('validateBackupBtn');
-    
-    fixBtn.disabled = true;
-    backupBtn.disabled = true;
-    backupBtn.textContent = '⏳ Creating backup...';
-    progressEl.className = 'validate-progress active';
-    progressEl.innerHTML = '';
-    
-    createValidateBackup(record, progressEl)
-        .then(function(backupId) {
-            progressEl.innerHTML += '<div class="step done">✅ Backup complete: ' + backupId + '</div>';
-            backupBtn.textContent = '✅ Backup: ' + backupId;
-            fixBtn.disabled = false;
-            backupBtn.disabled = false;
-            log('Backup created: ' + backupId, 'success');
-        })
-        .catch(function(err) {
-            progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
-            backupBtn.textContent = '❌ Error';
-            fixBtn.disabled = false;
-            backupBtn.disabled = false;
-            log('Backup failed: ' + err.message, 'error');
-        });
-}
-
-function createValidateBackup(record, progressEl) {
-    return new Promise(function(resolve, reject) {
-        var docId = record.id;
-        var data = record.rawData;
-        var originalGameId = record.originalGameId || docId;
-        var now = new Date();
-        var dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '_' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
-        var backupId = 'Backup_' + dateStr + '_' + originalGameId;
-        progressEl.innerHTML += '<div class="step info">💾 Creating backup: ' + backupId + '...</div>';
-        
-        var backupData = JSON.parse(JSON.stringify(data));
-        backupData._backupTimestamp = firebase.firestore.FieldValue.serverTimestamp();
-        backupData._backupOriginalId = docId;
-        backupData._backupOriginalCollection = 'historyGames';
-        backupData._backupCreatedAt = new Date().toISOString();
-        backupData._backupReason = 'Pre-fix backup from validator v1.09';
-        
-        var db = getValidateDb();
-        if (!db) {
-            reject(new Error('No database selected'));
-            return;
-        }
-        
-        db.collection('backupFolder').doc(backupId).set(backupData)
-            .then(function() {
-                progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
-                resolve(backupId);
-            })
-            .catch(function(err) {
-                progressEl.innerHTML += '<div class="step error">❌ Backup failed: ' + err.message + '</div>';
-                reject(err);
-            });
-    });
-}
-
-function validateFixRecord() {
-    if (validateCurrentIndex < 0 || validateCurrentIndex >= validateRecords.length) {
-        log('No record selected to fix', 'error');
-        return;
-    }
-    
-    var record = validateRecords[validateCurrentIndex];
-    var validation = window._validateValidation;
-    var recalculated = window._validateRecalculated;
-    
-    if (!validation || !recalculated) {
-        log('No validation data available. Please load and validate first.', 'error');
-        return;
-    }
-    
-    if (!validation.needsFix) {
-        log('Record is already valid. No fix needed.', 'info');
-        return;
-    }
-    
-    var previewData = UtilValidate.buildFixPreview(record.rawData, recalculated);
-    
-    UtilValidateUI.showFixPreview(record, recalculated, previewData, null, function() {
-        executeValidateFix(record, recalculated);
-    });
-}
-
-function executeValidateFix(record, recalculated) {
-    var progressEl = document.getElementById('validateProgress');
-    var fixBtn = document.getElementById('validateFixBtn');
-    var backupBtn = document.getElementById('validateBackupBtn');
-    
-    fixBtn.disabled = true;
-    backupBtn.disabled = true;
-    fixBtn.textContent = '⏳ Fixing...';
-    progressEl.className = 'validate-progress active';
-    progressEl.innerHTML = '<div class="step info">🔧 Creating backup before fix...</div>';
-    
-    createValidateBackup(record, progressEl)
-        .then(function(backupId) {
-            progressEl.innerHTML += '<div class="step done">✅ Backup created: ' + backupId + '</div>';
-            progressEl.innerHTML += '<div class="step info">📝 Building update payload...</div>';
-            
-            var fixPayload = UtilValidate.buildFixPayload(record.rawData, recalculated);
-            var updatePayload = fixPayload.updatePayload;
-            
-            progressEl.innerHTML += '<div class="step info">📝 ' + Object.keys(updatePayload).length + ' fields to update</div>';
-            progressEl.innerHTML += '<div class="step info">🔄 Holes to fix: ' + (fixPayload.holesToFix.length > 0 ? fixPayload.holesToFix.map(function(h) { return h+1; }).join(', ') : 'None') + '</div>';
-            
-            var db = getValidateDb();
-            if (!db) {
-                throw new Error('No database selected');
-            }
-            
-            progressEl.innerHTML += '<div class="step info">💾 Writing to Firestore...</div>';
-            
-            return db.collection('historyGames').doc(record.id).update(updatePayload);
-        })
-        .then(function() {
-            progressEl.innerHTML += '<div class="step done">✅ Firestore update successful</div>';
-            
-            var db = getValidateDb();
-            if (!db) {
-                throw new Error('No database selected');
-            }
-            return db.collection('historyGames').doc(record.id).get();
-        })
-        .then(function(doc) {
-            if (doc.exists) {
-                validateRecords[validateCurrentIndex].rawData = doc.data();
-                progressEl.innerHTML += '<div class="step done">✅ Cache refreshed</div>';
-                
-                var msg = '✅ Record fixed successfully!';
-                if (window._validateValidation && window._validateValidation.mismatches) {
-                    msg += ' Fixed TR at holes: ' + window._validateValidation.mismatches.join(', ');
-                }
-                msg += ' adjustedHandicaps: PRESERVED (not changed)';
-                
-                progressEl.innerHTML += '<div class="step done">✅ ' + msg + '</div>';
-                fixBtn.textContent = '✅ Fixed!';
-                fixBtn.disabled = false;
-                backupBtn.textContent = '💾 Backup Only';
-                backupBtn.disabled = false;
-                
-                log(msg, 'success');
-                
-                setTimeout(function() {
-                    validateProcessGameData(doc.data());
-                }, 500);
-            }
-        })
-        .catch(function(err) {
-            var msg = '❌ Error fixing record: ' + (err.message || 'Unknown error');
-            progressEl.innerHTML += '<div class="step error">❌ ' + msg + '</div>';
-            fixBtn.textContent = '❌ Error';
-            fixBtn.disabled = false;
-            backupBtn.textContent = '💾 Backup Only';
-            backupBtn.disabled = false;
-            log(msg, 'error');
-        });
-}
-
 // ============================================================
-// COPY TAB: EVENT BINDINGS
+// COPY TAB: EVENT BINDINGS (delegates to util-copy-record.js)
 // ============================================================
 
-document.getElementById('loadSourceBtn').onclick = loadSourceRecords;
-document.getElementById('loadDestBtn').onclick = loadDestinationRecords;
-document.getElementById('copyBtn').onclick = copyRecord;
-document.getElementById('checkBtn').onclick = checkDestination;
-document.getElementById('deleteBtn').onclick = deleteDestination;
+document.getElementById('loadSourceBtn').onclick = function() {
+    loadSourceRecords();
+};
+
+document.getElementById('loadDestBtn').onclick = function() {
+    loadDestinationRecords();
+};
+
+document.getElementById('copyBtn').onclick = function() {
+    copyRecord();
+};
+
+document.getElementById('checkBtn').onclick = function() {
+    checkDestination();
+};
+
+document.getElementById('deleteCopyDestBtn').onclick = function() {
+    deleteDestination();
+};
 
 document.getElementById('sourceCollection').onchange = function() {
     loadSourceRecords();
@@ -2344,22 +1555,137 @@ document.getElementById('gameSelect').onchange = function() {
     }
 };
 
+function onDestExistingSelect() {
+    var select = document.getElementById('destExistingSelect');
+    var destDocId = document.getElementById('destDocId');
+    if (select.value) {
+        destDocId.value = select.value;
+    }
+}
+
 // ============================================================
-// COMPARE TAB: EVENT BINDINGS
+// COMPARE TAB: EVENT BINDINGS (delegates to util-compare-record.js)
 // ============================================================
 
-document.getElementById('compareLoadBtn').onclick = loadCompareRecords;
-document.getElementById('compareBtn').onclick = performCompare;
+document.getElementById('compareLoadBtn').onclick = function() {
+    loadCompareRecords();
+};
 
-document.getElementById('compareLeftCollection').onchange = loadCompareRecordsLeft;
-document.getElementById('compareRightCollection').onchange = loadCompareRecordsRight;
+document.getElementById('compareBtn').onclick = function() {
+    performCompare();
+};
+
+document.getElementById('compareLeftCollection').onchange = function() {
+    loadCompareRecordsLeft();
+};
+
+document.getElementById('compareRightCollection').onchange = function() {
+    loadCompareRecordsRight();
+};
 
 document.getElementById('compareLeftRecord').onchange = function() {
     loadCompareRecordData('left');
 };
+
 document.getElementById('compareRightRecord').onchange = function() {
     loadCompareRecordData('right');
 };
+
+// ============================================================
+// VALIDATE TAB: EVENT BINDINGS (delegates to util-validate-record.js)
+// ============================================================
+
+document.getElementById('validateLoadBtn').onclick = function() {
+    loadAndValidate();
+};
+
+document.getElementById('validateRefreshBtn').onclick = function() {
+    loadValidateRecords();
+};
+
+document.getElementById('validateBackupBtn').onclick = function() {
+    validateBackupOnly();
+};
+
+document.getElementById('validateFixBtn').onclick = function() {
+    validateFixRecord();
+};
+
+document.getElementById('validateCollection').onchange = function() {
+    loadValidateRecords();
+};
+
+document.getElementById('validateRecordSelect').onchange = function() {
+    var index = parseInt(this.value);
+    if (!isNaN(index) && index >= 0 && index < validateRecords.length) {
+        validateCurrentIndex = index;
+        validateGameData = validateRecords[index].rawData;
+        validateGameData.id = validateRecords[index].id;
+        clearValidateResults();
+        validateProcessGameData(validateGameData);
+    } else {
+        validateCurrentIndex = -1;
+        validateGameData = null;
+        clearValidateResults();
+    }
+};
+
+// ============================================================
+// DELETE TAB: EVENT BINDINGS (delegates to util-delete-record.js)
+// ============================================================
+
+document.getElementById('deleteRefreshBtn').onclick = function() {
+    if (typeof deleteDb !== 'undefined' && deleteDb) {
+        loadDeleteRecords();
+    } else {
+        log('Select Delete environment first', 'error');
+    }
+};
+
+document.getElementById('deleteSelectAllBtn').onclick = function() {
+    selectAllDeleteRecords();
+};
+
+document.getElementById('deleteDeselectAllBtn').onclick = function() {
+    deselectAllDeleteRecords();
+};
+
+document.getElementById('deleteExecuteBtn').onclick = function() {
+    deleteSelectedRecords();
+};
+
+document.getElementById('deleteCollection').onchange = function() {
+    if (typeof deleteDb !== 'undefined' && deleteDb) {
+        loadDeleteRecords();
+    }
+};
+
+// ============================================================
+// DATE TOGGLE
+// ============================================================
+
+function initDateToggle() {
+    var radios = document.querySelectorAll('input[name="dateOption"]');
+    var customDateInput = document.getElementById('customDate');
+    
+    radios.forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            var labels = document.querySelectorAll('.radio-group label');
+            labels.forEach(function(l) { l.classList.remove('active'); });
+            this.closest('label').classList.add('active');
+            
+            if (this.value === 'custom') {
+                customDateInput.style.display = 'block';
+                if (!customDateInput.value) {
+                    var today = new Date().toISOString().split('T')[0];
+                    customDateInput.value = today;
+                }
+            } else {
+                customDateInput.style.display = 'none';
+            }
+        });
+    });
+}
 
 // ============================================================
 // INIT
@@ -2374,6 +1700,7 @@ document.getElementById('copyDestProdBtn').className = 'env-btn-small active-pro
 document.getElementById('compareLeftProdBtn').className = 'env-btn-small active-prod';
 document.getElementById('compareRightProdBtn').className = 'env-btn-small active-prod';
 document.getElementById('validateProdBtn').className = 'env-btn-small active-prod';
+document.getElementById('deleteProdBtn').className = 'env-btn-small active-prod';
 
 document.getElementById('copySourceIndicator').textContent = 'PROD';
 document.getElementById('copySourceIndicator').className = 'env-indicator-small prod';
@@ -2385,13 +1712,27 @@ document.getElementById('compareRightIndicator').textContent = 'PROD';
 document.getElementById('compareRightIndicator').className = 'env-indicator-small prod';
 document.getElementById('validateIndicator').textContent = 'PROD';
 document.getElementById('validateIndicator').className = 'env-indicator-small prod';
+document.getElementById('deleteIndicator').textContent = 'PROD';
+document.getElementById('deleteIndicator').className = 'env-indicator-small prod';
 
-log('Record Management v1.09 loaded', 'success');
+// Set up COPY tab environment
+setCopySourceEnvironment('PROD');
+setCopyDestEnvironment('PROD');
+
+// Set up COMPARE tab environment
+setCompareLeftEnvironment('PROD');
+setCompareRightEnvironment('PROD');
+
+// Set up DELETE tab environment
+setDeleteEnvironment('PROD');
+
+log('Record Management v1.11 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
 log('1. Select environments for each tab (PROD/DEV)', 'info');
 log('2. COPY tab: copy records between collections and environments', 'info');
 log('3. COMPARE tab: field-by-field comparison across environments', 'info');
 log('4. VALIDATE tab: load and validate records, fix corrupted ones', 'info');
+log('5. DELETE tab: delete records from any collection (PERMANENT)', 'info');
 log('=====================================', 'info');
 
 // Pre-load records
@@ -2400,6 +1741,7 @@ setTimeout(function() {
     loadDestinationRecords();
     loadCompareRecords();
     loadValidateRecords();
+    loadDeleteRecords();
 }, 500);
 </script>
 </body>
@@ -2407,14 +1749,14 @@ setTimeout(function() {
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - RESTORED: COPY tab functions from v1.06 (loadSourceRecords, loadDestinationRecords, loadGameData, copyRecord, checkDestination, deleteDestination)
-   - RESTORED: COMPARE tab functions from v1.06 (loadCompareRecords, loadCompareRecordsLeft, loadCompareRecordsRight, loadCompareRecordData, performCompare)
-   - REMOVED: Stub functions that depended on non-existent util-copy-record.js and util-compare-record.js
-   - REMOVED: util-copy-record.js and util-compare-record.js from script tags
-   - ADDED: Environment helper functions (getDbForEnv, getCopySourceEnvironment, etc.)
-   - PRESERVED: All VALIDATE tab functionality from v1.08
-DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js
+VERSION: 1.11
+KEY CHANGES from v1.10:
+   - REFACTORED: Removed all embedded COPY, COMPARE, DELETE logic from HTML
+   - REFACTORED: Now uses separate JS files for each tab
+   - ADDED: js/util-delete-record.js script tag
+   - PRESERVED: All UI structure, tab switching, event bindings
+   - PRESERVED: All VALIDATE tab functionality (uses js/util-validate-record.js and js/util-validate-ui.js)
+   - CLEANER: HTML is now ~50% smaller
+DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js
 STATUS: Ready for integration
 -->
