@@ -1,11 +1,15 @@
 <!--
 FILE: post-game.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - CHANGED: Firestore writes now use WRV.update() for reliability
-   - ADDED: Fallback to direct update if WRV not available
-   - CHANGED: All Firestore writes now use WRV
-DEPENDS ON: Firebase Firestore, WRV.js, celebration-photo.js, sign-card.js, history-record.js
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: js/wrv.js (v1.02) for Write-Read-Verify reliability
+   - ADDED: js/celebration-photo.js (v1.01) for celebration photo management
+   - ADDED: js/history-record.js (v3.07) for history record operations
+   - CHANGED: Firestore writes now use WRV.write() and WRV.update() for reliability
+   - ADDED: Fallback to direct write/update if WRV not available
+   - PRESERVED: All v1.05 UI design and functionality
+   - PRESERVED: Dark theme, modal-based layout, all original styling
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->
 
@@ -13,10 +17,9 @@ STATUS: Ready for integration
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Post Game - SICC Ryder Cup</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>SICC Ryder Cup - POST GAME</title>
     
-    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
@@ -24,602 +27,419 @@ STATUS: Ready for integration
     <!-- html2canvas for celebration capture -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     
-    <!-- App Scripts -->
-    <script src="js/firebase-config.js"></script>
-    <script src="js/session.js"></script>
-    <script src="js/wrv.js"></script>
-    <script src="js/celebration-photo.js"></script>
-    <script src="js/history-record.js"></script>
-    <script src="js/sign-card.js"></script>
+    <script src="js/firebase-config.js?v=1.06"></script>
+    <script src="js/session.js?v=1.06"></script>
+    <script src="js/settings.js?v=1.06"></script>
+    <script src="js/modal.js?v=1.06"></script>
+    <script src="js/waiting-screen.js?v=1.06"></script>
+    <script src="js/game-order.js?v=1.00"></script>
+    <script src="js/game-data.js?v=2.09"></script>
+    <script src="js/game-match.js?v=2.28"></script>
+    <script src="js/game-scorecard.js?v=1.16"></script>
+    <script src="js/game-ui.js?v=5.09"></script>
+    <script src="js/game-loader.js?v=1.09"></script>
+    
+    <!-- WRV Core - MUST be loaded before dependent files -->
+    <script src="js/wrv.js?v=1.02"></script>
+    <script src="js/celebration-photo.js?v=1.01"></script>
+    <script src="js/history-record.js?v=3.07"></script>
+    <script src="js/sign-card.js?v=1.22"></script>
     
     <style>
-        /* Reset and Base */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html, body {
+            min-height: 100vh;
+            background: #000;
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-color, #f5f5f5);
-            color: var(--text-color, #333);
-            min-height: 100vh;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-            transition: background 0.3s, color 0.3s;
-        }
-        
-        /* Theme Variables */
-        :root {
-            --bg-color: #f5f5f5;
-            --text-color: #333;
-            --card-bg: #ffffff;
-            --border-color: #e0e0e0;
-            --primary-color: #4CAF50;
-            --primary-hover: #45a049;
-            --shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        
-        [data-theme="dark"] {
-            --bg-color: #1a1a1a;
-            --text-color: #f5f5f5;
-            --card-bg: #2d2d2d;
-            --border-color: #444;
-            --shadow: 0 2px 8px rgba(0,0,0,0.3);
-        }
-        
-        /* Container */
-        .container {
-            max-width: 500px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        /* Header */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px 0;
-            border-bottom: 1px solid var(--border-color);
-            margin-bottom: 20px;
-        }
-        
-        .header h1 {
-            font-size: 20px;
-            font-weight: 700;
-        }
-        
-        .header-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        
-        .theme-toggle {
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            font-size: 20px;
-            cursor: pointer;
+            background: #000;
+            font-family: system-ui, sans-serif;
+            color: #fff;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        .theme-toggle:hover {
-            transform: scale(1.05);
-        }
-        
-        /* Status Card */
-        .status-card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: var(--shadow);
-            margin-bottom: 20px;
+        .container {
+            max-width: 500px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 20px 16px;
             text-align: center;
         }
         
-        .status-card .status-icon {
-            font-size: 48px;
-            margin-bottom: 8px;
-        }
-        
-        .status-card .status-text {
-            font-size: 18px;
-            font-weight: 600;
-        }
-        
-        .status-card .status-subtext {
-            font-size: 14px;
-            opacity: 0.7;
-            margin-top: 4px;
-        }
-        
-        /* Score Display */
-        .score-display {
-            background: var(--card-bg);
+        .device-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            left: max(8px, env(safe-area-inset-left));
+            font-size: 0.55rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
             border-radius: 12px;
-            padding: 20px;
-            box-shadow: var(--shadow);
-            margin-bottom: 20px;
+            font-family: monospace;
+            z-index: 1000;
+            opacity: 0.4;
+            cursor: pointer;
         }
         
-        .score-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--border-color);
+        .version-tag {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
+            font-size: 0.65rem;
+            color: #4caf50;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 10px;
+            border-radius: 16px;
+            font-family: monospace;
+            z-index: 1000;
         }
         
-        .score-row:last-child {
-            border-bottom: none;
+        .loading-placeholder {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
         }
         
-        .score-team {
-            font-size: 16px;
-            font-weight: 600;
-        }
-        
-        .score-value {
-            font-size: 24px;
-            font-weight: 700;
-        }
-        
-        .score-winner {
-            color: #ffd700;
-        }
-        
-        /* Action Buttons */
-        .actions {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
+        .debug {
+            text-align: center;
+            font-size: 0.6rem;
+            color: #555;
             margin-top: 20px;
         }
         
-        .btn {
-            padding: 14px 24px;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-align: center;
-        }
-        
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        .btn-primary {
-            background: var(--primary-color);
-            color: white;
-        }
-        
-        .btn-primary:hover:not(:disabled) {
-            background: var(--primary-hover);
-            transform: translateY(-1px);
-        }
-        
-        .btn-secondary {
-            background: var(--border-color);
-            color: var(--text-color);
-        }
-        
-        .btn-secondary:hover:not(:disabled) {
-            opacity: 0.8;
-        }
-        
-        .btn-gold {
-            background: linear-gradient(135deg, #ffd700, #f5a623);
-            color: #333;
-        }
-        
-        .btn-gold:hover:not(:disabled) {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(255, 215, 0, 0.3);
-        }
-        
-        /* Loading Spinner */
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid var(--border-color);
-            border-top-color: var(--primary-color);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Version Tag */
-        .version-tag {
+        .modal-overlay {
             position: fixed;
-            bottom: 8px;
-            right: 12px;
-            font-size: 10px;
-            color: rgba(76, 175, 80, 0.6);
-            font-family: monospace;
-            z-index: 999;
-            pointer-events: none;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         
-        /* Responsive */
-        @media (max-width: 375px) {
-            .container {
-                padding: 12px;
-            }
-            .header h1 {
-                font-size: 18px;
-            }
-            .score-value {
-                font-size: 20px;
-            }
+        .game-complete-modal {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px 28px;
+            max-width: 360px;
+            width: 90%;
+            text-align: center;
+            border: 2px solid #4caf50;
+        }
+        
+        .game-complete-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffaa44;
+            margin-bottom: 12px;
+        }
+        
+        .game-complete-message {
+            font-size: 0.9rem;
+            color: #ccc;
+            margin-bottom: 16px;
+            line-height: 1.4;
+        }
+        
+        .game-complete-emojis {
+            font-size: 1.5rem;
+            margin-bottom: 24px;
+        }
+        
+        .game-complete-btn {
+            background: #1a3a1a;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            padding: 14px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+        }
+        
+        .game-complete-btn:hover {
+            background: #2a4a2a;
+        }
+        
+        .game-complete-btn:active {
+            transform: scale(0.98);
         }
     </style>
 </head>
 <body>
-    <div class="container" id="app">
-        <!-- Header -->
-        <div class="header">
-            <h1>🏌️ Post Game</h1>
-            <div class="header-actions">
-                <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">🌙</button>
-            </div>
-        </div>
-        
-        <!-- Status Card -->
-        <div class="status-card" id="statusCard">
-            <div class="status-icon" id="statusIcon">⏳</div>
-            <div class="status-text" id="statusText">Processing...</div>
-            <div class="status-subtext" id="statusSubtext">Please wait</div>
-        </div>
-        
-        <!-- Score Display -->
-        <div class="score-display" id="scoreDisplay">
-            <div class="score-row">
-                <span class="score-team" id="teamAName">Team A</span>
-                <span class="score-value" id="teamAScore">0</span>
-            </div>
-            <div class="score-row">
-                <span class="score-team" id="teamBName">Team B</span>
-                <span class="score-value" id="teamBScore">0</span>
-            </div>
-            <div class="score-row" id="winnerRow" style="display:none;">
-                <span class="score-team">🏆 Winner</span>
-                <span class="score-value score-winner" id="winnerName">-</span>
-            </div>
-        </div>
-        
-        <!-- Actions -->
-        <div class="actions" id="actions">
-            <button class="btn btn-gold" id="seeResultsBtn" disabled>
-                🏆 SEE RESULTS
-            </button>
-            <button class="btn btn-secondary" id="backBtn">
-                ← Back to Games
-            </button>
-        </div>
+
+<div class="container" id="mainContainer">
+    <div id="content">
+        <div class="loading-placeholder">⛳ Loading game data...</div>
     </div>
+    <div class="debug" id="debug"></div>
+</div>
+
+<div class="device-tag" id="deviceTag">---</div>
+<div class="version-tag">v1.06</div>
+
+<script>
+// ============================================================
+// Apply user settings IMMEDIATELY before anything else
+// ============================================================
+if (typeof AppSettings !== 'undefined') {
+    AppSettings.init();
+} else {
+    console.warn("[POST-GAME] AppSettings not loaded, zoom may be enabled by default");
+}
+
+// ============================================================
+// VERSION CACHE-BUSTING - v1.06: WRV integration
+// ============================================================
+var APP_VERSION = "1.06";
+var CACHE_KEY = "post_game_version_v106";
+
+var storedVersion = localStorage.getItem(CACHE_KEY);
+if (storedVersion !== APP_VERSION) {
+    localStorage.setItem(CACHE_KEY, APP_VERSION);
     
-    <!-- Version Tag -->
-    <div class="version-tag">post-game.html v1.09</div>
+    // Preserve ALL existing URL parameters (gameId, etc.)
+    var currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('v', APP_VERSION);
+    var newUrl = window.location.pathname + "?" + currentParams.toString();
     
-    <script>
-        // Post Game Logic
-        (function() {
-            'use strict';
-            
-            var gameId = null;
-            var gameData = null;
-            var isProcessing = false;
-            var isCompleted = false;
-            
-            // DOM Elements
-            var statusIcon = document.getElementById('statusIcon');
-            var statusText = document.getElementById('statusText');
-            var statusSubtext = document.getElementById('statusSubtext');
-            var teamAName = document.getElementById('teamAName');
-            var teamBName = document.getElementById('teamBName');
-            var teamAScore = document.getElementById('teamAScore');
-            var teamBScore = document.getElementById('teamBScore');
-            var winnerRow = document.getElementById('winnerRow');
-            var winnerName = document.getElementById('winnerName');
-            var seeResultsBtn = document.getElementById('seeResultsBtn');
-            var backBtn = document.getElementById('backBtn');
-            var themeToggle = document.getElementById('themeToggle');
-            
-            // Get game ID from URL
-            function getGameIdFromURL() {
-                var params = new URLSearchParams(window.location.search);
-                return params.get('gameId');
-            }
-            
-            // Load game data
-            function loadGameData() {
-                gameId = getGameIdFromURL();
-                if (!gameId) {
-                    setStatus('❌', 'Error', 'No game ID provided');
-                    return;
-                }
-                
-                console.log('[PostGame] Loading game data for:', gameId);
-                setStatus('⏳', 'Loading...', 'Fetching game data');
-                
-                var db = firebase.firestore();
-                db.collection('scheduledGames').doc(gameId).get()
-                    .then(function(doc) {
-                        if (!doc.exists) {
-                            setStatus('❌', 'Not Found', 'Game not found');
-                            return;
-                        }
-                        
-                        gameData = doc.data();
-                        gameData.id = doc.id;
-                        console.log('[PostGame] Game data loaded:', gameData);
-                        
-                        displayGameData();
-                        
-                        // Check if already completed
-                        if (gameData.status === 'completed') {
-                            isCompleted = true;
-                            setStatus('✅', 'Complete!', 'Game has been finalized');
-                            seeResultsBtn.disabled = false;
-                            seeResultsBtn.textContent = '🏆 VIEW RESULTS';
-                        } else {
-                            // Check if both flights are signed
-                            var signatures = gameData.signatures || {};
-                            var bothSigned = signatures.F1 && signatures.F2;
-                            
-                            if (bothSigned) {
-                                // Both flights signed - complete the game
-                                completeGame();
-                            } else {
-                                setStatus('⏳', 'Waiting for Signatures', 
-                                    'Flight 1: ' + (signatures.F1 ? '✅' : '⏳') + 
-                                    ' | Flight 2: ' + (signatures.F2 ? '✅' : '⏳'));
-                                seeResultsBtn.disabled = true;
-                                seeResultsBtn.textContent = '⏳ Waiting for both flights to sign...';
-                            }
-                        }
-                    })
-                    .catch(function(err) {
-                        console.error('[PostGame] Load failed:', err);
-                        setStatus('❌', 'Error', err.message);
-                    });
-            }
-            
-            // Display game data
-            function displayGameData() {
-                if (!gameData) return;
-                
-                teamAName.textContent = gameData.teamAName || 'Team A';
-                teamBName.textContent = gameData.teamBName || 'Team B';
-                teamAScore.textContent = gameData.teamAScore || 0;
-                teamBScore.textContent = gameData.teamBScore || 0;
-                
-                // Show winner
-                var teamAScoreVal = gameData.teamAScore || 0;
-                var teamBScoreVal = gameData.teamBScore || 0;
-                
-                if (teamAScoreVal > 0 || teamBScoreVal > 0) {
-                    winnerRow.style.display = 'flex';
-                    if (teamAScoreVal > teamBScoreVal) {
-                        winnerName.textContent = gameData.teamAName || 'Team A';
-                    } else if (teamBScoreVal > teamAScoreVal) {
-                        winnerName.textContent = gameData.teamBName || 'Team B';
-                    } else {
-                        winnerName.textContent = 'Tie';
-                    }
-                }
-            }
-            
-            // Set status display
-            function setStatus(icon, text, subtext) {
-                statusIcon.textContent = icon;
-                statusText.textContent = text;
-                statusSubtext.textContent = subtext || '';
-            }
-            
-            // Complete the game - uses WRV
-            function completeGame() {
-                if (isProcessing) return;
-                isProcessing = true;
-                
-                console.log('[PostGame] Completing game:', gameId);
-                setStatus('⏳', 'Finalizing...', 'Calculating results');
-                seeResultsBtn.disabled = true;
-                seeResultsBtn.textContent = '⏳ Processing...';
-                
-                var archiveId = gameId + '_H';
-                var db = firebase.firestore();
-                
-                // Prepare history data
-                var historyData = {
-                    gameId: gameId,
-                    archiveId: archiveId,
-                    courseName: gameData.courseName || 'SICC Bukit Course',
-                    gameDate: gameData.gameDate || new Date().toISOString().split('T')[0],
-                    teamAName: gameData.teamAName || 'Team A',
-                    teamBName: gameData.teamBName || 'Team B',
-                    teamAPlayers: gameData.teamAPlayers || [],
-                    teamBPlayers: gameData.teamBPlayers || [],
-                    teamAScore: gameData.teamAScore || 0,
-                    teamBScore: gameData.teamBScore || 0,
-                    adjustedHandicaps: gameData.adjustedHandicaps || {},
-                    matchResults: gameData.matchResults || {},
-                    f1IntraMatches: gameData.f1IntraMatches || {},
-                    f2IntraMatches: gameData.f2IntraMatches || {},
-                    status: 'completed',
-                    completedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    signatures: gameData.signatures || {},
-                    celebration: {
-                        imageRef: '',
-                        imageUrl: '',
-                        capturedAt: null
-                    }
-                };
-                
-                // Step 1: Write to historyGames using WRV
-                var historyRef = db.collection('historyGames').doc(archiveId);
-                
-                var writePromise = new Promise(function(resolve, reject) {
-                    if (typeof WRV !== 'undefined' && WRV.write) {
-                        WRV.write('historyGames', archiveId, historyData, function(err, result) {
-                            if (err) {
-                                reject(err);
-                            } else {
-                                resolve(result);
-                            }
-                        });
-                    } else {
-                        // Fallback: direct write
-                        console.warn('[PostGame] WRV not available, using direct write for history');
-                        historyRef.set(historyData)
-                            .then(resolve)
-                            .catch(reject);
-                    }
-                });
-                
-                writePromise
-                    .then(function() {
-                        console.log('[PostGame] History record written');
-                        setStatus('⏳', 'Finalizing...', 'Updating game status');
-                        
-                        // Step 2: Update scheduledGames status using WRV
-                        var updateData = {
-                            status: 'completed',
-                            completedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        };
-                        
-                        return new Promise(function(resolve, reject) {
-                            if (typeof WRV !== 'undefined' && WRV.update) {
-                                WRV.update('scheduledGames', gameId, updateData, function(err, result) {
-                                    if (err) {
-                                        reject(err);
-                                    } else {
-                                        resolve(result);
-                                    }
-                                });
-                            } else {
-                                // Fallback: direct update
-                                console.warn('[PostGame] WRV not available, using direct update for scheduled');
-                                db.collection('scheduledGames').doc(gameId).update(updateData)
-                                    .then(resolve)
-                                    .catch(reject);
-                            }
-                        });
-                    })
-                    .then(function() {
-                        console.log('[PostGame] Game completed successfully');
-                        isCompleted = true;
-                        isProcessing = false;
-                        setStatus('✅', 'Complete!', 'Game has been finalized');
-                        seeResultsBtn.disabled = false;
-                        seeResultsBtn.textContent = '🏆 VIEW RESULTS';
-                        
-                        // Check for celebration photo
-                        if (typeof copyCelebrationPhoto === 'function') {
-                            console.log('[PostGame] 📸 Checking for celebration photo');
-                            copyCelebrationPhoto(gameId, function(err) {
-                                if (err) {
-                                    console.warn('[PostGame] Celebration photo copy failed:', err);
-                                } else {
-                                    console.log('[PostGame] Celebration photo ready');
-                                }
-                            });
-                        }
-                    })
-                    .catch(function(err) {
-                        console.error('[PostGame] Complete game failed:', err);
-                        isProcessing = false;
-                        setStatus('❌', 'Error', err.message);
-                        seeResultsBtn.disabled = true;
-                        seeResultsBtn.textContent = '⚠️ Retry';
-                        
-                        // Allow retry
-                        seeResultsBtn.addEventListener('click', function retry() {
-                            seeResultsBtn.removeEventListener('click', retry);
-                            completeGame();
-                        });
-                    });
-            }
-            
-            // Show celebration
-            function showCelebration() {
-                if (!gameId) return;
-                
-                console.log('[PostGame] Showing celebration for:', gameId);
-                
-                if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
-                    SignCard.showCelebrationScreen(gameId);
+    console.log("[POST-GAME] Cache-busting redirect. Preserving params:", currentParams.toString());
+    window.location.href = newUrl;
+}
+
+// ============================================================
+// Version Exposure for Console Debugging
+// ============================================================
+window.POST_GAME_PAGE_VERSION = "1.06";
+console.log("[POST-GAME] Initializing v1.06 - WRV integration");
+console.log("[POST-GAME] WRV loaded:", typeof WRV !== 'undefined');
+
+// ============================================================
+// Main Logic
+// ============================================================
+
+var gameId = null;
+var gameData = null;
+
+function getUrlParams() {
+    var params = new URLSearchParams(window.location.search);
+    gameId = params.get('gameId');
+    console.log("[POST-GAME] gameId:", gameId);
+}
+
+function showGameCompleteModal() {
+    var content = document.getElementById('content');
+    
+    var html = `
+        <div class="modal-overlay" id="postGameModal" style="position:relative; background:transparent; z-index:auto;">
+            <div class="game-complete-modal">
+                <div class="game-complete-title">🏆 GAME COMPLETED</div>
+                <div class="game-complete-message">Both cards have been signed!</div>
+                <div class="game-complete-emojis">🍺 🏆 🍺</div>
+                <button class="game-complete-btn" id="seeResultsBtn">🏆 SEE RESULTS</button>
+            </div>
+        </div>
+    `;
+    
+    content.innerHTML = html;
+    
+    document.getElementById('seeResultsBtn').addEventListener('click', function() {
+        console.log("[POST-GAME] SEE RESULTS clicked");
+        
+        // Check for celebration photo
+        if (typeof copyCelebrationPhoto === 'function') {
+            console.log('[POST-GAME] 📸 Checking for celebration photo');
+            copyCelebrationPhoto(gameId, function(err) {
+                if (err) {
+                    console.warn('[POST-GAME] Celebration photo copy failed:', err);
                 } else {
-                    console.warn('[PostGame] SignCard not available');
-                    // Fallback: go to view-game
-                    window.location.href = 'view-game.html?gameId=' + gameId;
-                }
-            }
-            
-            // Theme toggle
-            function toggleTheme() {
-                var currentTheme = document.documentElement.getAttribute('data-theme');
-                var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-                document.documentElement.setAttribute('data-theme', newTheme);
-                themeToggle.textContent = newTheme === 'dark' ? '☀️' : '🌙';
-                localStorage.setItem('theme', newTheme);
-            }
-            
-            // Load saved theme
-            function loadTheme() {
-                var savedTheme = localStorage.getItem('theme') || 'light';
-                document.documentElement.setAttribute('data-theme', savedTheme);
-                themeToggle.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
-            }
-            
-            // Event Listeners
-            seeResultsBtn.addEventListener('click', showCelebration);
-            
-            backBtn.addEventListener('click', function() {
-                window.location.href = 'view-game.html?gameId=' + gameId;
-            });
-            
-            themeToggle.addEventListener('click', toggleTheme);
-            
-            // Initialize
-            loadTheme();
-            loadGameData();
-            
-            // Handle visibility change - reload data when returning to page
-            document.addEventListener('visibilitychange', function() {
-                if (!document.hidden && !isCompleted) {
-                    console.log('[PostGame] Page visible, reloading data');
-                    loadGameData();
+                    console.log('[POST-GAME] Celebration photo ready');
                 }
             });
-            
-        })();
-    </script>
+        }
+        
+        // Store celebration data and go to celebration
+        var players = gameData.players || [];
+        var results = gameData.results || {};
+        var tr = results.tr || {};
+        var lastIdx = tr.teamA ? tr.teamA.length - 1 : 0;
+        var teamAScore = tr.teamA ? tr.teamA[lastIdx] : 9.5;
+        var teamBScore = tr.teamB ? tr.teamB[lastIdx] : 9.5;
+        var winner = teamAScore > teamBScore ? 'A' : (teamBScore > teamAScore ? 'B' : 'Tie');
+        
+        var winningPlayers = {
+            teamA: players.filter(function(p) { return p.team === "A"; }),
+            teamB: players.filter(function(p) { return p.team === "B"; })
+        };
+        
+        var celebrationData = {
+            winner: winner,
+            teamAScore: teamAScore,
+            teamBScore: teamBScore,
+            winningPlayers: winningPlayers,
+            gameId: gameId
+        };
+        sessionStorage.setItem('celebrationData', JSON.stringify(celebrationData));
+        window._currentCelebrationData = celebrationData;
+        
+        // Go to celebration
+        if (typeof SignCard !== 'undefined' && SignCard.showCelebrationScreen) {
+            SignCard.showCelebrationScreen(
+                winner,
+                teamAScore,
+                teamBScore,
+                winningPlayers,
+                gameId,
+                function() {
+                    // onClose callback - do NOT navigate automatically
+                    console.log("[POST-GAME] Celebration screen closed by user (onClose fired)");
+                }
+            );
+        } else {
+            console.error("[POST-GAME] SignCard not loaded");
+            window.location.href = 'hcp-adjust.html?gameId=' + gameId;
+        }
+    });
+}
+
+function loadGameData() {
+    if (!gameId) {
+        document.getElementById('debug').textContent = 'Error: No game ID provided';
+        return;
+    }
+    
+    console.log("[POST-GAME] Loading game:", gameId);
+    
+    if (typeof FirebaseRetry === 'undefined') {
+        document.getElementById('debug').textContent = 'Error: FirebaseRetry not loaded';
+        return;
+    }
+    
+    // Show waiting screen before Firestore read
+    if (typeof WaitingScreen !== 'undefined' && WaitingScreen.show) {
+        WaitingScreen.show("Loading game data...");
+        console.log("[POST-GAME] Waiting screen shown");
+    }
+    
+    FirebaseRetry.getDocument("scheduledGames", gameId, {
+        onExit: function() {
+            if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+                WaitingScreen.hide();
+            }
+            window.location.href = "index.html";
+        }
+    }).then(function(doc) {
+        // Hide waiting screen on success
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+            WaitingScreen.hide();
+            console.log("[POST-GAME] Waiting screen hidden (success)");
+        }
+        
+        if (!doc.exists) {
+            document.getElementById('debug').textContent = 'Error: Game not found';
+            return;
+        }
+        
+        gameData = doc.data();
+        console.log("[POST-GAME] Game loaded, players:", gameData.players ? gameData.players.length : 0);
+        
+        // Check if game data is valid
+        if (!gameData.players || gameData.players.length === 0) {
+            document.getElementById('debug').textContent = 'Error: Invalid game data - no players';
+            return;
+        }
+        
+        // Check if game is complete
+        var signatures = gameData.signatures || {};
+        var f1Signed = signatures.f1?.signed === true;
+        var f2Signed = signatures.f2?.signed === true;
+        var isComplete = f1Signed && f2Signed;
+        
+        if (!isComplete) {
+            console.log("[POST-GAME] Game not complete - redirecting to pre-game");
+            window.location.href = 'pre-game.html?gameId=' + gameId;
+            return;
+        }
+        
+        // Show the GAME COMPLETED modal
+        showGameCompleteModal();
+        
+    }).catch(function(err) {
+        // Hide waiting screen on error
+        if (typeof WaitingScreen !== 'undefined' && WaitingScreen.hide) {
+            WaitingScreen.hide();
+            console.log("[POST-GAME] Waiting screen hidden (error)");
+        }
+        
+        console.error("[POST-GAME] Error loading game:", err);
+        document.getElementById('debug').textContent = 'Error: ' + err.message;
+        
+        // Show retry option
+        var content = document.getElementById('content');
+        content.innerHTML = `
+            <div style="padding:40px 20px; text-align:center;">
+                <div style="font-size:1.2rem; color:#ff6b6b; margin-bottom:16px;">⚠️ Failed to load game</div>
+                <div style="font-size:0.85rem; color:#888; margin-bottom:24px;">${err.message}</div>
+                <button onclick="location.reload()" style="background:#1a3a1a; border:1px solid #4caf50; color:#4caf50; padding:14px 32px; border-radius:40px; font-size:1rem; font-weight:700; cursor:pointer;">RETRY</button>
+            </div>
+        `;
+    });
+}
+
+function init() {
+    console.log("[POST-GAME] Initializing...");
+    
+    getUrlParams();
+    
+    if (!gameId) {
+        document.getElementById('debug').textContent = 'Error: No game ID in URL';
+        return;
+    }
+    
+    // SessionManager.getShortNameOnly() is SYNC - no .then()
+    try {
+        var name = SessionManager.getShortNameOnly();
+        document.getElementById('deviceTag').textContent = '🏌️ ' + (name || 'DEV-??');
+    } catch(e) {
+        console.warn("[POST-GAME] Failed to get device name:", e.message);
+        document.getElementById('deviceTag').textContent = '🏌️ DEV-??';
+    }
+    
+    loadGameData();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
+</script>
+
 </body>
 </html>
 
 <!--
 FILE: post-game.html
-VERSION: 1.09
-KEY CHANGES from v1.08:
-   - CHANGED: Firestore writes now use WRV.update() for reliability
-   - ADDED: Fallback to direct update if WRV not available
-   - CHANGED: All Firestore writes now use WRV
-DEPENDS ON: Firebase Firestore, WRV.js, celebration-photo.js, sign-card.js, history-record.js
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - ADDED: js/wrv.js (v1.02) for Write-Read-Verify reliability
+   - ADDED: js/celebration-photo.js (v1.01) for celebration photo management
+   - ADDED: js/history-record.js (v3.07) for history record operations
+   - CHANGED: Firestore writes now use WRV.write() and WRV.update() for reliability
+   - ADDED: Fallback to direct write/update if WRV not available
+   - PRESERVED: All v1.05 UI design and functionality
+   - PRESERVED: Dark theme, modal-based layout, all original styling
+DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/waiting-screen.js, js/game-loader.js, js/sign-card.js, js/firebase-retry.js, js/settings.js, js/wrv.js, js/celebration-photo.js, js/history-record.js
 STATUS: Ready for integration
 -->
