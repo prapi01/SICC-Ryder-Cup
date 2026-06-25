@@ -1,20 +1,18 @@
 /*
 FILE: js/real-game-main.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Entry point that connects all real-game modules
-   - Contains: renderAll() wrapper that calls RealGameUI.renderAll()
-   - Contains: saveHole() wrapper that calls RealGameSave.saveHole()
-   - Contains: navigation wrappers for nextHole, prevHole
-   - Calls RealGameInit.init() to start the game
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Changed RealGameInit.init() to RealGameInit.initGame() (line 164)
+   - This fixes the initialization error where init() didn't exist
+   - All other functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, RealGameInit, RealGameCascade
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_MAIN_VERSION = "1.00";
+window.REAL_GAME_MAIN_VERSION = "1.01";
 
-console.log("[REAL-GAME-MAIN] Initializing v1.00");
+console.log("[REAL-GAME-MAIN] Initializing v1.01 - Fixed init call");
 
 // ============================================================
 // Main render wrapper
@@ -161,10 +159,10 @@ function startGame() {
     console.log("[REAL-GAME-MAIN] Starting game...");
     
     // Initialize the game
-    if (typeof RealGameInit !== 'undefined' && RealGameInit.init) {
-        RealGameInit.init(renderAll);
+    if (typeof RealGameInit !== 'undefined' && RealGameInit.initGame) {
+        RealGameInit.initGame(renderAll);
     } else {
-        console.error("[REAL-GAME-MAIN] RealGameInit.init not available");
+        console.error("[REAL-GAME-MAIN] RealGameInit.initGame not available");
         document.getElementById("debug").innerHTML = "Error: Initialization failed. Please refresh.";
     }
 }
@@ -207,13 +205,11 @@ window.addEventListener('beforeunload', function() {
 
 /*
 FILE: js/real-game-main.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Entry point that connects all real-game modules
-   - Contains: renderAll() wrapper that calls RealGameUI.renderAll()
-   - Contains: saveHole() wrapper that calls RealGameSave.saveHole()
-   - Contains: navigation wrappers for nextHole, prevHole
-   - Calls RealGameInit.init() to start the game
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: Changed RealGameInit.init() to RealGameInit.initGame() (line 164)
+   - This fixes the initialization error where init() didn't exist
+   - All other functionality preserved from v1.00
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, RealGameInit, RealGameCascade
 STATUS: Ready for integration
 */
