@@ -1,18 +1,17 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.06
-KEY CHANGES from v4.05:
-   - RESTORED: WRV.write() call for scores (f1.d, f2.d) in saveCurrentHole()
-   - This ensures scores are persisted to Firestore
-   - WRV runs in background, user never waits
-   - The original architecture was correct - this restores it
-   - PRESERVED: ALL v4.05 functions and API unchanged
+VERSION: 4.07
+KEY CHANGES from v4.06:
+   - ADDED: Update cache.savedHoles in saveCurrentHole() so UI shows hole as saved immediately
+   - This fixes the issue where F2:H5 scores were saved but UI showed them as NOT saved
+   - savedHoles is used by RealGameUI.isHoleSaved() to determine bubble colors and saved state
+   - PRESERVED: ALL v4.06 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.06
+// FILE: js/game-data.js - VERSION 4.07
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -755,7 +754,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // v4.06: saveCurrentHole - Restored WRV.write() for scores
+    // v4.07: saveCurrentHole - Added cache.savedHoles update
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -787,7 +786,7 @@ var GameData = (function() {
             flight1Data.crossEvent = true;
         }
         
-        // v4.04: Update cache's data strings so writeNewHoleData has latest data
+        // v4.07: Update cache's data strings AND savedHoles so UI shows saved state immediately
         var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
         if (cache) {
             if (flight === 1) {
@@ -797,12 +796,28 @@ var GameData = (function() {
                 for (var h = 1; h <= 18; h++) {
                     cache.flight1Data[h] = parseHoleData(newData, h);
                 }
+                // v4.07: Update savedHoles for flight 1
+                if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
+                var savedHoles1 = cache.savedHoles[1] || [];
+                if (savedHoles1.indexOf(holeNumber) === -1) {
+                    savedHoles1.push(holeNumber);
+                    cache.savedHoles[1] = savedHoles1;
+                    logWithTimestamp('[SAVE]', '✅ Updated cache.savedHoles[1] with hole ' + holeNumber);
+                }
                 logWithTimestamp('[SAVE]', '✅ Updated cache.f1DataString and flight1Data');
             } else {
                 cache.f2DataString = newData;
                 if (!cache.flight2Data) cache.flight2Data = {};
                 for (var h = 1; h <= 18; h++) {
                     cache.flight2Data[h] = parseHoleData(newData, h);
+                }
+                // v4.07: Update savedHoles for flight 2
+                if (!cache.savedHoles) cache.savedHoles = { 1: [], 2: [] };
+                var savedHoles2 = cache.savedHoles[2] || [];
+                if (savedHoles2.indexOf(holeNumber) === -1) {
+                    savedHoles2.push(holeNumber);
+                    cache.savedHoles[2] = savedHoles2;
+                    logWithTimestamp('[SAVE]', '✅ Updated cache.savedHoles[2] with hole ' + holeNumber);
                 }
                 logWithTimestamp('[SAVE]', '✅ Updated cache.f2DataString and flight2Data');
             }
@@ -981,7 +996,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v4.06: Restored WRV.write() for scores
+    // Public API - v4.07: Added savedHoles update
     // ============================================================
     
     return {
@@ -1045,13 +1060,12 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.06
-KEY CHANGES from v4.05:
-   - RESTORED: WRV.write() call for scores (f1.d, f2.d) in saveCurrentHole()
-   - This ensures scores are persisted to Firestore
-   - WRV runs in background, user never waits
-   - The original architecture was correct - this restores it
-   - PRESERVED: ALL v4.05 functions and API unchanged
+VERSION: 4.07
+KEY CHANGES from v4.06:
+   - ADDED: Update cache.savedHoles in saveCurrentHole() so UI shows hole as saved immediately
+   - This fixes the issue where F2:H5 scores were saved but UI showed them as NOT saved
+   - savedHoles is used by RealGameUI.isHoleSaved() to determine bubble colors and saved state
+   - PRESERVED: ALL v4.06 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
