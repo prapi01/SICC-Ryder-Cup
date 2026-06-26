@@ -1,22 +1,23 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - REMOVED: Manual cache refresh in performSave() before writeNewHoleData()
-   - The cache now gets updated directly by GameData.saveCurrentHole() (v4.04)
-   - This prevents stale data from overwriting cache before T-1/T-2/Strk calculations
-   - PRESERVED: ALL v1.24 functions and API unchanged
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - CHANGED: wruBackground() now checks firestoreChanged flag on WRV completion
+   - ADDED: If Firestore changed during WRV, trigger cache refresh after WRV completes
+   - ADDED: Clear firestoreChanged flag after processing
+   - This ensures cache refresh happens AFTER WRV completes, not during
+   - PRESERVED: ALL v1.25 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.25";
+window.REAL_GAME_SAVE_VERSION = "1.26";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.25 - Removed pre-calculation cache refresh");
+    console.log("[REAL-GAME-SAVE] Initializing v1.26 - Firestore changed flag check on WRV completion");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -54,6 +55,7 @@ var RealGameSave = (function() {
     // Does NOT block the calling function
     // v1.23: Added optional callback parameter for cache refresh
     // v1.24: Added WRV flag to prevent cache refresh during WRV
+    // v1.26: Added firestoreChanged flag check on WRV completion
     // ============================================================
     function wruBackground(collection, docId, data, logLabel, callback) {
         // v1.24: Set WRV flag to prevent real-time listener from refreshing cache
@@ -70,8 +72,30 @@ var RealGameSave = (function() {
                     console.warn('[RealGameSave] BACKGROUND WRV failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
                 } else {
                     console.log('[RealGameSave] BACKGROUND WRV success' + (logLabel ? ' (' + logLabel + ')' : ''));
+                    
+                    // v1.26: Check if Firestore changed during WRV
+                    if (RealGameState.isFirestoreChanged()) {
+                        console.log('[RealGameSave] Firestore changed during WRV - refreshing cache');
+                        RealGameState.setFirestoreChanged(false);
+                        
+                        var gameId = getGameId();
+                        if (gameId && typeof GameLoader !== 'undefined') {
+                            GameLoader.loadGame(gameId, "scheduledGames", function(loadResult) {
+                                if (loadResult.success) {
+                                    console.log('[RealGameSave] Cache refreshed after WRV completion');
+                                    if (callback) callback(null, result);
+                                } else {
+                                    console.warn('[RealGameSave] Failed to refresh cache after WRV:', loadResult.error);
+                                    if (callback) callback(err, result);
+                                }
+                            });
+                        } else {
+                            if (callback) callback(err, result);
+                        }
+                    } else {
+                        if (callback) callback(err, result);
+                    }
                 }
-                if (callback) callback(err, result);
             });
         } else {
             // Fallback: direct update in background
@@ -83,7 +107,29 @@ var RealGameSave = (function() {
                     RealGameState.setWRVInProgress(false);
                     console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
                     console.log('[RealGameSave] BACKGROUND direct update success' + (logLabel ? ' (' + logLabel + ')' : ''));
-                    if (callback) callback(null, true);
+                    
+                    // v1.26: Check if Firestore changed during WRV
+                    if (RealGameState.isFirestoreChanged()) {
+                        console.log('[RealGameSave] Firestore changed during direct update - refreshing cache');
+                        RealGameState.setFirestoreChanged(false);
+                        
+                        var gameId = getGameId();
+                        if (gameId && typeof GameLoader !== 'undefined') {
+                            GameLoader.loadGame(gameId, "scheduledGames", function(loadResult) {
+                                if (loadResult.success) {
+                                    console.log('[RealGameSave] Cache refreshed after direct update');
+                                    if (callback) callback(null, true);
+                                } else {
+                                    console.warn('[RealGameSave] Failed to refresh cache after direct update:', loadResult.error);
+                                    if (callback) callback(null, true);
+                                }
+                            });
+                        } else {
+                            if (callback) callback(null, true);
+                        }
+                    } else {
+                        if (callback) callback(null, true);
+                    }
                 })
                 .catch(function(err) {
                     // v1.24: Clear WRV flag on failure
@@ -457,7 +503,7 @@ var RealGameSave = (function() {
         wruBackground("scheduledGames", gameId, updatePayload, "singleHole_" + holeNumber, function(err, result) {
             if (!err) {
                 console.log(`[CASCADE-DEBUG] WRV verification passed for hole ${holeNumber} (cascade write verified)`);
-                // Cache refresh will be triggered by real-time listener
+                // Cache refresh will be triggered by WRV completion if needed
                 // This ensures data is verified
             } else {
                 console.warn(`[CASCADE-DEBUG] WRV verification failed for hole ${holeNumber}:`, err);
@@ -820,13 +866,8 @@ var RealGameSave = (function() {
         wruBackground("scheduledGames", gameId, updatePayload, "newHole_" + holeNumber, function(err, result) {
             if (!err) {
                 console.log(`[DEBUG-FLOW] WRV verification passed for hole ${holeNumber} - T-1, T-2, Strk verified`);
-                // Refresh cache with verified data
-                GameLoader.loadGame(gameId, "scheduledGames", function(loadResult) {
-                    if (loadResult.success) {
-                        console.log(`[DEBUG-FLOW] Cache refreshed with verified T-1, T-2, Strk data`);
-                        if (renderAllCallback) renderAllCallback();
-                    }
-                });
+                // Cache refresh will be triggered by WRV completion if needed
+                // This ensures data is verified
             } else {
                 console.warn(`[DEBUG-FLOW] WRV verification failed for hole ${holeNumber}:`, err);
             }
@@ -1411,12 +1452,13 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.25
-KEY CHANGES from v1.24:
-   - REMOVED: Manual cache refresh in performSave() before writeNewHoleData()
-   - The cache now gets updated directly by GameData.saveCurrentHole() (v4.04)
-   - This prevents stale data from overwriting cache before T-1/T-2/Strk calculations
-   - PRESERVED: ALL v1.24 functions and API unchanged
+VERSION: 1.26
+KEY CHANGES from v1.25:
+   - CHANGED: wruBackground() now checks firestoreChanged flag on WRV completion
+   - ADDED: If Firestore changed during WRV, trigger cache refresh after WRV completes
+   - ADDED: Clear firestoreChanged flag after processing
+   - This ensures cache refresh happens AFTER WRV completes, not during
+   - PRESERVED: ALL v1.25 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
