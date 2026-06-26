@@ -1,18 +1,18 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.04
-KEY CHANGES from v4.03:
-   - FIXED: saveCurrentHole() now updates cache's data strings after local update
-   - ADDED: Rebuild flight1Data/flight2Data in cache when data string changes
-   - This ensures writeNewHoleData() sees the correct saved state
-   - FIXED: T-1/T-2/Strk now calculated with latest data
-   - PRESERVED: ALL v4.03 functions and API unchanged
+VERSION: 4.05
+KEY CHANGES from v4.04:
+   - REMOVED: Unmanaged WRV.write() call from saveCurrentHole()
+   - saveCurrentHole() now ONLY updates local data and cache
+   - Firestore writes are now handled exclusively by writeNewHoleData()
+   - This ensures ONE atomic WRV write per save (scores + T-1/T-2/Strk + results)
+   - PRESERVED: ALL v4.04 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.04
+// FILE: js/game-data.js - VERSION 4.05
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -755,7 +755,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // v4.04: saveCurrentHole - Updates cache data strings
+    // v4.05: saveCurrentHole - Local update ONLY (no Firestore write)
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -763,16 +763,6 @@ var GameData = (function() {
         
         var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
         var newData = updateHoleData(flightData, holeNumber, scores, true);
-        
-        var collection = getCollectionName();
-        var updatePayload = {};
-        var flightField = (flight === 1) ? "f1" : "f2";
-        var otherFlightField = (flight === 1) ? "f2" : "f1";
-        
-        updatePayload[flightField + ".d"] = newData;
-        updatePayload[flightField + ".se"] = true;
-        updatePayload[otherFlightField + ".x"] = true;
-        updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
         logWithTimestamp('[SAVE]', 'saveCurrentHole() called - hole: ' + holeNumber + ', flight: ' + flight);
         
@@ -814,36 +804,11 @@ var GameData = (function() {
         notifyDataChanged();
         logWithTimestamp('[SAVE]', 'notifyDataChanged() called - UI refreshed');
         
-        // ============================================================
-        // v4.03: WRV manages ALL Firestore writes in the background
-        // User NEVER waits - callback returns immediately
-        // ============================================================
-        if (typeof WRV !== 'undefined' && WRV.update) {
-            logWithTimestamp('[SAVE]', '🚀 WRV.update() starting in background for hole: ' + holeNumber);
-            
-            WRV.update(collection, gameId, updatePayload, function(err, result) {
-                if (err) {
-                    logWithTimestamp('[SAVE]', '❌ WRV.update() failed: ' + err.message);
-                } else {
-                    logWithTimestamp('[SAVE]', '✅ WRV.update() success - data verified in Firestore');
-                    // WRV has confirmed data is in Firestore
-                    // Cache refresh will be triggered by real-time listener
-                    // or by the calling function's renderAllCallback
-                }
-            });
-        } else {
-            // Fallback: WRV not available
-            logWithTimestamp('[SAVE]', '⚠️ WRV not available - using direct Firestore update (fallback)');
-            firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
-                .then(function() {
-                    logWithTimestamp('[SAVE]', '✅ Direct update succeeded');
-                })
-                .catch(function(err) {
-                    logWithTimestamp('[SAVE]', '❌ Direct update failed: ' + err.message);
-                });
-        }
+        // v4.05: REMOVED WRV.write() call - Firestore writes are handled exclusively by writeNewHoleData()
+        // This ensures ONE atomic WRV write per save (scores + T-1/T-2/Strk + results)
+        logWithTimestamp('[SAVE]', '✅ Local data updated - Firestore write will be handled by writeNewHoleData');
         
-        // v4.03: Return IMMEDIATELY - user never waits
+        // Return IMMEDIATELY - user never waits
         logWithTimestamp('[SAVE]', '✅ Callback returning immediately - user continues');
         if (callback) callback(true);
     }
@@ -984,7 +949,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v4.04: Updates cache data strings in saveCurrentHole()
+    // Public API - v4.05: saveCurrentHole() local update only
     // ============================================================
     
     return {
@@ -1048,13 +1013,13 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.04
-KEY CHANGES from v4.03:
-   - FIXED: saveCurrentHole() now updates cache's data strings after local update
-   - ADDED: Rebuild flight1Data/flight2Data in cache when data string changes
-   - This ensures writeNewHoleData() sees the correct saved state
-   - FIXED: T-1/T-2/Strk now calculated with latest data
-   - PRESERVED: ALL v4.03 functions and API unchanged
+VERSION: 4.05
+KEY CHANGES from v4.04:
+   - REMOVED: Unmanaged WRV.write() call from saveCurrentHole()
+   - saveCurrentHole() now ONLY updates local data and cache
+   - Firestore writes are now handled exclusively by writeNewHoleData()
+   - This ensures ONE atomic WRV write per save (scores + T-1/T-2/Strk + results)
+   - PRESERVED: ALL v4.04 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
