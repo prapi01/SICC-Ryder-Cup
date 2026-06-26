@@ -1,24 +1,23 @@
 /*
 FILE: js/real-game-state.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted state variables from real-game.html
-   - Contains: gameId, editableFlight, canEdit, currentHole, localChanges
-   - Contains: startingHole, teamGameFormat, courseName, coursePar, courseSi, allPlayers
-   - Contains: isGameCompleteFlag, celebrationTriggered, saveInProgress
-   - Contains: activeWaitModal, activeCompleteModal, usedPreloadedData, takeoverDetected, viewOtherFlight
-   - Contains: firestoreUnsubscribe, DEBUG_TARGET_HOLE, DEBUG_CALL_COUNTERS
-   - Provides getters and setters for state management
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - ADDED: _wrvInProgress flag to track WRV operations in progress
+   - ADDED: isWRVInProgress() getter
+   - ADDED: setWRVInProgress() setter
+   - This flag allows real-time listener to skip cache refreshes during WRV
+   - PRESERVED: ALL v1.00 functions and API unchanged
+   - PRESERVED: ALL existing functionality
 DEPENDS ON: None (pure state management)
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_STATE_VERSION = "1.00";
+window.REAL_GAME_STATE_VERSION = "1.01";
 
 var RealGameState = (function() {
     
-    console.log("[REAL-GAME-STATE] Initializing v1.00");
+    console.log("[REAL-GAME-STATE] Initializing v1.01 - WRV flag added");
     
     // ============================================================
     // State Variables
@@ -49,6 +48,11 @@ var RealGameState = (function() {
     var _viewOtherFlight = false;
     
     var _firestoreUnsubscribe = null;
+    
+    // ============================================================
+    // v1.01: WRV In Progress Flag
+    // ============================================================
+    var _wrvInProgress = false;
     
     // ============================================================
     // Debug Configuration
@@ -161,6 +165,13 @@ var RealGameState = (function() {
     }
     
     // ============================================================
+    // v1.01: WRV Flag Getters and Setters
+    // ============================================================
+    
+    function isWRVInProgress() { return _wrvInProgress; }
+    function setWRVInProgress(value) { _wrvInProgress = value === true; }
+    
+    // ============================================================
     // Reset State
     // ============================================================
     
@@ -185,6 +196,7 @@ var RealGameState = (function() {
         _takeoverDetected = false;
         _viewOtherFlight = false;
         _firestoreUnsubscribe = null;
+        _wrvInProgress = false;
         _DEBUG_CALL_COUNTERS = {
             calc: 0,
             update: 0,
@@ -221,6 +233,8 @@ var RealGameState = (function() {
         getFirestoreUnsubscribe: getFirestoreUnsubscribe,
         getDebugTargetHole: getDebugTargetHole,
         getDebugCallCounters: getDebugCallCounters,
+        // v1.01: WRV Flag
+        isWRVInProgress: isWRVInProgress,
         
         // Setters
         setGameId: setGameId,
@@ -243,6 +257,8 @@ var RealGameState = (function() {
         setTakeoverDetected: setTakeoverDetected,
         setViewOtherFlight: setViewOtherFlight,
         setFirestoreUnsubscribe: setFirestoreUnsubscribe,
+        // v1.01: WRV Flag Setter
+        setWRVInProgress: setWRVInProgress,
         
         // Local changes helpers
         addLocalChange: addLocalChange,
@@ -265,15 +281,14 @@ window.RealGameState = RealGameState;
 
 /*
 FILE: js/real-game-state.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted state variables from real-game.html
-   - Contains: gameId, editableFlight, canEdit, currentHole, localChanges
-   - Contains: startingHole, teamGameFormat, courseName, coursePar, courseSi, allPlayers
-   - Contains: isGameCompleteFlag, celebrationTriggered, saveInProgress
-   - Contains: activeWaitModal, activeCompleteModal, usedPreloadedData, takeoverDetected, viewOtherFlight
-   - Contains: firestoreUnsubscribe, DEBUG_TARGET_HOLE, DEBUG_CALL_COUNTERS
-   - Provides getters and setters for state management
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - ADDED: _wrvInProgress flag to track WRV operations in progress
+   - ADDED: isWRVInProgress() getter
+   - ADDED: setWRVInProgress() setter
+   - This flag allows real-time listener to skip cache refreshes during WRV
+   - PRESERVED: ALL v1.00 functions and API unchanged
+   - PRESERVED: ALL existing functionality
 DEPENDS ON: None (pure state management)
 STATUS: Ready for integration
 */
