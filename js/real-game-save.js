@@ -1,23 +1,22 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - CHANGED: wruBackground() now sets/clears RealGameState WRV flag
-   - ADDED: Set _wrvInProgress = true before WRV starts
-   - ADDED: Set _wrvInProgress = false when WRV completes (success or failure)
-   - This prevents real-time listener from refreshing cache during WRV operations
-   - PRESERVED: ALL v1.23 functions and API unchanged
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - REMOVED: Manual cache refresh in performSave() before writeNewHoleData()
+   - The cache now gets updated directly by GameData.saveCurrentHole() (v4.04)
+   - This prevents stale data from overwriting cache before T-1/T-2/Strk calculations
+   - PRESERVED: ALL v1.24 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.24";
+window.REAL_GAME_SAVE_VERSION = "1.25";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.24 - WRV flag protection");
+    console.log("[REAL-GAME-SAVE] Initializing v1.25 - Removed pre-calculation cache refresh");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -994,8 +993,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.23: Removed separate T-1 write
-    // T-1, T-2, Strk all written together in writeNewHoleData()
+    // performSave - v1.25: Removed pre-calculation cache refresh
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1047,22 +1045,14 @@ var RealGameSave = (function() {
                         RealGameState.removeLocalChangesForHole(flight, currentHole);
                         
                         console.log(`[DEBUG-SAVE] GameData.saveCurrentHole SUCCESS`);
-                        console.log(`[DEBUG-SAVE] Refreshing cache...`);
-                        
-                        await new Promise(function(resolveLoad) {
-                            if (typeof GameLoader !== 'undefined') {
-                                GameLoader.loadGame(gameId, "scheduledGames", function(result) {
-                                    if (result.success) console.log("[DEBUG-SAVE] Cache refreshed");
-                                    resolveLoad();
-                                });
-                            } else {
-                                resolveLoad();
-                            }
-                        });
+                        // v1.25: REMOVED manual cache refresh before writeNewHoleData()
+                        // Cache is already updated by GameData.saveCurrentHole() (v4.04)
+                        // This prevents stale data from overwriting cache before calculations
+                        console.log(`[DEBUG-SAVE] Using current cache (already updated by GameData)`);
                         
                         var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
                         if (!cache) {
-                            reject(new Error("No cache available after refresh"));
+                            reject(new Error("No cache available"));
                             return;
                         }
                         
@@ -1421,13 +1411,12 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.24
-KEY CHANGES from v1.23:
-   - CHANGED: wruBackground() now sets/clears RealGameState WRV flag
-   - ADDED: Set _wrvInProgress = true before WRV starts
-   - ADDED: Set _wrvInProgress = false when WRV completes (success or failure)
-   - This prevents real-time listener from refreshing cache during WRV operations
-   - PRESERVED: ALL v1.23 functions and API unchanged
+VERSION: 1.25
+KEY CHANGES from v1.24:
+   - REMOVED: Manual cache refresh in performSave() before writeNewHoleData()
+   - The cache now gets updated directly by GameData.saveCurrentHole() (v4.04)
+   - This prevents stale data from overwriting cache before T-1/T-2/Strk calculations
+   - PRESERVED: ALL v1.24 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
