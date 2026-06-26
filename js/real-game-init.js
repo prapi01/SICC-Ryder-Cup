@@ -1,23 +1,23 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - CHANGED: updateGameMetadata() now uses WRV.update() for reliability
-   - CHANGED: exitToMainMenu() now uses WRV.update() for reliability (lock release)
-   - ADDED: Promise wrapper for WRV to maintain async/await compatibility
-   - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: ALL v1.01 functions and API unchanged (init() signature preserved)
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - CHANGED: setupRealtimeListener() now checks WRV flag before cache refresh
+   - ADDED: Skip cache refresh if RealGameState.isWRVInProgress() is true
+   - ADDED: Debug log when cache refresh is skipped due to WRV in progress
+   - This prevents stale data from overwriting calculated values during WRV
+   - PRESERVED: ALL v1.02 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.02";
+window.REAL_GAME_INIT_VERSION = "1.03";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.02 - WRV integration");
+    console.log("[REAL-GAME-INIT] Initializing v1.03 - WRV flag check in realtime listener");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -419,8 +419,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // setupRealtimeListener
-    // v1.01: Uses firebase.firestore() instead of global db
+    // setupRealtimeListener - v1.03: Check WRV flag before cache refresh
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -454,6 +453,12 @@ var RealGameInit = (function() {
                 var resultsChanged = (JSON.stringify(currentCache.results) !== JSON.stringify(data.results));
                 
                 if (f1Changed || f2Changed || locksChanged || resultsChanged) {
+                    // v1.03: Check WRV flag - skip cache refresh if WRV in progress
+                    if (RealGameState.isWRVInProgress()) {
+                        console.log('[REALTIME] WRV in progress - skipping cache refresh to protect calculated values');
+                        return;
+                    }
+                    
                     console.log("Realtime update detected");
                     
                     if (typeof GameLoader !== 'undefined') {
@@ -893,13 +898,13 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - CHANGED: updateGameMetadata() now uses WRV.update() for reliability
-   - CHANGED: exitToMainMenu() now uses WRV.update() for reliability (lock release)
-   - ADDED: Promise wrapper for WRV to maintain async/await compatibility
-   - ADDED: Fallback to direct update if WRV not available
-   - PRESERVED: ALL v1.01 functions and API unchanged (init() signature preserved)
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - CHANGED: setupRealtimeListener() now checks WRV flag before cache refresh
+   - ADDED: Skip cache refresh if RealGameState.isWRVInProgress() is true
+   - ADDED: Debug log when cache refresh is skipped due to WRV in progress
+   - This prevents stale data from overwriting calculated values during WRV
+   - PRESERVED: ALL v1.02 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
