@@ -1,19 +1,18 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.02
-KEY CHANGES from v4.01:
-   - ADDED: Timestamp support for all debug logs (using logWithTimestamp() helper)
-   - ADDED: Enhanced debug logging in startWRVVerification() to confirm WRV is called
-   - ADDED: console.trace() in startWRVVerification() to trace call stack
-   - ADDED: WRV availability check with clear log message
-   - ADDED: Recovery key generation log
-   - FIXED: WRV now properly triggered on EVERY save (verification mode)
-   - PRESERVED: ALL v4.01 functions and API unchanged
+VERSION: 4.03
+KEY CHANGES from v4.02:
+   - CHANGED: saveCurrentHole() now uses WRV for ALL Firestore writes
+   - REMOVED: Unmanaged Firestore write in saveCurrentHole()
+   - ADDED: WRV.update() with background callback for scores write
+   - CHANGED: Callback now returns immediately (user never waits)
+   - PRESERVED: ALL v4.02 functions and API unchanged
+   - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.02
+// FILE: js/game-data.js - VERSION 4.03
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -465,9 +464,11 @@ var GameData = (function() {
                 flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
                 flight2: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
                 pointsA: new Array(18).fill(1),
-                pointsB: new Array(18).fill(1)
+                pointsB: new Array(18).fill(1),
+                displayT1: new Array(18).fill("AS"),
+                displayT2: new Array(18).fill("AS")
             },
-            game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5) },
+            game3: { leader: new Array(18).fill("AS"), nettA: new Array(18).fill(0), nettB: new Array(18).fill(0), pointsA: new Array(18).fill(0.5), pointsB: new Array(18).fill(0.5), displayStrk: new Array(18).fill("AS") },
             tr: { 
                 teamA: new Array(18).fill(null), 
                 teamB: new Array(18).fill(null), 
@@ -754,7 +755,8 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // saveCurrentHole - v4.01: WRV runs on EVERY save as verification
+    // saveCurrentHole - v4.03: WRV manages ALL Firestore writes
+    // User NEVER waits - callback returns immediately
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -792,27 +794,38 @@ var GameData = (function() {
         notifyDataChanged();
         logWithTimestamp('[SAVE]', 'notifyDataChanged() called - UI refreshed');
         
-        // Try Firestore write in background
-        firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
-            .then(function() {
-                logWithTimestamp('[FS-WRITE]', '✅ SUCCEEDED - WRV verification starting...');
-                
-                // v4.01: ALWAYS run WRV verification after successful write
-                // This catches silent failures where Firestore says success but data is wrong
-                startWRVVerification(flight, holeNumber, newData);
-                
-                if (callback) callback(true);
-            })
-            .catch(function(err) {
-                logWithTimestamp('[FS-WRITE]', '❌ FAILED - WRV recovery starting... Error: ' + err.message);
-                logWithTimestamp('[FS-WRITE]', 'Local data already updated - user unaffected');
-                
-                // v4.01: WRV runs on failure too (same function)
-                startWRVVerification(flight, holeNumber, newData);
-                
-                // User experience: SUCCESS (local data is already updated)
-                if (callback) callback(true);
+        // ============================================================
+        // v4.03: WRV manages ALL Firestore writes in the background
+        // User NEVER waits - callback returns immediately
+        // ============================================================
+        if (typeof WRV !== 'undefined' && WRV.update) {
+            logWithTimestamp('[SAVE]', '🚀 WRV.update() starting in background for hole: ' + holeNumber);
+            
+            WRV.update(collection, gameId, updatePayload, function(err, result) {
+                if (err) {
+                    logWithTimestamp('[SAVE]', '❌ WRV.update() failed: ' + err.message);
+                } else {
+                    logWithTimestamp('[SAVE]', '✅ WRV.update() success - data verified in Firestore');
+                    // WRV has confirmed data is in Firestore
+                    // Cache refresh will be triggered by real-time listener
+                    // or by the calling function's renderAllCallback
+                }
             });
+        } else {
+            // Fallback: WRV not available
+            logWithTimestamp('[SAVE]', '⚠️ WRV not available - using direct Firestore update (fallback)');
+            firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
+                .then(function() {
+                    logWithTimestamp('[SAVE]', '✅ Direct update succeeded');
+                })
+                .catch(function(err) {
+                    logWithTimestamp('[SAVE]', '❌ Direct update failed: ' + err.message);
+                });
+        }
+        
+        // v4.03: Return IMMEDIATELY - user never waits
+        logWithTimestamp('[SAVE]', '✅ Callback returning immediately - user continues');
+        if (callback) callback(true);
     }
     
     function forceRefresh() {
@@ -951,7 +964,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v4.02: Enhanced with timestamp logs
+    // Public API - v4.03: WRV-managed saveCurrentHole()
     // ============================================================
     
     return {
@@ -1015,15 +1028,14 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.02
-KEY CHANGES from v4.01:
-   - ADDED: Timestamp support for all debug logs (using logWithTimestamp() helper)
-   - ADDED: Enhanced debug logging in startWRVVerification() to confirm WRV is called
-   - ADDED: console.trace() in startWRVVerification() to trace call stack
-   - ADDED: WRV availability check with clear log message
-   - ADDED: Recovery key generation log
-   - FIXED: WRV now properly triggered on EVERY save (verification mode)
-   - PRESERVED: ALL v4.01 functions and API unchanged
+VERSION: 4.03
+KEY CHANGES from v4.02:
+   - CHANGED: saveCurrentHole() now uses WRV for ALL Firestore writes
+   - REMOVED: Unmanaged Firestore write in saveCurrentHole()
+   - ADDED: WRV.update() with background callback for scores write
+   - CHANGED: Callback now returns immediately (user never waits)
+   - PRESERVED: ALL v4.02 functions and API unchanged
+   - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
