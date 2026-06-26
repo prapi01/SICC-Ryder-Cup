@@ -1,22 +1,21 @@
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: disableSaveButton() - disables save button during WRV
-   - ADDED: enableSaveButton() - re-enables save button after WRV
-   - ADDED: setSaveButtonStatus() - sets save button to pending/retry/success states
-   - ADDED: WRV integration for button state management
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: getBubbleClass() now correctly passes -1 instead of cache.lastSyncedHole when no holes are synced
+   - This ensures cross-flight bubbles show grey AS at game start (H1)
+   - Now properly handles lastSyncedPosition = -1 (no data) state
+   - All existing functionality preserved from v1.02
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_UI_VERSION = "1.02";
+window.REAL_GAME_UI_VERSION = "1.03";
 
 var RealGameUI = (function() {
     
-    console.log("[REAL-GAME-UI] Initializing v1.02 - WRV button blocking");
+    console.log("[REAL-GAME-UI] Initializing v1.03 - Fixed cross-flight grey AS at H1");
     
     // ============================================================
     // Private Helpers
@@ -323,6 +322,10 @@ var RealGameUI = (function() {
         return absValue.toString();
     }
     
+    // ============================================================
+    // v1.03: FIXED - getBubbleClass now correctly passes -1 when no data
+    // ============================================================
+    
     function getBubbleClass(player, opponent) {
         var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
         if (!cache) return 'bubble-grey';
@@ -333,9 +336,17 @@ var RealGameUI = (function() {
         var isHoleSavedForFlight = isHoleSaved(player.flight, currentHole);
         var startingHole = getStartingHole();
         
+        // v1.03: FIXED - Always pass -1 when no holes are synced
+        // Previously this fell back to cache.lastSyncedHole (which was 0)
+        // Now we explicitly check lastSyncedPosition and use -1 if < 0
         var lastSyncedValue = (cache.lastSyncedPosition !== undefined && cache.lastSyncedPosition >= 0) 
             ? cache.lastSyncedPosition 
-            : cache.lastSyncedHole;
+            : -1;  // FIXED: Use -1 instead of cache.lastSyncedHole
+        
+        // Debug logging for initial state
+        if (cache.lastSyncedPosition === -1) {
+            console.log(`[DEBUG-UI] getBubbleClass: No holes synced, lastSyncedValue=${lastSyncedValue} (should be -1)`);
+        }
         
         if (typeof GameMatch !== 'undefined' && GameMatch.getMatchBubbleClass) {
             return GameMatch.getMatchBubbleClass(
@@ -721,15 +732,12 @@ window._showSignCardCallback = function() {
 
 /*
 FILE: js/real-game-ui.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: disableSaveButton() - disables save button during WRV
-   - ADDED: enableSaveButton() - re-enables save button after WRV
-   - ADDED: setSaveButtonRetry() - sets save button to retry state
-   - ADDED: flashSaveButtonSuccess() - flashes success state
-   - ADDED: getSaveButtonStatus() - gets current button status
-   - ADDED: WRV integration for button state management
-   - All existing functionality preserved from v1.01
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - FIXED: getBubbleClass() now correctly passes -1 instead of cache.lastSyncedHole when no holes are synced
+   - This ensures cross-flight bubbles show grey AS at game start (H1)
+   - Now properly handles lastSyncedPosition = -1 (no data) state
+   - All existing functionality preserved from v1.02
 DEPENDS ON: RealGameState, RealGameUtils, GameUI, GameScorecard, GameLoader, GameMatch
 STATUS: Ready for integration
 */
