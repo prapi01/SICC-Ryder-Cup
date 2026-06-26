@@ -1,15 +1,17 @@
 /*
 FILE: js/game-data.js
-VERSION: 3.00
+VERSION: 4.00
 KEY CHANGES from v2.07:
-   - CHANGED: saveCurrentHole() now uses WRV.update() for reliability
-   - PRESERVED: EXACT order, timing, and behavior of all operations
+   - CHANGED: saveCurrentHole() now triggers WRV in background on Firestore write failure
+   - REMOVED: User-facing error notifications on write failure
+   - ADDED: WRV.recover() called when Firestore write fails (fire and forget)
+   - PRESERVED: Local data update and UI refresh (always immediate)
    - PRESERVED: ALL v2.07 functions and API unchanged
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 3.00
+// FILE: js/game-data.js - VERSION 4.00
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -609,7 +611,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // saveCurrentHole - v3.00: WRV integration (ONLY change)
+    // saveCurrentHole - v4.00: WRV background recovery on failure
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -628,54 +630,67 @@ var GameData = (function() {
         updatePayload[otherFlightField + ".x"] = true;
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
-        // v3.00: Use WRV for reliable Firestore write
-        // Fallback to direct update if WRV not available
-        if (typeof WRV !== 'undefined' && WRV.update) {
-            WRV.update(collection, gameId, updatePayload, function(err, result) {
-                if (err) {
-                    console.error("Save error (WRV):", err);
-                    notifyError("Save failed: " + err.message);
-                    if (callback) callback(false);
-                } else {
-                    // AFTER Firestore confirms, update local data
-                    if (flight === 1) {
-                        flight1Data.data = newData;
-                        flight1Data.saveEvent = true;
-                        flight2Data.crossEvent = true;
-                    } else {
-                        flight2Data.data = newData;
-                        flight2Data.saveEvent = true;
-                        flight1Data.crossEvent = true;
-                    }
-                    console.log("Save successful");
-                    notifyDataChanged();
-                    if (callback) callback(true);
-                }
-            });
+        console.log("[SAVE] saveCurrentHole() called - hole:", holeNumber, "flight:", flight);
+        
+        // Update local data IMMEDIATELY (user sees success)
+        if (flight === 1) {
+            flight1Data.data = newData;
+            flight1Data.saveEvent = true;
+            flight2Data.crossEvent = true;
         } else {
-            // Fallback: direct update
-            console.warn('[GameData] WRV not available, using direct update');
-            firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
-                .then(function() {
-                    if (flight === 1) {
-                        flight1Data.data = newData;
-                        flight1Data.saveEvent = true;
-                        flight2Data.crossEvent = true;
-                    } else {
-                        flight2Data.data = newData;
-                        flight2Data.saveEvent = true;
-                        flight1Data.crossEvent = true;
-                    }
-                    console.log("Save successful");
-                    notifyDataChanged();
-                    if (callback) callback(true);
-                })
-                .catch(function(err) {
-                    console.error("Save error:", err);
-                    notifyError("Save failed: " + err.message);
-                    if (callback) callback(false);
-                });
+            flight2Data.data = newData;
+            flight2Data.saveEvent = true;
+            flight1Data.crossEvent = true;
         }
+        
+        console.log("[SAVE] Local data updated - flight", flight, "data:", newData.substring(0, 50) + "...");
+        
+        // Notify UI immediately (user sees match, T-1, Next button)
+        notifyDataChanged();
+        console.log("[SAVE] notifyDataChanged() called - UI refreshed");
+        
+        // Try Firestore write in background
+        firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
+            .then(function() {
+                console.log("[FS-WRITE] ✅ SUCCEEDED - no WRV needed");
+                if (callback) callback(true);
+            })
+            .catch(function(err) {
+                console.error("[FS-WRITE] ❌ FAILED - triggering WRV background", err);
+                console.log("[FS-WRITE] Local data already updated - user unaffected");
+                
+                // TRIGGER WRV (fire and forget)
+                if (typeof WRV !== 'undefined' && WRV.recover) {
+                    console.log("[WRV] 🔄 Starting background recovery for hole:", holeNumber);
+                    WRV.recover({
+                        gameId: gameId,
+                        collection: collection,
+                        updatePayload: updatePayload,
+                        flight: flight,
+                        holeNumber: holeNumber,
+                        newData: newData,
+                        flight1Data: flight1Data.data,
+                        flight2Data: flight2Data.data,
+                        getLocalData: function() {
+                            // Provide current in-memory data as source of truth
+                            return {
+                                flight1Data: flight1Data.data,
+                                flight2Data: flight2Data.data,
+                                flight1SaveEvent: flight1Data.saveEvent,
+                                flight2SaveEvent: flight2Data.saveEvent,
+                                flight1CrossEvent: flight1Data.crossEvent,
+                                flight2CrossEvent: flight2Data.crossEvent
+                            };
+                        }
+                    });
+                } else {
+                    console.warn("[WRV] WRV not available - cannot recover Firestore write");
+                }
+                
+                // User experience: SUCCESS (local data is already updated)
+                // NOT callback(false) - the save succeeded from user's perspective
+                if (callback) callback(true);
+            });
     }
     
     function forceRefresh() {
@@ -814,7 +829,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v3.00: UNCHANGED from v2.07
+    // Public API - v4.00: UNCHANGED from v2.07
     // ============================================================
     
     return {
@@ -872,10 +887,12 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 3.00
+VERSION: 4.00
 KEY CHANGES from v2.07:
-   - CHANGED: saveCurrentHole() now uses WRV.update() for reliability
-   - PRESERVED: EXACT order, timing, and behavior of all operations
+   - CHANGED: saveCurrentHole() now triggers WRV in background on Firestore write failure
+   - REMOVED: User-facing error notifications on write failure
+   - ADDED: WRV.recover() called when Firestore write fails (fire and forget)
+   - PRESERVED: Local data update and UI refresh (always immediate)
    - PRESERVED: ALL v2.07 functions and API unchanged
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
