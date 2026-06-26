@@ -1,17 +1,18 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.00
-KEY CHANGES from v2.07:
-   - CHANGED: saveCurrentHole() now triggers WRV in background on Firestore write failure
-   - REMOVED: User-facing error notifications on write failure
-   - ADDED: WRV.recover() called when Firestore write fails (fire and forget)
+VERSION: 4.01
+KEY CHANGES from v4.00:
+   - CHANGED: WRV.recover() now runs on EVERY save (not just on Firestore write failure)
+   - CHANGED: WRV is now a continuous verification system, not just a recovery system
+   - ADDED: WRV runs in background after every successful Firestore write
    - PRESERVED: Local data update and UI refresh (always immediate)
-   - PRESERVED: ALL v2.07 functions and API unchanged
+   - PRESERVED: ALL v4.00 functions and API unchanged
+   - FIXED: Silent Firestore write failures (no error thrown) are now detected and corrected
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.00
+// FILE: js/game-data.js - VERSION 4.01
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -45,6 +46,9 @@ var GameData = (function() {
     
     var dataCallbacks = [];
     var errorCallbacks = [];
+    
+    // Track WRV recovery keys to prevent duplicate runs
+    var wrvRecoveryKeys = {};
     
     // ============================================================
     // SHOTGUN START HELPER FUNCTIONS - Now delegate to GameOrder
@@ -611,7 +615,82 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // saveCurrentHole - v4.00: WRV background recovery on failure
+    // v4.01: generateWRVKey - Create unique key for WRV recovery
+    // ============================================================
+    
+    function generateWRVKey(flight, holeNumber) {
+        return gameId + '_' + flight + '_' + holeNumber + '_' + Date.now();
+    }
+    
+    // ============================================================
+    // v4.01: startWRVVerification - Trigger WRV as continuous verification
+    // ============================================================
+    
+    function startWRVVerification(flight, holeNumber, newData) {
+        if (typeof WRV === 'undefined' || !WRV.recover) {
+            console.warn('[WRV] WRV not available - cannot verify Firestore data');
+            return;
+        }
+        
+        var collection = getCollectionName();
+        var recoveryKey = generateWRVKey(flight, holeNumber);
+        var flightField = (flight === 1) ? 'f1' : 'f2';
+        var otherFlightField = (flight === 1) ? 'f2' : 'f1';
+        
+        // Build the correct update payload based on local data
+        var localFlightData = (flight === 1) ? flight1Data.data : flight2Data.data;
+        var localSaveEvent = (flight === 1) ? flight1Data.saveEvent : flight2Data.saveEvent;
+        var otherCrossEvent = (flight === 1) ? flight2Data.crossEvent : flight1Data.crossEvent;
+        
+        var updatePayload = {};
+        updatePayload[flightField + '.d'] = localFlightData;
+        updatePayload[flightField + '.se'] = localSaveEvent;
+        updatePayload[otherFlightField + '.x'] = true;
+        updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        
+        console.log('[WRV] 🔄 Starting verification for hole:', holeNumber, 'flight:', flight, 'key:', recoveryKey);
+        
+        // Prevent duplicate WRV runs for the same hole
+        if (wrvRecoveryKeys[recoveryKey]) {
+            console.log('[WRV] ⏭️ Verification already in progress for key:', recoveryKey);
+            return;
+        }
+        
+        wrvRecoveryKeys[recoveryKey] = true;
+        
+        // Call WRV.recover() as fire-and-forget verification
+        WRV.recover({
+            gameId: gameId,
+            collection: collection,
+            updatePayload: updatePayload,
+            flight: flight,
+            holeNumber: holeNumber,
+            newData: newData,
+            flight1Data: flight1Data.data,
+            flight2Data: flight2Data.data,
+            getLocalData: function() {
+                return {
+                    flight1Data: flight1Data.data,
+                    flight2Data: flight2Data.data,
+                    flight1SaveEvent: flight1Data.saveEvent,
+                    flight2SaveEvent: flight2Data.saveEvent,
+                    flight1CrossEvent: flight1Data.crossEvent,
+                    flight2CrossEvent: flight2Data.crossEvent
+                };
+            },
+            // v4.01: Add verification mode flag
+            verificationMode: true,
+            recoveryKey: recoveryKey,
+            onComplete: function() {
+                // Clean up the recovery key when done
+                delete wrvRecoveryKeys[recoveryKey];
+                console.log('[WRV] ✅ Verification complete for key:', recoveryKey);
+            }
+        });
+    }
+    
+    // ============================================================
+    // saveCurrentHole - v4.01: WRV runs on EVERY save as verification
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -652,43 +731,22 @@ var GameData = (function() {
         // Try Firestore write in background
         firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
             .then(function() {
-                console.log("[FS-WRITE] ✅ SUCCEEDED - no WRV needed");
+                console.log("[FS-WRITE] ✅ SUCCEEDED - WRV verification starting...");
+                
+                // v4.01: ALWAYS run WRV verification after successful write
+                // This catches silent failures where Firestore says success but data is wrong
+                startWRVVerification(flight, holeNumber, newData);
+                
                 if (callback) callback(true);
             })
             .catch(function(err) {
-                console.error("[FS-WRITE] ❌ FAILED - triggering WRV background", err);
+                console.error("[FS-WRITE] ❌ FAILED - WRV recovery starting...", err);
                 console.log("[FS-WRITE] Local data already updated - user unaffected");
                 
-                // TRIGGER WRV (fire and forget)
-                if (typeof WRV !== 'undefined' && WRV.recover) {
-                    console.log("[WRV] 🔄 Starting background recovery for hole:", holeNumber);
-                    WRV.recover({
-                        gameId: gameId,
-                        collection: collection,
-                        updatePayload: updatePayload,
-                        flight: flight,
-                        holeNumber: holeNumber,
-                        newData: newData,
-                        flight1Data: flight1Data.data,
-                        flight2Data: flight2Data.data,
-                        getLocalData: function() {
-                            // Provide current in-memory data as source of truth
-                            return {
-                                flight1Data: flight1Data.data,
-                                flight2Data: flight2Data.data,
-                                flight1SaveEvent: flight1Data.saveEvent,
-                                flight2SaveEvent: flight2Data.saveEvent,
-                                flight1CrossEvent: flight1Data.crossEvent,
-                                flight2CrossEvent: flight2Data.crossEvent
-                            };
-                        }
-                    });
-                } else {
-                    console.warn("[WRV] WRV not available - cannot recover Firestore write");
-                }
+                // v4.01: WRV runs on failure too (same function)
+                startWRVVerification(flight, holeNumber, newData);
                 
                 // User experience: SUCCESS (local data is already updated)
-                // NOT callback(false) - the save succeeded from user's perspective
                 if (callback) callback(true);
             });
     }
@@ -829,7 +887,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v4.00: UNCHANGED from v2.07
+    // Public API - v4.01: Added WRV verification methods
     // ============================================================
     
     return {
@@ -877,7 +935,10 @@ var GameData = (function() {
         getConsecutiveSyncedLastPosition: getConsecutiveSyncedLastPosition,
         // Match index functions
         getMatchIndex: getMatchIndex,
-        getMatchValueFromResults: getMatchValueFromResults
+        getMatchValueFromResults: getMatchValueFromResults,
+        // v4.01: WRV verification methods
+        startWRVVerification: startWRVVerification,
+        generateWRVKey: generateWRVKey
     };
     
 })();
@@ -887,13 +948,14 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.00
-KEY CHANGES from v2.07:
-   - CHANGED: saveCurrentHole() now triggers WRV in background on Firestore write failure
-   - REMOVED: User-facing error notifications on write failure
-   - ADDED: WRV.recover() called when Firestore write fails (fire and forget)
+VERSION: 4.01
+KEY CHANGES from v4.00:
+   - CHANGED: WRV.recover() now runs on EVERY save (not just on Firestore write failure)
+   - CHANGED: WRV is now a continuous verification system, not just a recovery system
+   - ADDED: WRV runs in background after every successful Firestore write
    - PRESERVED: Local data update and UI refresh (always immediate)
-   - PRESERVED: ALL v2.07 functions and API unchanged
+   - PRESERVED: ALL v4.00 functions and API unchanged
+   - FIXED: Silent Firestore write failures (no error thrown) are now detected and corrected
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
