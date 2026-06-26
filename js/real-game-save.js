@@ -1,24 +1,23 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - CHANGED: wruBackground() now accepts optional callback parameter
-   - CHANGED: writeNewHoleData() now triggers cache refresh on WRV success
-   - CHANGED: writeSingleHoleToFirestore() now triggers cache refresh on WRV success
-   - REMOVED: Separate T-1 write in performSave() (now handled by writeNewHoleData)
-   - FIXED: T-1, T-2, Strk now all verified before cache refresh
-   - PRESERVED: ALL v1.22 functions and API unchanged
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - CHANGED: wruBackground() now sets/clears RealGameState WRV flag
+   - ADDED: Set _wrvInProgress = true before WRV starts
+   - ADDED: Set _wrvInProgress = false when WRV completes (success or failure)
+   - This prevents real-time listener from refreshing cache during WRV operations
+   - PRESERVED: ALL v1.23 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.23";
+window.REAL_GAME_SAVE_VERSION = "1.24";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.23 - Unified WRV with cache refresh");
+    console.log("[REAL-GAME-SAVE] Initializing v1.24 - WRV flag protection");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -55,10 +54,19 @@ var RealGameSave = (function() {
     // Helper: WRV update - BACKGROUND (fire and forget)
     // Does NOT block the calling function
     // v1.23: Added optional callback parameter for cache refresh
+    // v1.24: Added WRV flag to prevent cache refresh during WRV
     // ============================================================
     function wruBackground(collection, docId, data, logLabel, callback) {
+        // v1.24: Set WRV flag to prevent real-time listener from refreshing cache
+        RealGameState.setWRVInProgress(true);
+        console.log('[RealGameSave] WRV flag set: true' + (logLabel ? ' (' + logLabel + ')' : ''));
+        
         if (typeof WRV !== 'undefined' && WRV.update) {
             WRV.update(collection, docId, data, function(err, result) {
+                // v1.24: Clear WRV flag when WRV completes
+                RealGameState.setWRVInProgress(false);
+                console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
+                
                 if (err) {
                     console.warn('[RealGameSave] BACKGROUND WRV failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
                 } else {
@@ -72,10 +80,16 @@ var RealGameSave = (function() {
             var db = getDb();
             db.collection(collection).doc(docId).update(data)
                 .then(function() {
+                    // v1.24: Clear WRV flag on success
+                    RealGameState.setWRVInProgress(false);
+                    console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
                     console.log('[RealGameSave] BACKGROUND direct update success' + (logLabel ? ' (' + logLabel + ')' : ''));
                     if (callback) callback(null, true);
                 })
                 .catch(function(err) {
+                    // v1.24: Clear WRV flag on failure
+                    RealGameState.setWRVInProgress(false);
+                    console.log('[RealGameSave] WRV flag set: false' + (logLabel ? ' (' + logLabel + ')' : ''));
                     console.warn('[RealGameSave] BACKGROUND direct update failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
                     if (callback) callback(err, false);
                 });
@@ -1407,14 +1421,13 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.23
-KEY CHANGES from v1.22:
-   - CHANGED: wruBackground() now accepts optional callback parameter
-   - CHANGED: writeNewHoleData() now triggers cache refresh on WRV success
-   - CHANGED: writeSingleHoleToFirestore() now triggers cache refresh on WRV success
-   - REMOVED: Separate T-1 write in performSave() (now handled by writeNewHoleData)
-   - FIXED: T-1, T-2, Strk now all verified before cache refresh
-   - PRESERVED: ALL v1.22 functions and API unchanged
+VERSION: 1.24
+KEY CHANGES from v1.23:
+   - CHANGED: wruBackground() now sets/clears RealGameState WRV flag
+   - ADDED: Set _wrvInProgress = true before WRV starts
+   - ADDED: Set _wrvInProgress = false when WRV completes (success or failure)
+   - This prevents real-time listener from refreshing cache during WRV operations
+   - PRESERVED: ALL v1.23 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
