@@ -1,24 +1,23 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - CHANGED: setupRealtimeListener() now detects which flight changed
-   - ADDED: Only refresh cache and re-render if OTHER flight changed
-   - ADDED: MY flight changes update cache silently (no re-render)
-   - ADDED: results-only changes (WRV recovery) trigger cache refresh
-   - This prevents the saving device from overwriting its own correct data
-   - PRESERVED: ALL v1.03 functions and API unchanged
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - CHANGED: setupRealtimeListener() now sets firestoreChanged flag on every update
+   - ADDED: Early exit if WRV in progress (prevents any processing during WRV)
+   - ADDED: Clear firestoreChanged flag after processing changes
+   - This enables WRV to detect Firestore changes and trigger cache refresh
+   - PRESERVED: ALL v1.04 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.04";
+window.REAL_GAME_INIT_VERSION = "1.05";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.04 - Flight-aware realtime listener");
+    console.log("[REAL-GAME-INIT] Initializing v1.05 - Firestore changed flag");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -420,7 +419,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // setupRealtimeListener - v1.04: Flight-aware cache refresh
+    // setupRealtimeListener - v1.05: Set firestoreChanged flag
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -442,6 +441,16 @@ var RealGameInit = (function() {
         
         var unsubscribe = db.collection("scheduledGames").doc(gameId)
             .onSnapshot(function(doc) {
+                // v1.05: Set flag that Firestore changed
+                RealGameState.setFirestoreChanged(true);
+                console.log('[REALTIME] Firestore changed - flag set');
+                
+                // v1.05: Check WRV flag FIRST - if WRV in progress, do NOTHING
+                if (RealGameState.isWRVInProgress()) {
+                    console.log('[REALTIME] WRV in progress - ignoring Firestore update');
+                    return;
+                }
+                
                 if (!doc.exists) return;
                 
                 var data = doc.data();
@@ -454,12 +463,6 @@ var RealGameInit = (function() {
                 var resultsChanged = (JSON.stringify(currentCache.results) !== JSON.stringify(data.results));
                 
                 if (f1Changed || f2Changed || locksChanged || resultsChanged) {
-                    // v1.03: Check WRV flag - skip cache refresh if WRV in progress
-                    if (RealGameState.isWRVInProgress()) {
-                        console.log('[REALTIME] WRV in progress - skipping cache refresh to protect calculated values');
-                        return;
-                    }
-                    
                     // v1.04: Determine which flight changed
                     var myFlight = getEditableFlight();
                     var otherFlight = (myFlight === 1) ? 2 : 1;
@@ -495,6 +498,10 @@ var RealGameInit = (function() {
                                     
                                     checkLockOwnership();
                                     if (renderAllCallback) renderAllCallback();
+                                    
+                                    // v1.05: Clear flag after processing
+                                    RealGameState.setFirestoreChanged(false);
+                                    console.log('[REALTIME] Firestore changed flag cleared');
                                 } else {
                                     console.warn("Failed to refresh cache from realtime update:", result.error);
                                 }
@@ -509,6 +516,10 @@ var RealGameInit = (function() {
                                     // Internal cache update only
                                     // Do NOT call renderAllCallback()
                                     console.log("[REALTIME] Cache updated silently");
+                                    
+                                    // v1.05: Clear flag after processing
+                                    RealGameState.setFirestoreChanged(false);
+                                    console.log('[REALTIME] Firestore changed flag cleared');
                                 }
                             });
                         }
@@ -539,12 +550,20 @@ var RealGameInit = (function() {
                                     
                                     checkLockOwnership();
                                     if (renderAllCallback) renderAllCallback();
+                                    
+                                    // v1.05: Clear flag after processing
+                                    RealGameState.setFirestoreChanged(false);
+                                    console.log('[REALTIME] Firestore changed flag cleared');
                                 } else {
                                     console.warn("Failed to refresh cache from realtime update:", result.error);
                                 }
                             });
                         }
                     }
+                } else {
+                    // v1.05: No actual changes detected, clear flag
+                    RealGameState.setFirestoreChanged(false);
+                    console.log('[REALTIME] No changes detected - flag cleared');
                 }
             }, function(error) {
                 console.warn("Firestore realtime listener error:", error);
@@ -953,14 +972,13 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - CHANGED: setupRealtimeListener() now detects which flight changed
-   - ADDED: Only refresh cache and re-render if OTHER flight changed
-   - ADDED: MY flight changes update cache silently (no re-render)
-   - ADDED: results-only changes (WRV recovery) trigger cache refresh
-   - This prevents the saving device from overwriting its own correct data
-   - PRESERVED: ALL v1.03 functions and API unchanged
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - CHANGED: setupRealtimeListener() now sets firestoreChanged flag on every update
+   - ADDED: Early exit if WRV in progress (prevents any processing during WRV)
+   - ADDED: Clear firestoreChanged flag after processing changes
+   - This enables WRV to detect Firestore changes and trigger cache refresh
+   - PRESERVED: ALL v1.04 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
