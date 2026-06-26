@@ -1,23 +1,23 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - CHANGED: wruBackground() now checks firestoreChanged flag on WRV completion
-   - ADDED: If Firestore changed during WRV, trigger cache refresh after WRV completes
-   - ADDED: Clear firestoreChanged flag after processing
-   - This ensures cache refresh happens AFTER WRV completes, not during
-   - PRESERVED: ALL v1.25 functions and API unchanged
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - CHANGED: Cascade loop now updates UI only ONCE after all holes are processed
+   - REMOVED: renderAllCallback() from inside the cascade loop
+   - ADDED: renderAllCallback() called once after cascade loop completes
+   - This prevents UI from flashing intermediate cascade values
+   - PRESERVED: ALL v1.26 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.26";
+window.REAL_GAME_SAVE_VERSION = "1.27";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.26 - Firestore changed flag check on WRV completion");
+    console.log("[REAL-GAME-SAVE] Initializing v1.27 - Cascade UI update once");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -1034,7 +1034,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.25: Removed pre-calculation cache refresh
+    // performSave - v1.27: Cascade UI update ONCE
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1108,8 +1108,6 @@ var RealGameSave = (function() {
                         // This ensures all three rows are verified before cache refresh
                         console.log(`[DEBUG-SAVE] --- T-1, T-2, Strk will be written by writeNewHoleData ---`);
                         
-                        if (renderAllCallback) renderAllCallback();
-                        
                         // ============================================================
                         // writeNewHoleData - ALWAYS call for ALL saves
                         // v1.06: Now properly handles stroke points 0 values
@@ -1128,6 +1126,7 @@ var RealGameSave = (function() {
                         
                         // ============================================================
                         // CASCADE (only for previous holes)
+                        // v1.27: UI updated ONLY ONCE after all cascade holes are processed
                         // ============================================================
                         if (currentPosition < lastSyncedPos) {
                             console.log(`[DEBUG-SAVE] --- CASCADE: Recalculating positions ${currentPosition} to ${lastSyncedPos} ---`);
@@ -1159,7 +1158,8 @@ var RealGameSave = (function() {
                                     if (loopResultsData) {
                                         // v1.20: updateLocalCacheWithResults now updates game1 points too
                                         updateLocalCacheWithResults(loopResultsData);
-                                        if (renderAllCallback) renderAllCallback();
+                                        // v1.27: REMOVED renderAllCallback() from inside loop
+                                        // UI will be updated once after all cascade holes are processed
                                         cascadeResultsQueue.push({
                                             hole: holeToUpdate,
                                             resultsData: loopResultsData
@@ -1227,8 +1227,15 @@ var RealGameSave = (function() {
                             }
                             
                             savePendingWrites(null);
+                            
+                            // v1.27: Update UI ONCE after ALL cascade holes are processed
+                            console.log(`[DEBUG-SAVE] --- CASCADE COMPLETE - Updating UI once ---`);
+                            if (renderAllCallback) renderAllCallback();
+                            
                         } else {
                             console.log(`[DEBUG-SAVE] --- No cascade needed (new hole or position >= lastSyncedPos)`);
+                            // v1.27: Update UI once for new hole save
+                            if (renderAllCallback) renderAllCallback();
                         }
                         
                         // ============================================================
@@ -1452,13 +1459,13 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.26
-KEY CHANGES from v1.25:
-   - CHANGED: wruBackground() now checks firestoreChanged flag on WRV completion
-   - ADDED: If Firestore changed during WRV, trigger cache refresh after WRV completes
-   - ADDED: Clear firestoreChanged flag after processing
-   - This ensures cache refresh happens AFTER WRV completes, not during
-   - PRESERVED: ALL v1.25 functions and API unchanged
+VERSION: 1.27
+KEY CHANGES from v1.26:
+   - CHANGED: Cascade loop now updates UI only ONCE after all holes are processed
+   - REMOVED: renderAllCallback() from inside the cascade loop
+   - ADDED: renderAllCallback() called once after cascade loop completes
+   - This prevents UI from flashing intermediate cascade values
+   - PRESERVED: ALL v1.26 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
