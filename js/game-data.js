@@ -1,18 +1,18 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.03
-KEY CHANGES from v4.02:
-   - CHANGED: saveCurrentHole() now uses WRV for ALL Firestore writes
-   - REMOVED: Unmanaged Firestore write in saveCurrentHole()
-   - ADDED: WRV.update() with background callback for scores write
-   - CHANGED: Callback now returns immediately (user never waits)
-   - PRESERVED: ALL v4.02 functions and API unchanged
+VERSION: 4.04
+KEY CHANGES from v4.03:
+   - FIXED: saveCurrentHole() now updates cache's data strings after local update
+   - ADDED: Rebuild flight1Data/flight2Data in cache when data string changes
+   - This ensures writeNewHoleData() sees the correct saved state
+   - FIXED: T-1/T-2/Strk now calculated with latest data
+   - PRESERVED: ALL v4.03 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.03
+// FILE: js/game-data.js - VERSION 4.04
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -755,8 +755,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // saveCurrentHole - v4.03: WRV manages ALL Firestore writes
-    // User NEVER waits - callback returns immediately
+    // v4.04: saveCurrentHole - Updates cache data strings
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -786,6 +785,27 @@ var GameData = (function() {
             flight2Data.data = newData;
             flight2Data.saveEvent = true;
             flight1Data.crossEvent = true;
+        }
+        
+        // v4.04: Update cache's data strings so writeNewHoleData has latest data
+        var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        if (cache) {
+            if (flight === 1) {
+                cache.f1DataString = newData;
+                // Rebuild flight1Data from the new data string
+                if (!cache.flight1Data) cache.flight1Data = {};
+                for (var h = 1; h <= 18; h++) {
+                    cache.flight1Data[h] = parseHoleData(newData, h);
+                }
+                logWithTimestamp('[SAVE]', '✅ Updated cache.f1DataString and flight1Data');
+            } else {
+                cache.f2DataString = newData;
+                if (!cache.flight2Data) cache.flight2Data = {};
+                for (var h = 1; h <= 18; h++) {
+                    cache.flight2Data[h] = parseHoleData(newData, h);
+                }
+                logWithTimestamp('[SAVE]', '✅ Updated cache.f2DataString and flight2Data');
+            }
         }
         
         logWithTimestamp('[SAVE]', 'Local data updated - flight ' + flight + ' data: ' + newData.substring(0, 50) + '...');
@@ -964,7 +984,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v4.03: WRV-managed saveCurrentHole()
+    // Public API - v4.04: Updates cache data strings in saveCurrentHole()
     // ============================================================
     
     return {
@@ -1028,13 +1048,13 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.03
-KEY CHANGES from v4.02:
-   - CHANGED: saveCurrentHole() now uses WRV for ALL Firestore writes
-   - REMOVED: Unmanaged Firestore write in saveCurrentHole()
-   - ADDED: WRV.update() with background callback for scores write
-   - CHANGED: Callback now returns immediately (user never waits)
-   - PRESERVED: ALL v4.02 functions and API unchanged
+VERSION: 4.04
+KEY CHANGES from v4.03:
+   - FIXED: saveCurrentHole() now updates cache's data strings after local update
+   - ADDED: Rebuild flight1Data/flight2Data in cache when data string changes
+   - This ensures writeNewHoleData() sees the correct saved state
+   - FIXED: T-1/T-2/Strk now calculated with latest data
+   - PRESERVED: ALL v4.03 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
