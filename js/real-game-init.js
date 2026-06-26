@@ -1,23 +1,24 @@
 /*
 FILE: js/real-game-init.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - CHANGED: setupRealtimeListener() now checks WRV flag before cache refresh
-   - ADDED: Skip cache refresh if RealGameState.isWRVInProgress() is true
-   - ADDED: Debug log when cache refresh is skipped due to WRV in progress
-   - This prevents stale data from overwriting calculated values during WRV
-   - PRESERVED: ALL v1.02 functions and API unchanged
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - CHANGED: setupRealtimeListener() now detects which flight changed
+   - ADDED: Only refresh cache and re-render if OTHER flight changed
+   - ADDED: MY flight changes update cache silently (no re-render)
+   - ADDED: results-only changes (WRV recovery) trigger cache refresh
+   - This prevents the saving device from overwriting its own correct data
+   - PRESERVED: ALL v1.03 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_INIT_VERSION = "1.03";
+window.REAL_GAME_INIT_VERSION = "1.04";
 
 var RealGameInit = (function() {
     
-    console.log("[REAL-GAME-INIT] Initializing v1.03 - WRV flag check in realtime listener");
+    console.log("[REAL-GAME-INIT] Initializing v1.04 - Flight-aware realtime listener");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -419,7 +420,7 @@ var RealGameInit = (function() {
     }
     
     // ============================================================
-    // setupRealtimeListener - v1.03: Check WRV flag before cache refresh
+    // setupRealtimeListener - v1.04: Flight-aware cache refresh
     // ============================================================
     
     function setupRealtimeListener(renderAllCallback) {
@@ -459,36 +460,90 @@ var RealGameInit = (function() {
                         return;
                     }
                     
+                    // v1.04: Determine which flight changed
+                    var myFlight = getEditableFlight();
+                    var otherFlight = (myFlight === 1) ? 2 : 1;
+                    var myFlightChanged = (myFlight === 1) ? f1Changed : f2Changed;
+                    var otherFlightChanged = (otherFlight === 1) ? f1Changed : f2Changed;
+                    
                     console.log("Realtime update detected");
                     
-                    if (typeof GameLoader !== 'undefined') {
-                        GameLoader.loadGame(gameId, "scheduledGames", function(result) {
-                            if (result.success) {
-                                console.log("Cache refreshed from realtime update");
-                                
-                                var cache = result.cache;
-                                if (cache.course) {
-                                    setCourseName(cache.course.name);
-                                    setCoursePar(cache.course.par);
-                                    setCourseSi(cache.course.si);
+                    if (otherFlightChanged) {
+                        // OTHER flight changed - refresh cache and re-render
+                        console.log('[REALTIME] Other flight changed - refreshing cache');
+                        if (typeof GameLoader !== 'undefined') {
+                            GameLoader.loadGame(gameId, "scheduledGames", function(result) {
+                                if (result.success) {
+                                    console.log("Cache refreshed from realtime update (other flight)");
+                                    
+                                    var cache = result.cache;
+                                    if (cache.course) {
+                                        setCourseName(cache.course.name);
+                                        setCoursePar(cache.course.par);
+                                        setCourseSi(cache.course.si);
+                                    }
+                                    setAllPlayers(cache.players || []);
+                                    setStartingHole(cache.startingHole || 1);
+                                    RealGameUtils.updateGameOrder(getStartingHole());
+                                    
+                                    var clinchedAtFromFS = cache.results?.clinchedAt || {};
+                                    console.log(`[CASCADE-DEBUG] Firestore cache refresh: clinchedAt count = ${Object.keys(clinchedAtFromFS).length}`);
+                                    
+                                    if (typeof Ticker !== 'undefined' && getAllPlayers().length) {
+                                        Ticker.setPlayers(getAllPlayers());
+                                    }
+                                    
+                                    checkLockOwnership();
+                                    if (renderAllCallback) renderAllCallback();
+                                } else {
+                                    console.warn("Failed to refresh cache from realtime update:", result.error);
                                 }
-                                setAllPlayers(cache.players || []);
-                                setStartingHole(cache.startingHole || 1);
-                                RealGameUtils.updateGameOrder(getStartingHole());
-                                
-                                var clinchedAtFromFS = cache.results?.clinchedAt || {};
-                                console.log(`[CASCADE-DEBUG] Firestore cache refresh: clinchedAt count = ${Object.keys(clinchedAtFromFS).length}`);
-                                
-                                if (typeof Ticker !== 'undefined' && getAllPlayers().length) {
-                                    Ticker.setPlayers(getAllPlayers());
+                            });
+                        }
+                    } else if (myFlightChanged) {
+                        // MY flight changed - update cache silently, DO NOT re-render
+                        console.log('[REALTIME] My flight changed - updating cache silently (no re-render)');
+                        if (typeof GameLoader !== 'undefined') {
+                            GameLoader.loadGame(gameId, "scheduledGames", function(result) {
+                                if (result.success) {
+                                    // Internal cache update only
+                                    // Do NOT call renderAllCallback()
+                                    console.log("[REALTIME] Cache updated silently");
                                 }
-                                
-                                checkLockOwnership();
-                                if (renderAllCallback) renderAllCallback();
-                            } else {
-                                console.warn("Failed to refresh cache from realtime update:", result.error);
-                            }
-                        });
+                            });
+                        }
+                    } else if (resultsChanged) {
+                        // Results changed (WRV recovery) - refresh and re-render
+                        console.log('[REALTIME] Results changed - refreshing cache (WRV recovery)');
+                        if (typeof GameLoader !== 'undefined') {
+                            GameLoader.loadGame(gameId, "scheduledGames", function(result) {
+                                if (result.success) {
+                                    console.log("Cache refreshed from realtime update (results change)");
+                                    
+                                    var cache = result.cache;
+                                    if (cache.course) {
+                                        setCourseName(cache.course.name);
+                                        setCoursePar(cache.course.par);
+                                        setCourseSi(cache.course.si);
+                                    }
+                                    setAllPlayers(cache.players || []);
+                                    setStartingHole(cache.startingHole || 1);
+                                    RealGameUtils.updateGameOrder(getStartingHole());
+                                    
+                                    var clinchedAtFromFS = cache.results?.clinchedAt || {};
+                                    console.log(`[CASCADE-DEBUG] Firestore cache refresh: clinchedAt count = ${Object.keys(clinchedAtFromFS).length}`);
+                                    
+                                    if (typeof Ticker !== 'undefined' && getAllPlayers().length) {
+                                        Ticker.setPlayers(getAllPlayers());
+                                    }
+                                    
+                                    checkLockOwnership();
+                                    if (renderAllCallback) renderAllCallback();
+                                } else {
+                                    console.warn("Failed to refresh cache from realtime update:", result.error);
+                                }
+                            });
+                        }
                     }
                 }
             }, function(error) {
@@ -898,13 +953,14 @@ window.onCacheUpdate = function(cache) {
 
 /*
 FILE: js/real-game-init.js
-VERSION: 1.03
-KEY CHANGES from v1.02:
-   - CHANGED: setupRealtimeListener() now checks WRV flag before cache refresh
-   - ADDED: Skip cache refresh if RealGameState.isWRVInProgress() is true
-   - ADDED: Debug log when cache refresh is skipped due to WRV in progress
-   - This prevents stale data from overwriting calculated values during WRV
-   - PRESERVED: ALL v1.02 functions and API unchanged
+VERSION: 1.04
+KEY CHANGES from v1.03:
+   - CHANGED: setupRealtimeListener() now detects which flight changed
+   - ADDED: Only refresh cache and re-render if OTHER flight changed
+   - ADDED: MY flight changes update cache silently (no re-render)
+   - ADDED: results-only changes (WRV recovery) trigger cache refresh
+   - This prevents the saving device from overwriting its own correct data
+   - PRESERVED: ALL v1.03 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, RealGameUI, RealGameSave, RealGameNav, GameLoader, GameData, SessionManager, Firebase, WRV.js
 STATUS: Ready for integration
