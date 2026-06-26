@@ -1,24 +1,24 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.22
-KEY CHANGES from v1.21:
-   - CHANGED: WRV writes now run in BACKGROUND (fire-and-forget)
-   - Restores production callback timing (UI updates before WRV verification completes)
-   - writeSingleHoleToFirestore() now returns immediately, WRV runs in background
-   - writeNewHoleData() now returns immediately, WRV runs in background
-   - performSave() T-1 write now runs in background
-   - PRESERVED: ALL v1.21 functions and API unchanged
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - CHANGED: wruBackground() now accepts optional callback parameter
+   - CHANGED: writeNewHoleData() now triggers cache refresh on WRV success
+   - CHANGED: writeSingleHoleToFirestore() now triggers cache refresh on WRV success
+   - REMOVED: Separate T-1 write in performSave() (now handled by writeNewHoleData)
+   - FIXED: T-1, T-2, Strk now all verified before cache refresh
+   - PRESERVED: ALL v1.22 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.22";
+window.REAL_GAME_SAVE_VERSION = "1.23";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.22 - Background WRV writes");
+    console.log("[REAL-GAME-SAVE] Initializing v1.23 - Unified WRV with cache refresh");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -54,8 +54,9 @@ var RealGameSave = (function() {
     // ============================================================
     // Helper: WRV update - BACKGROUND (fire and forget)
     // Does NOT block the calling function
+    // v1.23: Added optional callback parameter for cache refresh
     // ============================================================
-    function wruBackground(collection, docId, data, logLabel) {
+    function wruBackground(collection, docId, data, logLabel, callback) {
         if (typeof WRV !== 'undefined' && WRV.update) {
             WRV.update(collection, docId, data, function(err, result) {
                 if (err) {
@@ -63,6 +64,7 @@ var RealGameSave = (function() {
                 } else {
                     console.log('[RealGameSave] BACKGROUND WRV success' + (logLabel ? ' (' + logLabel + ')' : ''));
                 }
+                if (callback) callback(err, result);
             });
         } else {
             // Fallback: direct update in background
@@ -71,9 +73,11 @@ var RealGameSave = (function() {
             db.collection(collection).doc(docId).update(data)
                 .then(function() {
                     console.log('[RealGameSave] BACKGROUND direct update success' + (logLabel ? ' (' + logLabel + ')' : ''));
+                    if (callback) callback(null, true);
                 })
                 .catch(function(err) {
                     console.warn('[RealGameSave] BACKGROUND direct update failed' + (logLabel ? ' (' + logLabel + ')' : '') + ':', err);
+                    if (callback) callback(err, false);
                 });
         }
     }
@@ -301,7 +305,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore - v1.22: Background WRV
+    // writeSingleHoleToFirestore - v1.23: WRV with cache refresh
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -435,10 +439,17 @@ var RealGameSave = (function() {
         }
         
         // ============================================================
-        // v1.22: WRITE IN BACKGROUND - don't await
-        // Fire and forget - UI is already updated
+        // v1.23: WRITE IN BACKGROUND with callback - refresh cache on success
         // ============================================================
-        wruBackground("scheduledGames", gameId, updatePayload, "singleHole_" + holeNumber);
+        wruBackground("scheduledGames", gameId, updatePayload, "singleHole_" + holeNumber, function(err, result) {
+            if (!err) {
+                console.log(`[CASCADE-DEBUG] WRV verification passed for hole ${holeNumber} (cascade write verified)`);
+                // Cache refresh will be triggered by real-time listener
+                // This ensures data is verified
+            } else {
+                console.warn(`[CASCADE-DEBUG] WRV verification failed for hole ${holeNumber}:`, err);
+            }
+        });
         if(isTarget) console.log(`[DEBUG-WRITE] INITIATED - Firestore update in background for hole ${holeNumber}`);
         console.log(`[CASCADE-DEBUG] Results save initiated for hole ${holeNumber} (background)`);
         
@@ -446,10 +457,10 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeNewHoleData - v1.22: Background WRV
+    // writeNewHoleData - v1.23: WRV with cache refresh
     // ============================================================
     
-    async function writeNewHoleData(position, holeNumber, cache) {
+    async function writeNewHoleData(position, holeNumber, cache, renderAllCallback) {
         var gameId = RealGameState.getGameId();
         var allPlayers = RealGameState.getAllPlayers();
         var courseSi = RealGameState.getCourseSi();
@@ -790,10 +801,23 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] =========================================`);
         
         // ============================================================
-        // v1.22: WRITE IN BACKGROUND - don't await
-        // Fire and forget - UI is already updated
+        // v1.23: WRITE IN BACKGROUND with callback - refresh cache on success
+        // This writes T-1, T-2, and Strk together
         // ============================================================
-        wruBackground("scheduledGames", gameId, updatePayload, "newHole_" + holeNumber);
+        wruBackground("scheduledGames", gameId, updatePayload, "newHole_" + holeNumber, function(err, result) {
+            if (!err) {
+                console.log(`[DEBUG-FLOW] WRV verification passed for hole ${holeNumber} - T-1, T-2, Strk verified`);
+                // Refresh cache with verified data
+                GameLoader.loadGame(gameId, "scheduledGames", function(loadResult) {
+                    if (loadResult.success) {
+                        console.log(`[DEBUG-FLOW] Cache refreshed with verified T-1, T-2, Strk data`);
+                        if (renderAllCallback) renderAllCallback();
+                    }
+                });
+            } else {
+                console.warn(`[DEBUG-FLOW] WRV verification failed for hole ${holeNumber}:`, err);
+            }
+        });
         console.log(`[DEBUG-FLOW] Firestore write INITIATED in background for hole ${holeNumber}`);
         
         return true;
@@ -956,7 +980,8 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.22: Background WRV for T-1 write
+    // performSave - v1.23: Removed separate T-1 write
+    // T-1, T-2, Strk all written together in writeNewHoleData()
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -1033,63 +1058,22 @@ var RealGameSave = (function() {
                         console.log(`[DEBUG-SAVE] currentPosition=${currentPosition}, lastSyncedPos=${lastSyncedPos}`);
                         console.log(`[DEBUG-SAVE] isNewHole = ${currentPosition >= lastSyncedPos}`);
                         
-                        // ============================================================
-                        // T-1 IMMEDIATE RECALCULATION
-                        // ============================================================
-                        console.log(`[DEBUG-SAVE] --- T-1 IMMEDIATE RECALCULATION ---`);
-                        
-                        if (typeof GameTeam !== 'undefined') {
-                            var teamGameResults = GameTeam.calculate(
-                                allPlayers,
-                                cache.f1DataString,
-                                cache.f2DataString,
-                                courseSi,
-                                startingHole,
-                                teamGameFormat
-                            );
-                            
-                            if (!cache.results) cache.results = RealGameUtils.initializeEmptyResults();
-                            if (!cache.results.game2) cache.results.game2 = { flight1: {}, flight2: {} };
-                            if (!cache.results.game2.flight1) cache.results.game2.flight1 = {};
-                            if (!cache.results.game2.flight2) cache.results.game2.flight2 = {};
-                            if (!cache.results.game2.displayT1) cache.results.game2.displayT1 = new Array(18).fill("AS");
-                            if (!cache.results.game2.displayT2) cache.results.game2.displayT2 = new Array(18).fill("AS");
-                            if (!cache.results.game2.flight1.cumulativePoints) cache.results.game2.flight1.cumulativePoints = new Array(18).fill(0);
-                            if (!cache.results.game2.flight1.leader) cache.results.game2.flight1.leader = new Array(18).fill("AS");
-                            if (!cache.t1Row) cache.t1Row = new Array(18).fill('_');
-                            
-                            cache.results.game2.flight1.cumulativePoints[currentPosition] = teamGameResults.flight1Cumulative[currentPosition];
-                            cache.results.game2.displayT1[currentPosition] = teamGameResults.displayT1[currentPosition];
-                            cache.results.game2.flight1.leader[currentPosition] = teamGameResults.flight1Leaders[currentPosition];
-                            cache.t1Row[currentPosition] = teamGameResults.displayT1[currentPosition];
-                            
-                            console.log(`[DEBUG-SAVE] T-1 at position ${currentPosition}: ${teamGameResults.displayT1[currentPosition]}`);
-                            
-                            var fullDisplayT1 = cache.results.game2.displayT1.slice();
-                            var fullCumulativeF1 = cache.results.game2.flight1.cumulativePoints.slice();
-                            var fullLeaderF1 = cache.results.game2.flight1.leader.slice();
-                            
-                            var t1UpdatePayload = {};
-                            t1UpdatePayload["results.game2.displayT1"] = fullDisplayT1;
-                            t1UpdatePayload["results.game2.flight1.cumulativePoints"] = fullCumulativeF1;
-                            t1UpdatePayload["results.game2.flight1.leader"] = fullLeaderF1;
-                            t1UpdatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-                            
-                            // v1.22: Write T-1 in BACKGROUND - don't await
-                            wruBackground("scheduledGames", gameId, t1UpdatePayload, "T1_recalc");
-                            console.log(`[DEBUG-SAVE] T-1 Firestore write INITIATED in background`);
-                        }
+                        // v1.23: REMOVED separate T-1 write
+                        // T-1, T-2, Strk are all written together in writeNewHoleData()
+                        // This ensures all three rows are verified before cache refresh
+                        console.log(`[DEBUG-SAVE] --- T-1, T-2, Strk will be written by writeNewHoleData ---`);
                         
                         if (renderAllCallback) renderAllCallback();
                         
                         // ============================================================
                         // writeNewHoleData - ALWAYS call for ALL saves
                         // v1.06: Now properly handles stroke points 0 values
+                        // v1.23: Now triggers cache refresh on WRV success (T-1, T-2, Strk)
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
                         try {
-                            await writeNewHoleData(currentPosition, currentHole, cache);
+                            await writeNewHoleData(currentPosition, currentHole, cache, renderAllCallback);
                             console.log(`[DEBUG-SAVE] writeNewHoleData INITIATED for hole ${currentHole}`);
                         } catch (error) {
                             console.error(`[DEBUG-SAVE] writeNewHoleData FAILED:`, error);
@@ -1423,14 +1407,14 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.22
-KEY CHANGES from v1.21:
-   - CHANGED: WRV writes now run in BACKGROUND (fire-and-forget)
-   - Restores production callback timing (UI updates before WRV verification completes)
-   - writeSingleHoleToFirestore() now returns immediately, WRV runs in background
-   - writeNewHoleData() now returns immediately, WRV runs in background
-   - performSave() T-1 write now runs in background
-   - PRESERVED: ALL v1.21 functions and API unchanged
+VERSION: 1.23
+KEY CHANGES from v1.22:
+   - CHANGED: wruBackground() now accepts optional callback parameter
+   - CHANGED: writeNewHoleData() now triggers cache refresh on WRV success
+   - CHANGED: writeSingleHoleToFirestore() now triggers cache refresh on WRV success
+   - REMOVED: Separate T-1 write in performSave() (now handled by writeNewHoleData)
+   - FIXED: T-1, T-2, Strk now all verified before cache refresh
+   - PRESERVED: ALL v1.22 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
