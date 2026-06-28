@@ -1,15 +1,11 @@
 /*
 FILE: js/util-copy-record.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: Independent environment support for Source and Destination
-   - ADDED: copySourceDb and copyDestDb variables to track separate connections
-   - ADDED: setCopySourceEnvironment() and setCopyDestEnvironment() functions
-   - CHANGED: loadSourceRecords() now uses copySourceDb
-   - CHANGED: loadDestinationRecords() now uses copyDestDb
-   - CHANGED: copyRecord() reads from copySourceDb and writes to copyDestDb
-   - CHANGED: checkDestination() and deleteDestination() use copyDestDb
-   - PRESERVED: All COPY tab functionality
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: showCopyInfoGuide() function - full-page information overlay
+   - ADDED: Detailed COPY tab documentation with step-by-step instructions
+   - ADDED: Warnings and important notes for copying records
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml, prodDb, devDb
 STATUS: Ready for integration
 */
@@ -605,6 +601,87 @@ function onDestExistingSelect() {
 }
 
 // ============================================================
+// COPY TAB: INFORMATION GUIDE
+// ============================================================
+
+function showCopyInfoGuide() {
+    // Remove existing overlay if present
+    var existing = document.querySelector('.info-overlay');
+    if (existing) existing.remove();
+    
+    var overlay = document.createElement('div');
+    overlay.className = 'info-overlay';
+    overlay.innerHTML = `
+        <div class="info-card">
+            <div class="info-header">
+                <div class="info-title">📝 COPY TAB - Information & Guide</div>
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✕ CLOSE</button>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-section-title">🎯 What This Tab Does</div>
+                <div class="info-text">
+                    The <strong>COPY</strong> tab allows you to copy complete game records between different 
+                    collections and environments (PROD/DEV). This is useful for:
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>📦 Creating backups of important records</li>
+                        <li>🔄 Moving data between PROD and DEV environments</li>
+                        <li>📋 Creating a copy of a record for testing or analysis</li>
+                        <li>♻️ Restoring a record from backupFolder</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📖 How To Use</div>
+                <ol class="info-steps">
+                    <li><strong>Step 1 - Environments:</strong> Select <span class="highlight">SOURCE</span> environment (PROD/DEV) and <span class="highlight">DESTINATION</span> environment (PROD/DEV)</li>
+                    <li><strong>Step 2 - Collections:</strong> Choose the source and destination collections (<code>scheduledGames</code>, <code>historyGames</code>, or <code>backupFolder</code>)</li>
+                    <li><strong>Step 3 - Load Records:</strong> Click <span class="highlight">"Load Source Records"</span> to see available records in the source</li>
+                    <li><strong>Step 4 - Select Record:</strong> Choose the record you want to copy from the dropdown</li>
+                    <li><strong>Step 5 - Date Setting:</strong> Choose to keep the original date, set to today, or pick a custom date</li>
+                    <li><strong>Step 6 - Destination ID:</strong> Enter a new document ID or select an existing one to <span class="danger-text">REPLACE</span></li>
+                    <li><strong>Step 7 - Execute:</strong> Click <span class="highlight">"COPY RECORD"</span> to perform the copy</li>
+                </ol>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">⚠️ Important Notes</div>
+                <ul class="info-warnings">
+                    <li><strong>REPLACEMENT WARNING:</strong> If the destination document already exists, you will be prompted to confirm REPLACEMENT. This action <strong>CANNOT</strong> be undone.</li>
+                    <li><strong>Date Override:</strong> Only the date field is changed. All other fields are preserved exactly as-is.</li>
+                    <li><strong>All Fields Preserved:</strong> Everything except the date is copied exactly: players, courses, results, scores, status, etc.</li>
+                    <li><strong>No Original Modification:</strong> The source record is never modified. Only a copy is created.</li>
+                    <li><strong>Backup Folder:</strong> Use <code>backupFolder</code> as a safe destination to preserve original data before making changes.</li>
+                </ul>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📊 Collections Explained</div>
+                <table class="info-table">
+                    <tr><th>Collection</th><th>Description</th></tr>
+                    <tr><td><span class="field-name">scheduledGames</span></td><td class="field-desc">Active/live games that are currently being played or scheduled</td></tr>
+                    <tr><td><span class="field-name">historyGames</span></td><td class="field-desc">Completed games that have been finalized and archived</td></tr>
+                    <tr><td><span class="field-name">backupFolder</span></td><td class="field-desc">Safe storage for backups and temporary copies (never modified by the app)</td></tr>
+                </table>
+            </div>
+            
+            <div style="text-align:center; margin-top:20px;">
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✓ OK, I understand</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+}
+
+// ============================================================
 // EXPOSE FUNCTIONS GLOBALLY
 // ============================================================
 
@@ -617,26 +694,23 @@ window.copyRecord = copyRecord;
 window.checkDestination = checkDestination;
 window.deleteDestination = deleteDestination;
 window.onDestExistingSelect = onDestExistingSelect;
+window.showCopyInfoGuide = showCopyInfoGuide;
 
 // ============================================================
 // EXPOSE FOR DEBUGGING
 // ============================================================
 
-window.COPY_UTIL_VERSION = "1.02";
-console.log("[COPY-UTIL] v1.02 loaded");
+window.COPY_UTIL_VERSION = "1.03";
+console.log("[COPY-UTIL] v1.03 loaded");
 
 /*
 FILE: js/util-copy-record.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: Independent environment support for Source and Destination
-   - ADDED: copySourceDb and copyDestDb variables to track separate connections
-   - ADDED: setCopySourceEnvironment() and setCopyDestEnvironment() functions
-   - CHANGED: loadSourceRecords() now uses copySourceDb
-   - CHANGED: loadDestinationRecords() now uses copyDestDb
-   - CHANGED: copyRecord() reads from copySourceDb and writes to copyDestDb
-   - CHANGED: checkDestination() and deleteDestination() use copyDestDb
-   - PRESERVED: All COPY tab functionality
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: showCopyInfoGuide() function - full-page information overlay
+   - ADDED: Detailed COPY tab documentation with step-by-step instructions
+   - ADDED: Warnings and important notes for copying records
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml, prodDb, devDb
 STATUS: Ready for integration
 */
