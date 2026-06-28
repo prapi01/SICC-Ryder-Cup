@@ -1,22 +1,20 @@
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: DELETE tab functionality for Record Management
-   - Supports PROD/DEV environment selection
-   - Supports multiple collections (scheduledGames, historyGames, backupFolder)
-   - Loads and displays documents with Course name, Date, Status, ID
-   - Allows multiple selection via checkboxes
-   - Select All / Deselect All functionality
-   - Delete with confirmation dialog
-   - Batch delete with progress feedback
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - ADDED: showDeleteInfoGuide() function - full-page information overlay
+   - ADDED: Detailed DELETE tab documentation with step-by-step instructions
+   - ADDED: Strong warnings about permanent deletion
+   - ADDED: Explanation of batch delete functionality
+   - ADDED: Warnings about data recovery limitations
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, escapeHtml, formatDate, prodDb, devDb, getDbForEnv
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_DELETE_VERSION = "1.00";
-console.log("[UTIL-DELETE] v1.00 loaded");
+window.UTIL_DELETE_VERSION = "1.01";
+console.log("[UTIL-DELETE] v1.01 loaded");
 
 // ============================================================
 // DELETE TAB: STATE VARIABLES
@@ -440,6 +438,119 @@ function deleteSelectedRecords() {
 }
 
 // ============================================================
+// DELETE TAB: INFORMATION GUIDE
+// ============================================================
+
+function showDeleteInfoGuide() {
+    // Remove existing overlay if present
+    var existing = document.querySelector('.info-overlay');
+    if (existing) existing.remove();
+    
+    var overlay = document.createElement('div');
+    overlay.className = 'info-overlay';
+    overlay.innerHTML = `
+        <div class="info-card">
+            <div class="info-header">
+                <div class="info-title" style="color:#ff6b6b;">🗑️ DELETE TAB - Information & Guide</div>
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✕ CLOSE</button>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-section-title danger">🚨 WARNING: PERMANENT DELETION</div>
+                <div class="info-text" style="color:#ff6b6b; font-weight:700; font-size:1rem;">
+                    ⚠️ DELETING RECORDS IS <span style="text-decoration:underline;">PERMANENT</span> AND <span style="text-decoration:underline;">CANNOT BE UNDONE</span>.
+                    <br><br>
+                    This is the most dangerous tool in Record Management. Use with <span style="text-decoration:underline;">extreme caution</span>.
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">🎯 What This Tab Does</div>
+                <div class="info-text">
+                    The <strong style="color:#ff6b6b;">DELETE</strong> tab permanently removes records from Firestore.
+                    <br><br>
+                    This should ONLY be used for:
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>🧹 <strong>Cleaning up test data</strong> — removing test games after development</li>
+                        <li>🗑️ <strong>Removing duplicate records</strong> — cleaning up accidental copies</li>
+                        <li>🔧 <strong>Deleting corrupted records</strong> — removing records that cannot be fixed</li>
+                        <li>📦 <strong>Housekeeping</strong> — managing large collections</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📖 How To Use</div>
+                <ol class="info-steps">
+                    <li><strong>Step 1 - Environment:</strong> Select PROD or DEV — <span style="color:#ff6b6b;">be absolutely sure!</span></li>
+                    <li><strong>Step 2 - Collection:</strong> Choose <code>scheduledGames</code>, <code>historyGames</code>, or <code>backupFolder</code></li>
+                    <li><strong>Step 3 - Select Records:</strong> Check the boxes next to records you want to delete</li>
+                    <li><strong>Step 4 - Delete:</strong> Click <span style="color:#ff6b6b;">"DELETE SELECTED"</span> and confirm</li>
+                </ol>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📋 Features</div>
+                <div class="info-text">
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>☑️ <strong>Batch Selection:</strong> Select multiple records at once</li>
+                        <li>☑️ <strong>Select All / Deselect All:</strong> Quick selection of all records</li>
+                        <li>📊 <strong>Visual Status:</strong> See each record's status (completed, pending, unknown)</li>
+                        <li>🔍 <strong>Progress Tracking:</strong> Real-time feedback during batch delete</li>
+                        <li>🛑 <strong>Confirmation Required:</strong> Two-step confirmation prevents accidental deletion</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title danger">🚨 Critical Warnings</div>
+                <ul class="info-warnings">
+                    <li><strong>🔴 PERMANENT:</strong> Deleted records CANNOT be recovered. There is no "undo" or "trash" folder.</li>
+                    <li><strong>🟡 Double-check environment:</strong> Make sure you are deleting from the correct environment (PROD vs DEV).</li>
+                    <li><strong>🟡 Double-check collection:</strong> Make sure you are deleting from the correct collection.</li>
+                    <li><strong>🟡 Cannot restore:</strong> Even backups are deleted permanently when you delete them.</li>
+                    <li><strong>🟡 Affects all users:</strong> Deletion is immediate and affects all users, not just your session.</li>
+                    <li><strong>🟡 Consider backup first:</strong> If you're unsure, use the COPY tab to create a backup before deleting.</li>
+                </ul>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📊 Records Display</div>
+                <div class="info-text">
+                    The table shows the following information for each record:
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li><span style="color:#4caf50;">☑️ Checkbox</span> — Select/deselect the record</li>
+                        <li><span style="color:#e0e0e0;">Course</span> — The course where the game was played</li>
+                        <li><span style="color:#ccc;">Date</span> — The date of the game</li>
+                        <li><span style="color:#ffaa44;">Status</span> — completed / pending / unknown</li>
+                        <li><span style="color:#4a8af4;">ID</span> — The document ID (clickable row toggles selection)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div style="text-align:center; margin-top:20px; padding-top:16px; border-top:2px solid #ff6b6b;">
+                <div style="color:#ff6b6b; font-weight:700; margin-bottom:12px; font-size:0.9rem;">
+                    ⚠️ REMEMBER: DELETION IS PERMANENT AND IRREVERSIBLE
+                </div>
+                <button class="info-close-btn" style="border-color:#ff6b6b; color:#ff6b6b;" onclick="this.closest('.info-overlay').remove()">✓ OK, I understand the risks</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+}
+
+// ============================================================
 // EXPOSE FUNCTIONS GLOBALLY
 // ============================================================
 
@@ -455,19 +566,18 @@ window.updateSelectAllState = updateSelectAllState;
 window.selectAllDeleteRecords = selectAllDeleteRecords;
 window.deselectAllDeleteRecords = deselectAllDeleteRecords;
 window.deleteSelectedRecords = deleteSelectedRecords;
+window.showDeleteInfoGuide = showDeleteInfoGuide;
 
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: DELETE tab functionality for Record Management
-   - Supports PROD/DEV environment selection
-   - Supports multiple collections (scheduledGames, historyGames, backupFolder)
-   - Loads and displays documents with Course name, Date, Status, ID
-   - Allows multiple selection via checkboxes
-   - Select All / Deselect All functionality
-   - Delete with confirmation dialog
-   - Batch delete with progress feedback
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - ADDED: showDeleteInfoGuide() function - full-page information overlay
+   - ADDED: Detailed DELETE tab documentation with step-by-step instructions
+   - ADDED: Strong warnings about permanent deletion
+   - ADDED: Explanation of batch delete functionality
+   - ADDED: Warnings about data recovery limitations
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, escapeHtml, formatDate, prodDb, devDb, getDbForEnv
 STATUS: Ready for integration
 */
