@@ -1,19 +1,18 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - COMPLETE REWRITE: verifyData() now compares ALL fields from original payload
-   - REMOVED: Hardcoded keyFields list
-   - ADDED: Deep JSON comparison of entire payload
-   - ADDED: Recursive comparison of nested objects
-   - SIMPLIFIED: Verification is now "write IMR → read back → compare full payload"
-   - This ensures WRV only verifies when FS record matches IMR exactly
-   - PRESERVED: WRV.recover() from v1.03 (unchanged)
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: verifyData() now excludes 'updatedAt' from comparison
+   - ADDED: excludeKeys parameter to skip server-generated fields
+   - This fixes the issue where WRV verification always failed
+   - Because FieldValue.serverTimestamp() never equals the read-back Timestamp
+   - PRESERVED: ALL other functionality from v1.04
+   - PRESERVED: WRV.recover() unchanged
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.04";
+window.WRV_VERSION = "1.05";
 
 var WRV = (function() {
     
@@ -24,6 +23,9 @@ var WRV = (function() {
     var MAX_RETRIES = 10;
     var BASE_DELAY = 1000;
     var MAX_DELAY = 30000;
+    
+    // Keys to exclude from verification (server-generated)
+    var EXCLUDE_KEYS = ['updatedAt', 'createdAt'];
     
     // ============================================================
     // Deep comparison of two objects
@@ -67,6 +69,8 @@ var WRV = (function() {
         
         for (var k = 0; k < keysA.length; k++) {
             var key = keysA[k];
+            // Skip excluded keys
+            if (EXCLUDE_KEYS.indexOf(key) !== -1) continue;
             if (!deepEqual(a[key], b[key])) return false;
         }
         return true;
@@ -74,10 +78,11 @@ var WRV = (function() {
     
     // ============================================================
     // Verify ALL fields from original payload
+    // Excludes server-generated fields like updatedAt
     // ============================================================
     
     function verifyData(original, written) {
-        // Deep compare the entire payload
+        // Deep compare the entire payload, excluding server-generated keys
         var match = deepEqual(original, written);
         
         if (!match) {
@@ -348,15 +353,14 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.04
-KEY CHANGES from v1.03:
-   - COMPLETE REWRITE: verifyData() now compares ALL fields from original payload
-   - REMOVED: Hardcoded keyFields list
-   - ADDED: Deep JSON comparison of entire payload
-   - ADDED: Recursive comparison of nested objects
-   - SIMPLIFIED: Verification is now "write IMR → read back → compare full payload"
-   - This ensures WRV only verifies when FS record matches IMR exactly
-   - PRESERVED: WRV.recover() from v1.03 (unchanged)
+VERSION: 1.05
+KEY CHANGES from v1.04:
+   - FIXED: verifyData() now excludes 'updatedAt' from comparison
+   - ADDED: excludeKeys parameter to skip server-generated fields
+   - This fixes the issue where WRV verification always failed
+   - Because FieldValue.serverTimestamp() never equals the read-back Timestamp
+   - PRESERVED: ALL other functionality from v1.04
+   - PRESERVED: WRV.recover() unchanged
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
