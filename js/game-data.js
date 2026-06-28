@@ -1,18 +1,19 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.10
-KEY CHANGES from v4.09:
-   - FIXED: resetFullGame() now uses NESTED structure for flight data (f1.d inside f1 object)
-   - This aligns with the standard Firestore record structure that the UI reads
-   - PREVIOUS: Flat structure (f1.d, f1.se, f1.x at top-level) caused data inconsistency
-   - PRESERVED: ALL other functionality from v4.09 unchanged
-   - PRESERVED: saveCurrentHole() fallback still uses flat (low priority, fallback only)
-   - PRESERVED: forceRefresh() and loadGameFromSession() already read nested correctly
+VERSION: 4.11
+KEY CHANGES from v4.10:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18))
+     - f1IntraMatches: {} (was new Array(18))
+     - f2IntraMatches: {} (was new Array(18))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: ALL other functionality from v4.10 unchanged
 DEPENDS ON: js/game-order.js, Firebase Firestore
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.10
+// FILE: js/game-data.js - VERSION 4.11
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -453,12 +454,18 @@ var GameData = (function() {
         return newData;
     }
     
+    // ============================================================
+    // v4.11: initializeEmptyResults - OBJECTS instead of ARRAYS
+    // Firestore does NOT support nested arrays (arrays inside arrays)
+    // Using objects: matchResults[0] works the same as array[0]
+    // ============================================================
+    
     function initializeEmptyResults() {
         return {
             version: 1,
-            matchResults: new Array(18),
-            f1IntraMatches: new Array(18),
-            f2IntraMatches: new Array(18),
+            matchResults: {},                 // v4.11: Object with position keys (was new Array(18))
+            f1IntraMatches: {},               // v4.11: Object with position keys (was new Array(18))
+            f2IntraMatches: {},               // v4.11: Object with position keys (was new Array(18))
             game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
             game2: {
                 flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
@@ -971,7 +978,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v4.10: resetFullGame uses nested structure
+    // Public API - v4.11: initializeEmptyResults uses objects
     // ============================================================
     
     return {
@@ -1035,14 +1042,15 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.10
-KEY CHANGES from v4.09:
-   - FIXED: resetFullGame() now uses NESTED structure for flight data (f1.d inside f1 object)
-   - This aligns with the standard Firestore record structure that the UI reads
-   - PREVIOUS: Flat structure (f1.d, f1.se, f1.x at top-level) caused data inconsistency
-   - PRESERVED: ALL other functionality from v4.09 unchanged
-   - PRESERVED: saveCurrentHole() fallback still uses flat (low priority, fallback only)
-   - PRESERVED: forceRefresh() and loadGameFromSession() already read nested correctly
+VERSION: 4.11
+KEY CHANGES from v4.10:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18))
+     - f1IntraMatches: {} (was new Array(18))
+     - f2IntraMatches: {} (was new Array(18))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: ALL other functionality from v4.10 unchanged
 DEPENDS ON: js/game-order.js, Firebase Firestore
 STATUS: Ready for integration
 */
