@@ -1,9 +1,9 @@
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - ADDED: showDeleteInfoGuide() function - full-page information overlay
-   - ADDED: Detailed DELETE tab documentation with step-by-step instructions
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: showDeleteInfoGuide() now has complete content
+   - ADDED: Full DELETE tab documentation with step-by-step instructions
    - ADDED: Strong warnings about permanent deletion
    - ADDED: Explanation of batch delete functionality
    - ADDED: Warnings about data recovery limitations
@@ -13,8 +13,8 @@ STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_DELETE_VERSION = "1.01";
-console.log("[UTIL-DELETE] v1.01 loaded");
+window.UTIL_DELETE_VERSION = "1.02";
+console.log("[UTIL-DELETE] v1.02 loaded");
 
 // ============================================================
 // DELETE TAB: STATE VARIABLES
@@ -570,10 +570,10 @@ window.showDeleteInfoGuide = showDeleteInfoGuide;
 
 /*
 FILE: js/util-delete-record.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - ADDED: showDeleteInfoGuide() function - full-page information overlay
-   - ADDED: Detailed DELETE tab documentation with step-by-step instructions
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - FIXED: showDeleteInfoGuide() now has complete content
+   - ADDED: Full DELETE tab documentation with step-by-step instructions
    - ADDED: Strong warnings about permanent deletion
    - ADDED: Explanation of batch delete functionality
    - ADDED: Warnings about data recovery limitations
