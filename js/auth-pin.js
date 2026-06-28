@@ -2,14 +2,12 @@
 FILE: js/auth-pin.js
 VERSION: 2.04
 KEY CHANGES from v2.03:
-   - REDESIGNED: Complete UI overhaul - sleek, compact, elegant
-   - RESIZED: Modal is 1/2 the previous size (max-width: 280px)
-   - RESIZED: PIN dots smaller (28×32px) with 6px border-radius
-   - RESIZED: Number pad buttons smaller (36px min-height, 10px border-radius)
-   - BORDER: Normal visible border (2px solid #2a5a2a) not faint
-   - REMOVED: All glass-morphism effects for cleaner look
-   - REMOVED: Padding reduced significantly
-   - SIMPLIFIED: Clean dark theme with green accent
+   - REDESIGNED: Complete UI overhaul - symmetrical trapezoid layout
+   - LAYOUT: [1] [●][●][●][●] [0] / [2] [⌫] [9] / [3][4][5][6][7][8]
+   - ALIGNMENT: 1,2,3 vertically aligned left | 0,9,8 vertically aligned right
+   - PIN BOXES: Same size as buttons (44px), aligned with 4,5,6,7
+   - BORDER: Normal visible border (2px solid #2a5a2a)
+   - CLEAN: Minimal, sleek, dark theme with green accent
    - PRESERVED: All functionality from v2.03 unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
@@ -132,7 +130,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Show PIN Modal - v2.04 Sleek Compact Design
+    // Show PIN Modal - v2.04 Symmetrical Trapezoid Layout
     // ============================================================
     
     function showAuthModal(action, gameId, gameDate, onSuccess) {
@@ -157,36 +155,40 @@ var AuthPin = (function() {
         isLocked = false;
         lockoutUntil = null;
         
-        // Build modal HTML - Sleek Compact Design
+        // Build modal HTML - Symmetrical Trapezoid Layout
         var modalHtml = `
             <div class="auth-modal-overlay" id="authModal" role="dialog" aria-label="Authentication">
                 <div class="auth-modal" role="document">
-                    <div class="auth-modal-icon">🔐</div>
-                    <div class="auth-modal-title">Enter PIN</div>
-                    
-                    <div class="auth-pin-container">
-                        <div class="auth-pin-dots" id="authPinDots" role="group" aria-label="PIN entry">
+                    <!-- Row 1: [1] [●] [●] [●] [●] [0] -->
+                    <div class="auth-row auth-row-top">
+                        <button class="auth-btn" data-digit="1">1</button>
+                        <div class="auth-pin-dots" id="authPinDots">
                             <span class="auth-pin-dot" data-index="0"></span>
                             <span class="auth-pin-dot" data-index="1"></span>
                             <span class="auth-pin-dot" data-index="2"></span>
                             <span class="auth-pin-dot" data-index="3"></span>
                         </div>
-                        <div class="auth-pin-error" id="authPinError" role="alert"></div>
+                        <button class="auth-btn" data-digit="0">0</button>
                     </div>
                     
-                    <div class="auth-numpad" id="authNumpad" role="group" aria-label="Number pad">
-                        <button class="auth-numpad-btn" data-digit="1">1</button>
-                        <button class="auth-numpad-btn" data-digit="2">2</button>
-                        <button class="auth-numpad-btn" data-digit="3">3</button>
-                        <button class="auth-numpad-btn" data-digit="4">4</button>
-                        <button class="auth-numpad-btn" data-digit="5">5</button>
-                        <button class="auth-numpad-btn" data-digit="6">6</button>
-                        <button class="auth-numpad-btn" data-digit="7">7</button>
-                        <button class="auth-numpad-btn" data-digit="8">8</button>
-                        <button class="auth-numpad-btn" data-digit="9">9</button>
-                        <button class="auth-numpad-btn" data-digit="0">0</button>
-                        <button class="auth-numpad-btn auth-numpad-btn-backspace" id="authBackspaceBtn">⌫</button>
+                    <!-- Row 2: [2] [⌫] [9] -->
+                    <div class="auth-row auth-row-middle">
+                        <button class="auth-btn" data-digit="2">2</button>
+                        <button class="auth-btn auth-btn-backspace" id="authBackspaceBtn">⌫</button>
+                        <button class="auth-btn" data-digit="9">9</button>
                     </div>
+                    
+                    <!-- Row 3: [3] [4] [5] [6] [7] [8] -->
+                    <div class="auth-row auth-row-bottom">
+                        <button class="auth-btn" data-digit="3">3</button>
+                        <button class="auth-btn" data-digit="4">4</button>
+                        <button class="auth-btn" data-digit="5">5</button>
+                        <button class="auth-btn" data-digit="6">6</button>
+                        <button class="auth-btn" data-digit="7">7</button>
+                        <button class="auth-btn" data-digit="8">8</button>
+                    </div>
+                    
+                    <div class="auth-pin-error" id="authPinError" role="alert"></div>
                     
                     <button class="auth-modal-btn-cancel" id="authCancelBtn">Cancel</button>
                     
@@ -362,7 +364,7 @@ var AuthPin = (function() {
     // ============================================================
     
     function disableNumpad(disabled) {
-        var numpadBtns = document.querySelectorAll('.auth-numpad-btn');
+        var numpadBtns = document.querySelectorAll('.auth-btn');
         numpadBtns.forEach(function(btn) {
             btn.disabled = disabled;
             btn.style.opacity = disabled ? '0.4' : '1';
@@ -397,7 +399,7 @@ var AuthPin = (function() {
     function attachEventListeners() {
         if (!modal) return;
         
-        var numpadBtns = document.querySelectorAll('.auth-numpad-btn[data-digit]');
+        var numpadBtns = document.querySelectorAll('.auth-btn[data-digit]');
         numpadBtns.forEach(function(btn) {
             btn.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -504,7 +506,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Inject Styles - v2.04 Sleek Compact Design
+    // Inject Styles - v2.04 Symmetrical Trapezoid Layout
     // ============================================================
     
     function injectStyles() {
@@ -533,8 +535,8 @@ var AuthPin = (function() {
             .auth-modal {
                 background: #0a0a0a;
                 border-radius: 20px;
-                padding: 20px 20px 16px 20px;
-                max-width: 280px;
+                padding: 20px 16px 16px 16px;
+                max-width: 340px;
                 width: 92%;
                 text-align: center;
                 border: 2px solid #2a5a2a;
@@ -542,53 +544,52 @@ var AuthPin = (function() {
                 animation: authSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
             }
             
-            /* Icon */
-            .auth-modal-icon {
-                font-size: 2rem;
-                display: block;
-                margin-bottom: 2px;
+            /* Rows */
+            .auth-row {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
             }
             
-            /* Title */
-            .auth-modal-title {
-                font-size: 0.8rem;
-                font-weight: 500;
-                color: #4caf50;
-                letter-spacing: 2px;
-                text-transform: uppercase;
-                margin-bottom: 12px;
+            .auth-row-top {
+                margin-bottom: 8px;
             }
             
-            /* PIN Container */
-            .auth-pin-container {
-                margin: 0 0 8px 0;
+            .auth-row-middle {
+                margin-bottom: 8px;
             }
             
-            /* PIN Dots - Square */
+            .auth-row-bottom {
+                gap: 6px;
+            }
+            
+            /* PIN Dots Container */
             .auth-pin-dots {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 8px;
-                user-select: none;
-                padding: 4px 0;
+                gap: 6px;
+                flex: 1;
             }
             
+            /* PIN Dot - Same size as buttons */
             .auth-pin-dot {
                 display: inline-block;
-                width: 28px;
-                height: 32px;
-                border-radius: 6px;
+                width: 44px;
+                height: 44px;
+                border-radius: 12px;
                 background: #0a0a0a;
                 border: 2px solid #2a2a2a;
                 color: #4caf50;
                 text-align: center;
-                line-height: 28px;
-                font-size: 1rem;
+                line-height: 40px;
+                font-size: 1.2rem;
                 font-weight: 600;
                 font-family: monospace;
                 transition: all 0.25s ease;
                 box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+                flex-shrink: 0;
             }
             
             .auth-pin-dot.filled {
@@ -601,80 +602,75 @@ var AuthPin = (function() {
                 animation: authDotPop 0.2s ease-out;
             }
             
-            /* Error */
-            .auth-pin-error {
-                font-size: 0.6rem;
-                color: #ff6b6b;
-                min-height: 16px;
-                margin-top: 2px;
-                display: none;
-                font-weight: 400;
-                letter-spacing: 0.3px;
-            }
-            
-            /* Number Pad */
-            .auth-numpad {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 6px;
-                margin: 4px auto 10px auto;
-                max-width: 200px;
-                width: 100%;
-            }
-            
-            .auth-numpad-btn {
-                padding: 8px;
-                border-radius: 10px;
+            /* Number Buttons */
+            .auth-btn {
+                width: 44px;
+                height: 44px;
+                border-radius: 12px;
                 background: rgba(20, 20, 20, 0.6);
                 border: 1px solid #2a2a2a;
                 color: #e0e0e0;
-                font-size: 1.1rem;
-                font-weight: 400;
+                font-size: 1.2rem;
                 cursor: pointer;
-                transition: all 0.15s ease;
-                user-select: none;
-                min-height: 36px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                transition: all 0.15s ease;
+                flex-shrink: 0;
                 -webkit-tap-highlight-color: transparent;
+                user-select: none;
+                font-family: inherit;
             }
             
-            .auth-numpad-btn:active:not(:disabled) {
+            .auth-btn:active:not(:disabled) {
                 transform: scale(0.92);
                 background: rgba(76, 175, 80, 0.12);
                 border-color: #4caf50;
             }
             
-            .auth-numpad-btn:hover:not(:disabled) {
+            .auth-btn:hover:not(:disabled) {
                 border-color: #4caf50;
                 background: rgba(76, 175, 80, 0.05);
             }
             
-            .auth-numpad-btn:disabled {
+            .auth-btn:disabled {
                 opacity: 0.4;
                 cursor: not-allowed;
             }
             
-            .auth-numpad-btn-backspace {
+            /* Backspace Button */
+            .auth-btn-backspace {
+                flex: 1;
+                max-width: 50px;
                 color: #666;
-                font-size: 1rem;
+                font-size: 1.1rem;
             }
             
-            .auth-numpad-btn-backspace:active:not(:disabled) {
+            .auth-btn-backspace:active:not(:disabled) {
                 background: rgba(255, 107, 107, 0.1);
                 border-color: #ff6b6b;
                 color: #ff6b6b;
             }
             
-            .auth-numpad-btn-backspace:hover:not(:disabled) {
+            .auth-btn-backspace:hover:not(:disabled) {
                 border-color: #ff6b6b;
                 color: #ff6b6b;
             }
             
+            /* Error */
+            .auth-pin-error {
+                font-size: 0.6rem;
+                color: #ff6b6b;
+                min-height: 18px;
+                margin-top: 6px;
+                display: none;
+                font-weight: 400;
+                letter-spacing: 0.3px;
+            }
+            
             /* Cancel Button */
             .auth-modal-btn-cancel {
-                padding: 6px 0;
+                padding: 8px 0;
                 border-radius: 16px;
                 font-weight: 400;
                 font-size: 0.7rem;
@@ -686,9 +682,10 @@ var AuthPin = (function() {
                 display: block;
                 letter-spacing: 1px;
                 text-transform: uppercase;
-                margin: 0 auto;
+                margin: 8px auto 0 auto;
                 width: 100%;
                 max-width: 120px;
+                font-family: inherit;
             }
             
             .auth-modal-btn-cancel:hover {
@@ -697,7 +694,7 @@ var AuthPin = (function() {
             
             /* Footer */
             .auth-modal-footer {
-                margin-top: 6px;
+                margin-top: 4px;
                 display: flex;
                 justify-content: center;
             }
@@ -744,53 +741,51 @@ var AuthPin = (function() {
             /* Responsive */
             @media (max-width: 380px) {
                 .auth-modal {
-                    padding: 16px 16px 12px 16px;
-                    max-width: 240px;
+                    padding: 16px 12px 12px 12px;
+                    max-width: 280px;
+                }
+                
+                .auth-pin-dot,
+                .auth-btn {
+                    width: 36px;
+                    height: 36px;
+                    font-size: 1rem;
+                    border-radius: 10px;
                 }
                 
                 .auth-pin-dot {
-                    width: 24px;
-                    height: 28px;
-                    line-height: 24px;
-                    font-size: 0.85rem;
+                    line-height: 32px;
                 }
                 
-                .auth-numpad {
-                    max-width: 170px;
-                    gap: 5px;
+                .auth-row {
+                    gap: 4px;
                 }
                 
-                .auth-numpad-btn {
-                    min-height: 32px;
-                    font-size: 1rem;
-                    padding: 6px;
+                .auth-pin-dots {
+                    gap: 4px;
                 }
                 
-                .auth-modal-title {
-                    font-size: 0.7rem;
+                .auth-btn-backspace {
+                    max-width: 40px;
                 }
             }
             
             @media (min-width: 768px) {
                 .auth-modal {
-                    max-width: 300px;
-                    padding: 24px 24px 18px 24px;
+                    max-width: 360px;
+                    padding: 24px 20px 18px 20px;
+                }
+                
+                .auth-pin-dot,
+                .auth-btn {
+                    width: 48px;
+                    height: 48px;
+                    font-size: 1.3rem;
+                    border-radius: 14px;
                 }
                 
                 .auth-pin-dot {
-                    width: 32px;
-                    height: 36px;
-                    line-height: 32px;
-                    font-size: 1.1rem;
-                }
-                
-                .auth-numpad {
-                    max-width: 220px;
-                }
-                
-                .auth-numpad-btn {
-                    min-height: 40px;
-                    font-size: 1.2rem;
+                    line-height: 44px;
                 }
             }
         `;
@@ -825,14 +820,12 @@ window.AuthPin = AuthPin;
 FILE: js/auth-pin.js
 VERSION: 2.04
 KEY CHANGES from v2.03:
-   - REDESIGNED: Complete UI overhaul - sleek, compact, elegant
-   - RESIZED: Modal is 1/2 the previous size (max-width: 280px)
-   - RESIZED: PIN dots smaller (28×32px) with 6px border-radius
-   - RESIZED: Number pad buttons smaller (36px min-height, 10px border-radius)
-   - BORDER: Normal visible border (2px solid #2a5a2a) not faint
-   - REMOVED: All glass-morphism effects for cleaner look
-   - REMOVED: Padding reduced significantly
-   - SIMPLIFIED: Clean dark theme with green accent
+   - REDESIGNED: Complete UI overhaul - symmetrical trapezoid layout
+   - LAYOUT: [1] [●][●][●][●] [0] / [2] [⌫] [9] / [3][4][5][6][7][8]
+   - ALIGNMENT: 1,2,3 vertically aligned left | 0,9,8 vertically aligned right
+   - PIN BOXES: Same size as buttons (44px), aligned with 4,5,6,7
+   - BORDER: Normal visible border (2px solid #2a5a2a)
+   - CLEAN: Minimal, sleek, dark theme with green accent
    - PRESERVED: All functionality from v2.03 unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
