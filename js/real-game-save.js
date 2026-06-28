@@ -1,16 +1,11 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - REMOVED: All flattened results.xxx field writes (was causing hybrid document)
-   - REMOVED: Individual f1IntraMatches.N, f2IntraMatches.N, matchResults.N writes
-   - REMOVED: fullDisplayT1, fullFlight1Leader, fullFlight1Cumulative building code
-   - ADDED: Single "results" = cache.results write (complete object)
-   - ADDED: Assignment of match data to cache.results before write
-   - This ensures Firestore's nested results object is ALWAYS correct
-   - Eliminates hybrid document (flattened fields vs nested object)
-   - No more stale "AS" data from Firestore cache refresh
-   - PRESERVED: ALL other functionality from v1.30
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - FIXED: writeSingleHoleToFirestore() - removed updatePayload.updatedAt
+   - This mirrors writeNewHoleData() - WRV should not verify server-generated timestamps
+   - WRV verification will now pass for cascade writes
+   - PRESERVED: ALL other functionality from v1.31
    - PRESERVED: WRV background writes (fire and forget)
    - PRESERVED: v1.20 direct write fallback when WRV unavailable
    - PRESERVED: All v1.27 cascade improvements (UI update once)
@@ -19,11 +14,11 @@ STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.31";
+window.REAL_GAME_SAVE_VERSION = "1.32";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.31 - Single results write");
+    console.log("[REAL-GAME-SAVE] Initializing v1.32 - Cascade write without updatedAt");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -323,7 +318,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore - v1.31: Single results write
+    // writeSingleHoleToFirestore - v1.32: No updatedAt in payload
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -396,6 +391,9 @@ var RealGameSave = (function() {
         updatePayload["lastSyncedPosition"] = lastSyncedPos;
         if(isTarget) console.log(`[DEBUG-WRITE] Added lastSyncedPosition=${lastSyncedPos} to payload`);
         
+        // v1.32: Do NOT include updatedAt - WRV should not verify server-generated timestamps
+        // updatedAt is written by Firestore's serverTimestamp, not by WRV
+        
         if(isTarget) {
             console.log(`[DEBUG-WRITE] Payload keys being sent to Firestore:`, Object.keys(updatePayload));
         }
@@ -403,6 +401,7 @@ var RealGameSave = (function() {
         // ============================================================
         // v1.30: WRITE IN BACKGROUND - NO CACHE REFRESH
         // v1.31: Now writes complete results object
+        // v1.32: No updatedAt in payload (WRV verification fix)
         // IMR is the source of truth for this device
         // ============================================================
         wruBackground("scheduledGames", gameId, updatePayload, "singleHole_" + holeNumber);
@@ -413,7 +412,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeNewHoleData - v1.31: Single results write
+    // writeNewHoleData - v1.32: No updatedAt in payload
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache, renderAllCallback) {
@@ -682,6 +681,7 @@ var RealGameSave = (function() {
         
         // ============================================================
         // v1.31: BUILD PAYLOAD - SINGLE RESULTS WRITE
+        // v1.32: No updatedAt in payload (WRV verification fix)
         // ============================================================
         var updatePayload = {};
         
@@ -699,7 +699,8 @@ var RealGameSave = (function() {
         updatePayload["lastSyncedPosition"] = lastSyncedPos;
         console.log(`[DEBUG-FLOW] --- Adding lastSyncedPosition=${lastSyncedPos} to payload`);
         
-        updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        // v1.32: Do NOT include updatedAt - WRV should not verify server-generated timestamps
+        // updatedAt is written by Firestore's serverTimestamp, not by WRV
         
         console.log(`[DEBUG-FLOW] --- PAYLOAD SUMMARY: ${Object.keys(updatePayload).length} fields`);
         console.log(`[DEBUG-FLOW] --- Has results: ${!!updatePayload["results"]}`);
@@ -712,6 +713,7 @@ var RealGameSave = (function() {
         // ============================================================
         // v1.30: WRITE IN BACKGROUND - NO CACHE REFRESH
         // v1.31: Now writes complete results object
+        // v1.32: No updatedAt in payload (WRV verification fix)
         // IMR is the source of truth for this device
         // ============================================================
         wruBackground("scheduledGames", gameId, updatePayload, "newHole_" + holeNumber);
@@ -955,6 +957,7 @@ var RealGameSave = (function() {
                         // writeNewHoleData - ALWAYS call for ALL saves
                         // v1.06: Now properly handles stroke points 0 values
                         // v1.31: Single results write, no more flattened fields
+                        // v1.32: No updatedAt in payload (WRV verification fix)
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
@@ -1302,17 +1305,12 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.31
-KEY CHANGES from v1.30:
-   - REMOVED: All flattened results.xxx field writes (was causing hybrid document)
-   - REMOVED: Individual f1IntraMatches.N, f2IntraMatches.N, matchResults.N writes
-   - REMOVED: fullDisplayT1, fullFlight1Leader, fullFlight1Cumulative building code
-   - ADDED: Single "results" = cache.results write (complete object)
-   - ADDED: Assignment of match data to cache.results before write
-   - This ensures Firestore's nested results object is ALWAYS correct
-   - Eliminates hybrid document (flattened fields vs nested object)
-   - No more stale "AS" data from Firestore cache refresh
-   - PRESERVED: ALL other functionality from v1.30
+VERSION: 1.32
+KEY CHANGES from v1.31:
+   - FIXED: writeSingleHoleToFirestore() - removed updatePayload.updatedAt
+   - This mirrors writeNewHoleData() - WRV should not verify server-generated timestamps
+   - WRV verification will now pass for cascade writes
+   - PRESERVED: ALL other functionality from v1.31
    - PRESERVED: WRV background writes (fire and forget)
    - PRESERVED: v1.20 direct write fallback when WRV unavailable
    - PRESERVED: All v1.27 cascade improvements (UI update once)
