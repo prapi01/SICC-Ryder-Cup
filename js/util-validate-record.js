@@ -1,24 +1,24 @@
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: getPlayerGrossFromScores() now correctly maps player scores
-   - FIXED: validateRecord() handles missing gameInfo gracefully
-   - FIXED: buildFixPreview() handles missing results object
-   - FIXED: deepEqual() handles Date and Firestore Timestamp objects
-   - FIXED: getStrokeHoles() handles undefined courseSi
-   - ADDED: null/undefined checks throughout
-   - All core functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: showValidateInfoGuide() function - full-page information overlay
+   - ADDED: Detailed VALIDATE tab documentation with step-by-step instructions
+   - ADDED: Comprehensive explanation of what "validation" means
+   - ADDED: List of all fields being validated
+   - ADDED: Explanation of what happens during a "Fix" operation
+   - ADDED: Warnings and important notes for record fixing
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
 
 // Version exposure
-window.UTIL_VALIDATE_VERSION = "1.01";
+window.UTIL_VALIDATE_VERSION = "1.02";
 
 var UtilValidate = (function() {
     
-    console.log("[UTIL-VALIDATE] Initializing v1.01");
+    console.log("[UTIL-VALIDATE] Initializing v1.02");
     
     // ============================================================
     // PARSING FUNCTIONS
@@ -1066,17 +1066,155 @@ var UtilValidate = (function() {
 // Make available globally
 window.UtilValidate = UtilValidate;
 
+// ============================================================
+// VALIDATE TAB: INFORMATION GUIDE
+// ============================================================
+
+function showValidateInfoGuide() {
+    // Remove existing overlay if present
+    var existing = document.querySelector('.info-overlay');
+    if (existing) existing.remove();
+    
+    var overlay = document.createElement('div');
+    overlay.className = 'info-overlay';
+    overlay.innerHTML = `
+        <div class="info-card">
+            <div class="info-header">
+                <div class="info-title">🔬 VALIDATE TAB - Information & Guide</div>
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✕ CLOSE</button>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-section-title">🎯 What This Tab Does</div>
+                <div class="info-text">
+                    The <strong>VALIDATE</strong> tab checks the integrity of a game record by <strong>recalculating all derived data from raw scores</strong> and comparing it with what is stored in Firestore.
+                    <br><br>
+                    This is the most powerful tool in Record Management — it's the <strong>last resort safety net</strong> when records become corrupted or inconsistent.
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">⚠️ When To Use This</div>
+                <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                    <li>🔴 <strong>You suspect data corruption</strong> — UI showing wrong T-1, T-2, Strk, or TR values</li>
+                    <li>🔴 <strong>Record status is 'pending_handicap'</strong> — the game never completed properly</li>
+                    <li>🔴 <strong>Player totals don't add up</strong> — gross scores don't match par calculations</li>
+                    <li>🔴 <strong>After a bad WRV write</strong> — data was partially written or overwritten</li>
+                    <li>🔴 <strong>After a failed cascade</strong> — some holes didn't recalculate correctly</li>
+                    <li>🟡 <strong>Audit/verification</strong> — you want to confirm a record is correct</li>
+                </ul>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📊 What Gets Validated</div>
+                <div class="info-text">
+                    The tool recalculates <strong>every derived field</strong> from the raw scores:
+                </div>
+                <table class="info-table">
+                    <tr><th>Field</th><th>What It Validates</th></tr>
+                    <tr><td><span class="field-name">TR (Total Results)</span></td><td class="field-desc">Team A &amp; B cumulative points per hole — the most important check</td></tr>
+                    <tr><td><span class="field-name">T-1 Display</span></td><td class="field-desc">Flight 1 team game running score (e.g., "A2", "B1", "AS")</td></tr>
+                    <tr><td><span class="field-name">T-2 Display</span></td><td class="field-desc">Flight 2 team game running score (e.g., "A2", "B1", "AS")</td></tr>
+                    <tr><td><span class="field-name">Strk Display</span></td><td class="field-desc">Stroke game running score (e.g., "A3", "B2", "AS")</td></tr>
+                    <tr><td><span class="field-name">TR Green Flags</span></td><td class="field-desc">Which team is winning per hole (TeamAGreen/TeamBGreen)</td></tr>
+                    <tr><td><span class="field-name">Player Totals</span></td><td class="field-desc">Gross score, par, relative-to-par per player</td></tr>
+                    <tr><td><span class="field-name">Final Results</span></td><td class="field-desc">Team A/B final scores and winner</td></tr>
+                    <tr><td><span class="field-name">Status</span></td><td class="field-desc">Updates from 'pending_handicap' to 'completed'</td></tr>
+                </table>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">🔧 What "Fix Record" Does</div>
+                <div class="info-text">
+                    When you click <strong style="color:#ffaa44;">"Fix Record"</strong>, the tool performs the following operations:
+                    <ol style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li><strong style="color:#4a8af4;">1. Creates a Backup</strong> — Copies the current record to <code>backupFolder</code> with timestamp. <strong style="color:#4a8af4;">Always safe!</strong></li>
+                        <li><strong style="color:#4caf50;">2. Updates TR Values</strong> — Fixes any mismatched TR values for all 18 holes</li>
+                        <li><strong style="color:#4caf50;">3. Updates TR Green Flags</strong> — Recalculates winning team indicators</li>
+                        <li><strong style="color:#4caf50;">4. Updates T-1, T-2, Strk</strong> — Fixes display values if they're wrong</li>
+                        <li><strong style="color:#4caf50;">5. Updates Player Totals</strong> — Recalculates gross, par, relative-to-par</li>
+                        <li><strong style="color:#4caf50;">6. Updates Final Results</strong> — Sets team scores and winner</li>
+                        <li><strong style="color:#4caf50;">7. Updates Status</strong> — Changes from 'pending_handicap' to 'completed'</li>
+                    </ol>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">✅ What Is PRESERVED (Never Touched)</div>
+                <div class="info-text">
+                    The following fields are <strong style="color:#4caf50;">NEVER modified</strong> during a fix — they are considered the "source of truth":
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>📝 <strong>Raw scores</strong> — f1DataString, f2DataString (the original scores)</li>
+                        <li>👥 <strong>Players</strong> — Names, labels, handicaps, teams, flights</li>
+                        <li>⛳ <strong>Course</strong> — Name, par, stroke index values</li>
+                        <li>📋 <strong>GameInfo</strong> — Date, starting hole, format, etc.</li>
+                        <li>🏅 <strong>Match Bubbles</strong> — f1IntraMatches, f2IntraMatches, matchResults</li>
+                        <li>📊 <strong>Adjusted Handicaps</strong> — Any manual handicap adjustments</li>
+                        <li>📝 <strong>Signatures</strong> — Player signatures if already signed</li>
+                    </ul>
+                    <br>
+                    <strong style="color:#ffaa44;">In short:</strong> Only derived data is fixed. The raw data is the single source of truth.
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📖 How To Use</div>
+                <ol class="info-steps">
+                    <li><strong>Step 1 - Environment:</strong> Select PROD or DEV</li>
+                    <li><strong>Step 2 - Collection:</strong> Choose <code>scheduledGames</code>, <code>historyGames</code>, or <code>backupFolder</code></li>
+                    <li><strong>Step 3 - Record:</strong> Select the record you want to validate</li>
+                    <li><strong>Step 4 - Load & Validate:</strong> Click <span class="highlight">"Load & Validate"</span> — this recalculates and compares</li>
+                    <li><strong>Step 5 - Review Results:</strong> Check the TR table to see which holes match or differ (green = OK, red = needs fix)</li>
+                    <li><strong>Step 6 - Fix (if needed):</strong> Click <span class="highlight">"Fix Record"</span> — backup is automatic!</li>
+                </ol>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">⚠️ Important Warnings</div>
+                <ul class="info-warnings">
+                    <li><strong>🔴 Backup is automatic:</strong> The tool ALWAYS creates a backup in <code>backupFolder</code> before any fix. The backup ID is the original ID with a timestamp suffix.</li>
+                    <li><strong>🟡 Fix is permanent:</strong> Once applied, the changes are written to Firestore. You can restore from backup if needed.</li>
+                    <li><strong>🟢 Only derived data changes:</strong> Raw scores are NEVER modified. You can always re-run validation.</li>
+                    <li><strong>🔵 Match bubbles are preserved:</strong> f1IntraMatches, f2IntraMatches, and matchResults are NOT recalculated during fix — they are kept as-is.</li>
+                    <li><strong>🟣 Pending status fix:</strong> If a record is stuck in 'pending_handicap', this tool will complete it.</li>
+                </ul>
+            </div>
+            
+            <div style="text-align:center; margin-top:20px;">
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✓ OK, I understand</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+}
+
+// Make available globally
+window.showValidateInfoGuide = showValidateInfoGuide;
+
 /*
 FILE: js/util-validate-record.js
-VERSION: 1.01
-KEY CHANGES from v1.00:
-   - FIXED: getPlayerGrossFromScores() now correctly maps player scores
-   - FIXED: validateRecord() handles missing gameInfo gracefully
-   - FIXED: buildFixPreview() handles missing results object
-   - FIXED: deepEqual() handles Date and Firestore Timestamp objects
-   - FIXED: getStrokeHoles() handles undefined courseSi
-   - ADDED: null/undefined checks throughout
-   - All core functionality preserved from v1.00
+VERSION: 1.02
+KEY CHANGES from v1.01:
+   - ADDED: showValidateInfoGuide() function - full-page information overlay
+   - ADDED: Detailed VALIDATE tab documentation with step-by-step instructions
+   - ADDED: Comprehensive explanation of what "validation" means
+   - ADDED: List of all fields being validated
+   - ADDED: Explanation of what happens during a "Fix" operation
+   - ADDED: Warnings and important notes for record fixing
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: Firebase Firestore
 STATUS: Ready for integration
 */
