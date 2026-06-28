@@ -1,17 +1,15 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: deepEqual() now sorts object keys before comparing
-   - This ensures key order does NOT affect the comparison result
-   - Firestore does NOT preserve insertion order, so sorting is required
-   - Fixes f1IntraMatches[0] and playerTotals mismatches
-   - PRESERVED: All other functionality from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - ADDED: deepEqual exposed in public API for debugging
+   - ADDED: getWrittenSubset exposed in public API for debugging
+   - PRESERVED: All functionality from v1.08
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.08";
+window.WRV_VERSION = "1.09";
 
 var WRV = (function() {
     
@@ -344,7 +342,7 @@ var WRV = (function() {
     }
     
     // ============================================================
-    // Public API
+    // Public API - v1.09: Expose deepEqual and getWrittenSubset
     // ============================================================
     
     return {
@@ -358,7 +356,10 @@ var WRV = (function() {
         getActiveRecoveries: getActiveRecoveries,
         cancelRecovery: cancelRecovery,
         cancelAllRecoveries: cancelAllRecoveries,
-        RECOVER_RETRY_DELAY: RECOVER_RETRY_DELAY
+        RECOVER_RETRY_DELAY: RECOVER_RETRY_DELAY,
+        // v1.09: Expose for debugging
+        deepEqual: deepEqual,
+        getWrittenSubset: getWrittenSubset
     };
     
 })();
@@ -367,13 +368,11 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.08
-KEY CHANGES from v1.07:
-   - FIXED: deepEqual() now sorts object keys before comparing
-   - This ensures key order does NOT affect the comparison result
-   - Firestore does NOT preserve insertion order, so sorting is required
-   - Fixes f1IntraMatches[0] and playerTotals mismatches
-   - PRESERVED: All other functionality from v1.07
+VERSION: 1.09
+KEY CHANGES from v1.08:
+   - ADDED: deepEqual exposed in public API for debugging
+   - ADDED: getWrittenSubset exposed in public API for debugging
+   - PRESERVED: All functionality from v1.08
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
