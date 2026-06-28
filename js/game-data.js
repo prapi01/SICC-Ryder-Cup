@@ -1,17 +1,17 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.08
-KEY CHANGES from v4.07:
-   - FIXED: saveCurrentHole() - removed updatePayload.updatedAt
-   - This ensures WRV verification passes for flight data writes
-   - WRV should not verify server-generated timestamps
-   - PRESERVED: ALL v4.07 functions and API unchanged
-   - PRESERVED: ALL existing functionality
-DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
+VERSION: 4.09
+KEY CHANGES from v4.08:
+   - REMOVED: WRV.update() call from saveCurrentHole() (lines ~790-820)
+   - This eliminates the competing WRV write that was causing flight data to be overwritten
+   - Only the consolidated WRV write in real-game-save.js now writes to Firestore
+   - PRESERVED: Local data update, cache update, notifyDataChanged(), immediate callback
+   - PRESERVED: ALL other functionality from v4.08 unchanged
+DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js (but WRV not called directly anymore)
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.08
+// FILE: js/game-data.js - VERSION 4.09
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -754,7 +754,8 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // v4.08: saveCurrentHole - No updatedAt in WRV payload
+    // v4.09: saveCurrentHole - WRV call REMOVED to eliminate competing writes
+    // Only the consolidated WRV write in real-game-save.js writes to Firestore
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -762,18 +763,6 @@ var GameData = (function() {
         
         var flightData = (flight === 1) ? flight1Data.data : flight2Data.data;
         var newData = updateHoleData(flightData, holeNumber, scores, true);
-        
-        var collection = getCollectionName();
-        var updatePayload = {};
-        var flightField = (flight === 1) ? "f1" : "f2";
-        var otherFlightField = (flight === 1) ? "f2" : "f1";
-        
-        updatePayload[flightField + ".d"] = newData;
-        updatePayload[flightField + ".se"] = true;
-        updatePayload[otherFlightField + ".x"] = true;
-        // v4.08: Do NOT include updatedAt - WRV should not verify server-generated timestamps
-        
-        logWithTimestamp('[SAVE]', 'saveCurrentHole() called - hole: ' + holeNumber + ', flight: ' + flight);
         
         // Update local data IMMEDIATELY (user sees success)
         if (flight === 1) {
@@ -824,39 +813,14 @@ var GameData = (function() {
         }
         
         logWithTimestamp('[SAVE]', 'Local data updated - flight ' + flight + ' data: ' + newData.substring(0, 50) + '...');
+        logWithTimestamp('[SAVE]', '⚠️ WRV write SKIPPED - consolidated write in real-game-save.js handles Firestore');
         
         // Notify UI immediately (user sees match, T-1, Next button)
         notifyDataChanged();
         logWithTimestamp('[SAVE]', 'notifyDataChanged() called - UI refreshed');
         
-        // ============================================================
-        // v4.06: RESTORED - WRV writes scores to Firestore in the background
-        // User NEVER waits - callback returns immediately
-        // v4.08: No updatedAt in payload (WRV verification fix)
-        // ============================================================
-        if (typeof WRV !== 'undefined' && WRV.update) {
-            logWithTimestamp('[SAVE]', '🚀 WRV.update() starting in background for scores - hole: ' + holeNumber);
-            
-            WRV.update(collection, gameId, updatePayload, function(err, result) {
-                if (err) {
-                    logWithTimestamp('[SAVE]', '❌ WRV.update() for scores failed: ' + err.message);
-                } else {
-                    logWithTimestamp('[SAVE]', '✅ WRV.update() for scores success - scores verified in Firestore');
-                }
-            });
-        } else {
-            // Fallback: WRV not available
-            logWithTimestamp('[SAVE]', '⚠️ WRV not available - using direct Firestore update for scores (fallback)');
-            firebase.firestore().collection(collection).doc(gameId).update(updatePayload)
-                .then(function() {
-                    logWithTimestamp('[SAVE]', '✅ Direct update for scores succeeded');
-                })
-                .catch(function(err) {
-                    logWithTimestamp('[SAVE]', '❌ Direct update for scores failed: ' + err.message);
-                });
-        }
-        
-        // v4.03: Return IMMEDIATELY - user never waits
+        // Return IMMEDIATELY - user never waits
+        // The consolidated write in real-game-save.js will handle Firestore persistence
         logWithTimestamp('[SAVE]', '✅ Callback returning immediately - user continues');
         if (callback) callback(true);
     }
@@ -997,7 +961,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v4.08: No updatedAt in WRV payload
+    // Public API - v4.09: WRV call removed from saveCurrentHole
     // ============================================================
     
     return {
@@ -1046,7 +1010,7 @@ var GameData = (function() {
         // Match index functions
         getMatchIndex: getMatchIndex,
         getMatchValueFromResults: getMatchValueFromResults,
-        // v4.01: WRV verification methods
+        // v4.01: WRV verification methods (kept for debugging)
         startWRVVerification: startWRVVerification,
         generateWRVKey: generateWRVKey,
         // v4.02: Timestamp helper (exposed for debugging)
@@ -1061,13 +1025,13 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.08
-KEY CHANGES from v4.07:
-   - FIXED: saveCurrentHole() - removed updatePayload.updatedAt
-   - This ensures WRV verification passes for flight data writes
-   - WRV should not verify server-generated timestamps
-   - PRESERVED: ALL v4.07 functions and API unchanged
-   - PRESERVED: ALL existing functionality
-DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
+VERSION: 4.09
+KEY CHANGES from v4.08:
+   - REMOVED: WRV.update() call from saveCurrentHole() (lines ~790-820)
+   - This eliminates the competing WRV write that was causing flight data to be overwritten
+   - Only the consolidated WRV write in real-game-save.js now writes to Firestore
+   - PRESERVED: Local data update, cache update, notifyDataChanged(), immediate callback
+   - PRESERVED: ALL other functionality from v4.08 unchanged
+DEPENDS ON: js/game-order.js, Firebase Firestore
 STATUS: Ready for integration
 */
