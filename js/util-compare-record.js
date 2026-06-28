@@ -1,15 +1,11 @@
 /*
 FILE: js/util-compare-record.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: Independent environment support for Left and Right
-   - ADDED: compareLeftDb and compareRightDb variables to track separate connections
-   - ADDED: setCompareLeftEnvironment() and setCompareRightEnvironment() functions
-   - CHANGED: loadCompareRecordsLeft() now uses compareLeftDb
-   - CHANGED: loadCompareRecordsRight() now uses compareRightDb
-   - CHANGED: loadCompareRecordData() uses the appropriate database per side
-   - CHANGED: Display shows which environment each side is connected to
-   - PRESERVED: All COMPARE tab functionality
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: showCompareInfoGuide() function - full-page information overlay
+   - ADDED: Detailed COMPARE tab documentation with step-by-step instructions
+   - ADDED: Warnings and important notes for comparing records
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml, prodDb, devDb
 STATUS: Ready for integration
 */
@@ -640,6 +636,104 @@ function displayCompareResults(results) {
 }
 
 // ============================================================
+// COMPARE TAB: INFORMATION GUIDE
+// ============================================================
+
+function showCompareInfoGuide() {
+    // Remove existing overlay if present
+    var existing = document.querySelector('.info-overlay');
+    if (existing) existing.remove();
+    
+    var overlay = document.createElement('div');
+    overlay.className = 'info-overlay';
+    overlay.innerHTML = `
+        <div class="info-card">
+            <div class="info-header">
+                <div class="info-title">🔍 COMPARE TAB - Information & Guide</div>
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✕ CLOSE</button>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-section-title">🎯 What This Tab Does</div>
+                <div class="info-text">
+                    The <strong>COMPARE</strong> tab performs a field-by-field comparison between two game records.
+                    This is useful for:
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>🔍 Verifying data consistency between PROD and DEV environments</li>
+                        <li>🐛 Debugging differences between two records</li>
+                        <li>✅ Confirming that a copy operation was successful</li>
+                        <li>📊 Identifying what changed between two versions of a record</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📖 How To Use</div>
+                <ol class="info-steps">
+                    <li><strong>Step 1 - Environments:</strong> Select the <span class="highlight">LEFT</span> environment (PROD/DEV) and <span class="highlight">RIGHT</span> environment (PROD/DEV)</li>
+                    <li><strong>Step 2 - Collections:</strong> Choose the collection for each side (<code>scheduledGames</code>, <code>historyGames</code>, or <code>backupFolder</code>)</li>
+                    <li><strong>Step 3 - Load Records:</strong> Click <span class="highlight">"Load Records"</span> to populate the dropdowns</li>
+                    <li><strong>Step 4 - Select Records:</strong> Choose a record from each dropdown</li>
+                    <li><strong>Step 5 - Compare:</strong> Click <span class="highlight">"COMPARE"</span> to perform the comparison</li>
+                </ol>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📊 What Gets Compared</div>
+                <div class="info-text">
+                    The comparison is <strong>deep and exhaustive</strong> - it examines every field in the record:
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li>📋 <strong>Game metadata:</strong> date, status, gameStarted, startingHole, format</li>
+                        <li>✈️ <strong>Flight data:</strong> f1.d, f1.se, f1.x, f2.d, f2.se, f2.x</li>
+                        <li>🏆 <strong>Results:</strong> TR values, T-1, T-2, Strk, match results, player totals</li>
+                        <li>📊 <strong>Arrays:</strong> Compares each element (teamA, teamB, displayT1, etc.)</li>
+                        <li>👥 <strong>Players:</strong> Names, handicaps, teams, flights, labels</li>
+                        <li>⛳ <strong>Course:</strong> Name, par, si values</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">📊 Understanding the Results</div>
+                <div class="info-text">
+                    <ul style="padding-left:20px; margin:6px 0; color:#ccc; font-size:0.85rem; line-height:1.6;">
+                        <li><span style="color:#4caf50;">🟢 MATCHING FIELDS</span> - Values are identical in both records</li>
+                        <li><span style="color:#ff6b6b;">🔴 DIFFERENCES</span> - Values differ between records (shown with left ≠ right)</li>
+                        <li><span style="color:#ffaa44;">📊 SUMMARY</span> - Total fields, matching count, difference count</li>
+                        <li><span style="color:#ff6b6b;">⚠️ MISSING FIELDS</span> - A field exists in one record but not the other</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <hr class="info-divider">
+            
+            <div class="info-section">
+                <div class="info-section-title">⚠️ Important Notes</div>
+                <ul class="info-warnings">
+                    <li><strong>No modifications:</strong> Comparison does not change any data. It is read-only.</li>
+                    <li><strong>Deep comparison:</strong> Nested objects and arrays are compared recursively.</li>
+                    <li><strong>Performance:</strong> For large records, comparison may take a few seconds.</li>
+                    <li><strong>Cross-environment:</strong> You can compare PROD vs DEV, PROD vs PROD, or DEV vs DEV.</li>
+                    <li><strong>Different collections:</strong> You can compare records from different collections (e.g., scheduledGames vs historyGames).</li>
+                </ul>
+            </div>
+            
+            <div style="text-align:center; margin-top:20px;">
+                <button class="info-close-btn" onclick="this.closest('.info-overlay').remove()">✓ OK, I understand</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+}
+
+// ============================================================
 // EXPOSE FUNCTIONS GLOBALLY
 // ============================================================
 
@@ -650,26 +744,23 @@ window.loadCompareRecordsLeft = loadCompareRecordsLeft;
 window.loadCompareRecordsRight = loadCompareRecordsRight;
 window.loadCompareRecordData = loadCompareRecordData;
 window.performCompare = performCompare;
+window.showCompareInfoGuide = showCompareInfoGuide;
 
 // ============================================================
 // EXPOSE FOR DEBUGGING
 // ============================================================
 
-window.COMPARE_UTIL_VERSION = "1.02";
-console.log("[COMPARE-UTIL] v1.02 loaded");
+window.COMPARE_UTIL_VERSION = "1.03";
+console.log("[COMPARE-UTIL] v1.03 loaded");
 
 /*
 FILE: js/util-compare-record.js
-VERSION: 1.02
-KEY CHANGES from v1.01:
-   - ADDED: Independent environment support for Left and Right
-   - ADDED: compareLeftDb and compareRightDb variables to track separate connections
-   - ADDED: setCompareLeftEnvironment() and setCompareRightEnvironment() functions
-   - CHANGED: loadCompareRecordsLeft() now uses compareLeftDb
-   - CHANGED: loadCompareRecordsRight() now uses compareRightDb
-   - CHANGED: loadCompareRecordData() uses the appropriate database per side
-   - CHANGED: Display shows which environment each side is connected to
-   - PRESERVED: All COMPARE tab functionality
+VERSION: 1.03
+KEY CHANGES from v1.02:
+   - ADDED: showCompareInfoGuide() function - full-page information overlay
+   - ADDED: Detailed COMPARE tab documentation with step-by-step instructions
+   - ADDED: Warnings and important notes for comparing records
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: Main HTML (util-record-management.html) for initFirebase, log, logStep, escapeHtml, prodDb, devDb
 STATUS: Ready for integration
 */
