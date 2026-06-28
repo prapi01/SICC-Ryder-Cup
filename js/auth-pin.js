@@ -1,14 +1,16 @@
 /*
 FILE: js/auth-pin.js
-VERSION: 2.03
-KEY CHANGES from v2.02:
-   - CHANGED: PIN dots from circles to SQUARES (border-radius: 8px)
-   - CHANGED: PIN dot size to match handover spec (44px × 50px)
-   - CHANGED: PIN dot styling to match handover spec (square corners)
-   - REMOVED: All biometric references (Face ID / Touch ID)
-   - SIMPLIFIED: PIN-only authentication modal
-   - CLEANED: Removed WebAuthn code entirely
-   - KEPT: Platform detection removed (no longer needed)
+VERSION: 2.04
+KEY CHANGES from v2.03:
+   - REDESIGNED: Complete UI overhaul - sleek, compact, elegant
+   - RESIZED: Modal is 1/2 the previous size (max-width: 280px)
+   - RESIZED: PIN dots smaller (28×32px) with 6px border-radius
+   - RESIZED: Number pad buttons smaller (36px min-height, 10px border-radius)
+   - BORDER: Normal visible border (2px solid #2a5a2a) not faint
+   - REMOVED: All glass-morphism effects for cleaner look
+   - REMOVED: Padding reduced significantly
+   - SIMPLIFIED: Clean dark theme with green accent
+   - PRESERVED: All functionality from v2.03 unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -101,7 +103,7 @@ var AuthPin = (function() {
         if (isLocked) {
             var remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
             if (remaining > 0) {
-                showError("🔒 Too many attempts. Try again in " + remaining + "s");
+                showError("🔒 Locked " + remaining + "s");
                 return false;
             } else {
                 // Lockout expired
@@ -123,14 +125,14 @@ var AuthPin = (function() {
             if (failedAttempts >= CONFIG.MAX_ATTEMPTS) {
                 isLocked = true;
                 lockoutUntil = Date.now() + CONFIG.LOCKOUT_DURATION_MS;
-                showError("🔒 Too many failed attempts. Locked for 30s");
+                showError("🔒 Locked 30s");
             }
             return false;
         }
     }
     
     // ============================================================
-    // Show PIN Modal
+    // Show PIN Modal - v2.04 Sleek Compact Design
     // ============================================================
     
     function showAuthModal(action, gameId, gameDate, onSuccess) {
@@ -155,45 +157,38 @@ var AuthPin = (function() {
         isLocked = false;
         lockoutUntil = null;
         
-        // Build modal HTML
+        // Build modal HTML - Sleek Compact Design
         var modalHtml = `
             <div class="auth-modal-overlay" id="authModal" role="dialog" aria-label="Authentication">
                 <div class="auth-modal" role="document">
-                    <div class="auth-modal-header">
-                        <div class="auth-modal-icon">🔐</div>
-                        <div class="auth-modal-title">AUTHENTICATE</div>
-                        <div class="auth-modal-subtitle">Enter 4-digit PIN</div>
-                    </div>
+                    <div class="auth-modal-icon">🔐</div>
+                    <div class="auth-modal-title">Enter PIN</div>
                     
                     <div class="auth-pin-container">
                         <div class="auth-pin-dots" id="authPinDots" role="group" aria-label="PIN entry">
-                            <span class="auth-pin-dot" data-index="0" aria-hidden="true"></span>
-                            <span class="auth-pin-dot" data-index="1" aria-hidden="true"></span>
-                            <span class="auth-pin-dot" data-index="2" aria-hidden="true"></span>
-                            <span class="auth-pin-dot" data-index="3" aria-hidden="true"></span>
+                            <span class="auth-pin-dot" data-index="0"></span>
+                            <span class="auth-pin-dot" data-index="1"></span>
+                            <span class="auth-pin-dot" data-index="2"></span>
+                            <span class="auth-pin-dot" data-index="3"></span>
                         </div>
                         <div class="auth-pin-error" id="authPinError" role="alert"></div>
                     </div>
                     
                     <div class="auth-numpad" id="authNumpad" role="group" aria-label="Number pad">
-                        <button class="auth-numpad-btn" data-digit="1" aria-label="1">1</button>
-                        <button class="auth-numpad-btn" data-digit="2" aria-label="2">2</button>
-                        <button class="auth-numpad-btn" data-digit="3" aria-label="3">3</button>
-                        <button class="auth-numpad-btn" data-digit="4" aria-label="4">4</button>
-                        <button class="auth-numpad-btn" data-digit="5" aria-label="5">5</button>
-                        <button class="auth-numpad-btn" data-digit="6" aria-label="6">6</button>
-                        <button class="auth-numpad-btn" data-digit="7" aria-label="7">7</button>
-                        <button class="auth-numpad-btn" data-digit="8" aria-label="8">8</button>
-                        <button class="auth-numpad-btn" data-digit="9" aria-label="9">9</button>
-                        <button class="auth-numpad-btn" data-digit="0" aria-label="0">0</button>
-                        <button class="auth-numpad-btn auth-numpad-btn-backspace" id="authBackspaceBtn" aria-label="Delete">
-                            <span class="auth-numpad-icon">⌫</span>
-                        </button>
+                        <button class="auth-numpad-btn" data-digit="1">1</button>
+                        <button class="auth-numpad-btn" data-digit="2">2</button>
+                        <button class="auth-numpad-btn" data-digit="3">3</button>
+                        <button class="auth-numpad-btn" data-digit="4">4</button>
+                        <button class="auth-numpad-btn" data-digit="5">5</button>
+                        <button class="auth-numpad-btn" data-digit="6">6</button>
+                        <button class="auth-numpad-btn" data-digit="7">7</button>
+                        <button class="auth-numpad-btn" data-digit="8">8</button>
+                        <button class="auth-numpad-btn" data-digit="9">9</button>
+                        <button class="auth-numpad-btn" data-digit="0">0</button>
+                        <button class="auth-numpad-btn auth-numpad-btn-backspace" id="authBackspaceBtn">⌫</button>
                     </div>
                     
-                    <div class="auth-modal-buttons">
-                        <button class="auth-modal-btn auth-modal-btn-cancel" id="authCancelBtn">Cancel</button>
-                    </div>
+                    <button class="auth-modal-btn-cancel" id="authCancelBtn">Cancel</button>
                     
                     <div class="auth-modal-footer">
                         <span class="auth-modal-attempts">${failedAttempts}/${CONFIG.MAX_ATTEMPTS}</span>
@@ -235,7 +230,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Update PIN Dots Display (SQUARE boxes)
+    // Update PIN Dots Display
     // ============================================================
     
     function updatePinDots() {
@@ -260,13 +255,11 @@ var AuthPin = (function() {
         if (errorMsg) {
             errorMsg.textContent = message;
             errorMsg.style.display = 'block';
-            // Shake animation
             errorMsg.classList.add('shake');
             setTimeout(function() {
                 errorMsg.classList.remove('shake');
             }, 500);
             
-            // Shake the entire modal
             var modalElement = document.querySelector('.auth-modal');
             if (modalElement) {
                 modalElement.classList.add('shake');
@@ -297,7 +290,7 @@ var AuthPin = (function() {
         var attemptsEl = document.querySelector('.auth-modal-attempts');
         if (attemptsEl) {
             attemptsEl.textContent = failedAttempts + '/' + CONFIG.MAX_ATTEMPTS;
-            attemptsEl.style.color = failedAttempts >= CONFIG.MAX_ATTEMPTS - 1 ? '#ff6b6b' : '#888';
+            attemptsEl.style.color = failedAttempts >= CONFIG.MAX_ATTEMPTS - 1 ? '#ff6b6b' : '#444';
         }
     }
     
@@ -306,17 +299,11 @@ var AuthPin = (function() {
     // ============================================================
     
     function handlePinDigit(digit) {
-        // Don't accept more than 4 digits
         if (currentPin.length >= CONFIG.MAX_PIN_LENGTH) return;
-        
-        // Hide any previous error
         hideError();
-        
-        // Add digit to PIN
         currentPin += digit;
         updatePinDots();
         
-        // Check if PIN is complete (4 digits)
         if (currentPin.length === CONFIG.MAX_PIN_LENGTH) {
             setTimeout(function() {
                 validatePinAndExecute();
@@ -338,13 +325,11 @@ var AuthPin = (function() {
     
     function validatePinAndExecute() {
         if (authenticateWithPin(currentPin)) {
-            // PIN correct - execute the pending action
             hideError();
-            // Success animation
             var modalElement = document.querySelector('.auth-modal');
             if (modalElement) {
-                modalElement.style.transition = 'transform 0.3s, opacity 0.3s';
-                modalElement.style.transform = 'scale(1.05)';
+                modalElement.style.transition = 'transform 0.25s, opacity 0.25s';
+                modalElement.style.transform = 'scale(0.95)';
                 modalElement.style.opacity = '0';
                 setTimeout(function() {
                     removeModal();
@@ -352,7 +337,7 @@ var AuthPin = (function() {
                         onSuccessCallback();
                     }
                     resetAuth();
-                }, 300);
+                }, 250);
             } else {
                 removeModal();
                 if (onSuccessCallback) {
@@ -361,13 +346,11 @@ var AuthPin = (function() {
                 resetAuth();
             }
         } else {
-            // PIN incorrect - show error, clear dots, stay on modal
-            showError("❌ Invalid PIN. Attempts: " + failedAttempts + "/" + CONFIG.MAX_ATTEMPTS);
+            showError("Invalid PIN");
             updateAttemptsDisplay();
             currentPin = "";
             updatePinDots();
             
-            // If locked out, disable input temporarily
             if (isLocked) {
                 disableNumpad(true);
             }
@@ -382,19 +365,18 @@ var AuthPin = (function() {
         var numpadBtns = document.querySelectorAll('.auth-numpad-btn');
         numpadBtns.forEach(function(btn) {
             btn.disabled = disabled;
-            btn.style.opacity = disabled ? '0.5' : '1';
+            btn.style.opacity = disabled ? '0.4' : '1';
             btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
         });
         
         if (disabled) {
-            // Re-enable after lockout duration
             setTimeout(function() {
                 disableNumpad(false);
                 hideError();
-                showError("🔓 Lockout expired. Try again.");
+                showError("🔓 Try again");
                 setTimeout(function() {
                     hideError();
-                }, 2000);
+                }, 1500);
             }, CONFIG.LOCKOUT_DURATION_MS);
         }
     }
@@ -415,7 +397,6 @@ var AuthPin = (function() {
     function attachEventListeners() {
         if (!modal) return;
         
-        // Numpad buttons
         var numpadBtns = document.querySelectorAll('.auth-numpad-btn[data-digit]');
         numpadBtns.forEach(function(btn) {
             btn.addEventListener('click', function(e) {
@@ -426,7 +407,6 @@ var AuthPin = (function() {
             });
         });
         
-        // Backspace button
         var backspaceBtn = document.getElementById('authBackspaceBtn');
         if (backspaceBtn) {
             backspaceBtn.addEventListener('click', function(e) {
@@ -436,7 +416,6 @@ var AuthPin = (function() {
             });
         }
         
-        // Cancel button
         if (cancelBtn) {
             cancelBtn.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -444,36 +423,26 @@ var AuthPin = (function() {
             });
         }
         
-        // Close on overlay click (click outside modal)
         modal.addEventListener('click', function(e) {
             if (e.target === modal) {
                 handleCancel();
             }
         });
         
-        // Keyboard input for PIN (numbers and backspace)
         document.addEventListener('keydown', function(e) {
-            // Only handle if modal is visible
             if (!modal) return;
             if (isLocked) return;
             
-            // Number keys (0-9)
             if (e.key >= '0' && e.key <= '9') {
                 e.preventDefault();
                 handlePinDigit(e.key);
-            }
-            // Backspace
-            else if (e.key === 'Backspace') {
+            } else if (e.key === 'Backspace') {
                 e.preventDefault();
                 handlePinBackspace();
-            }
-            // Escape - cancel
-            else if (e.key === 'Escape') {
+            } else if (e.key === 'Escape') {
                 e.preventDefault();
                 handleCancel();
-            }
-            // Enter - if 4 digits entered, triggers validation
-            else if (e.key === 'Enter') {
+            } else if (e.key === 'Enter') {
                 e.preventDefault();
                 if (currentPin.length === CONFIG.MAX_PIN_LENGTH) {
                     validatePinAndExecute();
@@ -483,7 +452,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Public API: Require Authentication Before Action
+    // Public API
     // ============================================================
     
     function requireAuth(action, gameId, gameDate, onSuccess) {
@@ -497,28 +466,18 @@ var AuthPin = (function() {
             return;
         }
         
-        // If already authenticated, execute immediately
         if (isAuthenticated()) {
             onSuccess();
             return;
         }
         
-        // Show the authentication modal
         showAuthModal(action, gameId, gameDate, onSuccess);
     }
-    
-    // ============================================================
-    // Public API: Force logout (clear session)
-    // ============================================================
     
     function logout() {
         resetAuth();
         removeModal();
     }
-    
-    // ============================================================
-    // Public API: Check auth status
-    // ============================================================
     
     function getAuthStatus() {
         return {
@@ -531,10 +490,6 @@ var AuthPin = (function() {
         };
     }
     
-    // ============================================================
-    // Public API: Change PIN (for future management modal)
-    // ============================================================
-    
     function setPin(newPin) {
         if (newPin && newPin.length === CONFIG.MAX_PIN_LENGTH && /^\d{4}$/.test(newPin)) {
             CONFIG.PIN = newPin;
@@ -544,16 +499,12 @@ var AuthPin = (function() {
         return false;
     }
     
-    // ============================================================
-    // Public API: Get current PIN (for debugging only)
-    // ============================================================
-    
     function getPin() {
         return CONFIG.PIN;
     }
     
     // ============================================================
-    // Expose Styles (injected once)
+    // Inject Styles - v2.04 Sleek Compact Design
     // ============================================================
     
     function injectStyles() {
@@ -562,125 +513,102 @@ var AuthPin = (function() {
         var styles = document.createElement('style');
         styles.id = 'auth-pin-styles';
         styles.textContent = `
-            /* Auth Modal */
+            /* Auth Modal - Overlay */
             .auth-modal-overlay {
                 position: fixed;
                 top: 0;
                 left: 0;
                 right: 0;
                 bottom: 0;
-                background: rgba(0, 0, 0, 0.92);
-                backdrop-filter: blur(8px);
-                -webkit-backdrop-filter: blur(8px);
+                background: rgba(0, 0, 0, 0.85);
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 z-index: 30000;
                 padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-                animation: authFadeIn 0.3s ease-out;
+                animation: authFadeIn 0.25s ease-out;
             }
             
+            /* Auth Modal - Card */
             .auth-modal {
-                background: linear-gradient(145deg, #1e1e1e, #2a2a2a);
-                border-radius: 32px;
-                padding: 32px 28px;
-                max-width: 380px;
+                background: #0a0a0a;
+                border-radius: 20px;
+                padding: 20px 20px 16px 20px;
+                max-width: 280px;
                 width: 92%;
                 text-align: center;
-                border: 1px solid rgba(76, 175, 80, 0.3);
-                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(76, 175, 80, 0.1);
-                animation: authSlideUp 0.3s ease-out;
-                position: relative;
-                overflow: hidden;
+                border: 2px solid #2a5a2a;
+                box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8);
+                animation: authSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
             }
             
-            .auth-modal::before {
-                content: '';
-                position: absolute;
-                top: -2px;
-                left: -2px;
-                right: -2px;
-                bottom: -2px;
-                background: linear-gradient(45deg, transparent, rgba(76, 175, 80, 0.2), transparent);
-                border-radius: 34px;
-                z-index: -1;
-            }
-            
-            .auth-modal-header {
-                margin-bottom: 24px;
-            }
-            
+            /* Icon */
             .auth-modal-icon {
-                font-size: 2.8rem;
-                margin-bottom: 8px;
+                font-size: 2rem;
                 display: block;
-                animation: authPulse 2s ease-in-out infinite;
+                margin-bottom: 2px;
             }
             
+            /* Title */
             .auth-modal-title {
-                font-size: 1.2rem;
-                font-weight: 700;
+                font-size: 0.8rem;
+                font-weight: 500;
                 color: #4caf50;
                 letter-spacing: 2px;
                 text-transform: uppercase;
-                margin-bottom: 4px;
+                margin-bottom: 12px;
             }
             
-            .auth-modal-subtitle {
-                font-size: 0.75rem;
-                color: #888;
-                letter-spacing: 1px;
-            }
-            
-            /* PIN Dots - SQUARE BOXES */
+            /* PIN Container */
             .auth-pin-container {
-                margin: 24px 0 20px 0;
+                margin: 0 0 8px 0;
             }
             
+            /* PIN Dots - Square */
             .auth-pin-dots {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 12px;
+                gap: 8px;
                 user-select: none;
-                padding: 8px 0;
+                padding: 4px 0;
             }
             
             .auth-pin-dot {
                 display: inline-block;
-                width: 44px;
-                height: 50px;
-                border-radius: 8px;
+                width: 28px;
+                height: 32px;
+                border-radius: 6px;
                 background: #0a0a0a;
-                border: 2px solid #333;
+                border: 2px solid #2a2a2a;
                 color: #4caf50;
                 text-align: center;
-                line-height: 46px;
-                font-size: 1.8rem;
-                font-weight: 700;
+                line-height: 28px;
+                font-size: 1rem;
+                font-weight: 600;
                 font-family: monospace;
-                transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-                box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+                transition: all 0.25s ease;
+                box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
             }
             
             .auth-pin-dot.filled {
                 border-color: #4caf50;
-                background: #1a3a1a;
-                box-shadow: 0 0 20px rgba(76, 175, 80, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.4);
-                transform: scale(1.02);
+                background: rgba(26, 58, 26, 0.6);
+                box-shadow: 0 0 12px rgba(76, 175, 80, 0.08), inset 0 1px 3px rgba(0, 0, 0, 0.3);
             }
             
             .auth-pin-dot.animated {
                 animation: authDotPop 0.2s ease-out;
             }
             
+            /* Error */
             .auth-pin-error {
-                margin-top: 12px;
-                font-size: 0.8rem;
+                font-size: 0.6rem;
                 color: #ff6b6b;
-                min-height: 24px;
+                min-height: 16px;
+                margin-top: 2px;
                 display: none;
-                font-weight: 500;
+                font-weight: 400;
                 letter-spacing: 0.3px;
             }
             
@@ -688,33 +616,33 @@ var AuthPin = (function() {
             .auth-numpad {
                 display: grid;
                 grid-template-columns: repeat(3, 1fr);
-                gap: 10px;
-                margin: 12px auto 16px auto;
-                max-width: 280px;
+                gap: 6px;
+                margin: 4px auto 10px auto;
+                max-width: 200px;
                 width: 100%;
             }
             
             .auth-numpad-btn {
-                padding: 16px;
-                border-radius: 16px;
-                background: rgba(20, 20, 20, 0.8);
-                border: 1px solid #333;
-                color: #fff;
-                font-size: 1.4rem;
-                font-weight: 600;
+                padding: 8px;
+                border-radius: 10px;
+                background: rgba(20, 20, 20, 0.6);
+                border: 1px solid #2a2a2a;
+                color: #e0e0e0;
+                font-size: 1.1rem;
+                font-weight: 400;
                 cursor: pointer;
-                transition: all 0.2s ease;
+                transition: all 0.15s ease;
                 user-select: none;
-                -webkit-tap-highlight-color: transparent;
-                min-height: 56px;
+                min-height: 36px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                -webkit-tap-highlight-color: transparent;
             }
             
             .auth-numpad-btn:active:not(:disabled) {
                 transform: scale(0.92);
-                background: rgba(76, 175, 80, 0.2);
+                background: rgba(76, 175, 80, 0.12);
                 border-color: #4caf50;
             }
             
@@ -724,74 +652,59 @@ var AuthPin = (function() {
             }
             
             .auth-numpad-btn:disabled {
-                opacity: 0.5;
+                opacity: 0.4;
                 cursor: not-allowed;
             }
             
             .auth-numpad-btn-backspace {
-                background: rgba(255, 107, 107, 0.05);
-                border-color: #444;
-                color: #ff6b6b;
-                font-size: 1.4rem;
+                color: #666;
+                font-size: 1rem;
             }
             
             .auth-numpad-btn-backspace:active:not(:disabled) {
-                background: rgba(255, 107, 107, 0.15);
+                background: rgba(255, 107, 107, 0.1);
                 border-color: #ff6b6b;
+                color: #ff6b6b;
             }
             
-            .auth-numpad-icon {
-                font-size: 1.6rem;
-                line-height: 1;
+            .auth-numpad-btn-backspace:hover:not(:disabled) {
+                border-color: #ff6b6b;
+                color: #ff6b6b;
             }
             
-            /* Buttons */
-            .auth-modal-buttons {
-                display: flex;
-                justify-content: center;
-                margin-top: 8px;
-            }
-            
-            .auth-modal-btn {
-                padding: 12px 40px;
-                border-radius: 40px;
-                font-weight: 600;
-                font-size: 0.85rem;
+            /* Cancel Button */
+            .auth-modal-btn-cancel {
+                padding: 6px 0;
+                border-radius: 16px;
+                font-weight: 400;
+                font-size: 0.7rem;
                 cursor: pointer;
-                border: none;
                 transition: all 0.2s ease;
-                min-width: 120px;
+                background: transparent;
+                border: none;
+                color: #444;
+                display: block;
                 letter-spacing: 1px;
                 text-transform: uppercase;
-            }
-            
-            .auth-modal-btn:active {
-                transform: scale(0.96);
-            }
-            
-            .auth-modal-btn-cancel {
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid #333;
-                color: #888;
+                margin: 0 auto;
+                width: 100%;
+                max-width: 120px;
             }
             
             .auth-modal-btn-cancel:hover {
-                border-color: #4caf50;
-                color: #aaa;
-                background: rgba(76, 175, 80, 0.05);
+                color: #666;
             }
             
+            /* Footer */
             .auth-modal-footer {
-                margin-top: 12px;
+                margin-top: 6px;
                 display: flex;
                 justify-content: center;
-                align-items: center;
-                gap: 12px;
             }
             
             .auth-modal-attempts {
-                font-size: 0.7rem;
-                color: #888;
+                font-size: 0.5rem;
+                color: #333;
                 letter-spacing: 0.5px;
             }
             
@@ -802,85 +715,82 @@ var AuthPin = (function() {
             }
             
             @keyframes authSlideUp {
-                from { 
-                    opacity: 0; 
-                    transform: translateY(20px) scale(0.96);
+                from {
+                    opacity: 0;
+                    transform: translateY(12px) scale(0.97);
                 }
-                to { 
-                    opacity: 1; 
+                to {
+                    opacity: 1;
                     transform: translateY(0) scale(1);
                 }
             }
             
-            @keyframes authPulse {
-                0%, 100% { transform: scale(1); }
-                50% { transform: scale(1.05); }
-            }
-            
             @keyframes authDotPop {
-                0% { transform: scale(0.6); opacity: 0.5; }
-                50% { transform: scale(1.15); }
-                100% { transform: scale(1.02); opacity: 1; }
+                0% { transform: scale(0.7); opacity: 0.5; }
+                50% { transform: scale(1.1); }
+                100% { transform: scale(1); opacity: 1; }
             }
             
             @keyframes shake {
                 0%, 100% { transform: translateX(0); }
-                10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
-                20%, 40%, 60%, 80% { transform: translateX(8px); }
+                10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+                20%, 40%, 60%, 80% { transform: translateX(4px); }
             }
             
             .shake {
-                animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+                animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
             }
             
             /* Responsive */
-            @media (max-width: 480px) {
+            @media (max-width: 380px) {
                 .auth-modal {
-                    padding: 24px 20px;
-                    max-width: 340px;
+                    padding: 16px 16px 12px 16px;
+                    max-width: 240px;
                 }
                 
                 .auth-pin-dot {
-                    width: 40px;
-                    height: 46px;
-                    line-height: 42px;
-                    font-size: 1.5rem;
+                    width: 24px;
+                    height: 28px;
+                    line-height: 24px;
+                    font-size: 0.85rem;
+                }
+                
+                .auth-numpad {
+                    max-width: 170px;
+                    gap: 5px;
                 }
                 
                 .auth-numpad-btn {
-                    padding: 14px;
-                    min-height: 48px;
-                    font-size: 1.2rem;
+                    min-height: 32px;
+                    font-size: 1rem;
+                    padding: 6px;
                 }
                 
                 .auth-modal-title {
-                    font-size: 1rem;
-                }
-            }
-            
-            @media (max-width: 380px) {
-                .auth-modal {
-                    padding: 20px 16px;
-                    max-width: 300px;
-                }
-                
-                .auth-pin-dot {
-                    width: 36px;
-                    height: 42px;
-                    line-height: 38px;
-                    font-size: 1.3rem;
-                }
-                
-                .auth-numpad-btn {
-                    padding: 12px;
-                    min-height: 42px;
-                    font-size: 1rem;
+                    font-size: 0.7rem;
                 }
             }
             
             @media (min-width: 768px) {
+                .auth-modal {
+                    max-width: 300px;
+                    padding: 24px 24px 18px 24px;
+                }
+                
+                .auth-pin-dot {
+                    width: 32px;
+                    height: 36px;
+                    line-height: 32px;
+                    font-size: 1.1rem;
+                }
+                
+                .auth-numpad {
+                    max-width: 220px;
+                }
+                
                 .auth-numpad-btn {
-                    min-height: 64px;
+                    min-height: 40px;
+                    font-size: 1.2rem;
                 }
             }
         `;
@@ -913,15 +823,17 @@ window.AuthPin = AuthPin;
 
 /*
 FILE: js/auth-pin.js
-VERSION: 2.03
-KEY CHANGES from v2.02:
-   - CHANGED: PIN dots from circles to SQUARES (border-radius: 8px)
-   - CHANGED: PIN dot size to match handover spec (44px × 50px)
-   - CHANGED: PIN dot styling to match handover spec (square corners)
-   - REMOVED: All biometric references (Face ID / Touch ID)
-   - SIMPLIFIED: PIN-only authentication modal
-   - CLEANED: Removed WebAuthn code entirely
-   - KEPT: Platform detection removed (no longer needed)
+VERSION: 2.04
+KEY CHANGES from v2.03:
+   - REDESIGNED: Complete UI overhaul - sleek, compact, elegant
+   - RESIZED: Modal is 1/2 the previous size (max-width: 280px)
+   - RESIZED: PIN dots smaller (28×32px) with 6px border-radius
+   - RESIZED: Number pad buttons smaller (36px min-height, 10px border-radius)
+   - BORDER: Normal visible border (2px solid #2a5a2a) not faint
+   - REMOVED: All glass-morphism effects for cleaner look
+   - REMOVED: Padding reduced significantly
+   - SIMPLIFIED: Clean dark theme with green accent
+   - PRESERVED: All functionality from v2.03 unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
