@@ -1,11 +1,10 @@
 /*
 FILE: js/auth-pin.js
-VERSION: 2.05
-KEY CHANGES from v2.04:
-   - FIXED: "2" aligned with "1" and "3" (left edge)
-   - FIXED: "9" aligned with "0" and "8" (right edge)
-   - CHANGED: DEL button now double width (88px)
-   - CLEANER: Proper symmetrical trapezoid layout
+VERSION: 2.07
+KEY CHANGES from v2.06:
+   - FIXED: "2" now aligned with "1" and "3" (left edge)
+   - FIXED: "9" now aligned with "0" and "8" (right edge)
+   - CHANGED: Middle row uses justify-content: space-between for proper alignment
    - PRESERVED: All functionality unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
@@ -126,7 +125,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Show PIN Modal - v2.05 Fixed Alignment + Double Width DEL
+    // Show PIN Modal - v2.07 Fixed Edge Alignment
     // ============================================================
     
     function showAuthModal(action, gameId, gameDate, onSuccess) {
@@ -152,31 +151,31 @@ var AuthPin = (function() {
                 <div class="auth-modal" role="document">
                     <!-- Row 1: [1] [●] [●] [●] [●] [0] -->
                     <div class="auth-row auth-row-top">
-                        <button class="auth-btn auth-btn-left" data-digit="1">1</button>
+                        <button class="auth-btn" data-digit="1">1</button>
                         <div class="auth-pin-dots" id="authPinDots">
                             <span class="auth-pin-dot" data-index="0"></span>
                             <span class="auth-pin-dot" data-index="1"></span>
                             <span class="auth-pin-dot" data-index="2"></span>
                             <span class="auth-pin-dot" data-index="3"></span>
                         </div>
-                        <button class="auth-btn auth-btn-right" data-digit="0">0</button>
+                        <button class="auth-btn" data-digit="0">0</button>
                     </div>
                     
-                    <!-- Row 2: [2] [    ⌫    ] [9] -->
+                    <!-- Row 2: [2] [⌫] [9] - aligned left/right -->
                     <div class="auth-row auth-row-middle">
-                        <button class="auth-btn auth-btn-left" data-digit="2">2</button>
+                        <button class="auth-btn" data-digit="2">2</button>
                         <button class="auth-btn auth-btn-backspace" id="authBackspaceBtn">⌫</button>
-                        <button class="auth-btn auth-btn-right" data-digit="9">9</button>
+                        <button class="auth-btn" data-digit="9">9</button>
                     </div>
                     
                     <!-- Row 3: [3] [4] [5] [6] [7] [8] -->
                     <div class="auth-row auth-row-bottom">
-                        <button class="auth-btn auth-btn-left" data-digit="3">3</button>
+                        <button class="auth-btn" data-digit="3">3</button>
                         <button class="auth-btn" data-digit="4">4</button>
                         <button class="auth-btn" data-digit="5">5</button>
                         <button class="auth-btn" data-digit="6">6</button>
                         <button class="auth-btn" data-digit="7">7</button>
-                        <button class="auth-btn auth-btn-right" data-digit="8">8</button>
+                        <button class="auth-btn" data-digit="8">8</button>
                     </div>
                     
                     <div class="auth-pin-error" id="authPinError" role="alert"></div>
@@ -492,7 +491,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Inject Styles - v2.05 Fixed Alignment + Double Width DEL
+    // Inject Styles - v2.07 Fixed Edge Alignment
     // ============================================================
     
     function injectStyles() {
@@ -534,23 +533,26 @@ var AuthPin = (function() {
             .auth-row {
                 display: flex;
                 align-items: center;
-                justify-content: center;
                 gap: 6px;
             }
             
             .auth-row-top {
+                justify-content: center;
                 margin-bottom: 8px;
             }
             
             .auth-row-middle {
+                justify-content: space-between;
                 margin-bottom: 8px;
+                padding: 0 0;
             }
             
             .auth-row-bottom {
+                justify-content: center;
                 gap: 6px;
             }
             
-            /* PIN Dots Container - flex: 2 to give more space */
+            /* PIN Dots Container */
             .auth-pin-dots {
                 display: flex;
                 align-items: center;
@@ -559,7 +561,7 @@ var AuthPin = (function() {
                 flex: 2;
             }
             
-            /* PIN Dot - Same size as buttons */
+            /* PIN Dot */
             .auth-pin-dot {
                 display: inline-block;
                 width: 44px;
@@ -588,7 +590,7 @@ var AuthPin = (function() {
                 animation: authDotPop 0.2s ease-out;
             }
             
-            /* Number Buttons - All same width */
+            /* Number Buttons */
             .auth-btn {
                 width: 44px;
                 height: 44px;
@@ -606,18 +608,6 @@ var AuthPin = (function() {
                 -webkit-tap-highlight-color: transparent;
                 user-select: none;
                 font-family: inherit;
-            }
-            
-            /* Left column buttons - 1, 2, 3 */
-            .auth-btn-left {
-                width: 44px;
-                flex-shrink: 0;
-            }
-            
-            /* Right column buttons - 0, 9, 8 */
-            .auth-btn-right {
-                width: 44px;
-                flex-shrink: 0;
             }
             
             .auth-btn:active:not(:disabled) {
@@ -757,14 +747,12 @@ var AuthPin = (function() {
             /* Responsive */
             @media (max-width: 380px) {
                 .auth-modal {
-                    padding: 16px 10px 12px 10px;
+                    padding: 16px 8px 12px 8px;
                     max-width: 300px;
                 }
                 
                 .auth-pin-dot,
-                .auth-btn,
-                .auth-btn-left,
-                .auth-btn-right {
+                .auth-btn {
                     width: 36px;
                     height: 36px;
                     font-size: 1rem;
@@ -798,9 +786,7 @@ var AuthPin = (function() {
                 }
                 
                 .auth-pin-dot,
-                .auth-btn,
-                .auth-btn-left,
-                .auth-btn-right {
+                .auth-btn {
                     width: 48px;
                     height: 48px;
                     font-size: 1.3rem;
@@ -848,12 +834,11 @@ window.AuthPin = AuthPin;
 
 /*
 FILE: js/auth-pin.js
-VERSION: 2.05
-KEY CHANGES from v2.04:
-   - FIXED: "2" aligned with "1" and "3" (left edge)
-   - FIXED: "9" aligned with "0" and "8" (right edge)
-   - CHANGED: DEL button now double width (88px)
-   - CLEANER: Proper symmetrical trapezoid layout
+VERSION: 2.07
+KEY CHANGES from v2.06:
+   - FIXED: "2" now aligned with "1" and "3" (left edge)
+   - FIXED: "9" now aligned with "0" and "8" (right edge)
+   - CHANGED: Middle row uses justify-content: space-between for proper alignment
    - PRESERVED: All functionality unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
