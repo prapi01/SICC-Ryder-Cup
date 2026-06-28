@@ -1,23 +1,29 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.30
-KEY CHANGES from v1.27:
-   - REMOVED: Cache refresh from wruBackground() completion (was causing UI reset)
-   - REMOVED: isFirestoreChanged() check in wruBackground()
-   - PRESERVED: WRV background writes (fire and forget, user never waits)
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - REMOVED: All flattened results.xxx field writes (was causing hybrid document)
+   - REMOVED: Individual f1IntraMatches.N, f2IntraMatches.N, matchResults.N writes
+   - REMOVED: fullDisplayT1, fullFlight1Leader, fullFlight1Cumulative building code
+   - ADDED: Single "results" = cache.results write (complete object)
+   - ADDED: Assignment of match data to cache.results before write
+   - This ensures Firestore's nested results object is ALWAYS correct
+   - Eliminates hybrid document (flattened fields vs nested object)
+   - No more stale "AS" data from Firestore cache refresh
+   - PRESERVED: ALL other functionality from v1.30
+   - PRESERVED: WRV background writes (fire and forget)
    - PRESERVED: v1.20 direct write fallback when WRV unavailable
    - PRESERVED: All v1.27 cascade improvements (UI update once)
-   - This restores stable behavior while keeping WRV reliability
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.30";
+window.REAL_GAME_SAVE_VERSION = "1.31";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.30 - WRV without cache refresh");
+    console.log("[REAL-GAME-SAVE] Initializing v1.31 - Single results write");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -317,7 +323,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore - v1.30: WRV background, no cache refresh
+    // writeSingleHoleToFirestore - v1.31: Single results write
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -340,33 +346,16 @@ var RealGameSave = (function() {
         
         var updatePayload = {};
         
+        // v1.31: Update cache.results with the new data for this position
         if (resultsData.matchResults !== null) {
-            updatePayload[`results.matchResults.${position}`] = resultsData.matchResults;
+            cache.results.matchResults[position] = resultsData.matchResults;
         }
-        
         if (resultsData.f1IntraMatches !== null) {
-            updatePayload[`results.f1IntraMatches.${position}`] = resultsData.f1IntraMatches;
+            cache.results.f1IntraMatches[position] = resultsData.f1IntraMatches;
         }
-        
         if (resultsData.f2IntraMatches !== null) {
-            updatePayload[`results.f2IntraMatches.${position}`] = resultsData.f2IntraMatches;
-            if(isTarget) console.log(`[DEBUG-WRITE] Adding f2IntraMatches to payload at position ${position}`);
-        } else {
-            if(isTarget) console.warn(`[DEBUG-WRITE] f2IntraMatches is NULL - NOT adding to payload!`);
+            cache.results.f2IntraMatches[position] = resultsData.f2IntraMatches;
         }
-        
-        updatePayload["results.game1.pointsA"] = cache.results.game1.pointsA;
-        updatePayload["results.game1.pointsB"] = cache.results.game1.pointsB;
-        updatePayload["results.game2.pointsA"] = cache.results.game2.pointsA;
-        updatePayload["results.game2.pointsB"] = cache.results.game2.pointsB;
-        updatePayload["results.game2.flight1.leader"] = cache.results.game2.flight1.leader;
-        updatePayload["results.game2.flight2.leader"] = cache.results.game2.flight2.leader;
-        updatePayload["results.game2.displayT2"] = cache.results.game2.displayT2;
-        updatePayload["results.game2.flight2.cumulativePoints"] = cache.results.game2.flight2.cumulativePoints;
-        updatePayload["results.game3.leader"] = cache.results.game3.leader;
-        updatePayload["results.game3.displayStrk"] = cache.results.game3.displayStrk;
-        updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
-        updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
         
         // v1.03: Ensure TR values are properly set before writing
         if (resultsData.trA !== undefined && resultsData.trA !== null) {
@@ -378,61 +367,23 @@ var RealGameSave = (function() {
         cache.results.tr.teamAGreen[position] = resultsData.trAGreen || false;
         cache.results.tr.teamBGreen[position] = resultsData.trBGreen || false;
         
-        if(isTarget) {
-            console.log(`[DEBUG-WRITE] TR values: teamA[${position}]=${cache.results.tr.teamA[position]}, teamB[${position}]=${cache.results.tr.teamB[position]}`);
-        }
-        
-        updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
-        updatePayload["results.tr.teamB"] = cache.results.tr.teamB;
-        updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
-        updatePayload["results.tr.teamBGreen"] = cache.results.tr.teamBGreen;
-        
-        var fullDisplayT1 = new Array(18).fill("AS");
-        if (cache.results.game2.displayT1) {
-            for (var i = 0; i < 18; i++) {
-                if (cache.results.game2.displayT1[i] !== undefined && cache.results.game2.displayT1[i] !== null) {
-                    fullDisplayT1[i] = cache.results.game2.displayT1[i];
-                }
-            }
-        }
-        updatePayload["results.game2.displayT1"] = fullDisplayT1;
-        
-        var fullFlight1Leader = new Array(18).fill("AS");
-        if (cache.results.game2.flight1.leader) {
-            for (var i = 0; i < 18; i++) {
-                if (cache.results.game2.flight1.leader[i] !== undefined && cache.results.game2.flight1.leader[i] !== null) {
-                    fullFlight1Leader[i] = cache.results.game2.flight1.leader[i];
-                }
-            }
-        }
-        updatePayload["results.game2.flight1.leader"] = fullFlight1Leader;
-        
-        var fullFlight1Cumulative = new Array(18).fill(0);
-        if (cache.results.game2.flight1.cumulativePoints) {
-            for (var i = 0; i < 18; i++) {
-                if (cache.results.game2.flight1.cumulativePoints[i] !== undefined && cache.results.game2.flight1.cumulativePoints[i] !== null) {
-                    fullFlight1Cumulative[i] = cache.results.game2.flight1.cumulativePoints[i];
-                }
-            }
-        }
-        updatePayload["results.game2.flight1.cumulativePoints"] = fullFlight1Cumulative;
-        
         if (resultsData.flight1ClinchedHole !== undefined && resultsData.flight1ClinchedHole !== null) {
-            updatePayload["results.game2.flight1.clinchedHole"] = resultsData.flight1ClinchedHole;
+            cache.results.game2.flight1.clinchedHole = resultsData.flight1ClinchedHole;
         }
         if (resultsData.flight2ClinchedHole !== undefined && resultsData.flight2ClinchedHole !== null) {
-            updatePayload["results.game2.flight2.clinchedHole"] = resultsData.flight2ClinchedHole;
+            cache.results.game2.flight2.clinchedHole = resultsData.flight2ClinchedHole;
         }
         
         if (resultsData.clinchedAtUpdates && Object.keys(resultsData.clinchedAtUpdates).length > 0) {
-            updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
+            cache.results.clinchedAt = resultsData.updatedClinched;
         } else {
-            updatePayload["results.clinchedAt"] = resultsData.updatedClinched;
+            cache.results.clinchedAt = resultsData.updatedClinched;
         }
         
-        var now = new Date().toISOString();
-        updatePayload["results.lastComputedAt"] = now;
-        updatePayload["results.playerTotals"] = cache.results.playerTotals;
+        cache.results.lastComputedAt = new Date().toISOString();
+        
+        // v1.31: Write the COMPLETE results object - no more flattened fields
+        updatePayload["results"] = cache.results;
         
         // v1.04: ADD savedHoles to payload
         if (cache.savedHoles) {
@@ -447,12 +398,11 @@ var RealGameSave = (function() {
         
         if(isTarget) {
             console.log(`[DEBUG-WRITE] Payload keys being sent to Firestore:`, Object.keys(updatePayload));
-            console.log(`[DEBUG-WRITE] TR in payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
         }
         
         // ============================================================
         // v1.30: WRITE IN BACKGROUND - NO CACHE REFRESH
-        // This writes T-1, T-2, and Strk together
+        // v1.31: Now writes complete results object
         // IMR is the source of truth for this device
         // ============================================================
         wruBackground("scheduledGames", gameId, updatePayload, "singleHole_" + holeNumber);
@@ -463,7 +413,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeNewHoleData - v1.30: WRV background, no cache refresh
+    // writeNewHoleData - v1.31: Single results write
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache, renderAllCallback) {
@@ -711,70 +661,32 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- playerTotals calculated: ${Object.keys(playerTotals).length} players`);
         
         // ============================================================
-        // BUILD PAYLOAD AND WRITE TO FIRESTORE
+        // v1.31: ASSIGN MATCH DATA TO CACHE.RESULTS BEFORE WRITING
+        // ============================================================
+        if (f1IntraMatchesForHole !== null) {
+            cache.results.f1IntraMatches[position] = f1IntraMatchesForHole;
+            console.log(`[DEBUG-FLOW] --- Assigned f1IntraMatches to cache.results at position ${position}`);
+        }
+        if (f2IntraMatchesForHole !== null) {
+            cache.results.f2IntraMatches[position] = f2IntraMatchesForHole;
+            console.log(`[DEBUG-FLOW] --- Assigned f2IntraMatches to cache.results at position ${position}`);
+        }
+        if (matchResultsArray !== null) {
+            cache.results.matchResults[position] = matchResultsArray;
+            console.log(`[DEBUG-FLOW] --- Assigned matchResults to cache.results at position ${position}`);
+        }
+        
+        cache.results.clinchedAt = updatedClinched;
+        cache.results.lastComputedAt = new Date().toISOString();
+        cache.results.playerTotals = playerTotals;
+        
+        // ============================================================
+        // v1.31: BUILD PAYLOAD - SINGLE RESULTS WRITE
         // ============================================================
         var updatePayload = {};
         
-        if (f1IntraMatchesForHole !== null) {
-            updatePayload[`results.f1IntraMatches.${position}`] = f1IntraMatchesForHole;
-            console.log(`[DEBUG-FLOW] --- Adding f1IntraMatches at position ${position}`);
-        }
-        if (f2IntraMatchesForHole !== null) {
-            updatePayload[`results.f2IntraMatches.${position}`] = f2IntraMatchesForHole;
-            console.log(`[DEBUG-FLOW] --- Adding f2IntraMatches at position ${position}`);
-        }
-        if (matchResultsArray !== null) {
-            updatePayload[`results.matchResults.${position}`] = matchResultsArray;
-            console.log(`[DEBUG-FLOW] --- Adding matchResults at position ${position}`);
-        }
-        
-        // Team game arrays - now using cache values (already assigned above)
-        updatePayload["results.game1.pointsA"] = cache.results.game1.pointsA;
-        updatePayload["results.game1.pointsB"] = cache.results.game1.pointsB;
-        updatePayload["results.game2.pointsA"] = cache.results.game2.pointsA;
-        updatePayload["results.game2.pointsB"] = cache.results.game2.pointsB;
-        updatePayload["results.game2.flight1.leader"] = cache.results.game2.flight1.leader;
-        updatePayload["results.game2.flight2.leader"] = cache.results.game2.flight2.leader;
-        updatePayload["results.game2.displayT1"] = cache.results.game2.displayT1;
-        updatePayload["results.game2.displayT2"] = cache.results.game2.displayT2;
-        updatePayload["results.game2.flight1.cumulativePoints"] = cache.results.game2.flight1.cumulativePoints;
-        updatePayload["results.game2.flight2.cumulativePoints"] = cache.results.game2.flight2.cumulativePoints;
-        
-        // Stroke game arrays - now using cache values (already assigned above)
-        updatePayload["results.game3.leader"] = cache.results.game3.leader;
-        updatePayload["results.game3.displayStrk"] = cache.results.game3.displayStrk;
-        updatePayload["results.game3.pointsA"] = cache.results.game3.pointsA;
-        updatePayload["results.game3.pointsB"] = cache.results.game3.pointsB;
-        updatePayload["results.game3.nettA"] = cache.results.game3.nettA;
-        updatePayload["results.game3.nettB"] = cache.results.game3.nettB;
-        
-        // TR arrays
-        updatePayload["results.tr.teamA"] = cache.results.tr.teamA;
-        updatePayload["results.tr.teamB"] = cache.results.tr.teamB;
-        updatePayload["results.tr.teamAGreen"] = cache.results.tr.teamAGreen;
-        updatePayload["results.tr.teamBGreen"] = cache.results.tr.teamBGreen;
-        
-        if (isTarget) {
-            console.log(`[DEBUG-FLOW] --- TR payload: teamA[${position}]=${updatePayload["results.tr.teamA"][position]}, teamB[${position}]=${updatePayload["results.tr.teamB"][position]}`);
-            console.log(`[DEBUG-FLOW] --- displayStrk payload: ${updatePayload["results.game3.displayStrk"][position]}`);
-            console.log(`[DEBUG-FLOW] --- displayT2 payload: ${updatePayload["results.game2.displayT2"][position]}`);
-            console.log(`[DEBUG-FLOW] --- game3.pointsA[${position}]: ${updatePayload["results.game3.pointsA"][position]}`);
-            console.log(`[DEBUG-FLOW] --- game3.pointsB[${position}]: ${updatePayload["results.game3.pointsB"][position]}`);
-        }
-        
-        if (Object.keys(clinchedAtUpdates).length > 0) {
-            updatePayload["results.clinchedAt"] = updatedClinched;
-        }
-        
-        if (teamGameResults && teamGameResults.flight1ClinchedHole !== null) {
-            updatePayload["results.game2.flight1.clinchedHole"] = teamGameResults.flight1ClinchedHole;
-        }
-        if (teamGameResults && teamGameResults.flight2ClinchedHole !== null) {
-            updatePayload["results.game2.flight2.clinchedHole"] = teamGameResults.flight2ClinchedHole;
-        }
-        
-        updatePayload["results.lastComputedAt"] = new Date().toISOString();
-        updatePayload["results.playerTotals"] = cache.results.playerTotals;
+        // v1.31: Write the COMPLETE results object - no more flattened fields
+        updatePayload["results"] = cache.results;
         
         // v1.04: ADD savedHoles to payload
         if (cache.savedHoles) {
@@ -790,25 +702,16 @@ var RealGameSave = (function() {
         updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
         
         console.log(`[DEBUG-FLOW] --- PAYLOAD SUMMARY: ${Object.keys(updatePayload).length} fields`);
-        console.log(`[DEBUG-FLOW] --- Has f1IntraMatches: ${!!updatePayload[`results.f1IntraMatches.${position}`]}`);
-        console.log(`[DEBUG-FLOW] --- Has f2IntraMatches: ${!!updatePayload[`results.f2IntraMatches.${position}`]}`);
-        console.log(`[DEBUG-FLOW] --- Has matchResults: ${!!updatePayload[`results.matchResults.${position}`]}`);
-        console.log(`[DEBUG-FLOW] --- Has playerTotals: ${!!updatePayload["results.playerTotals"]}`);
-        console.log(`[DEBUG-FLOW] --- Has TR teamA: ${!!updatePayload["results.tr.teamA"][position]}`);
-        console.log(`[DEBUG-FLOW] --- Has TR teamB: ${!!updatePayload["results.tr.teamB"][position]}`);
+        console.log(`[DEBUG-FLOW] --- Has results: ${!!updatePayload["results"]}`);
         console.log(`[DEBUG-FLOW] --- Has savedHoles: ${!!updatePayload["savedHoles"]}`);
         console.log(`[DEBUG-FLOW] --- Has lastSyncedPosition: ${updatePayload["lastSyncedPosition"] !== undefined}`);
-        console.log(`[DEBUG-FLOW] --- Has game3.displayStrk: ${!!updatePayload["results.game3.displayStrk"][position]}`);
-        console.log(`[DEBUG-FLOW] --- Has game2.displayT2: ${!!updatePayload["results.game2.displayT2"][position]}`);
-        console.log(`[DEBUG-FLOW] --- Has game3.pointsA: ${updatePayload["results.game3.pointsA"][position] !== undefined}`);
-        console.log(`[DEBUG-FLOW] --- Has game3.pointsB: ${updatePayload["results.game3.pointsB"][position] !== undefined}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         
         // ============================================================
         // v1.30: WRITE IN BACKGROUND - NO CACHE REFRESH
-        // This writes T-1, T-2, and Strk together
+        // v1.31: Now writes complete results object
         // IMR is the source of truth for this device
         // ============================================================
         wruBackground("scheduledGames", gameId, updatePayload, "newHole_" + holeNumber);
@@ -1051,7 +954,7 @@ var RealGameSave = (function() {
                         // ============================================================
                         // writeNewHoleData - ALWAYS call for ALL saves
                         // v1.06: Now properly handles stroke points 0 values
-                        // v1.30: WRV background, no cache refresh
+                        // v1.31: Single results write, no more flattened fields
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
@@ -1399,14 +1302,20 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.30
-KEY CHANGES from v1.27:
-   - REMOVED: Cache refresh from wruBackground() completion (was causing UI reset)
-   - REMOVED: isFirestoreChanged() check in wruBackground()
-   - PRESERVED: WRV background writes (fire and forget, user never waits)
+VERSION: 1.31
+KEY CHANGES from v1.30:
+   - REMOVED: All flattened results.xxx field writes (was causing hybrid document)
+   - REMOVED: Individual f1IntraMatches.N, f2IntraMatches.N, matchResults.N writes
+   - REMOVED: fullDisplayT1, fullFlight1Leader, fullFlight1Cumulative building code
+   - ADDED: Single "results" = cache.results write (complete object)
+   - ADDED: Assignment of match data to cache.results before write
+   - This ensures Firestore's nested results object is ALWAYS correct
+   - Eliminates hybrid document (flattened fields vs nested object)
+   - No more stale "AS" data from Firestore cache refresh
+   - PRESERVED: ALL other functionality from v1.30
+   - PRESERVED: WRV background writes (fire and forget)
    - PRESERVED: v1.20 direct write fallback when WRV unavailable
    - PRESERVED: All v1.27 cascade improvements (UI update once)
-   - This restores stable behavior while keeping WRV reliability
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
