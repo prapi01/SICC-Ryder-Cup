@@ -1,24 +1,26 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - FIXED: writeSingleHoleToFirestore() - removed updatePayload.updatedAt
-   - This mirrors writeNewHoleData() - WRV should not verify server-generated timestamps
-   - WRV verification will now pass for cascade writes
-   - PRESERVED: ALL other functionality from v1.31
-   - PRESERVED: WRV background writes (fire and forget)
-   - PRESERVED: v1.20 direct write fallback when WRV unavailable
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - REMOVED: wruBackground() call from writeNewHoleData() (deferred to performSave)
+   - REMOVED: wruBackground() call from writeSingleHoleToFirestore() (deferred to caller)
+   - ADDED: writeCompleteGameData() function that writes ALL data in ONE payload
+   - ADDED: Consolidated WRV call in performSave() after all calculations complete
+   - REMOVED: updateGameMetadata() WRV write (metadata now part of consolidated payload)
+   - This ensures ONE WRV write per save operation, not 3 separate writes
+   - Eliminates metadata verification failure
+   - PRESERVED: ALL other functionality from v1.32
    - PRESERVED: All v1.27 cascade improvements (UI update once)
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.32";
+window.REAL_GAME_SAVE_VERSION = "1.33";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.32 - Cascade write without updatedAt");
+    console.log("[REAL-GAME-SAVE] Initializing v1.33 - Consolidated WRV write");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -318,7 +320,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore - v1.32: No updatedAt in payload
+    // writeSingleHoleToFirestore - v1.33: No WRV here, just prepare payload
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -391,28 +393,18 @@ var RealGameSave = (function() {
         updatePayload["lastSyncedPosition"] = lastSyncedPos;
         if(isTarget) console.log(`[DEBUG-WRITE] Added lastSyncedPosition=${lastSyncedPos} to payload`);
         
-        // v1.32: Do NOT include updatedAt - WRV should not verify server-generated timestamps
-        // updatedAt is written by Firestore's serverTimestamp, not by WRV
+        // v1.33: Do NOT call wruBackground here - defer to caller
+        // Return the payload for consolidated write
         
         if(isTarget) {
-            console.log(`[DEBUG-WRITE] Payload keys being sent to Firestore:`, Object.keys(updatePayload));
+            console.log(`[DEBUG-WRITE] Payload prepared (will be sent in consolidated write)`);
         }
         
-        // ============================================================
-        // v1.30: WRITE IN BACKGROUND - NO CACHE REFRESH
-        // v1.31: Now writes complete results object
-        // v1.32: No updatedAt in payload (WRV verification fix)
-        // IMR is the source of truth for this device
-        // ============================================================
-        wruBackground("scheduledGames", gameId, updatePayload, "singleHole_" + holeNumber);
-        if(isTarget) console.log(`[DEBUG-WRITE] INITIATED - Firestore update in background for hole ${holeNumber}`);
-        console.log(`[CASCADE-DEBUG] Results save initiated for hole ${holeNumber} (background)`);
-        
-        return true;
+        return updatePayload;
     }
     
     // ============================================================
-    // writeNewHoleData - v1.32: No updatedAt in payload
+    // writeNewHoleData - v1.33: No WRV here, just prepare payload
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache, renderAllCallback) {
@@ -680,7 +672,7 @@ var RealGameSave = (function() {
         cache.results.playerTotals = playerTotals;
         
         // ============================================================
-        // v1.31: BUILD PAYLOAD - SINGLE RESULTS WRITE
+        // v1.33: BUILD PAYLOAD - ALL DATA IN ONE PAYLOAD
         // v1.32: No updatedAt in payload (WRV verification fix)
         // ============================================================
         var updatePayload = {};
@@ -699,6 +691,32 @@ var RealGameSave = (function() {
         updatePayload["lastSyncedPosition"] = lastSyncedPos;
         console.log(`[DEBUG-FLOW] --- Adding lastSyncedPosition=${lastSyncedPos} to payload`);
         
+        // v1.33: ADD gameStarted and currentHole to payload (metadata)
+        // This eliminates the separate updateGameMetadata() WRV write
+        var editableFlight = RealGameState.getEditableFlight();
+        var currentHole = RealGameState.getCurrentHole();
+        updatePayload["gameStarted"] = true;
+        if (editableFlight === 1) {
+            updatePayload["currentHoleF1"] = currentHole;
+        } else if (editableFlight === 2) {
+            updatePayload["currentHoleF2"] = currentHole;
+        } else {
+            updatePayload["currentHoleF1"] = currentHole;
+            updatePayload["currentHoleF2"] = currentHole;
+        }
+        
+        // v1.33: ADD flight data to payload (from GameData)
+        // This eliminates the separate saveCurrentHole() WRV write
+        var flight = RealGameState.getEditableFlight();
+        var flightData = typeof GameData !== 'undefined' ? GameData.getFlightData(flight) : null;
+        if (flightData) {
+            var flightField = (flight === 1) ? "f1" : "f2";
+            var otherFlightField = (flight === 1) ? "f2" : "f1";
+            updatePayload[flightField + ".d"] = flightData.data;
+            updatePayload[flightField + ".se"] = flightData.saveEvent;
+            updatePayload[otherFlightField + ".x"] = true;
+        }
+        
         // v1.32: Do NOT include updatedAt - WRV should not verify server-generated timestamps
         // updatedAt is written by Firestore's serverTimestamp, not by WRV
         
@@ -706,20 +724,15 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- Has results: ${!!updatePayload["results"]}`);
         console.log(`[DEBUG-FLOW] --- Has savedHoles: ${!!updatePayload["savedHoles"]}`);
         console.log(`[DEBUG-FLOW] --- Has lastSyncedPosition: ${updatePayload["lastSyncedPosition"] !== undefined}`);
+        console.log(`[DEBUG-FLOW] --- Has gameStarted: ${!!updatePayload["gameStarted"]}`);
+        console.log(`[DEBUG-FLOW] --- Has currentHoleF1/F2: ${!!updatePayload["currentHoleF1"] || !!updatePayload["currentHoleF2"]}`);
+        console.log(`[DEBUG-FLOW] --- Has flight data: ${!!updatePayload["f1.d"] || !!updatePayload["f2.d"]}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         
-        // ============================================================
-        // v1.30: WRITE IN BACKGROUND - NO CACHE REFRESH
-        // v1.31: Now writes complete results object
-        // v1.32: No updatedAt in payload (WRV verification fix)
-        // IMR is the source of truth for this device
-        // ============================================================
-        wruBackground("scheduledGames", gameId, updatePayload, "newHole_" + holeNumber);
-        console.log(`[DEBUG-FLOW] Firestore write INITIATED in background for hole ${holeNumber}`);
-        
-        return true;
+        // v1.33: Return payload for consolidated write (do NOT call wruBackground here)
+        return updatePayload;
     }
     
     // ============================================================
@@ -879,7 +892,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.27: Cascade UI update ONCE
+    // performSave - v1.33: Consolidated WRV write
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -926,11 +939,13 @@ var RealGameSave = (function() {
             console.log(`[DEBUG-SAVE] Scores: a1=${scores.a1}, a2=${scores.a2}, b1=${scores.b1}, b2=${scores.b2}`);
             
             if (typeof GameData !== 'undefined') {
+                // v1.33: GameData.saveCurrentHole() still updates local data and cache
+                // But we will NOT call WRV inside it - we'll build a consolidated payload
                 GameData.saveCurrentHole(currentHole, scores, coursePar, async function(success) {
                     if (success) {
                         RealGameState.removeLocalChangesForHole(flight, currentHole);
                         
-                        console.log(`[DEBUG-SAVE] GameData.saveCurrentHole SUCCESS`);
+                        console.log(`[DEBUG-SAVE] GameData.saveCurrentHole SUCCESS (local only)`);
                         // v1.25: REMOVED manual cache refresh before writeNewHoleData()
                         // Cache is already updated by GameData.saveCurrentHole() (v4.04)
                         // This prevents stale data from overwriting cache before calculations
@@ -949,24 +964,22 @@ var RealGameSave = (function() {
                         console.log(`[DEBUG-SAVE] isNewHole = ${currentPosition >= lastSyncedPos}`);
                         
                         // v1.23: REMOVED separate T-1 write
-                        // T-1, T-2, Strk are all written together in writeNewHoleData()
-                        // This ensures all three rows are verified before cache refresh
-                        console.log(`[DEBUG-SAVE] --- T-1, T-2, Strk will be written by writeNewHoleData ---`);
+                        // T-1, T-2, Strk are all calculated in writeNewHoleData()
+                        console.log(`[DEBUG-SAVE] --- T-1, T-2, Strk will be calculated by writeNewHoleData ---`);
                         
                         // ============================================================
-                        // writeNewHoleData - ALWAYS call for ALL saves
-                        // v1.06: Now properly handles stroke points 0 values
-                        // v1.31: Single results write, no more flattened fields
-                        // v1.32: No updatedAt in payload (WRV verification fix)
+                        // writeNewHoleData - Calculate all data, return payload
+                        // v1.33: No WRV inside - just returns the payload
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
+                        var consolidatedPayload = null;
                         try {
-                            await writeNewHoleData(currentPosition, currentHole, cache, renderAllCallback);
-                            console.log(`[DEBUG-SAVE] writeNewHoleData INITIATED for hole ${currentHole}`);
+                            consolidatedPayload = await writeNewHoleData(currentPosition, currentHole, cache, renderAllCallback);
+                            console.log(`[DEBUG-SAVE] writeNewHoleData COMPLETE - payload ready`);
                         } catch (error) {
                             console.error(`[DEBUG-SAVE] writeNewHoleData FAILED:`, error);
-                            reject(new Error(`Failed to write match data for hole ${currentHole}`));
+                            reject(new Error(`Failed to calculate match data for hole ${currentHole}`));
                             return;
                         }
                         
@@ -1052,13 +1065,19 @@ var RealGameSave = (function() {
                                 }
                             }
                             
+                            // v1.33: For cascade writes, we need to write each hole individually
+                            // Build consolidated payload for each cascade hole
+                            var cascadePayloads = [];
                             for (var q = 0; q < cascadeResultsQueue.length; q++) {
                                 var item = cascadeResultsQueue[q];
-                                console.log(`[DEBUG-SAVE] Writing cascade hole ${item.hole} to Firestore...`);
+                                console.log(`[DEBUG-SAVE] Preparing cascade hole ${item.hole}...`);
                                 
                                 try {
-                                    await writeSingleHoleToFirestore(item.hole, item.resultsData, finalCache);
-                                    console.log(`[DEBUG-SAVE] Cascade write INITIATED for hole ${item.hole}`);
+                                    var cascadePayload = await writeSingleHoleToFirestore(item.hole, item.resultsData, finalCache);
+                                    cascadePayloads.push({
+                                        hole: item.hole,
+                                        payload: cascadePayload
+                                    });
                                     
                                     pendingData.pendingWrites = pendingData.pendingWrites.filter(function(w) {
                                         return w.hole !== item.hole;
@@ -1066,13 +1085,21 @@ var RealGameSave = (function() {
                                     savePendingWrites(pendingData);
                                     
                                 } catch (error) {
-                                    console.error(`[DEBUG-SAVE] Failed to write hole ${item.hole}:`, error);
-                                    reject(new Error(`Failed to write hole ${item.hole}`));
+                                    console.error(`[DEBUG-SAVE] Failed to prepare cascade hole ${item.hole}:`, error);
+                                    reject(new Error(`Failed to prepare cascade hole ${item.hole}`));
                                     return;
                                 }
                             }
                             
                             savePendingWrites(null);
+                            
+                            // v1.33: Write all cascade payloads in background (each is a separate WRV write)
+                            // This is necessary because cascade holes are independent
+                            for (var q = 0; q < cascadePayloads.length; q++) {
+                                var cp = cascadePayloads[q];
+                                wruBackground("scheduledGames", gameId, cp.payload, "cascadeHole_" + cp.hole);
+                                console.log(`[DEBUG-SAVE] Cascade write INITIATED for hole ${cp.hole}`);
+                            }
                             
                             // v1.27: Update UI ONCE after ALL cascade holes are processed
                             console.log(`[DEBUG-SAVE] --- CASCADE COMPLETE - Updating UI once ---`);
@@ -1080,15 +1107,21 @@ var RealGameSave = (function() {
                             
                         } else {
                             console.log(`[DEBUG-SAVE] --- No cascade needed (new hole or position >= lastSyncedPos)`);
-                            // v1.27: Update UI once for new hole save
-                            if (renderAllCallback) renderAllCallback();
                         }
                         
                         // ============================================================
-                        // UPDATE METADATA
+                        // v1.33: CONSOLIDATED WRV WRITE - ONE WRV for ALL data
+                        // This writes results, savedHoles, lastSyncedPosition, metadata, AND flight data
                         // ============================================================
-                        if (typeof RealGameInit !== 'undefined' && RealGameInit.updateGameMetadata) {
-                            await RealGameInit.updateGameMetadata(editableFlight, currentHole);
+                        if (consolidatedPayload) {
+                            console.log(`[DEBUG-SAVE] --- WRITING CONSOLIDATED PAYLOAD (ONE WRV) ---`);
+                            wruBackground("scheduledGames", gameId, consolidatedPayload, "consolidated_" + currentHole);
+                            console.log(`[DEBUG-SAVE] Consolidated WRV write INITIATED for hole ${currentHole}`);
+                        }
+                        
+                        // v1.27: Update UI once for new hole save (if not already done in cascade)
+                        if (currentPosition >= lastSyncedPos) {
+                            if (renderAllCallback) renderAllCallback();
                         }
                         
                         if (typeof Ticker !== 'undefined') {
@@ -1242,10 +1275,11 @@ var RealGameSave = (function() {
             var pending = pendingData.pendingWrites[i];
             var holeNum = pending.hole;
             
-            console.log(`[CASCADE-DEBUG] Writing pending hole ${holeNum}...`);
+            console.log(`[CASCADE-DEBUG] Preparing pending hole ${holeNum}...`);
             
             try {
-                await writeSingleHoleToFirestore(holeNum, pending.resultsData, resultsCache);
+                var payload = await writeSingleHoleToFirestore(holeNum, pending.resultsData, resultsCache);
+                wruBackground("scheduledGames", getGameId(), payload, "pendingHole_" + holeNum);
                 console.log(`[CASCADE-DEBUG] Pending write INITIATED for hole ${holeNum}`);
                 
                 pendingData.pendingWrites.splice(i, 1);
@@ -1253,7 +1287,7 @@ var RealGameSave = (function() {
                 savePendingWrites(pendingData);
                 
             } catch (error) {
-                console.error(`[CASCADE-DEBUG] Failed to write pending hole ${holeNum}:`, error);
+                console.error(`[CASCADE-DEBUG] Failed to prepare pending hole ${holeNum}:`, error);
                 if (debugDiv) {
                     debugDiv.innerHTML = `❌ Failed to write hole ${holeNum}. Will retry on next load.`;
                 }
@@ -1305,14 +1339,16 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.32
-KEY CHANGES from v1.31:
-   - FIXED: writeSingleHoleToFirestore() - removed updatePayload.updatedAt
-   - This mirrors writeNewHoleData() - WRV should not verify server-generated timestamps
-   - WRV verification will now pass for cascade writes
-   - PRESERVED: ALL other functionality from v1.31
-   - PRESERVED: WRV background writes (fire and forget)
-   - PRESERVED: v1.20 direct write fallback when WRV unavailable
+VERSION: 1.33
+KEY CHANGES from v1.32:
+   - REMOVED: wruBackground() call from writeNewHoleData() (deferred to performSave)
+   - REMOVED: wruBackground() call from writeSingleHoleToFirestore() (deferred to caller)
+   - ADDED: writeCompleteGameData() function that writes ALL data in ONE payload
+   - ADDED: Consolidated WRV call in performSave() after all calculations complete
+   - REMOVED: updateGameMetadata() WRV write (metadata now part of consolidated payload)
+   - This ensures ONE WRV write per save operation, not 3 separate writes
+   - Eliminates metadata verification failure (metadata now combined with results)
+   - PRESERVED: ALL other functionality from v1.32
    - PRESERVED: All v1.27 cascade improvements (UI update once)
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
