@@ -1,14 +1,12 @@
 /*
 FILE: js/auth-pin.js
-VERSION: 2.04
-KEY CHANGES from v2.03:
-   - REDESIGNED: Complete UI overhaul - symmetrical trapezoid layout
-   - LAYOUT: [1] [●][●][●][●] [0] / [2] [⌫] [9] / [3][4][5][6][7][8]
-   - ALIGNMENT: 1,2,3 vertically aligned left | 0,9,8 vertically aligned right
-   - PIN BOXES: Same size as buttons (44px), aligned with 4,5,6,7
-   - BORDER: Normal visible border (2px solid #2a5a2a)
-   - CLEAN: Minimal, sleek, dark theme with green accent
-   - PRESERVED: All functionality from v2.03 unchanged
+VERSION: 2.05
+KEY CHANGES from v2.04:
+   - FIXED: "2" aligned with "1" and "3" (left edge)
+   - FIXED: "9" aligned with "0" and "8" (right edge)
+   - CHANGED: DEL button now double width (88px)
+   - CLEANER: Proper symmetrical trapezoid layout
+   - PRESERVED: All functionality unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
@@ -37,8 +35,8 @@ var AuthPin = (function() {
         PIN: AUTH_PIN,
         SESSION_TIMEOUT_MS: 5 * 60 * 1000,  // 5 minutes
         MAX_PIN_LENGTH: 4,
-        MAX_ATTEMPTS: 5,                     // Lock after 5 failed attempts
-        LOCKOUT_DURATION_MS: 30 * 1000       // 30 second lockout
+        MAX_ATTEMPTS: 5,
+        LOCKOUT_DURATION_MS: 30 * 1000
     };
     
     // ============================================================
@@ -97,14 +95,12 @@ var AuthPin = (function() {
     // ============================================================
     
     function authenticateWithPin(enteredPin) {
-        // Check if locked out
         if (isLocked) {
             var remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
             if (remaining > 0) {
                 showError("🔒 Locked " + remaining + "s");
                 return false;
             } else {
-                // Lockout expired
                 isLocked = false;
                 failedAttempts = 0;
                 lockoutUntil = null;
@@ -130,62 +126,57 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Show PIN Modal - v2.04 Symmetrical Trapezoid Layout
+    // Show PIN Modal - v2.05 Fixed Alignment + Double Width DEL
     // ============================================================
     
     function showAuthModal(action, gameId, gameDate, onSuccess) {
-        // If already authenticated, execute immediately
         if (isAuthenticated()) {
             if (onSuccess) onSuccess();
             return;
         }
         
-        // Store pending action
         pendingAction = action;
         pendingGameId = gameId;
         pendingGameDate = gameDate;
         onSuccessCallback = onSuccess;
         
-        // Remove any existing modal
         removeModal();
         
-        // Reset state
         currentPin = "";
         failedAttempts = 0;
         isLocked = false;
         lockoutUntil = null;
         
-        // Build modal HTML - Symmetrical Trapezoid Layout
         var modalHtml = `
             <div class="auth-modal-overlay" id="authModal" role="dialog" aria-label="Authentication">
                 <div class="auth-modal" role="document">
                     <!-- Row 1: [1] [●] [●] [●] [●] [0] -->
                     <div class="auth-row auth-row-top">
-                        <button class="auth-btn" data-digit="1">1</button>
+                        <button class="auth-btn auth-btn-left" data-digit="1">1</button>
                         <div class="auth-pin-dots" id="authPinDots">
                             <span class="auth-pin-dot" data-index="0"></span>
                             <span class="auth-pin-dot" data-index="1"></span>
                             <span class="auth-pin-dot" data-index="2"></span>
                             <span class="auth-pin-dot" data-index="3"></span>
                         </div>
-                        <button class="auth-btn" data-digit="0">0</button>
+                        <button class="auth-btn auth-btn-right" data-digit="0">0</button>
                     </div>
                     
-                    <!-- Row 2: [2] [⌫] [9] -->
+                    <!-- Row 2: [2] [    ⌫    ] [9] -->
                     <div class="auth-row auth-row-middle">
-                        <button class="auth-btn" data-digit="2">2</button>
+                        <button class="auth-btn auth-btn-left" data-digit="2">2</button>
                         <button class="auth-btn auth-btn-backspace" id="authBackspaceBtn">⌫</button>
-                        <button class="auth-btn" data-digit="9">9</button>
+                        <button class="auth-btn auth-btn-right" data-digit="9">9</button>
                     </div>
                     
                     <!-- Row 3: [3] [4] [5] [6] [7] [8] -->
                     <div class="auth-row auth-row-bottom">
-                        <button class="auth-btn" data-digit="3">3</button>
+                        <button class="auth-btn auth-btn-left" data-digit="3">3</button>
                         <button class="auth-btn" data-digit="4">4</button>
                         <button class="auth-btn" data-digit="5">5</button>
                         <button class="auth-btn" data-digit="6">6</button>
                         <button class="auth-btn" data-digit="7">7</button>
-                        <button class="auth-btn" data-digit="8">8</button>
+                        <button class="auth-btn auth-btn-right" data-digit="8">8</button>
                     </div>
                     
                     <div class="auth-pin-error" id="authPinError" role="alert"></div>
@@ -206,13 +197,8 @@ var AuthPin = (function() {
         cancelBtn = document.getElementById('authCancelBtn');
         errorMsg = document.getElementById('authPinError');
         
-        // Add event listeners
         attachEventListeners();
-        
-        // Focus the modal for keyboard input
         modal.focus();
-        
-        // Update attempts counter
         updateAttemptsDisplay();
     }
     
@@ -506,7 +492,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Inject Styles - v2.04 Symmetrical Trapezoid Layout
+    // Inject Styles - v2.05 Fixed Alignment + Double Width DEL
     // ============================================================
     
     function injectStyles() {
@@ -535,8 +521,8 @@ var AuthPin = (function() {
             .auth-modal {
                 background: #0a0a0a;
                 border-radius: 20px;
-                padding: 20px 16px 16px 16px;
-                max-width: 340px;
+                padding: 20px 12px 16px 12px;
+                max-width: 360px;
                 width: 92%;
                 text-align: center;
                 border: 2px solid #2a5a2a;
@@ -564,13 +550,13 @@ var AuthPin = (function() {
                 gap: 6px;
             }
             
-            /* PIN Dots Container */
+            /* PIN Dots Container - flex: 2 to give more space */
             .auth-pin-dots {
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 gap: 6px;
-                flex: 1;
+                flex: 2;
             }
             
             /* PIN Dot - Same size as buttons */
@@ -602,7 +588,7 @@ var AuthPin = (function() {
                 animation: authDotPop 0.2s ease-out;
             }
             
-            /* Number Buttons */
+            /* Number Buttons - All same width */
             .auth-btn {
                 width: 44px;
                 height: 44px;
@@ -622,6 +608,18 @@ var AuthPin = (function() {
                 font-family: inherit;
             }
             
+            /* Left column buttons - 1, 2, 3 */
+            .auth-btn-left {
+                width: 44px;
+                flex-shrink: 0;
+            }
+            
+            /* Right column buttons - 0, 9, 8 */
+            .auth-btn-right {
+                width: 44px;
+                flex-shrink: 0;
+            }
+            
             .auth-btn:active:not(:disabled) {
                 transform: scale(0.92);
                 background: rgba(76, 175, 80, 0.12);
@@ -638,23 +636,41 @@ var AuthPin = (function() {
                 cursor: not-allowed;
             }
             
-            /* Backspace Button */
+            /* Backspace Button - Double width */
             .auth-btn-backspace {
-                flex: 1;
-                max-width: 50px;
+                flex: 0 0 94px;
+                width: 94px;
+                height: 44px;
+                border-radius: 12px;
+                background: rgba(20, 20, 20, 0.6);
+                border: 1px solid #2a2a2a;
                 color: #666;
                 font-size: 1.1rem;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.15s ease;
+                -webkit-tap-highlight-color: transparent;
+                user-select: none;
+                font-family: inherit;
             }
             
             .auth-btn-backspace:active:not(:disabled) {
                 background: rgba(255, 107, 107, 0.1);
                 border-color: #ff6b6b;
                 color: #ff6b6b;
+                transform: scale(0.92);
             }
             
             .auth-btn-backspace:hover:not(:disabled) {
                 border-color: #ff6b6b;
                 color: #ff6b6b;
+            }
+            
+            .auth-btn-backspace:disabled {
+                opacity: 0.4;
+                cursor: not-allowed;
             }
             
             /* Error */
@@ -741,12 +757,14 @@ var AuthPin = (function() {
             /* Responsive */
             @media (max-width: 380px) {
                 .auth-modal {
-                    padding: 16px 12px 12px 12px;
-                    max-width: 280px;
+                    padding: 16px 10px 12px 10px;
+                    max-width: 300px;
                 }
                 
                 .auth-pin-dot,
-                .auth-btn {
+                .auth-btn,
+                .auth-btn-left,
+                .auth-btn-right {
                     width: 36px;
                     height: 36px;
                     font-size: 1rem;
@@ -757,6 +775,13 @@ var AuthPin = (function() {
                     line-height: 32px;
                 }
                 
+                .auth-btn-backspace {
+                    flex: 0 0 78px;
+                    width: 78px;
+                    height: 36px;
+                    font-size: 0.9rem;
+                }
+                
                 .auth-row {
                     gap: 4px;
                 }
@@ -764,20 +789,18 @@ var AuthPin = (function() {
                 .auth-pin-dots {
                     gap: 4px;
                 }
-                
-                .auth-btn-backspace {
-                    max-width: 40px;
-                }
             }
             
             @media (min-width: 768px) {
                 .auth-modal {
-                    max-width: 360px;
-                    padding: 24px 20px 18px 20px;
+                    max-width: 380px;
+                    padding: 24px 16px 18px 16px;
                 }
                 
                 .auth-pin-dot,
-                .auth-btn {
+                .auth-btn,
+                .auth-btn-left,
+                .auth-btn-right {
                     width: 48px;
                     height: 48px;
                     font-size: 1.3rem;
@@ -786,6 +809,13 @@ var AuthPin = (function() {
                 
                 .auth-pin-dot {
                     line-height: 44px;
+                }
+                
+                .auth-btn-backspace {
+                    flex: 0 0 102px;
+                    width: 102px;
+                    height: 48px;
+                    font-size: 1.2rem;
                 }
             }
         `;
@@ -818,15 +848,13 @@ window.AuthPin = AuthPin;
 
 /*
 FILE: js/auth-pin.js
-VERSION: 2.04
-KEY CHANGES from v2.03:
-   - REDESIGNED: Complete UI overhaul - symmetrical trapezoid layout
-   - LAYOUT: [1] [●][●][●][●] [0] / [2] [⌫] [9] / [3][4][5][6][7][8]
-   - ALIGNMENT: 1,2,3 vertically aligned left | 0,9,8 vertically aligned right
-   - PIN BOXES: Same size as buttons (44px), aligned with 4,5,6,7
-   - BORDER: Normal visible border (2px solid #2a5a2a)
-   - CLEAN: Minimal, sleek, dark theme with green accent
-   - PRESERVED: All functionality from v2.03 unchanged
+VERSION: 2.05
+KEY CHANGES from v2.04:
+   - FIXED: "2" aligned with "1" and "3" (left edge)
+   - FIXED: "9" aligned with "0" and "8" (right edge)
+   - CHANGED: DEL button now double width (88px)
+   - CLEANER: Proper symmetrical trapezoid layout
+   - PRESERVED: All functionality unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
 */
