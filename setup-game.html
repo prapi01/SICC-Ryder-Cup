@@ -1,13 +1,15 @@
 <!--
 FILE: setup-game.html
-VERSION: 1.58
-KEY CHANGES from v1.57:
-   - FIXED: initializeEmptyResults() now includes displayT1, displayT2, displayStrk arrays
-   - FIXED: results.game2.displayT1 now initialized as Array of 18 "AS"
-   - FIXED: results.game2.displayT2 now initialized as Array of 18 "AS"
-   - FIXED: results.game3.displayStrk now initialized as Array of 18 "AS"
-   - PRESERVED: All UI styling and layout from v1.55 unchanged
-   - PRESERVED: All functionality from v1.57 unchanged
+VERSION: 1.59
+KEY CHANGES from v1.58:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18).fill(null))
+     - f1IntraMatches: {} (was new Array(18).fill(null))
+     - f2IntraMatches: {} (was new Array(18).fill(null))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: All UI styling and layout from v1.58 unchanged
+   - PRESERVED: All functionality from v1.58 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
@@ -624,11 +626,11 @@ STATUS: Ready for integration
     <div class="loading">Loading</div>
 </div>
 <div class="device-tag" id="deviceTag">---</div>
-<div class="version-tag">v1.58</div>
+<div class="version-tag">v1.59</div>
 
 <script>
 // FILE: setup-game.html
-// VERSION: 1.58
+// VERSION: 1.59
 
 if (typeof AppSettings !== 'undefined') {
     AppSettings.init();
@@ -636,8 +638,8 @@ if (typeof AppSettings !== 'undefined') {
     console.warn("[SETUP-GAME] AppSettings not loaded, zoom may be enabled by default");
 }
 
-var VERSION = "1.58";
-var CACHE_KEY = "setup_game_version_v158";
+var VERSION = "1.59";
+var CACHE_KEY = "setup_game_version_v159";
 
 var storedVersion = localStorage.getItem(CACHE_KEY);
 if (storedVersion !== VERSION) {
@@ -861,16 +863,17 @@ function rotateDataString(naturalData, startingHole) {
 }
 
 // ============================================================
-// v1.58 FIX: initializeEmptyResults with ALL required fields
-// INCLUDING displayT1, displayT2, displayStrk
+// v1.59 FIX: initializeEmptyResults with OBJECTS for nested data
+// Firestore does NOT support nested arrays (arrays inside arrays)
+// Using objects: matchResults[0] works the same as array[0]
 // ============================================================
 function initializeEmptyResults() {
     return {
         version: 1,
-        // Cross-flight match tracking
-        f1IntraMatches: new Array(18).fill(null),
-        f2IntraMatches: new Array(18).fill(null),
-        matchResults: new Array(18).fill(null),
+        // Cross-flight match tracking - v1.59: Objects instead of arrays
+        f1IntraMatches: {},               // Object with position keys (was new Array(18).fill(null))
+        f2IntraMatches: {},               // Object with position keys (was new Array(18).fill(null))
+        matchResults: {},                 // Object with position keys (was new Array(18).fill(null))
         clinchedAt: {},
         // Game 1: Match game
         game1: {
@@ -890,7 +893,6 @@ function initializeEmptyResults() {
             },
             pointsA: new Array(18).fill(1),
             pointsB: new Array(18).fill(1),
-            // v1.58 FIX: Added displayT1 and displayT2
             displayT1: new Array(18).fill("AS"),
             displayT2: new Array(18).fill("AS")
         },
@@ -901,7 +903,6 @@ function initializeEmptyResults() {
             nettB: new Array(18).fill(0),
             pointsA: new Array(18).fill(0.5),
             pointsB: new Array(18).fill(0.5),
-            // v1.58 FIX: Added displayStrk
             displayStrk: new Array(18).fill("AS")
         },
         // TR (Total Result)
@@ -1459,13 +1460,16 @@ function proceedWithCommit() {
 }
 
 // ============================================================
-// v1.58 FIX: createNewGame with ALL required fields
+// v1.59 FIX: createNewGame with OBJECTS for nested results
 // ============================================================
 function createNewGame(anchorPlayer) {
     var naturalData = generateDefaultDataNatural(state.selectedCourseData.par);
     var rotatedData = rotateDataString(naturalData, state.startingHole);
     var emptyResults = initializeEmptyResults();
     
+    console.log("[CREATE-GAME] emptyResults.matchResults:", emptyResults.matchResults);
+    console.log("[CREATE-GAME] emptyResults.f1IntraMatches:", emptyResults.f1IntraMatches);
+    console.log("[CREATE-GAME] emptyResults.f2IntraMatches:", emptyResults.f2IntraMatches);
     console.log("[CREATE-GAME] emptyResults.game2.displayT1:", emptyResults.game2.displayT1);
     console.log("[CREATE-GAME] emptyResults.game2.displayT2:", emptyResults.game2.displayT2);
     console.log("[CREATE-GAME] emptyResults.game3.displayStrk:", emptyResults.game3.displayStrk);
@@ -1494,6 +1498,7 @@ function createNewGame(anchorPlayer) {
         gameStarted: false
     };
     
+    console.log("[CREATE-GAME] Game data prepared with results.matchResults:", gameData.results.matchResults);
     console.log("[CREATE-GAME] Game data prepared with results.game2.displayT1:", gameData.results.game2.displayT1);
     console.log("[CREATE-GAME] Game data prepared with results.game2.displayT2:", gameData.results.game2.displayT2);
     console.log("[CREATE-GAME] Game data prepared with results.game3.displayStrk:", gameData.results.game3.displayStrk);
@@ -1516,7 +1521,7 @@ function createNewGame(anchorPlayer) {
 }
 
 // ============================================================
-// v1.58 FIX: updateExistingGame preserves all fields
+// v1.59 FIX: updateExistingGame preserves OBJECTS for nested results
 // ============================================================
 function updateExistingGame(anchorPlayer) {
     db.collection("scheduledGames").doc(state.editingGameId).get()
@@ -1562,6 +1567,7 @@ function updateExistingGame(anchorPlayer) {
                 savedHoles: savedHoles
             };
             
+            console.log("[UPDATE-GAME] Update payload results.matchResults:", updatePayload.results?.matchResults);
             console.log("[UPDATE-GAME] Update payload preserving results.game2.displayT1:", updatePayload.results?.game2?.displayT1);
             console.log("[UPDATE-GAME] Update payload preserving results.game2.displayT2:", updatePayload.results?.game2?.displayT2);
             console.log("[UPDATE-GAME] Update payload preserving results.game3.displayStrk:", updatePayload.results?.game3?.displayStrk);
@@ -1578,7 +1584,7 @@ function updateExistingGame(anchorPlayer) {
                 updatePayload.lastSyncedPosition = -1;
                 updatePayload.savedHoles = { "1": [], "2": [] };
                 updatePayload.gameStarted = false;
-                console.log("[UPDATE-GAME] Course changed - reset results with displayT1, displayT2, displayStrk");
+                console.log("[UPDATE-GAME] Course changed - reset results with matchResults, f1IntraMatches, f2IntraMatches as objects");
             }
             
             var startingHoleChanged = (existingData.startingHole !== state.startingHole);
@@ -1596,7 +1602,7 @@ function updateExistingGame(anchorPlayer) {
                         updatePayload.lastSyncedPosition = -1;
                         updatePayload.savedHoles = { "1": [], "2": [] };
                         updatePayload.gameStarted = false;
-                        console.log("[UPDATE-GAME] Starting hole changed - reset results with displayT1, displayT2, displayStrk");
+                        console.log("[UPDATE-GAME] Starting hole changed - reset results with matchResults, f1IntraMatches, f2IntraMatches as objects");
                         
                         updateDefaultPlayers(state.players, function(success) {
                             if (success) {
@@ -1973,14 +1979,16 @@ SessionManager.initSession("setup-game.html", "admin.html", function(session) {
 
 <!--
 FILE: setup-game.html
-VERSION: 1.58
-KEY CHANGES from v1.57:
-   - FIXED: initializeEmptyResults() now includes displayT1, displayT2, displayStrk arrays
-   - FIXED: results.game2.displayT1 now initialized as Array of 18 "AS"
-   - FIXED: results.game2.displayT2 now initialized as Array of 18 "AS"
-   - FIXED: results.game3.displayStrk now initialized as Array of 18 "AS"
-   - PRESERVED: All UI styling and layout from v1.55 unchanged
-   - PRESERVED: All functionality from v1.57 unchanged
+VERSION: 1.59
+KEY CHANGES from v1.58:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18).fill(null))
+     - f1IntraMatches: {} (was new Array(18).fill(null))
+     - f2IntraMatches: {} (was new Array(18).fill(null))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: All UI styling and layout from v1.58 unchanged
+   - PRESERVED: All functionality from v1.58 unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/modal.js, js/auth-pin.js, js/waiting-screen.js, js/settings.js
 STATUS: Ready for integration
 -->
