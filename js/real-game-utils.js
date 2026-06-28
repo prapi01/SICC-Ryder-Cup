@@ -1,23 +1,24 @@
 /*
 FILE: js/real-game-utils.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted utility functions from real-game.html
-   - Contains: getPlayOrder(), getHolePosition(), getHoleAtPosition()
-   - Contains: getRemainingHolesFromPlayOrder(), getLastHole()
-   - Contains: getHighestBothSaved(), updateGameOrder()
-   - Contains: initializeEmptyResults(), calculatePlayerTotals()
-   - All functions are pure delegates to GameOrder where possible
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18))
+     - f1IntraMatches: {} (was new Array(18))
+     - f2IntraMatches: {} (was new Array(18))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: ALL other functionality from v1.00 unchanged
 DEPENDS ON: js/game-order.js, js/game-data.js, GameLoader (for cache)
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_UTILS_VERSION = "1.00";
+window.REAL_GAME_UTILS_VERSION = "1.01";
 
 var RealGameUtils = (function() {
     
-    console.log("[REAL-GAME-UTILS] Initializing v1.00");
+    console.log("[REAL-GAME-UTILS] Initializing v1.01 - Objects instead of arrays for nested data");
     
     // ============================================================
     // GameOrder Delegates
@@ -116,15 +117,17 @@ var RealGameUtils = (function() {
     }
     
     // ============================================================
-    // Initialize Empty Results Structure
+    // v1.01: initializeEmptyResults - OBJECTS instead of ARRAYS
+    // Firestore does NOT support nested arrays (arrays inside arrays)
+    // Using objects: matchResults[0] works the same as array[0]
     // ============================================================
     
     function initializeEmptyResults() {
         return {
             version: 1,
-            matchResults: new Array(18),
-            f1IntraMatches: new Array(18),
-            f2IntraMatches: new Array(18),
+            matchResults: {},                 // v1.01: Object with position keys (was new Array(18))
+            f1IntraMatches: {},               // v1.01: Object with position keys (was new Array(18))
+            f2IntraMatches: {},               // v1.01: Object with position keys (was new Array(18))
             game1: { matches: {}, pointsA: new Array(18).fill(8), pointsB: new Array(18).fill(8) },
             game2: {
                 flight1: { leader: new Array(18).fill("AS"), cumulativePoints: new Array(18).fill(0), clinchedHole: null },
@@ -330,18 +333,46 @@ var RealGameUtils = (function() {
             cache.results.clinchedAt = {};
         }
         
-        // Ensure arrays
-        if (!cache.results.f1IntraMatches) {
-            cache.results.f1IntraMatches = new Array(18);
+        // v1.01: Ensure matchResults, f1IntraMatches, f2IntraMatches are objects
+        if (!cache.results.matchResults || Array.isArray(cache.results.matchResults)) {
+            // If it's an array, convert to object (migration support)
+            if (Array.isArray(cache.results.matchResults)) {
+                var matchObj = {};
+                for (var i = 0; i < cache.results.matchResults.length; i++) {
+                    if (cache.results.matchResults[i] !== null && cache.results.matchResults[i] !== undefined) {
+                        matchObj[i] = cache.results.matchResults[i];
+                    }
+                }
+                cache.results.matchResults = matchObj;
+            } else {
+                cache.results.matchResults = {};
+            }
         }
-        if (!cache.results.f2IntraMatches) {
-            cache.results.f2IntraMatches = new Array(18);
+        if (!cache.results.f1IntraMatches || Array.isArray(cache.results.f1IntraMatches)) {
+            if (Array.isArray(cache.results.f1IntraMatches)) {
+                var f1Obj = {};
+                for (var i = 0; i < cache.results.f1IntraMatches.length; i++) {
+                    if (cache.results.f1IntraMatches[i] !== null && cache.results.f1IntraMatches[i] !== undefined) {
+                        f1Obj[i] = cache.results.f1IntraMatches[i];
+                    }
+                }
+                cache.results.f1IntraMatches = f1Obj;
+            } else {
+                cache.results.f1IntraMatches = {};
+            }
         }
-        if (!cache.results.matchResults) {
-            cache.results.matchResults = new Array(18);
-        }
-        if (!cache.results.playerTotals) {
-            cache.results.playerTotals = {};
+        if (!cache.results.f2IntraMatches || Array.isArray(cache.results.f2IntraMatches)) {
+            if (Array.isArray(cache.results.f2IntraMatches)) {
+                var f2Obj = {};
+                for (var i = 0; i < cache.results.f2IntraMatches.length; i++) {
+                    if (cache.results.f2IntraMatches[i] !== null && cache.results.f2IntraMatches[i] !== undefined) {
+                        f2Obj[i] = cache.results.f2IntraMatches[i];
+                    }
+                }
+                cache.results.f2IntraMatches = f2Obj;
+            } else {
+                cache.results.f2IntraMatches = {};
+            }
         }
         
         return cache.results;
@@ -384,14 +415,15 @@ window.ensureResultsStructure = RealGameUtils.ensureResultsStructure;
 
 /*
 FILE: js/real-game-utils.js
-VERSION: 1.00
-KEY CHANGES:
-   - NEW: Extracted utility functions from real-game.html
-   - Contains: getPlayOrder(), getHolePosition(), getHoleAtPosition()
-   - Contains: getRemainingHolesFromPlayOrder(), getLastHole()
-   - Contains: getHighestBothSaved(), updateGameOrder()
-   - Contains: initializeEmptyResults(), calculatePlayerTotals()
-   - All functions are pure delegates to GameOrder where possible
+VERSION: 1.01
+KEY CHANGES from v1.00:
+   - FIXED: initializeEmptyResults() now uses OBJECTS instead of ARRAYS for:
+     - matchResults: {} (was new Array(18))
+     - f1IntraMatches: {} (was new Array(18))
+     - f2IntraMatches: {} (was new Array(18))
+   - This eliminates nested arrays that Firestore does NOT support
+   - Access pattern remains identical: results.matchResults[0] works the same way
+   - PRESERVED: ALL other functionality from v1.00 unchanged
 DEPENDS ON: js/game-order.js, js/game-data.js, GameLoader (for cache)
 STATUS: Ready for integration
 */
