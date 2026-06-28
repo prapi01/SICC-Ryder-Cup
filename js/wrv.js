@@ -1,17 +1,17 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: verifyData() now compares ONLY the fields in the WRV payload
-   - REMOVED: FULL IMR vs FULL FS Record comparison (was always failing)
-   - ADDED: getWrittenSubset() function to extract only payload fields from Firestore
-   - This ensures WRV verification passes for BOTH flight data and results writes
-   - PRESERVED: WRV.recover() unchanged
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: deepEqual() now sorts object keys before comparing
+   - This ensures key order does NOT affect the comparison result
+   - Firestore does NOT preserve insertion order, so sorting is required
+   - Fixes f1IntraMatches[0] and playerTotals mismatches
+   - PRESERVED: All other functionality from v1.07
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.07";
+window.WRV_VERSION = "1.08";
 
 var WRV = (function() {
     
@@ -25,6 +25,7 @@ var WRV = (function() {
     
     // ============================================================
     // Deep comparison of two objects
+    // Keys are SORTED before comparison (Firestore doesn't preserve order)
     // ============================================================
     
     function deepEqual(a, b) {
@@ -59,8 +60,9 @@ var WRV = (function() {
             return true;
         }
         
-        var keysA = Object.keys(a);
-        var keysB = Object.keys(b);
+        // v1.08: Sort keys before comparing (Firestore doesn't preserve order)
+        var keysA = Object.keys(a).sort();
+        var keysB = Object.keys(b).sort();
         if (keysA.length !== keysB.length) return false;
         
         for (var k = 0; k < keysA.length; k++) {
@@ -365,13 +367,13 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.07
-KEY CHANGES from v1.06:
-   - FIXED: verifyData() now compares ONLY the fields in the WRV payload
-   - REMOVED: FULL IMR vs FULL FS Record comparison (was always failing)
-   - ADDED: getWrittenSubset() function to extract only payload fields from Firestore
-   - This ensures WRV verification passes for BOTH flight data and results writes
-   - PRESERVED: WRV.recover() unchanged
+VERSION: 1.08
+KEY CHANGES from v1.07:
+   - FIXED: deepEqual() now sorts object keys before comparing
+   - This ensures key order does NOT affect the comparison result
+   - Firestore does NOT preserve insertion order, so sorting is required
+   - Fixes f1IntraMatches[0] and playerTotals mismatches
+   - PRESERVED: All other functionality from v1.07
 DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
