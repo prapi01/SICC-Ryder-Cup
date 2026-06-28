@@ -1,17 +1,18 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.09
-KEY CHANGES from v4.08:
-   - REMOVED: WRV.update() call from saveCurrentHole() (lines ~790-820)
-   - This eliminates the competing WRV write that was causing flight data to be overwritten
-   - Only the consolidated WRV write in real-game-save.js now writes to Firestore
-   - PRESERVED: Local data update, cache update, notifyDataChanged(), immediate callback
-   - PRESERVED: ALL other functionality from v4.08 unchanged
-DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js (but WRV not called directly anymore)
+VERSION: 4.10
+KEY CHANGES from v4.09:
+   - FIXED: resetFullGame() now uses NESTED structure for flight data (f1.d inside f1 object)
+   - This aligns with the standard Firestore record structure that the UI reads
+   - PREVIOUS: Flat structure (f1.d, f1.se, f1.x at top-level) caused data inconsistency
+   - PRESERVED: ALL other functionality from v4.09 unchanged
+   - PRESERVED: saveCurrentHole() fallback still uses flat (low priority, fallback only)
+   - PRESERVED: forceRefresh() and loadGameFromSession() already read nested correctly
+DEPENDS ON: js/game-order.js, Firebase Firestore
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.09
+// FILE: js/game-data.js - VERSION 4.10
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -480,6 +481,10 @@ var GameData = (function() {
         };
     }
     
+    // ============================================================
+    // v4.10: resetFullGame - NESTED structure for flight data
+    // ============================================================
+    
     function resetFullGame(gameIdParam, startingHoleParam, courseParArray, callback) {
         if (!gameIdParam) {
             console.error("resetFullGame: No gameId provided");
@@ -493,13 +498,18 @@ var GameData = (function() {
         
         var collection = isPreviewSandbox ? "previewSandboxes" : "scheduledGames";
         
+        // v4.10: NESTED structure - flight data inside f1/f2 objects
         var resetData = {
-            "f1.d": rotatedData,
-            "f1.se": false,
-            "f1.x": false,
-            "f2.d": rotatedData,
-            "f2.se": false,
-            "f2.x": false,
+            "f1": {
+                d: rotatedData,
+                se: false,
+                x: false
+            },
+            "f2": {
+                d: rotatedData,
+                se: false,
+                x: false
+            },
             "locks.f1": null,
             "locks.f2": null,
             "currentHoleF1": 1,
@@ -961,7 +971,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v4.09: WRV call removed from saveCurrentHole
+    // Public API - v4.10: resetFullGame uses nested structure
     // ============================================================
     
     return {
@@ -1025,13 +1035,14 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.09
-KEY CHANGES from v4.08:
-   - REMOVED: WRV.update() call from saveCurrentHole() (lines ~790-820)
-   - This eliminates the competing WRV write that was causing flight data to be overwritten
-   - Only the consolidated WRV write in real-game-save.js now writes to Firestore
-   - PRESERVED: Local data update, cache update, notifyDataChanged(), immediate callback
-   - PRESERVED: ALL other functionality from v4.08 unchanged
+VERSION: 4.10
+KEY CHANGES from v4.09:
+   - FIXED: resetFullGame() now uses NESTED structure for flight data (f1.d inside f1 object)
+   - This aligns with the standard Firestore record structure that the UI reads
+   - PREVIOUS: Flat structure (f1.d, f1.se, f1.x at top-level) caused data inconsistency
+   - PRESERVED: ALL other functionality from v4.09 unchanged
+   - PRESERVED: saveCurrentHole() fallback still uses flat (low priority, fallback only)
+   - PRESERVED: forceRefresh() and loadGameFromSession() already read nested correctly
 DEPENDS ON: js/game-order.js, Firebase Firestore
 STATUS: Ready for integration
 */
