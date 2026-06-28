@@ -1,13 +1,12 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - REFACTORED: Removed all embedded COPY, COMPARE, DELETE logic from HTML
-   - REFACTORED: Now uses separate JS files for each tab
-   - ADDED: js/util-delete-record.js script tag
-   - PRESERVED: All UI structure, tab switching, event bindings
-   - PRESERVED: All VALIDATE tab functionality (uses js/util-validate-record.js and js/util-validate-ui.js)
-   - CLEANER: HTML is now ~50% smaller
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - ADDED: Info button in each tab header (COPY, COMPARE, VALIDATE, DELETE)
+   - ADDED: Full-page overlay CSS for information display
+   - ADDED: showCopyInfoGuide(), showCompareInfoGuide(), showValidateInfoGuide(), showDeleteInfoGuide() functions
+   - ADDED: Close button functionality for info overlays
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js
 STATUS: Ready for integration
 -->
@@ -134,6 +133,276 @@ STATUS: Ready for integration
         .tab-btn .tab-icon { margin-right: 8px; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
+        
+        /* ============================================================
+           INFO BUTTON & OVERLAY STYLES
+           ============================================================ */
+        
+        .tab-header-with-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .tab-header-with-info .tab-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        
+        .tab-header-with-info .tab-title.danger {
+            color: #ff6b6b;
+        }
+        
+        .btn-info-guide {
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #4a8af4;
+            background: rgba(74, 138, 244, 0.1);
+            color: #4a8af4;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            font-family: inherit;
+        }
+        
+        .btn-info-guide:hover {
+            background: rgba(74, 138, 244, 0.2);
+            border-color: #4a8af4;
+        }
+        
+        .btn-info-guide:active {
+            transform: scale(0.95);
+        }
+        
+        /* Info Overlay */
+        .info-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50000;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            animation: infoFadeIn 0.3s ease-out;
+        }
+        
+        .info-card {
+            background: #1a1a1a;
+            border-radius: 28px;
+            padding: 32px;
+            max-width: 750px;
+            width: 95%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 2px solid #4caf50;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
+            animation: infoSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        .info-card::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .info-card::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+        
+        .info-card::-webkit-scrollbar-thumb {
+            background: #2a5a2a;
+            border-radius: 4px;
+        }
+        
+        .info-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #2a2a2a;
+            padding-bottom: 12px;
+        }
+        
+        .info-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        
+        .info-close-btn {
+            padding: 8px 28px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+        
+        .info-close-btn:hover {
+            background: rgba(76, 175, 80, 0.2);
+        }
+        
+        .info-section {
+            margin-bottom: 16px;
+        }
+        
+        .info-section-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #4caf50;
+            margin-bottom: 4px;
+        }
+        
+        .info-section-title.danger {
+            color: #ff6b6b;
+        }
+        
+        .info-text {
+            font-size: 0.85rem;
+            color: #ccc;
+            line-height: 1.6;
+        }
+        
+        .info-text strong {
+            color: #4caf50;
+        }
+        
+        .info-text .highlight {
+            color: #ffaa44;
+        }
+        
+        .info-text .danger-text {
+            color: #ff6b6b;
+        }
+        
+        .info-steps {
+            padding-left: 20px;
+            margin: 4px 0 8px 0;
+        }
+        
+        .info-steps li {
+            font-size: 0.85rem;
+            color: #ccc;
+            line-height: 1.6;
+            margin-bottom: 2px;
+        }
+        
+        .info-steps li code {
+            background: #0a0a0a;
+            padding: 1px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #4caf50;
+            font-family: monospace;
+        }
+        
+        .info-warnings {
+            padding-left: 20px;
+            margin: 4px 0 8px 0;
+        }
+        
+        .info-warnings li {
+            font-size: 0.85rem;
+            color: #ff6b6b;
+            line-height: 1.6;
+            margin-bottom: 2px;
+        }
+        
+        .info-divider {
+            border: none;
+            border-top: 1px solid #2a2a2a;
+            margin: 16px 0;
+        }
+        
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            margin: 8px 0;
+        }
+        
+        .info-table th {
+            text-align: left;
+            color: #4caf50;
+            padding: 6px 8px;
+            border-bottom: 1px solid #2a2a2a;
+            font-weight: 600;
+        }
+        
+        .info-table td {
+            color: #ccc;
+            padding: 6px 8px;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        
+        .info-table .field-name {
+            color: #ffaa44;
+            font-family: monospace;
+        }
+        
+        .info-table .field-desc {
+            color: #aaa;
+        }
+        
+        .info-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.65rem;
+            font-weight: 600;
+        }
+        
+        .info-badge.green {
+            background: #0a2a0a;
+            color: #4caf50;
+            border: 1px solid #2a5a2a;
+        }
+        
+        .info-badge.red {
+            background: #2a0a0a;
+            color: #ff6b6b;
+            border: 1px solid #5a2a2a;
+        }
+        
+        .info-badge.blue {
+            background: #0a1a2a;
+            color: #4a8af4;
+            border: 1px solid #2a4a6a;
+        }
+        
+        .info-badge.gold {
+            background: #2a2a0a;
+            color: #ffaa44;
+            border: 1px solid #5a5a2a;
+        }
+        
+        @keyframes infoFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes infoSlideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.97);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
         
         /* Environment selector buttons - small version */
         .env-selector {
@@ -928,6 +1197,13 @@ STATUS: Ready for integration
     <!-- TAB: COPY -->
     <!-- ============================================================ -->
     <div class="tab-content active" id="tabCopy">
+        
+        <!-- INFO BUTTON - COPY -->
+        <div class="tab-header-with-info">
+            <span class="tab-title">📝 COPY</span>
+            <button class="btn-info-guide" onclick="showCopyInfoGuide()">ℹ️ Information</button>
+        </div>
+        
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
             <div class="env-row">
@@ -1032,6 +1308,13 @@ STATUS: Ready for integration
     <!-- TAB: COMPARE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabCompare">
+        
+        <!-- INFO BUTTON - COMPARE -->
+        <div class="tab-header-with-info">
+            <span class="tab-title">🔍 COMPARE</span>
+            <button class="btn-info-guide" onclick="showCompareInfoGuide()">ℹ️ Information</button>
+        </div>
+        
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
             <div class="env-row">
@@ -1116,6 +1399,13 @@ STATUS: Ready for integration
     <!-- TAB: VALIDATE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabValidate">
+        
+        <!-- INFO BUTTON - VALIDATE -->
+        <div class="tab-header-with-info">
+            <span class="tab-title">🔬 VALIDATE</span>
+            <button class="btn-info-guide" onclick="showValidateInfoGuide()">ℹ️ Information</button>
+        </div>
+        
         <div class="card">
             <div class="card-title">🌍 ENVIRONMENT</div>
             <div class="env-row">
@@ -1227,6 +1517,13 @@ STATUS: Ready for integration
     <!-- TAB: DELETE -->
     <!-- ============================================================ -->
     <div class="tab-content" id="tabDelete">
+        
+        <!-- INFO BUTTON - DELETE -->
+        <div class="tab-header-with-info">
+            <span class="tab-title danger">🗑️ DELETE</span>
+            <button class="btn-info-guide" onclick="showDeleteInfoGuide()">ℹ️ Information</button>
+        </div>
+        
         <div class="card">
             <div class="card-title danger">🌍 ENVIRONMENT</div>
             <div class="env-row">
@@ -1290,15 +1587,15 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.11</div>
+<div class="version-tag">v1.12</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.11
+// VERSION: 1.12
 // ============================================================
 
-var APP_VERSION = "1.11";
+var APP_VERSION = "1.12";
 
 // Firebase Configurations
 var PROD_CONFIG = {
@@ -1435,6 +1732,15 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
         }
     });
 });
+
+// ============================================================
+// INFO GUIDE FUNCTIONS
+// These functions are defined in their respective JS files:
+// - showCopyInfoGuide()    in util-copy-record.js
+// - showCompareInfoGuide() in util-compare-record.js
+// - showValidateInfoGuide() in util-validate-record.js
+// - showDeleteInfoGuide()  in util-delete-record.js
+// ============================================================
 
 // ============================================================
 // COPY TAB: ENVIRONMENT HANDLERS (delegates to util-copy-record.js)
@@ -1726,7 +2032,7 @@ setCompareRightEnvironment('PROD');
 // Set up DELETE tab environment
 setDeleteEnvironment('PROD');
 
-log('Record Management v1.11 loaded', 'success');
+log('Record Management v1.12 loaded', 'success');
 log('=== INSTRUCTIONS ===', 'info');
 log('1. Select environments for each tab (PROD/DEV)', 'info');
 log('2. COPY tab: copy records between collections and environments', 'info');
@@ -1749,14 +2055,13 @@ setTimeout(function() {
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.11
-KEY CHANGES from v1.10:
-   - REFACTORED: Removed all embedded COPY, COMPARE, DELETE logic from HTML
-   - REFACTORED: Now uses separate JS files for each tab
-   - ADDED: js/util-delete-record.js script tag
-   - PRESERVED: All UI structure, tab switching, event bindings
-   - PRESERVED: All VALIDATE tab functionality (uses js/util-validate-record.js and js/util-validate-ui.js)
-   - CLEANER: HTML is now ~50% smaller
+VERSION: 1.12
+KEY CHANGES from v1.11:
+   - ADDED: Info button in each tab header (COPY, COMPARE, VALIDATE, DELETE)
+   - ADDED: Full-page overlay CSS for information display
+   - ADDED: showCopyInfoGuide(), showCompareInfoGuide(), showValidateInfoGuide(), showDeleteInfoGuide() functions
+   - ADDED: Close button functionality for info overlays
+   - PRESERVED: All existing functionality unchanged
 DEPENDS ON: js/firebase-config.js, js/session.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js
 STATUS: Ready for integration
 -->
