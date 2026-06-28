@@ -1,22 +1,23 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.34
-KEY CHANGES from v1.33:
-   - FIXED: Flight data now sourced from cache.f1DataString/cache.f2DataString (fresh)
-   - FIXED: f1.se/f2.se now sourced from cache.flight1Data.se/flight2Data.se
-   - This ensures the consolidated WRV payload uses the SAME data the UI displays
-   - PREVIOUS: GameData.getFlightData() could return stale data
-   - PRESERVED: ALL other functionality from v1.33
+VERSION: 1.35
+KEY CHANGES from v1.34:
+   - FIXED: Flight data now written as NESTED structure (f1.d, f1.se, f1.x inside f1 object)
+   - FIXED: writeNewHoleData() now writes flight data as nested objects
+   - FIXED: writeSingleHoleToFirestore() now writes flight data as nested objects
+   - This aligns with the standard Firestore record structure that the UI reads
+   - PREVIOUS: Flat structure (f1.d, f1.se, f1.x at top-level) caused data corruption
+   - PRESERVED: ALL other functionality from v1.34
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.34";
+window.REAL_GAME_SAVE_VERSION = "1.35";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.34 - Flight data from cache");
+    console.log("[REAL-GAME-SAVE] Initializing v1.35 - Nested flight data structure");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -316,7 +317,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore - v1.33: No WRV here, just prepare payload
+    // writeSingleHoleToFirestore - v1.35: Nested flight data structure
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -389,8 +390,24 @@ var RealGameSave = (function() {
         updatePayload["lastSyncedPosition"] = lastSyncedPos;
         if(isTarget) console.log(`[DEBUG-WRITE] Added lastSyncedPosition=${lastSyncedPos} to payload`);
         
-        // v1.33: Do NOT call wruBackground here - defer to caller
-        // Return the payload for consolidated write
+        // v1.35: Add flight data as NESTED structure (f1.d, f1.se, f1.x inside f1 object)
+        // This is the STANDARD format that the UI reads from
+        if (cache.f1DataString) {
+            updatePayload["f1"] = {
+                d: cache.f1DataString,
+                se: cache.flight1Data?.se || false,
+                x: cache.flight1Data?.x || false
+            };
+            if(isTarget) console.log(`[DEBUG-WRITE] Added f1 nested: d=${cache.f1DataString.substring(0, 30)}..., se=${cache.flight1Data?.se || false}`);
+        }
+        if (cache.f2DataString) {
+            updatePayload["f2"] = {
+                d: cache.f2DataString,
+                se: cache.flight2Data?.se || false,
+                x: cache.flight2Data?.x || false
+            };
+            if(isTarget) console.log(`[DEBUG-WRITE] Added f2 nested: d=${cache.f2DataString.substring(0, 30)}..., se=${cache.flight2Data?.se || false}`);
+        }
         
         if(isTarget) {
             console.log(`[DEBUG-WRITE] Payload prepared (will be sent in consolidated write)`);
@@ -400,7 +417,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeNewHoleData - v1.34: Flight data from cache (fresh)
+    // writeNewHoleData - v1.35: Nested flight data structure
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache, renderAllCallback) {
@@ -668,7 +685,8 @@ var RealGameSave = (function() {
         cache.results.playerTotals = playerTotals;
         
         // ============================================================
-        // v1.34: BUILD PAYLOAD - Flight data from cache (fresh)
+        // v1.35: BUILD PAYLOAD - Flight data as NESTED structure
+        // This is the STANDARD format that the UI reads from
         // ============================================================
         var updatePayload = {};
         
@@ -700,23 +718,28 @@ var RealGameSave = (function() {
         }
         
         // ============================================================
-        // v1.34: FLIGHT DATA FROM CACHE (fresh) - NOT from GameData
-        // This ensures the payload uses the SAME data the UI is displaying
+        // v1.35: FLIGHT DATA AS NESTED STRUCTURE (STANDARD)
+        // Write BOTH flights as nested objects to ensure consistency
         // ============================================================
-        var flight = RealGameState.getEditableFlight();
-        var flightField = (flight === 1) ? "f1" : "f2";
-        var otherFlightField = (flight === 1) ? "f2" : "f1";
+        // Flight 1 - nested structure
+        if (cache.f1DataString) {
+            updatePayload["f1"] = {
+                d: cache.f1DataString,
+                se: cache.flight1Data?.se || false,
+                x: cache.flight1Data?.x || false
+            };
+            console.log(`[DEBUG-FLOW] --- f1 nested: d=${cache.f1DataString.substring(0, 30)}..., se=${cache.flight1Data?.se || false}`);
+        }
         
-        // Use cache for flight data (fresh, already updated by GameData.saveCurrentHole)
-        var flightDataString = (flight === 1) ? cache.f1DataString : cache.f2DataString;
-        var flightSaveEvent = (flight === 1) ? (cache.flight1Data?.se || false) : (cache.flight2Data?.se || false);
-        
-        updatePayload[flightField + ".d"] = flightDataString;
-        updatePayload[flightField + ".se"] = flightSaveEvent;
-        updatePayload[otherFlightField + ".x"] = true;
-        
-        console.log(`[DEBUG-FLOW] --- Flight data from cache: ${flightField}.d = ${flightDataString ? flightDataString.substring(0, 30) + '...' : 'undefined'}`);
-        console.log(`[DEBUG-FLOW] --- Flight data from cache: ${flightField}.se = ${flightSaveEvent}`);
+        // Flight 2 - nested structure
+        if (cache.f2DataString) {
+            updatePayload["f2"] = {
+                d: cache.f2DataString,
+                se: cache.flight2Data?.se || false,
+                x: cache.flight2Data?.x || false
+            };
+            console.log(`[DEBUG-FLOW] --- f2 nested: d=${cache.f2DataString.substring(0, 30)}..., se=${cache.flight2Data?.se || false}`);
+        }
         
         console.log(`[DEBUG-FLOW] --- PAYLOAD SUMMARY: ${Object.keys(updatePayload).length} fields`);
         console.log(`[DEBUG-FLOW] --- Has results: ${!!updatePayload["results"]}`);
@@ -724,7 +747,8 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- Has lastSyncedPosition: ${updatePayload["lastSyncedPosition"] !== undefined}`);
         console.log(`[DEBUG-FLOW] --- Has gameStarted: ${!!updatePayload["gameStarted"]}`);
         console.log(`[DEBUG-FLOW] --- Has currentHoleF1/F2: ${!!updatePayload["currentHoleF1"] || !!updatePayload["currentHoleF2"]}`);
-        console.log(`[DEBUG-FLOW] --- Has flight data: ${!!updatePayload["f1.d"] || !!updatePayload["f2.d"]}`);
+        console.log(`[DEBUG-FLOW] --- Has f1 nested: ${!!updatePayload["f1"]}`);
+        console.log(`[DEBUG-FLOW] --- Has f2 nested: ${!!updatePayload["f2"]}`);
         console.log(`[DEBUG-FLOW] =========================================`);
         console.log(`[DEBUG-FLOW] writeNewHoleData COMPLETE for hole ${holeNumber}`);
         console.log(`[DEBUG-FLOW] =========================================`);
@@ -890,7 +914,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // performSave - v1.33: Consolidated WRV write
+    // performSave - v1.35: Uses nested flight data structure
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -967,7 +991,7 @@ var RealGameSave = (function() {
                         
                         // ============================================================
                         // writeNewHoleData - Calculate all data, return payload
-                        // v1.34: Flight data sourced from cache (fresh)
+                        // v1.35: Uses nested flight data structure
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
@@ -1108,8 +1132,9 @@ var RealGameSave = (function() {
                         }
                         
                         // ============================================================
-                        // v1.33: CONSOLIDATED WRV WRITE - ONE WRV for ALL data
+                        // v1.35: CONSOLIDATED WRV WRITE - ONE WRV for ALL data
                         // This writes results, savedHoles, lastSyncedPosition, metadata, AND flight data
+                        // Flight data is now written as NESTED structure (f1.d, f1.se, f1.x inside f1)
                         // ============================================================
                         if (consolidatedPayload) {
                             console.log(`[DEBUG-SAVE] --- WRITING CONSOLIDATED PAYLOAD (ONE WRV) ---`);
@@ -1337,13 +1362,14 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.34
-KEY CHANGES from v1.33:
-   - FIXED: Flight data now sourced from cache.f1DataString/cache.f2DataString (fresh)
-   - FIXED: f1.se/f2.se now sourced from cache.flight1Data.se/flight2Data.se
-   - This ensures the consolidated WRV payload uses the SAME data the UI displays
-   - PREVIOUS: GameData.getFlightData() could return stale data
-   - PRESERVED: ALL other functionality from v1.33
+VERSION: 1.35
+KEY CHANGES from v1.34:
+   - FIXED: Flight data now written as NESTED structure (f1.d, f1.se, f1.x inside f1 object)
+   - FIXED: writeNewHoleData() now writes flight data as nested objects
+   - FIXED: writeSingleHoleToFirestore() now writes flight data as nested objects
+   - This aligns with the standard Firestore record structure that the UI reads
+   - PREVIOUS: Flat structure (f1.d, f1.se, f1.x at top-level) caused data corruption
+   - PRESERVED: ALL other functionality from v1.34
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
