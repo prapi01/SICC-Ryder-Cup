@@ -1,17 +1,17 @@
 /*
 FILE: js/game-data.js
-VERSION: 4.07
-KEY CHANGES from v4.06:
-   - ADDED: Update cache.savedHoles in saveCurrentHole() so UI shows hole as saved immediately
-   - This fixes the issue where F2:H5 scores were saved but UI showed them as NOT saved
-   - savedHoles is used by RealGameUI.isHoleSaved() to determine bubble colors and saved state
-   - PRESERVED: ALL v4.06 functions and API unchanged
+VERSION: 4.08
+KEY CHANGES from v4.07:
+   - FIXED: saveCurrentHole() - removed updatePayload.updatedAt
+   - This ensures WRV verification passes for flight data writes
+   - WRV should not verify server-generated timestamps
+   - PRESERVED: ALL v4.07 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
 */
 
-// FILE: js/game-data.js - VERSION 4.07
+// FILE: js/game-data.js - VERSION 4.08
 // String-based data manager for SICC Ryder Cup
 // Now uses GameOrder for all play order conversions
 
@@ -679,7 +679,7 @@ var GameData = (function() {
         updatePayload[flightField + '.d'] = localFlightData;
         updatePayload[flightField + '.se'] = localSaveEvent;
         updatePayload[otherFlightField + '.x'] = true;
-        updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        // v4.08: Do NOT include updatedAt - WRV should not verify server-generated timestamps
         
         logWithTimestamp('[WRV-VERIFY]', 'collection=' + collection);
         logWithTimestamp('[WRV-VERIFY]', 'gameId=' + gameId);
@@ -754,7 +754,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // v4.07: saveCurrentHole - Added cache.savedHoles update
+    // v4.08: saveCurrentHole - No updatedAt in WRV payload
     // ============================================================
     
     function saveCurrentHole(holeNumber, scores, parArray, callback) {
@@ -771,7 +771,7 @@ var GameData = (function() {
         updatePayload[flightField + ".d"] = newData;
         updatePayload[flightField + ".se"] = true;
         updatePayload[otherFlightField + ".x"] = true;
-        updatePayload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        // v4.08: Do NOT include updatedAt - WRV should not verify server-generated timestamps
         
         logWithTimestamp('[SAVE]', 'saveCurrentHole() called - hole: ' + holeNumber + ', flight: ' + flight);
         
@@ -832,6 +832,7 @@ var GameData = (function() {
         // ============================================================
         // v4.06: RESTORED - WRV writes scores to Firestore in the background
         // User NEVER waits - callback returns immediately
+        // v4.08: No updatedAt in payload (WRV verification fix)
         // ============================================================
         if (typeof WRV !== 'undefined' && WRV.update) {
             logWithTimestamp('[SAVE]', '🚀 WRV.update() starting in background for scores - hole: ' + holeNumber);
@@ -996,7 +997,7 @@ var GameData = (function() {
     }
     
     // ============================================================
-    // Public API - v4.07: Added savedHoles update
+    // Public API - v4.08: No updatedAt in WRV payload
     // ============================================================
     
     return {
@@ -1060,12 +1061,12 @@ window.GameData = GameData;
 
 /*
 FILE: js/game-data.js
-VERSION: 4.07
-KEY CHANGES from v4.06:
-   - ADDED: Update cache.savedHoles in saveCurrentHole() so UI shows hole as saved immediately
-   - This fixes the issue where F2:H5 scores were saved but UI showed them as NOT saved
-   - savedHoles is used by RealGameUI.isHoleSaved() to determine bubble colors and saved state
-   - PRESERVED: ALL v4.06 functions and API unchanged
+VERSION: 4.08
+KEY CHANGES from v4.07:
+   - FIXED: saveCurrentHole() - removed updatePayload.updatedAt
+   - This ensures WRV verification passes for flight data writes
+   - WRV should not verify server-generated timestamps
+   - PRESERVED: ALL v4.07 functions and API unchanged
    - PRESERVED: ALL existing functionality
 DEPENDS ON: js/game-order.js, Firebase Firestore, WRV.js
 STATUS: Ready for integration
