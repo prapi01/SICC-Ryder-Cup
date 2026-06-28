@@ -1,10 +1,10 @@
 /*
 FILE: js/auth-pin.js
-VERSION: 2.07
-KEY CHANGES from v2.06:
-   - FIXED: "2" now aligned with "1" and "3" (left edge)
-   - FIXED: "9" now aligned with "0" and "8" (right edge)
-   - CHANGED: Middle row uses justify-content: space-between for proper alignment
+VERSION: 2.08
+KEY CHANGES from v2.07:
+   - FIXED: "3" now aligned with "1" and "2" (left edge)
+   - FIXED: "8" now aligned with "0" and "9" (right edge)
+   - CHANGED: Bottom row uses space-between for proper alignment
    - PRESERVED: All functionality unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
@@ -125,7 +125,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Show PIN Modal - v2.07 Fixed Edge Alignment
+    // Show PIN Modal - v2.08 Fixed Bottom Row Alignment
     // ============================================================
     
     function showAuthModal(action, gameId, gameDate, onSuccess) {
@@ -161,7 +161,7 @@ var AuthPin = (function() {
                         <button class="auth-btn" data-digit="0">0</button>
                     </div>
                     
-                    <!-- Row 2: [2] [⌫] [9] - aligned left/right -->
+                    <!-- Row 2: [2] [⌫] [9] -->
                     <div class="auth-row auth-row-middle">
                         <button class="auth-btn" data-digit="2">2</button>
                         <button class="auth-btn auth-btn-backspace" id="authBackspaceBtn">⌫</button>
@@ -491,7 +491,7 @@ var AuthPin = (function() {
     }
     
     // ============================================================
-    // Inject Styles - v2.07 Fixed Edge Alignment
+    // Inject Styles - v2.08 Fixed Bottom Row Alignment
     // ============================================================
     
     function injectStyles() {
@@ -548,8 +548,9 @@ var AuthPin = (function() {
             }
             
             .auth-row-bottom {
-                justify-content: center;
-                gap: 6px;
+                justify-content: space-between;
+                gap: 2px;
+                padding: 0 0;
             }
             
             /* PIN Dots Container */
@@ -774,6 +775,10 @@ var AuthPin = (function() {
                     gap: 4px;
                 }
                 
+                .auth-row-bottom {
+                    gap: 1px;
+                }
+                
                 .auth-pin-dots {
                     gap: 4px;
                 }
@@ -834,11 +839,11 @@ window.AuthPin = AuthPin;
 
 /*
 FILE: js/auth-pin.js
-VERSION: 2.07
-KEY CHANGES from v2.06:
-   - FIXED: "2" now aligned with "1" and "3" (left edge)
-   - FIXED: "9" now aligned with "0" and "8" (right edge)
-   - CHANGED: Middle row uses justify-content: space-between for proper alignment
+VERSION: 2.08
+KEY CHANGES from v2.07:
+   - FIXED: "3" now aligned with "1" and "2" (left edge)
+   - FIXED: "8" now aligned with "0" and "9" (right edge)
+   - CHANGED: Bottom row uses space-between for proper alignment
    - PRESERVED: All functionality unchanged
 DEPENDS ON: None (pure DOM manipulation)
 STATUS: Ready for integration
