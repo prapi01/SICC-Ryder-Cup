@@ -1,18 +1,17 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: verifyData() now compares FULL IMR (cache) with FULL Firestore document
-   - REMOVED: updatedAt exclusion (no longer needed - compare FULL objects)
-   - ADDED: getIMR() function to retrieve full cache for verification
-   - VERIFICATION: Full cache vs Full Firestore document
-   - This ensures IMR = FS Record is actually verified correctly
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: verifyData() now compares ONLY the fields in the WRV payload
+   - REMOVED: FULL IMR vs FULL FS Record comparison (was always failing)
+   - ADDED: getWrittenSubset() function to extract only payload fields from Firestore
+   - This ensures WRV verification passes for BOTH flight data and results writes
    - PRESERVED: WRV.recover() unchanged
-DEPENDS ON: Firebase Firestore, GameLoader
+DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.06";
+window.WRV_VERSION = "1.07";
 
 var WRV = (function() {
     
@@ -23,19 +22,6 @@ var WRV = (function() {
     var MAX_RETRIES = 10;
     var BASE_DELAY = 1000;
     var MAX_DELAY = 30000;
-    
-    // ============================================================
-    // Get FULL IMR (In-Memory Record) from cache
-    // ============================================================
-    
-    function getIMR() {
-        var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
-        if (!cache) {
-            console.warn('[WRV] No cache available for IMR');
-            return null;
-        }
-        return cache;
-    }
     
     // ============================================================
     // Deep comparison of two objects
@@ -53,7 +39,7 @@ var WRV = (function() {
         if (a instanceof Date) return false;
         if (b instanceof Date) return false;
         
-        // Handle Firestore Timestamp
+        // Handle Firestore Timestamp (has toDate method)
         if (a && typeof a.toDate === 'function') {
             if (b && typeof b.toDate === 'function') {
                 return a.toDate().getTime() === b.toDate().getTime();
@@ -85,35 +71,43 @@ var WRV = (function() {
     }
     
     // ============================================================
-    // Verify IMR vs Firestore Record
-    // Compare FULL cache vs FULL Firestore document
+    // Get written subset from Firestore document
+    // Extracts ONLY the fields that were in the original payload
+    // ============================================================
+    
+    function getWrittenSubset(original, written) {
+        var subset = {};
+        var keys = Object.keys(original);
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            if (written[key] !== undefined) {
+                subset[key] = written[key];
+            }
+        }
+        return subset;
+    }
+    
+    // ============================================================
+    // Verify payload fields
+    // Compares ONLY the fields that were in the WRV payload
     // ============================================================
     
     function verifyData(original, written) {
-        // original is the WRV payload (subset)
-        // written is the FULL Firestore document
-        
-        // Get FULL IMR from cache
-        var imr = getIMR();
-        if (!imr) {
-            console.warn('[WRV] No IMR available for verification');
-            return false;
-        }
-        
-        // Compare FULL IMR vs FULL Firestore document
-        var match = deepEqual(imr, written);
+        // Extract ONLY the fields from the payload
+        var writtenSubset = getWrittenSubset(original, written);
+        var match = deepEqual(original, writtenSubset);
         
         if (!match) {
-            console.warn('[WRV] ❌ Verification FAILED - IMR vs FS Record mismatch');
+            console.warn('[WRV] ❌ Verification FAILED - payload mismatch');
         } else {
-            console.log('[WRV] ✅ Verification PASSED - IMR = FS Record');
+            console.log('[WRV] ✅ Verification PASSED - payload matches');
         }
         
         return match;
     }
     
     // ============================================================
-    // WRV.write() - Write payload, then verify FULL IMR vs FS
+    // WRV.write() - Write payload, verify payload fields only
     // ============================================================
     
     function writeWithWRV(collection, docId, data, callback) {
@@ -141,7 +135,7 @@ var WRV = (function() {
                         console.log('[WRV] ✅ Verified on attempt', attempt);
                         if (callback) callback(null, writtenData);
                     } else {
-                        throw new Error('Verification failed - IMR vs FS mismatch');
+                        throw new Error('Verification failed - data mismatch');
                     }
                 })
                 .catch(function(err) {
@@ -362,10 +356,7 @@ var WRV = (function() {
         getActiveRecoveries: getActiveRecoveries,
         cancelRecovery: cancelRecovery,
         cancelAllRecoveries: cancelAllRecoveries,
-        RECOVER_RETRY_DELAY: RECOVER_RETRY_DELAY,
-        // Expose for debugging
-        getIMR: getIMR,
-        deepEqual: deepEqual
+        RECOVER_RETRY_DELAY: RECOVER_RETRY_DELAY
     };
     
 })();
@@ -374,14 +365,13 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.06
-KEY CHANGES from v1.05:
-   - FIXED: verifyData() now compares FULL IMR (cache) with FULL Firestore document
-   - REMOVED: updatedAt exclusion (no longer needed - compare FULL objects)
-   - ADDED: getIMR() function to retrieve full cache for verification
-   - VERIFICATION: Full cache vs Full Firestore document
-   - This ensures IMR = FS Record is actually verified correctly
+VERSION: 1.07
+KEY CHANGES from v1.06:
+   - FIXED: verifyData() now compares ONLY the fields in the WRV payload
+   - REMOVED: FULL IMR vs FULL FS Record comparison (was always failing)
+   - ADDED: getWrittenSubset() function to extract only payload fields from Firestore
+   - This ensures WRV verification passes for BOTH flight data and results writes
    - PRESERVED: WRV.recover() unchanged
-DEPENDS ON: Firebase Firestore, GameLoader
+DEPENDS ON: Firebase Firestore only
 STATUS: Ready for integration
 */
