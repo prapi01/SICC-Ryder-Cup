@@ -1,18 +1,18 @@
 /*
 FILE: js/wrv.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: verifyData() now excludes 'updatedAt' from comparison
-   - ADDED: excludeKeys parameter to skip server-generated fields
-   - This fixes the issue where WRV verification always failed
-   - Because FieldValue.serverTimestamp() never equals the read-back Timestamp
-   - PRESERVED: ALL other functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: verifyData() now compares FULL IMR (cache) with FULL Firestore document
+   - REMOVED: updatedAt exclusion (no longer needed - compare FULL objects)
+   - ADDED: getIMR() function to retrieve full cache for verification
+   - VERIFICATION: Full cache vs Full Firestore document
+   - This ensures IMR = FS Record is actually verified correctly
    - PRESERVED: WRV.recover() unchanged
-DEPENDS ON: Firebase Firestore only
+DEPENDS ON: Firebase Firestore, GameLoader
 STATUS: Ready for integration
 */
 
-window.WRV_VERSION = "1.05";
+window.WRV_VERSION = "1.06";
 
 var WRV = (function() {
     
@@ -24,8 +24,18 @@ var WRV = (function() {
     var BASE_DELAY = 1000;
     var MAX_DELAY = 30000;
     
-    // Keys to exclude from verification (server-generated)
-    var EXCLUDE_KEYS = ['updatedAt', 'createdAt'];
+    // ============================================================
+    // Get FULL IMR (In-Memory Record) from cache
+    // ============================================================
+    
+    function getIMR() {
+        var cache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
+        if (!cache) {
+            console.warn('[WRV] No cache available for IMR');
+            return null;
+        }
+        return cache;
+    }
     
     // ============================================================
     // Deep comparison of two objects
@@ -43,7 +53,7 @@ var WRV = (function() {
         if (a instanceof Date) return false;
         if (b instanceof Date) return false;
         
-        // Handle Firestore Timestamp (has toDate method)
+        // Handle Firestore Timestamp
         if (a && typeof a.toDate === 'function') {
             if (b && typeof b.toDate === 'function') {
                 return a.toDate().getTime() === b.toDate().getTime();
@@ -69,33 +79,41 @@ var WRV = (function() {
         
         for (var k = 0; k < keysA.length; k++) {
             var key = keysA[k];
-            // Skip excluded keys
-            if (EXCLUDE_KEYS.indexOf(key) !== -1) continue;
             if (!deepEqual(a[key], b[key])) return false;
         }
         return true;
     }
     
     // ============================================================
-    // Verify ALL fields from original payload
-    // Excludes server-generated fields like updatedAt
+    // Verify IMR vs Firestore Record
+    // Compare FULL cache vs FULL Firestore document
     // ============================================================
     
     function verifyData(original, written) {
-        // Deep compare the entire payload, excluding server-generated keys
-        var match = deepEqual(original, written);
+        // original is the WRV payload (subset)
+        // written is the FULL Firestore document
+        
+        // Get FULL IMR from cache
+        var imr = getIMR();
+        if (!imr) {
+            console.warn('[WRV] No IMR available for verification');
+            return false;
+        }
+        
+        // Compare FULL IMR vs FULL Firestore document
+        var match = deepEqual(imr, written);
         
         if (!match) {
-            console.warn('[WRV] ❌ Full verification FAILED - payload mismatch');
+            console.warn('[WRV] ❌ Verification FAILED - IMR vs FS Record mismatch');
         } else {
-            console.log('[WRV] ✅ Full verification PASSED - payload matches');
+            console.log('[WRV] ✅ Verification PASSED - IMR = FS Record');
         }
         
         return match;
     }
     
     // ============================================================
-    // WRV.write() - Write and verify FULL payload
+    // WRV.write() - Write payload, then verify FULL IMR vs FS
     // ============================================================
     
     function writeWithWRV(collection, docId, data, callback) {
@@ -123,7 +141,7 @@ var WRV = (function() {
                         console.log('[WRV] ✅ Verified on attempt', attempt);
                         if (callback) callback(null, writtenData);
                     } else {
-                        throw new Error('Verification failed - data mismatch');
+                        throw new Error('Verification failed - IMR vs FS mismatch');
                     }
                 })
                 .catch(function(err) {
@@ -344,7 +362,10 @@ var WRV = (function() {
         getActiveRecoveries: getActiveRecoveries,
         cancelRecovery: cancelRecovery,
         cancelAllRecoveries: cancelAllRecoveries,
-        RECOVER_RETRY_DELAY: RECOVER_RETRY_DELAY
+        RECOVER_RETRY_DELAY: RECOVER_RETRY_DELAY,
+        // Expose for debugging
+        getIMR: getIMR,
+        deepEqual: deepEqual
     };
     
 })();
@@ -353,14 +374,14 @@ window.WRV = WRV;
 
 /*
 FILE: js/wrv.js
-VERSION: 1.05
-KEY CHANGES from v1.04:
-   - FIXED: verifyData() now excludes 'updatedAt' from comparison
-   - ADDED: excludeKeys parameter to skip server-generated fields
-   - This fixes the issue where WRV verification always failed
-   - Because FieldValue.serverTimestamp() never equals the read-back Timestamp
-   - PRESERVED: ALL other functionality from v1.04
+VERSION: 1.06
+KEY CHANGES from v1.05:
+   - FIXED: verifyData() now compares FULL IMR (cache) with FULL Firestore document
+   - REMOVED: updatedAt exclusion (no longer needed - compare FULL objects)
+   - ADDED: getIMR() function to retrieve full cache for verification
+   - VERIFICATION: Full cache vs Full Firestore document
+   - This ensures IMR = FS Record is actually verified correctly
    - PRESERVED: WRV.recover() unchanged
-DEPENDS ON: Firebase Firestore only
+DEPENDS ON: Firebase Firestore, GameLoader
 STATUS: Ready for integration
 */
