@@ -1,26 +1,22 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.33
-KEY CHANGES from v1.32:
-   - REMOVED: wruBackground() call from writeNewHoleData() (deferred to performSave)
-   - REMOVED: wruBackground() call from writeSingleHoleToFirestore() (deferred to caller)
-   - ADDED: writeCompleteGameData() function that writes ALL data in ONE payload
-   - ADDED: Consolidated WRV call in performSave() after all calculations complete
-   - REMOVED: updateGameMetadata() WRV write (metadata now part of consolidated payload)
-   - This ensures ONE WRV write per save operation, not 3 separate writes
-   - Eliminates metadata verification failure
-   - PRESERVED: ALL other functionality from v1.32
-   - PRESERVED: All v1.27 cascade improvements (UI update once)
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - FIXED: Flight data now sourced from cache.f1DataString/cache.f2DataString (fresh)
+   - FIXED: f1.se/f2.se now sourced from cache.flight1Data.se/flight2Data.se
+   - This ensures the consolidated WRV payload uses the SAME data the UI displays
+   - PREVIOUS: GameData.getFlightData() could return stale data
+   - PRESERVED: ALL other functionality from v1.33
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.33";
+window.REAL_GAME_SAVE_VERSION = "1.34";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.33 - Consolidated WRV write");
+    console.log("[REAL-GAME-SAVE] Initializing v1.34 - Flight data from cache");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -404,7 +400,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeNewHoleData - v1.33: No WRV here, just prepare payload
+    // writeNewHoleData - v1.34: Flight data from cache (fresh)
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache, renderAllCallback) {
@@ -672,8 +668,7 @@ var RealGameSave = (function() {
         cache.results.playerTotals = playerTotals;
         
         // ============================================================
-        // v1.33: BUILD PAYLOAD - ALL DATA IN ONE PAYLOAD
-        // v1.32: No updatedAt in payload (WRV verification fix)
+        // v1.34: BUILD PAYLOAD - Flight data from cache (fresh)
         // ============================================================
         var updatePayload = {};
         
@@ -692,7 +687,6 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- Adding lastSyncedPosition=${lastSyncedPos} to payload`);
         
         // v1.33: ADD gameStarted and currentHole to payload (metadata)
-        // This eliminates the separate updateGameMetadata() WRV write
         var editableFlight = RealGameState.getEditableFlight();
         var currentHole = RealGameState.getCurrentHole();
         updatePayload["gameStarted"] = true;
@@ -705,20 +699,24 @@ var RealGameSave = (function() {
             updatePayload["currentHoleF2"] = currentHole;
         }
         
-        // v1.33: ADD flight data to payload (from GameData)
-        // This eliminates the separate saveCurrentHole() WRV write
+        // ============================================================
+        // v1.34: FLIGHT DATA FROM CACHE (fresh) - NOT from GameData
+        // This ensures the payload uses the SAME data the UI is displaying
+        // ============================================================
         var flight = RealGameState.getEditableFlight();
-        var flightData = typeof GameData !== 'undefined' ? GameData.getFlightData(flight) : null;
-        if (flightData) {
-            var flightField = (flight === 1) ? "f1" : "f2";
-            var otherFlightField = (flight === 1) ? "f2" : "f1";
-            updatePayload[flightField + ".d"] = flightData.data;
-            updatePayload[flightField + ".se"] = flightData.saveEvent;
-            updatePayload[otherFlightField + ".x"] = true;
-        }
+        var flightField = (flight === 1) ? "f1" : "f2";
+        var otherFlightField = (flight === 1) ? "f2" : "f1";
         
-        // v1.32: Do NOT include updatedAt - WRV should not verify server-generated timestamps
-        // updatedAt is written by Firestore's serverTimestamp, not by WRV
+        // Use cache for flight data (fresh, already updated by GameData.saveCurrentHole)
+        var flightDataString = (flight === 1) ? cache.f1DataString : cache.f2DataString;
+        var flightSaveEvent = (flight === 1) ? (cache.flight1Data?.se || false) : (cache.flight2Data?.se || false);
+        
+        updatePayload[flightField + ".d"] = flightDataString;
+        updatePayload[flightField + ".se"] = flightSaveEvent;
+        updatePayload[otherFlightField + ".x"] = true;
+        
+        console.log(`[DEBUG-FLOW] --- Flight data from cache: ${flightField}.d = ${flightDataString ? flightDataString.substring(0, 30) + '...' : 'undefined'}`);
+        console.log(`[DEBUG-FLOW] --- Flight data from cache: ${flightField}.se = ${flightSaveEvent}`);
         
         console.log(`[DEBUG-FLOW] --- PAYLOAD SUMMARY: ${Object.keys(updatePayload).length} fields`);
         console.log(`[DEBUG-FLOW] --- Has results: ${!!updatePayload["results"]}`);
@@ -969,7 +967,7 @@ var RealGameSave = (function() {
                         
                         // ============================================================
                         // writeNewHoleData - Calculate all data, return payload
-                        // v1.33: No WRV inside - just returns the payload
+                        // v1.34: Flight data sourced from cache (fresh)
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
@@ -1339,17 +1337,13 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.33
-KEY CHANGES from v1.32:
-   - REMOVED: wruBackground() call from writeNewHoleData() (deferred to performSave)
-   - REMOVED: wruBackground() call from writeSingleHoleToFirestore() (deferred to caller)
-   - ADDED: writeCompleteGameData() function that writes ALL data in ONE payload
-   - ADDED: Consolidated WRV call in performSave() after all calculations complete
-   - REMOVED: updateGameMetadata() WRV write (metadata now part of consolidated payload)
-   - This ensures ONE WRV write per save operation, not 3 separate writes
-   - Eliminates metadata verification failure (metadata now combined with results)
-   - PRESERVED: ALL other functionality from v1.32
-   - PRESERVED: All v1.27 cascade improvements (UI update once)
+VERSION: 1.34
+KEY CHANGES from v1.33:
+   - FIXED: Flight data now sourced from cache.f1DataString/cache.f2DataString (fresh)
+   - FIXED: f1.se/f2.se now sourced from cache.flight1Data.se/flight2Data.se
+   - This ensures the consolidated WRV payload uses the SAME data the UI displays
+   - PREVIOUS: GameData.getFlightData() could return stale data
+   - PRESERVED: ALL other functionality from v1.33
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
