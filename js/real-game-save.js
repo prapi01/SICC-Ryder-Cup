@@ -1,23 +1,23 @@
 /*
 FILE: js/real-game-save.js
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - FIXED: Flight data now written as NESTED structure (f1.d, f1.se, f1.x inside f1 object)
-   - FIXED: writeNewHoleData() now writes flight data as nested objects
-   - FIXED: writeSingleHoleToFirestore() now writes flight data as nested objects
-   - This aligns with the standard Firestore record structure that the UI reads
-   - PREVIOUS: Flat structure (f1.d, f1.se, f1.x at top-level) caused data corruption
-   - PRESERVED: ALL other functionality from v1.34
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - FIXED: Added safety checks in writeSingleHoleToFirestore() for flight data existence
+   - FIXED: processPendingWrites() now initializes full cache structure with flight data fields
+   - FIXED: writeNewHoleData() now sets computedUpToHole = position + 1 before building payload
+   - This ensures cascade writes don't fail when cache lacks flight data
+   - PREVIOUS: processPendingWrites() could call writeSingleHoleToFirestore() with incomplete cache
+   - PRESERVED: ALL other functionality from v1.35 (nested flight data structure)
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
 
 // Version exposure for console debugging
-window.REAL_GAME_SAVE_VERSION = "1.35";
+window.REAL_GAME_SAVE_VERSION = "1.36";
 
 var RealGameSave = (function() {
     
-    console.log("[REAL-GAME-SAVE] Initializing v1.35 - Nested flight data structure");
+    console.log("[REAL-GAME-SAVE] Initializing v1.36 - Robust flight data handling + computedUpToHole fix");
     
     // ============================================================
     // Helper: Get Firestore instance
@@ -186,7 +186,7 @@ var RealGameSave = (function() {
             }
         }
         
-        console.log("[SAVE-v1.20] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
+        console.log("[SAVE-v1.36] calculateLastSyncedPosition: playOrder length=" + playOrder.length + ", result=" + lastSyncedPosition);
         return lastSyncedPosition;
     }
     
@@ -317,7 +317,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeSingleHoleToFirestore - v1.35: Nested flight data structure
+    // writeSingleHoleToFirestore - v1.36: Safety checks + nested flight data
     // ============================================================
     
     async function writeSingleHoleToFirestore(holeNumber, resultsData, cache) {
@@ -390,8 +390,33 @@ var RealGameSave = (function() {
         updatePayload["lastSyncedPosition"] = lastSyncedPos;
         if(isTarget) console.log(`[DEBUG-WRITE] Added lastSyncedPosition=${lastSyncedPos} to payload`);
         
-        // v1.35: Add flight data as NESTED structure (f1.d, f1.se, f1.x inside f1 object)
-        // This is the STANDARD format that the UI reads from
+        // v1.36: ADD computedUpToHole to payload
+        // This ensures completed games have computedUpToHole = 18
+        if (cache.results && cache.results.computedUpToHole !== undefined) {
+            updatePayload["computedUpToHole"] = cache.results.computedUpToHole;
+            console.log(`[DEBUG-WRITE] Added computedUpToHole=${cache.results.computedUpToHole} to payload`);
+        } else {
+            // Fallback: calculate from savedHoles
+            var bothSaved = 0;
+            if (cache.savedHoles && cache.savedHoles[1] && cache.savedHoles[2]) {
+                var holes1 = cache.savedHoles[1] || [];
+                var holes2 = cache.savedHoles[2] || [];
+                var playOrder = RealGameUtils.getPlayOrder();
+                for (var i = 0; i < playOrder.length; i++) {
+                    var h = playOrder[i];
+                    if (holes1.indexOf(h) !== -1 && holes2.indexOf(h) !== -1) {
+                        bothSaved++;
+                    } else {
+                        break;
+                    }
+                }
+                updatePayload["computedUpToHole"] = bothSaved;
+                console.log(`[DEBUG-WRITE] Calculated computedUpToHole=${bothSaved} from savedHoles`);
+            }
+        }
+        
+        // v1.35: Flight data as NESTED structure (with safety checks)
+        // v1.36: Added safety checks - only write if data exists
         if (cache.f1DataString) {
             updatePayload["f1"] = {
                 d: cache.f1DataString,
@@ -417,7 +442,7 @@ var RealGameSave = (function() {
     }
     
     // ============================================================
-    // writeNewHoleData - v1.35: Nested flight data structure
+    // writeNewHoleData - v1.36: computedUpToHole fix + nested flight data
     // ============================================================
     
     async function writeNewHoleData(position, holeNumber, cache, renderAllCallback) {
@@ -685,6 +710,13 @@ var RealGameSave = (function() {
         cache.results.playerTotals = playerTotals;
         
         // ============================================================
+        // v1.36: SET computedUpToHole BEFORE building payload
+        // This fixes the issue where computedUpToHole remains at 17 for completed games
+        // ============================================================
+        cache.results.computedUpToHole = position + 1;
+        console.log(`[DEBUG-FLOW] --- Set computedUpToHole=${position + 1} (position ${position} + 1)`);
+        
+        // ============================================================
         // v1.35: BUILD PAYLOAD - Flight data as NESTED structure
         // This is the STANDARD format that the UI reads from
         // ============================================================
@@ -717,6 +749,10 @@ var RealGameSave = (function() {
             updatePayload["currentHoleF2"] = currentHole;
         }
         
+        // v1.36: Add computedUpToHole to top-level payload for easy access
+        updatePayload["computedUpToHole"] = position + 1;
+        console.log(`[DEBUG-FLOW] --- Adding computedUpToHole=${position + 1} to top-level payload`);
+        
         // ============================================================
         // v1.35: FLIGHT DATA AS NESTED STRUCTURE (STANDARD)
         // Write BOTH flights as nested objects to ensure consistency
@@ -747,6 +783,7 @@ var RealGameSave = (function() {
         console.log(`[DEBUG-FLOW] --- Has lastSyncedPosition: ${updatePayload["lastSyncedPosition"] !== undefined}`);
         console.log(`[DEBUG-FLOW] --- Has gameStarted: ${!!updatePayload["gameStarted"]}`);
         console.log(`[DEBUG-FLOW] --- Has currentHoleF1/F2: ${!!updatePayload["currentHoleF1"] || !!updatePayload["currentHoleF2"]}`);
+        console.log(`[DEBUG-FLOW] --- Has computedUpToHole: ${updatePayload["computedUpToHole"] !== undefined}`);
         console.log(`[DEBUG-FLOW] --- Has f1 nested: ${!!updatePayload["f1"]}`);
         console.log(`[DEBUG-FLOW] --- Has f2 nested: ${!!updatePayload["f2"]}`);
         console.log(`[DEBUG-FLOW] =========================================`);
@@ -911,10 +948,18 @@ var RealGameSave = (function() {
             cache.lastSyncedPosition = newLastSyncedPos;
             console.log(`[DEBUG-CACHE] Updated lastSyncedPosition=${newLastSyncedPos} in cache`);
         }
+        
+        // v1.36: Update computedUpToHole in cache.results
+        // This ensures the cache reflects the correct computed value
+        var highestBothSaved = RealGameUtils.getHighestBothSaved(cache);
+        if (highestBothSaved !== undefined && highestBothSaved !== null) {
+            cache.results.computedUpToHole = highestBothSaved;
+            console.log(`[DEBUG-CACHE] Updated computedUpToHole=${highestBothSaved} in cache.results`);
+        }
     }
     
     // ============================================================
-    // performSave - v1.35: Uses nested flight data structure
+    // performSave - v1.36: Uses nested flight data structure + computedUpToHole
     // ============================================================
     
     function performSave(saveHoleCallback, renderAllCallback) {
@@ -991,7 +1036,7 @@ var RealGameSave = (function() {
                         
                         // ============================================================
                         // writeNewHoleData - Calculate all data, return payload
-                        // v1.35: Uses nested flight data structure
+                        // v1.36: Sets computedUpToHole + nested flight data structure
                         // ============================================================
                         console.log(`[DEBUG-SAVE] --- CALLING writeNewHoleData for position ${currentPosition} ---`);
                         
@@ -1135,6 +1180,7 @@ var RealGameSave = (function() {
                         // v1.35: CONSOLIDATED WRV WRITE - ONE WRV for ALL data
                         // This writes results, savedHoles, lastSyncedPosition, metadata, AND flight data
                         // Flight data is now written as NESTED structure (f1.d, f1.se, f1.x inside f1)
+                        // v1.36: Also writes computedUpToHole
                         // ============================================================
                         if (consolidatedPayload) {
                             console.log(`[DEBUG-SAVE] --- WRITING CONSOLIDATED PAYLOAD (ONE WRV) ---`);
@@ -1275,6 +1321,10 @@ var RealGameSave = (function() {
         }
     }
     
+    // ============================================================
+    // processPendingWrites - v1.36: Full cache initialization
+    // ============================================================
+    
     async function processPendingWrites(renderAllCallback) {
         var pendingData = loadPendingWrites();
         if (!pendingData) return false;
@@ -1286,12 +1336,48 @@ var RealGameSave = (function() {
             debugDiv.innerHTML = `⏳ Resuming ${pendingData.pendingWrites.length} pending updates...`;
         }
         
+        // v1.36: Get full cache with all required fields
         var resultsCache = typeof GameLoader !== 'undefined' ? GameLoader.getLocalCache() : null;
         if (!resultsCache) {
-            resultsCache = { results: RealGameUtils.initializeEmptyResults() };
+            // Initialize a complete cache structure with all required fields
+            resultsCache = { 
+                results: RealGameUtils.initializeEmptyResults(),
+                savedHoles: { 1: [], 2: [] },
+                f1DataString: null,
+                f2DataString: null,
+                flight1Data: null,
+                flight2Data: null,
+                t1Row: new Array(18).fill("AS"),
+                t2Row: new Array(18).fill("AS"),
+                strkRow: new Array(18).fill("AS"),
+                lastSyncedPosition: -1
+            };
+            console.log(`[CASCADE-DEBUG] Initialized complete cache structure for pending writes`);
+        } else {
+            // Ensure all required fields exist
+            if (!resultsCache.savedHoles) {
+                resultsCache.savedHoles = { 1: [], 2: [] };
+            }
+            if (!resultsCache.results) {
+                resultsCache.results = RealGameUtils.initializeEmptyResults();
+            }
+            if (!resultsCache.t1Row) {
+                resultsCache.t1Row = new Array(18).fill("AS");
+            }
+            if (!resultsCache.t2Row) {
+                resultsCache.t2Row = new Array(18).fill("AS");
+            }
+            if (!resultsCache.strkRow) {
+                resultsCache.strkRow = new Array(18).fill("AS");
+            }
+            console.log(`[CASCADE-DEBUG] Ensured cache has all required fields`);
         }
-        if (!resultsCache.results) {
-            resultsCache.results = RealGameUtils.initializeEmptyResults();
+        
+        // v1.36: Ensure results has computedUpToHole
+        if (resultsCache.results && resultsCache.results.computedUpToHole === undefined) {
+            var highestBothSaved = RealGameUtils.getHighestBothSaved(resultsCache);
+            resultsCache.results.computedUpToHole = highestBothSaved || 0;
+            console.log(`[CASCADE-DEBUG] Set computedUpToHole=${resultsCache.results.computedUpToHole} in cache.results`);
         }
         
         for (var i = 0; i < pendingData.pendingWrites.length; i++) {
@@ -1362,14 +1448,14 @@ window.RealGameSave = RealGameSave;
 
 /*
 FILE: js/real-game-save.js
-VERSION: 1.35
-KEY CHANGES from v1.34:
-   - FIXED: Flight data now written as NESTED structure (f1.d, f1.se, f1.x inside f1 object)
-   - FIXED: writeNewHoleData() now writes flight data as nested objects
-   - FIXED: writeSingleHoleToFirestore() now writes flight data as nested objects
-   - This aligns with the standard Firestore record structure that the UI reads
-   - PREVIOUS: Flat structure (f1.d, f1.se, f1.x at top-level) caused data corruption
-   - PRESERVED: ALL other functionality from v1.34
+VERSION: 1.36
+KEY CHANGES from v1.35:
+   - FIXED: Added safety checks in writeSingleHoleToFirestore() for flight data existence
+   - FIXED: processPendingWrites() now initializes full cache structure with flight data fields
+   - FIXED: writeNewHoleData() now sets computedUpToHole = position + 1 before building payload
+   - This ensures cascade writes don't fail when cache lacks flight data
+   - PREVIOUS: processPendingWrites() could call writeSingleHoleToFirestore() with incomplete cache
+   - PRESERVED: ALL other functionality from v1.35 (nested flight data structure)
 DEPENDS ON: RealGameState, RealGameUtils, GameData, GameLoader, GameTeam, GameMatch, GameStroke, GameOrder, Firebase, WRV.js
 STATUS: Ready for integration
 */
