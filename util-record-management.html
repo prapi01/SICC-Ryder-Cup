@@ -1,15 +1,12 @@
 <!--
 FILE: util-record-management.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - ADDED: Photo status section in VALIDATE tab (celebration photo)
-   - ADDED: Photo selector modal for linking photos to records
-   - ADDED: Validation details card showing all field mismatches
-   - CHANGED: validateProcessGameData() now renders photo status and details
-   - CHANGED: clearValidateResults() now clears all sections including photo status
-   - ADDED: getPhotoDownloadUrl() to util-photo.js integration
-   - PRESERVED: All UI structure, CSS, and functionality from v1.17
-DEPENDS ON: js/firebase-config.js, js/util-logger.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: Added log function fallback (util-logger.js not loaded)
+   - ADDED: logStep() fallback for compatibility with copy-record.js
+   - ADDED: window._log registration for external access
+   - PRESERVED: All UI structure, CSS, and functionality from v1.18
+DEPENDS ON: js/firebase-config.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
 
@@ -29,7 +26,6 @@ STATUS: Ready for integration
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     
     <!-- Utility JS Files -->
-    <script src="js/util-logger.js"></script>
     <script src="js/util-firebase.js"></script>
     <script src="js/util-validate-record.js"></script>
     <script src="js/util-validate-ui.js"></script>
@@ -584,9 +580,7 @@ STATUS: Ready for integration
             <div id="validateStatus" class="validate-status" style="display:none;"></div>
         </div>
         
-        <!-- ============================================================ -->
-        <!-- VALIDATE RESULTS (v1.18) -->
-        <!-- ============================================================ -->
+        <!-- VALIDATE RESULTS -->
         <div id="validateResults" class="validate-results">
             <div class="card">
                 <div class="card-title">📋 Game Info</div>
@@ -836,15 +830,51 @@ STATUS: Ready for integration
 </div>
 
 <div class="device-tag" id="deviceTag">REC MGMT</div>
-<div class="version-tag">v1.18</div>
+<div class="version-tag">v1.19</div>
 
 <script>
 // ============================================================
 // FILE: util-record-management.html
-// VERSION: 1.18
+// VERSION: 1.19
 // ============================================================
 
-var APP_VERSION = "1.18";
+var APP_VERSION = "1.19";
+
+// ============================================================
+// LOGGING FALLBACK - In case util-logger.js is not loaded
+// ============================================================
+
+function log(message, type) {
+    var timestamp = new Date().toLocaleTimeString();
+    
+    if (type === 'error') {
+        console.error('[REC-MGMT] ❌', message);
+    } else if (type === 'success') {
+        console.log('[REC-MGMT] ✅', message);
+    } else if (type === 'warning') {
+        console.warn('[REC-MGMT] ⚠️', message);
+    } else {
+        console.log('[REC-MGMT] ℹ️', message);
+    }
+    
+    // Try to write to the log div if it exists
+    var logDiv = document.getElementById('log');
+    if (logDiv) {
+        var entry = document.createElement('div');
+        entry.className = 'log-entry';
+        var color = type === 'error' ? '#ff6b6b' : type === 'success' ? '#4caf50' : type === 'warning' ? '#ffaa44' : '#ffaa44';
+        entry.innerHTML = '<span style="color:' + color + ';">[' + timestamp + '] ' + message + '</span>';
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+}
+
+function logStep(step, message, type) {
+    log(message, type);
+}
+
+// Register log globally
+window._log = log;
 
 // ============================================================
 // TAB SWITCHING - UI ONLY
@@ -877,7 +907,6 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
 // ============================================================
 
 // These functions are defined in their respective .js files:
-// - log(), logStep(), escapeHtml() are in util-logger.js
 // - initFirebase(), prodDb, devDb are in util-firebase.js
 // - COPY tab functions are in util-copy-record.js
 // - COMPARE tab functions are in util-compare-record.js
@@ -990,7 +1019,6 @@ function loadAndValidate() {
     
     log('Validating: ' + record.id, 'info');
     
-    // Use UtilValidate to validate the record
     if (typeof UtilValidate === 'undefined') {
         log('UtilValidate not available', 'error');
         return;
@@ -1040,14 +1068,12 @@ function renderValidateResults(recordData, validation) {
     var resultsDiv = document.getElementById('validateResults');
     resultsDiv.classList.add('active');
     
-    // Clear previous results
     document.getElementById('validateStatus').style.display = 'none';
     document.getElementById('validateFixCard').style.display = 'none';
     document.getElementById('validateDetailsCard').style.display = 'none';
     document.getElementById('validateProgress').className = 'validate-progress';
     document.getElementById('validateProgress').innerHTML = '';
     
-    // Use UtilValidateUI for rendering
     if (typeof UtilValidateUI === 'undefined') {
         log('UtilValidateUI not available', 'error');
         return;
@@ -1060,12 +1086,10 @@ function renderValidateResults(recordData, validation) {
     var photoStatus = validation.photoStatus || { hasPhoto: false, path: null, url: null };
     var isCompleted = validation.isCompletedGame || false;
     
-    // Store photo status for later use
     window._validatePhotoStatus = photoStatus;
     window._validateRecordId = recordData.id;
     window._validateCollection = document.getElementById('validateCollection').value;
     
-    // Render photo status with selector button
     var photoContainer = document.getElementById('validatePhotoStatus');
     if (photoContainer) {
         var hasPhoto = photoStatus.hasPhoto;
@@ -1117,11 +1141,7 @@ function renderValidateResults(recordData, validation) {
     
     // 4. T-1, T-2, Strk
     var recalculated = validation.recalculated || {};
-    var t1Results = recalculated.game2 ? recalculated.game2.flight1?.leader : [];
-    var t2Results = recalculated.game2 ? recalculated.game2.flight2?.leader : [];
-    var strkResults = recalculated.game3 ? recalculated.game3.displayStrk : [];
     
-    // Recalculate team game results for display
     var t1Calc = UtilValidate.calculateTeamGame(f1Scores, players, 1, validation.courseSi || []);
     var t2Calc = UtilValidate.calculateTeamGame(f2Scores, players, 2, validation.courseSi || []);
     var strkCalc = UtilValidate.calculateStrokeGame(f1Scores, f2Scores, players);
@@ -1138,10 +1158,7 @@ function renderValidateResults(recordData, validation) {
     
     // 6. TR Table
     var matchPointsPerHole = matchData.matchPointsPerHole || [];
-    var t1ResultsForTR = t1Calc || [];
-    var t2ResultsForTR = t2Calc || [];
-    var strkResultsForTR = strkCalc || [];
-    UtilValidateUI.renderTRTable(t1ResultsForTR, t2ResultsForTR, strkResultsForTR, matchPointsPerHole, recordData, 'validateTR');
+    UtilValidateUI.renderTRTable(t1Calc, t2Calc, strkCalc, matchPointsPerHole, recordData, 'validateTR');
     
     // 7. Validation Summary
     var summaryContainer = document.getElementById('validateSummary');
@@ -1152,14 +1169,12 @@ function renderValidateResults(recordData, validation) {
     
     var html = '<div style="padding:12px 0;">';
     
-    // Overall status
     html += '<div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:12px; border-radius:8px; background:' + (isValid ? '#0a2a0a' : '#2a0a0a') + '; border:1px solid ' + (isValid ? '#2a5a2a' : '#5a2a2a') + ';">';
     html += '<span style="font-size:1.5rem;">' + (isValid ? '✅' : '❌') + '</span>';
     html += '<div><div style="font-weight:700; color:' + (isValid ? '#4caf50' : '#ff6b6b') + ';">' + (isValid ? 'VALID' : 'NEEDS FIX') + '</div>';
     html += '<div style="font-size:0.7rem; color:#888;">' + summary.matched + ' fields match, ' + summary.mismatched + ' fields need attention</div></div>';
     html += '</div>';
     
-    // Status info
     html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; font-size:0.75rem;">';
     html += '<div style="background:#0a0a0a; padding:8px; border-radius:6px; border:1px solid #2a2a2a;">';
     html += '<span style="color:#888;">Status</span><br><span style="color:' + (status === 'completed' ? '#4caf50' : '#ffaa44') + '; font-weight:600;">' + UtilValidateUI.escapeHtml(status) + '</span>';
@@ -1175,7 +1190,6 @@ function renderValidateResults(recordData, validation) {
     html += '</div>';
     html += '</div>';
     
-    // Field summary
     if (summary.totalFields > 0) {
         html += '<div style="display:flex; gap:16px; flex-wrap:wrap; padding:8px; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; font-size:0.75rem;">';
         html += '<div><span style="color:#888;">Total Fields:</span> <strong style="color:#fff;">' + summary.totalFields + '</strong></div>';
@@ -1184,7 +1198,6 @@ function renderValidateResults(recordData, validation) {
         html += '</div>';
     }
     
-    // Mismatch list
     if (validation.mismatches && validation.mismatches.length > 0) {
         html += '<div style="margin-top:12px; max-height:150px; overflow-y:auto; background:#0a0a0a; border-radius:6px; border:1px solid #2a2a2a; padding:8px;">';
         html += '<div style="font-size:0.65rem; color:#ff6b6b; font-weight:700; margin-bottom:4px;">🔴 Mismatches (' + validation.mismatches.length + ')</div>';
@@ -1202,7 +1215,6 @@ function renderValidateResults(recordData, validation) {
         }
         html += '</div>';
         
-        // Show details card toggle
         document.getElementById('validateDetailsCard').style.display = 'block';
         var detailsHtml = '<div style="font-size:0.7rem; font-family:monospace;">';
         for (var i = 0; i < validation.mismatches.length; i++) {
@@ -1223,7 +1235,6 @@ function renderValidateResults(recordData, validation) {
     html += '</div>';
     summaryContainer.innerHTML = html;
     
-    // 8. Fix button visibility
     var fixCard = document.getElementById('validateFixCard');
     if (!validation.valid) {
         fixCard.style.display = 'block';
@@ -1419,7 +1430,6 @@ function clearValidateResults() {
     document.getElementById('validateBackupBtn').disabled = false;
     document.getElementById('validateFixBtn').disabled = false;
     
-    // Clear photo status from window
     window._validatePhotoStatus = null;
     window._validateRecordId = null;
     window._validateCollection = null;
@@ -1496,7 +1506,6 @@ function validateFixRecord() {
         return;
     }
     
-    // Build fix preview
     var recalculated = validateCurrentValidation.recalculated;
     var previewData = UtilValidate.buildFixPreview(validateGameData, recalculated);
     
@@ -1505,14 +1514,12 @@ function validateFixRecord() {
         return;
     }
     
-    // Show preview and confirm
     UtilValidateUI.showFixPreview(
         validateGameData,
         recalculated,
         previewData,
         null,
         function() {
-            // User confirmed - apply fix
             applyFixToRecord(recordId, collection, db, recalculated);
         }
     );
@@ -1525,7 +1532,6 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
     
     var backupId = recordId + '_backup_' + new Date().toISOString().replace(/[:.]/g, '-');
     
-    // Step 1: Create backup
     db.collection(collection).doc(recordId).get()
         .then(function(doc) {
             if (!doc.exists) {
@@ -1538,7 +1544,6 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
             progressDiv.innerHTML += '<div class="step done">✅ Backup saved to backupFolder/' + backupId + '</div>';
             progressDiv.innerHTML += '<div class="step info">📝 Building fix payload...</div>';
             
-            // Build fix payload
             var fixResult = UtilValidate.buildFixPayload(validateGameData, recalculated);
             
             if (!fixResult.hasChanges) {
@@ -1555,7 +1560,6 @@ function applyFixToRecord(recordId, collection, db, recalculated) {
             progressDiv.innerHTML += '<div class="step done">✅ Fix applied successfully!</div>';
             log('✅ Record fixed: ' + recordId, 'success');
             
-            // Reload the record
             setTimeout(function() {
                 loadAndValidate();
             }, 1000);
@@ -1805,7 +1809,7 @@ function initDateToggle() {
 // INIT
 // ============================================================
 
-console.log('[REC-MGMT] Initializing v1.18...');
+console.log('[REC-MGMT] Initializing v1.19...');
 
 initFirebase();
 initDateToggle();
@@ -1874,7 +1878,7 @@ setTimeout(function() {
     if (typeof loadDeleteRecords === 'function') loadDeleteRecords();
 }, 500);
 
-log('Record Management v1.18 ready', 'success');
+log('Record Management v1.19 ready', 'success');
 log('=== TABS ===', 'info');
 log('📝 COPY    - Copy records between collections/environments', 'info');
 log('🔍 COMPARE - Field-by-field comparison across environments', 'info');
@@ -1901,15 +1905,12 @@ window.renderValidateResults = renderValidateResults;
 
 <!--
 FILE: util-record-management.html
-VERSION: 1.18
-KEY CHANGES from v1.17:
-   - ADDED: Photo status section in VALIDATE tab (celebration photo)
-   - ADDED: Photo selector modal for linking photos to records
-   - ADDED: Validation details card showing all field mismatches
-   - CHANGED: validateProcessGameData() now renders photo status and details
-   - CHANGED: clearValidateResults() now clears all sections including photo status
-   - ADDED: getPhotoDownloadUrl() to util-photo.js integration
-   - PRESERVED: All UI structure, CSS, and functionality from v1.17
-DEPENDS ON: js/firebase-config.js, js/util-logger.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
+VERSION: 1.19
+KEY CHANGES from v1.18:
+   - FIXED: Added log function fallback (util-logger.js not loaded)
+   - ADDED: logStep() fallback for compatibility with copy-record.js
+   - ADDED: window._log registration for external access
+   - PRESERVED: All UI structure, CSS, and functionality from v1.18
+DEPENDS ON: js/firebase-config.js, js/util-firebase.js, js/util-validate-record.js, js/util-validate-ui.js, js/util-copy-record.js, js/util-compare-record.js, js/util-delete-record.js, js/util-photo.js
 STATUS: Ready for integration
 -->
